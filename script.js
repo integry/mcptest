@@ -4,7 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const listToolsBtn = document.getElementById('listToolsBtn');
+    const listResourcesBtn = document.getElementById('listResourcesBtn');
     const toolsList = document.getElementById('toolsList');
+    const resourcesList = document.getElementById('resourcesList');
     const toolParams = document.getElementById('toolParams');
     const executeToolBtn = document.getElementById('executeToolBtn');
     const responseArea = document.getElementById('responseArea');
@@ -15,11 +17,126 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     let sessionId = null;
     let eventSource = null;
-    let selectedTool = null;
     let availableTools = [];
+    let availableResources = [];
+    let selectedTool = null;
+    let selectedResource = null;
     let toolsMap = {};
+    let resourcesMap = {};
     let currentRequestId = 1;
     let lastEventId = null;
+
+    // URI Template Parser for RFC 6570
+    function parseUriTemplate(template) {
+        if (!template) return { path: '', parameters: [] };
+        
+        const parameters = [];
+        const regex = /\{([^}]+)\}/g;
+        let match;
+        
+        while ((match = regex.exec(template)) !== null) {
+            const fullParam = match[1];
+            let paramName = fullParam;
+            let paramType = 'path'; // default: path parameter
+            let isOptional = false;
+            
+            // Check for modifiers
+            if (fullParam.startsWith('?')) {
+                // Query parameter: {?param}
+                paramName = fullParam.substring(1);
+                paramType = 'query';
+                isOptional = true;
+            } else if (fullParam.includes('*')) {
+                // Explode modifier: {param*}
+                paramName = fullParam.replace('*', '');
+                paramType = 'explode';
+            } else if (fullParam.startsWith('.')) {
+                // Path-style parameter: {.param}
+                paramName = fullParam.substring(1);
+                paramType = 'path-style';
+            }
+            
+            // Handle comma-separated parameters in query params
+            if (paramType === 'query' && paramName.includes(',')) {
+                const queryParams = paramName.split(',');
+                queryParams.forEach(qp => {
+                    parameters.push({
+                        name: qp.trim(),
+                        type: 'query',
+                        isOptional: true
+                    });
+                });
+            } else {
+                parameters.push({
+                    name: paramName,
+                    type: paramType,
+                    isOptional: isOptional
+                });
+            }
+        }
+        
+        // Extract the base path (without parameters)
+        const basePath = template.replace(regex, '');
+        
+        return {
+            path: basePath,
+            parameters: parameters
+        };
+    }
+
+    // Function to expand a URI template with given parameters
+    function expandUriTemplate(template, params) {
+        console.log("Expanding URI template:", template, "with params:", params);
+        
+        // First, handle the path parameters directly
+        let expandedUri = template;
+        
+        // Find all parameters in the template
+        const paramMatches = template.match(/\{([^}]+)\}/g) || [];
+        console.log("Parameter matches:", paramMatches);
+        
+        // Process each parameter match
+        for (const match of paramMatches) {
+            const paramName = match.substring(1, match.length - 1); // Remove { and }
+            
+            // Skip query parameters (those starting with ?)
+            if (paramName.startsWith('?')) continue;
+            
+            // Handle regular path parameters
+            const value = params[paramName];
+            if (value !== undefined && value !== '') {
+                expandedUri = expandedUri.replace(match, encodeURIComponent(value));
+                console.log(`Replaced ${match} with ${value}, URI now: ${expandedUri}`);
+            } else {
+                console.warn(`Missing value for path parameter: ${paramName}`);
+            }
+        }
+        
+        // Now handle query parameters
+        const queryParamMatch = template.match(/\{\?([^}]+)\}/);
+        if (queryParamMatch) {
+            const queryParamString = queryParamMatch[1]; // e.g., "trade_range,specific_assets,fromTimestamp,toTimestamp"
+            const queryParams = queryParamString.split(',');
+            const queryValues = [];
+            
+            for (const param of queryParams) {
+                const value = params[param];
+                if (value !== undefined && value !== '') {
+                    queryValues.push(`${param}=${encodeURIComponent(value)}`);
+                }
+            }
+            
+            // Replace the entire query parameter placeholder
+            if (queryValues.length > 0) {
+                expandedUri = expandedUri.replace(/\{\?[^}]+\}/, `?${queryValues.join('&')}`);
+            } else {
+                expandedUri = expandedUri.replace(/\{\?[^}]+\}/, '');
+            }
+        }
+        
+        console.log("Final expanded URI:", expandedUri);
+        return expandedUri;
+    }
 
     // Initialize with default URL if empty
     if (!serverUrlInput.value) {
@@ -176,6 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
             connectionStatus.className = 'badge bg-success';
             disconnectBtn.disabled = false;
             listToolsBtn.disabled = false;
+            listResourcesBtn.disabled = false;
             
         } catch (error) {
             createResponseElement(`Error creating connection: ${error.message}`, 'error-message');
@@ -299,12 +417,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Display tool parameters
+        // Clear resource selection
+        selectedResource = null;
+        document.querySelectorAll('.resource-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        // Update UI to show tool parameters
         toolParams.innerHTML = '';
         
-        const nameHeader = document.createElement('h5');
-        nameHeader.textContent = selectedTool.name;
-        toolParams.appendChild(nameHeader);
+        const header = document.createElement('h5');
+        header.textContent = `Tool: ${selectedTool.name}`;
+        toolParams.appendChild(header);
         
         if (selectedTool.description) {
             const description = document.createElement('p');
@@ -357,7 +481,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 input.className = 'form-control';
                 input.id = `param-${paramName}`;
                 input.name = paramName;
-                input.dataset.paramName = paramName;
                 
                 if (paramInfo.type === 'object') {
                     input.placeholder = '{"key": "value"}';
@@ -424,7 +547,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         input.className = 'form-control';
                         input.id = `param-${paramName}`;
                         input.name = paramName;
-                        input.dataset.paramName = paramName;
                         
                         if (paramInfo.type === 'object') {
                             input.placeholder = '{"key": "value"}';
@@ -472,7 +594,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         input.className = 'form-control';
                         input.id = `param-${paramName}`;
                         input.name = paramName;
-                        input.dataset.paramName = paramName;
                         
                         if (typeof paramInfo === 'object' && paramInfo.required) {
                             input.required = true;
@@ -499,21 +620,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Function to collect parameter values from the form
-    function collectParameterValues() {
-        const paramElements = document.querySelectorAll('[data-param-name]');
+    function collectParameterValues(formId = 'tool-params-form') {
+        const paramElements = document.querySelectorAll(`#${formId} [name]`);
         const paramValues = {};
         
         paramElements.forEach(element => {
-            const paramName = element.dataset.paramName;
-            let value = element.value;
+            const paramName = element.getAttribute('name');
             
-            // Log the raw value
-            console.log(`Before conversion - ${paramName}: ${value} (${typeof value})`);
+            // Skip if not a parameter input
+            if (!paramName) return;
             
-            // Add to parameter values
+            let value;
+            
+            // Handle different input types
+            if (element.type === 'checkbox') {
+                value = element.checked;
+            } else if (element.type === 'number') {
+                value = element.value === '' ? '' : Number(element.value);
+            } else {
+                value = element.value;
+            }
+            
             paramValues[paramName] = value;
         });
         
+        console.log('Collected parameter values:', paramValues);
         return paramValues;
     }
 
@@ -920,6 +1051,564 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Process resources list
+    function processResourcesList(resources) {
+        if (!Array.isArray(resources) || resources.length === 0) {
+            createResponseElement('No resources available', 'warning-message');
+            resourcesList.innerHTML = '<li class="list-group-item">No resources available</li>';
+            return;
+        }
+        
+        createResponseElement(`Received ${resources.length} resources`, 'success-message');
+        addDebugInfo(`Resources response: ${JSON.stringify(resources, null, 2)}`);
+
+        availableResources = resources;
+        resourcesMap = {};
+        
+        // Clear the list
+        resourcesList.innerHTML = '';
+        
+        // Add each resource to the list
+        resources.forEach(resource => {
+            resourcesMap[resource.name] = resource;
+            
+            const li = document.createElement('li');
+            li.className = 'list-group-item resource-item';
+            li.setAttribute('data-resource', resource.name);
+            
+            const resourceName = document.createElement('div');
+            resourceName.className = 'fw-bold';
+            resourceName.textContent = resource.name;
+            
+            li.appendChild(resourceName);
+            
+            // Add click handler
+            li.addEventListener('click', () => {
+                // Remove active class from all resources
+                document.querySelectorAll('.resource-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                // Add active class to selected resource
+                li.classList.add('active');
+                
+                // Set selected resource
+                selectResource(resource.name);
+            });
+            
+            resourcesList.appendChild(li);
+        });
+    }
+
+    // Select a resource and show its parameters
+    function selectResource(resourceName) {
+        selectedResource = resourcesMap[resourceName];
+        
+        if (!selectedResource) {
+            createResponseElement(`Resource not found: ${resourceName}`, 'error-message');
+            return;
+        }
+        
+        // Clear tool selection
+        selectedTool = null;
+        document.querySelectorAll('.tool-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        // Update UI to show resource parameters
+        toolParams.innerHTML = '';
+        
+        const header = document.createElement('h5');
+        header.textContent = `Resource: ${selectedResource.name}`;
+        toolParams.appendChild(header);
+        
+        // Add description if available
+        if (selectedResource.description) {
+            const description = document.createElement('p');
+            description.className = 'text-muted';
+            description.textContent = selectedResource.description;
+            toolParams.appendChild(description);
+        }
+        
+        // Get the URI template (could be in uri or uriTemplate field)
+        const uriTemplate = selectedResource.uriTemplate || selectedResource.uri;
+        
+        // Show URI template if available
+        if (uriTemplate) {
+            const templateInfo = document.createElement('div');
+            templateInfo.className = 'alert alert-info mb-3';
+            templateInfo.innerHTML = `<strong>URI Template:</strong> ${uriTemplate}`;
+            toolParams.appendChild(templateInfo);
+            
+            // Parse the URI template
+            const parsedTemplate = parseUriTemplate(uriTemplate);
+            console.log("Parsed URI template:", parsedTemplate);
+            
+            // Add explanation about resources/read
+            const readInfo = document.createElement('div');
+            readInfo.className = 'alert alert-warning mb-3';
+            readInfo.innerHTML = `<strong>Note:</strong> The <code>resources/read</code> method requires a fully resolved URI. Parameters will be automatically substituted into the URI template.`;
+            toolParams.appendChild(readInfo);
+        }
+        
+        // Create form for resource parameters
+        const form = document.createElement('form');
+        form.id = 'resourceParamsForm';
+        
+        // Add query approach selector
+        const approachGroup = document.createElement('div');
+        approachGroup.className = 'mb-3';
+        
+        const approachLabel = document.createElement('label');
+        approachLabel.className = 'form-label';
+        approachLabel.setAttribute('for', 'query-approach');
+        approachLabel.textContent = 'Resource Read Approach';
+        
+        const approachSelect = document.createElement('select');
+        approachSelect.className = 'form-select mb-3';
+        approachSelect.id = 'query-approach';
+        
+        const option1 = document.createElement('option');
+        option1.value = 'template';
+        option1.textContent = 'URI Template with arguments';
+        
+        const option2 = document.createElement('option');
+        option2.value = 'resolved';
+        option2.textContent = 'Fully resolved URI';
+        option2.selected = true;
+        
+        approachSelect.appendChild(option1);
+        approachSelect.appendChild(option2);
+        
+        approachGroup.appendChild(approachLabel);
+        approachGroup.appendChild(approachSelect);
+        toolParams.appendChild(approachGroup);
+        
+        // Add parameters based on URI template if available
+        if (uriTemplate) {
+            const parsedTemplate = parseUriTemplate(uriTemplate);
+            
+            if (parsedTemplate.parameters.length > 0) {
+                // Add a header for template parameters
+                const paramsHeader = document.createElement('h6');
+                paramsHeader.textContent = 'URI Parameters';
+                paramsHeader.className = 'mt-3 mb-2';
+                form.appendChild(paramsHeader);
+                
+                // Add each parameter from the template
+                parsedTemplate.parameters.forEach(param => {
+                    const formGroup = document.createElement('div');
+                    formGroup.className = 'mb-3';
+                    
+                    const label = document.createElement('label');
+                    label.className = 'form-label';
+                    label.setAttribute('for', `resource-param-${param.name}`);
+                    label.textContent = `${param.name}${!param.isOptional ? ' *' : ''}`;
+                    
+                    const input = document.createElement('input');
+                    input.className = 'form-control';
+                    input.id = `resource-param-${param.name}`;
+                    input.name = param.name;
+                    
+                    // Add required attribute if needed
+                    if (!param.isOptional) {
+                        input.required = true;
+                    }
+                    
+                    // Add parameter type as a badge
+                    const paramTypeBadge = document.createElement('span');
+                    paramTypeBadge.className = 'badge bg-secondary ms-2';
+                    paramTypeBadge.textContent = param.type;
+                    label.appendChild(paramTypeBadge);
+                    
+                    // Add help text based on parameter type
+                    const helpText = document.createElement('div');
+                    helpText.className = 'form-text';
+                    
+                    switch (param.type) {
+                        case 'path':
+                            helpText.textContent = 'Required path parameter';
+                            break;
+                        case 'query':
+                            helpText.textContent = 'Optional query parameter';
+                            break;
+                        case 'explode':
+                            helpText.textContent = 'List parameter (comma-separated values)';
+                            input.placeholder = 'value1,value2,value3';
+                            break;
+                        case 'path-style':
+                            helpText.textContent = 'Path-style parameter';
+                            break;
+                    }
+                    
+                    formGroup.appendChild(label);
+                    formGroup.appendChild(input);
+                    formGroup.appendChild(helpText);
+                    form.appendChild(formGroup);
+                });
+            }
+        }
+        
+        // Add parameters based on inputSchema if available
+        if (selectedResource.inputSchema && selectedResource.inputSchema.properties) {
+            // Add a header for schema parameters if we already have template parameters
+            if (uriTemplate && parseUriTemplate(uriTemplate).parameters.length > 0) {
+                const schemaHeader = document.createElement('h6');
+                schemaHeader.textContent = 'Additional Parameters';
+                schemaHeader.className = 'mt-4 mb-2';
+                form.appendChild(schemaHeader);
+            }
+            
+            const properties = selectedResource.inputSchema.properties;
+            const required = selectedResource.inputSchema.required || [];
+            
+            Object.keys(properties).forEach(paramName => {
+                // Skip if this parameter is already in the URI template
+                if (uriTemplate) {
+                    const parsedTemplate = parseUriTemplate(uriTemplate);
+                    if (parsedTemplate.parameters.some(p => p.name === paramName)) {
+                        return;
+                    }
+                }
+                
+                const paramInfo = properties[paramName];
+                const isRequired = required.includes(paramName);
+                
+                const formGroup = document.createElement('div');
+                formGroup.className = 'mb-3';
+                
+                const label = document.createElement('label');
+                label.className = 'form-label';
+                label.setAttribute('for', `resource-param-${paramName}`);
+                label.textContent = `${paramName}${isRequired ? ' *' : ''}`;
+                
+                const input = document.createElement('input');
+                input.className = 'form-control';
+                input.id = `resource-param-${paramName}`;
+                input.name = paramName;
+                
+                // Set input type based on parameter type
+                if (paramInfo.type === 'integer' || paramInfo.type === 'number') {
+                    input.type = 'number';
+                } else if (paramInfo.type === 'boolean') {
+                    input.type = 'checkbox';
+                    input.className = 'form-check-input';
+                    label.className = 'form-check-label';
+                    formGroup.className = 'mb-3 form-check';
+                } else {
+                    input.type = 'text';
+                }
+                
+                // Add required attribute if needed
+                if (isRequired) {
+                    input.required = true;
+                }
+                
+                // Add description as form text if available
+                if (paramInfo.description) {
+                    const helpText = document.createElement('div');
+                    helpText.className = 'form-text';
+                    helpText.textContent = paramInfo.description;
+                    formGroup.appendChild(label);
+                    formGroup.appendChild(input);
+                    formGroup.appendChild(helpText);
+                } else {
+                    formGroup.appendChild(label);
+                    formGroup.appendChild(input);
+                }
+                
+                form.appendChild(formGroup);
+            });
+        }
+        
+        // Add query button
+        const queryBtn = document.createElement('button');
+        queryBtn.type = 'button';
+        queryBtn.className = 'btn btn-primary w-100 mt-3';
+        queryBtn.textContent = 'Read Resource';
+        queryBtn.addEventListener('click', () => {
+            readResource(selectedResource);
+        });
+        
+        form.appendChild(queryBtn);
+        toolParams.appendChild(form);
+        
+        // Update execute button
+        executeToolBtn.disabled = true;
+    }
+
+    // Query a resource
+    async function readResource(resource) {
+        if (!resource) {
+            createResponseElement('No resource selected', 'error-message');
+            return;
+        }
+        
+        if (!sessionId) {
+            createResponseElement('No active session. Please connect first.', 'error-message');
+            return;
+        }
+
+        try {
+            // Collect parameter values from form
+            const params = collectParameterValues('resourceParamsForm');
+            
+            // Convert parameter values based on schema for proper typing
+            const convertedParams = convertParameterValues(params, resource.inputSchema);
+            
+            // Create request for resource read
+            const readRequest = {
+                jsonrpc: '2.0',
+                id: `req_${currentRequestId++}`,
+                method: 'resources/read',
+                params: {}
+            };
+            
+            // Get the URI template
+            const uriTemplate = resource.uriTemplate || resource.uri;
+            if (!uriTemplate) {
+                createResponseElement(`Error: Resource has no URI template`, 'error-message');
+                return;
+            }
+            
+            // Check which approach to use
+            const queryApproach = document.getElementById('query-approach');
+            const selectedApproach = queryApproach ? queryApproach.value : 'resolved';
+            
+            if (selectedApproach === 'template') {
+                // Approach 1: URI Template with arguments
+                readRequest.params.uri = uriTemplate;
+                readRequest.params.arguments = convertedParams;
+                createResponseElement(`Using URI template with arguments`, 'info-message');
+            } else {
+                // Approach 2: Fully resolved URI
+                const uri = expandUriTemplate(uriTemplate, params);
+                readRequest.params.uri = uri;
+                createResponseElement(`Using fully resolved URI: ${uri}`, 'info-message');
+            }
+            
+            // Add debug output for the request
+            console.log('Final request payload:', JSON.stringify(readRequest, null, 2));
+            createResponseElement(`Reading resource: ${resource.name}`, 'info-message');
+            
+            // Create a formatted display version of the request for the UI
+            const displayPayload = JSON.stringify(readRequest, null, 2);
+            createResponseElement(`Request payload: ${displayPayload}`, 'info-message');
+            
+            // Get server URL
+            const serverUrl = serverUrlInput.value.trim();
+            const mcpEndpoint = `${serverUrl}/mcp`;
+            
+            // Send request
+            const response = await fetch(mcpEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json, text/event-stream',
+                    'Mcp-Session-Id': sessionId
+                },
+                body: JSON.stringify(readRequest)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            
+            // Check the content type to determine how to handle the response
+            const contentType = response.headers.get('Content-Type');
+            console.log("DEBUG: Resource query response Content-Type:", contentType);
+            
+            if (contentType && contentType.includes('text/event-stream')) {
+                // Handle event stream response
+                createResponseElement("Received event stream response for resource query", 'info-message');
+                
+                // Create a reader to read the response body
+                const reader = response.body.getReader();
+                let decoder = new TextDecoder();
+                let buffer = '';
+                
+                // Read the first chunk to get the resource query response
+                const { value, done } = await reader.read();
+                if (!done) {
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+                    
+                    console.log("DEBUG: SSE chunk for resource query:", buffer);
+                    
+                    // Extract the data from the SSE format
+                    // SSE format is: "event: message\ndata: {...}\n\n"
+                    const dataMatch = buffer.match(/data: (.*?)(\n\n|\n$)/s);
+                    if (dataMatch && dataMatch[1]) {
+                        try {
+                            const jsonData = JSON.parse(dataMatch[1]);
+                            console.log("DEBUG: Parsed SSE data for resource query:", jsonData);
+                            
+                            // Check for errors
+                            if (jsonData.error) {
+                                throw new Error(`JSON-RPC error: ${jsonData.error.message}`);
+                            }
+                            
+                            createResponseElement(`Resource query result: ${JSON.stringify(jsonData, null, 2)}`, 'success-message');
+                        } catch (parseError) {
+                            console.error("DEBUG: Error parsing SSE data for resource query:", parseError);
+                            createResponseElement(`Raw SSE data (not parsed): ${dataMatch[1]}`, 'debug-message');
+                            throw parseError;
+                        }
+                    } else {
+                        console.log("DEBUG: Could not extract data from SSE chunk for resource query");
+                        createResponseElement(`Raw SSE chunk: ${buffer}`, 'debug-message');
+                        throw new Error('Could not extract data from SSE chunk');
+                    }
+                }
+                
+                // Continue reading the stream in the background if needed
+                // This is optional since we already got the resource query result
+                // processEventStream(reader, decoder);
+                
+            } else {
+                // Handle JSON response
+                console.log("DEBUG: Resource query response is JSON");
+                
+                // Process the response
+                const result = await response.json();
+                
+                console.log("DEBUG: Resource query JSON:", JSON.stringify(result, null, 2));
+                
+                // Check for errors
+                if (result.error) {
+                    throw new Error(`JSON-RPC error: ${result.error.message}`);
+                }
+                
+                createResponseElement(`Resource query result: ${JSON.stringify(result, null, 2)}`, 'success-message');
+            }
+        } catch (error) {
+            createResponseElement(`Error querying resource: ${error.message}`, 'error-message');
+        }
+    }
+
+    // List available resources according to MCP specification
+    listResourcesBtn.addEventListener('click', async () => {
+        if (!sessionId) {
+            createResponseElement('Error: Not connected to server', 'error-message');
+            return;
+        }
+
+        // Clear previous resources
+        resourcesList.innerHTML = '';
+        toolParams.innerHTML = '<p class="text-muted">Select a resource to see its parameters</p>';
+        selectedResource = null;
+        availableResources = [];
+        resourcesMap = {};
+        executeToolBtn.disabled = true;
+
+        try {
+            const serverUrl = serverUrlInput.value.trim();
+            const mcpEndpoint = `${serverUrl}/mcp`;
+            
+            createResponseElement(`Requesting resource templates...`, 'info-message');
+            
+            // Create request for resource templates listing
+            const listResourceTemplatesRequest = {
+                jsonrpc: "2.0",
+                id: `req_${currentRequestId++}`,
+                method: "resources/templates/list",
+                params: {}
+            };
+            
+            // Send request
+            const response = await fetch(mcpEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json, text/event-stream',
+                    'Mcp-Session-Id': sessionId
+                },
+                body: JSON.stringify(listResourceTemplatesRequest)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            
+            // Check the content type to determine how to handle the response
+            const contentType = response.headers.get('Content-Type');
+            console.log("DEBUG: Resource templates list response Content-Type:", contentType);
+            
+            if (contentType && contentType.includes('text/event-stream')) {
+                // Handle event stream response
+                createResponseElement("Received event stream response for resource templates", 'info-message');
+                
+                // Create a reader to read the response body
+                const reader = response.body.getReader();
+                let decoder = new TextDecoder();
+                let buffer = '';
+                
+                // Read the first chunk to get the resources list response
+                const { value, done } = await reader.read();
+                if (!done) {
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+                    
+                    console.log("DEBUG: SSE chunk for resource templates:", buffer);
+                    
+                    // Extract the data from the SSE format
+                    // SSE format is: "event: message\ndata: {...}\n\n"
+                    const dataMatch = buffer.match(/data: (.*?)(\n\n|\n$)/s);
+                    if (dataMatch && dataMatch[1]) {
+                        try {
+                            const jsonData = JSON.parse(dataMatch[1]);
+                            console.log("DEBUG: Parsed SSE data for resource templates:", jsonData);
+                            
+                            // Process the resources list
+                            if (jsonData.result && jsonData.result.templates && Array.isArray(jsonData.result.templates)) {
+                                processResourcesList(jsonData.result.templates);
+                            } else if (jsonData.result && jsonData.result.resourceTemplates && Array.isArray(jsonData.result.resourceTemplates)) {
+                                // Alternative format: resourceTemplates instead of templates
+                                processResourcesList(jsonData.result.resourceTemplates);
+                            } else {
+                                throw new Error('Invalid resource templates response format');
+                            }
+                        } catch (parseError) {
+                            console.error("DEBUG: Error parsing SSE data for resource templates:", parseError);
+                            createResponseElement(`Raw SSE data (not parsed): ${dataMatch[1]}`, 'debug-message');
+                            throw parseError;
+                        }
+                    } else {
+                        console.log("DEBUG: Could not extract data from SSE chunk for resource templates");
+                        createResponseElement(`Raw SSE chunk: ${buffer}`, 'debug-message');
+                        throw new Error('Could not extract data from SSE chunk');
+                    }
+                }
+                
+                // Continue reading the stream in the background if needed
+                // This is optional since we already got the resources list
+                // processEventStream(reader, decoder);
+                
+            } else {
+                // Handle JSON response
+                console.log("DEBUG: Resource templates list response is JSON");
+                
+                // Process the response
+                const result = await response.json();
+                
+                console.log("DEBUG: Resource templates list JSON:", JSON.stringify(result, null, 2));
+                
+                // Process the resources list
+                if (result.result && result.result.templates) {
+                    processResourcesList(result.result.templates);
+                } else if (result.result && result.result.resourceTemplates) {
+                    // Alternative format: resourceTemplates instead of templates
+                    processResourcesList(result.result.resourceTemplates);
+                } else {
+                    throw new Error('Invalid resource templates response format');
+                }
+            }
+        } catch (error) {
+            createResponseElement(`Error fetching resource templates: ${error.message}`, 'error-message');
+            resourcesList.innerHTML = '<li class="list-group-item text-danger">Error loading resource templates</li>';
+        }
+    });
+
     // Try to discover available methods
     async function discoverMethods() {
         if (!sessionId) {
@@ -1008,6 +1697,29 @@ document.addEventListener('DOMContentLoaded', () => {
     listToolsBtn.parentNode.insertBefore(discoverMethodsBtn, listToolsBtn.nextSibling);
 });
 
+// Process event stream data for various response types
+function processEventStreamData(jsonData) {
+    console.log("DEBUG: Processing event stream data:", jsonData);
+    
+    // Check if this is a tool list response
+    if (jsonData.result && jsonData.result.tools && Array.isArray(jsonData.result.tools)) {
+        processToolsList(jsonData.result.tools);
+    }
+    
+    // Check if this is a resources list response
+    if (jsonData.result && jsonData.result.resources && Array.isArray(jsonData.result.resources)) {
+        processResourcesList(jsonData.result.resources);
+    }
+    
+    // Check if this is a resource templates list response
+    if (jsonData.result && jsonData.result.templates && Array.isArray(jsonData.result.templates)) {
+        processResourcesList(jsonData.result.templates);
+    } else if (jsonData.result && jsonData.result.resourceTemplates && Array.isArray(jsonData.result.resourceTemplates)) {
+        // Alternative format: resourceTemplates instead of templates
+        processResourcesList(jsonData.result.resourceTemplates);
+    }
+}
+
 // Helper function to create response elements
 function createResponseElement(message, className) {
     const element = document.createElement('div');
@@ -1019,7 +1731,7 @@ function createResponseElement(message, className) {
     if (responseArea) {
         responseArea.appendChild(element);
         
-        // Auto-scroll if enabled
+        // Auto-scroll to bottom if enabled
         const autoScrollSwitch = document.getElementById('autoScrollSwitch');
         if (autoScrollSwitch && autoScrollSwitch.checked) {
             responseArea.scrollTop = responseArea.scrollHeight;
@@ -1052,10 +1764,8 @@ async function processEventStream(reader, decoder) {
                     console.log("DEBUG: Parsed SSE data:", jsonData);
                     createResponseElement(`Received event: ${JSON.stringify(jsonData, null, 2)}`, 'info-message');
                     
-                    // Check if this is a tool list response
-                    if (jsonData.result && jsonData.result.tools && Array.isArray(jsonData.result.tools)) {
-                        processToolsList(jsonData.result.tools);
-                    }
+                    // Process event stream data
+                    processEventStreamData(jsonData);
                 } catch (parseError) {
                     console.error("DEBUG: Error parsing SSE data:", parseError);
                     createResponseElement(`Raw SSE data (not parsed): ${dataMatch[1]}`, 'debug-message');
