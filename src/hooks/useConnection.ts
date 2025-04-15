@@ -1,6 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { LogEntry } from '../types';
 
+// Extend the Window interface to include our custom callback
+declare global {
+  interface Window {
+    mcpSseCallback?: (data: any) => void;
+  }
+}
+
 // We'll handle the SSE connection directly since we're in a browser environment
 export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void) => {
   const [serverUrl, setServerUrl] = useState(localStorage.getItem('mcpServerUrl') || 'http://localhost:3033');
@@ -52,7 +59,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         console.log("Completed event with data:", currentEvent.data);
         const eventToDispatch = { ...currentEvent };
         currentEvent.data = '';
-        currentEvent.event = 'message';
+        currentEvent.event = 'message'; // Reset for next event
+        currentEvent.id = null; // Reset ID for next event
         return eventToDispatch;
       }
     }
@@ -96,9 +104,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           let lines = buffer.split('\n');
           let processedLines = 0;
           
-          for (let i = 0; i < lines.length - 1; i++) {
+          // Process ALL lines, including the last one which might be empty or partial
+          for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
-            if (line) {
+            // Process the line even if it's empty, as that signifies event completion
+            // if (line) { // Original check removed - empty line is significant
               const event = processSSELine(line, currentEvent);
               if (event && event.data) {
                 console.log("Completed SSE event:", event);
@@ -135,13 +145,17 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
                   });
                 }
               }
-            }
+            // } // End of original check
             processedLines++;
           }
           
           // Update buffer to contain only the unprocessed part
           if (processedLines > 0) {
-            buffer = lines.slice(processedLines).join('\n');
+            // Update buffer: keep only the last line if it was partial (didn't end with \n)
+            // Otherwise, the buffer should be empty if all lines were processed.
+            buffer = lines[lines.length - 1].endsWith('\n') ? '' : lines[lines.length - 1];
+            // Correction: The split('\n') removes the newline, so we need to check the original buffer end
+            buffer = value.endsWith('\n') ? '' : lines[lines.length - 1];
           }
         } 
         // Try to process as direct message format
