@@ -1,22 +1,28 @@
 import { useCallback } from 'react';
 import { LogEntry, ResourceTemplate } from '../types';
 import { parseUriTemplateArgs } from '../utils/uriUtils';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import Client type
 
 export const useResourceAccess = (
-  addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void,
-  sessionId: string | null
+  client: Client | null, // Expect client first
+  addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void // Expect addLogEntry second
+  // sessionId no longer needed
 ) => {
-  // Access Resource using MCP protocol
-  const handleAccessResource = useCallback((
+  // Access Resource using MCP protocol via SDK Client
+  const handleAccessResource = useCallback(async ( // Make async
     selectedResourceTemplate: ResourceTemplate | null,
     resourceArgs: Record<string, any>
   ) => {
-    if (!selectedResourceTemplate || !sessionId) return;
-    
+    // Check for client and template
+    if (!client || !selectedResourceTemplate) {
+       addLogEntry({ type: 'warning', data: 'Cannot access resource: Client not connected or no resource selected.' });
+       return;
+    }
+
     let finalUri = selectedResourceTemplate.uriTemplate;
     const templateArgs = parseUriTemplateArgs(finalUri);
     let queryParamsStarted = false;
-    
+
     templateArgs.forEach(arg => {
       const value = resourceArgs[arg];
       if (value !== undefined && value !== null && value !== '') {
@@ -28,26 +34,44 @@ export const useResourceAccess = (
           queryParamsStarted = true;
         }
       } else {
+        // Remove optional template parts if arg is missing
         finalUri = finalUri.replace(new RegExp(`{&${arg}}`, 'g'), '');
         finalUri = finalUri.replace(new RegExp(`{\\?${arg},?`, 'g'), '?');
         finalUri = finalUri.replace(new RegExp(`,${arg}`, 'g'), '');
       }
     });
-    
+
+    // Clean up remaining template placeholders and trailing characters
     finalUri = finalUri.replace(/\{\??[^}]+\}/g, '');
     finalUri = finalUri.replace(/\?&/, '?').replace(/(\?|&)$/, '');
 
+    console.log("[DEBUG] Accessing resource:", finalUri);
     addLogEntry({ type: 'info', data: `Accessing resource: ${finalUri}` });
-    console.log("Accessing resource:", finalUri);
-    
-    // Using the MCP protocol method for resource access
-    addLogEntry({ 
-      type: 'request', 
-      method: 'resources/get', 
-      params: { uri: finalUri }, 
-      data: `resources/get({"uri":"${finalUri}"})` 
-    });
-  }, [sessionId, addLogEntry]);
+
+    // Using the SDK client method for resource access
+    try {
+      addLogEntry({
+        type: 'request', // Log the intent
+        method: 'resources/read', // SDK uses 'read'
+        params: { uri: finalUri },
+        data: `client.readResource({ uri: "${finalUri}" })`
+      });
+
+      const resourceResult = await client.readResource({ uri: finalUri });
+      console.log("[DEBUG] SDK Client: Resource result:", resourceResult);
+
+      // Log the received resource content
+      // Assuming simple text content for now
+      const contentText = resourceResult?.contents?.[0]?.text ?? JSON.stringify(resourceResult);
+      addLogEntry({ type: 'resource_result', data: `Resource ${finalUri} content: ${contentText}` });
+      // TODO: Potentially display the result more formally in the UI
+
+    } catch (error: any) {
+       console.error("[DEBUG] Error accessing resource via SDK:", error);
+       addLogEntry({ type: 'error', data: `Failed to access resource ${finalUri}: ${error.message}` });
+    }
+
+  }, [client, addLogEntry]); // Update dependencies
 
   return {
     handleAccessResource

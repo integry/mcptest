@@ -1,348 +1,780 @@
-This is a MCP client application, meant for testing and debugging MCP SSE servers.
+This is a MCP client application, meant for testing and debugging MCP StreamableHTTP servers.
 
-https://www.claudemcp.com/blog/mcp-streamable-http#google_vignette
+Here's a comprehensive example of StreamableHTTP both from the client and server side. If necessary, Update the implementation according to the best practices described here.
 
-Here's some basic info and correct usage examples of MCP over SSE:
+MCP Server & Client with StreamableHTTP
+That’s enough for the old protocol, let’s start with something new! (Hope it is still fairly new by the time you read this article!)
 
-Understanding the Model Context Protocol
-April 16, 2025
-Understanding the Model Context Protocol
-In short
+The Streamable HTTP!
 
-Function calling allows language models to access real-time information and interact with external systems.
-The Model Context Protocol (MCP) standardizes communication between AI applications and language models, similar to how W3C standards unified web browsers.
-MCP consists of three components: client (integrated into host applications), server (implements prompts, resources, and tools), and transport layer (for communication).
-MCP uses JSON-RPC messages for calls between clients and servers.
-By reducing development redundancy and creating shared standards, MCP accelerates AI adoption and integration into applications.
-Most language models (LLMs) have a knowledge cutoff of a few months ago. This means that when you ask something about a recent event or news, the language model can’t answer it or may answer it incorrectly. The solution to this problem is function calling. With function calling, you define functions with metadata and provide that to the LLM. The LLM will consider if these functions should be called and return that back to the application. The Model Context Protocol (MCP) is the bridge between an AI-powered application and a LLM to allow function calling. It is a contract or agreement on how the communication should be. It was developed by Anthropic and released last year. Many MCP servers have already been developed by the community, and it’s being supported by more companies. To understand the MCP protocol it’s important to first understand function calling.
+Basic
+Again, the transport uses POST and GET requests.
 
-What is function calling?
-Let’s say that you are developing a chat application and users should ask what the weather is in a specific city. That is real-time information which the LLM can’t access by default. With function calling, you allow an LLM to talk indirectly with the ‘outside world’. More concretely, you provide an LLM with function definitions (name, description and parameters of the function) and the LLM will determine if a function should be called based on user input. The LLM returns the function definition which the application should call.
+However, this time, we MUST provide a SINGLE HTTP endpoint path that supports both POST and GET methods. It can return an error response but we have to have it! You will see what I meant shortly!
 
-User asks in the chat application what the current weather is in New York.
-Send a request to the LLM with a function definition: get_weather(city).
-LLM determines if it should call get_weather(‘New York’) and returns that to the application.
-The application identifies the function definition (get_weather(‘New York’)) in the response of the LLM and calls that function.
-The application presents the response of the function to the user.
-Let’s look at this example from OpenAI. First, how the client (application) should provide the LLM with function definitions.
+Our server can also optionally make use of Server-Sent Events (SSE) to stream multiple server messages. This permits basic MCP servers, as well as more feature-rich servers supporting streaming and server-to-client notifications and requests.
 
-from openai import OpenAI
+The sequence diagram might look pretty intimidating at first, so let’s break it down with some actual code!
 
-client = OpenAI()
 
-tools = [{
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "description": "Get current temperature for a given location.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "City and country e.g. Bogotá, Colombia"
-                }
-            },
-            "required": [
-                "location"
-            ],
-            "additionalProperties": False
-        },
-        "strict": True
+https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http
+Minimized Server
+A minimized version is always a good place to start!
+
+However, before we can actually start on it, I have to say at the time I am writing this article, the Streamable HTTP is NOT YET AVAILABLE in the newest npm package (version 1.9.0)!
+
+So!
+
+Download the repository
+Open tsconfig.json and remove dist from exclude to enable some type checking, ie: it should become "exclude": ["node_modules"].
+npm install and npm run build
+Use that as the dependency instead, ie: "@modelcontextprotocol/sdk": "file:../typescript-sdk" in the package.json for both the server and the client we will have next!
+First of all, a separate MCPServer class to make the logic management a little easier! Basically just a wrapper around the Server.
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { Notification, CallToolRequestSchema, ListToolsRequestSchema, LoggingMessageNotification, ToolListChangedNotification, JSONRPCNotification, JSONRPCError, InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { randomUUID } from "crypto";
+import { Request, Response } from "express"
+
+const SESSION_ID_HEADER_NAME = "mcp-session-id"
+const JSON_RPC = "2.0"
+
+export class MCPServer {
+    server: Server
+
+    // to support multiple simultaneous connections
+    transports: {[sessionId: string]: StreamableHTTPServerTransport} = {}
+
+    constructor(server: Server) {
+        this.server = server
     }
-}]
 
-completion = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "What is the weather like in Paris today?"}],
-    tools=tools
+    async handleGetRequest(req: Request, res: Response) {
+        console.log("get request received")
+        // if server does not offer an SSE stream at this endpoint.
+        res.status(405).set('Allow', 'POST').send('Method Not Allowed')
+        return
+    }
+
+    async handlePostRequest(req: Request, res: Response) {
+        const sessionId = req.headers[SESSION_ID_HEADER_NAME] as string | undefined
+
+        console.log("post request received")
+        console.log("body: ", req.body)
+
+        let transport: StreamableHTTPServerTransport
+
+        try {
+            // reuse existing transport
+            if (sessionId && this.transports[sessionId]) {
+                transport = this.transports[sessionId]
+                await transport.handleRequest(req, res, req.body)
+                return
+            }
+
+            // create new transport
+            if (!sessionId && this.isInitializeRequest(req.body)) {
+                const transport = new StreamableHTTPServerTransport({
+                    sessionIdGenerator: () => randomUUID(),
+                    // for stateless mode:
+                    // sessionIdGenerator: () => undefined
+                })
+
+                await this.server.connect(transport)
+                await transport.handleRequest(req, res, req.body)
+
+                // session ID will only be available (if in not Stateless-Mode)
+                // after handling the first request
+                const sessionId = transport.sessionId
+                if (sessionId) {
+                    this.transports[sessionId] = transport
+                }
+
+                await sendMessages(transport)
+                return
+            }
+
+            res.status(400).json(this.createErrorResponse("Bad Request: invalid session ID or method."))
+            return
+
+        } catch (error) {
+
+            console.error('Error handling MCP request:', error)
+            res.status(500).json(this.createErrorResponse("Internal server error."))
+            return
+        }
+    }
+
+    // send message streaming message every second
+    // cannot use server.sendLoggingMessage because we have can have multiple transports
+    private async sendMessages(transport: StreamableHTTPServerTransport) {
+         //... same as above
+    }
+
+    private createErrorResponse(message: string): JSONRPCError {
+        return {
+            jsonrpc: '2.0',
+            error: {
+              code: -32000,
+              message: message,
+            },
+            id: randomUUID(),
+        }
+    }
+
+    private isInitializeRequest(body: any): boolean {
+        const isInitial = (data: any) => {
+            const result = InitializeRequestSchema.safeParse(data)
+            return result.success
+        }
+        if (Array.isArray(body)) {
+          return body.some(request => isInitial(request))
+        }
+        return isInitial(body)
+    }
+
+}
+And the API endpoints with express.
+
+import express, { Request, Response } from "express"
+import { Server } from "@modelcontextprotocol/sdk/server/index.js"
+import { MCPServer } from "./server.js"
+
+/*******************************/
+/******* Server Set Up *******/
+/*******************************/
+
+const server = new MCPServer(
+    new Server({
+        name: "itsuki-mcp-server",
+        version: "1.0.0"
+    }, {
+        capabilities: {}
+    })
 )
 
-print(completion.choices[0].message.tool_calls)
-Below you can see that the LLM determined that the weather function should be called and returns that to the client.
+/*******************************/
+/******* Endpoint Set Up *******/
+/*******************************/
 
-[{
-    "id": "call_12345xyz",
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "arguments": "{\"location\":\"Paris, France\"}"
+// to support multiple simultaneous connections
+
+const app = express()
+app.use(express.json())
+
+const router = express.Router()
+
+// endpoint for the client to use for sending messages
+const MCP_ENDPOINT = "/mcp"
+
+// handler
+router.post(MCP_ENDPOINT, async (req: Request, res: Response) => {
+    await server.handlePostRequest(req, res)
+})
+
+// Handle GET requests for SSE streams (using built-in support from StreamableHTTP)
+router.get(MCP_ENDPOINT, async (req: Request, res: Response) => {
+    await server.handleGetRequest(req, res)
+})
+
+
+app.use('/', router)
+
+const PORT = 3000
+app.listen(PORT, () => {
+    console.log(`MCP Streamable HTTP Server listening on port ${PORT}`)
+})
+Before we move on, there are (already) couple differences from the SSE version (And there are more, but we won’t notice those until we test it out so let’s skip that for now).
+
+The GET method. As I have mentioned above, we have to have a SINGLE HTTP endpoint path that supports both POST and GET methods. AND the server MUST either return Content-Type: text/event-stream in response to the HTTP GET, or else return HTTP 405 Method Not Allowed, indicating that the server does not offer an SSE stream at this endpoint. We will be adding more to this method to support standalone SSE!
+There are no separate endpoints for initializing the connection. Everything is done within the POST. If the sessionId is undefined and the request body contains an InitializeRequest, ie: a JSONRPCRequest with the method being initialize, we create a new transport. Otherwise, we use the existing one!
+We can also support stateless mode on the StreamableHTTPServerTransport by setting the sessionId explicitly to undefined, ie: sessionIdGenerator: () => undefined.
+The sessionId passed in by the client is in the request header instead of query.
+Minimized Client
+When an connection with the server established by calling this.client.connect(this.transport)
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { URL } from "url"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { LoggingMessageNotificationSchema, NotificationSchema, ProgressNotificationSchema, ServerNotificationSchema, ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js"
+
+// Protocol client that maintain 1:1 connection with servers
+class MCPClient {
+    private client: Client
+    private transport: StreamableHTTPClientTransport | null = null
+    private isCompleted = false
+
+    constructor(serverName: string) {
+        this.client = new Client({ name: `mcp-client-for-${serverName}`, version: "1.0.0" })
     }
-}]
-In the last step, the application should actually call the function. Now, let’s move on with discussing why we need MCP.
 
-Function calling already works so why do we need the Model Context Protocol?
-In the previous example, you saw how OpenAI implemented function calling. Even though most companies follow the implementation of OpenAI, it’s not an open standard (protocol) that is implemented by everyone. That means that client applications should create different implementations for each LLM, or if you developed an API that you want to expose as a function, it must support all different LLMs. Of course, this causes a lot of compatibility problems. It’s a bit similar to how browsers operated before W3C standards and each browser rendered HTML/CSS differently. This gave interoperability problems for web developers where they had to make custom implementations for browsers.
+    async connectToServer(serverUrl: string) {
+        const url = new URL(serverUrl)
+        try {
+            this.transport = new StreamableHTTPClientTransport(url)
+            await this.client.connect(this.transport)
+            console.log("Connected to server")
 
-Where W3C created a standard for browsers and HTML/CSS, the Model Context Protocol provides a standardized way of communication between client applications and LLMs. We can break down the Model Context Protocol into three components: client, server, and transport layer.
-
-The Model Context Protocol flow.
-MCP Client
-A MCP client is initialized in a host application. Example of a host applications are Claude Desktop, Cursor or any other custom application. A client creates connections to all configured MCP servers and can request prompts, resources or execute tools (functions). It’s up to the host application to decide when and how to display data that is returned by the MCP server.
-
-MCP Server
-A MCP server (usually) runs separately from the client. It can implement prompts, resources and tools.
-
-Prompts	Reusable prompt templates, with dynamic values, that clients can present to users or pass directly to LLMs. Example:
-Can you summarize this text: {text}
-Resources	Return data to clients that can be used as context for a LLM. Compare this to a Web API GET endpoint. Example:
-A resource for getting all contacts from a database
-Tools	Return function definitions back to the client. A LLM determines if a function should be called. Example:
-A tool for saving a contact in a database
-Transport layer
-The transport layer facilitates the communication between client and server. Currently, there are two mechanism available, however, it’s possible to create a custom one.
-
-Stdio transport
-
-Stdio stands for standard input/output. It’s a way for an application to communicate with external systems and services. For Node.js, it uses the process.stdin and process.stdout objects:
-
-
-process.stdin.on('data', (data) => {
-
-  process.stdout.write(`Echo: ${data}`);
-});
-By using stdout you can write data from your application. And with stdin you can receive or read incoming messages. The command below returns: ‘Echo: Hello from a terminal’.
-
-echo "Hello from a terminal!" | node demo.js
-So when you use Node.js and stdio as the transport layer, the client and server are using process.stdin and process.stdout to communicate.
-
-HTTP with SSE transport
-
-If a MCP server is hosted externally, then HTTP with SSE (server-sent events) transport can be used. When a client connects to a server, it executes a GET request with the header Accept: text/event-stream. The server will keep this request open and communicate back to the client over the open stream. See the first initial request below.
-
-GET /events HTTP/1.1
-Host: localhost:3000
-Accept: text/event-stream
-Connection: keep-alive
-After this, the server is able to send data back to the client as long as the connection remains open.
-
-HTTP/1.1 200 OK
-Content-Type: text/event-stream
-Cache-Control: no-cache
-Connection: keep-alive
-
-data: Hello 1
-
-data: Hello 2
-
-data: Hello 3
-The client and server communicate by exchanging JSON-RPC messages over the open connection.
-
-JSON-RPC: Lightweight protocol for Remote function calls
-JSON-RPC (Remote Procedure Call) is a protocol that allows clients to invoke methods on remote systems using JSON format. Because it uses standard JSON encoding, it works across any programming language.
-
-How it works:
-
-The client sends a request to the server in JSON format.
-The server receives the JSON message and executes the specified function.
-The server returns the function response in JSON format back to the client.
-The client receives the JSON response and processes the results.
-A client that instructs the server to execute the add function:
-
-{
-  "jsonrpc": "2.0",
-  "method": "add",
-  "params": [10, 20],
-  "id": 1
-}
-jsonrpc	Protocol version.
-method	Function that should be executed by the server.
-params	Params passed to the function.
-id	A unique identifier for the request.
-Server to client response:
-
-{
-  "jsonrpc": "2.0",
-  "result": 30,
-  "id": 1
-}
-jsonrpc	Protocol version.
-result	The result of the function.
-id	Identifier that match with the request.
-Let’s take a look at an example of how an MCP client uses JSON-RPC to interact with an MCP server when executing a tool. First, the client establishes a connection to the server by sending an initial request. This connection remains open so that the server can send data back to the client.
-
-GET /sse HTTP/1.1
-Host: localhost:3001
-Accept: text/event-stream
-Accept-Encoding: gzip, deflate
-Accept-Language: *
-Cache-Control: no-cache
-Connection: keep-alive
-Pragma: no-cache
-Sec-Fetch-Mode: cors
-User-Agent: node
-The client sends an HTTP POST request to invoke the “echo” tool with a message parameter.
-
-POST /messages?sessionId=080ab0a9-3e3c-4da7-ae9c-3bb75d096d29 HTTP/1.1
-Host: localhost:3001
-Accept: */*
-Accept-Encoding: gzip, deflate
-Accept-Language: *
-Connection: keep-alive
-Content-Length: 109
-Content-Type: application/json
-Sec-Fetch-Mode: cors
-User-Agent: node
-
-{
-  "method": "tools/call",
-  "params": {
-    "name": "echo",
-    "arguments": {
-      "message": "hello world"
+            this.setUpTransport()
+        } catch (e) {
+            console.log("Failed to connect to MCP server: ", e)
+            throw e
+        }
     }
+
+
+    private setUpTransport() {
+        if (this.transport === null) {
+            return
+        }
+        this.transport.onclose = () => {
+            console.log("SSE transport closed.")
+            this.isCompleted = true
+        }
+
+        this.transport.onerror = async (error) => {
+            console.log("SSE transport error: ", error)
+            await this.cleanup()
+        }
+
+        this.transport.onmessage = (message) => {
+            console.log("message received: ", message)
+
+        };
+    }
+
+    async waitForCompletion() {
+        while (!this.isCompleted) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    async cleanup() {
+        await this.client.close()
+    }
+}
+
+async function main() {
+    const client = new MCPClient("sse-server")
+
+    try {
+        await client.connectToServer("http://localhost:3000/mcp")
+        await client.waitForCompletion()
+    } finally {
+        await client.cleanup()
+    }
+}
+
+main()
+Almost the same, except changing SSEClientTransport to StreamableHTTPClientTransport. Of course, we will be adding more as we move on!
+
+Try It Out!
+Again
+
+npm run build for both the server and the client
+start the server with node path/to/server/build/index.js
+start the client with node path/to/client/build/index.js
+First of all, we should see something similar to the following on the server side.
+
+post request received
+body:  {
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'mcp-client-for-sse-server', version: '1.0.0' }
   },
-  "jsonrpc": "2.0",
-  "id": 1
+  jsonrpc: '2.0',
+  id: 0
 }
-The server processes the JSON-RPC request and executes the requested function. It then sends a message containing the function’s result back to the client over the open HTTP connection.
+Stream started
+post request received
+body:  { method: 'notifications/initialized', jsonrpc: '2.0' }
+Sent: Message 1 at 2025-04-14T02:44:05.643Z
+Sent: Message 2 at 2025-04-14T02:44:06.643Z
+Stream completed
+Just like the SSE version, after we call client.connect on the client side, the initialize request and the notifications/initialized are POST to our server automatically!
 
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "Tool echo: hello world"
+And on the client side.
+
+Connected to server
+Yes! Only this 1 single line!
+
+We are not receiving the streaming messages we sent from the server like we did with the SSE version!
+
+That is because we have not open an SSE stream between client and server yet! We have set our GET endpoint to return 405!
+
+Enable SSE Stream
+So!
+
+Next step!
+
+Let’s see how we can support standalone SSE by implementing our GET /mcp endpoint!
+
+async handleGetRequest(req: Request, res: Response) {
+    console.log("get request received")
+    // if server does not offer an SSE stream at this endpoint.
+    // res.status(405).set('Allow', 'POST').send('Method Not Allowed')
+
+    const sessionId = req.headers['mcp-session-id'] as string | undefined
+    if (!sessionId || !this.transports[sessionId]) {
+        res.status(400).json(this.createErrorResponse("Bad Request: invalid session ID or method."))
+        return
     }
-  ]
+
+    console.log(`Establishing SSE stream for session ${sessionId}`)
+    const transport = this.transports[sessionId]
+    await transport.handleRequest(req, res)
+    await this.streamMessages(transport)
+
+    return
 }
-Node.js example: MCP client and server with HTTP SSE
-A great start is to use the official typescript SDK that can be found here. Remember that an MCP client is not a chat application itself, but rather integrated into a chat application. First, ensure that you’ve installed the @modelcontextprotocol/sdk NPM package. In the example below, I’m using the SSEClientTransport for connecting to my MCP server which is running on localhost:3000.
+That’s it!
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+All we have here is retrieving the sessionId from the header, and call transport.handleRequest!
 
-const transport = new SSEClientTransport(new URL("http://localhost:3001/sse"));
+Rebuilt the app and try it again! We don’t have to make any changes on the client side! The client will automatically (yes, again!) try to call the GET endpoint after the connection is established.
 
-const client = new Client(
+This time, we should see the following on the client side
+
+Connected to server
+message received:  {
+  jsonrpc: '2.0',
+  method: 'sse/connection',
+  params: { message: 'SSE Connection established' }
+}
+// ...
+message received:  {
+  jsonrpc: '2.0',
+  method: 'sse/complete',
+  params: { message: 'Stream completed' }
+}
+Add Some Dynamic Tools
+A server won’t be too interesting without any capability!
+
+Let’s add
+
+A regular tool that returns a single response
+A tool that sends multiple messages back to the client with notifications
+We will also update the tool schemas dynamically every couple seconds, so that we get an idea of how we can set up notifications on the client side to watch for tools/prompts/resources changes!
+
+Note that what we have in this section does NOT require the standalone SSE Stream, so you can still return 405 from the GET endpoint if you like!
+
+First of all, on the server side.
+
+export class MCPServer {
+
+    // ... 
+    private toolInterval: NodeJS.Timeout | undefined
+    private singleGreetToolName = "single-greet"
+    private multiGreetToolName = "multi-great"
+
+
+    constructor(server: Server) {
+        this.server = server
+        this.setupTools()
+    }
+
+    // ...
+
+    async cleanup() {
+        this.toolInterval?.close()
+        await this.server.close()
+    }
+
+    private setupTools() {
+
+        // Define available tools
+        const setToolSchema = () => this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+            this.singleGreetToolName = `single-greeting-${randomUUID()}`
+
+            // tool that returns a single greeting
+            const singleGreetTool = {
+                name: this.singleGreetToolName,
+                description: "Greet the user once.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string" ,
+                            description: "name to greet"
+                        },
+                    },
+                    required: ["name"]
+                }
+            }
+
+            // tool that sends multiple greetings with notifications
+            const multiGreetTool = {
+                name: this.multiGreetToolName,
+                description: "Greet the user multiple times with delay in between.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string" ,
+                            description: "name to greet"
+                        },
+                    },
+                    required: ["name"]
+                }
+            }
+
+            return {
+                tools: [singleGreetTool, multiGreetTool]
+            }
+        })
+
+        setToolSchema()
+
+        // set tools dynamically, changing 5 second
+        this.toolInterval = setInterval(async () => {
+            setToolSchema()
+            // to notify client that the tool changed
+            Object.values(this.transports).forEach((transport) => {
+                const notification: ToolListChangedNotification = {
+                    method: "notifications/tools/list_changed",
+                }
+                this.sendNotification(transport, notification)
+            })
+        }, 5000)
+
+        // handle tool calls
+        this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+            console.log("tool request received: ", request)
+            console.log("extra: ", extra)
+
+            const args = request.params.arguments
+            const toolName = request.params.name
+            const sendNotification = extra.sendNotification
+
+            if (!args) {
+                throw new Error("arguments undefined")
+            }
+
+            if (!toolName) {
+                throw new Error("tool name undefined")
+            }
+
+            if (toolName === this.singleGreetToolName) {
+
+                const { name } = args
+
+                if (!name) {
+                    throw new Error("Name to greet undefined.")
+                }
+
+                return {
+                    content: [ {
+                        type: "text",
+                        text: `Hey ${name}! Welcome to itsuki's world!`
+                    }]
+                }
+            }
+
+            if (toolName === this.multiGreetToolName) {
+                const { name } = args
+                const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+                let notification: LoggingMessageNotification = {
+                    method: "notifications/message",
+                    params: { level: "info", data: `First greet to ${name}` }
+                }
+
+                await sendNotification(notification)
+
+                await sleep(1000)
+
+                notification.params.data = `Second greet to ${name}`
+                await sendNotification(notification);
+
+                await sleep(1000)
+
+                return {
+                    content: [ {
+                        type: "text",
+                        text: `Hope you enjoy your day!`
+                    }]
+                }
+            }
+
+            throw new Error("Tool not found")
+        })
+    }
+
+
+    // ...
+
+    private async sendNotification(transport: StreamableHTTPServerTransport, notification: Notification) {
+        const rpcNotificaiton: JSONRPCNotification = {
+            ...notification,
+            jsonrpc: JSON_RPC,
+        }
+        await transport.send(rpcNotificaiton)
+    }
+
+    // ...
+
+}
+Two take aways here!
+
+When we changed the tool schema, our clients that are connected to the server will NOT be automatically notified. We will have to send them a ToolListChangedNotification.
+To send client messages in responding to CallToolRequest with notifications, we retrieve the sendNotification function from the extra and send LoggingMessageNotification using it. I am declaring a separate variable just to ensure the type, especially the method parameter is correct. This is really important for our client to actually receive it!
+There are also couple other parameters within extra you might be interested in.
+
+signal: AbortSignal used to communicate if the request was cancelled from the sender’s side.
+sessionId?: string. The session ID from the transport if available.
+sendRequest function to send a request that relates to the current request being handled.
+We will also have to change the initialization code to include the capabilities.
+
+const server = new MCPServer(
+    new Server({
+        name: "itsuki-mcp-server",
+        version: "1.0.0"
+    }, {
+        capabilities: {
+            tools: {},
+            logging: {}
+        }
+    })
+)
+Note that in addition to tools, we will also need the logging, enabling us to send notification messages to the client.
+
+The Client side.
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { URL } from "url"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { LoggingMessageNotificationSchema, ToolListChangedNotificationSchema, TextContentSchema } from "@modelcontextprotocol/sdk/types.js"
+
+
+class MCPClient {
+    tools: {name: string, description: string}[] = []
+
+    private client: Client
+    private transport: StreamableHTTPClientTransport | null = null
+    private isCompleted = false
+
+    constructor(serverName: string) {
+        this.client = new Client({ name: `mcp-client-for-${serverName}`, version: "1.0.0" })
+    }
+
+    async connectToServer(serverUrl: string) {
+        const url = new URL(serverUrl)
+        try {
+            this.transport = new StreamableHTTPClientTransport(url)
+            await this.client.connect(this.transport)
+            console.log("Connected to server")
+
+            this.setUpTransport()
+            this.setUpNotifications()
+        } catch (e) {
+            console.log("Failed to connect to MCP server: ", e)
+            throw e
+        }
+    }
+
+    async listTools() {
+        try {
+            const toolsResult = await this.client.listTools()
+            console.log('Available tools:', toolsResult.tools)
+            this.tools = toolsResult.tools.map((tool) => {
+                return {
+                    name: tool.name,
+                    description: tool.description ?? "",
+                }
+            })
+        } catch (error) {
+            console.log(`Tools not supported by the server (${error})`);
+        }
+    }
+
+    async callTool(name: string) {
+        try {
+            console.log('\nCalling tool: ', name);
+
+            const result  = await this.client.callTool({
+                name: name,
+                arguments: { name: "itsuki"},
+            })
+
+            const content = result.content as object[]
+
+            console.log('results:');
+            content.forEach((item) => {
+                const parse = TextContentSchema.safeParse(item)
+                if (parse.success) {
+                    console.log(`- ${parse.data.text}`);
+                }
+            })
+        } catch (error) {
+            console.log(`Error calling greet tool: ${error}`);
+        }
+
+    }
+
+    // Set up notification handlers for server-initiated messages
+    private setUpNotifications() {
+        this.client.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+            console.log("LoggingMessageNotificationSchema received:  ", notification)
+        })
+        // will only be triggered after list tools called
+        this.client.setNotificationHandler(ToolListChangedNotificationSchema, async (notification) => {
+            console.log("ToolListChangedNotificationSchema received:  ", notification)
+            await this.listTools()
+        })
+    }
+
+    private setUpTransport() {
+        if (this.transport === null) {
+            return
+        }
+        this.transport.onclose = () => {
+            console.log("SSE transport closed.")
+            this.isCompleted = true
+        }
+
+        this.transport.onerror = async (error) => {
+            console.log("SSE transport error: ", error)
+            await this.cleanup()
+        }
+    }
+
+    async waitForCompletion() {
+        while (!this.isCompleted) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    async cleanup() {
+        await this.client.close()
+    }
+}
+
+async function main() {
+    const client = new MCPClient("sse-server")
+
+    try {
+        await client.connectToServer("http://localhost:3000/mcp")
+        await client.listTools()
+        for (const tool of client.tools) {
+            await client.callTool(tool.name)
+        }
+        await client.waitForCompletion()
+    } finally {
+        await client.cleanup()
+    }
+}
+
+main()
+Quite a bit of things I would like to mention here!
+
+First of all, we have removed the this.transport.onmessage. It will prevent us from getting the results of listTools and callTool , as well as the invocation of the notification handlers! This change has a little side effect that requires us to make some changes on the server side but let’s skip that for now.
+
+Secondly, we have set up two notifications here, LoggingMessageNotificationSchema for receiving notification messages, and ToolListChangedNotificationSchema for monitoring tool list change.
+
+`private setUpNotifications() {
+        this.client.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+            console.log("LoggingMessageNotificationSchema received:  ", notification)
+        })
+        // will only be triggered after list tools called
+        this.client.setNotificationHandler(ToolListChangedNotificationSchema, async (notification) => {
+            console.log("ToolListChangedNotificationSchema received:  ", notification)
+            await this.listTools()
+        })
+    }
+Also, we have list the tools with listTools and call tools with callTool function. However, you can also do this by creating a ListToolRequest or a CallToolRequest manually and call client.request instead. Using callTool as an example, the following is equivalent to what we had above!
+
+const request: CallToolRequest = {
+  method: 'tools/call',
+  params: {
+    name: name,
+    arguments: { name: 'itsuki' }
+  }
+};
+const result = await this.client.request(request, CallToolResultSchema);
+Let’s give it a try!
+
+Connected to server
+Available tools: [
   {
-    name: "client",
-    version: "1.0.0"
+    name: 'single-greeting-569a9b7b-ea52-48d9-9a14-eefa5e8248ce',
+    description: 'Greet the user once.',
+    inputSchema: { type: 'object', properties: [Object], required: [Array] }
+  },
+  {
+    name: 'multi-great',
+    description: 'Greet the user multiple times with delay in between.',
+    inputSchema: { type: 'object', properties: [Object], required: [Array] }
   }
-);
-
-await client.connect(transport);
-After that, you can retrieve prompts, resources and execute functions that are running on your MCP server.
-
-// List available tools
-const prompts = await client.listPrompts();
-console.log("Available prompts:", prompts);
-
-//Get prompt
-const prompt = await client.getPrompt({ name: "introduction-email", arguments: { name: "John Doe" } });
-console.log("Result:", JSON.stringify(prompt));
-
-// List resources
-const resources = await client.listResources();
-console.log("Available resources:", resources);
-
-// Read resource
-const resource = await client.readResource({ uri: "contacts://persons" });
-console.log("Result:", resource);
-
-// List available tools
-const tools = await client.listTools();
-console.log("Available tools:", tools);
-
-// Call a tool
-const result = await client.callTool({
-  name: "save-person",
-  arguments: {
-      name: "Charlie Brown",
-      age: 70,
-      function: "Manager",
-      keywords: ["manager", "leader"]
-  }
-});
-console.log("Result:", result);
-For the implementation of the MCP server you can use the McpServer class. The McpServer includes methods to specify prompts, resources and tools. In the example, you can see that I created a simple db variable that holds a list of person objects. This variable is used in both the resources and tool.
-
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import express, { Request, Response } from "express";
-import { z } from "zod";
-
-const server = new McpServer({
-  name: "Contacts MCP Server",
-  version: "1.0.0"
-});
-
-const db = [
-  { id: 1, name: "John Doe", age: 30, function: "Software Engineer", keywords: ["engineer", "software", "developer"] },
-  { id: 2, name: "Jane Doe", age: 25, function: "Data Scientist", keywords: ["data", "scientist", "analytics"] },
-  { id: 3, name: "Jim Doe", age: 35, function: "Product Manager", keywords: ["product", "manager", "lead"] },
 ]
 
-server.prompt(
-  "introduction-email",
-  { name: z.string() },
-  ({ name }) => ({
-    messages: [{
-      role: "user",
-      content: {
-        type: "text",
-        text: `Write an introduction email to: ${name}`
-      }
-    }]
-  })
-);
+Calling tool:  single-greeting-569a9b7b-ea52-48d9-9a14-eefa5e8248ce
+results:
+- Hey itsuki! Welcome to itsuki's world!
 
-server.resource(
-  "contacts",
-  "contacts://persons",
-  async (uri) => ({
-    contents: [{
-      uri: uri.href,
-      text: db.map((item) => `${item.name}`).join(", ")
-    }]
-  })
-)
-
-server.tool(
-  "save-person",
-  { name: z.string(), age: z.number(), function: z.string(), keywords: z.array(z.string()) },
-  async ({ name, age, function: func, keywords }) => {
-    db.push({ id: db.length + 1, name, age, function: func, keywords });
-    return {
-      content: [{ type: "text", text: `Person saved in the database` }]
-    };
+Calling tool:  multi-great
+LoggingMessageNotificationSchema received:   {
+  method: 'notifications/message',
+  params: { level: 'info', data: 'First greet to itsuki' }
+}
+LoggingMessageNotificationSchema received:   {
+  method: 'notifications/message',
+  params: { level: 'info', data: 'Second greet to itsuki' }
+}
+results:
+- Hope you enjoy your day!
+ToolListChangedNotificationSchema received:   { method: 'notifications/tools/list_changed' }
+Available tools: [
+  {
+    name: 'single-greeting-de6f14fa-e7f3-447e-978a-9419a1f3ee88',
+    description: 'Greet the user once.',
+    inputSchema: { type: 'object', properties: [Object], required: [Array] }
+  },
+  {
+    name: 'multi-great',
+    description: 'Greet the user multiple times with delay in between.',
+    inputSchema: { type: 'object', properties: [Object], required: [Array] }
   }
-);
-In order to accept new connections from clients and receive messages to process, two functions should be implemented in the MCP server.
+]
+Perfect!
 
-/see	This endpoint is called when a client connects to the MCP server. For each new connection, a SSEServerTransport is created that under the hood generates a unique sessionId. This is added to a list which is kept in memory. The sessionId is communicated back to the client. The request is kept open.
-/messages	Each time a client requests a prompt, resource, or tool, this endpoint is called. In the query string of the request, the sessionId is defined. This allows the server to communicate back to the client using the open request.
-const app = express();
+We can list the tools, call them, receiving the notifications messages sent within the tool calls, and the tool change notification!
 
-const transports: {[sessionId: string]: SSEServerTransport} = {};
+HOWEVER!
 
-app.get("/sse", async (_: Request, res: Response) => {
-  const transport = new SSEServerTransport('/messages', res);
-  transports[transport.sessionId] = transport;
-  res.on("close", () => {
-    delete transports[transport.sessionId];
-  });
-  await server.connect(transport);
-});
+We are NOT receiving the messages we stream any more! Again!
 
-app.post("/messages", async (req: Request, res: Response) => {
-  let body = await getRawBody(req, {
-    limit: "4mb",
-    encoding: "utf-8",
-  }); 
-  
-  const sessionId = req.query.sessionId as string;
-  const transport = transports[sessionId];
+The reason for that is the method we use when sending the message! In order for us to be able to receive those within the this.client.setNotificationHandler(LoggingMessageNotificationSchema…), the method has to be notifications/message like following.
 
-  if (transport) {
-    console.log(`Handling message for sessionId: ${sessionId} request body: ${body}`);
+transport.send({
+    jsonrpc: "2.0",
+    method: "notifications/message",
+    params: { level: "info", data: message }
+})
+Of course, we don’t like hard coding those method without any checks, so there are couple better approaches!
 
-    await transport.handlePostMessage(req, res, body);
-  } else {
-    res.status(400).send('No transport found for sessionId');
-  }
-});
+First, if your server will only handle 1 transport at a time, that is you don’t have the transports map like we did, you can simply use server.sendLoggingMessage instead.
 
-app.listen(3001);
-MCP is growing rapidly, with many developers and companies creating new servers. It provides a uniform solution for communication between AI applications and the outside world. By standardizing how LLMs interact with external tools and data sources, MCP reduces development redundancy and allows for innovative solutions.
+server.sendLoggingMessage({
+    level: "info",
+    data: "SSE stream opened"
+})
+However, this will not work if we have multiple transports, what we can do instead is to have our message conform to the LoggingMessageNotification type and use our sendNotification function instead.
 
+const message: LoggingMessageNotification = {
+    method: "notifications/message",
+    params: { level: "info", data: "SSE Connection established" }
+}
 
+this.sendNotification(transport, message)
+Give the server a build and try it again!
+
+This time, we should see those streaming messages received by our client!
+
+Thank you for making to the end of this super long article!
+
+Again, feel free to grab the code from my GitHub!
+
+Happy HTTP streaming!

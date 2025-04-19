@@ -43,9 +43,10 @@ function App() {
     serverUrl,
     setServerUrl,
     connectionStatus,
-    sessionId,
+    // sessionId, // Removed
     isConnecting,
-    sendJsonRpcRequest,
+    // sendJsonRpcRequest, // Removed
+    client, // Get client instance from SDK hook
     handleConnect,
     handleDisconnect
   } = useConnection(addLogEntry);
@@ -70,66 +71,15 @@ function App() {
     handleResourceArgChange,
     handleSelectTool,
     handleSelectResourceTemplate
-  } = useToolsAndResources(sendJsonRpcRequest, addLogEntry, connectionStatus, sessionId);
+  } = useToolsAndResources(client, addLogEntry, connectionStatus); // Pass client
 
-  const { handleAccessResource: accessResource } = useResourceAccess(addLogEntry, sessionId);
+  // Pass client to useResourceAccess
+  const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry);
 
-  // Register a global callback for SSE events
-  useEffect(() => {
-    // This callback will be called directly from useConnection when SSE events arrive
-    window.mcpSseCallback = (data) => {
-      console.log("Global SSE callback received data:", data);
-      
-      // Check for resource templates
-      if (data && data.result && Array.isArray(data.result.resourceTemplates)) {
-        console.log("Setting resources from global callback:", data.result.resourceTemplates);
-        setResources(data.result.resourceTemplates);
-        addLogEntry({ 
-          type: 'info', 
-          data: `Found ${data.result.resourceTemplates.length} resource templates via SSE.` 
-        });
-      }
-      
-      // Check for tools
-      if (data && data.result && Array.isArray(data.result.tools)) {
-        console.log("Setting tools from global callback:", data.result.tools);
-        setTools(data.result.tools);
-        addLogEntry({ 
-          type: 'info', 
-          data: `Found ${data.result.tools.length} tools via SSE.` 
-        });
-      }
-    };
-    
-    return () => {
-      window.mcpSseCallback = undefined;
-    };
-  }, [setResources, setTools, addLogEntry]);
-
-  // Direct resource template handling
-  useEffect(() => {
-    // Listen for custom events from useConnection
-    const handleSseEvent = (event: CustomEvent) => {
-      const data = event.detail;
-      console.log("App received SSE event:", data);
-      
-      // Check if this is a resource templates response
-      if (data && data.result && data.result.resourceTemplates) {
-        console.log("Setting resources from SSE event in App component:", data.result.resourceTemplates);
-        setResources(data.result.resourceTemplates);
-        addLogEntry({ 
-          type: 'info', 
-          data: `Found ${data.result.resourceTemplates.length} resource templates via App component handler.` 
-        });
-      }
-    };
-    
-    window.addEventListener('mcp-sse-event', handleSseEvent as EventListener);
-    
-    return () => {
-      window.removeEventListener('mcp-sse-event', handleSseEvent as EventListener);
-    };
-  }, [setResources, addLogEntry]);
+  // Remove useEffects for window.mcpSseCallback and 'mcp-sse-event' listener
+  // SDK Client handles events internally, and useConnection fetches initial lists.
+  // List change notifications *could* be handled via client.onNotification if needed,
+  // but we removed that for simplicity earlier.
 
   // Wrapper function to handle resource access
   const handleAccessResource = () => {
@@ -138,21 +88,11 @@ function App() {
 
   // Wrapper function to handle connect with necessary state setters
   const handleConnectWrapper = () => {
+    // Pass only the necessary setters to the SDK-based handleConnect
     handleConnect(
       setTools,
       setResources,
-      responses => {
-        // This is a workaround since we can't pass setResponses directly
-        // due to circular dependency with addLogEntry
-        setTools([]);
-        setResources([]);
-        setSelectedTool(null);
-        setSelectedResourceTemplate(null);
-        setToolParams({});
-        setResourceArgs({});
-      },
-      handleListTools,
-      handleListResources
+      handleClearResponse // Pass handleClearResponse to clear logs on connect
     );
   };
 
@@ -182,7 +122,7 @@ function App() {
           addLogEntry({ type: 'info', data: 'Skipping disconnect during React strict mode check' });
         } else {
           addLogEntry({ type: 'info', data: 'Disconnecting on component unmount...' });
-          handleDisconnect(true);
+          handleDisconnect(); // No argument needed
         }
       }
     };
