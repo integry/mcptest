@@ -5,14 +5,18 @@ import Header from './components/Header';
 import ConnectionPanel from './components/ConnectionPanel';
 import ToolsPanel from './components/ToolsPanel';
 import ResourcesPanel from './components/ResourcesPanel';
+import PromptsPanel from './components/PromptsPanel'; // Import PromptsPanel
 import ParamsPanel from './components/ParamsPanel';
 import ResponsePanel from './components/ResponsePanel';
 
 // Import Hooks
 import { useLogEntries } from './hooks/useLogEntries';
 import { useConnection } from './hooks/useConnection';
-import { useToolsAndResources } from './hooks/useToolsAndResources';
+import { useToolsAndResources } from './hooks/useToolsAndResources'; // Add missing import
 import { useResourceAccess } from './hooks/useResourceAccess';
+
+// Import Types (needed for prompt handling)
+import { Prompt, ResourceTemplate, SelectedPrompt, SelectedTool } from './types';
 
 // Import Utils
 import { parseUriTemplateArgs } from './utils/uriUtils';
@@ -60,17 +64,26 @@ function App() {
     setSelectedTool,
     selectedResourceTemplate,
     setSelectedResourceTemplate,
+    prompts, // Added
+    setPrompts, // Added
+    selectedPrompt, // Added
+    setSelectedPrompt, // Added
     toolParams,
     setToolParams,
     resourceArgs,
     setResourceArgs,
+    promptParams, // Added
+    setPromptParams, // Added
     handleListTools,
     handleListResources,
+    handleListPrompts, // Added
     handleExecuteTool,
-    handleParamChange,
+    handleExecutePrompt, // Added
+    handleParamChange, // Updated signature in hook
     handleResourceArgChange,
     handleSelectTool,
-    handleSelectResourceTemplate
+    handleSelectResourceTemplate,
+    handleSelectPrompt // Added
   } = useToolsAndResources(client, addLogEntry, connectionStatus); // Pass client
 
   // Pass client to useResourceAccess
@@ -86,9 +99,20 @@ function App() {
     accessResource(selectedResourceTemplate, resourceArgs);
   };
 
+  // Wrapper for handleParamChange to determine type
+  const handleParamChangeWrapper = (paramName: string, value: any) => {
+    if (selectedTool) {
+      handleParamChange(paramName, value, 'tool');
+    } else if (selectedPrompt) {
+      handleParamChange(paramName, value, 'prompt');
+    }
+  };
+
+
   // Wrapper function to handle connect with necessary state setters
   const handleConnectWrapper = () => {
     // Pass only the necessary setters to the SDK-based handleConnect
+    // TODO: Add setPrompts if needed for initial fetch on connect
     handleConnect(
       setTools,
       setResources,
@@ -166,6 +190,14 @@ function App() {
             handleListResources={() => handleListResources()}
             handleSelectResourceTemplate={handleSelectResourceTemplate}
           />
+          <PromptsPanel // Add PromptsPanel
+            prompts={prompts}
+            selectedPrompt={selectedPrompt}
+            isConnected={isConnected}
+            isConnecting={isConnecting}
+            handleListPrompts={handleListPrompts}
+            handleSelectPrompt={handleSelectPrompt}
+          />
         </div>
 
         {/* Middle Panel */}
@@ -173,13 +205,16 @@ function App() {
           <ParamsPanel
             selectedTool={selectedTool}
             selectedResourceTemplate={selectedResourceTemplate}
+            selectedPrompt={selectedPrompt} // Pass selectedPrompt
             toolParams={toolParams}
             resourceArgs={resourceArgs}
+            promptParams={promptParams} // Pass promptParams
             isConnected={isConnected}
             isConnecting={isConnecting}
-            handleParamChange={handleParamChange}
+            handleParamChange={handleParamChangeWrapper} // Pass wrapper
             handleResourceArgChange={handleResourceArgChange}
             handleExecuteTool={handleExecuteTool}
+            handleExecutePrompt={handleExecutePrompt} // Pass handleExecutePrompt
             handleAccessResource={handleAccessResource}
             parseUriTemplateArgs={parseUriTemplateArgs}
           />

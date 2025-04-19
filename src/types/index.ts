@@ -13,3 +13,5 @@ export interface LogEntry {
 // Use 'any' for now until correct SDK types are confirmed/exported
 export type SelectedTool = any;
 export type ResourceTemplate = any;
+export type Prompt = any; // Added Prompt type
+export type SelectedPrompt = any; // Added SelectedPrompt type
