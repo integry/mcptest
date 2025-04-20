@@ -40,10 +40,11 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     let title = item.type;
 
     try {
+        // Handle legacy SSE types generically if they appear
         if (item.type === 'sse_parsed' || item.type === 'sse_raw' || item.type === 'sse_event') {
-             content = `[SSE ${item.event || 'message'}${item.eventId ? ` #${item.eventId}`:''}] ${item.data}`;
-             title = `SSE Event ${item.event || 'message'} ${item.eventId || ''}`;
-             if (item.type === 'sse_raw') className += ' text-muted';
+             content = `[Server Message${item.event ? ` (${item.event})`:''}${item.eventId ? ` #${item.eventId}`:''}] ${item.data}`;
+             title = `Server Message ${item.event || ''} ${item.eventId || ''}`;
+             if (item.type === 'sse_raw') className += ' text-muted'; // Keep raw messages muted
              if (item.type === 'sse_parsed') {
                  try {
                      const parsed = JSON.parse(item.data);

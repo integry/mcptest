@@ -3,8 +3,38 @@ import { LogEntry, ResourceTemplate } from '../types'; // Keep ResourceTemplate 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"; // Use correct import path
 
+const RECENT_SERVERS_KEY = 'mcpRecentServers';
+const MAX_RECENT_SERVERS = 5;
+
+// Helper to load recent servers from localStorage
+const loadRecentServers = (): string[] => {
+  try {
+    const stored = localStorage.getItem(RECENT_SERVERS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(item => typeof item === 'string');
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load or parse recent servers from localStorage:", e);
+  }
+  return [];
+};
+
+// Helper to save recent servers to localStorage
+const saveRecentServers = (servers: string[]) => {
+  try {
+    localStorage.setItem(RECENT_SERVERS_KEY, JSON.stringify(servers));
+  } catch (e) {
+    console.error("Failed to save recent servers to localStorage:", e);
+  }
+};
+
+
 export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void) => {
-  const [serverUrl, setServerUrl] = useState(localStorage.getItem('mcpServerUrl') || 'http://localhost:3033');
+  const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
+  const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [isConnecting, setIsConnecting] = useState(false);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
@@ -53,7 +83,13 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
     setResponses([]);
-    localStorage.setItem('mcpServerUrl', serverUrl);
+    // Update recent servers list
+    setRecentServers(prevServers => {
+      const updatedServers = [serverUrl, ...prevServers.filter(url => url !== serverUrl)];
+      const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
+      saveRecentServers(limitedServers);
+      return limitedServers;
+    });
 
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
@@ -113,6 +149,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     connectionStatus,
     isConnecting,
     client: clientRef.current, // Expose the connected client instance
+    recentServers, // Expose recent servers
     handleConnect,
     handleDisconnect,
   };

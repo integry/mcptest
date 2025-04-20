@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 // Import Components
 import Header from './components/Header';
+import ActionToolbar from './components/ActionToolbar'; // Import ActionToolbar
 import ConnectionPanel from './components/ConnectionPanel';
 import ToolsPanel from './components/ToolsPanel';
 import ResourcesPanel from './components/ResourcesPanel';
@@ -21,6 +22,44 @@ import { Prompt, ResourceTemplate, SelectedPrompt, SelectedTool } from './types'
 // Import Utils
 import { parseUriTemplateArgs } from './utils/uriUtils';
 
+// Constants for localStorage keys
+const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
+const RESOURCE_HISTORY_KEY = 'mcpResourceAccessHistory';
+const MAX_HISTORY_ITEMS = 10;
+
+// Helper to load history from localStorage
+const loadHistory = (key: string): Record<string, any[]> => {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Basic validation
+      if (typeof parsed === 'object' && parsed !== null) {
+        // Ensure values are arrays
+        Object.keys(parsed).forEach(k => {
+          if (!Array.isArray(parsed[k])) {
+            parsed[k] = []; // Reset if not an array
+          }
+        });
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error(`Failed to load or parse history from localStorage key "${key}":`, e);
+  }
+  return {};
+};
+
+// Helper to save history to localStorage
+const saveHistory = (key: string, history: Record<string, any[]>) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(history));
+  } catch (e) {
+    console.error(`Failed to save history to localStorage key "${key}":`, e);
+  }
+};
+
+
 // Add isReloading to window for TypeScript
 declare global {
   interface Window {
@@ -33,6 +72,11 @@ function App() {
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
+
+  // State for call history
+  const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadHistory(TOOL_HISTORY_KEY));
+  const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadHistory(RESOURCE_HISTORY_KEY));
+
 
   // Use custom hooks
   const {
@@ -51,6 +95,7 @@ function App() {
     isConnecting,
     // sendJsonRpcRequest, // Removed
     client, // Get client instance from SDK hook
+    recentServers, // Get recent servers from hook
     handleConnect,
     handleDisconnect
   } = useConnection(addLogEntry);
@@ -77,8 +122,8 @@ function App() {
     handleListTools,
     handleListResources,
     handleListPrompts, // Added
-    handleExecuteTool,
-    handleExecutePrompt, // Added
+    handleExecuteTool, // Uncommented for use in wrapper
+    handleExecutePrompt, // Uncommented for use in wrapper
     handleParamChange, // Updated signature in hook
     handleResourceArgChange,
     handleSelectTool,
@@ -94,9 +139,24 @@ function App() {
   // List change notifications *could* be handled via client.onNotification if needed,
   // but we removed that for simplicity earlier.
 
-  // Wrapper function to handle resource access
+  // Wrapper function to handle resource access and save history
   const handleAccessResource = () => {
+    if (!selectedResourceTemplate) return;
+    const uri = selectedResourceTemplate.uri; // Assuming ResourceTemplate has a URI
     accessResource(selectedResourceTemplate, resourceArgs);
+
+    // Update history
+    setResourceAccessHistory(prevHistory => {
+      const currentList = prevHistory[uri] || [];
+      // Avoid adding exact duplicate of the last entry
+      if (JSON.stringify(currentList[0]) === JSON.stringify(resourceArgs)) {
+        return prevHistory;
+      }
+      const updatedList = [resourceArgs, ...currentList].slice(0, MAX_HISTORY_ITEMS);
+      const newHistory = { ...prevHistory, [uri]: updatedList };
+      saveHistory(RESOURCE_HISTORY_KEY, newHistory);
+      return newHistory;
+    });
   };
 
   // Wrapper for handleParamChange to determine type
@@ -119,6 +179,34 @@ function App() {
       handleClearResponse // Pass handleClearResponse to clear logs on connect
     );
   };
+
+  // Wrapper for handleExecuteTool to save history
+  const handleExecuteToolWrapper = () => {
+    if (!selectedTool || !client) return;
+    const toolName = selectedTool.name;
+    handleExecuteTool(); // Call original hook function (no args needed)
+
+    // Update history
+    setToolCallHistory(prevHistory => {
+      const currentList = prevHistory[toolName] || [];
+       // Avoid adding exact duplicate of the last entry
+      if (JSON.stringify(currentList[0]) === JSON.stringify(toolParams)) {
+        return prevHistory;
+      }
+      const updatedList = [toolParams, ...currentList].slice(0, MAX_HISTORY_ITEMS);
+      const newHistory = { ...prevHistory, [toolName]: updatedList };
+      saveHistory(TOOL_HISTORY_KEY, newHistory);
+      return newHistory;
+    });
+  };
+
+  // Wrapper for handleExecutePrompt (add history saving if needed later)
+  const handleExecutePromptWrapper = () => {
+     if (!selectedPrompt || !client) return;
+     handleExecutePrompt(); // Call original hook function (no args needed)
+     // TODO: Add prompt history saving if required
+  };
+
 
   // Effect for cleanup on unmount - only run on actual unmount, not during React strict mode checks
   useEffect(() => {
@@ -152,14 +240,41 @@ function App() {
     };
   }, [connectionStatus, addLogEntry, handleDisconnect]);
 
+  // Effect to automatically list items when connected
+  useEffect(() => {
+    if (connectionStatus === 'Connected') {
+      console.log("[DEBUG] Connection established, automatically listing tools, resources, and prompts.");
+      addLogEntry({ type: 'info', data: 'Connection established. Fetching lists...' });
+      handleListTools();
+      handleListResources();
+      handleListPrompts();
+    }
+  }, [connectionStatus, handleListTools, handleListResources, handleListPrompts, addLogEntry]); // Add dependencies
+
+
   // Determine button disabled states
   const isConnected = connectionStatus === 'Connected';
   const isDisconnected = connectionStatus === 'Disconnected';
+
+  // Wrapper function for the refresh button
+  const handleRefreshAllLists = () => {
+    if (!isConnected) return;
+    addLogEntry({ type: 'info', data: 'Refreshing all lists...' });
+    handleListTools();
+    handleListResources();
+    handleListPrompts();
+  };
 
   // JSX Structure
   return (
     <div className="container-fluid">
       <Header />
+
+      {/* Add the Action Toolbar */}
+      <ActionToolbar
+        isConnected={isConnected}
+        onRefreshLists={handleRefreshAllLists}
+      />
 
       <div className="row">
         {/* Left Panel */}
@@ -173,6 +288,7 @@ function App() {
             isDisconnected={isDisconnected}
             handleConnect={handleConnectWrapper}
             handleDisconnect={handleDisconnect}
+            recentServers={recentServers} // Pass recent servers down
           />
           <ToolsPanel
             tools={tools}
@@ -213,10 +329,15 @@ function App() {
             isConnecting={isConnecting}
             handleParamChange={handleParamChangeWrapper} // Pass wrapper
             handleResourceArgChange={handleResourceArgChange}
-            handleExecuteTool={handleExecuteTool}
-            handleExecutePrompt={handleExecutePrompt} // Pass handleExecutePrompt
-            handleAccessResource={handleAccessResource}
+            handleExecuteTool={handleExecuteToolWrapper} // Pass history wrapper
+            handleExecutePrompt={handleExecutePromptWrapper} // Pass wrapper (add history later if needed)
+            handleAccessResource={handleAccessResource} // Pass history wrapper
             parseUriTemplateArgs={parseUriTemplateArgs}
+            // Pass history and setters for ParamsPanel UI
+            toolHistory={toolCallHistory[selectedTool?.name] || []}
+            resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uri] || []}
+            setToolParams={setToolParams}
+            setResourceArgs={setResourceArgs}
           />
         </div>
 

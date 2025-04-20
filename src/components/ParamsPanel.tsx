@@ -32,6 +32,11 @@ interface ParamsPanelProps {
   handleExecutePrompt: () => void; // Add handleExecutePrompt
   handleAccessResource: () => void;
   parseUriTemplateArgs: (templateString: string) => string[];
+  // History props
+  toolHistory: any[];
+  resourceHistory: any[];
+  setToolParams: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  setResourceArgs: React.Dispatch<React.SetStateAction<Record<string, any>>>;
 }
 
 const ParamsPanel: React.FC<ParamsPanelProps> = ({
@@ -49,6 +54,11 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   handleExecutePrompt,
   handleAccessResource,
   parseUriTemplateArgs,
+  // History props
+  toolHistory,
+  resourceHistory,
+  setToolParams,
+  setResourceArgs,
 }) => {
 
   // --- Render Helper for Input Parameters (Tools or Prompts) ---
@@ -186,6 +196,35 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     );
   }; // End of renderResourceTemplateArgs
 
+  // --- History Click Handlers ---
+  const handleToolHistoryClick = (historyItem: any) => {
+    setToolParams(historyItem);
+  };
+
+  const handleResourceHistoryClick = (historyItem: any) => {
+    setResourceArgs(historyItem);
+  };
+
+  // --- Render Helper for History List ---
+  const renderHistoryList = (history: any[], onClick: (item: any) => void) => {
+    if (!history || history.length === 0) {
+      return <p className="text-muted small mt-2">No recent history.</p>;
+    }
+    return (
+      <div className="mt-3 border-top pt-3">
+        <h6>Recent Calls:</h6>
+        <ul className="list-group list-group-flush" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+          {history.map((item, index) => (
+            <li key={index} className="list-group-item list-group-item-action small p-1" onClick={() => onClick(item)} style={{ cursor: 'pointer' }}>
+              <pre className="mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(item)}</pre>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+
   // --- Main Component Return ---
   return (
     <div className="card mb-3">
@@ -204,6 +243,11 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
           {selectedPrompt && renderInputParams(selectedPrompt, promptParams, 'prompt')}
           {selectedResourceTemplate && renderResourceTemplateArgs()}
           {!selectedTool && !selectedPrompt && !selectedResourceTemplate && <p className="text-muted p-2">Select a tool, prompt, or resource template.</p>}
+
+          {/* Render History */}
+          {selectedTool && renderHistoryList(toolHistory, handleToolHistoryClick)}
+          {selectedResourceTemplate && renderHistoryList(resourceHistory, handleResourceHistoryClick)}
+
         </div>
 
         {/* Buttons */}

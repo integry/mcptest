@@ -7,6 +7,7 @@ interface ConnectionPanelProps {
   isConnecting: boolean;
   isConnected: boolean;
   isDisconnected: boolean;
+  recentServers: string[]; // Add recent servers prop
   handleConnect: () => void;
   handleDisconnect: () => void;
 }
@@ -18,6 +19,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   isConnecting,
   isConnected,
   isDisconnected,
+  recentServers, // Destructure recent servers
   handleConnect,
   handleDisconnect,
 }) => {
@@ -35,8 +37,15 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             value={serverUrl}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
             disabled={!isDisconnected || isConnecting}
+            list="recentServersList" // Link input to datalist
           />
-          <div className="form-text">Base URL (e.g., http://localhost:3033)</div>
+          {/* Datalist for recent server suggestions */}
+          <datalist id="recentServersList">
+            {recentServers.map((url) => (
+              <option key={url} value={url} />
+            ))}
+          </datalist>
+          <div className="form-text">Enter server URL or select from recent history. Base URL (e.g., http://localhost:3033)</div>
         </div>
         <div className="d-flex justify-content-between mb-2">
           <button
