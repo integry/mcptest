@@ -1,0 +1,136 @@
+/* --- Unified Panel Styles --- */
+.unified-panel {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* Allow scrolling if content overflows */
+  height: 100%; /* Ensure it takes available height */
+  transition: opacity 0.3s ease;
+  background-color: #f8f9fa; /* Light background for the panel */
+  border-right: 1px solid #dee2e6; /* Separator */
+}
+
+.unified-panel h3 {
+    margin: 10px 10px 5px 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 1.1em;
+    color: #333;
+}
+
+
+.unified-panel-deactivated {
+  opacity: 0.6;
+  cursor: not-allowed; /* Indicate non-interactive state */
+}
+
+.unified-panel-deactivated > * {
+    pointer-events: none; /* Prevent interaction with children */
+}
+
+
+.filter-input {
+  padding: 8px;
+  margin: 5px 10px 10px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: calc(100% - 20px); /* Account for padding and margin */
+  box-sizing: border-box;
+}
+
+.unified-panel-deactivated .filter-input {
+   background-color: #eee; /* Indicate disabled state */
+}
+
+.tree-view {
+    padding: 0 10px 10px 10px;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+
+.tree-view details {
+  margin-bottom: 5px;
+}
+
+.tree-view summary {
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 3px;
+  font-weight: bold;
+  list-style: none; /* Remove default marker */
+  display: flex;
+  align-items: center;
+  transition: background-color 0.2s ease;
+}
+
+.tree-view summary:hover {
+    background-color: #e9ecef;
+}
+
+
+.tree-view summary::-webkit-details-marker {
+  display: none; /* Hide default marker for Webkit */
+}
+
+.category-toggle {
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+  font-size: 0.8em;
+  width: 10px; /* Ensure consistent spacing */
+}
+
+.category-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+
+.tree-view ul {
+  list-style: none;
+  padding-left: 25px; /* Indent items under category */
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+.tree-item {
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin-bottom: 3px;
+  transition: background-color 0.2s ease;
+  border: 1px solid transparent; /* Placeholder for selected border */
+}
+
+.tree-item:hover {
+  background-color: #e9ecef;
+}
+
+.tree-item.selected {
+  background-color: #cfe2ff;
+  border: 1px solid #9ec5fe;
+  font-weight: 500;
+}
+
+.item-name {
+  font-size: 0.95em;
+  color: #212529;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-uri {
+  font-size: 0.8em;
+  color: #6c757d;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-view li small {
+    color: #6c757d;
+    font-style: italic;
+    display: block;
+    padding: 5px 0;
+}

@@ -4,9 +4,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import Header from './components/Header';
 import ActionToolbar from './components/ActionToolbar'; // Import ActionToolbar
 import ConnectionPanel from './components/ConnectionPanel';
-import ToolsPanel from './components/ToolsPanel';
-import ResourcesPanel from './components/ResourcesPanel';
-import PromptsPanel from './components/PromptsPanel'; // Import PromptsPanel
+import { UnifiedPanel } from './components/UnifiedPanel'; // Import UnifiedPanel (Corrected import)
+// import ToolsPanel from './components/ToolsPanel'; // Removed
+// import ResourcesPanel from './components/ResourcesPanel'; // Removed
+// import PromptsPanel from './components/PromptsPanel'; // Removed
 import ParamsPanel from './components/ParamsPanel';
 import ResponsePanel from './components/ResponsePanel';
 
@@ -147,13 +148,15 @@ function App() {
 
     // Update history
     setResourceAccessHistory(prevHistory => {
-      const currentList = prevHistory[uri] || [];
+      // Ensure uri is treated as a string key
+      const uriKey = uri as string ?? '';
+      const currentList = prevHistory[uriKey] || [];
       // Avoid adding exact duplicate of the last entry
       if (JSON.stringify(currentList[0]) === JSON.stringify(resourceArgs)) {
         return prevHistory;
       }
       const updatedList = [resourceArgs, ...currentList].slice(0, MAX_HISTORY_ITEMS);
-      const newHistory = { ...prevHistory, [uri]: updatedList };
+      const newHistory = { ...prevHistory, [uriKey]: updatedList };
       saveHistory(RESOURCE_HISTORY_KEY, newHistory);
       return newHistory;
     });
@@ -188,13 +191,15 @@ function App() {
 
     // Update history
     setToolCallHistory(prevHistory => {
-      const currentList = prevHistory[toolName] || [];
+      // Ensure toolName is treated as a string key
+      const toolNameKey = toolName as string ?? '';
+      const currentList = prevHistory[toolNameKey] || [];
        // Avoid adding exact duplicate of the last entry
       if (JSON.stringify(currentList[0]) === JSON.stringify(toolParams)) {
         return prevHistory;
       }
       const updatedList = [toolParams, ...currentList].slice(0, MAX_HISTORY_ITEMS);
-      const newHistory = { ...prevHistory, [toolName]: updatedList };
+      const newHistory = { ...prevHistory, [toolNameKey]: updatedList };
       saveHistory(TOOL_HISTORY_KEY, newHistory);
       return newHistory;
     });
@@ -290,29 +295,18 @@ function App() {
             handleDisconnect={handleDisconnect}
             recentServers={recentServers} // Pass recent servers down
           />
-          <ToolsPanel
+          {/* Replace Tools, Resources, and Prompts panels with UnifiedPanel */}
+          <UnifiedPanel
             tools={tools}
-            selectedTool={selectedTool}
-            isConnected={isConnected}
-            isConnecting={isConnecting}
-            handleListTools={() => handleListTools()}
-            handleSelectTool={handleSelectTool}
-          />
-          <ResourcesPanel
             resources={resources}
-            selectedResourceTemplate={selectedResourceTemplate}
-            isConnected={isConnected}
-            isConnecting={isConnecting}
-            handleListResources={() => handleListResources()}
-            handleSelectResourceTemplate={handleSelectResourceTemplate}
-          />
-          <PromptsPanel // Add PromptsPanel
             prompts={prompts}
+            selectedTool={selectedTool}
+            selectedResourceTemplate={selectedResourceTemplate}
             selectedPrompt={selectedPrompt}
-            isConnected={isConnected}
-            isConnecting={isConnecting}
-            handleListPrompts={handleListPrompts}
+            handleSelectTool={handleSelectTool}
+            handleSelectResourceTemplate={handleSelectResourceTemplate}
             handleSelectPrompt={handleSelectPrompt}
+            connectionStatus={connectionStatus} // Pass connection status
           />
         </div>
 
@@ -334,8 +328,9 @@ function App() {
             handleAccessResource={handleAccessResource} // Pass history wrapper
             parseUriTemplateArgs={parseUriTemplateArgs}
             // Pass history and setters for ParamsPanel UI
-            toolHistory={toolCallHistory[selectedTool?.name] || []}
-            resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uri] || []}
+            // Ensure keys are treated as strings and handle potential null/undefined
+            toolHistory={toolCallHistory[selectedTool?.name as string ?? ''] || []}
+            resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uri as string ?? ''] || []}
             setToolParams={setToolParams}
             setResourceArgs={setResourceArgs}
           />

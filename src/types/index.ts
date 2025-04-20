@@ -1,3 +1,11 @@
+import { z } from 'zod'; // Assuming Zod is available or used by the SDK
+import {
+  // Attempt to import potential schemas. Adjust names if needed.
+  ToolSchema,
+  ResourceTemplateSchema,
+  PromptSchema
+} from '@modelcontextprotocol/sdk/types.js';
+
 // Define interfaces for state clarity
 export interface LogEntry {
   type: string;
@@ -10,8 +18,14 @@ export interface LogEntry {
   params?: any;
 }
 
-// Use 'any' for now until correct SDK types are confirmed/exported
-export type SelectedTool = any;
-export type ResourceTemplate = any;
-export type Prompt = any; // Added Prompt type
-export type SelectedPrompt = any; // Added SelectedPrompt type
+// Infer types from SDK Schemas if they exist
+// Fallback to 'any' if schemas are not found or inference fails
+export type Tool = typeof ToolSchema extends z.ZodTypeAny ? z.infer<typeof ToolSchema> : any;
+export type ResourceTemplate = typeof ResourceTemplateSchema extends z.ZodTypeAny ? z.infer<typeof ResourceTemplateSchema> : any;
+export type Prompt = typeof PromptSchema extends z.ZodTypeAny ? z.infer<typeof PromptSchema> : any;
+
+
+// Define selected types based on the actual types
+export type SelectedTool = Tool | null;
+export type SelectedPrompt = Prompt | null;
+// SelectedResourceTemplate is used directly in the hook, no need for a separate type here unless desired
