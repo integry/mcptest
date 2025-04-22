@@ -215,8 +215,13 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
         <h6>Recent Calls:</h6>
         <ul className="list-group list-group-flush" style={{ maxHeight: '150px', overflowY: 'auto' }}>
           {history.map((item, index) => (
-            <li key={index} className="list-group-item list-group-item-action small p-1" onClick={() => onClick(item)} style={{ cursor: 'pointer' }}>
-              <pre className="mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(item)}</pre>
+            <li key={index} className="list-group-item list-group-item-action p-2" onClick={() => onClick(item)} style={{ cursor: 'pointer', lineHeight: '1.3' }}>
+              {Object.entries(item).map(([key, value]) => (
+                <div key={key} style={{ marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.75em', color: '#6c757d', display: 'block' }}>{key}:</span>
+                  <span style={{ wordBreak: 'break-all', fontSize: '0.85em' }}>{JSON.stringify(value)}</span> {/* Stringify value in case it's not a string */}
+                </div>
+              ))}
             </li>
           ))}
         </ul>
@@ -227,7 +232,8 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
 
   // --- Main Component Return ---
   return (
-    <div className="card mb-3">
+    // Add conditional class for deactivated state
+    <div className={`card mb-3 ${!isConnected ? 'panel-deactivated' : ''}`}>
       <div className="card-header">
         <h5>
           {selectedTool ? `Tool Parameters (${selectedTool.name})`

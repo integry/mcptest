@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 
 // Import Components
 import Header from './components/Header';
-import ActionToolbar from './components/ActionToolbar'; // Import ActionToolbar
+// import ActionToolbar from './components/ActionToolbar'; // Removed ActionToolbar import
 import ConnectionPanel from './components/ConnectionPanel';
 import { UnifiedPanel } from './components/UnifiedPanel'; // Import UnifiedPanel (Corrected import)
+import { RecentServersPanel } from './components/RecentServersPanel'; // Import RecentServersPanel
 // import ToolsPanel from './components/ToolsPanel'; // Removed
 // import ResourcesPanel from './components/ResourcesPanel'; // Removed
 // import PromptsPanel from './components/PromptsPanel'; // Removed
@@ -98,7 +99,8 @@ function App() {
     client, // Get client instance from SDK hook
     recentServers, // Get recent servers from hook
     handleConnect,
-    handleDisconnect
+    handleDisconnect,
+    removeRecentServer // Get remove function from hook
   } = useConnection(addLogEntry);
 
   const {
@@ -146,20 +148,24 @@ function App() {
     const uri = selectedResourceTemplate.uri; // Assuming ResourceTemplate has a URI
     accessResource(selectedResourceTemplate, resourceArgs);
 
-    // Update history
-    setResourceAccessHistory(prevHistory => {
-      // Ensure uri is treated as a string key
-      const uriKey = uri as string ?? '';
-      const currentList = prevHistory[uriKey] || [];
-      // Avoid adding exact duplicate of the last entry
-      if (JSON.stringify(currentList[0]) === JSON.stringify(resourceArgs)) {
-        return prevHistory;
-      }
-      const updatedList = [resourceArgs, ...currentList].slice(0, MAX_HISTORY_ITEMS);
-      const newHistory = { ...prevHistory, [uriKey]: updatedList };
-      saveHistory(RESOURCE_HISTORY_KEY, newHistory);
-      return newHistory;
-    });
+    // Update history only if resourceArgs is not empty
+    if (Object.keys(resourceArgs).length > 0) {
+        setResourceAccessHistory(prevHistory => {
+          // Ensure uri is treated as a string key
+          const uriKey = uri as string ?? '';
+          const currentList = prevHistory[uriKey] || [];
+          // Avoid adding exact duplicate of the last entry
+          if (JSON.stringify(currentList[0]) === JSON.stringify(resourceArgs)) {
+            return prevHistory;
+          }
+          const updatedList = [resourceArgs, ...currentList].slice(0, MAX_HISTORY_ITEMS);
+          const newHistory = { ...prevHistory, [uriKey]: updatedList };
+          saveHistory(RESOURCE_HISTORY_KEY, newHistory);
+          return newHistory;
+        });
+    } else {
+        console.log("[DEBUG] Skipping resource history save: No arguments provided.");
+    }
   };
 
   // Wrapper for handleParamChange to determine type
@@ -172,14 +178,14 @@ function App() {
   };
 
 
-  // Wrapper function to handle connect with necessary state setters
-  const handleConnectWrapper = () => {
-    // Pass only the necessary setters to the SDK-based handleConnect
-    // TODO: Add setPrompts if needed for initial fetch on connect
+  // Wrapper function to handle connect, accepting optional URL override
+  const handleConnectWrapper = (urlToConnect?: string) => {
+    // Pass setters and optional URL to the SDK-based handleConnect
     handleConnect(
       setTools,
       setResources,
-      handleClearResponse // Pass handleClearResponse to clear logs on connect
+      handleClearResponse, // Pass handleClearResponse to clear logs on connect
+      urlToConnect // Pass the optional URL
     );
   };
 
@@ -189,20 +195,24 @@ function App() {
     const toolName = selectedTool.name;
     handleExecuteTool(); // Call original hook function (no args needed)
 
-    // Update history
-    setToolCallHistory(prevHistory => {
-      // Ensure toolName is treated as a string key
-      const toolNameKey = toolName as string ?? '';
-      const currentList = prevHistory[toolNameKey] || [];
-       // Avoid adding exact duplicate of the last entry
-      if (JSON.stringify(currentList[0]) === JSON.stringify(toolParams)) {
-        return prevHistory;
-      }
-      const updatedList = [toolParams, ...currentList].slice(0, MAX_HISTORY_ITEMS);
-      const newHistory = { ...prevHistory, [toolNameKey]: updatedList };
-      saveHistory(TOOL_HISTORY_KEY, newHistory);
-      return newHistory;
-    });
+    // Update history only if toolParams is not empty
+    if (Object.keys(toolParams).length > 0) {
+        setToolCallHistory(prevHistory => {
+          // Ensure toolName is treated as a string key
+          const toolNameKey = toolName as string ?? '';
+          const currentList = prevHistory[toolNameKey] || [];
+           // Avoid adding exact duplicate of the last entry
+          if (JSON.stringify(currentList[0]) === JSON.stringify(toolParams)) {
+            return prevHistory;
+          }
+          const updatedList = [toolParams, ...currentList].slice(0, MAX_HISTORY_ITEMS);
+          const newHistory = { ...prevHistory, [toolNameKey]: updatedList };
+          saveHistory(TOOL_HISTORY_KEY, newHistory);
+          return newHistory;
+        });
+    } else {
+        console.log("[DEBUG] Skipping tool history save: No parameters provided.");
+    }
   };
 
   // Wrapper for handleExecutePrompt (add history saving if needed later)
@@ -210,6 +220,22 @@ function App() {
      if (!selectedPrompt || !client) return;
      handleExecutePrompt(); // Call original hook function (no args needed)
      // TODO: Add prompt history saving if required
+  };
+
+  // Wrapper for handleDisconnect to include state cleanup
+  const handleDisconnectWrapper = async () => {
+    await handleDisconnect(); // Call the original hook function
+    // Clear related state after disconnect completes
+    setTools([]);
+    setResources([]);
+    setPrompts([]);
+    setSelectedTool(null);
+    setSelectedResourceTemplate(null);
+    setSelectedPrompt(null);
+    setToolParams({});
+    setResourceArgs({});
+    setPromptParams({});
+    console.log("[DEBUG] Cleared tools, resources, prompts, and params state after disconnect.");
   };
 
 
@@ -275,11 +301,7 @@ function App() {
     <div className="container-fluid">
       <Header />
 
-      {/* Add the Action Toolbar */}
-      <ActionToolbar
-        isConnected={isConnected}
-        onRefreshLists={handleRefreshAllLists}
-      />
+      {/* Action Toolbar Removed */}
 
       <div className="row">
         {/* Left Panel */}
@@ -292,10 +314,19 @@ function App() {
             isConnected={isConnected}
             isDisconnected={isDisconnected}
             handleConnect={handleConnectWrapper}
-            handleDisconnect={handleDisconnect}
-            recentServers={recentServers} // Pass recent servers down
+            handleDisconnect={handleDisconnectWrapper} // Use the wrapper
+            recentServers={recentServers} // Pass recent servers down (still needed for ConnectionPanel input)
           />
-          {/* Replace Tools, Resources, and Prompts panels with UnifiedPanel */}
+          {/* Add Recent Servers Panel */}
+          <RecentServersPanel
+             recentServers={recentServers}
+             setServerUrl={setServerUrl}
+             handleConnect={handleConnectWrapper} // Use the wrapper
+             removeRecentServer={removeRecentServer}
+             isConnected={isConnected}
+             isConnecting={isConnecting}
+          />
+          {/* Unified Panel */}
           <UnifiedPanel
             tools={tools}
             resources={resources}
@@ -307,6 +338,8 @@ function App() {
             handleSelectResourceTemplate={handleSelectResourceTemplate}
             handleSelectPrompt={handleSelectPrompt}
             connectionStatus={connectionStatus} // Pass connection status
+            onRefreshLists={handleRefreshAllLists} // Pass refresh handler
+            isConnecting={isConnecting} // Pass connecting status
           />
         </div>
 
@@ -343,6 +376,7 @@ function App() {
             autoScroll={autoScroll}
             setAutoScroll={setAutoScroll}
             handleClearResponse={handleClearResponse}
+            isConnected={isConnected} // Pass isConnected prop
           />
         </div>
       </div>

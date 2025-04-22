@@ -16,6 +16,7 @@ interface ResponsePanelProps {
   autoScroll: boolean;
   setAutoScroll: (autoScroll: boolean) => void;
   handleClearResponse: () => void;
+  isConnected: boolean; // Add isConnected prop
 }
 
 const ResponsePanel: React.FC<ResponsePanelProps> = ({
@@ -23,6 +24,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
   autoScroll,
   setAutoScroll,
   handleClearResponse,
+  isConnected, // Destructure isConnected
 }) => {
   const responseAreaRef = useRef<HTMLDivElement>(null);
 
@@ -84,10 +86,11 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
 
 
   return (
-    <div className="card mb-3">
-      <div className="card-header d-flex justify-content-between">
-        <h5>Logs & Events</h5>
-        <div className="form-check form-switch">
+      // Add conditional class for deactivated state
+      <div className={`card mb-3 ${!isConnected ? 'panel-deactivated' : ''}`}>
+        <div className="card-header d-flex justify-content-between">
+          <h5>Logs & Events</h5>
+          <div className="form-check form-switch">
           <input
             className="form-check-input"
             type="checkbox"

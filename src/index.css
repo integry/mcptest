@@ -316,3 +316,20 @@ header.bg-dark p {
 .justify-content-between { justify-content: space-between !important; }
 .justify-content-start { justify-content: flex-start !important; }
 .d-flex { display: flex !important; }
+/* --- Panel Deactivated State --- */
+/* Used for ParamsPanel and ResponsePanel when not connected */
+.panel-deactivated {
+  opacity: 0.6;
+  cursor: not-allowed; /* Indicate non-interactive state */
+}
+
+.panel-deactivated > * {
+    pointer-events: none; /* Prevent interaction with children */
+}
+
+.panel-deactivated .form-control,
+.panel-deactivated .form-select,
+.panel-deactivated .btn {
+   background-color: #eee !important; /* Indicate disabled state for inputs/buttons */
+   border-color: #ddd !important;
+}

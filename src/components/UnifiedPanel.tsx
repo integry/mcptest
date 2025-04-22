@@ -13,6 +13,8 @@ interface UnifiedPanelProps {
   handleSelectResourceTemplate: (template: ResourceTemplate) => void;
   handleSelectPrompt: (prompt: Prompt) => void;
   connectionStatus: string;
+  onRefreshLists: () => void; // Add prop for refresh handler
+  isConnecting: boolean; // Add isConnecting prop
 }
 
 // Helper to truncate description
@@ -33,6 +35,8 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   handleSelectResourceTemplate,
   handleSelectPrompt,
   connectionStatus,
+  onRefreshLists, // Destructure the new prop
+  isConnecting, // Destructure isConnecting
 }) => {
   const [filterText, setFilterText] = useState('');
   const [expandedCategories, setExpandedCategories] = useState({
@@ -76,7 +80,18 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
 
   return (
     <div className={`panel unified-panel ${!isConnected ? 'unified-panel-deactivated' : ''}`}>
-      <h3>Capabilities</h3>
+      {/* Panel Header with Title and Refresh Button */}
+      <div className="unified-panel-header">
+        <h3>Capabilities</h3>
+        <button
+          className="btn btn-sm btn-outline-secondary refresh-button"
+          onClick={onRefreshLists}
+          disabled={!isConnected || isConnecting} // Disable if not connected or connecting
+          title="Refresh Tools, Resources, and Prompts"
+        >
+          Refresh
+        </button>
+      </div>
       <input
         type="text"
         placeholder="Filter by name or description..."

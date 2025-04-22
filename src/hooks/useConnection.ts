@@ -49,43 +49,73 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
   // --- SDK Client Based Logic ---
 
-  const cleanupConnection = useCallback(() => {
-    // Clean up SDK client ref. Transport might close itself.
+  const cleanupConnection = useCallback(async () => {
+    // Clean up SDK client ref and attempt to close the connection.
     if (clientRef.current) {
-       console.log("[DEBUG] cleanupConnection: Cleaning up SDK client ref.");
-       // No explicit disconnect on Client? Null the ref.
-       clientRef.current = null;
+       console.log("[DEBUG] cleanupConnection: Closing SDK client connection and cleaning up ref.");
+       try {
+         await clientRef.current.close(); // Attempt to close the client connection
+         console.log("[DEBUG] SDK Client closed successfully.");
+       } catch (error) {
+         console.error("[DEBUG] Error closing SDK client:", error);
+         // Log the error but continue cleanup
+         addLogEntry({ type: 'error', data: `Error during disconnect cleanup: ${error}` });
+       } finally {
+         clientRef.current = null; // Null the ref regardless of close success/failure
+       }
+    } else {
+        console.log("[DEBUG] cleanupConnection: No active client ref to clean up.");
     }
     setConnectionStatus('Disconnected');
     setIsConnecting(false);
     console.log('[DEBUG] Connection cleanup complete.');
-  }, []); // No dependencies needed
+  }, [addLogEntry]); // Added addLogEntry dependency
 
   const handleDisconnect = useCallback(async () => {
-    if (connectionStatus === 'Disconnected' || isConnecting) return;
-    if (!isRealUnmount.current) {
-       console.log('[DEBUG] Skipping disconnect during React strict mode check');
-       return;
+    if (connectionStatus === 'Disconnected' || isConnecting) {
+        console.log(`[DEBUG] handleDisconnect: Already disconnected or connecting. Status: ${connectionStatus}, IsConnecting: ${isConnecting}`);
+        return;
     }
+    // Removed strict mode check - manual disconnect should always work
     console.log(`[DEBUG] handleDisconnect: Initiating disconnect.`);
     addLogEntry({ type: 'info', data: 'Disconnecting...' });
-    cleanupConnection(); // Call cleanup which clears the client ref
-  }, [connectionStatus, isConnecting, addLogEntry, cleanupConnection]);
+    await cleanupConnection(); // Call cleanup which now includes client.close()
+  }, [connectionStatus, isConnecting, addLogEntry, cleanupConnection]); // Dependencies remain the same
 
+  // Modify handleConnect to accept an optional URL override
   const handleConnect = useCallback(async (
-    // Pass setters for tools/resources, but list calls are manual now
+    // Keep setters for potential future use or different connect flows
     setTools: React.Dispatch<React.SetStateAction<any[]>>,
     setResources: React.Dispatch<React.SetStateAction<ResourceTemplate[]>>,
-    setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>
+    setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
+    urlToConnect?: string // Optional URL parameter
   ) => {
-    if (!serverUrl || isConnecting || connectionStatus !== 'Disconnected') return;
+    const targetUrl = urlToConnect || serverUrl; // Use override or state URL
+
+    // Allow connect attempt even if already connected, but not if currently connecting or no target URL
+    if (!targetUrl || isConnecting) {
+        console.log(`[DEBUG] handleConnect: Connect cancelled (Target URL: ${targetUrl}, IsConnecting: ${isConnecting})`);
+        return;
+    }
 
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
-    setResponses([]);
-    // Update recent servers list
+    setResponses([]); // Clear logs for new connection attempt
+
+    // --- Auto-disconnect if already connected ---
+    if (connectionStatus === 'Connected') {
+        console.log("[DEBUG] handleConnect: Already connected. Initiating disconnect first.");
+        addLogEntry({ type: 'info', data: 'Disconnecting previous connection...' });
+        await cleanupConnection(); // Disconnect the current connection cleanly
+        // Add a small delay to allow state updates before proceeding
+        await new Promise(resolve => setTimeout(resolve, 100));
+        console.log("[DEBUG] handleConnect: Previous connection cleanup complete. Proceeding with new connection.");
+    }
+    // -----------------------------------------
+
+    // Update recent servers list using targetUrl
     setRecentServers(prevServers => {
-      const updatedServers = [serverUrl, ...prevServers.filter(url => url !== serverUrl)];
+      const updatedServers = [targetUrl, ...prevServers.filter(url => url !== targetUrl)];
       const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
       saveRecentServers(limitedServers);
       return limitedServers;
@@ -98,12 +128,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
     let connectUrl: URL;
     try {
-      connectUrl = new URL(serverUrl);
+      connectUrl = new URL(targetUrl); // Use targetUrl
       if (!connectUrl.pathname.endsWith('/mcp')) {
          connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
       }
     } catch (e) {
-      addLogEntry({ type: 'error', data: `Invalid Server URL format: ${serverUrl}` });
+      addLogEntry({ type: 'error', data: `Invalid Server URL format: ${targetUrl}` }); // Use targetUrl in error
       setIsConnecting(false); setConnectionStatus('Error'); return;
     }
 
@@ -150,7 +180,19 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     isConnecting,
     client: clientRef.current, // Expose the connected client instance
     recentServers, // Expose recent servers
-    handleConnect,
+    handleConnect, // Keep original signature for export, wrapper in App.tsx handles the override
     handleDisconnect,
+    // Function to remove a server from the recent list
+    removeRecentServer: (urlToRemove: string) => {
+      setRecentServers(prevServers => {
+        const updatedServers = prevServers.filter(url => url !== urlToRemove);
+        saveRecentServers(updatedServers); // Update localStorage
+        // If the removed server was the currently selected one, reset to default or next available
+        if (serverUrl === urlToRemove) {
+          setServerUrl(updatedServers[0] || 'http://localhost:3033');
+        }
+        return updatedServers;
+      });
+    },
   };
 };
