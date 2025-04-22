@@ -333,3 +333,63 @@ header.bg-dark p {
    background-color: #eee !important; /* Indicate disabled state for inputs/buttons */
    border-color: #ddd !important;
 }
+/* --- Code Block Styling (Showdown Output) --- */
+.event-data pre {
+  background-color: #eef2ff; /* Light indigo background */
+  border: 1px solid #e0e7ff; /* Lighter indigo border */
+  border-radius: var(--border-radius);
+  padding: 0.75rem 1rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  overflow-x: auto; /* Enable horizontal scrolling */
+  white-space: pre; /* Preserve whitespace and line breaks */
+  color: #4338ca; /* Indigo text */
+  position: relative; /* Needed for absolute positioning of the language tag */
+}
+
+/* Style for the language identifier tag (Applied to code::before) */
+.event-data pre code[class*="language-"]::before {
+  content: var(--lang, ""); /* Use CSS variable for language name */
+  position: absolute;
+  top: 0;
+  right: 0.5rem;
+  background-color: var(--secondary-color);
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0 0 0.25rem 0.25rem;
+  font-family: var(--font-family-sans-serif); /* Use standard font */
+  font-weight: 600;
+  text-transform: lowercase;
+  z-index: 1; /* Ensure it's above the code */
+}
+
+/* Set the language name via CSS variable for specific languages */
+.event-data pre code.language-json::before {
+  --lang: "json";
+}
+.event-data pre code.language-javascript::before {
+  --lang: "javascript";
+}
+.event-data pre code.language-html::before {
+  --lang: "html";
+}
+.event-data pre code.language-css::before {
+  --lang: "css";
+}
+/* Add more languages as needed */
+
+
+.event-data code {
+  font-family: 'Courier New', Courier, monospace; /* Monospace font */
+  font-size: 0.875rem;
+  background-color: transparent; /* Inherit from pre */
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Ensure code inside pre behaves like a block */
+.event-data pre code {
+  display: block;
+  padding: 0; /* Reset padding if needed */
+}
