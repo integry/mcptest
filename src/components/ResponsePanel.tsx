@@ -1,26 +1,6 @@
-import React, { useRef, useEffect } from 'react'; // Removed useState as it's no longer needed here
-// Showdown is no longer needed here
+import React, { useRef, useEffect } from 'react';
 import { Space, SpaceCard, SelectedTool, ResourceTemplate, LogEntry } from '../types'; // Import necessary types including LogEntry
 import McpResponseDisplay from './McpResponseDisplay'; // Import the new component
-
-// Remove duplicate LogEntry definition - it's imported from ../types now
-// interface LogEntry {
-//   type: string;
-//   data: any; // Allow data to be parsed JSON or string
-//   timestamp: string;
-//   eventId?: string | null;
-//   event?: string;
-//   id?: number | string;
-//   method?: string;
-//   params?: any;
-//   // Add fields to potentially capture the context of the call for "Add to Space"
-//   callContext?: {
-//       serverUrl: string;
-//       type: 'tool' | 'resource';
-//       name: string; // Tool name or Resource URI
-//       params: Record<string, any>; // Input params/args
-//   }
-// }
 
 interface ResponsePanelProps {
   responses: LogEntry[];
@@ -54,7 +34,6 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
   resourceArgs,
 }) => {
   const responseAreaRef = useRef<HTMLDivElement>(null);
-  // Showdown converter is no longer needed here, moved to McpResponseDisplay
 
   useEffect(() => {
     if (autoScroll && responseAreaRef.current) {
@@ -62,19 +41,23 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     }
   }, [responses, autoScroll]);
 
-  // --- Add to Space Button/Dropdown Component (Keep this logic here) ---
+  // --- Add to Space Button/Dropdown Component ---
   const AddToSpaceControl: React.FC<{ logEntry: LogEntry }> = ({ logEntry }) => {
     const contextType = logEntry.type.toLowerCase() === 'tool_result' ? 'tool' : 'resource';
-    const contextName = contextType === 'tool' ? selectedTool?.name : selectedResourceTemplate?.uri;
-    const contextParams = contextType === 'tool' ? toolParams : resourceArgs;
+    // Use callContext if available, otherwise fallback to current selection
+    const contextName = logEntry.callContext?.name ?? (contextType === 'tool' ? selectedTool?.name : selectedResourceTemplate?.uri);
+    const contextParams = logEntry.callContext?.params ?? (contextType === 'tool' ? toolParams : resourceArgs);
+    const contextServerUrl = logEntry.callContext?.serverUrl ?? serverUrl;
 
-    if (!contextName || !serverUrl) {
+
+    if (!contextName || !contextServerUrl) {
+      console.warn("AddToSpaceControl: Missing contextName or serverUrl", { contextName, contextServerUrl, logEntry });
       return null;
     }
 
     const cardData: Omit<SpaceCard, 'id'> = {
-      title: contextName,
-      serverUrl: serverUrl,
+      title: contextName, // Default title
+      serverUrl: contextServerUrl,
       type: contextType,
       name: contextName,
       params: contextParams,
@@ -85,34 +68,34 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     };
 
     if (spaces.length === 0) {
-      return null;
+      return <span className="ms-2 text-muted small">(No spaces)</span>; // Indicate no spaces available
     }
 
     if (spaces.length === 1) {
       return (
         <button
-          className="btn btn-sm btn-outline-primary ms-2"
+          className="btn btn-sm btn-outline-primary ms-2 flex-shrink-0" // Added flex-shrink-0
           title={`Add to space: ${spaces[0].name}`}
           onClick={() => handleAddToSpace(spaces[0].id)}
         >
-          <i className="bi bi-plus-square"></i> Add
+          <i className="bi bi-plus-square"></i>
         </button>
       );
     }
 
     return (
-      <div className="dropdown ms-2 d-inline-block">
+      <div className="dropdown ms-2 d-inline-block flex-shrink-0"> {/* Added flex-shrink-0 */}
         <button
           className="btn btn-sm btn-outline-primary dropdown-toggle"
           type="button"
-          id={`dropdownAddToSpace-${logEntry.timestamp}`}
+          id={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`} // Use timestamp/id
           data-bs-toggle="dropdown"
           aria-expanded="false"
           title="Add to Space..."
         >
-           <i className="bi bi-plus-square"></i> Add
+           <i className="bi bi-plus-square"></i>
         </button>
-        <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-${logEntry.timestamp}`}>
+        <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`}>
           {spaces.map(space => (
             <li key={space.id}>
               <button className="dropdown-item" type="button" onClick={() => handleAddToSpace(space.id)}>
@@ -151,13 +134,14 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
           {responses.length === 0 ? (
             <p className="text-muted p-2">Logs and events will appear here...</p>
           ) : (
-            responses.map((item, index) => {
+            responses.map((item, index) => { // Added index back for key
               const isResultType = item.type.toLowerCase() === 'tool_result' || item.type.toLowerCase() === 'resource_result';
               return (
-                // Wrapper div to handle layout with potential button
-                <div key={index} className="d-flex align-items-start mb-1">
-                   <McpResponseDisplay logEntry={item} className="flex-grow-1" />
-                   {/* Conditionally render the AddToSpaceControl */}
+                // Use d-flex on the outer div to align McpResponseDisplay and the button
+                <div key={`${item.timestamp}-${index}`} className="d-flex align-items-start mb-1">
+                   {/* McpResponseDisplay takes up available space */}
+                   <McpResponseDisplay logEntry={item} showTimestamp={true} className="flex-grow-1" />
+                   {/* Conditionally render the AddToSpaceControl, it will align to the right */}
                    {isResultType && <AddToSpaceControl logEntry={item} />}
                 </div>
               );

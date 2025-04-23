@@ -147,9 +147,9 @@ function App() {
     handleSelectTool,
     handleSelectResourceTemplate,
     handleSelectPrompt
-  } = useToolsAndResources(client, addLogEntry, connectionStatus);
+  } = useToolsAndResources(client, addLogEntry, connectionStatus, serverUrl); // Pass serverUrl
 
-  const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry);
+  const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry, serverUrl); // Pass serverUrl
 
   // --- Effects ---
 
@@ -381,8 +381,11 @@ function App() {
       });
   };
 
-  // --- Card Execution Function (Stateless) ---
+  // --- Card Execution Function (Stateless with Retries) ---
   const handleExecuteCard = async (spaceId: string, cardId: string) => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 250; // Wait 250ms between retries
+
     const spaceIndex = spaces.findIndex(s => s.id === spaceId);
     if (spaceIndex === -1) return;
 
@@ -391,105 +394,120 @@ function App() {
 
     const card = spaces[spaceIndex].cards[cardIndex];
 
-    // Set loading state
+    // Set initial loading state
     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: true, error: null, responseData: null, responseType: null }));
 
-    let tempClient: any = null; // Use 'any' temporarily if Client type causes issues here
-    let connectUrl: URL;
+    let tempClient: any = null;
+    let lastError: any = null;
 
-    try {
-        console.log(`[Execute Card ${cardId}] Starting execution. Card URL: ${card.serverUrl}`);
-        // Validate and prepare URL for the card's server
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(`[Execute Card ${cardId} Attempt ${attempt}/${MAX_RETRIES}] Starting execution. Card URL: ${card.serverUrl}`);
+        lastError = null; // Clear last error on new attempt
+
+        // --- Connection and Request Logic ---
+        let connectUrl: URL;
         try {
-            console.log(`[Execute Card ${cardId}] Parsing URL...`);
             connectUrl = new URL(card.serverUrl);
-            console.log(`[Execute Card ${cardId}] Parsed URL origin: ${connectUrl.origin}, pathname: ${connectUrl.pathname}`);
             if (!connectUrl.pathname.endsWith('/mcp')) {
                 connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
-                console.log(`[Execute Card ${cardId}] Adjusted URL pathname: ${connectUrl.pathname}`);
             }
-            console.log(`[Execute Card ${cardId}] Final target URL: ${connectUrl.toString()}`);
         } catch (e) {
-            console.error(`[Execute Card ${cardId}] URL Parsing Error:`, e);
             throw new Error(`Invalid Server URL format in card: ${card.serverUrl}`);
         }
 
-        console.log(`[Execute Card ${cardId}] Instantiating Client...`);
-        tempClient = new Client({ name: `mcp-card-executor-${cardId}`, version: "1.0.0" });
-        console.log(`[Execute Card ${cardId}] Client instantiated.`);
+        tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
+        const transport = new StreamableHTTPClientTransport(connectUrl);
 
-        console.log(`[Execute Card ${cardId}] Instantiating Transport...`);
-        const transport = new StreamableHTTPClientTransport(connectUrl); // Stateless transport
-        console.log(`[Execute Card ${cardId}] Transport instantiated.`);
-
-        console.log(`[Execute Card ${cardId}] Attempting tempClient.connect(transport)...`);
+        console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
         await tempClient.connect(transport);
-        console.log(`[Execute Card ${cardId}] tempClient.connect() successful.`);
+        console.log(`[Execute Card ${cardId} Attempt ${attempt}] Temporary client connected.`);
 
         let result: any;
         if (card.type === 'tool') {
-            console.log(`[Execute Card ${cardId}] Calling tool: ${card.name} with params:`, card.params);
+            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Calling tool: ${card.name}`);
             result = await tempClient.callTool({ name: card.name, arguments: card.params });
-            console.log(`[Execute Card ${cardId}] Tool result:`, result);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result' }));
+            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Tool result received.`);
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null }));
         } else if (card.type === 'resource') {
-            console.log(`[Execute Card ${cardId}] Accessing resource: ${card.name} with args:`, card.params);
+            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${card.name}`);
             result = await tempClient.request({
                 method: 'resources/access',
-                params: {
-                    uri: card.name,
-                    arguments: card.params
-                }
+                params: { uri: card.name, arguments: card.params }
             }, AccessResourceResultSchema);
-            console.log(`[Execute Card ${cardId}] Resource result:`, result);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result' }));
+            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result', error: null }));
         }
-    } catch (err: any) {
-        console.error(`[Execute Card ${cardId}] Error:`, err);
-        setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: err.message || err, responseData: null, responseType: 'error' }));
-    } finally {
-        // Ensure temporary client is closed regardless of success or failure
-        if (tempClient) {
-            console.log(`[Execute Card ${cardId}] Closing temporary client.`);
-            try {
-                await tempClient.close();
-            } catch (closeError) {
-                console.error(`[Execute Card ${cardId}] Error closing temporary client:`, closeError);
-                // Log the error but don't overwrite the original execution error if one occurred
-                 setSpaces(prev => {
-                    const currentCard = prev.find(s => s.id === spaceId)?.cards.find(c => c.id === cardId);
-                    // Only update error if there wasn't already an execution error
-                    if (currentCard && !currentCard.error) {
-                       return updateCardState(prev, spaceId, cardId, { error: `Failed to close temp client: ${closeError}` });
-                    }
-                    return prev; // Keep original error
-                 });
-            }
+        // --- Success: Break the retry loop ---
+        break;
+
+      } catch (err: any) {
+        console.warn(`[Execute Card ${cardId} Attempt ${attempt}] Error:`, err);
+        lastError = err; // Store the error
+
+        // --- Check if it's a retryable conflict error ---
+        // This check might need adjustment based on how the SDK/server surfaces the 409 error
+        const isConflict = err.message?.includes('Conflict') || err.message?.includes('409') || err.status === 409;
+
+        if (isConflict && attempt < MAX_RETRIES) {
+          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Conflict detected, retrying after ${RETRY_DELAY_MS}ms...`);
+          // Close the potentially conflicted client before retrying
+          if (tempClient) {
+              try { await tempClient.close(); } catch { /* ignore close error on retry */ }
+              tempClient = null;
+          }
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS)); // Wait before retrying
+          continue; // Go to the next iteration
+        } else {
+          // --- Non-retryable error or max retries reached: Set final error state and break ---
+          console.error(`[Execute Card ${cardId}] Unrecoverable error or max retries reached.`);
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: err.message || err, responseData: null, responseType: 'error' }));
+          break; // Exit the loop
         }
-    }
+      } finally {
+          // --- Ensure client is closed after each attempt (if not already closed for retry) ---
+          if (tempClient) {
+              console.log(`[Execute Card ${cardId} Attempt ${attempt}] Closing temporary client in finally block.`);
+              try { await tempClient.close(); } catch (closeError) {
+                  console.error(`[Execute Card ${cardId} Attempt ${attempt}] Error closing temporary client:`, closeError);
+                  // Avoid overwriting a more specific execution error with a close error
+                  if (!lastError) {
+                     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: `Failed to close temp client: ${closeError}` }));
+                  }
+              }
+              tempClient = null; // Nullify ref after closing attempt
+          }
+      }
+    } // End of retry loop
   };
 
-  // --- Effect to Auto-Refresh Cards on Space Entry ---
+  // --- Effect to Auto-Refresh Cards on Space Entry (Sequentially with Retries) ---
   useEffect(() => {
-    // Only run if the spaces view is active and a space is selected
-    if (activeView === 'spaces' && selectedSpaceId) {
-      const currentSpace = spaces.find(s => s.id === selectedSpaceId);
-      if (currentSpace) {
-        console.log(`[DEBUG] Entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards.`);
-        currentSpace.cards.forEach(card => {
-          console.log(`[DEBUG] Effect loop: Checking card ${card.id}. Loading state: ${card.loading}`); // Add this log
-          // Don't trigger if already loading to avoid redundant calls
-          if (!card.loading) {
-             console.log(`[DEBUG] Effect loop: Calling handleExecuteCard for card ${card.id}.`); // Add this log
-             handleExecuteCard(selectedSpaceId, card.id);
-          } else {
-             console.log(`[DEBUG] Effect loop: Skipping handleExecuteCard for card ${card.id} because loading is true.`); // Add this log
+    const refreshCardsSequentially = async () => {
+      if (activeView === 'spaces' && selectedSpaceId) {
+        const currentSpace = spaces.find(s => s.id === selectedSpaceId);
+        if (currentSpace) {
+          console.log(`[DEBUG] Entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards sequentially.`);
+          // Use for...of loop to allow await inside
+          for (const card of currentSpace.cards) {
+            // Don't trigger if already loading to avoid redundant calls
+            if (!card.loading) {
+               console.log(`[DEBUG] Effect loop: Awaiting handleExecuteCard for card ${card.id}.`);
+               await handleExecuteCard(selectedSpaceId, card.id); // Await execution
+               console.log(`[DEBUG] Effect loop: Finished handleExecuteCard for card ${card.id}.`);
+            } else {
+               console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because loading is true.`);
+            }
           }
-        });
+           console.log(`[DEBUG] Finished sequential refresh for space "${currentSpace.name}".`);
+        }
       }
-    }
+    };
+
+    refreshCardsSequentially(); // Call the async function
+
     // Dependencies: Trigger only when view changes or selected space changes.
-  }, [activeView, selectedSpaceId]); // REMOVED 'spaces' dependency
+  }, [activeView, selectedSpaceId]); // Keep dependencies minimal
 
 
  // --- Render Logic ---

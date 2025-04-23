@@ -4,9 +4,9 @@ import { parseUriTemplateArgs } from '../utils/uriUtils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import Client type
 
 export const useResourceAccess = (
-  client: Client | null, // Expect client first
-  addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void // Expect addLogEntry second
-  // sessionId no longer needed
+  client: Client | null,
+  addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void,
+  serverUrl: string // Add serverUrl prop
 ) => {
   // Access Resource using MCP protocol via SDK Client
   const handleAccessResource = useCallback(async ( // Make async
@@ -63,7 +63,17 @@ export const useResourceAccess = (
       // Log the received resource content
       // Assuming simple text content for now
       const contentText = resourceResult?.contents?.[0]?.text ?? JSON.stringify(resourceResult);
-      addLogEntry({ type: 'resource_result', data: `Resource ${finalUri} content: ${contentText}` });
+      // Pass the original resourceArgs to callContext
+      addLogEntry({
+        type: 'resource_result',
+        data: resourceResult?.contents, // Log the actual content array (McpResponseDisplay will stringify)
+        callContext: {
+          serverUrl: serverUrl,
+          type: 'resource',
+          name: finalUri,
+          params: resourceArgs // Pass the original args used
+        }
+      });
       // TODO: Potentially display the result more formally in the UI
 
     } catch (error: any) {
@@ -71,7 +81,7 @@ export const useResourceAccess = (
        addLogEntry({ type: 'error', data: `Failed to access resource ${finalUri}: ${error.message}` });
     }
 
-  }, [client, addLogEntry]); // Update dependencies
+  }, [client, addLogEntry, serverUrl]); // Update dependencies
 
   return {
     handleAccessResource

@@ -9,13 +9,20 @@ import {
 // Define interfaces for state clarity
 export interface LogEntry {
   type: string;
-  data: string;
+  data: any; // Allow any data type, display component will handle stringification
   timestamp: string;
   eventId?: string | null;
   event?: string;
   id?: number | string;
   method?: string;
   params?: any;
+  // Optional context for "Add to Space" functionality
+  callContext?: {
+      serverUrl: string;
+      type: 'tool' | 'resource';
+      name: string; // Tool name or Resource URI
+      params: Record<string, any>; // Input params/args
+  };
 }
 
 // Infer types from SDK Schemas if they exist

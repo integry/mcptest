@@ -4,11 +4,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import SD
 import { ListPromptsResultSchema, GetPromptResultSchema } from '@modelcontextprotocol/sdk/types.js'; // Corrected schema import
 
 export const useToolsAndResources = (
-  client: Client | null, // Use the SDK client instance
+  client: Client | null,
   addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void,
-  connectionStatus: string
-  // sessionId no longer needed
-  // sendJsonRpcRequest no longer needed
+  connectionStatus: string,
+  serverUrl: string // Add serverUrl prop
 ) => {
   const [tools, setTools] = useState<any[]>([]);
   const [resources, setResources] = useState<ResourceTemplate[]>([]);
@@ -101,7 +100,17 @@ export const useToolsAndResources = (
             contentText = JSON.stringify(contentItem); // Fallback for other content types
           }
           // Use a specific type or reuse 'tool_result'/'info'
-          addLogEntry({ type: 'tool_result', data: contentText });
+          // Add callContext here
+          addLogEntry({
+            type: 'tool_result',
+            data: contentText,
+            callContext: {
+              serverUrl: serverUrl, // Use the passed serverUrl
+              type: 'tool',
+              name: selectedTool.name,
+              params: toolParams
+            }
+          });
         });
          addLogEntry({ type: 'info', data: `--- End Tool "${selectedTool.name}" ---` });
       } else {
@@ -114,7 +123,7 @@ export const useToolsAndResources = (
       console.error(`[DEBUG] Error executing tool "${selectedTool.name}" via SDK:`, error);
       addLogEntry({ type: 'error', data: `Failed to execute tool ${selectedTool.name}: ${error.message}` });
     }
-  }, [client, selectedTool, toolParams, connectionStatus, addLogEntry]); // Use client
+  }, [client, selectedTool, toolParams, connectionStatus, addLogEntry, serverUrl]); // Add serverUrl dependency
 
 
   // --- Prompt Handling ---
