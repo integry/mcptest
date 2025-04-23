@@ -29,3 +29,39 @@ export type Prompt = typeof PromptSchema extends z.ZodTypeAny ? z.infer<typeof P
 export type SelectedTool = Tool | null;
 export type SelectedPrompt = Prompt | null;
 // SelectedResourceTemplate is used directly in the hook, no need for a separate type here unless desired
+
+// --- Space Types ---
+
+export interface SpaceCard {
+  id: string;
+  title: string; // User editable title, defaults to tool name or resource URI
+  serverUrl: string; // Fixed
+  type: 'tool' | 'resource'; // To know what kind of call it represents
+  name: string; // Tool name or Resource URI (fixed)
+  params: Record<string, any>; // Arguments/Parameters for the call
+  // Transient state for execution results (not saved to localStorage)
+  loading?: boolean;
+  error?: any | null;
+  responseData?: any | null;
+  responseType?: string | null; // e.g., 'tool_result', 'resource_result', 'error'
+}
+
+export interface Space {
+  id: string;
+  name: string; // User editable name
+  cards: SpaceCard[];
+}
+
+// --- Zod Schemas for SDK Interaction ---
+
+// Basic content part schema (adjust if needed based on actual content types)
+export const ContentPartSchema = z.object({
+  type: z.string(),
+}).passthrough(); // Allow other properties
+
+// Schema for the result of resources/access (assuming similar structure to tools/call)
+export const AccessResourceResultSchema = z.object({
+  content: z.array(ContentPartSchema),
+});
+
+export type AccessResourceResult = z.infer<typeof AccessResourceResultSchema>;

@@ -2,24 +2,29 @@ import React, { useEffect, useRef, useState } from 'react';
 
 // Import Components
 import Header from './components/Header';
-// import ActionToolbar from './components/ActionToolbar'; // Removed ActionToolbar import
 import ConnectionPanel from './components/ConnectionPanel';
-import { UnifiedPanel } from './components/UnifiedPanel'; // Import UnifiedPanel (Corrected import)
-import { RecentServersPanel } from './components/RecentServersPanel'; // Import RecentServersPanel
-// import ToolsPanel from './components/ToolsPanel'; // Removed
-// import ResourcesPanel from './components/ResourcesPanel'; // Removed
-// import PromptsPanel from './components/PromptsPanel'; // Removed
+import { UnifiedPanel } from './components/UnifiedPanel';
+import { RecentServersPanel } from './components/RecentServersPanel';
 import ParamsPanel from './components/ParamsPanel';
 import ResponsePanel from './components/ResponsePanel';
+// Placeholders for new components
+import SideNav from './components/SideNav'; // New
+import SpacesView from './components/SpacesView'; // New
 
 // Import Hooks
 import { useLogEntries } from './hooks/useLogEntries';
 import { useConnection } from './hooks/useConnection';
-import { useToolsAndResources } from './hooks/useToolsAndResources'; // Add missing import
+import { useToolsAndResources } from './hooks/useToolsAndResources';
 import { useResourceAccess } from './hooks/useResourceAccess';
+// Import MCP SDK Components needed for stateless execution
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-// Import Types (needed for prompt handling)
-import { Prompt, ResourceTemplate, SelectedPrompt, SelectedTool } from './types';
+// Import Types
+import {
+  Prompt, ResourceTemplate, SelectedPrompt, SelectedTool, Space, SpaceCard,
+  AccessResourceResultSchema // Import the result schema
+} from './types';
 
 // Import Utils
 import { parseUriTemplateArgs } from './utils/uriUtils';
@@ -27,37 +32,43 @@ import { parseUriTemplateArgs } from './utils/uriUtils';
 // Constants for localStorage keys
 const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
 const RESOURCE_HISTORY_KEY = 'mcpResourceAccessHistory';
+const SPACES_KEY = 'mcpSpaces'; // New key for spaces
 const MAX_HISTORY_ITEMS = 10;
 
-// Helper to load history from localStorage
-const loadHistory = (key: string): Record<string, any[]> => {
+// Helper to load history/spaces from localStorage
+const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   try {
     const stored = localStorage.getItem(key);
     if (stored) {
-      const parsed = JSON.parse(stored);
+      let parsed = JSON.parse(stored);
       // Basic validation
-      if (typeof parsed === 'object' && parsed !== null) {
-        // Ensure values are arrays
-        Object.keys(parsed).forEach(k => {
-          if (!Array.isArray(parsed[k])) {
-            parsed[k] = []; // Reset if not an array
-          }
-        });
-        return parsed;
+      if (typeof parsed === typeof defaultValue && parsed !== null) {
+        // Specifically for SPACES_KEY, strip transient fields from cards
+        if (key === SPACES_KEY && Array.isArray(parsed)) {
+          parsed = (parsed as Space[]).map(space => ({
+            ...space,
+            cards: space.cards.map(card => {
+              // Omit transient fields when loading
+              const { loading, error, responseData, responseType, ...restOfCard } = card;
+              return restOfCard;
+            })
+          }));
+        }
+        return parsed as T;
       }
     }
   } catch (e) {
-    console.error(`Failed to load or parse history from localStorage key "${key}":`, e);
+    console.error(`Failed to load or parse data from localStorage key "${key}":`, e);
   }
-  return {};
+  return defaultValue;
 };
 
-// Helper to save history to localStorage
-const saveHistory = (key: string, history: Record<string, any[]>) => {
+// Helper to save history/spaces to localStorage
+const saveData = (key: string, data: any) => {
   try {
-    localStorage.setItem(key, JSON.stringify(history));
+    localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
-    console.error(`Failed to save history to localStorage key "${key}":`, e);
+    console.error(`Failed to save data to localStorage key "${key}":`, e);
   }
 };
 
@@ -75,14 +86,20 @@ function App() {
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
 
+  // --- State ---
+  const [activeView, setActiveView] = useState<'inspector' | 'spaces'>('inspector');
+  const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
+
   // State for call history
-  const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadHistory(TOOL_HISTORY_KEY));
-  const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadHistory(RESOURCE_HISTORY_KEY));
+  const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadData(TOOL_HISTORY_KEY, {}));
+  const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
 
 
-  // Use custom hooks
+  // --- Custom Hooks ---
   const {
     responses,
+    setResponses, // Get the setter function
     autoScroll,
     setAutoScroll,
     addLogEntry,
@@ -93,14 +110,12 @@ function App() {
     serverUrl,
     setServerUrl,
     connectionStatus,
-    // sessionId, // Removed
     isConnecting,
-    // sendJsonRpcRequest, // Removed
-    client, // Get client instance from SDK hook
-    recentServers, // Get recent servers from hook
+    client,
+    recentServers,
     handleConnect,
     handleDisconnect,
-    removeRecentServer // Get remove function from hook
+    removeRecentServer
   } = useConnection(addLogEntry);
 
   const {
@@ -112,55 +127,53 @@ function App() {
     setSelectedTool,
     selectedResourceTemplate,
     setSelectedResourceTemplate,
-    prompts, // Added
-    setPrompts, // Added
-    selectedPrompt, // Added
-    setSelectedPrompt, // Added
+    prompts,
+    setPrompts,
+    selectedPrompt,
+    setSelectedPrompt,
     toolParams,
     setToolParams,
     resourceArgs,
     setResourceArgs,
-    promptParams, // Added
-    setPromptParams, // Added
+    promptParams,
+    setPromptParams,
     handleListTools,
     handleListResources,
-    handleListPrompts, // Added
-    handleExecuteTool, // Uncommented for use in wrapper
-    handleExecutePrompt, // Uncommented for use in wrapper
-    handleParamChange, // Updated signature in hook
+    handleListPrompts,
+    handleExecuteTool,
+    handleExecutePrompt,
+    handleParamChange,
     handleResourceArgChange,
     handleSelectTool,
     handleSelectResourceTemplate,
-    handleSelectPrompt // Added
-  } = useToolsAndResources(client, addLogEntry, connectionStatus); // Pass client
+    handleSelectPrompt
+  } = useToolsAndResources(client, addLogEntry, connectionStatus);
 
-  // Pass client to useResourceAccess
   const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry);
 
-  // Remove useEffects for window.mcpSseCallback and 'mcp-sse-event' listener
-  // SDK Client handles events internally, and useConnection fetches initial lists.
-  // List change notifications *could* be handled via client.onNotification if needed,
-  // but we removed that for simplicity earlier.
+  // --- Effects ---
+
+  // Save spaces whenever they change
+  useEffect(() => {
+    saveData(SPACES_KEY, spaces);
+  }, [spaces]);
 
   // Wrapper function to handle resource access and save history
   const handleAccessResource = () => {
     if (!selectedResourceTemplate) return;
-    const uri = selectedResourceTemplate.uri; // Assuming ResourceTemplate has a URI
+    const uri = selectedResourceTemplate.uri;
     accessResource(selectedResourceTemplate, resourceArgs);
 
-    // Update history only if resourceArgs is not empty
     if (Object.keys(resourceArgs).length > 0) {
         setResourceAccessHistory(prevHistory => {
-          // Ensure uri is treated as a string key
           const uriKey = uri as string ?? '';
           const currentList = prevHistory[uriKey] || [];
-          // Avoid adding exact duplicate of the last entry
           if (JSON.stringify(currentList[0]) === JSON.stringify(resourceArgs)) {
             return prevHistory;
           }
           const updatedList = [resourceArgs, ...currentList].slice(0, MAX_HISTORY_ITEMS);
           const newHistory = { ...prevHistory, [uriKey]: updatedList };
-          saveHistory(RESOURCE_HISTORY_KEY, newHistory);
+          saveData(RESOURCE_HISTORY_KEY, newHistory);
           return newHistory;
         });
     } else {
@@ -180,12 +193,11 @@ function App() {
 
   // Wrapper function to handle connect, accepting optional URL override
   const handleConnectWrapper = (urlToConnect?: string) => {
-    // Pass setters and optional URL to the SDK-based handleConnect
     handleConnect(
       setTools,
       setResources,
-      handleClearResponse, // Pass handleClearResponse to clear logs on connect
-      urlToConnect // Pass the optional URL
+      setResponses, // Pass the actual setResponses setter function
+      urlToConnect
     );
   };
 
@@ -193,21 +205,18 @@ function App() {
   const handleExecuteToolWrapper = () => {
     if (!selectedTool || !client) return;
     const toolName = selectedTool.name;
-    handleExecuteTool(); // Call original hook function (no args needed)
+    handleExecuteTool();
 
-    // Update history only if toolParams is not empty
     if (Object.keys(toolParams).length > 0) {
         setToolCallHistory(prevHistory => {
-          // Ensure toolName is treated as a string key
           const toolNameKey = toolName as string ?? '';
           const currentList = prevHistory[toolNameKey] || [];
-           // Avoid adding exact duplicate of the last entry
           if (JSON.stringify(currentList[0]) === JSON.stringify(toolParams)) {
             return prevHistory;
           }
           const updatedList = [toolParams, ...currentList].slice(0, MAX_HISTORY_ITEMS);
           const newHistory = { ...prevHistory, [toolNameKey]: updatedList };
-          saveHistory(TOOL_HISTORY_KEY, newHistory);
+          saveData(TOOL_HISTORY_KEY, newHistory);
           return newHistory;
         });
     } else {
@@ -215,17 +224,16 @@ function App() {
     }
   };
 
-  // Wrapper for handleExecutePrompt (add history saving if needed later)
+  // Wrapper for handleExecutePrompt
   const handleExecutePromptWrapper = () => {
      if (!selectedPrompt || !client) return;
-     handleExecutePrompt(); // Call original hook function (no args needed)
+     handleExecutePrompt();
      // TODO: Add prompt history saving if required
   };
 
   // Wrapper for handleDisconnect to include state cleanup
   const handleDisconnectWrapper = async () => {
-    await handleDisconnect(); // Call the original hook function
-    // Clear related state after disconnect completes
+    await handleDisconnect();
     setTools([]);
     setResources([]);
     setPrompts([]);
@@ -239,33 +247,23 @@ function App() {
   };
 
 
-  // Effect for cleanup on unmount - only run on actual unmount, not during React strict mode checks
+  // Effect for cleanup on unmount
   useEffect(() => {
-    // Skip the first render effect (which would be duplicated in strict mode)
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
-
     return () => {
-      // Only perform cleanup if this is a real unmount, not a strict mode check
       isUnmounting.current = true;
-      
       if (connectionStatus !== 'Disconnected') {
         console.log("Cleaning up connection on component unmount.");
-        // Only disconnect if this is a real unmount, not a strict mode check
-        // In development, React 18's strict mode will mount/unmount components twice
-        // We don't want to disconnect during these checks
-        const isStrictModeCheck = document.visibilityState === 'visible' && 
-                                 document.hasFocus() && 
-                                 !window.isReloading;
-                                 
+        const isStrictModeCheck = document.visibilityState === 'visible' && document.hasFocus() && !window.isReloading;
         if (isStrictModeCheck) {
           console.log("Skipping disconnect - detected React strict mode check");
           addLogEntry({ type: 'info', data: 'Skipping disconnect during React strict mode check' });
         } else {
           addLogEntry({ type: 'info', data: 'Disconnecting on component unmount...' });
-          handleDisconnect(); // No argument needed
+          handleDisconnect();
         }
       }
     };
@@ -280,7 +278,7 @@ function App() {
       handleListResources();
       handleListPrompts();
     }
-  }, [connectionStatus, handleListTools, handleListResources, handleListPrompts, addLogEntry]); // Add dependencies
+  }, [connectionStatus, handleListTools, handleListResources, handleListPrompts, addLogEntry]);
 
 
   // Determine button disabled states
@@ -296,88 +294,324 @@ function App() {
     handleListPrompts();
   };
 
-  // JSX Structure
+  // --- Space Management Functions ---
+  const handleCreateSpace = (name: string) => {
+    const newSpace: Space = { id: Date.now().toString(), name, cards: [] };
+    setSpaces(prev => [...prev, newSpace]);
+    setSelectedSpaceId(newSpace.id); // Select the new space
+    setActiveView('spaces'); // Switch to spaces view
+  };
+
+  const handleSelectSpace = (id: string) => {
+    setSelectedSpaceId(id);
+    setActiveView('spaces'); // Ensure spaces view is active when selecting a space
+  };
+
+  const handleUpdateSpace = (id: string, updatedData: Partial<Omit<Space, 'id'>>) => {
+    setSpaces(prev => prev.map(space => space.id === id ? { ...space, ...updatedData } : space));
+  };
+
+  const handleDeleteSpace = (id: string) => {
+    setSpaces(prev => prev.filter(space => space.id !== id));
+    // If the deleted space was selected, select the first available space or default
+    if (selectedSpaceId === id) {
+      setSelectedSpaceId(spaces.find(s => s.id !== id)?.id || 'default');
+      // If no spaces left besides the one being deleted, switch to inspector? Or handle empty state?
+      if (spaces.length <= 1) {
+          setActiveView('inspector'); // Or show an empty spaces view
+      }
+    }
+  };
+
+  // --- Add to Space Functionality ---
+  const handleAddCardToSpace = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
+      const newCard = { ...cardData, id: Date.now().toString() };
+      setSpaces(prev => prev.map(space => {
+          if (space.id === spaceId) {
+              return { ...space, cards: [...space.cards, newCard] };
+          }
+          return space;
+      }));
+      console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
+  };
+
+  // --- Card Management Functions ---
+  const handleUpdateCard = (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => {
+    setSpaces(prev => prev.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          cards: space.cards.map(card =>
+            card.id === cardId ? { ...card, ...updatedData } : card
+          )
+        };
+      }
+      return space;
+    }));
+     console.log(`[DEBUG] Updated card ${cardId} in space ${spaceId}:`, updatedData);
+  };
+
+  const handleDeleteCard = (spaceId: string, cardId: string) => {
+    setSpaces(prev => prev.map(space => {
+      if (space.id === spaceId) {
+        return { ...space, cards: space.cards.filter(card => card.id !== cardId) };
+      }
+      return space;
+    }));
+    console.log(`[DEBUG] Deleted card ${cardId} from space ${spaceId}`);
+  };
+
+  // --- Helper Function for Card State Update (Moved Outside) ---
+  const updateCardState = (
+      currentSpaces: Space[],
+      sId: string,
+      cId: string,
+      newState: Partial<Pick<SpaceCard, 'loading' | 'error' | 'responseData' | 'responseType'>>
+  ): Space[] => {
+      return currentSpaces.map(space => {
+          if (space.id === sId) {
+              return {
+                  ...space,
+                  cards: space.cards.map(c =>
+                      c.id === cId ? { ...c, ...newState } : c
+                  )
+              };
+          }
+          return space;
+      });
+  };
+
+  // --- Card Execution Function (Stateless) ---
+  const handleExecuteCard = async (spaceId: string, cardId: string) => {
+    const spaceIndex = spaces.findIndex(s => s.id === spaceId);
+    if (spaceIndex === -1) return;
+
+    const cardIndex = spaces[spaceIndex].cards.findIndex(c => c.id === cardId);
+    if (cardIndex === -1) return;
+
+    const card = spaces[spaceIndex].cards[cardIndex];
+
+    // Set loading state
+    setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: true, error: null, responseData: null, responseType: null }));
+
+    let tempClient: any = null; // Use 'any' temporarily if Client type causes issues here
+    let connectUrl: URL;
+
+    try {
+        console.log(`[Execute Card ${cardId}] Starting execution. Card URL: ${card.serverUrl}`);
+        // Validate and prepare URL for the card's server
+        try {
+            console.log(`[Execute Card ${cardId}] Parsing URL...`);
+            connectUrl = new URL(card.serverUrl);
+            console.log(`[Execute Card ${cardId}] Parsed URL origin: ${connectUrl.origin}, pathname: ${connectUrl.pathname}`);
+            if (!connectUrl.pathname.endsWith('/mcp')) {
+                connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
+                console.log(`[Execute Card ${cardId}] Adjusted URL pathname: ${connectUrl.pathname}`);
+            }
+            console.log(`[Execute Card ${cardId}] Final target URL: ${connectUrl.toString()}`);
+        } catch (e) {
+            console.error(`[Execute Card ${cardId}] URL Parsing Error:`, e);
+            throw new Error(`Invalid Server URL format in card: ${card.serverUrl}`);
+        }
+
+        console.log(`[Execute Card ${cardId}] Instantiating Client...`);
+        tempClient = new Client({ name: `mcp-card-executor-${cardId}`, version: "1.0.0" });
+        console.log(`[Execute Card ${cardId}] Client instantiated.`);
+
+        console.log(`[Execute Card ${cardId}] Instantiating Transport...`);
+        const transport = new StreamableHTTPClientTransport(connectUrl); // Stateless transport
+        console.log(`[Execute Card ${cardId}] Transport instantiated.`);
+
+        console.log(`[Execute Card ${cardId}] Attempting tempClient.connect(transport)...`);
+        await tempClient.connect(transport);
+        console.log(`[Execute Card ${cardId}] tempClient.connect() successful.`);
+
+        let result: any;
+        if (card.type === 'tool') {
+            console.log(`[Execute Card ${cardId}] Calling tool: ${card.name} with params:`, card.params);
+            result = await tempClient.callTool({ name: card.name, arguments: card.params });
+            console.log(`[Execute Card ${cardId}] Tool result:`, result);
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result' }));
+        } else if (card.type === 'resource') {
+            console.log(`[Execute Card ${cardId}] Accessing resource: ${card.name} with args:`, card.params);
+            result = await tempClient.request({
+                method: 'resources/access',
+                params: {
+                    uri: card.name,
+                    arguments: card.params
+                }
+            }, AccessResourceResultSchema);
+            console.log(`[Execute Card ${cardId}] Resource result:`, result);
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result' }));
+        }
+    } catch (err: any) {
+        console.error(`[Execute Card ${cardId}] Error:`, err);
+        setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: err.message || err, responseData: null, responseType: 'error' }));
+    } finally {
+        // Ensure temporary client is closed regardless of success or failure
+        if (tempClient) {
+            console.log(`[Execute Card ${cardId}] Closing temporary client.`);
+            try {
+                await tempClient.close();
+            } catch (closeError) {
+                console.error(`[Execute Card ${cardId}] Error closing temporary client:`, closeError);
+                // Log the error but don't overwrite the original execution error if one occurred
+                 setSpaces(prev => {
+                    const currentCard = prev.find(s => s.id === spaceId)?.cards.find(c => c.id === cardId);
+                    // Only update error if there wasn't already an execution error
+                    if (currentCard && !currentCard.error) {
+                       return updateCardState(prev, spaceId, cardId, { error: `Failed to close temp client: ${closeError}` });
+                    }
+                    return prev; // Keep original error
+                 });
+            }
+        }
+    }
+  };
+
+  // --- Effect to Auto-Refresh Cards on Space Entry ---
+  useEffect(() => {
+    // Only run if the spaces view is active and a space is selected
+    if (activeView === 'spaces' && selectedSpaceId) {
+      const currentSpace = spaces.find(s => s.id === selectedSpaceId);
+      if (currentSpace) {
+        console.log(`[DEBUG] Entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards.`);
+        currentSpace.cards.forEach(card => {
+          console.log(`[DEBUG] Effect loop: Checking card ${card.id}. Loading state: ${card.loading}`); // Add this log
+          // Don't trigger if already loading to avoid redundant calls
+          if (!card.loading) {
+             console.log(`[DEBUG] Effect loop: Calling handleExecuteCard for card ${card.id}.`); // Add this log
+             handleExecuteCard(selectedSpaceId, card.id);
+          } else {
+             console.log(`[DEBUG] Effect loop: Skipping handleExecuteCard for card ${card.id} because loading is true.`); // Add this log
+          }
+        });
+      }
+    }
+    // Dependencies: Trigger only when view changes or selected space changes.
+  }, [activeView, selectedSpaceId]); // REMOVED 'spaces' dependency
+
+
+ // --- Render Logic ---
+  const selectedSpace = spaces.find(s => s.id === selectedSpaceId);
+
   return (
-    <div className="container-fluid">
+    <div className="container-fluid vh-100 d-flex flex-column p-0">
       <Header />
 
-      {/* Action Toolbar Removed */}
-
-      <div className="row">
-        {/* Left Panel */}
-        <div className="col-md-4">
-          <ConnectionPanel
-            serverUrl={serverUrl}
-            setServerUrl={setServerUrl}
-            connectionStatus={connectionStatus}
-            isConnecting={isConnecting}
-            isConnected={isConnected}
-            isDisconnected={isDisconnected}
-            handleConnect={handleConnectWrapper}
-            handleDisconnect={handleDisconnectWrapper} // Use the wrapper
-            recentServers={recentServers} // Pass recent servers down (still needed for ConnectionPanel input)
-          />
-          {/* Add Recent Servers Panel */}
-          <RecentServersPanel
-             recentServers={recentServers}
-             setServerUrl={setServerUrl}
-             handleConnect={handleConnectWrapper} // Use the wrapper
-             removeRecentServer={removeRecentServer}
-             isConnected={isConnected}
-             isConnecting={isConnecting}
-          />
-          {/* Unified Panel */}
-          <UnifiedPanel
-            tools={tools}
-            resources={resources}
-            prompts={prompts}
-            selectedTool={selectedTool}
-            selectedResourceTemplate={selectedResourceTemplate}
-            selectedPrompt={selectedPrompt}
-            handleSelectTool={handleSelectTool}
-            handleSelectResourceTemplate={handleSelectResourceTemplate}
-            handleSelectPrompt={handleSelectPrompt}
-            connectionStatus={connectionStatus} // Pass connection status
-            onRefreshLists={handleRefreshAllLists} // Pass refresh handler
-            isConnecting={isConnecting} // Pass connecting status
+      <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
+        {/* Side Navigation */}
+        <div className="col-auto bg-light border-end p-2" style={{ width: '250px', overflowY: 'auto' }}>
+          <SideNav
+            activeView={activeView}
+            setActiveView={setActiveView}
+            spaces={spaces}
+            selectedSpaceId={selectedSpaceId}
+            handleSelectSpace={handleSelectSpace}
+            handleCreateSpace={handleCreateSpace} // Pass create function
           />
         </div>
 
-        {/* Middle Panel */}
-        <div className="col-md-4">
-          <ParamsPanel
-            selectedTool={selectedTool}
-            selectedResourceTemplate={selectedResourceTemplate}
-            selectedPrompt={selectedPrompt} // Pass selectedPrompt
-            toolParams={toolParams}
-            resourceArgs={resourceArgs}
-            promptParams={promptParams} // Pass promptParams
-            isConnected={isConnected}
-            isConnecting={isConnecting}
-            handleParamChange={handleParamChangeWrapper} // Pass wrapper
-            handleResourceArgChange={handleResourceArgChange}
-            handleExecuteTool={handleExecuteToolWrapper} // Pass history wrapper
-            handleExecutePrompt={handleExecutePromptWrapper} // Pass wrapper (add history later if needed)
-            handleAccessResource={handleAccessResource} // Pass history wrapper
-            parseUriTemplateArgs={parseUriTemplateArgs}
-            // Pass history and setters for ParamsPanel UI
-            // Ensure keys are treated as strings and handle potential null/undefined
-            toolHistory={toolCallHistory[selectedTool?.name as string ?? ''] || []}
-            resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uri as string ?? ''] || []}
-            setToolParams={setToolParams}
-            setResourceArgs={setResourceArgs}
-          />
-        </div>
+        {/* Main Panel (Inspector or Spaces) */}
+        <div className="col overflow-auto p-3">
+          {activeView === 'inspector' && (
+            <div className="row">
+              {/* Left Panel */}
+              <div className="col-md-4">
+                <ConnectionPanel
+                  serverUrl={serverUrl}
+                  setServerUrl={setServerUrl}
+                  connectionStatus={connectionStatus}
+                  isConnecting={isConnecting}
+                  isConnected={isConnected}
+                  isDisconnected={isDisconnected}
+                  handleConnect={handleConnectWrapper}
+                  handleDisconnect={handleDisconnectWrapper}
+                  recentServers={recentServers}
+                />
+                <RecentServersPanel
+                   recentServers={recentServers}
+                   setServerUrl={setServerUrl}
+                   handleConnect={handleConnectWrapper}
+                   removeRecentServer={removeRecentServer}
+                   isConnected={isConnected}
+                   isConnecting={isConnecting}
+                />
+                <UnifiedPanel
+                  tools={tools}
+                  resources={resources}
+                  prompts={prompts}
+                  selectedTool={selectedTool}
+                  selectedResourceTemplate={selectedResourceTemplate}
+                  selectedPrompt={selectedPrompt}
+                  handleSelectTool={handleSelectTool}
+                  handleSelectResourceTemplate={handleSelectResourceTemplate}
+                  handleSelectPrompt={handleSelectPrompt}
+                  connectionStatus={connectionStatus}
+                  onRefreshLists={handleRefreshAllLists}
+                  isConnecting={isConnecting}
+                />
+              </div>
 
-        {/* Right Panel */}
-        <div className="col-md-4">
-          <ResponsePanel
-            responses={responses}
-            autoScroll={autoScroll}
-            setAutoScroll={setAutoScroll}
-            handleClearResponse={handleClearResponse}
-            isConnected={isConnected} // Pass isConnected prop
-          />
+              {/* Middle Panel */}
+              <div className="col-md-4">
+                <ParamsPanel
+                  selectedTool={selectedTool}
+                  selectedResourceTemplate={selectedResourceTemplate}
+                  selectedPrompt={selectedPrompt}
+                  toolParams={toolParams}
+                  resourceArgs={resourceArgs}
+                  promptParams={promptParams}
+                  isConnected={isConnected}
+                  isConnecting={isConnecting}
+                  handleParamChange={handleParamChangeWrapper}
+                  handleResourceArgChange={handleResourceArgChange}
+                  handleExecuteTool={handleExecuteToolWrapper}
+                  handleExecutePrompt={handleExecutePromptWrapper}
+                  handleAccessResource={handleAccessResource}
+                  parseUriTemplateArgs={parseUriTemplateArgs}
+                  toolHistory={toolCallHistory[selectedTool?.name as string ?? ''] || []}
+                  resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uri as string ?? ''] || []}
+                  setToolParams={setToolParams}
+                  setResourceArgs={setResourceArgs}
+                />
+              </div>
+
+              {/* Right Panel */}
+              <div className="col-md-4">
+                <ResponsePanel
+                  responses={responses}
+                  autoScroll={autoScroll}
+                  setAutoScroll={setAutoScroll}
+                  handleClearResponse={handleClearResponse}
+                  isConnected={isConnected}
+                  // Pass necessary props for "Add to Space"
+                  spaces={spaces}
+                  onAddCardToSpace={handleAddCardToSpace}
+                  serverUrl={serverUrl} // Pass current server URL
+                  selectedTool={selectedTool} // Pass selected tool
+                  selectedResourceTemplate={selectedResourceTemplate} // Pass selected resource
+                  toolParams={toolParams} // Pass current tool params
+                  resourceArgs={resourceArgs} // Pass current resource args
+                />
+              </div>
+            </div>
+          )}
+
+          {activeView === 'spaces' && selectedSpace && (
+            <SpacesView
+              space={selectedSpace}
+              onUpdateSpace={handleUpdateSpace}
+              onDeleteSpace={handleDeleteSpace}
+              // Pass card handlers and execution function
+              onUpdateCard={handleUpdateCard}
+              onDeleteCard={handleDeleteCard}
+              onExecuteCard={handleExecuteCard}
+            />
+          )}
+           {activeView === 'spaces' && !selectedSpace && (
+              <div className="alert alert-warning">No space selected or available. Create one from the side menu.</div>
+           )}
         </div>
       </div>
     </div>

@@ -24,10 +24,24 @@ const loadRecentServers = (): string[] => {
 
 // Helper to save recent servers to localStorage
 const saveRecentServers = (servers: string[]) => {
+  console.log("[DEBUG] Attempting to save recent servers:", servers); // Log the array itself
+  // Check the type just before saving
+  if (!Array.isArray(servers) || !servers.every(s => typeof s === 'string')) {
+     console.error("[DEBUG] Invalid data type passed to saveRecentServers! Expected string[]. Got:", typeof servers, servers);
+     // Optionally throw an error or return early to prevent saving bad data
+     // throw new Error("Invalid data type for recent servers");
+     return;
+  }
   try {
-    localStorage.setItem(RECENT_SERVERS_KEY, JSON.stringify(servers));
+    // Stringify separately to potentially catch error here and log
+    const jsonString = JSON.stringify(servers);
+    console.log("[DEBUG] Stringified recent servers:", jsonString);
+    localStorage.setItem(RECENT_SERVERS_KEY, jsonString);
+    console.log("[DEBUG] Successfully saved recent servers to localStorage.");
   } catch (e) {
     console.error("Failed to save recent servers to localStorage:", e);
+    // Log the problematic array again on error
+    console.error("[DEBUG] Data that caused save error:", servers);
   }
 };
 
@@ -114,12 +128,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     // -----------------------------------------
 
     // Update recent servers list using targetUrl
-    setRecentServers(prevServers => {
-      const updatedServers = [targetUrl, ...prevServers.filter(url => url !== targetUrl)];
-      const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
-      saveRecentServers(limitedServers);
-      return limitedServers;
-    });
+    const updatedServers = [targetUrl, ...recentServers.filter(url => url !== targetUrl)];
+    const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
+    setRecentServers(limitedServers); // Update state
+    // Explicitly create a new array copy before saving to be extra safe
+    const serversToSave = Array.from(limitedServers);
+    saveRecentServers(serversToSave); // Save the copy to localStorage
 
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
@@ -184,15 +198,13 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     handleDisconnect,
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
-      setRecentServers(prevServers => {
-        const updatedServers = prevServers.filter(url => url !== urlToRemove);
-        saveRecentServers(updatedServers); // Update localStorage
-        // If the removed server was the currently selected one, reset to default or next available
-        if (serverUrl === urlToRemove) {
-          setServerUrl(updatedServers[0] || 'http://localhost:3033');
-        }
-        return updatedServers;
-      });
+      const updatedServers = recentServers.filter(url => url !== urlToRemove);
+      setRecentServers(updatedServers); // Update state
+      saveRecentServers(updatedServers); // Save to localStorage (outside state update)
+      // If the removed server was the currently selected one, reset to default or next available
+      if (serverUrl === urlToRemove) {
+        setServerUrl(updatedServers[0] || 'http://localhost:3033');
+      }
     },
   };
 };

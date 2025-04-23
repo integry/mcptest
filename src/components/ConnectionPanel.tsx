@@ -58,7 +58,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                <button
                  id="connectBtn"
                  className="btn btn-primary"
-                 onClick={handleConnect}
+                 onClick={() => handleConnect()} // Call without arguments
                  disabled={isConnecting || !serverUrl}
                >
                  {isConnecting ? 'Connecting...' : 'Connect'}
