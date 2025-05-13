@@ -393,3 +393,33 @@ header.bg-dark p {
   display: block;
   padding: 0; /* Reset padding if needed */
 }
+/* --- Visibility Fix for Card Header Buttons --- */
+/* Ensure buttons in card headers are fully visible by default */
+.card-header .btn {
+  opacity: 1 !important; /* Use !important to override potential conflicting styles */
+}
+/* --- Visibility Fix for Card Header Outline Buttons --- */
+/* Give outline buttons in card headers a visible border by default */
+.card-header .btn-outline-primary {
+  border-color: var(--primary-color);
+}
+.card-header .btn-outline-secondary {
+  border-color: var(--secondary-color);
+}
+.card-header .btn-outline-danger {
+  border-color: var(--danger-color);
+}
+
+/* Optional: Slightly adjust hover for these specific buttons if needed */
+.card-header .btn-outline-primary:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+.card-header .btn-outline-secondary:hover {
+  background-color: var(--secondary-color);
+  color: white;
+}
+.card-header .btn-outline-danger:hover {
+  background-color: var(--danger-color);
+  color: white;
+}
