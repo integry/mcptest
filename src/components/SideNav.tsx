@@ -1,5 +1,7 @@
 import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
+import { getSpaceUrl } from '../utils/urlUtils';
 
 interface SideNavProps {
   activeView: 'inspector' | 'spaces';
@@ -30,6 +32,12 @@ const SideNav: React.FC<SideNavProps> = ({
   const [showCreateInput, setShowCreateInput] = React.useState(false);
   const [draggedSpaceId, setDraggedSpaceId] = React.useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
+  const navigate = useNavigate();
+
+  const handleInspectorClick = () => {
+    setActiveView('inspector');
+    navigate('/');
+  };
 
   const handleCreateClick = () => {
     setShowCreateInput(true);
@@ -145,17 +153,13 @@ const SideNav: React.FC<SideNavProps> = ({
   return (
     <nav className="nav flex-column">
       {/* Inspector Link */}
-      <a
+      <Link
+        to="/"
         className={`nav-link ${activeView === 'inspector' ? 'active fw-bold' : ''}`}
-        href="#"
-        onClick={(e) => {
-          e.preventDefault();
-          setActiveView('inspector');
-        }}
-        style={{ cursor: 'pointer' }}
+        onClick={handleInspectorClick}
       >
         <i className="bi bi-search me-2"></i> Inspector
-      </a>
+      </Link>
 
       {/* Spaces Header */}
       <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
@@ -180,16 +184,13 @@ const SideNav: React.FC<SideNavProps> = ({
             onDragLeave={handleSpaceDragLeave}
             onDrop={(e) => handleSpaceDrop(e, index)}
           >
-            <a
+            <Link
+              to={getSpaceUrl(space.name)}
               className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'spaces' ? 'active fw-bold' : ''}`}
-              href="#"
               draggable
               onDragStart={(e) => handleSpaceDragStart(e, space.id)}
               onDragEnd={handleSpaceDragEnd}
-              onClick={(e) => {
-                e.preventDefault();
-                handleSelectSpace(space.id);
-              }}
+              onClick={() => handleSelectSpace(space.id)}
               style={{ 
                 cursor: 'move',
                 opacity: draggedSpaceId === space.id ? 0.5 : 1,
@@ -199,7 +200,7 @@ const SideNav: React.FC<SideNavProps> = ({
             >
               {renderHealthIndicator(space.id)}
               {space.name} ({space.cards.length})
-            </a>
+            </Link>
           </li>
         ))}
       </ul>

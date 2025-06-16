@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 // Import Components
 import Header from './components/Header';
@@ -28,6 +29,7 @@ import {
 
 // Import Utils
 import { parseUriTemplateArgs } from './utils/uriUtils';
+import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath } from './utils/urlUtils';
 
 // Constants for localStorage keys
 const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
@@ -90,6 +92,10 @@ function App() {
   const [activeView, setActiveView] = useState<'inspector' | 'spaces'>('inspector');
   const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
+
+  // Router hooks
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // State for call history
   const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadData(TOOL_HISTORY_KEY, {}));
@@ -158,6 +164,26 @@ function App() {
   useEffect(() => {
     saveData(SPACES_KEY, spaces);
   }, [spaces]);
+
+  // Handle URL routing
+  useEffect(() => {
+    const slug = extractSlugFromPath(location.pathname);
+    
+    if (slug) {
+      // We're on a space URL like /space/space-title
+      const space = findSpaceBySlug(spaces, slug);
+      if (space) {
+        setActiveView('spaces');
+        setSelectedSpaceId(space.id);
+      } else {
+        // Space not found, redirect to home
+        navigate('/', { replace: true });
+      }
+    } else if (location.pathname === '/') {
+      // We're on the home page
+      setActiveView('inspector');
+    }
+  }, [location.pathname, spaces, navigate]);
 
   // Wrapper function to handle resource access and save history
   const handleAccessResource = () => {
@@ -302,25 +328,48 @@ function App() {
     setSpaces(prev => [...prev, newSpace]);
     setSelectedSpaceId(newSpace.id); // Select the new space
     setActiveView('spaces'); // Switch to spaces view
+    navigate(getSpaceUrl(newSpace.name)); // Navigate to new space URL
   };
 
   const handleSelectSpace = (id: string) => {
-    setSelectedSpaceId(id);
-    setActiveView('spaces'); // Ensure spaces view is active when selecting a space
+    const space = spaces.find(s => s.id === id);
+    if (space) {
+      setSelectedSpaceId(id);
+      setActiveView('spaces'); // Ensure spaces view is active when selecting a space
+      navigate(getSpaceUrl(space.name));
+    }
   };
 
   const handleUpdateSpace = (id: string, updatedData: Partial<Omit<Space, 'id'>>) => {
-    setSpaces(prev => prev.map(space => space.id === id ? { ...space, ...updatedData } : space));
+    setSpaces(prev => prev.map(space => {
+      if (space.id === id) {
+        const updatedSpace = { ...space, ...updatedData };
+        // If we're updating the currently selected space and the name changed, update URL
+        if (selectedSpaceId === id && updatedData.name && updatedData.name !== space.name) {
+          navigate(getSpaceUrl(updatedData.name), { replace: true });
+        }
+        return updatedSpace;
+      }
+      return space;
+    }));
   };
 
   const handleDeleteSpace = (id: string) => {
+    const deletedSpace = spaces.find(s => s.id === id);
     setSpaces(prev => prev.filter(space => space.id !== id));
-    // If the deleted space was selected, select the first available space or default
+    
+    // If the deleted space was selected, handle navigation
     if (selectedSpaceId === id) {
-      setSelectedSpaceId(spaces.find(s => s.id !== id)?.id || 'default');
-      // If no spaces left besides the one being deleted, switch to inspector? Or handle empty state?
-      if (spaces.length <= 1) {
-          setActiveView('inspector'); // Or show an empty spaces view
+      const remainingSpaces = spaces.filter(s => s.id !== id);
+      if (remainingSpaces.length > 0) {
+        // Select the first remaining space
+        const firstSpace = remainingSpaces[0];
+        setSelectedSpaceId(firstSpace.id);
+        navigate(getSpaceUrl(firstSpace.name));
+      } else {
+        // No spaces left, go to inspector
+        setActiveView('inspector');
+        navigate('/');
       }
     }
   };
