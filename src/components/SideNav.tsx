@@ -40,6 +40,8 @@ const SideNav: React.FC<SideNavProps> = ({
   const handleInspectorClick = () => {
     setActiveView('inspector');
     navigate('/');
+    // Close mobile menu if open
+    document.body.classList.remove('menu-open');
   };
 
   const handleCreateClick = () => {
@@ -233,7 +235,11 @@ const SideNav: React.FC<SideNavProps> = ({
               draggable
               onDragStart={(e) => handleSpaceDragStart(e, space.id)}
               onDragEnd={handleSpaceDragEnd}
-              onClick={() => handleSelectSpace(space.id)}
+              onClick={() => {
+                handleSelectSpace(space.id);
+                // Close mobile menu if open
+                document.body.classList.remove('menu-open');
+              }}
               style={{ 
                 cursor: 'move',
                 opacity: draggedSpaceId === space.id ? 0.5 : 1,

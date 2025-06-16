@@ -673,11 +673,50 @@ function App() {
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">
+      {/* Mobile Menu Toggle */}
+      <button 
+        className="mobile-menu-toggle"
+        onClick={() => document.body.classList.toggle('menu-open')}
+        aria-label="Toggle navigation menu"
+      >
+        <span className="hamburger"></span>
+      </button>
+
+      {/* Mobile Sidebar Overlay */}
+      <div 
+        className="mobile-sidebar-overlay"
+        onClick={() => document.body.classList.remove('menu-open')}
+      ></div>
+
+      {/* Mobile Sidebar */}
+      <div className="mobile-sidebar">
+        <button 
+          className="mobile-close-btn"
+          onClick={() => document.body.classList.remove('menu-open')}
+          aria-label="Close navigation menu"
+        >
+          ×
+        </button>
+        <SideNav
+          activeView={activeView}
+          setActiveView={setActiveView}
+          spaces={spaces}
+          selectedSpaceId={selectedSpaceId}
+          handleSelectSpace={handleSelectSpace}
+          handleCreateSpace={handleCreateSpace}
+          handleReorderSpaces={handleReorderSpaces}
+          getSpaceHealthStatus={getSpaceHealthStatus}
+          getSpaceHealthColor={getSpaceHealthColor}
+          performAllSpacesHealthCheck={performAllSpacesHealthCheck}
+          onMoveCard={handleMoveCard}
+        />
+      </div>
+
       <Header />
 
       <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
-        {/* Side Navigation */}
-        <div className="col-auto bg-light border-end p-2" style={{ width: '250px', overflowY: 'auto' }}>
+        {/* Desktop Side Navigation */}
+        <div className="desktop-sidebar col-auto bg-light border-end p-2" style={{ width: '250px', overflowY: 'auto' }}>
           <SideNav
             activeView={activeView}
             setActiveView={setActiveView}
@@ -694,9 +733,9 @@ function App() {
         </div>
 
         {/* Main Panel (Inspector or Spaces) */}
-        <div className="col overflow-auto p-3">
+        <div className="main-content col overflow-auto p-3">
           {activeView === 'inspector' && (
-            <div className="row">
+            <div className="inspector-layout row">
               {/* Left Panel */}
               <div className="col-md-4">
                 <ConnectionPanel
