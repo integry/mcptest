@@ -427,6 +427,41 @@ header.bg-dark p {
   display: block;
   padding: 0; /* Reset padding if needed */
 }
+
+/* Drag & Drop Styles */
+.drag-over {
+  border: 2px dashed var(--primary-color) !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border-radius: var(--border-radius);
+}
+
+.drag-over .card {
+  opacity: 0.8;
+}
+
+/* Drag Handle Styles */
+.drag-handle {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+/* Card Header Drag Styles */
+.card-header[draggable="true"] {
+  user-select: none;
+}
+
+.card-header[draggable="true"]:hover {
+  background-color: rgba(var(--primary-color), 0.05);
+  transition: background-color 0.2s ease;
+}
+
+.card-header[draggable="true"]:active {
+  background-color: rgba(var(--primary-color), 0.1);
+}
 /* --- Visibility Fix for Card Header Buttons --- */
 /* Ensure buttons in card headers are fully visible by default */
 .card-header .btn {

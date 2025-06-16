@@ -9,6 +9,9 @@ interface SpaceCardComponentProps {
   onUpdateCard: (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => void;
   onDeleteCard: (spaceId: string, cardId: string) => void;
   onExecuteCard: (spaceId: string, cardId: string) => void; // Add execute handler prop
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  isDragging: boolean;
 }
 
 const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
@@ -17,6 +20,9 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   onUpdateCard,
   onDeleteCard,
   onExecuteCard, // Destructure execute handler
+  onDragStart,
+  onDragEnd,
+  isDragging,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(card.title);
@@ -78,27 +84,44 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   return (
     <div className="card h-100">
         {/* Card Header */}
-        <div className="card-header d-flex justify-content-between align-items-center">
-          {isEditingTitle ? (
-            <div className="input-group input-group-sm flex-grow-1 me-2">
-              <input
-                type="text"
-                className="form-control form-control-sm"
-                value={editedTitle}
-                onChange={handleTitleChange}
-                onKeyDown={handleTitleInputKeyDown}
-                autoFocus
-              />
-              <button className="btn btn-outline-success btn-sm" type="button" onClick={handleTitleEditSave} title="Save Title">
-                <i className="bi bi-check-lg"></i>
-              </button>
-              <button className="btn btn-outline-secondary btn-sm" type="button" onClick={handleTitleEditCancel} title="Cancel Edit">
-                <i className="bi bi-x-lg"></i>
-              </button>
-            </div>
-          ) : (
-            <h5 className="card-title mb-0 flex-grow-1 me-2" title={card.title}>{truncate(card.title, 35)}</h5>
-          )}
+        <div 
+          className="card-header d-flex justify-content-between align-items-center"
+          draggable={!isEditingTitle}
+          onDragStart={!isEditingTitle ? onDragStart : undefined}
+          onDragEnd={!isEditingTitle ? onDragEnd : undefined}
+          style={{
+            cursor: !isEditingTitle ? 'move' : 'default',
+            userSelect: 'none'
+          }}
+        >
+          <div className="d-flex align-items-center flex-grow-1">
+            {/* Drag Handle */}
+            {!isEditingTitle && (
+              <div className="drag-handle me-2" title="Drag to reorder">
+                <i className="bi bi-grip-vertical text-muted"></i>
+              </div>
+            )}
+            {isEditingTitle ? (
+              <div className="input-group input-group-sm flex-grow-1 me-2">
+                <input
+                  type="text"
+                  className="form-control form-control-sm"
+                  value={editedTitle}
+                  onChange={handleTitleChange}
+                  onKeyDown={handleTitleInputKeyDown}
+                  autoFocus
+                />
+                <button className="btn btn-outline-success btn-sm" type="button" onClick={handleTitleEditSave} title="Save Title">
+                  <i className="bi bi-check-lg"></i>
+                </button>
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={handleTitleEditCancel} title="Cancel Edit">
+                  <i className="bi bi-x-lg"></i>
+                </button>
+              </div>
+            ) : (
+              <h5 className="card-title mb-0 flex-grow-1 me-2" title={card.title}>{truncate(card.title, 35)}</h5>
+            )}
+          </div>
           <div>
             {/* Refresh Button */}
             <button
@@ -174,6 +197,8 @@ const SpacesView: React.FC<SpacesViewProps> = ({
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(space.name);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setEditedName(space.name);
@@ -216,6 +241,46 @@ const SpacesView: React.FC<SpacesViewProps> = ({
 
   const handleColumnChange = (columns: number) => {
     onUpdateSpace(space.id, { columns });
+  };
+
+  const handleDragStart = (e: React.DragEvent, cardId: string) => {
+    setDraggedCardId(cardId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', cardId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+    
+    if (!draggedCardId) return;
+    
+    const draggedIndex = space.cards.findIndex(card => card.id === draggedCardId);
+    if (draggedIndex === -1 || draggedIndex === dropIndex) return;
+    
+    // Reorder the cards array
+    const newCards = [...space.cards];
+    const [draggedCard] = newCards.splice(draggedIndex, 1);
+    newCards.splice(dropIndex, 0, draggedCard);
+    
+    // Update the space with reordered cards
+    onUpdateSpace(space.id, { cards: newCards });
+    setDraggedCardId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedCardId(null);
+    setDragOverIndex(null);
   };
 
   return (
@@ -294,7 +359,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
         <div className="alert alert-info">This space is empty. Add results from the Inspector view using the <i className="bi bi-plus-square"></i> button in the Logs panel.</div>
       ) : (
         <div className="row">
-          {space.cards.map(card => (
+          {space.cards.map((card, index) => (
             <div
               key={card.id}
               className={`mb-3 ${
@@ -303,7 +368,14 @@ const SpacesView: React.FC<SpacesViewProps> = ({
                 space.columns === 3 ? 'col-lg-4' :
                 space.columns === 4 ? 'col-xl-3 col-lg-4 col-md-6' :
                 'col-md-6' // default fallback
-              }`}
+              } ${dragOverIndex === index ? 'drag-over' : ''}`}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, index)}
+              style={{
+                opacity: draggedCardId === card.id ? 0.5 : 1,
+                transition: 'opacity 0.2s ease'
+              }}
             >
               <SpaceCardComponent
                 spaceId={space.id}
@@ -311,6 +383,9 @@ const SpacesView: React.FC<SpacesViewProps> = ({
                 onUpdateCard={onUpdateCard}
                 onDeleteCard={onDeleteCard}
                 onExecuteCard={onExecuteCard} // Pass down the handler
+                onDragStart={(e) => handleDragStart(e, card.id)}
+                onDragEnd={handleDragEnd}
+                isDragging={draggedCardId === card.id}
               />
             </div>
           ))}
