@@ -76,8 +76,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   }
 
   return (
-    <div className="col-md-6 col-lg-4 mb-3">
-      <div className="card h-100">
+    <div className="card h-100">
         {/* Card Header */}
         <div className="card-header d-flex justify-content-between align-items-center">
           {isEditingTitle ? (
@@ -150,7 +149,6 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
           )}
         </div>
       </div>
-    </div>
   );
 };
 
@@ -216,6 +214,10 @@ const SpacesView: React.FC<SpacesViewProps> = ({
     }
   };
 
+  const handleColumnChange = (columns: number) => {
+    onUpdateSpace(space.id, { columns });
+  };
+
   return (
     <div>
       {/* Space Header */}
@@ -240,9 +242,44 @@ const SpacesView: React.FC<SpacesViewProps> = ({
         ) : (
           <h2 className="mb-0">{space.name}</h2>
         )}
-        <div>
+        <div className="d-flex align-items-center gap-2">
+          {/* Column Selector */}
+          <div className="btn-group btn-group-sm" role="group" aria-label="Column count">
+            <button
+              type="button"
+              className={`btn ${(space.columns || 2) === 1 ? 'btn-primary' : 'btn-outline-primary'}`}
+              onClick={() => handleColumnChange(1)}
+              title="1 column"
+            >
+              ▌
+            </button>
+            <button
+              type="button"
+              className={`btn ${(space.columns || 2) === 2 ? 'btn-primary' : 'btn-outline-primary'}`}
+              onClick={() => handleColumnChange(2)}
+              title="2 columns"
+            >
+              ▌▌
+            </button>
+            <button
+              type="button"
+              className={`btn ${(space.columns || 2) === 3 ? 'btn-primary' : 'btn-outline-primary'}`}
+              onClick={() => handleColumnChange(3)}
+              title="3 columns"
+            >
+              ▌▌▌
+            </button>
+            <button
+              type="button"
+              className={`btn ${(space.columns || 2) === 4 ? 'btn-primary' : 'btn-outline-primary'}`}
+              onClick={() => handleColumnChange(4)}
+              title="4 columns"
+            >
+              ▌▌▌▌
+            </button>
+          </div>
           {!isEditingName && (
-            <button className="btn btn-sm btn-outline-secondary me-2" onClick={handleNameEditStart} title="Edit Space Name">
+            <button className="btn btn-sm btn-outline-secondary" onClick={handleNameEditStart} title="Edit Space Name">
               <i className="bi bi-pencil"></i>
             </button>
           )}
@@ -258,14 +295,24 @@ const SpacesView: React.FC<SpacesViewProps> = ({
       ) : (
         <div className="row">
           {space.cards.map(card => (
-            <SpaceCardComponent
+            <div
               key={card.id}
-              spaceId={space.id}
-              card={card}
-              onUpdateCard={onUpdateCard}
-              onDeleteCard={onDeleteCard}
-              onExecuteCard={onExecuteCard} // Pass down the handler
-            />
+              className={`mb-3 ${
+                space.columns === 1 ? 'col-12' :
+                space.columns === 2 ? 'col-md-6' :
+                space.columns === 3 ? 'col-lg-4' :
+                space.columns === 4 ? 'col-xl-3 col-lg-4 col-md-6' :
+                'col-md-6' // default fallback
+              }`}
+            >
+              <SpaceCardComponent
+                spaceId={space.id}
+                card={card}
+                onUpdateCard={onUpdateCard}
+                onDeleteCard={onDeleteCard}
+                onExecuteCard={onExecuteCard} // Pass down the handler
+              />
+            </div>
           ))}
         </div>
       )}

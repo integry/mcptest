@@ -57,6 +57,7 @@ export interface Space {
   id: string;
   name: string; // User editable name
   cards: SpaceCard[];
+  columns?: number; // Number of columns for card layout (1-4), default to 2
 }
 
 // --- Zod Schemas for SDK Interaction ---
