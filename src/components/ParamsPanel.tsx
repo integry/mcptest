@@ -212,7 +212,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     }
     return (
       <div className="mt-3 border-top pt-3">
-        <h6>Recent Calls:</h6>
+        <h6>Recent Calls {selectedTool ? `(${selectedTool.name})` : selectedResourceTemplate ? `(${selectedResourceTemplate.name || selectedResourceTemplate.uriTemplate})` : ''}:</h6>
         <ul className="list-group list-group-flush" style={{ maxHeight: '150px', overflowY: 'auto' }}>
           {history.map((item, index) => (
             <li key={index} className="list-group-item list-group-item-action p-2" onClick={() => onClick(item)} style={{ cursor: 'pointer', lineHeight: '1.3' }}>
@@ -251,8 +251,18 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
           {!selectedTool && !selectedPrompt && !selectedResourceTemplate && <p className="text-muted p-2">Select a tool, prompt, or resource template.</p>}
 
           {/* Render History */}
-          {selectedTool && renderHistoryList(toolHistory, handleToolHistoryClick)}
-          {selectedResourceTemplate && renderHistoryList(resourceHistory, handleResourceHistoryClick)}
+          {selectedTool && (
+            <div>
+              <div className="small text-muted">Tool: {selectedTool.name}</div>
+              {renderHistoryList(toolHistory, handleToolHistoryClick)}
+            </div>
+          )}
+          {selectedResourceTemplate && (
+            <div>
+              <div className="small text-muted">Resource: {selectedResourceTemplate.uriTemplate}</div>
+              {renderHistoryList(resourceHistory, handleResourceHistoryClick)}
+            </div>
+          )}
 
         </div>
 

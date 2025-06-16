@@ -161,7 +161,7 @@ function App() {
   // Wrapper function to handle resource access and save history
   const handleAccessResource = () => {
     if (!selectedResourceTemplate) return;
-    const uri = selectedResourceTemplate.uri;
+    const uri = selectedResourceTemplate.uriTemplate;
     accessResource(selectedResourceTemplate, resourceArgs);
 
     if (Object.keys(resourceArgs).length > 0) {
@@ -589,7 +589,7 @@ function App() {
                   handleAccessResource={handleAccessResource}
                   parseUriTemplateArgs={parseUriTemplateArgs}
                   toolHistory={toolCallHistory[selectedTool?.name as string ?? ''] || []}
-                  resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uri as string ?? ''] || []}
+                  resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uriTemplate as string ?? ''] || []}
                   setToolParams={setToolParams}
                   setResourceArgs={setResourceArgs}
                 />

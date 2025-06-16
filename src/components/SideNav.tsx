@@ -81,7 +81,7 @@ const SideNav: React.FC<SideNavProps> = ({
               }}
               style={{ cursor: 'pointer' }}
             >
-              - {space.name}
+              - {space.name} ({space.cards.length})
             </a>
           </li>
         ))}
