@@ -462,6 +462,21 @@ header.bg-dark p {
 .card-header[draggable="true"]:active {
   background-color: rgba(var(--primary-color), 0.1);
 }
+
+/* Space Drag & Drop Styles */
+.space-drag-over {
+  border-left: 3px solid var(--primary-color) !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border-radius: 0 var(--border-radius) var(--border-radius) 0;
+}
+
+.nav-item .nav-link[draggable="true"]:hover {
+  background-color: rgba(var(--primary-color), 0.05);
+}
+
+.nav-item .nav-link[draggable="true"]:active {
+  background-color: rgba(var(--primary-color), 0.1);
+}
 /* --- Visibility Fix for Card Header Buttons --- */
 /* Ensure buttons in card headers are fully visible by default */
 .card-header .btn {

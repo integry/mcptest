@@ -96,6 +96,7 @@ function App() {
   const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
 
 
+
   // --- Custom Hooks ---
   const {
     responses,
@@ -285,6 +286,7 @@ function App() {
   const isConnected = connectionStatus === 'Connected';
   const isDisconnected = connectionStatus === 'Disconnected';
 
+
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
     if (!isConnected) return;
@@ -322,6 +324,91 @@ function App() {
       }
     }
   };
+
+  const handleReorderSpaces = (reorderedSpaces: Space[]) => {
+    setSpaces(reorderedSpaces);
+  };
+
+  // --- Space Health Check Functions ---
+  const performAllSpacesHealthCheck = async () => {
+    console.log('[Health Check] Starting health check for all spaces...');
+    
+    // Execute all cards in all spaces to refresh their status
+    for (const space of spaces) {
+      if (space.cards.length > 0) {
+        console.log(`[Health Check] Checking ${space.cards.length} cards in space "${space.name}"`);
+        // Execute all cards in this space (each card connects to its own server)
+        await Promise.all(space.cards.map(card => {
+          console.log(`[Health Check] Executing card "${card.title}" on server ${card.serverUrl}`);
+          return handleExecuteCard(space.id, card.id);
+        }));
+      }
+    }
+    console.log('[Health Check] Completed health check for all spaces');
+  };
+
+  const getSpaceHealthColor = (spaceId: string): 'green' | 'orange' | 'red' | 'gray' => {
+    const space = spaces.find(s => s.id === spaceId);
+    if (!space || space.cards.length === 0) return 'gray';
+
+    // Check if any cards are currently loading
+    const hasLoadingCards = space.cards.some(card => card.loading);
+    if (hasLoadingCards) return 'gray';
+
+    // Count successful vs failed cards
+    const totalCards = space.cards.length;
+    const successfulCards = space.cards.filter(card => 
+      !card.error && card.responseData && !card.loading
+    ).length;
+    
+    const failureRate = (totalCards - successfulCards) / totalCards;
+    
+    if (failureRate === 0) return 'green';
+    if (failureRate <= 0.2) return 'orange';
+    return 'red';
+  };
+
+  const getSpaceHealthStatus = (spaceId: string) => {
+    const space = spaces.find(s => s.id === spaceId);
+    if (!space) return { loading: false, successCount: 0, totalCount: 0 };
+
+    const hasLoadingCards = space.cards.some(card => card.loading);
+    const totalCount = space.cards.length;
+    const successCount = space.cards.filter(card => 
+      !card.error && card.responseData && !card.loading
+    ).length;
+
+    return {
+      loading: hasLoadingCards,
+      successCount,
+      totalCount
+    };
+  };
+
+  // Preload health checks on page load (cards connect to their own servers)
+  useEffect(() => {
+    const spacesWithCards = spaces.filter(space => space.cards.length > 0);
+    console.log('[Health Check] Page loaded, checking for spaces with cards...', {
+      totalSpaces: spaces.length,
+      spacesWithCards: spacesWithCards.length,
+      totalCards: spaces.reduce((sum, space) => sum + space.cards.length, 0)
+    });
+    
+    // Run health checks if we have any spaces with cards
+    if (spacesWithCards.length > 0) {
+      console.log('[Health Check] Found spaces with cards, starting auto health check...');
+      // Add a small delay to ensure component is fully mounted
+      setTimeout(() => {
+        performAllSpacesHealthCheck().then(() => {
+          console.log('[Health Check] Auto-preload completed successfully');
+        }).catch((error) => {
+          console.error('[Health Check] Auto-preload failed:', error);
+        });
+      }, 2000); // 2 second delay to ensure everything is ready
+    } else {
+      console.log('[Health Check] No spaces with cards found, skipping auto health check');
+    }
+  }, []); // Run once on mount
 
   // --- Add to Space Functionality ---
   const handleAddCardToSpace = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
@@ -527,6 +614,10 @@ function App() {
             selectedSpaceId={selectedSpaceId}
             handleSelectSpace={handleSelectSpace}
             handleCreateSpace={handleCreateSpace} // Pass create function
+            handleReorderSpaces={handleReorderSpaces} // Pass reorder function
+            getSpaceHealthStatus={getSpaceHealthStatus}
+            getSpaceHealthColor={getSpaceHealthColor}
+            performAllSpacesHealthCheck={performAllSpacesHealthCheck}
           />
         </div>
 
