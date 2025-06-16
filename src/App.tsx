@@ -497,6 +497,28 @@ function App() {
     console.log(`[DEBUG] Deleted card ${cardId} from space ${spaceId}`);
   };
 
+  const handleMoveCard = (sourceSpaceId: string, targetSpaceId: string, cardId: string) => {
+    setSpaces(prev => {
+      // Find the card to move
+      const sourceSpace = prev.find(space => space.id === sourceSpaceId);
+      if (!sourceSpace) return prev;
+      
+      const cardToMove = sourceSpace.cards.find(card => card.id === cardId);
+      if (!cardToMove) return prev;
+      
+      // Remove card from source space and add to target space
+      return prev.map(space => {
+        if (space.id === sourceSpaceId) {
+          return { ...space, cards: space.cards.filter(card => card.id !== cardId) };
+        } else if (space.id === targetSpaceId) {
+          return { ...space, cards: [...space.cards, cardToMove] };
+        }
+        return space;
+      });
+    });
+    console.log(`[DEBUG] Moved card ${cardId} from space ${sourceSpaceId} to space ${targetSpaceId}`);
+  };
+
   // --- Helper Function for Card State Update (Moved Outside) ---
   const updateCardState = (
       currentSpaces: Space[],
@@ -667,6 +689,7 @@ function App() {
             getSpaceHealthStatus={getSpaceHealthStatus}
             getSpaceHealthColor={getSpaceHealthColor}
             performAllSpacesHealthCheck={performAllSpacesHealthCheck}
+            onMoveCard={handleMoveCard} // Pass move card function
           />
         </div>
 
@@ -764,6 +787,7 @@ function App() {
               onUpdateCard={handleUpdateCard}
               onDeleteCard={handleDeleteCard}
               onExecuteCard={handleExecuteCard}
+              onMoveCard={handleMoveCard} // Pass move card function
             />
           )}
            {activeView === 'spaces' && !selectedSpace && (

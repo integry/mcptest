@@ -14,6 +14,7 @@ interface SideNavProps {
   getSpaceHealthStatus: (spaceId: string) => { loading: boolean, successCount: number, totalCount: number };
   getSpaceHealthColor: (spaceId: string) => 'green' | 'orange' | 'red' | 'gray';
   performAllSpacesHealthCheck: () => Promise<void>;
+  onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Function to handle card moves
 }
 
 const SideNav: React.FC<SideNavProps> = ({
@@ -27,11 +28,13 @@ const SideNav: React.FC<SideNavProps> = ({
   getSpaceHealthStatus,
   getSpaceHealthColor,
   performAllSpacesHealthCheck,
+  onMoveCard,
 }) => {
   const [newSpaceName, setNewSpaceName] = React.useState('');
   const [showCreateInput, setShowCreateInput] = React.useState(false);
   const [draggedSpaceId, setDraggedSpaceId] = React.useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
+  const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleInspectorClick = () => {
@@ -76,18 +79,57 @@ const SideNav: React.FC<SideNavProps> = ({
 
   const handleSpaceDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    
+    // Check if this is a card being dragged (from the data format)
+    try {
+      const dragData = e.dataTransfer.getData('text/plain');
+      const parsedData = JSON.parse(dragData);
+      if (parsedData.cardId && parsedData.sourceSpaceId) {
+        // This is a card being dragged
+        e.dataTransfer.dropEffect = 'move';
+        setCardDropTargetSpaceId(spaces[index].id);
+        return;
+      }
+    } catch {
+      // Not JSON, likely a space drag - continue with space reordering
+    }
+    
+    // This is a space being dragged for reordering
     e.dataTransfer.dropEffect = 'move';
     setDragOverIndex(index);
   };
 
   const handleSpaceDragLeave = () => {
     setDragOverIndex(null);
+    setCardDropTargetSpaceId(null);
   };
 
   const handleSpaceDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
     setDragOverIndex(null);
+    setCardDropTargetSpaceId(null);
     
+    // Check if this is a card being dropped
+    try {
+      const dragData = e.dataTransfer.getData('text/plain');
+      const parsedData = JSON.parse(dragData);
+      if (parsedData.cardId && parsedData.sourceSpaceId) {
+        // This is a card drop
+        const targetSpaceId = spaces[dropIndex].id;
+        const sourceSpaceId = parsedData.sourceSpaceId;
+        const cardId = parsedData.cardId;
+        
+        // Don't move if dropping on the same space
+        if (targetSpaceId !== sourceSpaceId) {
+          onMoveCard(sourceSpaceId, targetSpaceId, cardId);
+        }
+        return;
+      }
+    } catch {
+      // Not JSON, continue with space reordering
+    }
+    
+    // This is a space reordering
     if (!draggedSpaceId) return;
     
     const draggedIndex = spaces.findIndex(space => space.id === draggedSpaceId);
@@ -106,6 +148,7 @@ const SideNav: React.FC<SideNavProps> = ({
   const handleSpaceDragEnd = () => {
     setDraggedSpaceId(null);
     setDragOverIndex(null);
+    setCardDropTargetSpaceId(null);
   };
 
   const renderHealthIndicator = (spaceId: string) => {
@@ -178,7 +221,7 @@ const SideNav: React.FC<SideNavProps> = ({
       <ul className="nav flex-column ms-3">
         {spaces.map((space, index) => (
           <li 
-            className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''}`} 
+            className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`} 
             key={space.id}
             onDragOver={(e) => handleSpaceDragOver(e, index)}
             onDragLeave={handleSpaceDragLeave}

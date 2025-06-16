@@ -185,6 +185,7 @@ interface SpacesViewProps {
   onUpdateCard: (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => void;
   onDeleteCard: (spaceId: string, cardId: string) => void;
   onExecuteCard: (spaceId: string, cardId: string) => void; // Add execute handler prop
+  onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Add move handler prop
 }
 
 const SpacesView: React.FC<SpacesViewProps> = ({
@@ -194,6 +195,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
   onUpdateCard,
   onDeleteCard,
   onExecuteCard, // Destructure execute handler
+  onMoveCard, // Destructure move handler
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(space.name);
@@ -246,7 +248,11 @@ const SpacesView: React.FC<SpacesViewProps> = ({
   const handleDragStart = (e: React.DragEvent, cardId: string) => {
     setDraggedCardId(cardId);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', cardId);
+    // Store both card ID and source space ID for cross-space transfers
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      cardId: cardId,
+      sourceSpaceId: space.id
+    }));
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {

@@ -470,6 +470,13 @@ header.bg-dark p {
   border-radius: 0 var(--border-radius) var(--border-radius) 0;
 }
 
+/* Card Drop Target Styles */
+.card-drop-target {
+  border-left: 3px solid var(--success-color) !important;
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  border-radius: 0 var(--border-radius) var(--border-radius) 0;
+}
+
 .nav-item .nav-link[draggable="true"]:hover {
   background-color: rgba(var(--primary-color), 0.05);
 }
