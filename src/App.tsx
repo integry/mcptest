@@ -711,8 +711,9 @@ function App() {
                 />
               </div>
 
-              {/* Middle Panel */}
-              <div className="col-md-4">
+              {/* Right Panel - Stacked Parameters and Logs */}
+              <div className="col-md-8">
+                {/* Parameters / Arguments Panel */}
                 <ParamsPanel
                   selectedTool={selectedTool}
                   selectedResourceTemplate={selectedResourceTemplate}
@@ -733,10 +734,8 @@ function App() {
                   setToolParams={setToolParams}
                   setResourceArgs={setResourceArgs}
                 />
-              </div>
 
-              {/* Right Panel */}
-              <div className="col-md-4">
+                {/* Logs & Events Panel */}
                 <ResponsePanel
                   responses={responses}
                   autoScroll={autoScroll}
