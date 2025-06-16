@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface RecentServersPanelProps {
   recentServers: string[];
@@ -18,6 +18,7 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
   isConnected,
   isConnecting,
 }) => {
+  const [showAll, setShowAll] = useState(false);
 
   const handleReconnect = (url: string) => {
     if (isConnecting) return; // Only prevent if actively connecting
@@ -31,13 +32,23 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
     return null; // Don't render if no recent servers
   }
 
+  const INITIAL_DISPLAY_COUNT = 5;
+  const shouldShowSeeMore = recentServers.length > INITIAL_DISPLAY_COUNT;
+  const serversToShow = showAll ? recentServers : recentServers.slice(0, INITIAL_DISPLAY_COUNT);
+
   return (
     <div className="card mb-3">
       <div className="card-header">
         <h6 className="mb-0">Recent Connections</h6>
       </div>
-      <ul className="list-group list-group-flush">
-        {recentServers.map((url) => (
+      <ul 
+        className="list-group list-group-flush"
+        style={{
+          maxHeight: showAll ? '300px' : 'none',
+          overflowY: showAll ? 'auto' : 'visible'
+        }}
+      >
+        {serversToShow.map((url) => (
           <li key={url} className="list-group-item d-flex justify-content-between align-items-center p-2">
             <span
               title={url}
@@ -66,6 +77,17 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
           </li>
         ))}
       </ul>
+      {shouldShowSeeMore && !showAll && (
+        <div className="card-footer text-center p-2">
+          <button 
+            className="btn btn-sm btn-link p-0"
+            onClick={() => setShowAll(true)}
+            style={{ textDecoration: 'none' }}
+          >
+            See more...
+          </button>
+        </div>
+      )}
     </div>
   );
 };

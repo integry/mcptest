@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"; // Use correct import path
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
-const MAX_RECENT_SERVERS = 5;
+const MAX_RECENT_SERVERS = 100;
 
 // Helper to load recent servers from localStorage
 const loadRecentServers = (): string[] => {
