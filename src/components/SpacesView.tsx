@@ -128,7 +128,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   }
 
   return (
-    <div className="card h-100">
+    <div className="card" style={{ minHeight: '500px', display: 'flex', flexDirection: 'column' }}>
         {/* Card Header */}
         <div 
           className="card-header d-flex justify-content-between align-items-center"
@@ -213,7 +213,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
         </div>
 
         {/* Card Body - Response Area */}
-        <div className="card-body">
+        <div className="card-body" style={{ flex: 1, overflow: 'visible', display: 'flex', flexDirection: 'column' }}>
           {card.loading ? (
              <div className="d-flex justify-content-center align-items-center h-100">
                 <div className="spinner-border text-primary" role="status">
@@ -230,7 +230,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
         </div>
 
         {/* Card Footer - Info and Parameters */}
-        <div className="card-footer text-muted small">
+        <div className="card-footer text-muted small" style={{ maxHeight: '200px', overflow: 'auto', flexShrink: 0 }}>
           <div title={card.serverUrl}>Server: {truncate(card.serverUrl, 40)}</div>
           <div title={card.name}>{card.type === 'tool' ? 'Tool' : 'Resource'}: {truncate(card.name, 40)}</div>
           
