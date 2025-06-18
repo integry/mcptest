@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, memo, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import showdown from 'showdown';
 import { LogEntry } from '../types'; // Import the full LogEntry type
 
@@ -11,7 +11,7 @@ interface McpResponseDisplayProps {
   toolName?: string; // Optional tool name override for spaces mode
 }
 
-const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
+const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   logEntry,
   className = '',
   showTimestamp = true, // Default to showing timestamp
@@ -33,6 +33,14 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
       converter.current.setOption('tasklists', true);
     }
   }, []);
+
+  // Force re-render with state to ensure fresh processing
+  const [, forceUpdate] = useState({});
+  
+  useEffect(() => {
+    // Force a re-render when logEntry data changes
+    forceUpdate({});
+  }, [logEntry.data, logEntry.type]);
 
   let textContent = ''; // Holds the plain text representation IF HTML fails or isn't used
   let htmlContent: string | null = null; // Holds Showdown output
@@ -68,7 +76,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
              } catch { /* ignore */ }
          }
     } else if (itemType === 'request') {
-        textContent = `[SENT #${logEntry.id ?? 'N/A'}] ${logEntry.method}(${JSON.stringify(logEntry.params || {})})`;
+        textContent = `[SENT #${logEntry.id ?? 'N/A'}] ${logEntry.method}(${JSON.stringify(logEntry.params || {})}`;
         title = `Request ${logEntry.id ?? 'N/A'}`;
         entryClassName += ' text-muted';
     } else if (itemType === 'response') {
@@ -116,7 +124,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
         htmlContent = null;
     }
 
-
   } catch (e) {
       console.error("Error processing log entry data:", e);
       textContent = "[Render Error]";
@@ -131,7 +138,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
   else if (itemType === 'warning') badgeClass = 'bg-warning text-dark';
   else if (itemType === 'info' || itemType.startsWith('notification')) badgeClass = 'bg-info text-dark';
   else if (itemType === 'request' || itemType.includes('sse')) badgeClass = 'bg-light text-dark border';
-
 
   // --- Final Rendering ---
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
@@ -342,6 +348,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
       )}
     </div>
   );
-});
+};
 
 export default McpResponseDisplay;

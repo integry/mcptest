@@ -9,6 +9,7 @@ interface SpaceCardComponentProps {
   onUpdateCard: (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => void;
   onDeleteCard: (spaceId: string, cardId: string) => void;
   onExecuteCard: (spaceId: string, cardId: string) => void; // Add execute handler prop
+  onAddCard: (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => void; // Add card handler prop
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   isDragging: boolean;
@@ -20,6 +21,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   onUpdateCard,
   onDeleteCard,
   onExecuteCard, // Destructure execute handler
+  onAddCard, // Destructure add card handler
   onDragStart,
   onDragEnd,
   isDragging,
@@ -95,6 +97,24 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
     onExecuteCard(spaceId, card.id); // Call the execution handler
   };
 
+  const handleDuplicateClick = () => {
+    const duplicatedCard = {
+      title: `${card.title} (Copy)`,
+      serverUrl: card.serverUrl,
+      type: card.type,
+      name: card.name,
+      params: JSON.parse(JSON.stringify(card.params)), // Deep copy params object
+      // Copy the existing state so no refresh is needed
+      loading: false,
+      error: card.error ? JSON.parse(JSON.stringify(card.error)) : null, // Deep copy error
+      responseData: card.responseData ? JSON.parse(JSON.stringify(card.responseData)) : null, // Deep copy responseData
+      responseType: card.responseType,
+    };
+    
+    // Add the card with existing state (no refresh needed)
+    onAddCard(spaceId, duplicatedCard);
+  };
+
   const handleParamChange = (paramName: string, value: any) => {
     setEditedParams(prev => ({
       ...prev,
@@ -148,24 +168,47 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
               <h5 className="card-title mb-0 flex-grow-1 me-2" title={card.title}>{truncate(card.title, 35)}</h5>
             )}
           </div>
-          <div>
-            {/* Refresh Button */}
+          <div className="dropdown">
             <button
-              className={`btn btn-sm btn-outline-primary me-1 ${card.loading ? 'disabled' : ''}`}
-              onClick={handleRefreshClick}
-              disabled={card.loading}
-              title="Refresh Card Data"
+              className="btn btn-sm btn-outline-secondary dropdown-toggle"
+              type="button"
+              id={`cardDropdown-${card.id}`}
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              title="Card Actions"
             >
-              {card.loading ? <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> : <i className="bi bi-arrow-clockwise"></i>}
+              <i className="bi bi-three-dots"></i>
             </button>
-            {!isEditing && (
-              <button className="btn btn-sm btn-outline-secondary me-1" onClick={handleEditStart} title="Edit Card">
-                <i className="bi bi-pencil"></i>
-              </button>
-            )}
-            <button className="btn btn-sm btn-outline-danger" onClick={handleDeleteClick} title="Delete Card">
-              <i className="bi bi-trash"></i>
-            </button>
+            <ul className="dropdown-menu dropdown-menu-end" aria-labelledby={`cardDropdown-${card.id}`}>
+              <li>
+                <button
+                  className={`dropdown-item ${card.loading ? 'disabled' : ''}`}
+                  onClick={handleRefreshClick}
+                  disabled={card.loading}
+                >
+                  <i className="bi bi-arrow-clockwise me-2"></i>
+                  {card.loading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </li>
+              {!isEditing && (
+                <li>
+                  <button className="dropdown-item" onClick={handleEditStart}>
+                    <i className="bi bi-pencil me-2"></i>Edit
+                  </button>
+                </li>
+              )}
+              <li>
+                <button className="dropdown-item" onClick={handleDuplicateClick}>
+                  <i className="bi bi-copy me-2"></i>Duplicate
+                </button>
+              </li>
+              <li><hr className="dropdown-divider" /></li>
+              <li>
+                <button className="dropdown-item text-danger" onClick={handleDeleteClick}>
+                  <i className="bi bi-trash me-2"></i>Delete
+                </button>
+              </li>
+            </ul>
           </div>
         </div>
 
@@ -179,10 +222,10 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
              </div>
           ) : card.error ? (
              // Pass error info as a partial LogEntry, hide timestamp
-             <McpResponseDisplay logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
+             <McpResponseDisplay key={`${card.id}-error`} logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
           ) : (
              // Pass result info as a partial LogEntry, hide timestamp
-             <McpResponseDisplay logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
+             <McpResponseDisplay key={`${card.id}-${card.responseType}`} logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
           )}
         </div>
 
@@ -281,6 +324,7 @@ interface SpacesViewProps {
   onDeleteCard: (spaceId: string, cardId: string) => void;
   onExecuteCard: (spaceId: string, cardId: string) => void; // Add execute handler prop
   onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Add move handler prop
+  onAddCard: (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => void; // Add card handler prop
 }
 
 const SpacesView: React.FC<SpacesViewProps> = ({
@@ -291,6 +335,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
   onDeleteCard,
   onExecuteCard, // Destructure execute handler
   onMoveCard, // Destructure move handler
+  onAddCard, // Destructure add card handler
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(space.name);
@@ -484,6 +529,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
                 onUpdateCard={onUpdateCard}
                 onDeleteCard={onDeleteCard}
                 onExecuteCard={onExecuteCard} // Pass down the handler
+                onAddCard={onAddCard} // Pass down the add card handler
                 onDragStart={(e) => handleDragStart(e, card.id)}
                 onDragEnd={handleDragEnd}
                 isDragging={draggedCardId === card.id}

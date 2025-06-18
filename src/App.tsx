@@ -833,6 +833,7 @@ function App() {
               onDeleteCard={handleDeleteCard}
               onExecuteCard={handleExecuteCard}
               onMoveCard={handleMoveCard} // Pass move card function
+              onAddCard={handleAddCardToSpace} // Pass add card function
             />
           )}
            {activeView === 'spaces' && !selectedSpace && (
