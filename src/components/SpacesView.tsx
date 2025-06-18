@@ -24,8 +24,9 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   onDragEnd,
   isDragging,
 }) => {
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(card.title);
+  const [editedParams, setEditedParams] = useState<Record<string, any>>(card.params);
 
   // Remove automatic execution on mount. Execution will be triggered by refresh button.
   // useEffect(() => {
@@ -35,34 +36,52 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
 
   useEffect(() => {
     setEditedTitle(card.title);
-    setIsEditingTitle(false);
-  }, [card.title]); // Update title if it changes externally
+    setEditedParams(card.params);
+    setIsEditing(false);
+  }, [card.title, card.params]); // Update title and params if they change externally
 
-  const handleTitleEditStart = () => {
-    setIsEditingTitle(true);
+  const handleEditStart = () => {
+    setIsEditing(true);
   };
 
   const handleTitleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setEditedTitle(event.target.value);
   };
 
-  const handleTitleEditSave = () => {
-    if (editedTitle.trim() && editedTitle !== card.title) {
-      onUpdateCard(spaceId, card.id, { title: editedTitle.trim() });
+  const handleEditSave = () => {
+    try {
+      const updates: Partial<Omit<SpaceCard, 'id'>> = {};
+      
+      if (editedTitle.trim() && editedTitle !== card.title) {
+        updates.title = editedTitle.trim();
+      }
+      
+      if (JSON.stringify(editedParams) !== JSON.stringify(card.params)) {
+        updates.params = editedParams;
+      }
+      
+      if (Object.keys(updates).length > 0) {
+        onUpdateCard(spaceId, card.id, updates);
+      }
+      
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving card changes:', error);
+      alert('Error saving changes. Please check the format.');
     }
-    setIsEditingTitle(false);
   };
 
-  const handleTitleEditCancel = () => {
+  const handleEditCancel = () => {
     setEditedTitle(card.title);
-    setIsEditingTitle(false);
+    setEditedParams(card.params);
+    setIsEditing(false);
   };
 
   const handleTitleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
-      handleTitleEditSave();
+      handleEditSave();
     } else if (event.key === 'Escape') {
-      handleTitleEditCancel();
+      handleEditCancel();
     }
   };
 
@@ -76,6 +95,13 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
     onExecuteCard(spaceId, card.id); // Call the execution handler
   };
 
+  const handleParamChange = (paramName: string, value: any) => {
+    setEditedParams(prev => ({
+      ...prev,
+      [paramName]: value
+    }));
+  };
+
   // Helper to truncate long strings
   const truncate = (str: string, len: number) => {
     return str.length > len ? str.substring(0, len - 3) + '...' : str;
@@ -86,22 +112,22 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
         {/* Card Header */}
         <div 
           className="card-header d-flex justify-content-between align-items-center"
-          draggable={!isEditingTitle}
-          onDragStart={!isEditingTitle ? onDragStart : undefined}
-          onDragEnd={!isEditingTitle ? onDragEnd : undefined}
+          draggable={!isEditing}
+          onDragStart={!isEditing ? onDragStart : undefined}
+          onDragEnd={!isEditing ? onDragEnd : undefined}
           style={{
-            cursor: !isEditingTitle ? 'move' : 'default',
+            cursor: !isEditing ? 'move' : 'default',
             userSelect: 'none'
           }}
         >
           <div className="d-flex align-items-center flex-grow-1">
             {/* Drag Handle */}
-            {!isEditingTitle && (
+            {!isEditing && (
               <div className="drag-handle me-2" title="Drag to reorder">
                 <i className="bi bi-grip-vertical text-muted"></i>
               </div>
             )}
-            {isEditingTitle ? (
+            {isEditing ? (
               <div className="input-group input-group-sm flex-grow-1 me-2">
                 <input
                   type="text"
@@ -111,10 +137,10 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
                   onKeyDown={handleTitleInputKeyDown}
                   autoFocus
                 />
-                <button className="btn btn-outline-success btn-sm" type="button" onClick={handleTitleEditSave} title="Save Title">
+                <button className="btn btn-outline-success btn-sm" type="button" onClick={handleEditSave} title="Save Changes">
                   <i className="bi bi-check-lg"></i>
                 </button>
-                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={handleTitleEditCancel} title="Cancel Edit">
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={handleEditCancel} title="Cancel Edit">
                   <i className="bi bi-x-lg"></i>
                 </button>
               </div>
@@ -132,8 +158,8 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
             >
               {card.loading ? <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> : <i className="bi bi-arrow-clockwise"></i>}
             </button>
-            {!isEditingTitle && (
-              <button className="btn btn-sm btn-outline-secondary me-1" onClick={handleTitleEditStart} title="Edit Card Title">
+            {!isEditing && (
+              <button className="btn btn-sm btn-outline-secondary me-1" onClick={handleEditStart} title="Edit Card">
                 <i className="bi bi-pencil"></i>
               </button>
             )}
@@ -160,16 +186,85 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
           )}
         </div>
 
-        {/* Card Footer - Fixed Info */}
+        {/* Card Footer - Info and Parameters */}
         <div className="card-footer text-muted small">
           <div title={card.serverUrl}>Server: {truncate(card.serverUrl, 40)}</div>
           <div title={card.name}>{card.type === 'tool' ? 'Tool' : 'Resource'}: {truncate(card.name, 40)}</div>
-          <h6>Parameters:</h6>
-          {Object.keys(card.params).length > 0 ? (
-             <pre className="p-1 rounded small m-0"><code>{JSON.stringify(card.params, null, 1)}</code></pre>
-          ) : (
-             <p className="text-muted small m-0">No parameters.</p>
-          )}
+          
+          {/* Parameters Section */}
+          <div className="mt-2">
+            <h6 className="mb-1">Parameters:</h6>
+            
+            {isEditing ? (
+              <div className="params-editor">
+                {Object.keys(editedParams).length > 0 ? (
+                  Object.entries(editedParams).map(([key, value]) => (
+                    <div key={key} className="param-edit-row mb-2 p-2 border rounded">
+                      <div className="mb-1">
+                        <strong className="param-name">{key}</strong>
+                      </div>
+                      <div className="param-value-editor">
+                        {typeof value === 'boolean' ? (
+                          <div className="form-check">
+                            <input
+                              type="checkbox"
+                              className="form-check-input"
+                              checked={value}
+                              onChange={(e) => handleParamChange(key, e.target.checked)}
+                            />
+                            <label className="form-check-label small">
+                              {value ? 'true' : 'false'}
+                            </label>
+                          </div>
+                        ) : typeof value === 'number' ? (
+                          <input
+                            type="number"
+                            className="form-control form-control-sm"
+                            value={value}
+                            onChange={(e) => handleParamChange(key, e.target.value === '' ? undefined : Number(e.target.value))}
+                          />
+                        ) : typeof value === 'string' && value.length > 50 ? (
+                          <textarea
+                            className="form-control form-control-sm"
+                            rows={3}
+                            value={value}
+                            onChange={(e) => handleParamChange(key, e.target.value)}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            value={typeof value === 'string' ? value : JSON.stringify(value)}
+                            onChange={(e) => {
+                              let newValue = e.target.value;
+                              // Try to parse as JSON for complex values, fallback to string
+                              try {
+                                if (newValue.startsWith('{') || newValue.startsWith('[') || newValue === 'null' || newValue === 'true' || newValue === 'false') {
+                                  newValue = JSON.parse(newValue);
+                                }
+                              } catch {
+                                // Keep as string if not valid JSON
+                              }
+                              handleParamChange(key, newValue);
+                            }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted small m-0">No parameters.</p>
+                )}
+              </div>
+            ) : (
+              // Display mode
+              Object.keys(card.params).length > 0 ? (
+                <pre className="p-1 rounded small m-0"><code>{JSON.stringify(card.params, null, 1)}</code></pre>
+              ) : (
+                <p className="text-muted small m-0">No parameters.</p>
+              )
+            )}
+          </div>
         </div>
       </div>
   );
