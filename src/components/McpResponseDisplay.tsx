@@ -149,7 +149,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
       <div className={`${entryClassName} spaces-mode`} title={title}>
         {/* Content section with expand/collapse and fullscreen controls */}
         <div className="tool-result-content">
-          <div className="d-flex align-items-center justify-content-end mb-2">
+          <div className="d-flex align-items-center justify-content-end">
             <div className="btn-group" role="group">
               <button
                 className="btn btn-sm btn-outline-secondary"
@@ -295,8 +295,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
             className="event-data-wrapper border rounded p-2"
             style={{ 
               maxHeight: isContentExpanded ? 'none' : '300px', 
-              overflowY: isContentExpanded ? 'visible' : 'auto',
-              backgroundColor: '#fafafa'
+              overflowY: isContentExpanded ? 'visible' : 'auto'
             }}
           >
             {htmlContent !== null ? (

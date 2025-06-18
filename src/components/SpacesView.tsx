@@ -153,10 +153,10 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
              </div>
           ) : card.error ? (
              // Pass error info as a partial LogEntry, hide timestamp
-             <McpResponseDisplay logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="bg-light p-2 rounded small" spacesMode={true} toolName={card.name} />
+             <McpResponseDisplay logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
           ) : (
              // Pass result info as a partial LogEntry, hide timestamp
-             <McpResponseDisplay logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} showTimestamp={false} className="bg-light p-2 rounded small" spacesMode={true} toolName={card.name} />
+             <McpResponseDisplay logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
           )}
         </div>
 
@@ -166,7 +166,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
           <div title={card.name}>{card.type === 'tool' ? 'Tool' : 'Resource'}: {truncate(card.name, 40)}</div>
           <h6>Parameters:</h6>
           {Object.keys(card.params).length > 0 ? (
-             <pre className="bg-light p-1 rounded small m-0"><code>{JSON.stringify(card.params, null, 1)}</code></pre>
+             <pre className="p-1 rounded small m-0"><code>{JSON.stringify(card.params, null, 1)}</code></pre>
           ) : (
              <p className="text-muted small m-0">No parameters.</p>
           )}

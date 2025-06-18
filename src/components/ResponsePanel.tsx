@@ -129,7 +129,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
           id="responseArea"
           ref={responseAreaRef}
           className="response-area p-2"
-          style={{ height: 'calc(100vh - 250px)', overflowY: 'auto', backgroundColor: '#f8f9fa', border: '1px solid #dee2e6', fontFamily: 'monospace', fontSize: '0.85rem' }}
+          style={{ height: 'calc(100vh - 250px)', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.85rem' }}
         >
           {responses.length === 0 ? (
             <p className="text-muted p-2">Logs and events will appear here...</p>
