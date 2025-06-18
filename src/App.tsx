@@ -737,7 +737,7 @@ function App() {
           {activeView === 'inspector' && (
             <div className="inspector-layout row">
               {/* Left Panel */}
-              <div className="col-md-4">
+              <div className={isConnected ? "col-md-4" : "col-12"}>
                 <ConnectionPanel
                   serverUrl={serverUrl}
                   setServerUrl={setServerUrl}
@@ -757,62 +757,68 @@ function App() {
                    isConnected={isConnected}
                    isConnecting={isConnecting}
                 />
-                <UnifiedPanel
-                  tools={tools}
-                  resources={resources}
-                  prompts={prompts}
-                  selectedTool={selectedTool}
-                  selectedResourceTemplate={selectedResourceTemplate}
-                  selectedPrompt={selectedPrompt}
-                  handleSelectTool={handleSelectTool}
-                  handleSelectResourceTemplate={handleSelectResourceTemplate}
-                  handleSelectPrompt={handleSelectPrompt}
-                  connectionStatus={connectionStatus}
-                  onRefreshLists={handleRefreshAllLists}
-                  isConnecting={isConnecting}
-                />
+                {isConnected && (
+                  <UnifiedPanel
+                    tools={tools}
+                    resources={resources}
+                    prompts={prompts}
+                    selectedTool={selectedTool}
+                    selectedResourceTemplate={selectedResourceTemplate}
+                    selectedPrompt={selectedPrompt}
+                    handleSelectTool={handleSelectTool}
+                    handleSelectResourceTemplate={handleSelectResourceTemplate}
+                    handleSelectPrompt={handleSelectPrompt}
+                    connectionStatus={connectionStatus}
+                    onRefreshLists={handleRefreshAllLists}
+                    isConnecting={isConnecting}
+                  />
+                )}
               </div>
 
               {/* Right Panel - Stacked Parameters and Logs */}
               <div className="col-md-8">
-                {/* Parameters / Arguments Panel */}
-                <ParamsPanel
-                  selectedTool={selectedTool}
-                  selectedResourceTemplate={selectedResourceTemplate}
-                  selectedPrompt={selectedPrompt}
-                  toolParams={toolParams}
-                  resourceArgs={resourceArgs}
-                  promptParams={promptParams}
-                  isConnected={isConnected}
-                  isConnecting={isConnecting}
-                  handleParamChange={handleParamChangeWrapper}
-                  handleResourceArgChange={handleResourceArgChange}
-                  handleExecuteTool={handleExecuteToolWrapper}
-                  handleExecutePrompt={handleExecutePromptWrapper}
-                  handleAccessResource={handleAccessResource}
-                  parseUriTemplateArgs={parseUriTemplateArgs}
-                  toolHistory={toolCallHistory[selectedTool?.name as string ?? ''] || []}
-                  resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uriTemplate as string ?? ''] || []}
-                  setToolParams={setToolParams}
-                  setResourceArgs={setResourceArgs}
-                />
+                {isConnected && (
+                  <>
+                    {/* Parameters / Arguments Panel */}
+                    <ParamsPanel
+                      selectedTool={selectedTool}
+                      selectedResourceTemplate={selectedResourceTemplate}
+                      selectedPrompt={selectedPrompt}
+                      toolParams={toolParams}
+                      resourceArgs={resourceArgs}
+                      promptParams={promptParams}
+                      isConnected={isConnected}
+                      isConnecting={isConnecting}
+                      handleParamChange={handleParamChangeWrapper}
+                      handleResourceArgChange={handleResourceArgChange}
+                      handleExecuteTool={handleExecuteToolWrapper}
+                      handleExecutePrompt={handleExecutePromptWrapper}
+                      handleAccessResource={handleAccessResource}
+                      parseUriTemplateArgs={parseUriTemplateArgs}
+                      toolHistory={toolCallHistory[selectedTool?.name as string ?? ''] || []}
+                      resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uriTemplate as string ?? ''] || []}
+                      setToolParams={setToolParams}
+                      setResourceArgs={setResourceArgs}
+                    />
 
-                {/* Logs & Events Panel */}
-                <ResponsePanel
-                  responses={responses}
-                  autoScroll={autoScroll}
-                  setAutoScroll={setAutoScroll}
-                  handleClearResponse={handleClearResponse}
-                  isConnected={isConnected}
-                  // Pass necessary props for "Add to Space"
-                  spaces={spaces}
-                  onAddCardToSpace={handleAddCardToSpace}
-                  serverUrl={serverUrl} // Pass current server URL
-                  selectedTool={selectedTool} // Pass selected tool
-                  selectedResourceTemplate={selectedResourceTemplate} // Pass selected resource
-                  toolParams={toolParams} // Pass current tool params
-                  resourceArgs={resourceArgs} // Pass current resource args
-                />
+                    {/* Logs & Events Panel */}
+                    <ResponsePanel
+                      responses={responses}
+                      autoScroll={autoScroll}
+                      setAutoScroll={setAutoScroll}
+                      handleClearResponse={handleClearResponse}
+                      isConnected={isConnected}
+                      // Pass necessary props for "Add to Space"
+                      spaces={spaces}
+                      onAddCardToSpace={handleAddCardToSpace}
+                      serverUrl={serverUrl} // Pass current server URL
+                      selectedTool={selectedTool} // Pass selected tool
+                      selectedResourceTemplate={selectedResourceTemplate} // Pass selected resource
+                      toolParams={toolParams} // Pass current tool params
+                      resourceArgs={resourceArgs} // Pass current resource args
+                    />
+                  </>
+                )}
               </div>
             </div>
           )}
