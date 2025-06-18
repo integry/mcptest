@@ -93,7 +93,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
           aria-expanded="false"
           title="Add to Space..."
         >
-           <i className="bi bi-plus-square"></i>
+           <i className="bi bi-plus-square me-1"></i>Add to space
         </button>
         <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`}>
           {spaces.map(space => (
@@ -134,18 +134,36 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
           {responses.length === 0 ? (
             <p className="text-muted p-2">Logs and events will appear here...</p>
           ) : (
-            responses.map((item, index) => { // Added index back for key
-              const isResultType = item.type.toLowerCase() === 'tool_result' || item.type.toLowerCase() === 'resource_result';
-              return (
-                // Use d-flex on the outer div to align McpResponseDisplay and the button
-                <div key={`${item.timestamp}-${index}`} className="d-flex align-items-start mb-1">
-                   {/* McpResponseDisplay takes up available space */}
-                   <McpResponseDisplay logEntry={item} showTimestamp={true} className="flex-grow-1" />
-                   {/* Conditionally render the AddToSpaceControl, it will align to the right */}
-                   {isResultType && <AddToSpaceControl logEntry={item} />}
-                </div>
-              );
-            })
+            responses
+              .filter((item, index) => {
+                // Filter out info messages that are directly before or after tool_result/resource_result
+                const isInfo = item.type.toLowerCase() === 'info';
+                if (!isInfo) return true;
+                
+                // Check if this info message is related to tool execution
+                const infoText = typeof item.data === 'string' ? item.data : JSON.stringify(item.data);
+                const isToolInfo = infoText.includes('Executing tool:') || 
+                                   infoText.includes('Tool "') || 
+                                   infoText.includes('--- End Tool');
+                
+                if (!isToolInfo) return true;
+                
+                // Filter out tool-related info messages
+                return false;
+              })
+              .map((item, index) => {
+                const isResultType = item.type.toLowerCase() === 'tool_result' || item.type.toLowerCase() === 'resource_result';
+                return (
+                  <div key={`${item.timestamp}-${index}`} className="mb-2">
+                     <McpResponseDisplay 
+                       logEntry={item} 
+                       showTimestamp={true} 
+                       className="" 
+                       addToSpaceButton={isResultType ? <AddToSpaceControl logEntry={item} /> : undefined}
+                     />
+                  </div>
+                );
+              })
           )}
         </div>
       </div>

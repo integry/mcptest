@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, memo } from 'react';
+import React, { useRef, useEffect, memo, useState } from 'react';
 import showdown from 'showdown';
 import { LogEntry } from '../types'; // Import the full LogEntry type
 
@@ -6,12 +6,14 @@ interface McpResponseDisplayProps {
   logEntry: Partial<LogEntry>; // Accept partial LogEntry, as cards won't have all fields
   className?: string; // Optional additional class names
   showTimestamp?: boolean; // Add flag to control timestamp visibility
+  addToSpaceButton?: React.ReactNode; // Optional add to space button
 }
 
 const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
   logEntry,
   className = '',
   showTimestamp = true, // Default to showing timestamp
+  addToSpaceButton,
 }) => {
   const converter = useRef<showdown.Converter | null>(null);
 
@@ -128,24 +130,143 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
 
 
   // --- Final Rendering ---
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  const toolName = logEntry.callContext?.name || 'Unknown Tool';
+  const serverUrl = logEntry.callContext?.serverUrl || 'Unknown Server';
+  const params = logEntry.callContext?.params || {};
+  const executionTime = logEntry.callContext?.executionTime || 'Unknown';
+  
   return (
     <div className={entryClassName} title={title}>
-      <div className="d-flex align-items-start"> {/* Flex container for timestamp and content */}
-        {showTimestamp && logEntry.timestamp && <span className="event-timestamp me-2">{logEntry.timestamp}</span>}
-        <div className="event-data-wrapper flex-grow-1">
+      {/* First row: timestamp, type badge with tool name, details button, and add to space button */}
+      <div className="d-flex align-items-center justify-content-between mb-1">
+        <div className="d-flex align-items-center">
+          {showTimestamp && logEntry.timestamp && <span className="event-timestamp me-2">{logEntry.timestamp}</span>}
+          {logEntry.type && (
+            <div className="d-flex align-items-center">
+              <span className={`badge rounded-pill ${badgeClass} small me-2`}>{logEntry.type}</span>
+              {isResultType && (
+                <>
+                  <span className="text-muted small me-2">{toolName}</span>
+                  <button
+                    className="btn btn-sm btn-outline-secondary me-2"
+                    style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                    onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                    title="Show/hide details"
+                  >
+                    <i className={`bi bi-chevron-${isDetailsExpanded ? 'up' : 'down'}`}></i>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        {addToSpaceButton && (
+          <div className="flex-shrink-0">
+            {addToSpaceButton}
+          </div>
+        )}
+      </div>
+      
+      {/* Details section (expandable for tool results) */}
+      {isResultType && isDetailsExpanded && (
+        <div className="details-section mb-2 p-2 bg-light border rounded small">
+          <div className="row g-2">
+            <div className="col-md-6">
+              <strong>Server:</strong> <span className="text-muted">{serverUrl}</span>
+            </div>
+            <div className="col-md-6">
+              <strong>Execution Time:</strong> <span className="text-muted">{executionTime}</span>
+            </div>
+            {Object.keys(params).length > 0 && (
+              <div className="col-12">
+                <strong>Parameters:</strong>
+                <pre className="mt-1 mb-0 p-2 bg-white border rounded" style={{ fontSize: '0.7rem' }}>
+                  {JSON.stringify(params, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Content section with expand/collapse and fullscreen for tool results */}
+      {isResultType ? (
+        <div className="tool-result-content">
+          <div className="d-flex align-items-center justify-content-between mb-1">
+            <span className="small text-muted">Output</span>
+            <div className="btn-group" role="group">
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                onClick={() => setIsContentExpanded(!isContentExpanded)}
+                title={isContentExpanded ? 'Collapse' : 'Expand'}
+              >
+                <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
+              </button>
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                onClick={() => setIsFullscreen(true)}
+                title="Fullscreen"
+              >
+                <i className="bi bi-arrows-fullscreen"></i>
+              </button>
+            </div>
+          </div>
+          <div 
+            className="event-data-wrapper border rounded p-2"
+            style={{ 
+              maxHeight: isContentExpanded ? 'none' : '300px', 
+              overflowY: isContentExpanded ? 'visible' : 'auto',
+              backgroundColor: '#fafafa'
+            }}
+          >
+            {htmlContent !== null ? (
+              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+            ) : (
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Regular content for non-result types */
+        <div className="event-data-wrapper">
           {htmlContent !== null ? (
             <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
           ) : (
             <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
           )}
         </div>
-      </div>
-       {/* Display Type Badge Below Content */}
-       {logEntry.type && (
-         <div className="mt-1">
-            <span className={`badge rounded-pill ${badgeClass} small`}>{logEntry.type}</span>
-         </div>
-       )}
+      )}
+      
+      {/* Fullscreen modal */}
+      {isFullscreen && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+          <div className="modal-dialog modal-fullscreen">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">{toolName} - Output</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setIsFullscreen(false)}
+                ></button>
+              </div>
+              <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                {htmlContent !== null ? (
+                  <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+                ) : (
+                  <pre style={{ whiteSpace: 'pre-wrap' }}>{textContent}</pre>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
