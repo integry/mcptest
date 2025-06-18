@@ -4,8 +4,8 @@ import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 
 interface SideNavProps {
-  activeView: 'inspector' | 'spaces';
-  setActiveView: (view: 'inspector' | 'spaces') => void;
+  activeView: 'inspector' | 'spaces' | 'docs';
+  setActiveView: (view: 'inspector' | 'spaces' | 'docs') => void;
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -279,6 +279,49 @@ const SideNav: React.FC<SideNavProps> = ({
             <i className="bi bi-plus-lg me-1"></i> Create New Space
           </button>
         )}
+      </div>
+
+      {/* Documentation Section */}
+      <div className="mt-4">
+        <h6 className="nav-link text-muted mb-1">Documentation</h6>
+        <ul className="nav flex-column ms-3">
+          <li className="nav-item">
+            <Link
+              to="/docs/what-is-mcp"
+              className="nav-link py-1"
+              onClick={() => document.body.classList.remove('menu-open')}
+            >
+              <i className="bi bi-info-circle me-2"></i> What is MCP?
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link
+              to="/docs/remote-vs-local"
+              className="nav-link py-1"
+              onClick={() => document.body.classList.remove('menu-open')}
+            >
+              <i className="bi bi-cloud-arrow-up me-2"></i> Remote vs Local
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link
+              to="/docs/testing-guide"
+              className="nav-link py-1"
+              onClick={() => document.body.classList.remove('menu-open')}
+            >
+              <i className="bi bi-check-circle me-2"></i> Testing Guide
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link
+              to="/docs/troubleshooting"
+              className="nav-link py-1"
+              onClick={() => document.body.classList.remove('menu-open')}
+            >
+              <i className="bi bi-wrench me-2"></i> Troubleshooting
+            </Link>
+          </li>
+        </ul>
       </div>
     </nav>
   );

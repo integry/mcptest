@@ -11,6 +11,11 @@ import ResponsePanel from './components/ResponsePanel';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
 import SpacesView from './components/SpacesView'; // New
+// Documentation components
+import WhatIsMcp from './components/docs/WhatIsMcp';
+import RemoteVsLocal from './components/docs/RemoteVsLocal';
+import TestingGuide from './components/docs/TestingGuide';
+import Troubleshooting from './components/docs/Troubleshooting';
 
 // Import Hooks
 import { useLogEntries } from './hooks/useLogEntries';
@@ -89,7 +94,8 @@ function App() {
   const isUnmounting = useRef(false);
 
   // --- State ---
-  const [activeView, setActiveView] = useState<'inspector' | 'spaces'>('inspector');
+  const [activeView, setActiveView] = useState<'inspector' | 'spaces' | 'docs'>('inspector');
+  const [activeDocPage, setActiveDocPage] = useState<string | null>(null);
   const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
 
@@ -167,7 +173,17 @@ function App() {
 
   // Handle URL routing
   useEffect(() => {
-    const slug = extractSlugFromPath(location.pathname);
+    const path = location.pathname;
+    
+    // Check for documentation routes
+    if (path.startsWith('/docs/')) {
+      const docPage = path.replace('/docs/', '');
+      setActiveView('docs');
+      setActiveDocPage(docPage);
+      return;
+    }
+    
+    const slug = extractSlugFromPath(path);
     
     if (slug) {
       // We're on a space URL like /space/space-title
@@ -175,13 +191,15 @@ function App() {
       if (space) {
         setActiveView('spaces');
         setSelectedSpaceId(space.id);
+        setActiveDocPage(null);
       } else {
         // Space not found, redirect to home
         navigate('/', { replace: true });
       }
-    } else if (location.pathname === '/') {
+    } else if (path === '/') {
       // We're on the home page
       setActiveView('inspector');
+      setActiveDocPage(null);
     }
   }, [location.pathname, spaces, navigate]);
 
@@ -732,8 +750,21 @@ function App() {
           />
         </div>
 
-        {/* Main Panel (Inspector or Spaces) */}
+        {/* Main Panel (Inspector, Spaces, or Docs) */}
         <div className="main-content col overflow-auto p-3">
+          {activeView === 'docs' && (
+            <>
+              {activeDocPage === 'what-is-mcp' && <WhatIsMcp />}
+              {activeDocPage === 'remote-vs-local' && <RemoteVsLocal />}
+              {activeDocPage === 'testing-guide' && <TestingGuide />}
+              {activeDocPage === 'troubleshooting' && <Troubleshooting />}
+              {!['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting'].includes(activeDocPage || '') && (
+                <div className="alert alert-warning">
+                  Documentation page not found. Please select a page from the navigation.
+                </div>
+              )}
+            </>
+          )}
           {activeView === 'inspector' && (
             <div className="inspector-layout row">
               {/* Left Panel */}
