@@ -144,7 +144,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
         </div>
 
         {/* Card Body - Response Area */}
-        <div className="card-body" style={{ overflowY: 'auto', maxHeight: '300px' }}>
+        <div className="card-body">
           {card.loading ? (
              <div className="d-flex justify-content-center align-items-center h-100">
                 <div className="spinner-border text-primary" role="status">
@@ -153,10 +153,10 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
              </div>
           ) : card.error ? (
              // Pass error info as a partial LogEntry, hide timestamp
-             <McpResponseDisplay logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="bg-light p-2 rounded small" />
+             <McpResponseDisplay logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="bg-light p-2 rounded small" spacesMode={true} toolName={card.name} />
           ) : (
              // Pass result info as a partial LogEntry, hide timestamp
-             <McpResponseDisplay logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} showTimestamp={false} className="bg-light p-2 rounded small" />
+             <McpResponseDisplay logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} showTimestamp={false} className="bg-light p-2 rounded small" spacesMode={true} toolName={card.name} />
           )}
         </div>
 

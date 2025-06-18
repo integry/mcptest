@@ -7,6 +7,8 @@ interface McpResponseDisplayProps {
   className?: string; // Optional additional class names
   showTimestamp?: boolean; // Add flag to control timestamp visibility
   addToSpaceButton?: React.ReactNode; // Optional add to space button
+  spacesMode?: boolean; // Flag to enable spaces mode (simplified display)
+  toolName?: string; // Optional tool name override for spaces mode
 }
 
 const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
@@ -14,6 +16,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
   className = '',
   showTimestamp = true, // Default to showing timestamp
   addToSpaceButton,
+  spacesMode = false, // Default to regular mode
+  toolName: propToolName,
 }) => {
   const converter = useRef<showdown.Converter | null>(null);
 
@@ -134,11 +138,81 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = memo(({
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   
-  const toolName = logEntry.callContext?.name || 'Unknown Tool';
+  const toolName = propToolName || logEntry.callContext?.name || 'Unknown Tool';
   const serverUrl = logEntry.callContext?.serverUrl || 'Unknown Server';
   const params = logEntry.callContext?.params || {};
   const executionTime = logEntry.callContext?.executionTime || 'Unknown';
   
+  // Spaces mode: simplified display with only content and controls
+  if (spacesMode && isResultType) {
+    return (
+      <div className={`${entryClassName} spaces-mode`} title={title}>
+        {/* Content section with expand/collapse and fullscreen controls */}
+        <div className="tool-result-content">
+          <div className="d-flex align-items-center justify-content-end mb-2">
+            <div className="btn-group" role="group">
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                onClick={() => setIsContentExpanded(!isContentExpanded)}
+                title={isContentExpanded ? 'Collapse' : 'Expand'}
+              >
+                <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
+              </button>
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                onClick={() => setIsFullscreen(true)}
+                title="Fullscreen"
+              >
+                <i className="bi bi-arrows-fullscreen"></i>
+              </button>
+            </div>
+          </div>
+          <div 
+            className="event-data-wrapper"
+            style={{ 
+              maxHeight: isContentExpanded ? 'none' : '300px', 
+              overflowY: isContentExpanded ? 'visible' : 'auto'
+            }}
+          >
+            {htmlContent !== null ? (
+              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+            ) : (
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
+            )}
+          </div>
+        </div>
+        
+        {/* Fullscreen modal */}
+        {isFullscreen && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+            <div className="modal-dialog modal-fullscreen">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">{toolName} - Output</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => setIsFullscreen(false)}
+                  ></button>
+                </div>
+                <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                  {htmlContent !== null ? (
+                    <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+                  ) : (
+                    <pre style={{ whiteSpace: 'pre-wrap' }}>{textContent}</pre>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // Regular mode: full display with timestamps, badges, details, etc.
   return (
     <div className={entryClassName} title={title}>
       {/* First row: timestamp, type badge with tool name, details button, and add to space button */}

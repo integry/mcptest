@@ -715,3 +715,17 @@ header.bg-dark p {
   font-weight: 500;
   color: var(--secondary-color) !important;
 }
+
+/* Spaces mode specific styling */
+.spaces-mode .tool-result-content .btn-group {
+  opacity: 0.8;
+}
+
+.spaces-mode .tool-result-content:hover .btn-group {
+  opacity: 1;
+}
+
+/* Remove extra padding/margins in spaces mode */
+.spaces-mode .tool-result-content {
+  margin-top: 0;
+}
