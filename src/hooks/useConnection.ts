@@ -2,6 +2,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { LogEntry, ResourceTemplate } from '../types'; // Keep ResourceTemplate for handleConnect signature
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"; // Use correct import path
+import { formatErrorForDisplay } from '../utils/errorHandling';
+import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -157,8 +159,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       const client = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
       clientRef.current = client;
 
-      // Instantiate the StreamableHTTPClientTransport (stateless mode)
-      const transport = new StreamableHTTPClientTransport(connectUrl);
+      // Instantiate the CORS-aware transport (stateless mode)
+      const transport = new CorsAwareStreamableHTTPTransport(connectUrl);
 
       // Optional: Setup transport listeners if needed (e.g., transport.onclose)
       // transport.onclose = () => { ... cleanupConnection(); ... };
@@ -181,7 +183,17 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
     } catch (error: any) {
       console.error('[DEBUG] handleConnect: Connection failed:', error);
-      addLogEntry({ type: 'error', data: `Connection failed: ${error.message || error}` });
+      
+      // Use enhanced error formatting
+      const errorDetails = formatErrorForDisplay(error, {
+        serverUrl: connectUrl.toString(),
+        operation: 'connection'
+      });
+      
+      addLogEntry({ 
+        type: 'error', 
+        data: `Connection failed: ${errorDetails}` 
+      });
       cleanupConnection(); // Ensure cleanup on error
     }
   }, [serverUrl, isConnecting, connectionStatus, addLogEntry, cleanupConnection]); // Removed setters

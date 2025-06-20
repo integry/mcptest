@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { LogEntry, ResourceTemplate } from '../types';
 import { parseUriTemplateArgs } from '../utils/uriUtils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import Client type
+import { formatErrorForDisplay } from '../utils/errorHandling';
 
 export const useResourceAccess = (
   client: Client | null,
@@ -78,7 +79,11 @@ export const useResourceAccess = (
 
     } catch (error: any) {
        console.error("[DEBUG] Error accessing resource via SDK:", error);
-       addLogEntry({ type: 'error', data: `Failed to access resource ${finalUri}: ${error.message}` });
+       const errorDetails = formatErrorForDisplay(error, {
+         serverUrl,
+         operation: `access resource ${finalUri}`
+       });
+       addLogEntry({ type: 'error', data: `Failed to access resource ${finalUri}: ${errorDetails}` });
     }
 
   }, [client, addLogEntry, serverUrl]); // Update dependencies

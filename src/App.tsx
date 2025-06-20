@@ -25,6 +25,8 @@ import { useResourceAccess } from './hooks/useResourceAccess';
 // Import MCP SDK Components needed for stateless execution
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { formatErrorForDisplay } from './utils/errorHandling';
+import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
 
 // Import Types
 import {
@@ -593,7 +595,7 @@ function App() {
         }
 
         tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
-        const transport = new StreamableHTTPClientTransport(connectUrl);
+        const transport = new CorsAwareStreamableHTTPTransport(connectUrl);
 
         console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
         await tempClient.connect(transport);
@@ -637,7 +639,14 @@ function App() {
         } else {
           // --- Non-retryable error or max retries reached: Set final error state and break ---
           console.error(`[Execute Card ${cardId}] Unrecoverable error or max retries reached.`);
-          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: err.message || err, responseData: null, responseType: 'error' }));
+          
+          // Use enhanced error formatting for better debugging information
+          const errorDetails = formatErrorForDisplay(err, {
+            serverUrl: card.serverUrl,
+            operation: card.type === 'tool' ? `execute tool ${card.name}` : `access resource ${card.name}`
+          });
+          
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorDetails, responseData: null, responseType: 'error' }));
           break; // Exit the loop
         }
       } finally {
@@ -648,7 +657,11 @@ function App() {
                   console.error(`[Execute Card ${cardId} Attempt ${attempt}] Error closing temporary client:`, closeError);
                   // Avoid overwriting a more specific execution error with a close error
                   if (!lastError) {
-                     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: `Failed to close temp client: ${closeError}` }));
+                     const closeErrorDetails = formatErrorForDisplay(closeError, {
+                       serverUrl: card.serverUrl,
+                       operation: 'close temporary client'
+                     });
+                     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: `Failed to close temp client: ${closeErrorDetails}` }));
                   }
               }
               tempClient = null; // Nullify ref after closing attempt

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { LogEntry, ResourceTemplate, SelectedTool, Prompt, SelectedPrompt } from '../types'; // Added Prompt, SelectedPrompt
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import SDK Client type
 import { ListPromptsResultSchema, GetPromptResultSchema } from '@modelcontextprotocol/sdk/types.js'; // Corrected schema import
+import { formatErrorForDisplay } from '../utils/errorHandling';
 
 export const useToolsAndResources = (
   client: Client | null,
@@ -37,7 +38,11 @@ export const useToolsAndResources = (
       addLogEntry({ type: 'info', data: `Fetched ${toolsArray.length} tools.` });
     } catch (error: any) {
       console.error("[DEBUG] Error listing tools via SDK:", error);
-      addLogEntry({ type: 'error', data: `Failed to list tools: ${error.message}` });
+      const errorDetails = formatErrorForDisplay(error, {
+        serverUrl,
+        operation: 'list tools'
+      });
+      addLogEntry({ type: 'error', data: `Failed to list tools: ${errorDetails}` });
       setTools([]); // Clear tools on error
     }
   }, [client, connectionStatus, addLogEntry, setTools]); // Use client
@@ -60,7 +65,11 @@ export const useToolsAndResources = (
       addLogEntry({ type: 'info', data: `Fetched ${templatesArray.length} resource templates.` });
     } catch (error: any) {
       console.error("[DEBUG] Error listing resource templates via SDK:", error);
-      addLogEntry({ type: 'error', data: `Failed to list resource templates: ${error.message}` });
+      const errorDetails = formatErrorForDisplay(error, {
+        serverUrl,
+        operation: 'list resource templates'
+      });
+      addLogEntry({ type: 'error', data: `Failed to list resource templates: ${errorDetails}` });
       setResources([]); // Clear resources on error
     }
   }, [client, connectionStatus, addLogEntry, setResources]); // Use client
@@ -121,7 +130,11 @@ export const useToolsAndResources = (
 
     } catch (error: any) {
       console.error(`[DEBUG] Error executing tool "${selectedTool.name}" via SDK:`, error);
-      addLogEntry({ type: 'error', data: `Failed to execute tool ${selectedTool.name}: ${error.message}` });
+      const errorDetails = formatErrorForDisplay(error, {
+        serverUrl,
+        operation: `execute tool ${selectedTool.name}`
+      });
+      addLogEntry({ type: 'error', data: `Failed to execute tool ${selectedTool.name}: ${errorDetails}` });
     }
   }, [client, selectedTool, toolParams, connectionStatus, addLogEntry, serverUrl]); // Add serverUrl dependency
 
@@ -145,7 +158,11 @@ export const useToolsAndResources = (
       addLogEntry({ type: 'info', data: `Fetched ${promptsArray.length} prompts.` });
     } catch (error: any) {
       console.error("[DEBUG] Error listing prompts via SDK:", error);
-      addLogEntry({ type: 'error', data: `Failed to list prompts: ${error.message || error}` });
+      const errorDetails = formatErrorForDisplay(error, {
+        serverUrl,
+        operation: 'list prompts'
+      });
+      addLogEntry({ type: 'error', data: `Failed to list prompts: ${errorDetails}` });
       setPrompts([]); // Clear prompts on error
     }
   }, [client, connectionStatus, addLogEntry, setPrompts]);
@@ -197,7 +214,11 @@ export const useToolsAndResources = (
 
     } catch (error: any) {
       console.error(`[DEBUG] Error executing prompt "${selectedPrompt.name}" via SDK:`, error);
-      addLogEntry({ type: 'error', data: `Failed to execute prompt ${selectedPrompt.name}: ${error.message || error}` });
+      const errorDetails = formatErrorForDisplay(error, {
+        serverUrl,
+        operation: `execute prompt ${selectedPrompt.name}`
+      });
+      addLogEntry({ type: 'error', data: `Failed to execute prompt ${selectedPrompt.name}: ${errorDetails}` });
     }
   }, [client, selectedPrompt, promptParams, connectionStatus, addLogEntry]);
 

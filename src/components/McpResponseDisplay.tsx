@@ -93,7 +93,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
         textContent = dataString;
     } else if (itemType === 'error') {
         entryClassName += ' error-message';
-        textContent = `[ERROR] ${dataString}`;
+        // Show the error message as-is without [ERROR] prefix
+        textContent = dataString;
         title = 'Error';
     } else if (itemType === 'warning') {
         entryClassName += ' warning-message';
