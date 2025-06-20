@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Tool, ResourceTemplate, Prompt, SelectedTool, SelectedPrompt } from '../types'; // Assuming Tool type exists or adjust as needed
+import { Tool, Resource, ResourceTemplate, Prompt, SelectedTool, SelectedPrompt } from '../types'; // Added Resource type
 import './UnifiedPanel.css'; // We'll create this CSS file next
 
 interface UnifiedPanelProps {
   tools: Tool[];
-  resources: ResourceTemplate[];
+  resources: Resource[]; // Actual resources
+  resourceTemplates: ResourceTemplate[]; // Resource templates
   prompts: Prompt[];
   selectedTool: SelectedTool | null;
   selectedResourceTemplate: ResourceTemplate | null;
@@ -27,6 +28,7 @@ const truncateDescription = (text: string | undefined, length = 50): string => {
 export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   tools,
   resources,
+  resourceTemplates,
   prompts,
   selectedTool,
   selectedResourceTemplate,
@@ -42,6 +44,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   const [expandedCategories, setExpandedCategories] = useState({
     tools: true,
     resources: true,
+    resourceTemplates: true,
     prompts: true,
   });
 
@@ -50,7 +53,12 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   const filteredItems = useMemo(() => {
     const lowerCaseFilter = filterText.toLowerCase();
     if (!lowerCaseFilter) {
-      return { filteredTools: tools, filteredResources: resources, filteredPrompts: prompts };
+      return { 
+        filteredTools: tools, 
+        filteredResources: resources, 
+        filteredResourceTemplates: resourceTemplates, 
+        filteredPrompts: prompts 
+      };
     }
 
     const filteredTools = tools.filter(
@@ -60,8 +68,15 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     );
     const filteredResources = resources.filter(
       (res) =>
-        res.uriTemplate.toLowerCase().includes(lowerCaseFilter) ||
+        res.name?.toLowerCase().includes(lowerCaseFilter) ||
+        res.uri?.toLowerCase().includes(lowerCaseFilter) ||
         res.description?.toLowerCase().includes(lowerCaseFilter)
+    );
+    const filteredResourceTemplates = resourceTemplates.filter(
+      (template) =>
+        template.name?.toLowerCase().includes(lowerCaseFilter) ||
+        template.uriTemplate?.toLowerCase().includes(lowerCaseFilter) ||
+        template.description?.toLowerCase().includes(lowerCaseFilter)
     );
     const filteredPrompts = prompts.filter(
       (prompt) =>
@@ -69,10 +84,22 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         prompt.description?.toLowerCase().includes(lowerCaseFilter)
     );
 
-    return { filteredTools, filteredResources, filteredPrompts };
-  }, [filterText, tools, resources, prompts]);
+    return { filteredTools, filteredResources, filteredResourceTemplates, filteredPrompts };
+  }, [filterText, tools, resources, resourceTemplates, prompts]);
 
-  const { filteredTools, filteredResources, filteredPrompts } = filteredItems;
+  const { filteredTools, filteredResources, filteredResourceTemplates, filteredPrompts } = filteredItems;
+
+  // Separate supported and unsupported capabilities
+  // Use original arrays (not filtered) to determine if a capability is supported
+  const allCapabilities = [
+    { key: 'tools', items: filteredTools, originalItems: tools, label: 'Tools' },
+    { key: 'resources', items: filteredResources, originalItems: resources, label: 'Resources' },
+    { key: 'resourceTemplates', items: filteredResourceTemplates, originalItems: resourceTemplates, label: 'Resource Templates' },
+    { key: 'prompts', items: filteredPrompts, originalItems: prompts, label: 'Prompts' }
+  ];
+
+  const supportedCapabilities = allCapabilities.filter(cap => cap.originalItems.length > 0);
+  const unsupportedCapabilities = allCapabilities.filter(cap => cap.originalItems.length === 0 && isConnected);
 
   const toggleCategory = (category: keyof typeof expandedCategories) => {
     setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
@@ -101,80 +128,97 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         disabled={!isConnected}
       />
       <div className="tree-view">
-        {/* Tools Section */}
-        <details open={expandedCategories.tools} onToggle={(e) => setExpandedCategories(prev => ({...prev, tools: (e.target as HTMLDetailsElement).open}))}>
-          <summary onClick={(e) => { e.preventDefault(); toggleCategory('tools'); }}>
-            <span className={`category-toggle ${expandedCategories.tools ? 'expanded' : ''}`}>▶</span>
-            Tools ({filteredTools.length})
-          </summary>
-          {expandedCategories.tools && (
-            <ul>
-              {filteredTools.map((tool) => (
-                <li
-                  key={tool.name}
-                  className={`tree-item ${selectedTool?.name === tool.name ? 'selected' : ''}`}
-                  onClick={() => isConnected && handleSelectTool(tool)}
-                  title={tool.description}
-                >
-                  <div className="item-name">{tool.name}</div>
-                  <div className="item-uri">{truncateDescription(tool.description)}</div>
-                </li>
-              ))}
-               {isConnected && filteredTools.length === 0 && <li><small>No tools match filter.</small></li>}
-               {!isConnected && <li><small>Connect to server to see tools.</small></li>}
-            </ul>
-          )}
-        </details>
+        {/* Supported Capabilities - Only show sections with items */}
+        {supportedCapabilities.map((capability) => {
+          const { key, items, label } = capability;
+          const isExpanded = expandedCategories[key as keyof typeof expandedCategories];
+          
+          return (
+            <details key={key} open={isExpanded} onToggle={(e) => setExpandedCategories(prev => ({...prev, [key]: (e.target as HTMLDetailsElement).open}))}>
+              <summary onClick={(e) => { e.preventDefault(); toggleCategory(key as keyof typeof expandedCategories); }}>
+                <span className={`category-toggle ${isExpanded ? 'expanded' : ''}`}>▶</span>
+                {label} ({items.length})
+              </summary>
+              {isExpanded && (
+                <ul>
+                  {key === 'tools' && items.map((tool: any) => (
+                    <li
+                      key={tool.name}
+                      className={`tree-item ${selectedTool?.name === tool.name ? 'selected' : ''}`}
+                      onClick={() => isConnected && handleSelectTool(tool)}
+                      title={tool.description}
+                    >
+                      <div className="item-name">{tool.name}</div>
+                      <div className="item-uri">{truncateDescription(tool.description)}</div>
+                    </li>
+                  ))}
+                  {key === 'resources' && items.map((res: any) => (
+                    <li
+                      key={res.uri || res.name}
+                      className={`tree-item`}
+                      title={res.description}
+                    >
+                      <div className="item-name">{res.name}</div>
+                      <div className="item-uri">{res.uri && truncateDescription(res.uri)} {res.description && truncateDescription(res.description)}</div>
+                    </li>
+                  ))}
+                  {key === 'resourceTemplates' && items.map((template: any) => (
+                    <li
+                      key={template.uriTemplate}
+                      className={`tree-item ${selectedResourceTemplate?.uriTemplate === template.uriTemplate ? 'selected' : ''}`}
+                      onClick={() => isConnected && handleSelectResourceTemplate(template)}
+                      title={template.description}
+                    >
+                      <div className="item-name">{template.name}</div>
+                      <div className="item-uri">{truncateDescription(template.uriTemplate)} {template.description && truncateDescription(template.description)}</div>
+                    </li>
+                  ))}
+                  {key === 'prompts' && items.map((prompt: any) => (
+                    <li
+                      key={prompt.name}
+                      className={`tree-item ${selectedPrompt?.name === prompt.name ? 'selected' : ''}`}
+                      onClick={() => isConnected && handleSelectPrompt(prompt)}
+                      title={prompt.description}
+                    >
+                      <div className="item-name">{prompt.name}</div>
+                      <div className="item-uri">{truncateDescription(prompt.description)}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          );
+        })}
 
-        {/* Resources Section */}
-         <details open={expandedCategories.resources} onToggle={(e) => setExpandedCategories(prev => ({...prev, resources: (e.target as HTMLDetailsElement).open}))}>
-          <summary onClick={(e) => { e.preventDefault(); toggleCategory('resources'); }}>
-            <span className={`category-toggle ${expandedCategories.resources ? 'expanded' : ''}`}>▶</span>
-            Resources ({filteredResources.length})
-          </summary>
-          {expandedCategories.resources && (
-            <ul>
-              {filteredResources.map((res) => (
-                <li
-                  key={res.uriTemplate}
-                  className={`tree-item ${selectedResourceTemplate?.uriTemplate === res.uriTemplate ? 'selected' : ''}`}
-                  onClick={() => isConnected && handleSelectResourceTemplate(res)}
-                   title={res.description}
-                >
-                  <div className="item-name">{res.uriTemplate}</div>
-                  <div className="item-uri">{truncateDescription(res.description)}</div>
-                </li>
-              ))}
-               {isConnected && filteredResources.length === 0 && <li><small>No resources match filter.</small></li>}
-               {!isConnected && <li><small>Connect to server to see resources.</small></li>}
-            </ul>
-          )}
-        </details>
+        {/* Show message if no supported capabilities when connected */}
+        {isConnected && supportedCapabilities.length === 0 && (
+          <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            No supported capabilities found
+          </div>
+        )}
 
-        {/* Prompts Section */}
-         <details open={expandedCategories.prompts} onToggle={(e) => setExpandedCategories(prev => ({...prev, prompts: (e.target as HTMLDetailsElement).open}))}>
-          <summary onClick={(e) => { e.preventDefault(); toggleCategory('prompts'); }}>
-            <span className={`category-toggle ${expandedCategories.prompts ? 'expanded' : ''}`}>▶</span>
-            Prompts ({filteredPrompts.length})
-          </summary>
-          {expandedCategories.prompts && (
-            <ul>
-              {filteredPrompts.map((prompt) => (
-                <li
-                  key={prompt.name}
-                  className={`tree-item ${selectedPrompt?.name === prompt.name ? 'selected' : ''}`}
-                  onClick={() => isConnected && handleSelectPrompt(prompt)}
-                   title={prompt.description}
-                >
-                  <div className="item-name">{prompt.name}</div>
-                  <div className="item-uri">{truncateDescription(prompt.description)}</div>
-                </li>
+        {/* Show message when not connected */}
+        {!isConnected && (
+          <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Connect to server to see capabilities
+          </div>
+        )}
+
+        {/* Unsupported Methods Section */}
+        {unsupportedCapabilities.length > 0 && (
+          <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+            <h4 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>
+              Unsupported Methods
+            </h4>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', paddingLeft: '0.5rem' }}>
+              {unsupportedCapabilities.map((cap, index) => (
+                <span key={cap.key}>
+                  {cap.label}{index < unsupportedCapabilities.length - 1 ? ', ' : ''}
+                </span>
               ))}
-               {isConnected && filteredPrompts.length === 0 && <li><small>No prompts match filter.</small></li>}
-               {!isConnected && <li><small>Connect to server to see prompts.</small></li>}
-            </ul>
-          )}
-        </details>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

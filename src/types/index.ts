@@ -2,6 +2,7 @@ import { z } from 'zod'; // Assuming Zod is available or used by the SDK
 import {
   // Attempt to import potential schemas. Adjust names if needed.
   ToolSchema,
+  ResourceSchema,
   ResourceTemplateSchema,
   PromptSchema
 } from '@modelcontextprotocol/sdk/types.js';
@@ -28,6 +29,7 @@ export interface LogEntry {
 // Infer types from SDK Schemas if they exist
 // Fallback to 'any' if schemas are not found or inference fails
 export type Tool = typeof ToolSchema extends z.ZodTypeAny ? z.infer<typeof ToolSchema> : any;
+export type Resource = typeof ResourceSchema extends z.ZodTypeAny ? z.infer<typeof ResourceSchema> : any;
 export type ResourceTemplate = typeof ResourceTemplateSchema extends z.ZodTypeAny ? z.infer<typeof ResourceTemplateSchema> : any;
 export type Prompt = typeof PromptSchema extends z.ZodTypeAny ? z.infer<typeof PromptSchema> : any;
 

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { LogEntry, ResourceTemplate, SelectedTool, Prompt, SelectedPrompt } from '../types'; // Added Prompt, SelectedPrompt
+import { LogEntry, Resource, ResourceTemplate, SelectedTool, Prompt, SelectedPrompt } from '../types'; // Added Resource
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import SDK Client type
 import { ListPromptsResultSchema, GetPromptResultSchema } from '@modelcontextprotocol/sdk/types.js'; // Corrected schema import
 import { formatErrorForDisplay } from '../utils/errorHandling';
@@ -11,7 +11,8 @@ export const useToolsAndResources = (
   serverUrl: string // Add serverUrl prop
 ) => {
   const [tools, setTools] = useState<any[]>([]);
-  const [resources, setResources] = useState<ResourceTemplate[]>([]);
+  const [resources, setResources] = useState<Resource[]>([]); // Actual resource instances
+  const [resourceTemplates, setResourceTemplates] = useState<ResourceTemplate[]>([]); // Resource templates
   const [prompts, setPrompts] = useState<Prompt[]>([]); // State for prompts
   const [selectedTool, setSelectedTool] = useState<SelectedTool | null>(null);
   const [selectedResourceTemplate, setSelectedResourceTemplate] = useState<ResourceTemplate | null>(null);
@@ -48,10 +49,10 @@ export const useToolsAndResources = (
   }, [client, connectionStatus, addLogEntry, setTools]); // Use client
 
 
-  // Refactored handleListResources using SDK Client
-  const handleListResources = useCallback(async () => {
+  // List resource templates using SDK Client
+  const handleListResourceTemplates = useCallback(async () => {
      if (!client || connectionStatus !== 'Connected') {
-       addLogEntry({ type: 'warning', data: 'Cannot list resources: Not connected.' });
+       addLogEntry({ type: 'warning', data: 'Cannot list resource templates: Not connected.' });
        return;
      }
     console.log("[DEBUG] Listing resource templates via SDK client...");
@@ -61,7 +62,7 @@ export const useToolsAndResources = (
       console.log("[DEBUG] SDK Client: Fetched resource templates:", resourcesList);
       // Extract the array from the result object
       const templatesArray = resourcesList?.resourceTemplates || [];
-      setResources(templatesArray);
+      setResourceTemplates(templatesArray);
       addLogEntry({ type: 'info', data: `Fetched ${templatesArray.length} resource templates.` });
     } catch (error: any) {
       console.error("[DEBUG] Error listing resource templates via SDK:", error);
@@ -70,6 +71,32 @@ export const useToolsAndResources = (
         operation: 'list resource templates'
       });
       addLogEntry({ type: 'error', data: `Failed to list resource templates: ${errorDetails}` });
+      setResourceTemplates([]); // Clear resource templates on error
+    }
+  }, [client, connectionStatus, addLogEntry, setResourceTemplates]); // Use client
+
+  // List actual resources using SDK Client
+  const handleListResources = useCallback(async () => {
+     if (!client || connectionStatus !== 'Connected') {
+       addLogEntry({ type: 'warning', data: 'Cannot list resources: Not connected.' });
+       return;
+     }
+    console.log("[DEBUG] Listing resources via SDK client...");
+    addLogEntry({ type: 'info', data: 'Listing resources...' });
+    try {
+      const resourcesList = await client.listResources();
+      console.log("[DEBUG] SDK Client: Fetched resources:", resourcesList);
+      // Extract the array from the result object
+      const resourcesArray = resourcesList?.resources || [];
+      setResources(resourcesArray);
+      addLogEntry({ type: 'info', data: `Fetched ${resourcesArray.length} resources.` });
+    } catch (error: any) {
+      console.error("[DEBUG] Error listing resources via SDK:", error);
+      const errorDetails = formatErrorForDisplay(error, {
+        serverUrl,
+        operation: 'list resources'
+      });
+      addLogEntry({ type: 'error', data: `Failed to list resources: ${errorDetails}` });
       setResources([]); // Clear resources on error
     }
   }, [client, connectionStatus, addLogEntry, setResources]); // Use client
@@ -295,8 +322,10 @@ export const useToolsAndResources = (
   return {
     tools,
     setTools, // Keep existing tool state/handlers
-    resources, // Keep existing resource state/handlers
+    resources, // Actual resource instances
     setResources,
+    resourceTemplates, // Resource templates
+    setResourceTemplates,
     prompts, // Add prompt state
     setPrompts,
     selectedTool,
@@ -312,7 +341,8 @@ export const useToolsAndResources = (
     promptParams, // Add prompt params state
     setPromptParams,
     handleListTools,
-    handleListResources,
+    handleListResources, // Lists actual resources
+    handleListResourceTemplates, // Lists resource templates
     handleListPrompts, // Add list prompts handler
     handleExecuteTool,
     handleExecutePrompt, // Add execute prompt handler

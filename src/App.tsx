@@ -138,6 +138,8 @@ function App() {
     setTools,
     resources,
     setResources,
+    resourceTemplates,
+    setResourceTemplates,
     selectedTool,
     setSelectedTool,
     selectedResourceTemplate,
@@ -154,6 +156,7 @@ function App() {
     setPromptParams,
     handleListTools,
     handleListResources,
+    handleListResourceTemplates,
     handleListPrompts,
     handleExecuteTool,
     handleExecutePrompt,
@@ -316,16 +319,30 @@ function App() {
     };
   }, [connectionStatus, addLogEntry, handleDisconnect]);
 
+  // Effect to clear capabilities when connection status changes
+  useEffect(() => {
+    if (connectionStatus === 'Connecting' || connectionStatus === 'Disconnected') {
+      clearAllCapabilities();
+    }
+  }, [connectionStatus]);
+
+  // Effect to clear capabilities when server URL changes
+  useEffect(() => {
+    clearAllCapabilities();
+    addLogEntry({ type: 'info', data: 'Server URL changed - clearing capabilities' });
+  }, [serverUrl, addLogEntry]);
+
   // Effect to automatically list items when connected
   useEffect(() => {
     if (connectionStatus === 'Connected') {
-      console.log("[DEBUG] Connection established, automatically listing tools, resources, and prompts.");
+      console.log("[DEBUG] Connection established, automatically listing tools, resources, resource templates, and prompts.");
       addLogEntry({ type: 'info', data: 'Connection established. Fetching lists...' });
       handleListTools();
       handleListResources();
+      handleListResourceTemplates();
       handleListPrompts();
     }
-  }, [connectionStatus, handleListTools, handleListResources, handleListPrompts, addLogEntry]);
+  }, [connectionStatus, handleListTools, handleListResources, handleListResourceTemplates, handleListPrompts, addLogEntry]);
 
 
   // Determine button disabled states
@@ -333,12 +350,25 @@ function App() {
   const isDisconnected = connectionStatus === 'Disconnected';
 
 
+  // Function to clear all capabilities when changing servers
+  const clearAllCapabilities = () => {
+    setTools([]);
+    setResources([]);
+    setResourceTemplates([]);
+    setPrompts([]);
+    setSelectedTool(null);
+    setSelectedResourceTemplate(null);
+    setSelectedPrompt(null);
+    console.log("[DEBUG] Cleared all capabilities for server change");
+  };
+
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
     if (!isConnected) return;
     addLogEntry({ type: 'info', data: 'Refreshing all lists...' });
     handleListTools();
     handleListResources();
+    handleListResourceTemplates();
     handleListPrompts();
   };
 
@@ -805,6 +835,7 @@ function App() {
                   <UnifiedPanel
                     tools={tools}
                     resources={resources}
+                    resourceTemplates={resourceTemplates}
                     prompts={prompts}
                     selectedTool={selectedTool}
                     selectedResourceTemplate={selectedResourceTemplate}
