@@ -53,6 +53,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
 
   // Ref for strict mode check
@@ -107,6 +108,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     urlToConnect?: string // Optional URL parameter
   ) => {
     const targetUrl = urlToConnect || serverUrl; // Use override or state URL
+
+    // Clear any previous connection error
+    setConnectionError(null);
 
     // Allow connect attempt even if already connected, but not if currently connecting or no target URL
     if (!targetUrl || isConnecting) {
@@ -190,6 +194,14 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         operation: 'connection'
       });
       
+      // Set connection error state for error card display
+      setConnectionError({
+        error: errorDetails,
+        serverUrl: connectUrl.toString(),
+        timestamp: new Date(),
+        details: error.stack || error.toString()
+      });
+      
       addLogEntry({ 
         type: 'error', 
         data: `Connection failed: ${errorDetails}` 
@@ -198,12 +210,19 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
   }, [serverUrl, isConnecting, connectionStatus, addLogEntry, cleanupConnection]); // Removed setters
 
+  // Clear connection error on successful connect
+  const clearConnectionError = useCallback(() => {
+    setConnectionError(null);
+  }, []);
+
   // Return the client instance
   return {
     serverUrl,
     setServerUrl,
     connectionStatus,
     isConnecting,
+    connectionError,
+    clearConnectionError,
     client: clientRef.current, // Expose the connected client instance
     recentServers, // Expose recent servers
     handleConnect, // Keep original signature for export, wrapper in App.tsx handles the override

@@ -1,4 +1,5 @@
 import React from 'react';
+import ConnectionErrorCard from './ConnectionErrorCard';
 
 interface ConnectionPanelProps {
   serverUrl: string;
@@ -10,6 +11,8 @@ interface ConnectionPanelProps {
   recentServers: string[];
   handleConnect: () => void;
   handleDisconnect: () => void;
+  connectionError?: { error: string; serverUrl: string; timestamp: Date; details?: string } | null;
+  clearConnectionError?: () => void;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -22,6 +25,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   recentServers,
   handleConnect,
   handleDisconnect,
+  connectionError,
+  clearConnectionError,
 }) => {
   // Return JSX directly without outer parentheses
   return <div className="card mb-3">
@@ -72,6 +77,14 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           </datalist>
           <div className="form-text">Enter server URL or select from recent history. Base URL (e.g., http://localhost:3033)</div>
         </div>
+        
+        {connectionError && (
+          <ConnectionErrorCard
+            errorDetails={connectionError}
+            onRetry={handleConnect}
+            onDismiss={clearConnectionError}
+          />
+        )}
       </div>
     </div>;
 };

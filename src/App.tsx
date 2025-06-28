@@ -126,6 +126,8 @@ function App() {
     setServerUrl,
     connectionStatus,
     isConnecting,
+    connectionError,
+    clearConnectionError,
     client,
     recentServers,
     handleConnect,
@@ -822,6 +824,8 @@ function App() {
                   handleConnect={handleConnectWrapper}
                   handleDisconnect={handleDisconnectWrapper}
                   recentServers={recentServers}
+                  connectionError={connectionError}
+                  clearConnectionError={clearConnectionError}
                 />
                 <RecentServersPanel
                    recentServers={recentServers}
