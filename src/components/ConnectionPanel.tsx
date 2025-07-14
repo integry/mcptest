@@ -13,6 +13,17 @@ interface ConnectionPanelProps {
   handleDisconnect: () => void;
   connectionError?: { error: string; serverUrl: string; timestamp: Date; details?: string } | null;
   clearConnectionError?: () => void;
+  // SSE-related props
+  sseEnabled?: boolean;
+  sseConnection?: {
+    isConnected: boolean;
+    isConnecting: boolean;
+    connectionError: string | null;
+    lastEventId: string | null;
+    reconnectAttempts: number;
+  };
+  sessionId?: string | null;
+  toggleSSE?: () => void;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -27,6 +38,11 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   handleDisconnect,
   connectionError,
   clearConnectionError,
+  // SSE-related props
+  sseEnabled = false,
+  sseConnection,
+  sessionId,
+  toggleSSE,
 }) => {
   // Return JSX directly without outer parentheses
   return <div className="card mb-3">
@@ -77,6 +93,77 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           </datalist>
           <div className="form-text">Enter server URL or select from recent history. Base URL (e.g., http://localhost:3033)</div>
         </div>
+
+        {/* SSE Settings */}
+        {toggleSSE && (
+          <div className="mb-3">
+            <div className="form-check form-switch">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                id="sseToggle"
+                checked={sseEnabled}
+                onChange={toggleSSE}
+                disabled={isConnecting}
+              />
+              <label className="form-check-label" htmlFor="sseToggle">
+                Enable Server-Sent Events (SSE) Streaming
+              </label>
+            </div>
+            {sseEnabled && (
+              <div className="mt-2">
+                <div className="row g-2">
+                  <div className="col-sm-6">
+                    <small className="text-muted">
+                      <strong>SSE Status:</strong>{' '}
+                      <span className={`badge bg-${
+                        sseConnection?.isConnected ? 'success' : 
+                        sseConnection?.isConnecting ? 'warning' : 
+                        sseConnection?.connectionError ? 'danger' : 'secondary'
+                      } ms-1`}>
+                        {sseConnection?.isConnected ? 'Connected' :
+                         sseConnection?.isConnecting ? 'Connecting' :
+                         sseConnection?.connectionError ? 'Error' : 'Disconnected'}
+                      </span>
+                    </small>
+                  </div>
+                  {sessionId && (
+                    <div className="col-sm-6">
+                      <small className="text-muted">
+                        <strong>Session:</strong> {sessionId.slice(-8)}
+                      </small>
+                    </div>
+                  )}
+                  {sseConnection?.lastEventId && (
+                    <div className="col-sm-6">
+                      <small className="text-muted">
+                        <strong>Last Event:</strong> #{sseConnection.lastEventId}
+                      </small>
+                    </div>
+                  )}
+                  {sseConnection?.reconnectAttempts > 0 && (
+                    <div className="col-sm-6">
+                      <small className="text-muted">
+                        <strong>Reconnect Attempts:</strong> {sseConnection.reconnectAttempts}
+                      </small>
+                    </div>
+                  )}
+                </div>
+                {sseConnection?.connectionError && (
+                  <div className="alert alert-danger mt-2 mb-0 py-1">
+                    <small>SSE Error: {sseConnection.connectionError}</small>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="form-text">
+              {sseEnabled 
+                ? "Real-time streaming enabled for server messages and events" 
+                : "Enable to receive real-time streaming updates from MCP servers"}
+            </div>
+          </div>
+        )}
         
         {connectionError && (
           <ConnectionErrorCard

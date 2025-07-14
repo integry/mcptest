@@ -23,6 +23,7 @@ export interface LogEntry {
       type: 'tool' | 'resource';
       name: string; // Tool name or Resource URI
       params: Record<string, any>; // Input params/args
+      executionTime?: string; // Time taken for execution
   };
 }
 

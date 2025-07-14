@@ -132,7 +132,12 @@ function App() {
     recentServers,
     handleConnect,
     handleDisconnect,
-    removeRecentServer
+    removeRecentServer,
+    // SSE-related functionality
+    sseEnabled,
+    sseConnection,
+    sessionId,
+    toggleSSE
   } = useConnection(addLogEntry);
 
   const {
@@ -826,6 +831,11 @@ function App() {
                   recentServers={recentServers}
                   connectionError={connectionError}
                   clearConnectionError={clearConnectionError}
+                  // SSE-related props
+                  sseEnabled={sseEnabled}
+                  sseConnection={sseConnection}
+                  sessionId={sessionId}
+                  toggleSSE={toggleSSE}
                 />
                 <RecentServersPanel
                    recentServers={recentServers}

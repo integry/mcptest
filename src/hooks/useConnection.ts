@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"; // Use correct import path
 import { formatErrorForDisplay } from '../utils/errorHandling';
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
+import { useSSE, SSEConfig } from './useSSE';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -54,7 +55,21 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
+  const [sseEnabled, setSSEEnabled] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
+  
+  // SSE configuration
+  const sseConfig: SSEConfig = {
+    url: '/sse',
+    sessionId: sessionId || 'default',
+    autoReconnect: true,
+    maxReconnectAttempts: 5,
+    reconnectDelay: 1000
+  };
+  
+  // Initialize SSE connection
+  const sseConnection = useSSE(sseConfig, addLogEntry);
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -83,10 +98,18 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     } else {
         console.log("[DEBUG] cleanupConnection: No active client ref to clean up.");
     }
+    
+    // Disconnect SSE if enabled
+    if (sseEnabled && sseConnection.isConnected) {
+      console.log("[DEBUG] cleanupConnection: Disconnecting SSE connection.");
+      sseConnection.disconnect();
+    }
+    
     setConnectionStatus('Disconnected');
     setIsConnecting(false);
+    setSessionId(null);
     console.log('[DEBUG] Connection cleanup complete.');
-  }, [addLogEntry]); // Added addLogEntry dependency
+  }, [addLogEntry, sseEnabled, sseConnection]); // Added SSE dependencies
 
   const handleDisconnect = useCallback(async () => {
     if (connectionStatus === 'Disconnected' || isConnecting) {
@@ -175,9 +198,22 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
       setConnectionStatus('Connected');
       setIsConnecting(false);
+      
+      // Generate session ID for this connection
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setSessionId(newSessionId);
+      
       // Log generic success as access method for serverInfo/capabilities is unclear
-      addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
+      addLogEntry({ type: 'info', data: `SDK Client Connected successfully. Session ID: ${newSessionId}` });
       console.log("[DEBUG] SDK Client Connected.");
+      
+      // Connect SSE if enabled
+      if (sseEnabled) {
+        console.log("[DEBUG] handleConnect: Initiating SSE connection.");
+        addLogEntry({ type: 'info', data: 'Establishing SSE streaming connection...' });
+        sseConnection.connect();
+      }
+      
       // TODO: Investigate how to access serverInfo/capabilities in SDK v1.10.1 if needed
 
       // Do not automatically fetch lists for stateless connection
@@ -215,6 +251,29 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setConnectionError(null);
   }, []);
 
+  // SSE toggle function
+  const toggleSSE = useCallback(() => {
+    setSSEEnabled(prev => {
+      const newValue = !prev;
+      console.log(`[DEBUG] SSE ${newValue ? 'enabled' : 'disabled'}`);
+      addLogEntry({ 
+        type: 'info', 
+        data: `SSE streaming ${newValue ? 'enabled' : 'disabled'}` 
+      });
+      
+      // If disabling SSE while connected, disconnect SSE
+      if (!newValue && sseConnection.isConnected) {
+        sseConnection.disconnect();
+      }
+      // If enabling SSE while connected, connect SSE
+      else if (newValue && connectionStatus === 'Connected') {
+        sseConnection.connect();
+      }
+      
+      return newValue;
+    });
+  }, [sseConnection, connectionStatus, addLogEntry]);
+
   // Return the client instance
   return {
     serverUrl,
@@ -227,6 +286,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     recentServers, // Expose recent servers
     handleConnect, // Keep original signature for export, wrapper in App.tsx handles the override
     handleDisconnect,
+    // SSE-related functionality
+    sseEnabled,
+    sseConnection,
+    sessionId,
+    toggleSSE,
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
       const updatedServers = recentServers.filter(url => url !== urlToRemove);
