@@ -1,0 +1,1544 @@
+TITLE: Initialize and Interact with Asynchronous MCP Client (Java)
+DESCRIPTION: This Java code illustrates the configuration and usage of an asynchronous Model Context Protocol (MCP) client, utilizing reactive programming patterns. It shows how to initialize the client, configure capabilities, chain operations like listing tools, calling tools, and managing resources and prompts, and set up consumers for real-time change notifications.
+SOURCE: https://modelcontextprotocol.io/introduction/sdk/java/mcp-client
+
+LANGUAGE: Java
+CODE:
+```
+// Create an async client with custom configuration
+McpAsyncClient client = McpClient.async(transport)
+    .requestTimeout(Duration.ofSeconds(10))
+    .capabilities(ClientCapabilities.builder()
+        .roots(true)      // Enable roots capability
+        .sampling()       // Enable sampling capability
+        .build())
+    .sampling(request -> Mono.just(new CreateMessageResult(response)))
+    .toolsChangeConsumer(tools -> Mono.fromRunnable(() -> {
+        logger.info("Tools updated: {}", tools);
+    }))
+    .resourcesChangeConsumer(resources -> Mono.fromRunnable(() -> {
+        logger.info("Resources updated: {}", resources);
+    }))
+    .promptsChangeConsumer(prompts -> Mono.fromRunnable(() -> {
+        logger.info("Prompts updated: {}", prompts);
+    }))
+    .build();
+
+// Initialize connection and use features
+client.initialize()
+    .flatMap(initResult -> client.listTools())
+    .flatMap(tools -> {
+        return client.callTool(new CallToolRequest(
+            "calculator",
+            Map.of("operation", "add", "a", 2, "b", 3)
+        ));
+    })
+    .flatMap(result -> {
+        return client.listResources()
+            .flatMap(resources ->
+                client.readResource(new ReadResourceRequest("resource://uri"))
+            );
+    })
+    .flatMap(resource -> {
+```
+
+----------------------------------------
+
+TITLE: Client `initialize` Request for MCP
+DESCRIPTION: The client initiates the Model Context Protocol (MCP) connection by sending an `initialize` request. This request specifies the supported protocol version, client capabilities, and client implementation details to the server.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2024-11-05/basic/lifecycle
+
+LANGUAGE: JSON
+CODE:
+```
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "roots": {
+        "listChanged": true
+      },
+      "sampling": {}
+    },
+    "clientInfo": {
+      "name": "ExampleClient",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Configure and Manage Asynchronous MCP Server in Java
+DESCRIPTION: This Java code illustrates the setup and management of an `McpAsyncServer`, highlighting its asynchronous API. It shows how to configure server capabilities, register tools, resources, and prompts using reactive operations (`doOnSuccess`, `subscribe`), and gracefully close the server within the Model Context Protocol.
+SOURCE: https://modelcontextprotocol.io/introduction/sdk/java/mcp-server
+
+LANGUAGE: Java
+CODE:
+```
+// Create an async server with custom configuration
+McpAsyncServer asyncServer = McpServer.async(transportProvider)
+    .serverInfo("my-server", "1.0.0")
+    .capabilities(ServerCapabilities.builder()
+        .resources(false, true)     // Enable resource support
+        .tools(true)                // Enable tool support
+        .prompts(true)              // Enable prompt support
+        .logging()                  // Enable logging support
+        .completions()              // Enable completions support
+        .build())
+    .build();
+
+// Register tools, resources, and prompts
+asyncServer.addTool(asyncToolSpecification)
+    .doOnSuccess(v -> logger.info("Tool registered"))
+    .subscribe();
+
+asyncServer.addResource(asyncResourceSpecification)
+    .doOnSuccess(v -> logger.info("Resource registered"))
+    .subscribe();
+
+asyncServer.addPrompt(asyncPromptSpecification)
+    .doOnSuccess(v -> logger.info("Prompt registered"))
+    .subscribe();
+
+// Close the server when done
+asyncServer.close()
+    .doOnSuccess(v -> logger.info("Server closed"))
+    .subscribe();
+```
+
+----------------------------------------
+
+TITLE: Request LLM Generation: sampling/createMessage
+DESCRIPTION: Servers send a 'sampling/createMessage' request to initiate a language model generation. This request includes an array of messages (e.g., user prompts), optional model preferences (hints, intelligence/speed priority), a system prompt, and a maximum token limit for the response.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/draft/client/sampling
+
+LANGUAGE: JSON
+CODE:
+```
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "sampling/createMessage",
+  "params": {
+    "messages": [
+      {
+        "role": "user",
+        "content": {
+          "type": "text",
+          "text": "What is the capital of France?"
+        }
+      }
+    ],
+    "modelPreferences": {
+      "hints": [
+        {
+          "name": "claude-3-sonnet"
+        }
+      ],
+      "intelligencePriority": 0.8,
+      "speedPriority": 0.5
+    },
+    "systemPrompt": "You are a helpful assistant.",
+    "maxTokens": 100
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Initialize and Interact with Synchronous MCP Client (Java)
+DESCRIPTION: This Java code demonstrates the setup and usage of a synchronous Model Context Protocol (MCP) client. It covers configuring client capabilities like roots and sampling, initializing the connection, performing operations such as listing and calling tools, managing resources, interacting with prompts, and adding/removing roots, concluding with a graceful shutdown.
+SOURCE: https://modelcontextprotocol.io/introduction/sdk/java/mcp-client
+
+LANGUAGE: Java
+CODE:
+```
+// Create a sync client with custom configuration
+McpSyncClient client = McpClient.sync(transport)
+    .requestTimeout(Duration.ofSeconds(10))
+    .capabilities(ClientCapabilities.builder()
+        .roots(true)      // Enable roots capability
+        .sampling()       // Enable sampling capability
+        .build())
+    .sampling(request -> new CreateMessageResult(response))
+    .build();
+
+// Initialize connection
+client.initialize();
+
+// List available tools
+ListToolsResult tools = client.listTools();
+
+// Call a tool
+CallToolResult result = client.callTool(
+    new CallToolRequest("calculator",
+        Map.of("operation", "add", "a", 2, "b", 3))
+);
+
+// List and read resources
+ListResourcesResult resources = client.listResources();
+ReadResourceResult resource = client.readResource(
+    new ReadResourceRequest("resource://uri")
+);
+
+// List and use prompts
+ListPromptsResult prompts = client.listPrompts();
+GetPromptResult prompt = client.getPrompt(
+    new GetPromptRequest("greeting", Map.of("name", "Spring"))
+);
+
+// Add/remove roots
+client.addRoot(new Root("file:///path", "description"));
+client.removeRoot("file:///path");
+
+// Close client
+client.closeGracefully();
+```
+
+----------------------------------------
+
+TITLE: Process User Queries with Anthropic and Tool Calls (Kotlin)
+DESCRIPTION: Implements the core logic for processing user queries using the Anthropic API. It sends user messages, handles AI responses, and manages tool calls. If the AI suggests a tool, it executes the tool via MCP, incorporates the result, and continues the conversation. Uses `MessageCreateParams` and `MessageParam` for API interaction.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: Kotlin
+CODE:
+```
+private val messageParamsBuilder: MessageCreateParams.Builder = MessageCreateParams.builder()
+    .model(Model.CLAUDE_3_5_SONNET_20241022)
+    .maxTokens(1024)
+
+suspend fun processQuery(query: String): String {
+    val messages = mutableListOf(
+        MessageParam.builder()
+            .role(MessageParam.Role.USER)
+            .content(query)
+            .build()
+    )
+
+    val response = anthropic.messages().create(
+        messageParamsBuilder
+            .messages(messages)
+            .tools(tools)
+            .build()
+    )
+
+    val finalText = mutableListOf<String>()
+    response.content().forEach { content ->
+        when {
+            content.isText() -> finalText.add(content.text().getOrNull()?.text() ?: "")
+
+            content.isToolUse() -> {
+                val toolName = content.toolUse().get().name()
+                val toolArgs =
+                    content.toolUse().get()._input().convert(object : TypeReference<Map<String, JsonValue>>() {})
+
+                val result = mcp.callTool(
+                    name = toolName,
+                    arguments = toolArgs ?: emptyMap()
+                )
+                finalText.add("[Calling tool $toolName with args $toolArgs]")
+
+                messages.add(
+                    MessageParam.builder()
+                        .role(MessageParam.Role.USER)
+                        .content(
+                            "\"type\": \"tool_result\",\n\"tool_name\": $toolName,\n\"result\": ${result?.content?.joinToString("\\n") { (it as TextContent).text ?: "" }}"
+                        )
+                        .build()
+                )
+
+                val aiResponse = anthropic.messages().create(
+                    messageParamsBuilder
+                        .messages(messages)
+                        .build()
+                )
+
+                finalText.add(aiResponse.content().first().text().getOrNull()?.text() ?: "")
+            }
+        }
+    }
+
+    return finalText.joinToString("\n", prefix = "", postfix = "")
+}
+```
+
+----------------------------------------
+
+TITLE: Setting up the MCP Server Instance
+DESCRIPTION: This Kotlin code initializes an MCP (Model Context Protocol) server with a 'weather' tool implementation and sets up communication using standard I/O. It demonstrates how to create a server instance, define its capabilities, and connect it to a transport layer, ensuring the server runs until explicitly closed.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/server
+
+LANGUAGE: Kotlin
+CODE:
+```
+fun `run mcp server`() {
+    val server = Server(
+        Implementation(
+            name = "weather",
+            version = "1.0.0"
+        ),
+        ServerOptions(
+            capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = true))
+        )
+    )
+
+    val transport = StdioServerTransport(
+        System.`in`.asInput(),
+        System.out.asSink().buffered()
+    )
+
+    runBlocking {
+        server.connect(transport)
+        val done = Job()
+        server.onClose {
+            done.complete()
+        }
+        done.join()
+    }
+}
+```
+
+----------------------------------------
+
+TITLE: Detecting MCP Transport Type for Backwards Compatibility
+DESCRIPTION: This TypeScript function attempts to detect the appropriate Model Context Protocol (MCP) transport type for a given server URL. It first tries to use Streamable HTTP by sending a POST request with specific headers. If that fails, it falls back to the legacy Server-Sent Events (SSE) transport by issuing a GET request. This ensures compatibility with both modern and older MCP server implementations.
+SOURCE: https://modelcontextprotocol.io/introduction/docs/concepts/transports
+
+LANGUAGE: TypeScript
+CODE:
+```
+async function detectTransport(serverUrl: string): Promise<TransportType> {
+  try {
+    // Try Streamable HTTP first
+    const response = await fetch(serverUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {
+          /* ... */
+        }
+      })
+    });
+
+    if (response.ok) {
+      return "streamable-http";
+    }
+  } catch (error) {
+    // Fall back to legacy SSE
+    const sseResponse = await fetch(serverUrl, {
+      method: "GET",
+      headers: { Accept: "text/event-stream" }
+    });
+
+    if (sseResponse.ok) {
+      return "legacy-sse";
+    n}
+  }
+
+  throw new Error("Unsupported transport");
+}
+```
+
+----------------------------------------
+
+TITLE: Kotlin: Implement Tool Execution for Weather API
+DESCRIPTION: This Kotlin code demonstrates setting up an HTTP client for `weather.gov` and registering two tools with an MCP server. The `get_alerts` tool fetches weather alerts by US state, and the `get_forecast` tool retrieves weather forecasts by latitude and longitude. Both tools include input schema definitions and handle argument parsing and validation.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/server
+
+LANGUAGE: kotlin
+CODE:
+```
+// Create an HTTP client with a default request configuration and JSON content negotiation
+val httpClient = HttpClient {
+    defaultRequest {
+        url("https://api.weather.gov")
+        headers {
+            append("Accept", "application/geo+json")
+            append("User-Agent", "WeatherApiClient/1.0")
+        }
+        contentType(ContentType.Application.Json)
+    }
+    // Install content negotiation plugin for JSON serialization/deserialization
+    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+}
+
+// Register a tool to fetch weather alerts by state
+server.addTool(
+    name = "get_alerts",
+    description = """
+        Get weather alerts for a US state. Input is Two-letter US state code (e.g. CA, NY)
+    """.trimIndent(),
+    inputSchema = Tool.Input(
+        properties = buildJsonObject {
+            putJsonObject("state") {
+                put("type", "string")
+                put("description", "Two-letter US state code (e.g. CA, NY)")
+            }
+        },
+        required = listOf("state")
+    )
+) { request ->
+    val state = request.arguments["state"]?.jsonPrimitive?.content
+    if (state == null) {
+        return@addTool CallToolResult(
+            content = listOf(TextContent("The 'state' parameter is required."))
+        )
+    }
+
+    val alerts = httpClient.getAlerts(state)
+
+    CallToolResult(content = alerts.map { TextContent(it) })
+}
+
+// Register a tool to fetch weather forecast by latitude and longitude
+server.addTool(
+    name = "get_forecast",
+    description = """
+        Get weather forecast for a specific latitude/longitude
+    """.trimIndent(),
+    inputSchema = Tool.Input(
+        properties = buildJsonObject {
+            putJsonObject("latitude") { put("type", "number") }
+            putJsonObject("longitude") { put("type", "number") }
+        },
+        required = listOf("latitude", "longitude")
+    )
+) { request ->
+    val latitude = request.arguments["latitude"]?.jsonPrimitive?.doubleOrNull
+    val longitude = request.arguments["longitude"]?.jsonPrimitive?.doubleOrNull
+    if (latitude == null || longitude == null) {
+        return@addTool CallToolResult(
+            content = listOf(TextContent("The 'latitude' and 'longitude' parameters are required."))
+        )
+    }
+
+    val forecast = httpClient.getForecast(latitude, longitude)
+
+    CallToolResult(content = forecast.map { TextContent(it) })
+```
+
+----------------------------------------
+
+TITLE: Example MCP Client GET Request with Access Token
+DESCRIPTION: This example demonstrates an MCP client making a GET request to the /v1/contexts endpoint. The request includes the Host header and the Authorization header with a Bearer token, as required for all authenticated resource requests.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2025-03-26/basic/authorization
+
+LANGUAGE: HTTP
+CODE:
+```
+GET /v1/contexts HTTP/1.1
+Host: mcp.example.com
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+----------------------------------------
+
+TITLE: Implement Python Custom Transport with AnyIO Context Manager
+DESCRIPTION: This Python snippet demonstrates a custom transport implementation using `anyio` as an asynchronous context manager. It sets up streams for reading and writing JSON-RPC messages, manages a task group for message processing, and ensures proper resource cleanup upon exit or error.
+SOURCE: https://modelcontextprotocol.io/introduction/docs/concepts/transports
+
+LANGUAGE: Python
+CODE:
+```
+@contextmanager
+async def create_transport(
+    read_stream: MemoryObjectReceiveStream[JSONRPCMessage | Exception],
+    write_stream: MemoryObjectSendStream[JSONRPCMessage]
+):
+    """
+    Transport interface for MCP.
+
+    Args:
+        read_stream: Stream to read incoming messages from
+        write_stream: Stream to write outgoing messages to
+    """
+    async with anyio.create_task_group() as tg:
+        try:
+            # Start processing messages
+            tg.start_soon(lambda: process_messages(read_stream))
+
+            # Send messages
+            async with write_stream:
+                yield write_stream
+
+        except Exception as exc:
+            # Handle errors
+            raise exc
+        finally:
+            # Clean up
+            tg.cancel_scope.cancel()
+            await write_stream.aclose()
+            await read_stream.aclose()
+```
+
+----------------------------------------
+
+TITLE: Implement Interactive Chat Loop and Cleanup in Python
+DESCRIPTION: This Python snippet defines `chat_loop` for an interactive command-line interface, allowing users to input queries and receive responses, and `cleanup` for proper resource management using `AsyncExitStack`.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: Python
+CODE:
+```
+async def chat_loop(self):
+    """Run an interactive chat loop"""
+    print("\nMCP Client Started!")
+    print("Type your queries or 'quit' to exit.")
+
+    while True:
+        try:
+            query = input("\nQuery: ").strip()
+
+            if query.lower() == 'quit':
+                break
+
+            response = await self.process_query(query)
+            print("\n" + response)
+
+        except Exception as e:
+            print(f"\nError: {str(e)}")
+
+async def cleanup(self):
+    """Clean up resources"""
+    await self.exit_stack.aclose()
+```
+
+----------------------------------------
+
+TITLE: Execute Tools Asynchronously with MCP Client (Java)
+DESCRIPTION: Illustrates how to list available server-side tools and execute a specific tool with parameters using the asynchronous API of the Model Context Protocol (MCP) client. This approach uses reactive streams (e.g., Project Reactor) for non-blocking operations.
+SOURCE: https://modelcontextprotocol.io/introduction/sdk/java/mcp-client
+
+LANGUAGE: Java
+CODE:
+```
+// List available tools asynchronously
+client.listTools()
+    .doOnNext(tools -> tools.forEach(tool ->
+        System.out.println(tool.getName())))
+    .subscribe();
+
+// Execute a tool asynchronously
+client.callTool("calculator", Map.of(
+        "operation", "add",
+        "a", 1,
+        "b", 2
+    ))
+    .subscribe();
+```
+
+----------------------------------------
+
+TITLE: Process Queries with Claude and Tools in Python
+DESCRIPTION: This asynchronous method handles user queries by interacting with the Claude API and available tools. It prepares messages for Claude, retrieves available tools from the MCP server, and then makes an initial call to Claude. The method processes Claude's response, executing tool calls when 'tool_use' content is present, and continues the conversation with Claude based on tool results.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: python
+CODE:
+```
+async def process_query(self, query: str) -> str:
+    """Process a query using Claude and available tools"""
+    messages = [
+        {
+            "role": "user",
+            "content": query
+        }
+    ]
+
+    response = await self.session.list_tools()
+    available_tools = [{
+        "name": tool.name,
+        "description": tool.description,
+        "input_schema": tool.inputSchema
+    } for tool in response.tools]
+
+    # Initial Claude API call
+    response = self.anthropic.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=1000,
+        messages=messages,
+        tools=available_tools
+    )
+
+    # Process response and handle tool calls
+    final_text = []
+
+    assistant_message_content = []
+    for content in response.content:
+        if content.type == 'text':
+            final_text.append(content.text)
+            assistant_message_content.append(content)
+        elif content.type == 'tool_use':
+            tool_name = content.name
+            tool_args = content.input
+
+            # Execute tool call
+            result = await self.session.call_tool(tool_name, tool_args)
+            final_text.append(f"[Calling tool {tool_name} with args {tool_args}]")
+
+            assistant_message_content.append(content)
+            messages.append({
+                "role": "assistant",
+                "content": assistant_message_content
+            })
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": content.id,
+                        "content": result.content
+                    }
+                ]
+            })
+
+            # Get next response from Claude
+            response = self.anthropic.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1000,
+                messages=messages,
+                tools=available_tools
+            )
+
+            final_text.append(response.content[0].text)
+
+    return "\n".join(final_text)
+```
+
+----------------------------------------
+
+TITLE: Defining a Server-Side Calculator Tool with Model Preferences
+DESCRIPTION: This Java snippet demonstrates how to define an asynchronous server-side tool that acts as a calculator. It configures model preferences such as intelligence and speed priority, sets a system prompt for the model's behavior, and limits the maximum tokens in the response. The tool processes the model's output to return a numerical answer.
+SOURCE: https://modelcontextprotocol.io/introduction/sdk/java/mcp-server
+
+LANGUAGE: Java
+CODE:
+```
+                .intelligencePriority(0.8)  // Prioritize intelligence
+                .speedPriority(0.5)         // Moderate speed importance
+                .build())
+            .systemPrompt("You are a helpful calculator assistant. Provide only the numerical answer.")
+            .maxTokens(100)
+            .build();
+
+        // Request sampling from the client
+        return exchange.createMessage(request)
+            .map(result -> {
+                // Process the result
+                String answer = result.content().text();
+                return new CallToolResult(answer, false);
+            });
+    }
+);
+
+// Add the tool to the server
+server.addTool(calculatorTool)
+    .subscribe();
+```
+
+----------------------------------------
+
+TITLE: Model Context Protocol Message Type Interfaces
+DESCRIPTION: Defines the core message structures used in the Model Context Protocol (MCP) for requests, successful results, errors, and one-way notifications, all based on JSON-RPC 2.0.
+SOURCE: https://modelcontextprotocol.io/introduction/docs/concepts/architecture
+
+LANGUAGE: TypeScript
+CODE:
+```
+interface Request {
+  method: string;
+  params?: { ... };
+}
+
+interface Result {
+  [key: string]: unknown;
+}
+
+interface Error {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+interface Notification {
+  method: string;
+  params?: { ... };
+}
+```
+
+----------------------------------------
+
+TITLE: Define NWS API Helper Functions in Python
+DESCRIPTION: This section provides two asynchronous helper functions crucial for interacting with the National Weather Service (NWS) API. `make_nws_request` handles HTTP GET requests to the NWS API, including proper headers, error handling, and JSON parsing. `format_alert` takes a raw alert feature dictionary and formats it into a human-readable string, extracting key details like event, area, severity, description, and instructions.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/server
+
+LANGUAGE: python
+CODE:
+```
+async def make_nws_request(url: str) -> dict[str, Any] | None:
+    """Make a request to the NWS API with proper error handling."""
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/geo+json"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            return None
+
+def format_alert(feature: dict) -> str:
+    """Format an alert feature into a readable string."""
+    props = feature["properties"]
+    return f"""
+Event: {props.get('event', 'Unknown')}
+Area: {props.get('areaDesc', 'Unknown')}
+Severity: {props.get('severity', 'Unknown')}
+Description: {props.get('description', 'No description available')}
+Instructions: {props.get('instruction', 'No specific instructions provided')}
+"""
+```
+
+----------------------------------------
+
+TITLE: MCP Pagination Response Format
+DESCRIPTION: This JSON snippet illustrates the server's response format when paginating results in the Model Context Protocol. It includes the current page of results and an optional "nextCursor" field, which indicates if more results are available and provides the token for the next page.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2024-11-05/server/utilities/pagination
+
+LANGUAGE: JSON
+CODE:
+```
+{
+  "jsonrpc": "2.0",
+  "id": "123",
+  "result": {
+    "resources": [...],
+    "nextCursor": "eyJwYWdlIjogM30="
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Define API Integration Tool Schema (GitHub Issue)
+DESCRIPTION: This JSON schema defines a 'github_create_issue' tool for integrating with the GitHub API, specifying 'title', 'body', and 'labels' as input properties.
+SOURCE: https://modelcontextprotocol.io/introduction/docs/concepts/tools
+
+LANGUAGE: JSON
+CODE:
+```
+{
+  "name": "github_create_issue",
+  "description": "Create a GitHub issue",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string" },
+      "body": { "type": "string" },
+      "labels": { "type": "array", "items": { "type": "string" } }
+    }
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Call Tool Response (JSON-RPC)
+DESCRIPTION: Illustrates the JSON-RPC response format for a successful tool invocation, including the tool's content result and error status.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2024-11-05/server/tools
+
+LANGUAGE: JSON
+CODE:
+```
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Current weather in New York:\nTemperature: 72°F\nConditions: Partly cloudy"
+      }
+    ],
+    "isError": false
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Setting up Anthropic API Key in .env
+DESCRIPTION: This section details the steps to securely configure your Anthropic API key. It involves creating a `.env` file, adding your API key to it, and ensuring the `.env` file is ignored by Git to prevent accidental exposure.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: Shell
+CODE:
+```
+# Create .env file
+touch .env
+```
+
+LANGUAGE: Text
+CODE:
+```
+ANTHROPIC_API_KEY=<your key here>
+```
+
+LANGUAGE: Shell
+CODE:
+```
+echo ".env" >> .gitignore
+```
+
+----------------------------------------
+
+TITLE: Security Considerations for Tools
+DESCRIPTION: Outlines critical security measures for both servers and clients when interacting with tools, covering validation, access controls, rate limiting, sanitization, user confirmation, timeouts, and logging.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/draft/server/tools
+
+LANGUAGE: APIDOC
+CODE:
+```
+Security Considerations:
+  Servers MUST:
+    - Validate all tool inputs.
+    - Implement proper access controls.
+    - Rate limit tool invocations.
+    - Sanitize tool outputs.
+  Clients SHOULD:
+    - Prompt for user confirmation on sensitive operations.
+    - Show tool inputs to the user before calling the server, to avoid malicious or accidental data exfiltration.
+    - Validate tool results before passing to LLM.
+    - Implement timeouts for tool calls.
+    - Log tool usage for audit purposes.
+```
+
+----------------------------------------
+
+TITLE: Connect to MCP Server and Initialize Tools (Kotlin)
+DESCRIPTION: Implements a suspend function to connect to an MCP server by launching a server script (JS, Python, or JAR) as a process. It establishes a client transport, connects to the MCP, lists available tools, and initializes them for use. Handles process creation, input/output streaming, and error handling.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: Kotlin
+CODE:
+```
+suspend fun connectToServer(serverScriptPath: String) {
+    try {
+        val command = buildList {
+            when (serverScriptPath.substringAfterLast(".")) {
+                "js" -> add("node")
+                "py" -> add(if (System.getProperty("os.name").lowercase().contains("win")) "python" else "python3")
+                "jar" -> addAll(listOf("java", "-jar"))
+                else -> throw IllegalArgumentException("Server script must be a .js, .py or .jar file")
+            }
+            add(serverScriptPath)
+        }
+
+        val process = ProcessBuilder(command).start()
+        val transport = StdioClientTransport(
+            input = process.inputStream.asSource().buffered(),
+            output = process.outputStream.asSink().buffered()
+        )
+
+        mcp.connect(transport)
+
+        val toolsResult = mcp.listTools()
+        tools = toolsResult?.tools?.map { tool ->
+            ToolUnion.ofTool(
+                Tool.builder()
+                    .name(tool.name)
+                    .description(tool.description ?: "")
+                    .inputSchema(
+                        Tool.InputSchema.builder()
+                            .type(JsonValue.from(tool.inputSchema.type))
+                            .properties(tool.inputSchema.properties.toJsonValue())
+                            .putAdditionalProperty("required", JsonValue.from(tool.inputSchema.required))
+                            .build()
+                    )
+                    .build()
+            )
+        } ?: emptyList()
+        println("Connected to server with tools: ${tools.joinToString(", ") { it.tool().get().name() }}")
+    } catch (e: Exception) {
+        println("Failed to connect to MCP server: $e")
+        throw e
+    }
+}
+```
+
+----------------------------------------
+
+TITLE: Implement MCP Server Connection Method
+DESCRIPTION: Provides the TypeScript implementation for the `connectToServer` method within the `MCPClient` class. This method handles establishing a connection to an MCP server, determining the correct command based on the server script type (.js or .py), and listing available tools from the connected server.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: typescript
+CODE:
+```
+async connectToServer(serverScriptPath: string) {
+  try {
+    const isJs = serverScriptPath.endsWith(".js");
+    const isPy = serverScriptPath.endsWith(".py");
+    if (!isJs && !isPy) {
+      throw new Error("Server script must be a .js or .py file");
+    }
+    const command = isPy
+      ? process.platform === "win32"
+        ? "python"
+        : "python3"
+      : process.execPath;
+
+    this.transport = new StdioClientTransport({
+      command,
+      args: [serverScriptPath],
+    });
+    await this.mcp.connect(this.transport);
+
+    const toolsResult = await this.mcp.listTools();
+    this.tools = toolsResult.tools.map((tool) => {
+      return {
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.inputSchema,
+      };
+    });
+    console.log(
+      "Connected to server with tools:",
+      this.tools.map(({ name }) => name)
+    );
+  } catch (e) {
+    console.log("Failed to connect to MCP server: ", e);
+    throw e;
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Connect to MCP Server in Python
+DESCRIPTION: This asynchronous method establishes a connection to an MCP server. It validates the server script path to ensure it's either a Python (.py) or JavaScript (.js) file, then uses StdioServerParameters to set up a standard I/O transport. After initializing a client session, it lists available tools from the connected server.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: python
+CODE:
+```
+async def connect_to_server(self, server_script_path: str):
+    """Connect to an MCP server
+
+    Args:
+        server_script_path: Path to the server script (.py or .js)
+    """
+    is_python = server_script_path.endswith('.py')
+    is_js = server_script_path.endswith('.js')
+    if not (is_python or is_js):
+        raise ValueError("Server script must be a .py or .js file")
+
+    command = "python" if is_python else "node"
+    server_params = StdioServerParameters(
+        command=command,
+        args=[server_script_path],
+        env=None
+    )
+
+    stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
+    self.stdio, self.write = stdio_transport
+    self.session = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
+
+    await self.session.initialize()
+
+    # List available tools
+    response = await self.session.list_tools()
+    tools = response.tools
+    print("\nConnected to server with tools:", [tool.name for tool in tools])
+```
+
+----------------------------------------
+
+TITLE: Define a multi-step debug workflow in JavaScript
+DESCRIPTION: This JavaScript snippet defines a 'debug-error' workflow object with an asynchronous 'getMessages' method. It demonstrates how to construct a sequence of user and assistant messages for a multi-step debugging conversation, dynamically incorporating an error message into the initial prompt.
+SOURCE: https://modelcontextprotocol.io/introduction/docs/concepts/prompts
+
+LANGUAGE: JavaScript
+CODE:
+```
+const debugWorkflow = {
+  name: "debug-error",
+  async getMessages(error: string) {
+    return [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: `Here's an error I'm seeing: ${error}`,
+        },
+      },
+      {
+        role: "assistant",
+        content: {
+          type: "text",
+          text: "I'll help analyze this error. What have you tried so far?",
+        },
+      },
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: "I've tried restarting the service, but the error persists.",
+        },
+      },
+    ];
+  },
+};
+```
+
+----------------------------------------
+
+TITLE: Define Tool Annotations for Different Scenarios
+DESCRIPTION: This snippet demonstrates how to define various tools using JSON objects, incorporating `inputSchema` and `annotations` to describe their purpose, required inputs, and behavioral hints such as `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` for different use cases like web search, file deletion, and record creation.
+SOURCE: https://modelcontextprotocol.io/introduction/docs/concepts/tools
+
+LANGUAGE: JSON
+CODE:
+```
+// A read-only search tool
+{
+  name: "web_search",
+  description: "Search the web for information",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: { type: "string" }
+    },
+    required: ["query"]
+  },
+  annotations: {
+    title: "Web Search",
+    readOnlyHint: true,
+    openWorldHint: true
+  }
+}
+
+// A destructive file deletion tool
+{
+  name: "delete_file",
+  description: "Delete a file from the filesystem",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: { type: "string" }
+    },
+    required: ["path"]
+  },
+  annotations: {
+    title: "Delete File",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false
+  }
+}
+
+// A non-destructive database record creation tool
+{
+  name: "create_record",
+  description: "Create a new record in the database",
+  inputSchema: {
+    type: "object",
+    properties: {
+      table: { type: "string" },
+      data: { type: "object" }
+    },
+    required: ["table", "data"]
+  },
+  annotations: {
+    title: "Create Database Record",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Set up Python Project and Virtual Environment on MacOS/Linux
+DESCRIPTION: These commands create a new project directory, initialize a virtual environment using `uv`, activate it, install necessary dependencies (`mcp[cli]` and `httpx`), and create the main server file `weather.py` for your MCP server.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/server
+
+LANGUAGE: Shell
+CODE:
+```
+# Create a new directory for our project
+uv init weather
+cd weather
+
+# Create virtual environment and activate it
+uv venv
+source .venv/bin/activate
+
+# Install dependencies
+uv add "mcp[cli]" httpx
+
+# Create our server file
+touch weather.py
+```
+
+----------------------------------------
+
+TITLE: Response for Listing Available Tools in MCP
+DESCRIPTION: The server's response to a 'tools/list' request provides a list of available tools. Each tool includes its 'name', 'description', and an 'inputSchema' defining its expected parameters. The response also contains a 'nextCursor' for retrieving subsequent pages of tools.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2025-03-26/server/tools
+
+LANGUAGE: JSON
+CODE:
+```
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "get_weather",
+        "description": "Get current weather information for a location",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "City name or zip code"
+            }
+          },
+          "required": ["location"]
+        }
+      }
+    ],
+    "nextCursor": "next-page-cursor"
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: APIDOC: tools/list Request Method
+DESCRIPTION: Describes the 'tools/list' JSON-RPC request used by clients to discover available tools, supporting pagination via an optional cursor.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/draft/server/tools
+
+LANGUAGE: APIDOC
+CODE:
+```
+Method: tools/list
+Purpose: To discover available tools. Supports pagination.
+
+Parameters:
+  cursor: string (optional)
+    Description: An optional cursor value for retrieving subsequent pages of results.
+```
+
+----------------------------------------
+
+TITLE: APIDOC: tools/list Response Structure
+DESCRIPTION: Describes the 'tools/list' JSON-RPC response, which returns a list of tools and a cursor for pagination.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/draft/server/tools
+
+LANGUAGE: APIDOC
+CODE:
+```
+Response Object:
+  result: object
+    tools: array of objects
+      Description: A list of available tools.
+      Tool Object Properties:
+        name: string
+          Description: Unique identifier for the tool.
+        title: string
+          Description: Human-readable title for the tool.
+        description: string
+          Description: Brief explanation of the tool's purpose.
+        inputSchema: object
+          Description: JSON Schema defining the expected input parameters for the tool.
+          InputSchema Properties:
+            type: string
+              Description: The type of the schema (e.g., "object").
+            properties: object
+              Description: Defines the input fields as key-value pairs.
+            required: array of strings
+              Description: List of required input field names.
+    nextCursor: string (optional)
+      Description: A cursor for retrieving the next page of results, if available.
+```
+
+----------------------------------------
+
+TITLE: API Request: List Available Prompts
+DESCRIPTION: Clients send a 'prompts/list' request to retrieve available prompt templates from the server. This operation supports pagination, allowing clients to specify an optional cursor for subsequent pages.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2025-03-26/server/prompts
+
+LANGUAGE: APIDOC
+CODE:
+```
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "prompts/list",
+  "params": {
+    "cursor": "optional-cursor-value"
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Implement Spring AI Weather Service with Tool Annotations
+DESCRIPTION: Demonstrates how to create a `WeatherService` in Spring AI using `RestClient` to interact with the National Weather Service API. It defines `@Tool` annotated methods (`getWeatherForecastByLocation`, `getAlerts`) to expose specific functionalities for AI models, including parameter descriptions and return value hints.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/server
+
+LANGUAGE: Java
+CODE:
+```
+@Service
+public class WeatherService {
+
+	private final RestClient restClient;
+
+	public WeatherService() {
+		this.restClient = RestClient.builder()
+			.baseUrl("https://api.weather.gov")
+			.defaultHeader("Accept", "application/geo+json")
+			.defaultHeader("User-Agent", "WeatherApiClient/1.0 ([email protected])")
+			.build();
+	}
+
+  @Tool(description = "Get weather forecast for a specific latitude/longitude")
+  public String getWeatherForecastByLocation(
+      double latitude,   // Latitude coordinate
+      double longitude   // Longitude coordinate
+  ) {
+      // Returns detailed forecast including:
+      // - Temperature and unit
+      // - Wind speed and direction
+      // - Detailed forecast description
+  }
+
+  @Tool(description = "Get weather alerts for a US state")
+  public String getAlerts(
+      @ToolParam(description = "Two-letter US state code (e.g. CA, NY)" String state
+  ) {
+      // Returns active alerts including:
+      // - Event type
+      // - Affected area
+      // - Severity
+      // - Description
+      // - Safety instructions
+  }
+
+  // ......
+}
+```
+
+----------------------------------------
+
+TITLE: Requesting Autocompletion with MCP Client (Synchronous Java)
+DESCRIPTION: Demonstrates how to make a synchronous autocompletion request using the Model Context Protocol (MCP) client in Java. It creates a CompleteRequest for a 'code_review' prompt, specifying 'language' as 'py', and then calls completeCompletion on a synchronous client instance.
+SOURCE: https://modelcontextprotocol.io/introduction/sdk/java/mcp-client
+
+LANGUAGE: java
+CODE:
+```
+CompleteRequest request = new CompleteRequest(
+        new PromptReference("code_review"),
+        new CompleteRequest.CompleteArgument("language", "py"));
+
+CompleteResult result = syncMcpClient.completeCompletion(request);
+```
+
+----------------------------------------
+
+TITLE: Streamable HTTP Client Connection (Python)
+DESCRIPTION: Demonstrates how a Python client establishes a session with an MCP endpoint over HTTP. It uses `http_client` and `ClientSession` to connect and initialize the session.
+SOURCE: https://modelcontextprotocol.io/introduction/docs/concepts/transports
+
+LANGUAGE: Python
+CODE:
+```
+async with http_client("http://localhost:8000/mcp") as transport:
+    async with ClientSession(transport[0], transport[1]) as session:
+        await session.initialize()
+```
+
+----------------------------------------
+
+TITLE: Initialize MCP Client Class
+DESCRIPTION: Sets up the basic structure for the 'MCPClient' class in Python, including necessary imports, loading environment variables, and initializing 'ClientSession', 'AsyncExitStack', and 'Anthropic' client objects.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: python
+CODE:
+```
+import asyncio
+from typing import Optional
+from contextlib import AsyncExitStack
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+from anthropic import Anthropic
+from dotenv import load_dotenv
+
+load_dotenv()  # load environment variables from .env
+
+class MCPClient:
+    def __init__(self):
+        # Initialize session and client objects
+        self.session: Optional[ClientSession] = None
+        self.exit_stack = AsyncExitStack()
+        self.anthropic = Anthropic()
+    # methods will go here
+```
+
+----------------------------------------
+
+TITLE: Client `initialize` Request
+DESCRIPTION: The client initiates the initialization phase by sending an `initialize` request to the server. This request includes the supported protocol version, client capabilities, and client implementation information. It must not be part of a JSON-RPC batch.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2025-03-26/basic/lifecycle
+
+LANGUAGE: JSON
+CODE:
+```
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-03-26",
+    "capabilities": {
+      "roots": {
+        "listChanged": true
+      },
+      "sampling": {}
+    },
+    "clientInfo": {
+      "name": "ExampleClient",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+----------------------------------------
+
+TITLE: Configure Server Capabilities (Java)
+DESCRIPTION: This code demonstrates how to configure `ServerCapabilities` using a builder pattern. It allows enabling or disabling support for features like resources, tools, prompts, and logging, with options to include list change notifications for specific capabilities.
+SOURCE: https://modelcontextprotocol.io/introduction/sdk/java/mcp-server
+
+LANGUAGE: Java
+CODE:
+```
+var capabilities = ServerCapabilities.builder()
+    .resources(false, true)  // Resource support with list changes notifications
+    .tools(true)            // Tool support with list changes notifications
+    .prompts(true)          // Prompt support with list changes notifications
+    .logging()              // Enable logging support (enabled by default with logging level INFO)
+    .build();
+```
+
+----------------------------------------
+
+TITLE: Define Main Entry Point for Kotlin MCP Client
+DESCRIPTION: This Kotlin `main` function serves as the entry point for the Model Context Protocol (MCP) client. It parses the server path from command-line arguments, initializes an `MCPClient`, connects to the specified server, and then starts an interactive chat loop. It throws an `IllegalArgumentException` if no server path is provided.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/client
+
+LANGUAGE: kotlin
+CODE:
+```
+fun main(args: Array<String>) = runBlocking {
+    if (args.isEmpty()) throw IllegalArgumentException("Usage: java -jar <your_path>/build/libs/kotlin-mcp-client-0.1.0-all.jar <path_to_server_script>")
+    val serverPath = args.first()
+    val client = MCPClient()
+    client.use {
+        client.connectToServer(serverPath)
+        client.chatLoop()
+    }
+}
+```
+
+----------------------------------------
+
+TITLE: Protocol Shutdown Procedures
+DESCRIPTION: Explains how to cleanly terminate the protocol connection for different transport mechanisms, including stdio and HTTP, detailing steps for client-initiated shutdown.
+SOURCE: https://modelcontextprotocol.io/introduction/specification/2025-03-26/basic/lifecycle
+
+LANGUAGE: APIDOC
+CODE:
+```
+Shutdown Procedures:
+  stdio Transport:
+    Client-initiated shutdown:
+      1. Close input stream to child process (server).
+      2. Wait for server to exit, or send SIGTERM if server does not exit within reasonable time.
+      3. Send SIGKILL if server does not exit within reasonable time after SIGTERM.
+    Server-initiated shutdown:
+      MAY initiate shutdown by closing its output stream to the client and exiting.
+  HTTP Transport:
+    Shutdown is indicated by closing the associated HTTP connection(s).
+```
+
+----------------------------------------
+
+TITLE: Register Weather Tools for Model Context Protocol Server
+DESCRIPTION: This code snippet demonstrates how to register two weather-related tools, 'get-alerts' and 'get-forecast', with an MCP server. The 'get-alerts' tool fetches weather alerts for a given state, validating the state code. The 'get-forecast' tool retrieves a weather forecast for specified latitude and longitude, handling API calls to the NWS and formatting the output. Both tools include input validation using 'z' (likely Zod) and robust error handling for API failures.
+SOURCE: https://modelcontextprotocol.io/introduction/quickstart/server
+
+LANGUAGE: TypeScript
+CODE:
+```
+// Register weather tools
+server.tool(
+  "get-alerts",
+  "Get weather alerts for a state",
+  {
+    state: z.string().length(2).describe("Two-letter state code (e.g. CA, NY)"),
+  },
+  async ({ state }) => {
+    const stateCode = state.toUpperCase();
+    const alertsUrl = `${NWS_API_BASE}/alerts?area=${stateCode}`;
+    const alertsData = await makeNWSRequest<AlertsResponse>(alertsUrl);
+
+    if (!alertsData) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Failed to retrieve alerts data",
+          },
+        ],
+      };
+    }
+
+    const features = alertsData.features || [];
+    if (features.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `No active alerts for ${stateCode}`,
+          },
+        ],
+      };
+    }
+
+    const formattedAlerts = features.map(formatAlert);
+    const alertsText = `Active alerts for ${stateCode}:\n\n${formattedAlerts.join("\n")}`;
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: alertsText,
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  "get-forecast",
+  "Get weather forecast for a location",
+  {
+    latitude: z.number().min(-90).max(90).describe("Latitude of the location"),
+    longitude: z
+      .number()
+      .min(-180)
+      .max(180)
+      .describe("Longitude of the location"),
+  },
+  async ({ latitude, longitude }) => {
+    // Get grid point data
+    const pointsUrl = `${NWS_API_BASE}/points/${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+    const pointsData = await makeNWSRequest<PointsResponse>(pointsUrl);
+
+    if (!pointsData) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to retrieve grid point data for coordinates: ${latitude}, ${longitude}. This location may not be supported by the NWS API (only US locations are supported).`,
+          },
+        ],
+      };
+    }
+
+    const forecastUrl = pointsData.properties?.forecast;
+    if (!forecastUrl) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Failed to get forecast URL from grid point data",
+          },
+        ],
+      };
+    }
+
+    // Get forecast data
+    const forecastData = await makeNWSRequest<ForecastResponse>(forecastUrl);
+    if (!forecastData) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Failed to retrieve forecast data",
+          },
+        ],
+      };
+    }
+
+    const periods = forecastData.properties?.periods || [];
+    if (periods.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "No forecast periods available",
+          },
+        ],
+      };
+    }
+
+    // Format forecast periods
+    const formattedForecast = periods.map((period: ForecastPeriod) =>
+      [
+        `${period.name || "Unknown"}:`,
+        `Temperature: ${period.temperature || "Unknown"}°${period.temperatureUnit || "F"}`,
+        `Wind: ${period.windSpeed || "Unknown"} ${period.windDirection || ""}`,
+        `${period.shortForecast || "No forecast available"}`,
+        "---",
+      ].join("\n"),
+    );
+
+    const forecastText = `Forecast for ${latitude}, ${longitude}:\n\n${formattedForecast.join("\n")}`;
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: forecastText,
+        },
+      ],
+    };
+  },
+);
+```
