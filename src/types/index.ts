@@ -75,3 +75,6 @@ export const AccessResourceResultSchema = z.object({
 });
 
 export type AccessResourceResult = z.infer<typeof AccessResourceResultSchema>;
+
+// --- Transport Types ---
+export type TransportType = 'streamable-http' | 'legacy-sse';

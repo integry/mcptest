@@ -1,8 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LogEntry, ResourceTemplate } from '../types'; // Keep ResourceTemplate for handleConnect signature
+import { LogEntry, ResourceTemplate, TransportType } from '../types'; // Keep ResourceTemplate for handleConnect signature
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"; // Use correct import path
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { formatErrorForDisplay } from '../utils/errorHandling';
+import { detectTransport } from '../utils/transportDetection';
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
@@ -52,6 +54,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
+  const [transportType, setTransportType] = useState<TransportType | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
@@ -84,6 +87,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         console.log("[DEBUG] cleanupConnection: No active client ref to clean up.");
     }
     setConnectionStatus('Disconnected');
+    setTransportType(null);
     setIsConnecting(false);
     console.log('[DEBUG] Connection cleanup complete.');
   }, [addLogEntry]); // Added addLogEntry dependency
@@ -120,6 +124,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
+    setTransportType(null);
     setResponses([]); // Clear logs for new connection attempt
 
     // --- Auto-disconnect if already connected ---
@@ -160,14 +165,19 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     addLogEntry({ type: 'info', data: `Connecting to ${connectUrl.toString()} using SDK Client (Stateless)...` });
 
     try {
+      const detectedTransportType = await detectTransport(connectUrl.toString());
+      setTransportType(detectedTransportType);
+      addLogEntry({ type: 'info', data: `Detected transport type: ${detectedTransportType}` });
+
       const client = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
       clientRef.current = client;
 
-      // Instantiate the CORS-aware transport (stateless mode)
-      const transport = new CorsAwareStreamableHTTPTransport(connectUrl);
-
-      // Optional: Setup transport listeners if needed (e.g., transport.onclose)
-      // transport.onclose = () => { ... cleanupConnection(); ... };
+      let transport;
+      if (detectedTransportType === 'streamable-http') {
+        transport = new CorsAwareStreamableHTTPTransport(connectUrl);
+      } else {
+        transport = new SSEClientTransport(connectUrl);
+      }
 
       console.log("[DEBUG] handleConnect: Calling client.connect(transport)...");
       await client.connect(transport);
@@ -220,6 +230,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     serverUrl,
     setServerUrl,
     connectionStatus,
+    transportType,
     isConnecting,
     connectionError,
     clearConnectionError,

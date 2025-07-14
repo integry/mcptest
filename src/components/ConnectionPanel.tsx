@@ -1,10 +1,12 @@
 import React from 'react';
 import ConnectionErrorCard from './ConnectionErrorCard';
+import { TransportType } from '../types';
 
 interface ConnectionPanelProps {
   serverUrl: string;
   setServerUrl: (url: string) => void;
   connectionStatus: string;
+  transportType: TransportType | null;
   isConnecting: boolean;
   isConnected: boolean;
   isDisconnected: boolean;
@@ -19,6 +21,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   serverUrl,
   setServerUrl,
   connectionStatus,
+  transportType,
   isConnecting,
   isConnected,
   isDisconnected,
@@ -32,9 +35,12 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   return <div className="card mb-3">
       <div className="card-header d-flex justify-content-between align-items-center">
         <h5 className="mb-0">Server Connection</h5>
-        <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
-          {connectionStatus}
-        </span>
+        <div>
+          {transportType && <span className={`badge bg-info me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
+          <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
+            {connectionStatus}
+          </span>
+        </div>
       </div>
       <div className="card-body">
         <div className="mb-3">

@@ -125,6 +125,7 @@ function App() {
     serverUrl,
     setServerUrl,
     connectionStatus,
+    transportType,
     isConnecting,
     connectionError,
     clearConnectionError,
@@ -818,6 +819,7 @@ function App() {
                   serverUrl={serverUrl}
                   setServerUrl={setServerUrl}
                   connectionStatus={connectionStatus}
+                  transportType={transportType}
                   isConnecting={isConnecting}
                   isConnected={isConnected}
                   isDisconnected={isDisconnected}
