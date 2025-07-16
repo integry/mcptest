@@ -125,13 +125,16 @@ function App() {
     serverUrl,
     setServerUrl,
     connectionStatus,
+    transportType,
     isConnecting,
+    connectionStartTime,
     connectionError,
     clearConnectionError,
     client,
     recentServers,
     handleConnect,
     handleDisconnect,
+    handleAbortConnection,
     removeRecentServer
   } = useConnection(addLogEntry);
 
@@ -818,11 +821,14 @@ function App() {
                   serverUrl={serverUrl}
                   setServerUrl={setServerUrl}
                   connectionStatus={connectionStatus}
+                  transportType={transportType}
                   isConnecting={isConnecting}
                   isConnected={isConnected}
                   isDisconnected={isDisconnected}
+                  connectionStartTime={connectionStartTime}
                   handleConnect={handleConnectWrapper}
                   handleDisconnect={handleDisconnectWrapper}
+                  handleAbortConnection={handleAbortConnection}
                   recentServers={recentServers}
                   connectionError={connectionError}
                   clearConnectionError={clearConnectionError}

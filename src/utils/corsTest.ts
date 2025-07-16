@@ -12,7 +12,8 @@ export const testCorsCompatibility = async (serverUrl: string): Promise<{
     const basicTest = await fetch(serverUrl, {
       method: 'OPTIONS',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
       }
     });
     
@@ -34,6 +35,7 @@ export const testCorsCompatibility = async (serverUrl: string): Promise<{
         method: 'OPTIONS',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream',
           'mcp-protocol-version': '2025-03-26'
         }
       });

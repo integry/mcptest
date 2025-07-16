@@ -41,6 +41,10 @@ export class CorsAwareStreamableHTTPTransport extends StreamableHTTPClientTransp
       console.log('[CORS] Removed mcp-protocol-version header - server does not support it');
     }
     
+    // Set proper Accept header for servers that require both content types
+    headers.set('Accept', 'application/json, text/event-stream');
+    console.log('[CORS] Set Accept header to: application/json, text/event-stream');
+    
     return headers;
   }
 
