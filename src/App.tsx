@@ -883,14 +883,16 @@ function App() {
                   connectionError={connectionError}
                   clearConnectionError={clearConnectionError}
                 />
-                <RecentServersPanel
-                   recentServers={recentServers}
-                   setServerUrl={setServerUrl}
-                   handleConnect={handleConnectWrapper}
-                   removeRecentServer={removeRecentServer}
-                   isConnected={isConnected}
-                   isConnecting={isConnecting}
-                />
+                {!isConnected && (
+                  <RecentServersPanel
+                     recentServers={recentServers}
+                     setServerUrl={setServerUrl}
+                     handleConnect={handleConnectWrapper}
+                     removeRecentServer={removeRecentServer}
+                     isConnected={isConnected}
+                     isConnecting={isConnecting}
+                  />
+                )}
                 {isConnected && (
                   <UnifiedPanel
                     tools={tools}

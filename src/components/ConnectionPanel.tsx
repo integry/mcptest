@@ -53,8 +53,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
     };
   }, [isConnecting, connectionStartTime]);
   // Return JSX directly without outer parentheses
-  return <div className="card mb-3">
-      <div className="card-header d-flex justify-content-between align-items-center">
+  return <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`}>
+      <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
         <h5 className="mb-0">Server Connection</h5>
         <div>
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
@@ -80,8 +80,9 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   handleConnect();
                 }
               }}
-              disabled={isConnecting}
-              list="recentServersList"
+              disabled={isConnecting || isConnected}
+              list={isConnected ? undefined : "recentServersList"}
+              readOnly={isConnected}
             />
             {isConnected ? (
                <button
@@ -103,12 +104,16 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                </button>
             )}
           </div>
-          <datalist id="recentServersList">
-            {recentServers.map((url) => (
-              <option key={url} value={url} />
-            ))}
-          </datalist>
-          <div className="form-text">For example, https://mcp.api.coingecko.com/</div>
+          {!isConnected && (
+            <>
+              <datalist id="recentServersList">
+                {recentServers.map((url) => (
+                  <option key={url} value={url} />
+                ))}
+              </datalist>
+              <div className="form-text">For example, https://mcp.api.coingecko.com/</div>
+            </>
+          )}
           {isConnecting && (
             <div className="mt-2">
               <button
