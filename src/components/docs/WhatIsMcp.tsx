@@ -4,13 +4,11 @@ const WhatIsMcp: React.FC = () => {
   return (
     <div className="container-fluid py-4">
       <div className="row">
-        <div className="col-lg-8 mx-auto">
-          <div className="card">
-            <div className="card-body">
-              <h1 className="card-title mb-4">
-                <i className="bi bi-info-circle text-primary me-2"></i>
-                What is MCP?
-              </h1>
+        <div className="col">
+          <h1 className="mb-4">
+            <i className="bi bi-info-circle text-primary me-2"></i>
+            What is MCP?
+          </h1>
               
               <div className="alert alert-info" role="alert">
                 <strong>Model Context Protocol (MCP)</strong> is an open protocol that enables seamless integration between LLM applications and external data sources and tools.
@@ -143,8 +141,6 @@ const WhatIsMcp: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

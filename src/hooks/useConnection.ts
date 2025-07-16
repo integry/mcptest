@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"; // Use correct import path
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { formatErrorForDisplay } from '../utils/errorHandling';
-import { detectTransport } from '../utils/transportDetection';
+import { detectTransport, attemptParallelConnections } from '../utils/transportDetection';
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
@@ -52,12 +52,14 @@ const saveRecentServers = (servers: string[]) => {
 
 export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
-  const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033');
+  const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [transportType, setTransportType] = useState<TransportType | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
   const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -89,6 +91,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setConnectionStatus('Disconnected');
     setTransportType(null);
     setIsConnecting(false);
+    setConnectionStartTime(null);
+    // Abort any ongoing connection attempt
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     console.log('[DEBUG] Connection cleanup complete.');
   }, [addLogEntry]); // Added addLogEntry dependency
 
@@ -102,6 +110,15 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     addLogEntry({ type: 'info', data: 'Disconnecting...' });
     await cleanupConnection(); // Call cleanup which now includes client.close()
   }, [connectionStatus, isConnecting, addLogEntry, cleanupConnection]); // Dependencies remain the same
+
+  const handleAbortConnection = useCallback(() => {
+    if (isConnecting && abortControllerRef.current) {
+      console.log('[DEBUG] Aborting connection attempt...');
+      abortControllerRef.current.abort();
+      addLogEntry({ type: 'info', data: 'Connection aborted by user' });
+      cleanupConnection();
+    }
+  }, [isConnecting, addLogEntry, cleanupConnection]);
 
   // Modify handleConnect to accept an optional URL override
   const handleConnect = useCallback(async (
@@ -125,7 +142,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
     setTransportType(null);
+    setConnectionStartTime(new Date());
     setResponses([]); // Clear logs for new connection attempt
+    
+    // Create abort controller for this connection attempt
+    abortControllerRef.current = new AbortController();
 
     // --- Auto-disconnect if already connected ---
     if (connectionStatus === 'Connected') {
@@ -153,35 +174,34 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
     let connectUrl: URL;
     try {
-      connectUrl = new URL(targetUrl); // Use targetUrl
-      if (!connectUrl.pathname.endsWith('/mcp')) {
-         connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
-      }
+      connectUrl = new URL(targetUrl); // Use targetUrl as-is, don't modify the path
     } catch (e) {
       addLogEntry({ type: 'error', data: `Invalid Server URL format: ${targetUrl}` }); // Use targetUrl in error
       setIsConnecting(false); setConnectionStatus('Error'); return;
     }
 
-    addLogEntry({ type: 'info', data: `Connecting to ${connectUrl.toString()} using SDK Client (Stateless)...` });
+    addLogEntry({ type: 'info', data: `Connecting to ${connectUrl.toString()} with parallel transport attempts...` });
 
     try {
-      const detectedTransportType = await detectTransport(connectUrl.toString());
-      setTransportType(detectedTransportType);
-      addLogEntry({ type: 'info', data: `Detected transport type: ${detectedTransportType}` });
-
-      const client = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
-      clientRef.current = client;
-
-      let transport;
-      if (detectedTransportType === 'streamable-http') {
-        transport = new CorsAwareStreamableHTTPTransport(connectUrl);
-      } else {
-        transport = new SSEClientTransport(connectUrl);
-      }
-
-      console.log("[DEBUG] handleConnect: Calling client.connect(transport)...");
-      await client.connect(transport);
-      console.log("[DEBUG] handleConnect: client.connect() promise resolved.");
+      console.log("[DEBUG] handleConnect: Starting parallel connection attempts...");
+      
+      // Add timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
+      );
+      
+      // Race parallel connections with timeout
+      const result = await Promise.race([
+        attemptParallelConnections(connectUrl.toString(), abortControllerRef.current?.signal),
+        timeoutPromise
+      ]);
+      
+      // Update state with the winning connection
+      clientRef.current = result.client;
+      setTransportType(result.transportType);
+      addLogEntry({ type: 'info', data: `Connected using ${result.transportType} transport` });
+      
+      console.log("[DEBUG] handleConnect: Parallel connection completed with", result.transportType);
 
       setConnectionStatus('Connected');
       setIsConnecting(false);
@@ -198,24 +218,36 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     } catch (error: any) {
       console.error('[DEBUG] handleConnect: Connection failed:', error);
       
-      // Use enhanced error formatting
-      const errorDetails = formatErrorForDisplay(error, {
-        serverUrl: connectUrl.toString(),
-        operation: 'connection'
-      });
+      // Don't show error card if connection was aborted by user
+      const isUserAborted = error.message && error.message.includes('Connection aborted by user');
       
-      // Set connection error state for error card display
-      setConnectionError({
-        error: errorDetails,
-        serverUrl: connectUrl.toString(),
-        timestamp: new Date(),
-        details: error.stack || error.toString()
-      });
+      if (isUserAborted) {
+        // Just log that it was aborted, no error card
+        addLogEntry({ 
+          type: 'info', 
+          data: 'Connection aborted by user' 
+        });
+      } else {
+        // Use enhanced error formatting for actual errors
+        const errorDetails = formatErrorForDisplay(error, {
+          serverUrl: connectUrl.toString(),
+          operation: 'connection'
+        });
+        
+        // Set connection error state for error card display
+        setConnectionError({
+          error: errorDetails,
+          serverUrl: connectUrl.toString(),
+          timestamp: new Date(),
+          details: error.stack || error.toString()
+        });
+        
+        addLogEntry({ 
+          type: 'error', 
+          data: `Connection failed: ${errorDetails}` 
+        });
+      }
       
-      addLogEntry({ 
-        type: 'error', 
-        data: `Connection failed: ${errorDetails}` 
-      });
       cleanupConnection(); // Ensure cleanup on error
     }
   }, [serverUrl, isConnecting, connectionStatus, addLogEntry, cleanupConnection]); // Removed setters
@@ -232,12 +264,14 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     connectionStatus,
     transportType,
     isConnecting,
+    connectionStartTime,
     connectionError,
     clearConnectionError,
     client: clientRef.current, // Expose the connected client instance
     recentServers, // Expose recent servers
     handleConnect, // Keep original signature for export, wrapper in App.tsx handles the override
     handleDisconnect,
+    handleAbortConnection,
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
       const updatedServers = recentServers.filter(url => url !== urlToRemove);
@@ -245,7 +279,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       saveRecentServers(updatedServers); // Save to localStorage (outside state update)
       // If the removed server was the currently selected one, reset to default or next available
       if (serverUrl === urlToRemove) {
-        setServerUrl(updatedServers[0] || 'http://localhost:3033');
+        setServerUrl(updatedServers[0] || 'http://localhost:3033/mcp');
       }
     },
   };

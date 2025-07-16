@@ -1,0 +1,1 @@
+Look at the /docs directory for MCP and SDK documentation

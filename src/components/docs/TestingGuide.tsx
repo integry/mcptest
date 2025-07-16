@@ -4,13 +4,11 @@ const TestingGuide: React.FC = () => {
   return (
     <div className="container-fluid py-4">
       <div className="row">
-        <div className="col-lg-10 mx-auto">
-          <div className="card">
-            <div className="card-body">
-              <h1 className="card-title mb-4">
-                <i className="bi bi-check-circle text-success me-2"></i>
-                MCP Server Testing Guide
-              </h1>
+        <div className="col">
+          <h1 className="mb-4">
+            <i className="bi bi-check-circle text-success me-2"></i>
+            MCP Server Testing Guide
+          </h1>
               
               <p className="lead">Essential workflows for testing and validating MCP server implementations, with a focus on remote servers.</p>
 
@@ -282,8 +280,6 @@ curl -X POST https://your-server.com/mcp \\
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

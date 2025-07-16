@@ -61,6 +61,20 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   setResourceArgs,
 }) => {
 
+  // Handler for Enter key press
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedTool && isConnected && !isConnecting) {
+        handleExecuteTool();
+      } else if (selectedPrompt && isConnected && !isConnecting) {
+        handleExecutePrompt();
+      } else if (selectedResourceTemplate && isConnected && !isConnecting) {
+        handleAccessResource();
+      }
+    }
+  };
+
   // --- Render Helper for Input Parameters (Tools or Prompts) ---
   const renderInputParams = (
     item: SelectedTool | Prompt | null,
@@ -112,6 +126,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                     id={`${idPrefix}-${name}`}
                     checked={!!params[name]}
                     onChange={(e) => handleParamChange(name, e.target.checked)}
+                    onKeyDown={handleKeyDown}
                 />
                 <label className="form-check-label" htmlFor={`${idPrefix}-${name}`}>
                     {definition.title || name}
@@ -124,6 +139,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 id={`${idPrefix}-${name}`}
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value === '' ? undefined : Number(e.target.value))}
+                onKeyDown={handleKeyDown}
                 placeholder={definition.default !== undefined ? `Default: ${definition.default}` : ''}
                 />
             ) : inputType === 'string' && definition.enum ? (
@@ -132,6 +148,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 id={`${idPrefix}-${name}`}
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
+                onKeyDown={handleKeyDown}
                 >
                 <option value="" disabled>{definition.description || `Select ${name}`}</option>
                 {definition.enum.map((option: string) => (<option key={option} value={option}>{option}</option>))}
@@ -143,6 +160,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 rows={3}
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder={definition.description || ''}
                 />
             ) : ( // Default to text input
@@ -152,6 +170,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 id={`${idPrefix}-${name}`}
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder={definition.default !== undefined ? `Default: ${definition.default}` : (definition.description || `Enter ${name}`)}
                 />
             )}
@@ -188,6 +207,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
               id={`res-arg-${argName}`}
               value={resourceArgs[argName] ?? ''}
               onChange={(e) => handleResourceArgChange(argName, e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder={`Enter value for {${argName}}`}
             />
           </div>

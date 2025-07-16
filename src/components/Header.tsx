@@ -10,7 +10,7 @@ const Header: React.FC = () => {
       <div>
         <h1 style={{ marginBottom: 0, fontWeight: 700, fontSize: '2.1rem', letterSpacing: '0.01em', lineHeight: 1, color: '#1a1a1a' }}>mcptest.io</h1>
         <p className="mb-0" style={{ color: '#6b7280', fontWeight: 500, fontSize: '1.08rem' }}>
-          Test MCP servers using StreamableHTTP
+          Test remote MCP servers
         </p>
       </div>
     </header>

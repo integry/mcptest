@@ -4,13 +4,11 @@ const Troubleshooting: React.FC = () => {
   return (
     <div className="container-fluid py-4">
       <div className="row">
-        <div className="col-lg-10 mx-auto">
-          <div className="card">
-            <div className="card-body">
-              <h1 className="card-title mb-4">
-                <i className="bi bi-wrench text-warning me-2"></i>
-                MCP Troubleshooting Guide
-              </h1>
+        <div className="col">
+          <h1 className="mb-4">
+            <i className="bi bi-wrench text-warning me-2"></i>
+            MCP Troubleshooting Guide
+          </h1>
               
               <p className="lead">Common issues and solutions when working with MCP servers, especially for remote deployments.</p>
 
@@ -339,8 +337,6 @@ app.use((req, res, next) => {
                 <hr />
                 <p className="mb-0"><strong>When reporting issues:</strong> Include server logs, client configuration, error messages, and steps to reproduce the problem.</p>
               </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -4,13 +4,11 @@ const RemoteVsLocal: React.FC = () => {
   return (
     <div className="container-fluid py-4">
       <div className="row">
-        <div className="col-lg-10 mx-auto">
-          <div className="card">
-            <div className="card-body">
-              <h1 className="card-title mb-4">
-                <i className="bi bi-cloud-arrow-up text-primary me-2"></i>
-                Remote vs Local MCP Servers
-              </h1>
+        <div className="col">
+          <h1 className="mb-4">
+            <i className="bi bi-cloud-arrow-up text-primary me-2"></i>
+            Remote vs Local MCP Servers
+          </h1>
               
               <p className="lead">Understanding when to use remote HTTP servers versus local stdio servers for your MCP implementations.</p>
 
@@ -245,8 +243,6 @@ const RemoteVsLocal: React.FC = () => {
                   Server Development Guide <i className="bi bi-box-arrow-up-right ms-1"></i>
                 </a>
               </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
