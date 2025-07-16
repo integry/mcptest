@@ -108,7 +108,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               <option key={url} value={url} />
             ))}
           </datalist>
-          <div className="form-text">Enter complete server URL including endpoint (e.g., http://localhost:3033/mcp for HTTP, http://localhost:3033/sse for SSE)</div>
+          <div className="form-text">For example, https://mcp.api.coingecko.com/</div>
           {isConnecting && (
             <div className="mt-2">
               <button
