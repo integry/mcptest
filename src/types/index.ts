@@ -78,3 +78,26 @@ export type AccessResourceResult = z.infer<typeof AccessResourceResultSchema>;
 
 // --- Transport Types ---
 export type TransportType = 'streamable-http' | 'legacy-sse';
+
+// --- Connection Tab Types ---
+export interface ConnectionTab {
+  id: string;
+  title: string;
+  serverUrl: string;
+  connectionStatus: 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
+  transportType?: TransportType | null;
+  // Capabilities for this specific connection
+  tools?: Tool[];
+  resources?: Resource[];
+  resourceTemplates?: ResourceTemplate[];
+  prompts?: Prompt[];
+  // Selected items for this tab
+  selectedTool?: Tool | null;
+  selectedResourceTemplate?: ResourceTemplate | null;
+  selectedPrompt?: Prompt | null;
+  // Parameters for this tab
+  toolParams?: Record<string, any>;
+  resourceArgs?: Record<string, any>;
+  promptParams?: Record<string, any>;
+  // Note: The client instance will be managed in a separate, non-serializable state
+}

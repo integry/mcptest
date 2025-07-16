@@ -1,50 +1,36 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 // Import Components
 import Header from './components/Header';
-import ConnectionPanel from './components/ConnectionPanel';
-import { UnifiedPanel } from './components/UnifiedPanel';
-import { RecentServersPanel } from './components/RecentServersPanel';
-import ParamsPanel from './components/ParamsPanel';
-import ResponsePanel from './components/ResponsePanel';
+import TabContent from './components/TabContent';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
 import SpacesView from './components/SpacesView'; // New
+import Tabs from './components/Tabs'; // New
 // Documentation components
 import WhatIsMcp from './components/docs/WhatIsMcp';
 import RemoteVsLocal from './components/docs/RemoteVsLocal';
 import TestingGuide from './components/docs/TestingGuide';
 import Troubleshooting from './components/docs/Troubleshooting';
 
-// Import Hooks
-import { useLogEntries } from './hooks/useLogEntries';
-import { useConnection } from './hooks/useConnection';
-import { useToolsAndResources } from './hooks/useToolsAndResources';
-import { useResourceAccess } from './hooks/useResourceAccess';
-// Import MCP SDK Components needed for stateless execution
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { formatErrorForDisplay } from './utils/errorHandling';
-import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
+import { v4 as uuidv4 } from 'uuid';
 
 // Import Types
 import {
-  Prompt, ResourceTemplate, SelectedPrompt, SelectedTool, Space, SpaceCard,
-  AccessResourceResultSchema // Import the result schema
+  Space, SpaceCard,
+  AccessResourceResultSchema, // Import the result schema
+  ConnectionTab
 } from './types';
 
 // Import Utils
-import { parseUriTemplateArgs } from './utils/uriUtils';
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath } from './utils/urlUtils';
 
 // Constants for localStorage keys
-const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
-const RESOURCE_HISTORY_KEY = 'mcpResourceAccessHistory';
 const SPACES_KEY = 'mcpSpaces'; // New key for spaces
-const MAX_HISTORY_ITEMS = 10;
+const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
 
-// Helper to load history/spaces from localStorage
+// Helper to load spaces from localStorage
 const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   try {
     const stored = localStorage.getItem(key);
@@ -72,7 +58,7 @@ const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   return defaultValue;
 };
 
-// Helper to save history/spaces to localStorage
+// Helper to save spaces to localStorage
 const saveData = (key: string, data: any) => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
@@ -91,88 +77,23 @@ declare global {
 }
 
 function App() {
-  // Track whether this is the first render
-  const isFirstRender = useRef(true);
-  const isUnmounting = useRef(false);
-
   // --- State ---
   const [activeView, setActiveView] = useState<'inspector' | 'spaces' | 'docs'>('inspector');
   const [activeDocPage, setActiveDocPage] = useState<string | null>(null);
   const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
+  
+  // Tab state
+  const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
+    const savedTabs = localStorage.getItem(TABS_KEY);
+    return savedTabs ? JSON.parse(savedTabs) : [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }];
+  });
+  const [activeTabId, setActiveTabId] = useState<string>(tabs[0]?.id || '');
 
   // Router hooks
   const location = useLocation();
   const navigate = useNavigate();
 
-  // State for call history
-  const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadData(TOOL_HISTORY_KEY, {}));
-  const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
-
-
-
-  // --- Custom Hooks ---
-  const {
-    responses,
-    setResponses, // Get the setter function
-    autoScroll,
-    setAutoScroll,
-    addLogEntry,
-    handleClearResponse
-  } = useLogEntries();
-
-  const {
-    serverUrl,
-    setServerUrl,
-    connectionStatus,
-    transportType,
-    isConnecting,
-    connectionStartTime,
-    connectionError,
-    clearConnectionError,
-    client,
-    recentServers,
-    handleConnect,
-    handleDisconnect,
-    handleAbortConnection,
-    removeRecentServer
-  } = useConnection(addLogEntry);
-
-  const {
-    tools,
-    setTools,
-    resources,
-    setResources,
-    resourceTemplates,
-    setResourceTemplates,
-    selectedTool,
-    setSelectedTool,
-    selectedResourceTemplate,
-    setSelectedResourceTemplate,
-    prompts,
-    setPrompts,
-    selectedPrompt,
-    setSelectedPrompt,
-    toolParams,
-    setToolParams,
-    resourceArgs,
-    setResourceArgs,
-    promptParams,
-    setPromptParams,
-    handleListTools,
-    handleListResources,
-    handleListResourceTemplates,
-    handleListPrompts,
-    handleExecuteTool,
-    handleExecutePrompt,
-    handleParamChange,
-    handleResourceArgChange,
-    handleSelectTool,
-    handleSelectResourceTemplate,
-    handleSelectPrompt
-  } = useToolsAndResources(client, addLogEntry, connectionStatus, serverUrl); // Pass serverUrl
-
-  const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry, serverUrl); // Pass serverUrl
 
   // --- Effects ---
 
@@ -180,6 +101,11 @@ function App() {
   useEffect(() => {
     saveData(SPACES_KEY, spaces);
   }, [spaces]);
+
+  // Save tabs whenever they change
+  useEffect(() => {
+    localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
+  }, [tabs]);
 
   // Handle URL routing
   useEffect(() => {
@@ -213,169 +139,49 @@ function App() {
     }
   }, [location.pathname, spaces, navigate]);
 
-  // Wrapper function to handle resource access and save history
-  const handleAccessResource = () => {
-    if (!selectedResourceTemplate) return;
-    const uri = selectedResourceTemplate.uriTemplate;
-    accessResource(selectedResourceTemplate, resourceArgs);
-
-    if (Object.keys(resourceArgs).length > 0) {
-        setResourceAccessHistory(prevHistory => {
-          const uriKey = uri as string ?? '';
-          const currentList = prevHistory[uriKey] || [];
-          if (JSON.stringify(currentList[0]) === JSON.stringify(resourceArgs)) {
-            return prevHistory;
-          }
-          const updatedList = [resourceArgs, ...currentList].slice(0, MAX_HISTORY_ITEMS);
-          const newHistory = { ...prevHistory, [uriKey]: updatedList };
-          saveData(RESOURCE_HISTORY_KEY, newHistory);
-          return newHistory;
-        });
-    } else {
-        console.log("[DEBUG] Skipping resource history save: No arguments provided.");
-    }
-  };
-
-  // Wrapper for handleParamChange to determine type
-  const handleParamChangeWrapper = (paramName: string, value: any) => {
-    if (selectedTool) {
-      handleParamChange(paramName, value, 'tool');
-    } else if (selectedPrompt) {
-      handleParamChange(paramName, value, 'prompt');
-    }
-  };
-
-
-  // Wrapper function to handle connect, accepting optional URL override
-  const handleConnectWrapper = (urlToConnect?: string) => {
-    handleConnect(
-      setTools,
-      setResources,
-      setResponses, // Pass the actual setResponses setter function
-      urlToConnect
-    );
-  };
-
-  // Wrapper for handleExecuteTool to save history
-  const handleExecuteToolWrapper = () => {
-    if (!selectedTool || !client) return;
-    const toolName = selectedTool.name;
-    handleExecuteTool();
-
-    if (Object.keys(toolParams).length > 0) {
-        setToolCallHistory(prevHistory => {
-          const toolNameKey = toolName as string ?? '';
-          const currentList = prevHistory[toolNameKey] || [];
-          if (JSON.stringify(currentList[0]) === JSON.stringify(toolParams)) {
-            return prevHistory;
-          }
-          const updatedList = [toolParams, ...currentList].slice(0, MAX_HISTORY_ITEMS);
-          const newHistory = { ...prevHistory, [toolNameKey]: updatedList };
-          saveData(TOOL_HISTORY_KEY, newHistory);
-          return newHistory;
-        });
-    } else {
-        console.log("[DEBUG] Skipping tool history save: No parameters provided.");
-    }
-  };
-
-  // Wrapper for handleExecutePrompt
-  const handleExecutePromptWrapper = () => {
-     if (!selectedPrompt || !client) return;
-     handleExecutePrompt();
-     // TODO: Add prompt history saving if required
-  };
-
-  // Wrapper for handleDisconnect to include state cleanup
-  const handleDisconnectWrapper = async () => {
-    await handleDisconnect();
-    setTools([]);
-    setResources([]);
-    setPrompts([]);
-    setSelectedTool(null);
-    setSelectedResourceTemplate(null);
-    setSelectedPrompt(null);
-    setToolParams({});
-    setResourceArgs({});
-    setPromptParams({});
-    console.log("[DEBUG] Cleared tools, resources, prompts, and params state after disconnect.");
-  };
-
-
-  // Effect for cleanup on unmount
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    return () => {
-      isUnmounting.current = true;
-      if (connectionStatus !== 'Disconnected') {
-        console.log("Cleaning up connection on component unmount.");
-        const isStrictModeCheck = document.visibilityState === 'visible' && document.hasFocus() && !window.isReloading;
-        if (isStrictModeCheck) {
-          console.log("Skipping disconnect - detected React strict mode check");
-          addLogEntry({ type: 'info', data: 'Skipping disconnect during React strict mode check' });
-        } else {
-          addLogEntry({ type: 'info', data: 'Disconnecting on component unmount...' });
-          handleDisconnect();
-        }
-      }
+  // Tab handler functions
+  const handleNewTab = () => {
+    const newTab: ConnectionTab = {
+      id: uuidv4(),
+      title: 'New Connection',
+      serverUrl: '',
+      connectionStatus: 'Disconnected',
     };
-  }, [connectionStatus, addLogEntry, handleDisconnect]);
-
-  // Effect to clear capabilities when connection status changes
-  useEffect(() => {
-    if (connectionStatus === 'Connecting' || connectionStatus === 'Disconnected') {
-      clearAllCapabilities();
-    }
-  }, [connectionStatus]);
-
-  // Effect to clear capabilities when server URL changes
-  useEffect(() => {
-    clearAllCapabilities();
-    addLogEntry({ type: 'info', data: 'Server URL changed - clearing capabilities' });
-  }, [serverUrl, addLogEntry]);
-
-  // Effect to automatically list items when connected
-  useEffect(() => {
-    if (connectionStatus === 'Connected') {
-      console.log("[DEBUG] Connection established, automatically listing tools, resources, resource templates, and prompts.");
-      addLogEntry({ type: 'info', data: 'Connection established. Fetching lists...' });
-      handleListTools();
-      handleListResources();
-      handleListResourceTemplates();
-      handleListPrompts();
-    }
-  }, [connectionStatus, handleListTools, handleListResources, handleListResourceTemplates, handleListPrompts, addLogEntry]);
-
-
-  // Determine button disabled states
-  const isConnected = connectionStatus === 'Connected';
-  const isDisconnected = connectionStatus === 'Disconnected';
-
-
-  // Function to clear all capabilities when changing servers
-  const clearAllCapabilities = () => {
-    setTools([]);
-    setResources([]);
-    setResourceTemplates([]);
-    setPrompts([]);
-    setSelectedTool(null);
-    setSelectedResourceTemplate(null);
-    setSelectedPrompt(null);
-    console.log("[DEBUG] Cleared all capabilities for server change");
+    setTabs([...tabs, newTab]);
+    setActiveTabId(newTab.id);
   };
 
-  // Wrapper function for the refresh button
-  const handleRefreshAllLists = () => {
-    if (!isConnected) return;
-    addLogEntry({ type: 'info', data: 'Refreshing all lists...' });
-    handleListTools();
-    handleListResources();
-    handleListResourceTemplates();
-    handleListPrompts();
+  const handleSelectTab = (id: string) => {
+    setActiveTabId(id);
   };
+
+  const handleCloseTab = (id: string) => {
+    const newTabs = tabs.filter(tab => tab.id !== id);
+    
+    // Ensure at least one tab always exists
+    if (newTabs.length === 0) {
+      const defaultTab: ConnectionTab = {
+        id: uuidv4(),
+        title: 'New Connection',
+        serverUrl: '',
+        connectionStatus: 'Disconnected',
+      };
+      setTabs([defaultTab]);
+      setActiveTabId(defaultTab.id);
+    } else {
+      setTabs(newTabs);
+      if (activeTabId === id) {
+        setActiveTabId(newTabs[0].id);
+      }
+    }
+  };
+
+  // Function to update a specific tab
+  const handleUpdateTab = useCallback((tabId: string, updates: Partial<ConnectionTab>) => {
+    setTabs(prevTabs => prevTabs.map(tab => 
+      tab.id === tabId ? { ...tab, ...updates } : tab
+    ));
+  }, []);
 
   // --- Space Management Functions ---
   const handleCreateSpace = (name: string) => {
@@ -798,134 +604,83 @@ function App() {
           />
         </div>
 
-        {/* Main Panel (Inspector, Spaces, or Docs) */}
-        <div className="main-content col overflow-auto p-3">
-          {activeView === 'docs' && (
-            <>
-              {activeDocPage === 'what-is-mcp' && <WhatIsMcp />}
-              {activeDocPage === 'remote-vs-local' && <RemoteVsLocal />}
-              {activeDocPage === 'testing-guide' && <TestingGuide />}
-              {activeDocPage === 'troubleshooting' && <Troubleshooting />}
-              {!['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting'].includes(activeDocPage || '') && (
-                <div className="alert alert-warning">
-                  Documentation page not found. Please select a page from the navigation.
-                </div>
-              )}
-            </>
-          )}
-          {activeView === 'inspector' && (
-            <div className="inspector-layout row">
-              {/* Left Panel */}
-              <div className={isConnected ? "col-md-4" : "col-12"}>
-                <ConnectionPanel
-                  serverUrl={serverUrl}
-                  setServerUrl={setServerUrl}
-                  connectionStatus={connectionStatus}
-                  transportType={transportType}
-                  isConnecting={isConnecting}
-                  isConnected={isConnected}
-                  isDisconnected={isDisconnected}
-                  connectionStartTime={connectionStartTime}
-                  handleConnect={handleConnectWrapper}
-                  handleDisconnect={handleDisconnectWrapper}
-                  handleAbortConnection={handleAbortConnection}
-                  recentServers={recentServers}
-                  connectionError={connectionError}
-                  clearConnectionError={clearConnectionError}
+        {/* Main Panel (Inspector, Spaces, or Docs) - All views kept in DOM */}
+        <div className="main-content col overflow-auto p-3 position-relative">
+          
+          {/* Documentation View */}
+          <div className={`view-panel ${activeView === 'docs' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            {activeDocPage === 'what-is-mcp' && <WhatIsMcp />}
+            {activeDocPage === 'remote-vs-local' && <RemoteVsLocal />}
+            {activeDocPage === 'testing-guide' && <TestingGuide />}
+            {activeDocPage === 'troubleshooting' && <Troubleshooting />}
+            {!['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting'].includes(activeDocPage || '') && (
+              <div className="alert alert-warning">
+                Documentation page not found. Please select a page from the navigation.
+              </div>
+            )}
+          </div>
+
+          {/* Inspector View */}
+          <div className={`view-panel ${activeView === 'inspector' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            <div className="h-100 d-flex flex-column">
+              <div style={{ marginTop: '-0.75rem', marginBottom: '0.5rem' }}>
+                <Tabs
+                  tabs={tabs}
+                  activeTabId={activeTabId}
+                  onSelectTab={handleSelectTab}
+                  onCloseTab={handleCloseTab}
+                  onNewTab={handleNewTab}
                 />
-                {!isConnected && (
-                  <RecentServersPanel
-                     recentServers={recentServers}
-                     setServerUrl={setServerUrl}
-                     handleConnect={handleConnectWrapper}
-                     removeRecentServer={removeRecentServer}
-                     isConnected={isConnected}
-                     isConnecting={isConnecting}
-                  />
-                )}
-                {isConnected && (
-                  <UnifiedPanel
-                    tools={tools}
-                    resources={resources}
-                    resourceTemplates={resourceTemplates}
-                    prompts={prompts}
-                    selectedTool={selectedTool}
-                    selectedResourceTemplate={selectedResourceTemplate}
-                    selectedPrompt={selectedPrompt}
-                    handleSelectTool={handleSelectTool}
-                    handleSelectResourceTemplate={handleSelectResourceTemplate}
-                    handleSelectPrompt={handleSelectPrompt}
-                    connectionStatus={connectionStatus}
-                    onRefreshLists={handleRefreshAllLists}
-                    isConnecting={isConnecting}
-                  />
-                )}
               </div>
-
-              {/* Right Panel - Stacked Parameters and Logs */}
-              <div className="col-md-8">
-                {isConnected && (
-                  <>
-                    {/* Parameters / Arguments Panel */}
-                    <ParamsPanel
-                      selectedTool={selectedTool}
-                      selectedResourceTemplate={selectedResourceTemplate}
-                      selectedPrompt={selectedPrompt}
-                      toolParams={toolParams}
-                      resourceArgs={resourceArgs}
-                      promptParams={promptParams}
-                      isConnected={isConnected}
-                      isConnecting={isConnecting}
-                      handleParamChange={handleParamChangeWrapper}
-                      handleResourceArgChange={handleResourceArgChange}
-                      handleExecuteTool={handleExecuteToolWrapper}
-                      handleExecutePrompt={handleExecutePromptWrapper}
-                      handleAccessResource={handleAccessResource}
-                      parseUriTemplateArgs={parseUriTemplateArgs}
-                      toolHistory={toolCallHistory[selectedTool?.name as string ?? ''] || []}
-                      resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uriTemplate as string ?? ''] || []}
-                      setToolParams={setToolParams}
-                      setResourceArgs={setResourceArgs}
-                    />
-
-                    {/* Logs & Events Panel */}
-                    <ResponsePanel
-                      responses={responses}
-                      autoScroll={autoScroll}
-                      setAutoScroll={setAutoScroll}
-                      handleClearResponse={handleClearResponse}
-                      isConnected={isConnected}
-                      // Pass necessary props for "Add to Space"
-                      spaces={spaces}
-                      onAddCardToSpace={handleAddCardToSpace}
-                      serverUrl={serverUrl} // Pass current server URL
-                      selectedTool={selectedTool} // Pass selected tool
-                      selectedResourceTemplate={selectedResourceTemplate} // Pass selected resource
-                      toolParams={toolParams} // Pass current tool params
-                      resourceArgs={resourceArgs} // Pass current resource args
-                    />
-                  </>
-                )}
+              <div className="flex-grow-1 position-relative">
+                {tabs.map(tab => (
+                  <TabContent
+                    key={tab.id}
+                    tab={tab}
+                    isActive={activeTabId === tab.id && activeView === 'inspector'}
+                    onUpdateTab={handleUpdateTab}
+                    spaces={spaces}
+                    onAddCardToSpace={handleAddCardToSpace}
+                  />
+                ))}
               </div>
+            </div>
+          </div>
+
+          {/* Spaces View */}
+          <div className={`view-panel ${activeView === 'spaces' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            {selectedSpace ? (
+              <SpacesView
+                space={selectedSpace}
+                onUpdateSpace={handleUpdateSpace}
+                onDeleteSpace={handleDeleteSpace}
+                onUpdateCard={handleUpdateCard}
+                onDeleteCard={handleDeleteCard}
+                onExecuteCard={handleExecuteCard}
+                onMoveCard={handleMoveCard}
+                onAddCard={handleAddCardToSpace}
+              />
+            ) : (
+              <div className="alert alert-warning">No space selected or available. Create one from the side menu.</div>
+            )}
+          </div>
+
+          {/* Keep TabContent components alive even when not in inspector */}
+          {activeView !== 'inspector' && (
+            <div className="d-none">
+              {tabs.map(tab => (
+                <TabContent
+                  key={tab.id}
+                  tab={tab}
+                  isActive={false}
+                  onUpdateTab={handleUpdateTab}
+                  spaces={spaces}
+                  onAddCardToSpace={handleAddCardToSpace}
+                />
+              ))}
             </div>
           )}
 
-          {activeView === 'spaces' && selectedSpace && (
-            <SpacesView
-              space={selectedSpace}
-              onUpdateSpace={handleUpdateSpace}
-              onDeleteSpace={handleDeleteSpace}
-              // Pass card handlers and execution function
-              onUpdateCard={handleUpdateCard}
-              onDeleteCard={handleDeleteCard}
-              onExecuteCard={handleExecuteCard}
-              onMoveCard={handleMoveCard} // Pass move card function
-              onAddCard={handleAddCardToSpace} // Pass add card function
-            />
-          )}
-           {activeView === 'spaces' && !selectedSpace && (
-              <div className="alert alert-warning">No space selected or available. Create one from the side menu.</div>
-           )}
         </div>
       </div>
     </div>
