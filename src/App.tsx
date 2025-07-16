@@ -11,6 +11,7 @@ import ResponsePanel from './components/ResponsePanel';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
 import SpacesView from './components/SpacesView'; // New
+import Tabs from './components/Tabs'; // New
 // Documentation components
 import WhatIsMcp from './components/docs/WhatIsMcp';
 import RemoteVsLocal from './components/docs/RemoteVsLocal';
@@ -27,11 +28,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { formatErrorForDisplay } from './utils/errorHandling';
 import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
+import { v4 as uuidv4 } from 'uuid';
 
 // Import Types
 import {
   Prompt, ResourceTemplate, SelectedPrompt, SelectedTool, Space, SpaceCard,
-  AccessResourceResultSchema // Import the result schema
+  AccessResourceResultSchema, // Import the result schema
+  ConnectionTab
 } from './types';
 
 // Import Utils
@@ -42,6 +45,7 @@ import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath } 
 const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
 const RESOURCE_HISTORY_KEY = 'mcpResourceAccessHistory';
 const SPACES_KEY = 'mcpSpaces'; // New key for spaces
+const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
 const MAX_HISTORY_ITEMS = 10;
 
 // Helper to load history/spaces from localStorage
@@ -100,6 +104,13 @@ function App() {
   const [activeDocPage, setActiveDocPage] = useState<string | null>(null);
   const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
+  
+  // Tab state
+  const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
+    const savedTabs = localStorage.getItem(TABS_KEY);
+    return savedTabs ? JSON.parse(savedTabs) : [{ id: uuidv4(), title: 'localhost', serverUrl: 'http://localhost:3033', connectionStatus: 'Disconnected' }];
+  });
+  const [activeTabId, setActiveTabId] = useState<string>(tabs[0]?.id || '');
 
   // Router hooks
   const location = useLocation();
@@ -180,6 +191,11 @@ function App() {
   useEffect(() => {
     saveData(SPACES_KEY, spaces);
   }, [spaces]);
+
+  // Save tabs whenever they change
+  useEffect(() => {
+    localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
+  }, [tabs]);
 
   // Handle URL routing
   useEffect(() => {
@@ -299,6 +315,31 @@ function App() {
     setResourceArgs({});
     setPromptParams({});
     console.log("[DEBUG] Cleared tools, resources, prompts, and params state after disconnect.");
+  };
+
+  // Tab handler functions
+  const handleNewTab = () => {
+    const newTab: ConnectionTab = {
+      id: uuidv4(),
+      title: 'New Connection',
+      serverUrl: '',
+      connectionStatus: 'Disconnected',
+    };
+    setTabs([...tabs, newTab]);
+    setActiveTabId(newTab.id);
+  };
+
+  const handleSelectTab = (id: string) => {
+    setActiveTabId(id);
+  };
+
+  const handleCloseTab = (id: string) => {
+    const newTabs = tabs.filter(tab => tab.id !== id);
+    setTabs(newTabs);
+
+    if (activeTabId === id) {
+      setActiveTabId(newTabs[0]?.id || '');
+    }
   };
 
 
@@ -736,6 +777,7 @@ function App() {
 
  // --- Render Logic ---
   const selectedSpace = spaces.find(s => s.id === selectedSpaceId);
+  const activeTab = tabs.find(tab => tab.id === activeTabId);
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">
@@ -779,6 +821,14 @@ function App() {
       </div>
 
       <Header />
+      
+      <Tabs
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={handleSelectTab}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+      />
 
       <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
         {/* Desktop Side Navigation */}
