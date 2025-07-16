@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 // Use 'any' for now until correct SDK types are confirmed/exported
 type SelectedTool = any;
@@ -60,6 +60,18 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   setToolParams,
   setResourceArgs,
 }) => {
+  const [activeTab, setActiveTab] = useState<'tools' | 'prompts' | 'resources'>('tools');
+
+  // Auto-switch tabs when selections change
+  useEffect(() => {
+    if (selectedTool) {
+      setActiveTab('tools');
+    } else if (selectedPrompt) {
+      setActiveTab('prompts');
+    } else if (selectedResourceTemplate) {
+      setActiveTab('resources');
+    }
+  }, [selectedTool, selectedPrompt, selectedResourceTemplate]);
 
   // Handler for Enter key press
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -255,68 +267,116 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     // Add conditional class for deactivated state
     <div className={`card mb-3 ${!isConnected ? 'panel-deactivated' : ''}`}>
       <div className="card-header">
-        <h5>
-          {selectedTool ? `Tool Parameters (${selectedTool.name})`
-           : selectedPrompt ? `Prompt Parameters (${selectedPrompt.name})`
-           : selectedResourceTemplate ? `Resource Arguments (${selectedResourceTemplate.name || selectedResourceTemplate.uriTemplate})`
-           : 'Parameters / Arguments'}
-        </h5>
+        <h5>Parameters / Arguments</h5>
+        {/* Tab Navigation */}
+        <ul className="nav nav-tabs card-header-tabs">
+          <li className="nav-item">
+            <button 
+              className={`nav-link ${activeTab === 'tools' ? 'active' : ''}`}
+              onClick={() => setActiveTab('tools')}
+              disabled={!isConnected}
+            >
+              Tools {selectedTool && <span className="badge bg-success ms-1">1</span>}
+            </button>
+          </li>
+          <li className="nav-item">
+            <button 
+              className={`nav-link ${activeTab === 'prompts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('prompts')}
+              disabled={!isConnected}
+            >
+              Prompts {selectedPrompt && <span className="badge bg-primary ms-1">1</span>}
+            </button>
+          </li>
+          <li className="nav-item">
+            <button 
+              className={`nav-link ${activeTab === 'resources' ? 'active' : ''}`}
+              onClick={() => setActiveTab('resources')}
+              disabled={!isConnected}
+            >
+              Resources {selectedResourceTemplate && <span className="badge bg-info ms-1">1</span>}
+            </button>
+          </li>
+        </ul>
       </div>
       <div className="card-body" style={{ maxHeight: 'calc(100vh - 250px)', overflowY: 'auto' }}>
         <div id="paramsArea">
-          {/* Render parameters/arguments based on selection */}
-          {selectedTool && renderInputParams(selectedTool, toolParams, 'tool')}
-          {selectedPrompt && renderInputParams(selectedPrompt, promptParams, 'prompt')}
-          {selectedResourceTemplate && renderResourceTemplateArgs()}
-          {!selectedTool && !selectedPrompt && !selectedResourceTemplate && <p className="text-muted p-2">Select a tool, prompt, or resource template.</p>}
-
-          {/* Render History */}
-          {selectedTool && (
+          {/* Tools Tab */}
+          {activeTab === 'tools' && (
             <div>
-              <div className="small text-muted">Tool: {selectedTool.name}</div>
-              {renderHistoryList(toolHistory, handleToolHistoryClick)}
+              {selectedTool ? (
+                <>
+                  <div className="mb-3">
+                    <h6 className="text-success">Selected Tool: {selectedTool.name}</h6>
+                  </div>
+                  {renderInputParams(selectedTool, toolParams, 'tool')}
+                  <div className="small text-muted">Tool: {selectedTool.name}</div>
+                  {renderHistoryList(toolHistory, handleToolHistoryClick)}
+                  <button
+                    id="executeToolBtn"
+                    className="btn btn-success w-100 mt-3"
+                    onClick={handleExecuteTool}
+                    disabled={!selectedTool || !isConnected || isConnecting}
+                  >
+                    Execute Tool
+                  </button>
+                </>
+              ) : (
+                <p className="text-muted p-2">Select a tool from the Capabilities panel to configure its parameters.</p>
+              )}
             </div>
           )}
-          {selectedResourceTemplate && (
+
+          {/* Prompts Tab */}
+          {activeTab === 'prompts' && (
             <div>
-              <div className="small text-muted">Resource: {selectedResourceTemplate.uriTemplate}</div>
-              {renderHistoryList(resourceHistory, handleResourceHistoryClick)}
+              {selectedPrompt ? (
+                <>
+                  <div className="mb-3">
+                    <h6 className="text-primary">Selected Prompt: {selectedPrompt.name}</h6>
+                  </div>
+                  {renderInputParams(selectedPrompt, promptParams, 'prompt')}
+                  <button
+                    id="executePromptBtn"
+                    className="btn btn-primary w-100 mt-3"
+                    onClick={handleExecutePrompt}
+                    disabled={!selectedPrompt || !isConnected || isConnecting}
+                  >
+                    Execute Prompt
+                  </button>
+                </>
+              ) : (
+                <p className="text-muted p-2">Select a prompt from the Capabilities panel to configure its parameters.</p>
+              )}
             </div>
           )}
 
+          {/* Resources Tab */}
+          {activeTab === 'resources' && (
+            <div>
+              {selectedResourceTemplate ? (
+                <>
+                  <div className="mb-3">
+                    <h6 className="text-info">Selected Resource: {selectedResourceTemplate.name || selectedResourceTemplate.uriTemplate}</h6>
+                  </div>
+                  {renderResourceTemplateArgs()}
+                  <div className="small text-muted">Resource: {selectedResourceTemplate.uriTemplate}</div>
+                  {renderHistoryList(resourceHistory, handleResourceHistoryClick)}
+                  <button
+                    id="accessResourceBtn"
+                    className="btn btn-info w-100 mt-3"
+                    onClick={handleAccessResource}
+                    disabled={!selectedResourceTemplate || !isConnected || isConnecting}
+                  >
+                    Access Resource
+                  </button>
+                </>
+              ) : (
+                <p className="text-muted p-2">Select a resource template from the Capabilities panel to configure its arguments.</p>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* Buttons */}
-        {selectedTool && (
-          <button
-            id="executeToolBtn"
-            className="btn btn-success w-100 mt-3"
-            onClick={handleExecuteTool}
-            disabled={!selectedTool || !isConnected || isConnecting}
-          >
-            Execute Tool
-          </button>
-        )}
-         {selectedPrompt && (
-          <button
-            id="executePromptBtn"
-            className="btn btn-primary w-100 mt-3"
-            onClick={handleExecutePrompt}
-            disabled={!selectedPrompt || !isConnected || isConnecting}
-          >
-            Execute Prompt
-          </button>
-        )}
-        {selectedResourceTemplate && (
-          <button
-            id="accessResourceBtn"
-            className="btn btn-info w-100 mt-3"
-            onClick={handleAccessResource}
-            disabled={!selectedResourceTemplate || !isConnected || isConnecting}
-          >
-            Access Resource
-          </button>
-        )}
       </div>
     </div>
   );
