@@ -339,6 +339,15 @@ const SideNav: React.FC<SideNavProps> = ({
               <i className="bi bi-file-earmark-text me-2"></i> Terms of Service
             </Link>
           </li>
+          <li className="nav-item">
+            <Link
+              to="/docs/contact"
+              className="nav-link py-1"
+              onClick={() => document.body.classList.remove('menu-open')}
+            >
+              <i className="bi bi-envelope me-2"></i> Contact
+            </Link>
+          </li>
         </ul>
       </div>
     </nav>

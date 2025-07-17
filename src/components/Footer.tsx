@@ -7,14 +7,14 @@ const Footer: React.FC = () => {
         <div className="row align-items-center">
           <div className="col-md-8">
             <p className="text-muted small mb-1">
-              &copy; 2023-{new Date().getFullYear()} Unchained Development OÜ (Registry code: 16785055). All rights reserved.
+              &copy; {new Date().getFullYear()} <a href="/docs/contact" className="text-muted">Unchained Development OÜ</a>. All rights reserved.
             </p>
             <p className="text-muted small mb-0">
               Your application data, including server connections and history, is stored only in your browser's local storage. No data is gathered or stored on our servers.
             </p>
           </div>
           <div className="col-md-4 text-md-end mt-2 mt-md-0">
-            <a href="mailto:info@mcptest.io" className="text-muted small me-3">
+            <a href="/docs/contact" className="text-muted small me-3">
               Contact
             </a>
             <a href="/docs/privacy-policy" className="text-muted small me-3">

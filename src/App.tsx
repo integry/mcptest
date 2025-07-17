@@ -19,6 +19,7 @@ import TestingGuide from './components/docs/TestingGuide';
 import Troubleshooting from './components/docs/Troubleshooting';
 import PrivacyPolicy from './components/docs/PrivacyPolicy';
 import TermsOfService from './components/docs/TermsOfService';
+import Contact from './components/docs/Contact';
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -643,13 +644,28 @@ function App() {
           
           {/* Documentation View */}
           <div className={`view-panel ${activeView === 'docs' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            {activeDocPage === 'what-is-mcp' && <WhatIsMcp />}
-            {activeDocPage === 'remote-vs-local' && <RemoteVsLocal />}
-            {activeDocPage === 'testing-guide' && <TestingGuide />}
-            {activeDocPage === 'troubleshooting' && <Troubleshooting />}
-            {activeDocPage === 'privacy-policy' && <PrivacyPolicy />}
-            {activeDocPage === 'terms-of-service' && <TermsOfService />}
-            {!['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting', 'privacy-policy', 'terms-of-service'].includes(activeDocPage || '') && (
+            <div className={activeDocPage === 'what-is-mcp' ? '' : 'd-none'}>
+              <WhatIsMcp />
+            </div>
+            <div className={activeDocPage === 'remote-vs-local' ? '' : 'd-none'}>
+              <RemoteVsLocal />
+            </div>
+            <div className={activeDocPage === 'testing-guide' ? '' : 'd-none'}>
+              <TestingGuide />
+            </div>
+            <div className={activeDocPage === 'troubleshooting' ? '' : 'd-none'}>
+              <Troubleshooting />
+            </div>
+            <div className={activeDocPage === 'privacy-policy' ? '' : 'd-none'}>
+              <PrivacyPolicy />
+            </div>
+            <div className={activeDocPage === 'terms-of-service' ? '' : 'd-none'}>
+              <TermsOfService />
+            </div>
+            <div className={activeDocPage === 'contact' ? '' : 'd-none'}>
+              <Contact />
+            </div>
+            {activeDocPage && !['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting', 'privacy-policy', 'terms-of-service', 'contact'].includes(activeDocPage) && (
               <div className="alert alert-warning">
                 Documentation page not found. Please select a page from the navigation.
               </div>

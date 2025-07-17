@@ -33,17 +33,7 @@ const PrivacyPolicy: React.FC = () => {
       <div className="card my-4">
         <div className="card-body">
             <h5 className="card-title">Contact Us</h5>
-            <p>If you have any questions about this Privacy Policy, please contact us:</p>
-            <ul>
-                <li>By email: <a href="mailto:info@mcptest.io">info@mcptest.io</a></li>
-                <li>
-                    By mail: <br />
-                    Unchained Development OÜ <br />
-                    Sõle tn 82-17, Põhja-Tallinna linnaosa <br />
-                    10314 Tallinn, Harju maakond <br />
-                    Estonia
-                </li>
-            </ul>
+            <p>If you have any questions about this Privacy Policy, please contact us by email: <a href="mailto:info@mcptest.io">info@mcptest.io</a></p>
         </div>
       </div>
     </div>
