@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+// Import Analytics helpers
+import { logPageView, logEvent } from './utils/analytics';
+
 // Import Components
 import Header from './components/Header';
 import TabContent from './components/TabContent';
@@ -25,6 +28,9 @@ import {
 
 // Import Utils
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath } from './utils/urlUtils';
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
+import { formatErrorForDisplay } from './utils/errorHandling';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for spaces
@@ -107,40 +113,46 @@ function App() {
     localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
   }, [tabs]);
 
-  // Handle URL routing
+  // Handle URL routing and page view tracking
   useEffect(() => {
     const path = location.pathname;
-    
+    let pageTitle = 'Inspector'; // Default title
+
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
       setActiveView('docs');
       setActiveDocPage(docPage);
+      pageTitle = `Docs: ${docPage.replace(/-/g, ' ')}`;
+      logPageView(path, pageTitle);
       return;
     }
     
     const slug = extractSlugFromPath(path);
     
     if (slug) {
-      // We're on a space URL like /space/space-title
       const space = findSpaceBySlug(spaces, slug);
       if (space) {
         setActiveView('spaces');
         setSelectedSpaceId(space.id);
         setActiveDocPage(null);
+        pageTitle = `Space: ${space.name}`;
       } else {
-        // Space not found, redirect to home
         navigate('/', { replace: true });
+        pageTitle = 'Inspector'; // Redirected
       }
     } else if (path === '/') {
-      // We're on the home page
       setActiveView('inspector');
       setActiveDocPage(null);
+      pageTitle = 'Inspector';
     }
+    
+    logPageView(path, pageTitle); // Log view change
   }, [location.pathname, spaces, navigate]);
 
   // Tab handler functions
   const handleNewTab = () => {
+    logEvent('create_tab');
     const newTab: ConnectionTab = {
       id: uuidv4(),
       title: 'New Connection',
@@ -152,10 +164,12 @@ function App() {
   };
 
   const handleSelectTab = (id: string) => {
+    logEvent('select_tab');
     setActiveTabId(id);
   };
 
   const handleCloseTab = (id: string) => {
+    logEvent('close_tab', { tab_count: tabs.length > 1 ? tabs.length - 1 : 1 });
     const newTabs = tabs.filter(tab => tab.id !== id);
     
     // Ensure at least one tab always exists
@@ -185,6 +199,7 @@ function App() {
 
   // --- Space Management Functions ---
   const handleCreateSpace = (name: string) => {
+    logEvent('create_space');
     const newSpace: Space = { id: Date.now().toString(), name, cards: [] };
     setSpaces(prev => [...prev, newSpace]);
     setSelectedSpaceId(newSpace.id); // Select the new space
@@ -195,6 +210,7 @@ function App() {
   const handleSelectSpace = (id: string) => {
     const space = spaces.find(s => s.id === id);
     if (space) {
+      logEvent('select_space');
       setSelectedSpaceId(id);
       setActiveView('spaces'); // Ensure spaces view is active when selecting a space
       navigate(getSpaceUrl(space.name));
@@ -202,6 +218,7 @@ function App() {
   };
 
   const handleUpdateSpace = (id: string, updatedData: Partial<Omit<Space, 'id'>>) => {
+    logEvent('update_space', { updated_keys: Object.keys(updatedData).join(',') });
     setSpaces(prev => prev.map(space => {
       if (space.id === id) {
         const updatedSpace = { ...space, ...updatedData };
@@ -216,6 +233,7 @@ function App() {
   };
 
   const handleDeleteSpace = (id: string) => {
+    logEvent('delete_space');
     const deletedSpace = spaces.find(s => s.id === id);
     setSpaces(prev => prev.filter(space => space.id !== id));
     
@@ -236,11 +254,13 @@ function App() {
   };
 
   const handleReorderSpaces = (reorderedSpaces: Space[]) => {
+    logEvent('reorder_spaces');
     setSpaces(reorderedSpaces);
   };
 
   // --- Space Health Check Functions ---
   const performAllSpacesHealthCheck = async () => {
+    logEvent('health_check_all_spaces', { space_count: spaces.length });
     console.log('[Health Check] Starting health check for all spaces...');
     
     // Execute all cards in all spaces to refresh their status
@@ -322,6 +342,9 @@ function App() {
 
   // --- Add to Space Functionality ---
   const handleAddCardToSpace = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
+      logEvent('add_card_to_space', { 
+          card_type: cardData.type
+      });
       const newCard = { ...cardData, id: Date.now().toString() };
       setSpaces(prev => prev.map(space => {
           if (space.id === spaceId) {
@@ -334,6 +357,7 @@ function App() {
 
   // --- Card Management Functions ---
   const handleUpdateCard = (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => {
+    logEvent('update_card');
     setSpaces(prev => prev.map(space => {
       if (space.id === spaceId) {
         return {
@@ -349,6 +373,7 @@ function App() {
   };
 
   const handleDeleteCard = (spaceId: string, cardId: string) => {
+    logEvent('delete_card');
     setSpaces(prev => prev.map(space => {
       if (space.id === spaceId) {
         return { ...space, cards: space.cards.filter(card => card.id !== cardId) };
@@ -359,6 +384,7 @@ function App() {
   };
 
   const handleMoveCard = (sourceSpaceId: string, targetSpaceId: string, cardId: string) => {
+    logEvent('move_card');
     setSpaces(prev => {
       // Find the card to move
       const sourceSpace = prev.find(space => space.id === sourceSpaceId);
@@ -412,6 +438,11 @@ function App() {
     if (cardIndex === -1) return;
 
     const card = spaces[spaceIndex].cards[cardIndex];
+    if (card) {
+        logEvent('execute_card', {
+            card_type: card.type
+        });
+    }
 
     // Set initial loading state
     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: true, error: null, responseData: null, responseType: null }));

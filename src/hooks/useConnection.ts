@@ -6,6 +6,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { formatErrorForDisplay } from '../utils/errorHandling';
 import { detectTransport, attemptParallelConnections } from '../utils/transportDetection';
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
+import { logEvent } from '../utils/analytics';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -101,24 +102,22 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   }, [addLogEntry]); // Added addLogEntry dependency
 
   const handleDisconnect = useCallback(async () => {
-    if (connectionStatus === 'Disconnected' || isConnecting) {
-        console.log(`[DEBUG] handleDisconnect: Already disconnected or connecting. Status: ${connectionStatus}, IsConnecting: ${isConnecting}`);
-        return;
+    if (connectionStatus !== 'Disconnected' && !isConnecting) {
+        logEvent('disconnect');
+        addLogEntry({ type: 'info', data: 'Disconnecting...' });
+        await cleanupConnection();
     }
-    // Removed strict mode check - manual disconnect should always work
-    console.log(`[DEBUG] handleDisconnect: Initiating disconnect.`);
-    addLogEntry({ type: 'info', data: 'Disconnecting...' });
-    await cleanupConnection(); // Call cleanup which now includes client.close()
-  }, [connectionStatus, isConnecting, addLogEntry, cleanupConnection]); // Dependencies remain the same
+  }, [connectionStatus, isConnecting, addLogEntry, cleanupConnection, serverUrl]);
 
   const handleAbortConnection = useCallback(() => {
     if (isConnecting && abortControllerRef.current) {
+      logEvent('connect_abort');
       console.log('[DEBUG] Aborting connection attempt...');
       abortControllerRef.current.abort();
       addLogEntry({ type: 'info', data: 'Connection aborted by user' });
       cleanupConnection();
     }
-  }, [isConnecting, addLogEntry, cleanupConnection]);
+  }, [isConnecting, addLogEntry, cleanupConnection, serverUrl]);
 
   // Helper function to detect and add protocol if missing
   const addProtocolIfMissing = (url: string): string => {
@@ -148,6 +147,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    logEvent('connect_attempt');
 
     // Clear any previous connection error
     setConnectionError(null);
@@ -261,6 +261,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       clientRef.current = result.client;
       setTransportType(result.transportType);
       addLogEntry({ type: 'info', data: `Connected using ${result.transportType} transport` });
+      logEvent('connect_success', { 
+        transport_type: result.transportType 
+      });
       
       console.log("[DEBUG] handleConnect: Connection completed with", result.transportType);
 
@@ -295,6 +298,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         });
       } else {
         // Use enhanced error formatting for actual errors
+        logEvent('connect_failure');
         const errorDetails = formatErrorForDisplay(error, {
           serverUrl: connectUrl.toString(),
           operation: 'connection'

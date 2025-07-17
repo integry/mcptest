@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ConnectionTab, LogEntry } from '../types';
+import { logEvent } from '../utils/analytics';
 
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
@@ -244,6 +245,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Wrapper function to handle resource access and save history
   const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
+    logEvent('access_resource');
     const uri = selectedResourceTemplate.uriTemplate;
     const result = await accessResource(selectedResourceTemplate, resourceArgs);
     setLastResult(result);
@@ -333,6 +335,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
     if (!isConnected) return;
+    logEvent('refresh_capabilities');
     addLogEntry({ type: 'info', data: 'Refreshing all lists...' });
     handleListTools();
     handleListResources();
