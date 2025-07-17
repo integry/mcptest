@@ -210,7 +210,7 @@ function App() {
   const handleSelectSpace = (id: string) => {
     const space = spaces.find(s => s.id === id);
     if (space) {
-      logEvent('select_space', { space_name: space.name });
+      logEvent('select_space');
       setSelectedSpaceId(id);
       setActiveView('spaces'); // Ensure spaces view is active when selecting a space
       navigate(getSpaceUrl(space.name));
@@ -218,7 +218,7 @@ function App() {
   };
 
   const handleUpdateSpace = (id: string, updatedData: Partial<Omit<Space, 'id'>>) => {
-    logEvent('update_space', { space_id: id, updated_keys: Object.keys(updatedData).join(',') });
+    logEvent('update_space', { updated_keys: Object.keys(updatedData).join(',') });
     setSpaces(prev => prev.map(space => {
       if (space.id === id) {
         const updatedSpace = { ...space, ...updatedData };
@@ -233,7 +233,7 @@ function App() {
   };
 
   const handleDeleteSpace = (id: string) => {
-    logEvent('delete_space', { space_id: id });
+    logEvent('delete_space');
     const deletedSpace = spaces.find(s => s.id === id);
     setSpaces(prev => prev.filter(space => space.id !== id));
     
@@ -343,9 +343,7 @@ function App() {
   // --- Add to Space Functionality ---
   const handleAddCardToSpace = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
       logEvent('add_card_to_space', { 
-          space_id: spaceId, 
-          card_type: cardData.type,
-          card_name: cardData.name 
+          card_type: cardData.type
       });
       const newCard = { ...cardData, id: Date.now().toString() };
       setSpaces(prev => prev.map(space => {
@@ -359,7 +357,7 @@ function App() {
 
   // --- Card Management Functions ---
   const handleUpdateCard = (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => {
-    logEvent('update_card', { space_id: spaceId, card_id: cardId });
+    logEvent('update_card');
     setSpaces(prev => prev.map(space => {
       if (space.id === spaceId) {
         return {
@@ -375,7 +373,7 @@ function App() {
   };
 
   const handleDeleteCard = (spaceId: string, cardId: string) => {
-    logEvent('delete_card', { space_id: spaceId, card_id: cardId });
+    logEvent('delete_card');
     setSpaces(prev => prev.map(space => {
       if (space.id === spaceId) {
         return { ...space, cards: space.cards.filter(card => card.id !== cardId) };
@@ -386,7 +384,7 @@ function App() {
   };
 
   const handleMoveCard = (sourceSpaceId: string, targetSpaceId: string, cardId: string) => {
-    logEvent('move_card', { from_space_id: sourceSpaceId, to_space_id: targetSpaceId, card_id: cardId });
+    logEvent('move_card');
     setSpaces(prev => {
       // Find the card to move
       const sourceSpace = prev.find(space => space.id === sourceSpaceId);
@@ -442,10 +440,7 @@ function App() {
     const card = spaces[spaceIndex].cards[cardIndex];
     if (card) {
         logEvent('execute_card', {
-            space_id: spaceId,
-            card_id: cardId,
-            card_type: card.type,
-            card_name: card.name
+            card_type: card.type
         });
     }
 

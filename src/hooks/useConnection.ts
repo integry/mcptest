@@ -103,7 +103,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
   const handleDisconnect = useCallback(async () => {
     if (connectionStatus !== 'Disconnected' && !isConnecting) {
-        logEvent('disconnect', { server_url: serverUrl });
+        logEvent('disconnect');
         addLogEntry({ type: 'info', data: 'Disconnecting...' });
         await cleanupConnection();
     }
@@ -111,7 +111,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
   const handleAbortConnection = useCallback(() => {
     if (isConnecting && abortControllerRef.current) {
-      logEvent('connect_abort', { server_url: serverUrl });
+      logEvent('connect_abort');
       console.log('[DEBUG] Aborting connection attempt...');
       abortControllerRef.current.abort();
       addLogEntry({ type: 'info', data: 'Connection aborted by user' });
@@ -147,7 +147,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
-    logEvent('connect_attempt', { server_url: targetUrl });
+    logEvent('connect_attempt');
 
     // Clear any previous connection error
     setConnectionError(null);
@@ -262,7 +262,6 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       setTransportType(result.transportType);
       addLogEntry({ type: 'info', data: `Connected using ${result.transportType} transport` });
       logEvent('connect_success', { 
-        server_url: targetUrl, 
         transport_type: result.transportType 
       });
       
@@ -299,10 +298,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         });
       } else {
         // Use enhanced error formatting for actual errors
-        logEvent('connect_failure', {
-          server_url: targetUrl,
-          error_message: error.message
-        });
+        logEvent('connect_failure');
         const errorDetails = formatErrorForDisplay(error, {
           serverUrl: connectUrl.toString(),
           operation: 'connection'

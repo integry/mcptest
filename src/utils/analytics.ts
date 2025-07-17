@@ -2,6 +2,36 @@ import { analytics } from '../firebase';
 import { logEvent as firebaseLogEvent } from 'firebase/analytics';
 
 /**
+ * Sanitizes URL to remove user-specific information while preserving useful analytics data
+ */
+const sanitizeUrl = (url: string): string => {
+  try {
+    const parsedUrl = new URL(url);
+    // Keep only the protocol and host, remove path and query params
+    return `${parsedUrl.protocol}//${parsedUrl.host}`;
+  } catch {
+    // If URL parsing fails, return a generic placeholder
+    return 'unknown';
+  }
+};
+
+/**
+ * Sanitizes page path to remove user-specific slugs
+ */
+const sanitizePagePath = (path: string): string => {
+  // Replace space slugs with generic placeholder
+  return path.replace(/\/space\/[^\/]+/, '/space/[space]');
+};
+
+/**
+ * Sanitizes page title to remove user-specific space names
+ */
+const sanitizePageTitle = (title: string): string => {
+  // Replace "Space: [name]" with generic "Space"
+  return title.replace(/^Space: .+$/, 'Space');
+};
+
+/**
  * Logs a custom event to Firebase Analytics.
  * @param eventName The name of the event.
  * @param eventParams Optional parameters for the event.
@@ -37,12 +67,17 @@ export const logEvent = (eventName: string, eventParams?: { [key: string]: any }
  */
 export const logPageView = (path: string, title: string) => {
     if (analytics) {
+        const sanitizedPath = sanitizePagePath(path);
+        const sanitizedTitle = sanitizePageTitle(title);
         firebaseLogEvent(analytics, 'page_view', {
-            page_location: window.location.origin + path,
-            page_path: path,
-            page_title: title,
+            page_location: window.location.origin + sanitizedPath,
+            page_path: sanitizedPath,
+            page_title: sanitizedTitle,
         });
     } else {
-        console.log(`[Analytics Disabled] Page View: ${title} (${path})`);
+        console.log(`[Analytics Disabled] Page View: ${sanitizedTitle} (${sanitizedPath})`);
     }
 };
+
+// Export sanitization functions for use in other components
+export { sanitizeUrl, sanitizePagePath, sanitizePageTitle };

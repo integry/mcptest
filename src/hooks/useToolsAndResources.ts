@@ -111,7 +111,7 @@ export const useToolsAndResources = (
       return warningLog;
     }
 
-    logEvent('execute_tool', { tool_name: selectedTool.name, server_url: serverUrl });
+    logEvent('execute_tool');
     console.log(`[DEBUG] Executing tool "${selectedTool.name}" via SDK client with params:`, toolParams);
     addLogEntry({ type: 'info', data: `Executing tool: ${selectedTool.name}...` });
 
@@ -195,7 +195,7 @@ export const useToolsAndResources = (
       return warningLog;
     }
 
-    logEvent('execute_prompt', { prompt_name: selectedPrompt.name, server_url: serverUrl });
+    logEvent('execute_prompt');
     console.log(`[DEBUG] Executing prompt "${selectedPrompt.name}" via SDK client with params:`, promptParams);
     addLogEntry({ type: 'info', data: `Executing prompt: ${selectedPrompt.name}...` });
 
@@ -262,7 +262,7 @@ export const useToolsAndResources = (
 
   // Tool Selection (no changes needed)
   const handleSelectTool = (tool: any) => {
-    logEvent('select_capability', { capability_type: 'tool', capability_name: tool.name });
+    logEvent('select_capability', { capability_type: 'tool' });
     setSelectedTool(tool);
     setSelectedResourceTemplate(null); // Deselect resource
     setSelectedPrompt(null); // Deselect prompt
@@ -283,7 +283,7 @@ export const useToolsAndResources = (
 
   // Resource Template Selection (no changes needed)
   const handleSelectResourceTemplate = (template: any) => {
-    logEvent('select_capability', { capability_type: 'resource_template', capability_name: template.uriTemplate });
+    logEvent('select_capability', { capability_type: 'resource_template' });
     setSelectedResourceTemplate(template);
     setSelectedTool(null); // Deselect tool
     setSelectedPrompt(null); // Deselect prompt
@@ -296,7 +296,7 @@ export const useToolsAndResources = (
 
   // Prompt Selection
   const handleSelectPrompt = (prompt: Prompt) => {
-    logEvent('select_capability', { capability_type: 'prompt', capability_name: prompt.name });
+    logEvent('select_capability', { capability_type: 'prompt' });
     setSelectedPrompt(prompt);
     setSelectedTool(null); // Deselect tool
     setSelectedResourceTemplate(null); // Deselect resource
