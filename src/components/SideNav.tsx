@@ -321,33 +321,6 @@ const SideNav: React.FC<SideNavProps> = ({
               <i className="bi bi-wrench me-2"></i> Troubleshooting
             </Link>
           </li>
-          <li className="nav-item">
-            <Link
-              to="/docs/privacy-policy"
-              className="nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-shield-check me-2"></i> Privacy Policy
-            </Link>
-          </li>
-          <li className="nav-item">
-            <Link
-              to="/docs/terms-of-service"
-              className="nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-file-earmark-text me-2"></i> Terms of Service
-            </Link>
-          </li>
-          <li className="nav-item">
-            <Link
-              to="/docs/contact"
-              className="nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-envelope me-2"></i> Contact
-            </Link>
-          </li>
         </ul>
       </div>
     </nav>
