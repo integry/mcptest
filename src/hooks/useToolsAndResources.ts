@@ -103,10 +103,11 @@ export const useToolsAndResources = (
 
 
   // Refactored handleExecuteTool using SDK Client
-  const handleExecuteTool = useCallback(async () => {
+  const handleExecuteTool = useCallback(async (): Promise<LogEntry | null> => {
     if (!client || !selectedTool || connectionStatus !== 'Connected') {
-      addLogEntry({ type: 'warning', data: 'Cannot execute tool: Client not connected or no tool selected.' });
-      return;
+      const warningLog: LogEntry = { type: 'warning', data: 'Cannot execute tool: Client not connected or no tool selected.', timestamp: new Date().toLocaleTimeString() };
+      addLogEntry(warningLog);
+      return warningLog;
     }
 
     console.log(`[DEBUG] Executing tool "${selectedTool.name}" via SDK client with params:`, toolParams);
@@ -121,38 +122,25 @@ export const useToolsAndResources = (
 
       // Process and log the content array from the tool result
       if (result?.content && Array.isArray(result.content)) {
-        addLogEntry({ type: 'info', data: `--- Tool "${selectedTool.name}" Result ---` });
-        result.content.forEach((contentItem: any, index: number) => {
-          let contentText = '';
-          if (contentItem?.type === 'text' && contentItem.text) {
-            contentText = contentItem.text;
-          } else if (contentItem?.type === 'resource' && contentItem.resource) {
-             contentText = `Resource: ${contentItem.resource.uri || 'No URI'}`;
-             // Optionally include resource text if needed/available and short enough
-             // if (contentItem.resource.text) {
-             //   contentText += `\n${contentItem.resource.text.substring(0, 100)}...`;
-             // }
-          } else {
-            contentText = JSON.stringify(contentItem); // Fallback for other content types
-          }
-          // Use a specific type or reuse 'tool_result'/'info'
-          // Add callContext here
-          addLogEntry({
+        const resultLogEntry: LogEntry = {
             type: 'tool_result',
-            data: contentText,
+            data: result.content,
+            timestamp: new Date().toLocaleTimeString(),
             callContext: {
-              serverUrl: serverUrl, // Use the passed serverUrl
+              serverUrl: serverUrl,
               type: 'tool',
               name: selectedTool.name,
               params: toolParams
             }
-          });
-        });
-         addLogEntry({ type: 'info', data: `--- End Tool "${selectedTool.name}" ---` });
+        };
+        addLogEntry(resultLogEntry);
+        return resultLogEntry;
       } else {
          // Log the raw result if content array is not found or result is null/undefined
          const resultText = JSON.stringify(result);
-         addLogEntry({ type: 'warning', data: `Tool ${selectedTool.name} result (unexpected format): ${resultText}` });
+         const warningLogEntry: LogEntry = { type: 'warning', data: `Tool ${selectedTool.name} result (unexpected format): ${resultText}`, timestamp: new Date().toLocaleTimeString() };
+         addLogEntry(warningLogEntry);
+         return warningLogEntry;
       }
 
     } catch (error: any) {
@@ -161,8 +149,11 @@ export const useToolsAndResources = (
         serverUrl,
         operation: `execute tool ${selectedTool.name}`
       });
-      addLogEntry({ type: 'error', data: `Failed to execute tool ${selectedTool.name}: ${errorDetails}` });
+      const errorLogEntry: LogEntry = { type: 'error', data: `Failed to execute tool ${selectedTool.name}: ${errorDetails}`, timestamp: new Date().toLocaleTimeString() };
+      addLogEntry(errorLogEntry);
+      return errorLogEntry;
     }
+    return null;
   }, [client, selectedTool, toolParams, connectionStatus, addLogEntry, serverUrl]); // Add serverUrl dependency
 
 
@@ -195,10 +186,11 @@ export const useToolsAndResources = (
   }, [client, connectionStatus, addLogEntry, setPrompts]);
 
   // Execute Prompt using SDK Client
-  const handleExecutePrompt = useCallback(async () => {
+  const handleExecutePrompt = useCallback(async (): Promise<LogEntry | null> => {
     if (!client || !selectedPrompt || connectionStatus !== 'Connected') {
-      addLogEntry({ type: 'warning', data: 'Cannot execute prompt: Client not connected or no prompt selected.' });
-      return;
+      const warningLog: LogEntry = { type: 'warning', data: 'Cannot execute prompt: Client not connected or no prompt selected.', timestamp: new Date().toLocaleTimeString() };
+      addLogEntry(warningLog);
+      return warningLog;
     }
 
     console.log(`[DEBUG] Executing prompt "${selectedPrompt.name}" via SDK client with params:`, promptParams);
@@ -214,29 +206,25 @@ export const useToolsAndResources = (
 
       // Process and log the messages array from the prompt result according to MCP spec
       if (result?.messages && Array.isArray(result.messages)) {
-        addLogEntry({ type: 'info', data: `--- Prompt "${selectedPrompt.name}" Messages ---` });
-        result.messages.forEach((message: any, index: number) => {
-          const role = message.role || 'unknown';
-          let contentText = `[${role}] `;
-          if (message.content?.type === 'text' && message.content.text) {
-            contentText += message.content.text;
-          } else if (message.content?.type === 'resource' && message.content.resource) {
-             contentText += `Resource: ${message.content.resource.uri || 'No URI'}`;
-             // Optionally include resource text if needed/available and short enough
-             // if (message.content.resource.text) {
-             //   contentText += `\n${message.content.resource.text.substring(0, 100)}...`;
-             // }
-          } else {
-            contentText += JSON.stringify(message.content); // Fallback for other content types
-          }
-          // Use a specific type or reuse 'tool_result'/'info'
-          addLogEntry({ type: 'prompt_message', data: contentText });
-        });
-         addLogEntry({ type: 'info', data: `--- End Prompt "${selectedPrompt.name}" ---` });
+        const resultLogEntry: LogEntry = {
+            type: 'tool_result',
+            data: result.messages,
+            timestamp: new Date().toLocaleTimeString(),
+            callContext: {
+              serverUrl: serverUrl,
+              type: 'tool',
+              name: selectedPrompt.name,
+              params: promptParams
+            }
+        };
+        addLogEntry(resultLogEntry);
+        return resultLogEntry;
       } else {
          // Log the raw result if messages array is not found
          const resultText = JSON.stringify(result);
-         addLogEntry({ type: 'warning', data: `Prompt ${selectedPrompt.name} result (unexpected format): ${resultText}` });
+         const warningLogEntry: LogEntry = { type: 'warning', data: `Prompt ${selectedPrompt.name} result (unexpected format): ${resultText}`, timestamp: new Date().toLocaleTimeString() };
+         addLogEntry(warningLogEntry);
+         return warningLogEntry;
       }
 
     } catch (error: any) {
@@ -245,9 +233,12 @@ export const useToolsAndResources = (
         serverUrl,
         operation: `execute prompt ${selectedPrompt.name}`
       });
-      addLogEntry({ type: 'error', data: `Failed to execute prompt ${selectedPrompt.name}: ${errorDetails}` });
+      const errorLogEntry: LogEntry = { type: 'error', data: `Failed to execute prompt ${selectedPrompt.name}: ${errorDetails}`, timestamp: new Date().toLocaleTimeString() };
+      addLogEntry(errorLogEntry);
+      return errorLogEntry;
     }
-  }, [client, selectedPrompt, promptParams, connectionStatus, addLogEntry]);
+    return null;
+  }, [client, selectedPrompt, promptParams, connectionStatus, addLogEntry, serverUrl]);
 
 
   // --- Parameter/Argument Handling ---
