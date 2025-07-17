@@ -3,6 +3,7 @@ import { LogEntry, Resource, ResourceTemplate, SelectedTool, Prompt, SelectedPro
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import SDK Client type
 import { ListPromptsResultSchema, GetPromptResultSchema } from '@modelcontextprotocol/sdk/types.js'; // Corrected schema import
 import { formatErrorForDisplay } from '../utils/errorHandling';
+import { logEvent } from '../utils/analytics';
 
 export const useToolsAndResources = (
   client: Client | null,
@@ -110,6 +111,7 @@ export const useToolsAndResources = (
       return warningLog;
     }
 
+    logEvent('execute_tool', { tool_name: selectedTool.name, server_url: serverUrl });
     console.log(`[DEBUG] Executing tool "${selectedTool.name}" via SDK client with params:`, toolParams);
     addLogEntry({ type: 'info', data: `Executing tool: ${selectedTool.name}...` });
 
@@ -193,6 +195,7 @@ export const useToolsAndResources = (
       return warningLog;
     }
 
+    logEvent('execute_prompt', { prompt_name: selectedPrompt.name, server_url: serverUrl });
     console.log(`[DEBUG] Executing prompt "${selectedPrompt.name}" via SDK client with params:`, promptParams);
     addLogEntry({ type: 'info', data: `Executing prompt: ${selectedPrompt.name}...` });
 
@@ -259,6 +262,7 @@ export const useToolsAndResources = (
 
   // Tool Selection (no changes needed)
   const handleSelectTool = (tool: any) => {
+    logEvent('select_capability', { capability_type: 'tool', capability_name: tool.name });
     setSelectedTool(tool);
     setSelectedResourceTemplate(null); // Deselect resource
     setSelectedPrompt(null); // Deselect prompt
@@ -279,6 +283,7 @@ export const useToolsAndResources = (
 
   // Resource Template Selection (no changes needed)
   const handleSelectResourceTemplate = (template: any) => {
+    logEvent('select_capability', { capability_type: 'resource_template', capability_name: template.uriTemplate });
     setSelectedResourceTemplate(template);
     setSelectedTool(null); // Deselect tool
     setSelectedPrompt(null); // Deselect prompt
@@ -291,6 +296,7 @@ export const useToolsAndResources = (
 
   // Prompt Selection
   const handleSelectPrompt = (prompt: Prompt) => {
+    logEvent('select_capability', { capability_type: 'prompt', capability_name: prompt.name });
     setSelectedPrompt(prompt);
     setSelectedTool(null); // Deselect tool
     setSelectedResourceTemplate(null); // Deselect resource
