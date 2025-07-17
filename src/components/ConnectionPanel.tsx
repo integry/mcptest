@@ -71,7 +71,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               type="text"
               className="form-control"
               id="serverUrl"
-              placeholder="http://localhost:3033/mcp"
+              placeholder="mcp.api.coingecko.com (https:// added automatically)"
               value={serverUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {

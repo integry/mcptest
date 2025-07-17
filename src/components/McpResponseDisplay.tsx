@@ -9,6 +9,7 @@ interface McpResponseDisplayProps {
   addToSpaceButton?: React.ReactNode; // Optional add to space button
   spacesMode?: boolean; // Flag to enable spaces mode (simplified display)
   toolName?: string; // Optional tool name override for spaces mode
+  showExcerpt?: boolean; // Flag to control whether to show excerpts by default
 }
 
 const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
@@ -18,8 +19,19 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   addToSpaceButton,
   spacesMode = false, // Default to regular mode
   toolName: propToolName,
+  showExcerpt = false, // Default to full content
 }) => {
   const converter = useRef<showdown.Converter | null>(null);
+
+  // Function to create excerpt from content (first 200 chars + last 50 chars)
+  const createExcerpt = (content: string): string => {
+    if (content.length <= 250) {
+      return content; // No need to truncate if content is short
+    }
+    const firstPart = content.substring(0, 200);
+    const lastPart = content.substring(content.length - 50);
+    return `${firstPart}...${lastPart}`;
+  };
 
   useEffect(() => {
     if (!converter.current) {
@@ -184,9 +196,13 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             }}
           >
             {htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+              <span className="event-data" dangerouslySetInnerHTML={{ 
+                __html: isContentExpanded ? htmlContent : (showExcerpt ? converter.current?.makeHtml(createExcerpt(dataString)) || htmlContent : htmlContent)
+              }} />
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>
+                {isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
+              </span>
             )}
           </div>
         </div>
@@ -306,9 +322,13 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             }}
           >
             {htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+              <span className="event-data" dangerouslySetInnerHTML={{ 
+                __html: isContentExpanded ? htmlContent : (showExcerpt ? converter.current?.makeHtml(createExcerpt(dataString)) || htmlContent : htmlContent)
+              }} />
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>
+                {isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
+              </span>
             )}
           </div>
         </div>

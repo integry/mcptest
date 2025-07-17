@@ -120,6 +120,24 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
   }, [isConnecting, addLogEntry, cleanupConnection]);
 
+  // Helper function to detect and add protocol if missing
+  const addProtocolIfMissing = (url: string): string => {
+    if (!url) return url;
+    
+    // If URL already has a protocol, return as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    
+    // Default to HTTPS for URLs without protocol
+    return `https://${url}`;
+  };
+
+  // Helper function to get HTTP version of a URL
+  const getHttpVersion = (url: string): string => {
+    return url.replace(/^https:\/\//, 'http://');
+  };
+
   // Modify handleConnect to accept an optional URL override
   const handleConnect = useCallback(async (
     // Keep setters for potential future use or different connect flows
@@ -128,7 +146,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
     urlToConnect?: string // Optional URL parameter
   ) => {
-    const targetUrl = urlToConnect || serverUrl; // Use override or state URL
+    const rawUrl = urlToConnect || serverUrl; // Use override or state URL
+    const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
 
     // Clear any previous connection error
     setConnectionError(null);
@@ -183,25 +202,72 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     addLogEntry({ type: 'info', data: `Connecting to ${connectUrl.toString()} with parallel transport attempts...` });
 
     try {
-      console.log("[DEBUG] handleConnect: Starting parallel connection attempts...");
+      console.log("[DEBUG] handleConnect: Starting connection attempts...");
       
       // Add timeout promise
       const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
       );
       
-      // Race parallel connections with timeout
-      const result = await Promise.race([
-        attemptParallelConnections(connectUrl.toString(), abortControllerRef.current?.signal),
-        timeoutPromise
-      ]);
+      let result;
+      let connectionUrl = connectUrl.toString();
+      
+      // If the original URL was protocol-less and we added HTTPS, try HTTPS first with HTTP fallback
+      if (rawUrl === targetUrl.replace('https://', '') && targetUrl.startsWith('https://')) {
+        console.log("[DEBUG] handleConnect: Attempting HTTPS connection first...");
+        addLogEntry({ type: 'info', data: `Attempting HTTPS connection to ${connectionUrl}...` });
+        
+        try {
+          // Try HTTPS first
+          result = await Promise.race([
+            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+            timeoutPromise
+          ]);
+          console.log("[DEBUG] handleConnect: HTTPS connection successful");
+        } catch (httpsError: any) {
+          console.log("[DEBUG] handleConnect: HTTPS failed, trying HTTP fallback...");
+          
+          // Only try HTTP fallback if the error suggests HTTPS issues
+          if (httpsError.message?.includes('SSL') || 
+              httpsError.message?.includes('certificate') || 
+              httpsError.message?.includes('HTTPS') ||
+              httpsError.message?.includes('timeout') ||
+              httpsError.message?.includes('network')) {
+            
+            connectionUrl = getHttpVersion(connectionUrl);
+            addLogEntry({ type: 'info', data: `HTTPS failed, trying HTTP fallback to ${connectionUrl}...` });
+            
+            // Try HTTP fallback
+            result = await Promise.race([
+              attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+              timeoutPromise
+            ]);
+            console.log("[DEBUG] handleConnect: HTTP fallback successful");
+          } else {
+            // Re-throw if it's not a protocol-related error
+            throw httpsError;
+          }
+        }
+      } else {
+        // If user explicitly provided a protocol, use it as-is
+        console.log("[DEBUG] handleConnect: Using user-specified protocol...");
+        result = await Promise.race([
+          attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+          timeoutPromise
+        ]);
+      }
       
       // Update state with the winning connection
       clientRef.current = result.client;
       setTransportType(result.transportType);
       addLogEntry({ type: 'info', data: `Connected using ${result.transportType} transport` });
       
-      console.log("[DEBUG] handleConnect: Parallel connection completed with", result.transportType);
+      console.log("[DEBUG] handleConnect: Connection completed with", result.transportType);
+
+      // Update serverUrl state to reflect the final successful URL
+      if (connectionUrl !== serverUrl) {
+        setServerUrl(connectionUrl);
+      }
 
       setConnectionStatus('Connected');
       setIsConnecting(false);

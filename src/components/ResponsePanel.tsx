@@ -160,6 +160,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
                        showTimestamp={true} 
                        className="" 
                        addToSpaceButton={isResultType ? <AddToSpaceControl logEntry={item} /> : undefined}
+                       showExcerpt={true}
                      />
                   </div>
                 );

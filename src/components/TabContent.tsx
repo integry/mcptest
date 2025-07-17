@@ -169,15 +169,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       if (serverUrl) {
         try {
           const hostname = new URL(serverUrl).hostname;
-          // Only update title if it's currently a hostname or "New Connection"
-          if (tab.title === 'New Connection' || tab.title.includes('.') || tab.title === 'localhost') {
-            newTitle = hostname;
-          }
+          newTitle = hostname;
         } catch {
           // If URL parsing fails, use the serverUrl as-is for title
-          if (tab.title === 'New Connection' || tab.title.includes('.') || tab.title === 'localhost') {
-            newTitle = serverUrl;
-          }
+          newTitle = serverUrl;
         }
       } else {
         // If serverUrl is empty, reset to "New Connection"
@@ -224,7 +219,6 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         const isStrictModeCheck = document.visibilityState === 'visible' && document.hasFocus();
         if (isStrictModeCheck) {
           console.log(`Tab ${tab.id}: Skipping disconnect - detected React strict mode check`);
-          addLogEntry({ type: 'info', data: 'Skipping disconnect during React strict mode check' });
         } else {
           addLogEntry({ type: 'info', data: 'Disconnecting on component unmount...' });
           handleDisconnect();
