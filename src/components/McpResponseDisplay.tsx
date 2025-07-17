@@ -56,6 +56,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
 
   let textContent = ''; // Holds the plain text representation IF HTML fails or isn't used
   let htmlContent: string | null = null; // Holds Showdown output
+  let isJson = false; // Flag to check if content is JSON
   let entryClassName = `response-entry ${className}`;
   let title = logEntry.type || 'Unknown Entry';
   const itemType = logEntry.type?.toLowerCase() ?? '';
@@ -75,8 +76,20 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   const dataString = typeof dataForDisplay === 'string' ? dataForDisplay : JSON.stringify(dataForDisplay ?? '', null, 2);
 
   try {
-    // --- Determine Base Content and Class (for non-HTML display or titles) ---
-    // (This part mostly sets up textContent as a fallback)
+    // Check for JSON content first
+    try {
+        const parsed = JSON.parse(dataString);
+        // It's valid JSON, let's pretty-print it
+        textContent = JSON.stringify(parsed, null, 2);
+        isJson = true;
+    } catch (jsonError) {
+        // Not JSON, continue with normal processing
+        isJson = false;
+    }
+
+    if (!isJson) {
+        // --- Determine Base Content and Class (for non-HTML display or titles) ---
+        // (This part mostly sets up textContent as a fallback)
     if (itemType === 'sse_parsed' || itemType === 'sse_raw' || itemType === 'sse_event') {
          textContent = `[Server Message${logEntry.event ? ` (${logEntry.event})`:''}${logEntry.eventId ? ` #${logEntry.eventId}`:''}] ${dataString}`;
          title = `Server Message ${logEntry.event || ''} ${logEntry.eventId || ''}`;
@@ -120,21 +133,24 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
          textContent = `[${logEntry.type?.toUpperCase() ?? 'UNKNOWN'}] ${dataString}`;
     }
 
-    // --- Attempt Showdown Conversion (using extracted/prepared dataString) ---
-    if (isResultType && converter.current) {
-        try {
-            // Pass the potentially extracted text content to Showdown
-            // No prefix or code fences needed here if we just want the text rendered as markdown
-            htmlContent = converter.current.makeHtml(dataString);
-        } catch (e) {
-            console.error("Error converting markdown to HTML:", e);
-            htmlContent = null; // Ensure fallback to textContent
-            entryClassName += ' error-message'; // Mark as error if conversion fails
-            textContent = `[Render Error] Failed to convert markdown for [${logEntry.type?.toUpperCase()}]:\n${dataString}`;
+    if (!isJson) {
+        // --- Attempt Showdown Conversion (using extracted/prepared dataString) ---
+        if (isResultType && converter.current) {
+            try {
+                // Pass the potentially extracted text content to Showdown
+                // No prefix or code fences needed here if we just want the text rendered as markdown
+                htmlContent = converter.current.makeHtml(dataString);
+            } catch (e) {
+                console.error("Error converting markdown to HTML:", e);
+                htmlContent = null; // Ensure fallback to textContent
+                entryClassName += ' error-message'; // Mark as error if conversion fails
+                textContent = `[Render Error] Failed to convert markdown for [${logEntry.type?.toUpperCase()}]:\n${dataString}`;
+            }
+        } else if (itemType === 'error') {
+            // Ensure errors are displayed plainly, not converted
+            htmlContent = null;
         }
-    } else if (itemType === 'error') {
-        // Ensure errors are displayed plainly, not converted
-        htmlContent = null;
+    }
     }
 
   } catch (e) {
@@ -195,7 +211,9 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               overflowY: isContentExpanded ? 'visible' : 'auto'
             }}
           >
-            {htmlContent !== null ? (
+            {isJson ? (
+                <pre><code className="language-json">{textContent}</code></pre>
+            ) : htmlContent !== null ? (
               <span className="event-data" dangerouslySetInnerHTML={{ 
                 __html: isContentExpanded ? htmlContent : (showExcerpt ? converter.current?.makeHtml(createExcerpt(dataString)) || htmlContent : htmlContent)
               }} />
@@ -221,7 +239,9 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
                   ></button>
                 </div>
                 <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                  {htmlContent !== null ? (
+                  {isJson ? (
+                      <pre><code className="language-json">{textContent}</code></pre>
+                  ) : htmlContent !== null ? (
                     <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
                   ) : (
                     <pre style={{ whiteSpace: 'pre-wrap' }}>{textContent}</pre>
@@ -321,7 +341,9 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               overflowY: isContentExpanded ? 'visible' : 'auto'
             }}
           >
-            {htmlContent !== null ? (
+            {isJson ? (
+                <pre><code className="language-json">{textContent}</code></pre>
+            ) : htmlContent !== null ? (
               <span className="event-data" dangerouslySetInnerHTML={{ 
                 __html: isContentExpanded ? htmlContent : (showExcerpt ? converter.current?.makeHtml(createExcerpt(dataString)) || htmlContent : htmlContent)
               }} />
@@ -335,7 +357,9 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
       ) : (
         /* Regular content for non-result types */
         <div className="event-data-wrapper">
-          {htmlContent !== null ? (
+          {isJson ? (
+              <pre><code className="language-json">{textContent}</code></pre>
+          ) : htmlContent !== null ? (
             <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
           ) : (
             <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
@@ -357,7 +381,9 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
                 ></button>
               </div>
               <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                {htmlContent !== null ? (
+                {isJson ? (
+                    <pre><code className="language-json">{textContent}</code></pre>
+                ) : htmlContent !== null ? (
                   <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
                 ) : (
                   <pre style={{ whiteSpace: 'pre-wrap' }}>{textContent}</pre>
