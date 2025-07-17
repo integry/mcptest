@@ -1,0 +1,33 @@
+import React from 'react';
+
+const Footer: React.FC = () => {
+  return (
+    <footer className="bg-white border-top p-3 mt-auto">
+      <div className="container-fluid">
+        <div className="row align-items-center">
+          <div className="col-md-8">
+            <p className="text-muted small mb-1">
+              &copy; 2023-{new Date().getFullYear()} Unchained Development OÜ (Registry code: 16785055). All rights reserved.
+            </p>
+            <p className="text-muted small mb-0">
+              Your application data, including server connections and history, is stored only in your browser's local storage. No data is gathered or stored on our servers.
+            </p>
+          </div>
+          <div className="col-md-4 text-md-end mt-2 mt-md-0">
+            <a href="mailto:info@mcptest.io" className="text-muted small me-3">
+              Contact
+            </a>
+            <a href="/docs/privacy-policy" className="text-muted small me-3">
+              Privacy Policy
+            </a>
+            <a href="/docs/terms-of-service" className="text-muted small">
+              Terms of Service
+            </a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
+export default Footer;

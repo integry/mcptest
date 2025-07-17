@@ -6,6 +6,7 @@ import { logPageView, logEvent } from './utils/analytics';
 
 // Import Components
 import Header from './components/Header';
+import Footer from './components/Footer';
 import TabContent from './components/TabContent';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
@@ -16,6 +17,8 @@ import WhatIsMcp from './components/docs/WhatIsMcp';
 import RemoteVsLocal from './components/docs/RemoteVsLocal';
 import TestingGuide from './components/docs/TestingGuide';
 import Troubleshooting from './components/docs/Troubleshooting';
+import PrivacyPolicy from './components/docs/PrivacyPolicy';
+import TermsOfService from './components/docs/TermsOfService';
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -644,7 +647,9 @@ function App() {
             {activeDocPage === 'remote-vs-local' && <RemoteVsLocal />}
             {activeDocPage === 'testing-guide' && <TestingGuide />}
             {activeDocPage === 'troubleshooting' && <Troubleshooting />}
-            {!['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting'].includes(activeDocPage || '') && (
+            {activeDocPage === 'privacy-policy' && <PrivacyPolicy />}
+            {activeDocPage === 'terms-of-service' && <TermsOfService />}
+            {!['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting', 'privacy-policy', 'terms-of-service'].includes(activeDocPage || '') && (
               <div className="alert alert-warning">
                 Documentation page not found. Please select a page from the navigation.
               </div>
@@ -714,6 +719,7 @@ function App() {
 
         </div>
       </div>
+      <Footer />
     </div>
   );
 }
