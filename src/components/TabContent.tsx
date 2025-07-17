@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ConnectionTab } from '../types';
+import { ConnectionTab, LogEntry } from '../types';
 
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
@@ -7,6 +7,7 @@ import { UnifiedPanel } from './UnifiedPanel';
 import { RecentServersPanel } from './RecentServersPanel';
 import ParamsPanel from './ParamsPanel';
 import ResponsePanel from './ResponsePanel';
+import ResultPanel from './ResultPanel';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
@@ -64,6 +65,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // State for call history
   const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadData(TOOL_HISTORY_KEY, {}));
   const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
+  const [lastResult, setLastResult] = useState<LogEntry | null>(null);
 
   // Custom Hooks for this tab
   const {
@@ -121,10 +123,23 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     handleExecutePrompt,
     handleParamChange,
     handleResourceArgChange,
-    handleSelectTool,
-    handleSelectResourceTemplate,
-    handleSelectPrompt
+    handleSelectTool: originalHandleSelectTool,
+    handleSelectResourceTemplate: originalHandleSelectResourceTemplate,
+    handleSelectPrompt: originalHandleSelectPrompt
   } = useToolsAndResources(client, addLogEntry, connectionStatus, serverUrl);
+
+  const handleSelectTool = (tool: any) => {
+    originalHandleSelectTool(tool);
+    setLastResult(null);
+  };
+  const handleSelectResourceTemplate = (template: any) => {
+    originalHandleSelectResourceTemplate(template);
+    setLastResult(null);
+  };
+  const handleSelectPrompt = (prompt: any) => {
+    originalHandleSelectPrompt(prompt);
+    setLastResult(null);
+  };
 
   const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry, serverUrl);
 
@@ -233,10 +248,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   }, [connectionStatus, tab.id]);
 
   // Wrapper function to handle resource access and save history
-  const handleAccessResource = () => {
+  const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
     const uri = selectedResourceTemplate.uriTemplate;
-    accessResource(selectedResourceTemplate, resourceArgs);
+    const result = await accessResource(selectedResourceTemplate, resourceArgs);
+    setLastResult(result);
 
     if (Object.keys(resourceArgs).length > 0) {
       setResourceAccessHistory(prevHistory => {
@@ -273,10 +289,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   };
 
   // Wrapper for handleExecuteTool to save history
-  const handleExecuteToolWrapper = () => {
+  const handleExecuteToolWrapper = async () => {
     if (!selectedTool || !client) return;
     const toolName = selectedTool.name;
-    handleExecuteTool();
+    const result = await handleExecuteTool();
+    setLastResult(result);
 
     if (Object.keys(toolParams).length > 0) {
       setToolCallHistory(prevHistory => {
@@ -294,9 +311,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   };
 
   // Wrapper for handleExecutePrompt
-  const handleExecutePromptWrapper = () => {
+  const handleExecutePromptWrapper = async () => {
     if (!selectedPrompt || !client) return;
-    handleExecutePrompt();
+    const result = await handleExecutePrompt();
+    setLastResult(result);
   };
 
   // Wrapper for handleDisconnect to include state cleanup
@@ -412,6 +430,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uriTemplate as string ?? ''] || []}
                 setToolParams={setToolParams}
                 setResourceArgs={setResourceArgs}
+              />
+
+              {/* Result Panel */}
+              <ResultPanel
+                lastResult={lastResult}
+                isConnected={isConnected}
               />
 
               {/* Logs & Events Panel */}

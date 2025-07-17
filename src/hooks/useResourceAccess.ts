@@ -13,11 +13,12 @@ export const useResourceAccess = (
   const handleAccessResource = useCallback(async ( // Make async
     selectedResourceTemplate: ResourceTemplate | null,
     resourceArgs: Record<string, any>
-  ) => {
+  ): Promise<LogEntry | null> => {
     // Check for client and template
     if (!client || !selectedResourceTemplate) {
-       addLogEntry({ type: 'warning', data: 'Cannot access resource: Client not connected or no resource selected.' });
-       return;
+       const warningLog: LogEntry = { type: 'warning', data: 'Cannot access resource: Client not connected or no resource selected.', timestamp: new Date().toLocaleTimeString() };
+       addLogEntry(warningLog);
+       return warningLog;
     }
 
     let finalUri = selectedResourceTemplate.uriTemplate;
@@ -62,20 +63,19 @@ export const useResourceAccess = (
       console.log("[DEBUG] SDK Client: Resource result:", resourceResult);
 
       // Log the received resource content
-      // Assuming simple text content for now
-      const contentText = resourceResult?.contents?.[0]?.text ?? JSON.stringify(resourceResult);
-      // Pass the original resourceArgs to callContext
-      addLogEntry({
+      const resultLogEntry: LogEntry = {
         type: 'resource_result',
         data: resourceResult?.contents, // Log the actual content array (McpResponseDisplay will stringify)
+        timestamp: new Date().toLocaleTimeString(),
         callContext: {
           serverUrl: serverUrl,
           type: 'resource',
           name: finalUri,
           params: resourceArgs // Pass the original args used
         }
-      });
-      // TODO: Potentially display the result more formally in the UI
+      };
+      addLogEntry(resultLogEntry);
+      return resultLogEntry;
 
     } catch (error: any) {
        console.error("[DEBUG] Error accessing resource via SDK:", error);
@@ -83,8 +83,11 @@ export const useResourceAccess = (
          serverUrl,
          operation: `access resource ${finalUri}`
        });
-       addLogEntry({ type: 'error', data: `Failed to access resource ${finalUri}: ${errorDetails}` });
+       const errorLogEntry: LogEntry = { type: 'error', data: `Failed to access resource ${finalUri}: ${errorDetails}`, timestamp: new Date().toLocaleTimeString() };
+       addLogEntry(errorLogEntry);
+       return errorLogEntry;
     }
+    return null;
 
   }, [client, addLogEntry, serverUrl]); // Update dependencies
 
