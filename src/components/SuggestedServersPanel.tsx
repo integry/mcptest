@@ -10,16 +10,28 @@ interface SuggestedServersPanelProps {
 interface SuggestedServer {
   name: string;
   url: string;
+  description: string;
+  logo: string;
 }
 
 const SUGGESTED_SERVERS: SuggestedServer[] = [
   {
-    name: 'Deepwiki',
-    url: 'https://mcp.deepwiki.com'
+    name: 'Context7',
+    url: 'https://mcp.context7.com/',
+    description: 'LLMs rely on outdated or generic information about the libraries you use. Context7 pulls up-to-date, version-specific documentation and code examples directly from the source.',
+    logo: '/context7-logo.png'
   },
   {
-    name: 'Coingecko',
-    url: 'https://mcp.api.coingecko.com'
+    name: 'DeepWiki',
+    url: 'https://mcp.deepwiki.com',
+    description: 'DeepWiki provides up-to-date documentation you can talk to, for every repo in the world. Think Deep Research for GitHub.',
+    logo: '/deepwiki-logo.png'
+  },
+  {
+    name: 'CoinGecko',
+    url: 'https://mcp.api.coingecko.com',
+    description: 'MCP Server for Crypto Price & Market Data. Access real-time market data, onchain analytics, and rich metadata for over 15k+ coins.',
+    logo: '/coingecko-logo.png'
   }
 ];
 
@@ -43,35 +55,58 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
       </div>
       <ul className="list-group list-group-flush">
         {SUGGESTED_SERVERS.map((server) => (
-          <li key={server.url} className="list-group-item d-flex justify-content-between align-items-center p-2">
+          <li key={server.url} className="list-group-item p-3">
             <div
               style={{
                 cursor: isConnected || isConnecting ? 'default' : 'pointer',
-                flexGrow: 1,
-                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
               }}
               onClick={() => handleServerClick(server.url)}
             >
-              <div
+              <img
+                src={server.logo}
+                alt={`${server.name} logo`}
                 style={{
-                  fontWeight: 500,
-                  color: isConnected || isConnecting ? 'grey' : 'var(--primary-color)',
-                  textDecoration: isConnected || isConnecting ? 'none' : 'underline',
+                  width: '48px',
+                  height: '48px',
+                  objectFit: 'contain',
+                  flexShrink: 0,
                 }}
-              >
-                {server.name}
+              />
+              <div style={{ flexGrow: 1, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: '16px',
+                    color: isConnected || isConnecting ? 'grey' : 'var(--primary-color)',
+                    textDecoration: isConnected || isConnecting ? 'none' : 'underline',
+                    marginBottom: '4px',
+                  }}
+                >
+                  {server.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: '14px',
+                    color: '#666',
+                    marginBottom: '8px',
+                    lineHeight: '1.4',
+                  }}
+                >
+                  {server.description}
+                </div>
+                <small
+                  style={{
+                    color: '#999',
+                    fontSize: '12px',
+                  }}
+                  title={server.url}
+                >
+                  {server.url}
+                </small>
               </div>
-              <small
-                style={{
-                  color: '#666',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-                title={server.url}
-              >
-                {server.url}
-              </small>
             </div>
           </li>
         ))}
