@@ -6,6 +6,7 @@ import { logEvent } from '../utils/analytics';
 import ConnectionPanel from './ConnectionPanel';
 import { UnifiedPanel } from './UnifiedPanel';
 import { RecentServersPanel } from './RecentServersPanel';
+import { SuggestedServersPanel } from './SuggestedServersPanel';
 import ParamsPanel from './ParamsPanel';
 import ResponsePanel from './ResponsePanel';
 import ResultPanel from './ResultPanel';
@@ -375,14 +376,22 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             clearConnectionError={clearConnectionError}
           />
           {!isConnected && (
-            <RecentServersPanel
-              recentServers={recentServers}
-              setServerUrl={setServerUrl}
-              handleConnect={handleConnectWrapper}
-              removeRecentServer={removeRecentServer}
-              isConnected={isConnected}
-              isConnecting={isConnecting}
-            />
+            <>
+              <RecentServersPanel
+                recentServers={recentServers}
+                setServerUrl={setServerUrl}
+                handleConnect={handleConnectWrapper}
+                removeRecentServer={removeRecentServer}
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+              />
+              <SuggestedServersPanel
+                setServerUrl={setServerUrl}
+                handleConnect={handleConnectWrapper}
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+              />
+            </>
           )}
           {isConnected && (
             <UnifiedPanel
