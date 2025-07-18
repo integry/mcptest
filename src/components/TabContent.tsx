@@ -442,6 +442,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               <ResultPanel
                 lastResult={lastResult}
                 isConnected={isConnected}
+                serverUrl={tab.serverUrl}
               />
 
               {/* Logs & Events Panel */}

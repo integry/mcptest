@@ -26,3 +26,68 @@ export const extractSlugFromPath = (pathname: string): string | null => {
   const match = pathname.match(/^\/space\/(.+)$/);
   return match ? match[1] : null;
 };
+
+// Server URL utilities
+export const parseServerUrl = (pathname: string): { serverUrl: string; transportMethod?: string } | null => {
+  const match = pathname.match(/^\/server\/(.+)$/);
+  if (!match) return null;
+  
+  const serverPath = match[1];
+  
+  // Check if transport method is specified at the end
+  const transportMatch = serverPath.match(/^(.+)\/(sse|mcp)$/);
+  if (transportMatch) {
+    return {
+      serverUrl: transportMatch[1],
+      transportMethod: transportMatch[2]
+    };
+  }
+  
+  return { serverUrl: serverPath };
+};
+
+// Generate server URL for sharing
+export const getServerUrl = (serverUrl: string, transportMethod?: string): string => {
+  const baseUrl = `/server/${serverUrl}`;
+  return transportMethod ? `${baseUrl}/${transportMethod}` : baseUrl;
+};
+
+// Generate result share URL
+export const getResultShareUrl = (
+  serverUrl: string,
+  type: 'tool' | 'resource',
+  name: string,
+  params?: Record<string, any>
+): string => {
+  const baseUrl = `/call/${serverUrl}/${type}/${encodeURIComponent(name)}`;
+  
+  if (params && Object.keys(params).length > 0) {
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      searchParams.append(key, typeof value === 'string' ? value : JSON.stringify(value));
+    }
+    return `${baseUrl}?${searchParams.toString()}`;
+  }
+  
+  return baseUrl;
+};
+
+// Parse result share URL
+export const parseResultShareUrl = (pathname: string): {
+  serverUrl: string;
+  type: 'tool' | 'resource';
+  name: string;
+  params?: Record<string, any>;
+} | null => {
+  const match = pathname.match(/^\/call\/([^\/]+)\/(tool|resource)\/(.+)$/);
+  if (!match) return null;
+  
+  const [, serverUrl, type, encodedName] = match;
+  const name = decodeURIComponent(encodedName);
+  
+  return {
+    serverUrl,
+    type: type as 'tool' | 'resource',
+    name,
+  };
+};

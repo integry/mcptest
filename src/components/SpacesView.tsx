@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Space, SpaceCard } from '../types';
 import McpResponseDisplay from './McpResponseDisplay'; // Import the new display component
+import { getResultShareUrl } from '../utils/urlUtils';
 
 // --- Card Component ---
 interface SpaceCardComponentProps {
@@ -115,6 +116,28 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
     onAddCard(spaceId, duplicatedCard);
   };
 
+  const handleShareClick = () => {
+    // Normalize the server URL - remove protocol if present
+    const normalizedUrl = card.serverUrl.replace(/^https?:\/\//, '');
+    
+    // Generate share URL
+    const shareUrl = `${window.location.origin}${getResultShareUrl(
+      normalizedUrl,
+      card.type,
+      card.name,
+      card.params
+    )}`;
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      // Show temporary feedback (we'll use a simple alert for now)
+      alert('Result share link copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy result share link:', err);
+      alert('Failed to copy result share link. Please try again.');
+    });
+  };
+
   const handleParamChange = (paramName: string, value: any) => {
     setEditedParams(prev => ({
       ...prev,
@@ -200,6 +223,11 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
               <li>
                 <button className="dropdown-item" onClick={handleDuplicateClick}>
                   <i className="bi bi-copy me-2"></i>Duplicate
+                </button>
+              </li>
+              <li>
+                <button className="dropdown-item" onClick={handleShareClick}>
+                  <i className="bi bi-share me-2"></i>Share
                 </button>
               </li>
               <li><hr className="dropdown-divider" /></li>
