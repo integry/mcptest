@@ -3,6 +3,19 @@ import ConnectionErrorCard from './ConnectionErrorCard';
 import { TransportType } from '../types';
 import { getServerUrl } from '../utils/urlUtils';
 
+// List of suggested servers to randomly select from
+const SUGGESTED_SERVERS = [
+  'mcp.context7.com',
+  'mcp.deepwiki.com',
+  'mcp.api.coingecko.com'
+];
+
+// Select a random server for the placeholder
+const getRandomServer = () => {
+  const randomIndex = Math.floor(Math.random() * SUGGESTED_SERVERS.length);
+  return SUGGESTED_SERVERS[randomIndex];
+};
+
 interface ConnectionPanelProps {
   serverUrl: string;
   setServerUrl: (url: string) => void;
@@ -107,7 +120,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               type="text"
               className="form-control"
               id="serverUrl"
-              placeholder="mcp.api.coingecko.com (https:// added automatically)"
+              placeholder={`${getRandomServer()} (https:// added automatically)`}
               value={serverUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -147,7 +160,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   <option key={url} value={url} />
                 ))}
               </datalist>
-              <div className="form-text">For example, https://mcp.api.coingecko.com/</div>
+              <div className="form-text">For example, https://{getRandomServer()}/ or http://localhost:3001</div>
             </>
           )}
           {isConnecting && (

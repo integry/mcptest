@@ -530,7 +530,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
 
       {/* Cards Area */}
       {space.cards.length === 0 ? (
-        <div className="alert alert-info">This space is empty. Add results from the Inspector view using the <i className="bi bi-plus-square"></i> button in the Logs panel.</div>
+        <div className="alert alert-info">This space is empty. Add results from the Inspector view using the <i className="bi bi-plus-square"></i> button in the Result panel.</div>
       ) : (
         <div className="row">
           {space.cards.map((card, index) => (
