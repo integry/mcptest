@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 // Import Analytics helpers
@@ -100,11 +100,10 @@ declare global {
 
 function App() {
   // --- State ---
-  const [activeView, setActiveView] = useState<'inspector' | 'spaces' | 'docs'>(getInitialView);
-  const [activeDocPage, setActiveDocPage] = useState<string | null>(null);
   const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
+  const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which spaces have been loaded
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -116,6 +115,29 @@ function App() {
   // Router hooks
   const location = useLocation();
   const navigate = useNavigate();
+  
+  // Derive active view and doc page from location
+  const { activeView, activeDocPage } = useMemo(() => {
+    const path = location.pathname;
+    
+    // Check for documentation routes
+    if (path.startsWith('/docs/')) {
+      const docPage = path.replace('/docs/', '');
+      return { activeView: 'docs' as const, activeDocPage: docPage };
+    }
+    
+    // Check for space routes
+    const slug = extractSlugFromPath(path);
+    if (slug) {
+      const space = findSpaceBySlug(spaces, slug);
+      if (space) {
+        return { activeView: 'spaces' as const, activeDocPage: null };
+      }
+    }
+    
+    // Default to inspector
+    return { activeView: 'inspector' as const, activeDocPage: null };
+  }, [location.pathname, spaces]);
 
 
   // --- Effects ---
@@ -138,8 +160,6 @@ function App() {
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
-      setActiveView('docs');
-      setActiveDocPage(docPage);
       pageTitle = `Docs: ${docPage.replace(/-/g, ' ')}`;
       logPageView(path, pageTitle);
       return;
@@ -149,10 +169,6 @@ function App() {
     const serverUrlData = parseServerUrl(path);
     if (serverUrlData) {
       console.log('[Server URL Route] Detected server URL:', serverUrlData);
-      
-      // Switch to inspector view
-      setActiveView('inspector');
-      setActiveDocPage(null);
       
       // Auto-connect to the specified server
       handleServerUrlConnection(serverUrlData.serverUrl, serverUrlData.transportMethod);
@@ -167,10 +183,6 @@ function App() {
     if (resultShareData) {
       console.log('[Result Share Route] Detected result share URL:', resultShareData);
       
-      // Switch to inspector view
-      setActiveView('inspector');
-      setActiveDocPage(null);
-      
       // Auto-connect and execute the tool/resource
       handleResultShareConnection(resultShareData);
       
@@ -184,17 +196,13 @@ function App() {
     if (slug) {
       const space = findSpaceBySlug(spaces, slug);
       if (space) {
-        setActiveView('spaces');
         setSelectedSpaceId(space.id);
-        setActiveDocPage(null);
         pageTitle = `Space: ${space.name}`;
       } else {
         navigate('/', { replace: true });
         pageTitle = 'Inspector'; // Redirected
       }
     } else if (path === '/') {
-      setActiveView('inspector');
-      setActiveDocPage(null);
       pageTitle = 'Inspector';
     }
     
@@ -328,7 +336,6 @@ function App() {
     const newSpace: Space = { id: Date.now().toString(), name, cards: [] };
     setSpaces(prev => [...prev, newSpace]);
     setSelectedSpaceId(newSpace.id); // Select the new space
-    setActiveView('spaces'); // Switch to spaces view
     navigate(getSpaceUrl(newSpace.name)); // Navigate to new space URL
   };
 
@@ -337,7 +344,6 @@ function App() {
     if (space) {
       logEvent('select_space');
       setSelectedSpaceId(id);
-      setActiveView('spaces'); // Ensure spaces view is active when selecting a space
       navigate(getSpaceUrl(space.name));
     }
   };
@@ -372,7 +378,6 @@ function App() {
         navigate(getSpaceUrl(firstSpace.name));
       } else {
         // No spaces left, go to inspector
-        setActiveView('inspector');
         navigate('/');
       }
     }
@@ -389,6 +394,9 @@ function App() {
     console.log('[Health Check] Starting health check for all spaces...');
     setHealthCheckLoading(true);
     
+    // Don't clear loaded spaces - we want to track which spaces have been navigated to
+    // This health check is for updating status, not for initial loading
+    
     // Execute all cards in all spaces to refresh their status
     for (const space of spaces) {
       if (space.cards.length > 0) {
@@ -398,10 +406,42 @@ function App() {
           console.log(`[Health Check] Executing card "${card.title}" on server ${card.serverUrl}`);
           return handleExecuteCard(space.id, card.id);
         }));
+        
+        // Mark spaces as loaded after health check
+        setLoadedSpaces(prev => new Set(prev).add(space.id));
       }
     }
     console.log('[Health Check] Completed health check for all spaces');
     setHealthCheckLoading(false);
+  };
+  
+  const refreshCurrentSpace = async () => {
+    if (activeView === 'spaces' && selectedSpaceId) {
+      const currentSpace = spaces.find(s => s.id === selectedSpaceId);
+      if (currentSpace && currentSpace.cards.length > 0) {
+        logEvent('refresh_current_space', { space_id: selectedSpaceId });
+        console.log(`[Refresh] Manually refreshing space "${currentSpace.name}"`);
+        setHealthCheckLoading(true);
+        
+        // Remove from loaded spaces to force refresh
+        setLoadedSpaces(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(selectedSpaceId);
+          return newSet;
+        });
+        
+        // Refresh all cards in the space
+        for (const card of currentSpace.cards) {
+          if (!card.loading) {
+            await handleExecuteCard(selectedSpaceId, card.id);
+          }
+        }
+        
+        // Re-add to loaded spaces
+        setLoadedSpaces(prev => new Set(prev).add(selectedSpaceId));
+        setHealthCheckLoading(false);
+      }
+    }
   };
 
   const getSpaceHealthColor = (spaceId: string): 'green' | 'orange' | 'red' | 'gray' => {
@@ -426,15 +466,19 @@ function App() {
 
   const getSpaceHealthStatus = (spaceId: string) => {
     const space = spaces.find(s => s.id === spaceId);
-    if (!space) return { loading: healthCheckLoading, successCount: 0, totalCount: 0 };
+    if (!space) return { loading: false, successCount: 0, totalCount: 0 };
 
     const totalCount = space.cards.length;
+    const loadingCount = space.cards.filter(card => card.loading).length;
     const successCount = space.cards.filter(card => 
       !card.error && card.responseData && !card.loading
     ).length;
 
+    // Space is loading if any of its cards are loading
+    const isLoading = loadingCount > 0;
+
     return {
-      loading: healthCheckLoading,
+      loading: isLoading,
       successCount,
       totalCount
     };
@@ -671,32 +715,45 @@ function App() {
   // --- Effect to Auto-Refresh Cards on Space Entry (Sequentially with Retries) ---
   useEffect(() => {
     const refreshCardsSequentially = async () => {
-      if (activeView === 'spaces' && selectedSpaceId) {
+      // Only refresh if we're viewing spaces AND this specific space hasn't been loaded yet
+      // AND it has cards that have never been executed (no responseData)
+      if (activeView === 'spaces' && selectedSpaceId && !loadedSpaces.has(selectedSpaceId)) {
         const currentSpace = spaces.find(s => s.id === selectedSpaceId);
-        if (currentSpace) {
-          console.log(`[DEBUG] Entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards sequentially.`);
-          setHealthCheckLoading(true);
-          // Use for...of loop to allow await inside
-          for (const card of currentSpace.cards) {
-            // Don't trigger if already loading to avoid redundant calls
-            if (!card.loading) {
-               console.log(`[DEBUG] Effect loop: Awaiting handleExecuteCard for card ${card.id}.`);
-               await handleExecuteCard(selectedSpaceId, card.id); // Await execution
-               console.log(`[DEBUG] Effect loop: Finished handleExecuteCard for card ${card.id}.`);
-            } else {
-               console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because loading is true.`);
+        if (currentSpace && currentSpace.cards.length > 0) {
+          // Check if any cards need initial loading (no responseData yet)
+          const needsInitialLoad = currentSpace.cards.some(card => !card.responseData && !card.loading);
+          
+          if (needsInitialLoad) {
+            console.log(`[DEBUG] First time entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards sequentially.`);
+            setHealthCheckLoading(true);
+            
+            // Use for...of loop to allow await inside
+            for (const card of currentSpace.cards) {
+              // Only execute cards that haven't been loaded yet
+              if (!card.loading && !card.responseData) {
+                 console.log(`[DEBUG] Effect loop: Awaiting handleExecuteCard for card ${card.id}.`);
+                 await handleExecuteCard(selectedSpaceId, card.id); // Await execution
+                 console.log(`[DEBUG] Effect loop: Finished handleExecuteCard for card ${card.id}.`);
+              } else {
+                 console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because it's already loaded or loading.`);
+              }
             }
+            setHealthCheckLoading(false);
+             console.log(`[DEBUG] Finished sequential refresh for space "${currentSpace.name}".`);
           }
-          setHealthCheckLoading(false);
-           console.log(`[DEBUG] Finished sequential refresh for space "${currentSpace.name}".`);
+          
+          // Mark this space as loaded regardless
+          setLoadedSpaces(prev => new Set(prev).add(selectedSpaceId));
         }
+      } else if (activeView === 'spaces' && selectedSpaceId && loadedSpaces.has(selectedSpaceId)) {
+        console.log(`[DEBUG] Space already loaded, skipping refresh.`);
       }
     };
 
     refreshCardsSequentially(); // Call the async function
 
     // Dependencies: Trigger only when view changes or selected space changes.
-  }, [activeView, selectedSpaceId]); // Keep dependencies minimal
+  }, [activeView, selectedSpaceId]); // Remove loadedSpaces from dependencies to avoid infinite loop
 
 
  // --- Render Logic ---
@@ -730,7 +787,6 @@ function App() {
         </button>
         <SideNav
           activeView={activeView}
-          setActiveView={setActiveView}
           spaces={spaces}
           selectedSpaceId={selectedSpaceId}
           handleSelectSpace={handleSelectSpace}
@@ -750,7 +806,6 @@ function App() {
         <div className="desktop-sidebar col-auto bg-light border-end p-2" style={{ width: '250px', overflowY: 'auto' }}>
           <SideNav
             activeView={activeView}
-            setActiveView={setActiveView}
             spaces={spaces}
             selectedSpaceId={selectedSpaceId}
             handleSelectSpace={handleSelectSpace}
@@ -835,6 +890,8 @@ function App() {
                 onExecuteCard={handleExecuteCard}
                 onMoveCard={handleMoveCard}
                 onAddCard={handleAddCardToSpace}
+                onRefreshSpace={refreshCurrentSpace}
+                isRefreshing={healthCheckLoading}
               />
             ) : (
               <div className="alert alert-warning">No space selected or available. Create one from the side menu.</div>

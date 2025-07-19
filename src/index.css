@@ -1052,11 +1052,33 @@ div[class*="list-group"] .list-group-item,
 }
 
 /* Nuclear option - target all divs that might be list items */
-div[class*="bg-"],
-div[style*="background"],
-div[style*="white"] {
+/* Exclude health indicators from this rule */
+div[class*="bg-"]:not(.health-indicator),
+div[style*="background"]:not(.health-indicator),
+div[style*="white"]:not(.health-indicator) {
   background-color: var(--card-bg) !important;
   color: var(--text-color) !important;
+}
+
+/* Health indicator specific styles with very high specificity */
+.health-indicator.health-indicator-green,
+span.health-indicator.health-indicator-green {
+  background-color: #28a745 !important;
+}
+
+.health-indicator.health-indicator-orange,
+span.health-indicator.health-indicator-orange {
+  background-color: #fd7e14 !important;
+}
+
+.health-indicator.health-indicator-red,
+span.health-indicator.health-indicator-red {
+  background-color: #dc3545 !important;
+}
+
+.health-indicator.health-indicator-gray,
+span.health-indicator.health-indicator-gray {
+  background-color: #6c757d !important;
 }
 
 /* Fix any remaining filter inputs */
