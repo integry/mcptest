@@ -197,7 +197,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         transportType: transportType 
       });
     }
-  }, [connectionStatus, transportType, tab.id, tab.connectionStatus, tab.transportType, onUpdateTab]);
+  }, [connectionStatus, transportType, tab.id, onUpdateTab]);
 
   // Update tab when server URL changes (only if different)
   useEffect(() => {
@@ -219,7 +219,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       
       onUpdateTab(tab.id, { serverUrl, title: newTitle });
     }
-  }, [serverUrl, tab.id, tab.serverUrl, tab.title, onUpdateTab]);
+  }, [serverUrl, tab.id, onUpdateTab]);
 
   // Effect to automatically list items when connected and update tab title
   useEffect(() => {
@@ -616,6 +616,60 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     console.log(`[DEBUG] Tab ${tab.id}: Cleared state after disconnect.`);
   };
 
+  // Handler for "Run again" functionality
+  const handleRunAgain = async (callContext?: LogEntry['callContext']) => {
+    if (!callContext || !client || connectionStatus !== 'Connected') {
+      console.error('[Run Again] Missing call context, client, or not connected');
+      return;
+    }
+
+    const { type, name, params } = callContext;
+    
+    if (type === 'tool') {
+      // Find and select the tool
+      const tool = tools.find(t => t.name === name);
+      if (tool) {
+        console.log(`[Run Again] Re-executing tool: ${name}`);
+        addLogEntry({ type: 'info', data: `Re-executing tool: ${name}...` });
+        
+        // Select the tool and set params
+        handleSelectTool(tool);
+        setToolParams(params || {});
+        
+        // Execute after a small delay to ensure state updates
+        setTimeout(() => {
+          handleExecuteToolWrapper();
+        }, 100);
+      } else {
+        addLogEntry({ type: 'error', data: `Tool not found: ${name}` });
+      }
+    } else if (type === 'resource') {
+      // Check if it's a direct resource or template
+      const resource = resources.find(r => r.uri === name);
+      const template = resourceTemplates.find(rt => rt.uriTemplate === name);
+      
+      if (resource || template) {
+        console.log(`[Run Again] Re-accessing resource: ${name}`);
+        addLogEntry({ type: 'info', data: `Re-accessing resource: ${name}...` });
+        
+        // Select the resource/template and set args
+        if (resource) {
+          handleSelectResourceTemplate({ uriTemplate: name });
+        } else if (template) {
+          handleSelectResourceTemplate(template);
+        }
+        setResourceArgs(params || {});
+        
+        // Access after a small delay to ensure state updates
+        setTimeout(() => {
+          handleAccessResource();
+        }, 100);
+      } else {
+        addLogEntry({ type: 'error', data: `Resource not found: ${name}` });
+      }
+    }
+  };
+
   // Determine button disabled states
   const isConnected = connectionStatus === 'Connected';
   const isDisconnected = connectionStatus === 'Disconnected';
@@ -732,6 +786,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 lastResult={lastResult}
                 isConnected={isConnected}
                 serverUrl={tab.serverUrl}
+                spaces={spaces}
+                onAddCardToSpace={onAddCardToSpace}
+                selectedTool={selectedTool}
+                selectedResourceTemplate={selectedResourceTemplate}
+                toolParams={toolParams}
+                resourceArgs={resourceArgs}
               />
 
               {/* Logs & Events Panel */}
@@ -748,6 +808,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 selectedResourceTemplate={selectedResourceTemplate}
                 toolParams={toolParams}
                 resourceArgs={resourceArgs}
+                onRunAgain={handleRunAgain}
               />
             </>
           )}
