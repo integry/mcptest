@@ -11,6 +11,8 @@ interface McpResponseDisplayProps {
   toolName?: string; // Optional tool name override for spaces mode
   showExcerpt?: boolean; // Flag to control whether to show excerpts by default
   onRunAgain?: () => void; // Optional callback for "Run again" button
+  hideControls?: boolean; // Hide expand/fullscreen controls in spaces mode
+  forceExpanded?: boolean; // Force expanded state from parent
 }
 
 const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
@@ -22,6 +24,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   toolName: propToolName,
   showExcerpt = false, // Default to full content
   onRunAgain,
+  hideControls = false,
+  forceExpanded = false,
 }) => {
   const converter = useRef<showdown.Converter | null>(null);
 
@@ -176,46 +180,57 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   
   // Spaces mode: simplified display with only content and controls
   if (spacesMode && isResultType) {
+    const effectiveExpanded = forceExpanded !== undefined ? forceExpanded : isContentExpanded;
+    
     return (
       <div className={`${entryClassName} spaces-mode`} title={title}>
         {/* Content section with expand/collapse and fullscreen controls */}
         <div className="tool-result-content">
-          <div className="d-flex align-items-center justify-content-end">
-            <div className="btn-group" role="group">
-              <button
-                className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
-                onClick={() => setIsContentExpanded(!isContentExpanded)}
-                title={isContentExpanded ? 'Collapse' : 'Expand'}
-              >
-                <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
-              </button>
-              <button
-                className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
-                onClick={() => setIsFullscreen(true)}
-                title="Fullscreen"
-              >
-                <i className="bi bi-arrows-fullscreen"></i>
-              </button>
+          {!hideControls && (
+            <div className="d-flex align-items-center justify-content-end">
+              <div className="btn-group" role="group">
+                <button
+                  className="btn btn-sm btn-outline-secondary"
+                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+                  onClick={() => setIsContentExpanded(!isContentExpanded)}
+                  title={isContentExpanded ? 'Collapse' : 'Expand'}
+                >
+                  <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
+                </button>
+                <button
+                  className="btn btn-sm btn-outline-secondary"
+                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+                  onClick={() => setIsFullscreen(true)}
+                  title="Fullscreen"
+                >
+                  <i className="bi bi-arrows-fullscreen"></i>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
           <div 
             className="event-data-wrapper"
             style={{ 
-              maxHeight: isContentExpanded ? 'none' : '300px', 
-              overflowY: isContentExpanded ? 'visible' : 'auto'
+              maxHeight: effectiveExpanded ? 'none' : '300px', 
+              overflowY: effectiveExpanded ? 'visible' : 'auto'
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{textContent}</code></pre>
+                <pre><code className="language-json">{effectiveExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}</code></pre>
             ) : htmlContent !== null ? (
               <span className="event-data" dangerouslySetInnerHTML={{ 
-                __html: isContentExpanded ? htmlContent : (showExcerpt ? converter.current?.makeHtml(createExcerpt(dataString)) || htmlContent : htmlContent)
+                __html: (() => {
+                  if (effectiveExpanded) return htmlContent;
+                  if (showExcerpt) {
+                    const excerpt = createExcerpt(dataString);
+                    return converter.current?.makeHtml(excerpt) || htmlContent;
+                  }
+                  return htmlContent;
+                })()
               }} />
             ) : (
               <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>
-                {isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
+                {effectiveExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
               </span>
             )}
           </div>
@@ -266,7 +281,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
                   <span className="text-muted small me-2">{toolName}</span>
                   <button
                     className="btn btn-sm btn-outline-secondary me-2"
-                    style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                    style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                     onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
                     title="Show/hide details"
                   >
@@ -277,11 +292,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             </div>
           )}
         </div>
-        {addToSpaceButton && (
-          <div className="flex-shrink-0">
-            {addToSpaceButton}
-          </div>
-        )}
       </div>
       
       {/* Details section (expandable for tool results) */}
@@ -315,16 +325,17 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               {onRunAgain && (
                 <button
                   className="btn btn-sm btn-outline-primary"
-                  style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                   onClick={onRunAgain}
                   title="Run again"
                 >
                   <i className="bi bi-arrow-clockwise"></i> Run again
                 </button>
               )}
+              {addToSpaceButton}
               <button
                 className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                 onClick={() => setIsContentExpanded(!isContentExpanded)}
                 title={isContentExpanded ? 'Collapse' : 'Expand'}
               >
@@ -332,7 +343,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               </button>
               <button
                 className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                 onClick={() => setIsFullscreen(true)}
                 title="Fullscreen"
               >
@@ -348,10 +359,17 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{textContent}</code></pre>
+                <pre><code className="language-json">{isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}</code></pre>
             ) : htmlContent !== null ? (
               <span className="event-data" dangerouslySetInnerHTML={{ 
-                __html: isContentExpanded ? htmlContent : (showExcerpt ? converter.current?.makeHtml(createExcerpt(dataString)) || htmlContent : htmlContent)
+                __html: (() => {
+                  if (isContentExpanded) return htmlContent;
+                  if (showExcerpt) {
+                    const excerpt = createExcerpt(dataString);
+                    return converter.current?.makeHtml(excerpt) || htmlContent;
+                  }
+                  return htmlContent;
+                })()
               }} />
             ) : (
               <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>

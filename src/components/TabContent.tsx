@@ -197,7 +197,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         transportType: transportType 
       });
     }
-  }, [connectionStatus, transportType, tab.id, tab.connectionStatus, tab.transportType, onUpdateTab]);
+  }, [connectionStatus, transportType, tab.id, onUpdateTab]);
 
   // Update tab when server URL changes (only if different)
   useEffect(() => {
@@ -219,7 +219,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       
       onUpdateTab(tab.id, { serverUrl, title: newTitle });
     }
-  }, [serverUrl, tab.id, tab.serverUrl, tab.title, onUpdateTab]);
+  }, [serverUrl, tab.id, onUpdateTab]);
 
   // Effect to automatically list items when connected and update tab title
   useEffect(() => {
@@ -786,6 +786,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 lastResult={lastResult}
                 isConnected={isConnected}
                 serverUrl={tab.serverUrl}
+                spaces={spaces}
+                onAddCardToSpace={onAddCardToSpace}
+                selectedTool={selectedTool}
+                selectedResourceTemplate={selectedResourceTemplate}
+                toolParams={toolParams}
+                resourceArgs={resourceArgs}
               />
 
               {/* Logs & Events Panel */}

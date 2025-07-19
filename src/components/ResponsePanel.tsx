@@ -76,21 +76,23 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     if (spaces.length === 1) {
       return (
         <button
-          className="btn btn-sm btn-outline-primary ms-2 flex-shrink-0" // Added flex-shrink-0
+          className="btn btn-sm btn-outline-primary flex-shrink-0"
+          style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
           title={`Add to space: ${spaces[0].name}`}
           onClick={() => handleAddToSpace(spaces[0].id)}
         >
-          <i className="bi bi-plus-square"></i>
+          <i className="bi bi-plus-square"></i> Add to space
         </button>
       );
     }
 
     return (
-      <div className="dropdown ms-2 d-inline-block flex-shrink-0"> {/* Added flex-shrink-0 */}
+      <div className="dropdown d-inline-block flex-shrink-0">
         <button
           className="btn btn-sm btn-outline-primary dropdown-toggle"
+          style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
           type="button"
-          id={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`} // Use timestamp/id
+          id={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`}
           data-bs-toggle="dropdown"
           aria-expanded="false"
           title="Add to Space..."
