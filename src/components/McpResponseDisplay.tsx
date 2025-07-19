@@ -184,30 +184,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
     
     return (
       <div className={`${entryClassName} spaces-mode`} title={title}>
-        {/* Content section with expand/collapse and fullscreen controls */}
+        {/* Content section without expand/collapse and fullscreen controls */}
         <div className="tool-result-content">
-          {!hideControls && (
-            <div className="d-flex align-items-center justify-content-end">
-              <div className="btn-group" role="group">
-                <button
-                  className="btn btn-sm btn-outline-secondary"
-                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                  onClick={() => setIsContentExpanded(!isContentExpanded)}
-                  title={isContentExpanded ? 'Collapse' : 'Expand'}
-                >
-                  <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
-                </button>
-                <button
-                  className="btn btn-sm btn-outline-secondary"
-                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                  onClick={() => setIsFullscreen(true)}
-                  title="Fullscreen"
-                >
-                  <i className="bi bi-arrows-fullscreen"></i>
-                </button>
-              </div>
-            </div>
-          )}
           <div 
             className="event-data-wrapper"
             style={{ 
@@ -235,33 +213,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             )}
           </div>
         </div>
-        
-        {/* Fullscreen modal */}
-        {isFullscreen && (
-          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
-            <div className="modal-dialog modal-fullscreen">
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h5 className="modal-title">{toolName} - Output</h5>
-                  <button
-                    type="button"
-                    className="btn-close"
-                    onClick={() => setIsFullscreen(false)}
-                  ></button>
-                </div>
-                <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                  {isJson ? (
-                      <pre><code className="language-json">{textContent}</code></pre>
-                  ) : htmlContent !== null ? (
-                    <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
-                  ) : (
-                    <pre style={{ whiteSpace: 'pre-wrap' }}>{textContent}</pre>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }

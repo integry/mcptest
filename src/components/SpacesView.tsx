@@ -30,6 +30,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(card.title);
   const [editedParams, setEditedParams] = useState<Record<string, any>>(card.params);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Remove automatic execution on mount. Execution will be triggered by refresh button.
   // useEffect(() => {
@@ -191,17 +192,25 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
               <h5 className="card-title mb-0 flex-grow-1 me-2" title={card.title}>{truncate(card.title, 35)}</h5>
             )}
           </div>
-          <div className="dropdown">
+          <div className="d-flex align-items-center">
             <button
-              className="btn btn-sm btn-outline-secondary dropdown-toggle"
-              type="button"
-              id={`cardDropdown-${card.id}`}
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
-              title="Card Actions"
+              className="btn btn-sm btn-outline-secondary me-2"
+              onClick={() => setIsFullscreen(true)}
+              title="Fullscreen"
             >
-              <i className="bi bi-three-dots"></i>
+              <i className="bi bi-arrows-fullscreen"></i>
             </button>
+            <div className="dropdown">
+              <button
+                className="btn btn-sm btn-outline-secondary dropdown-toggle"
+                type="button"
+                id={`cardDropdown-${card.id}`}
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                title="Card Actions"
+              >
+                <i className="bi bi-three-dots"></i>
+              </button>
             <ul className="dropdown-menu dropdown-menu-end" aria-labelledby={`cardDropdown-${card.id}`}>
               <li>
                 <button
@@ -237,6 +246,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
                 </button>
               </li>
             </ul>
+            </div>
           </div>
         </div>
 
@@ -337,6 +347,35 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
             )}
           </div>
         </div>
+        
+        {/* Fullscreen modal */}
+        {isFullscreen && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+            <div className="modal-dialog modal-fullscreen">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">{card.name} - Output</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => setIsFullscreen(false)}
+                  ></button>
+                </div>
+                <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                  <McpResponseDisplay 
+                    key={`${card.id}-${card.responseType}-fullscreen`} 
+                    logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} 
+                    showTimestamp={false} 
+                    className="" 
+                    spacesMode={true} 
+                    toolName={card.name}
+                    forceExpanded={true}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
   );
 };
