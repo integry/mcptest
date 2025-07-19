@@ -99,5 +99,11 @@ export interface ConnectionTab {
   toolParams?: Record<string, any>;
   resourceArgs?: Record<string, any>;
   promptParams?: Record<string, any>;
+  // Result share data for auto-execution
+  resultShareData?: {
+    type: 'tool' | 'resource';
+    name: string;
+    params?: Record<string, any>;
+  };
   // Note: The client instance will be managed in a separate, non-serializable state
 }

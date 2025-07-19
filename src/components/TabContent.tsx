@@ -68,6 +68,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadData(TOOL_HISTORY_KEY, {}));
   const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
   const [lastResult, setLastResult] = useState<LogEntry | null>(null);
+  
+  // Execution state
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionStartTime, setExecutionStartTime] = useState<number | null>(null);
 
   // Custom Hooks for this tab
   const {
@@ -145,13 +149,45 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry, serverUrl);
 
-  // Initialize tab state only once
+  // Initialize tab state and handle auto-connection
+  const hasAutoConnected = useRef(false);
   useEffect(() => {
     if (!hasInitialized.current) {
       setServerUrl(tab.serverUrl);
       hasInitialized.current = true;
     }
-  }, []); // Empty dependency array - only run once
+    
+    // Auto-connect if this tab has resultShareData (result share URL) and we haven't already
+    if (
+      tab.resultShareData && 
+      tab.serverUrl && 
+      connectionStatus === 'Disconnected' && 
+      !hasAutoConnected.current
+    ) {
+      console.log(`[Auto-Connect] Initiating connection for result share URL to: ${tab.serverUrl}`);
+      addLogEntry({ type: 'info', data: `Auto-connecting to ${tab.serverUrl} for result share...` });
+      hasAutoConnected.current = true;
+      
+      // Use a small timeout to ensure state is properly initialized
+      setTimeout(() => {
+        handleConnect(
+          setTools,
+          setResources,
+          setResponses,
+          tab.serverUrl
+        );
+      }, 100);
+    }
+  }, [
+    tab.resultShareData, 
+    tab.serverUrl, 
+    connectionStatus, 
+    addLogEntry, 
+    handleConnect,
+    setTools,
+    setResources,
+    setResponses
+  ]);
 
   // Update tab when connection status changes (only if different)
   useEffect(() => {
@@ -243,13 +279,250 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     }
   }, [connectionStatus, tab.id]);
 
+  // Effect to handle auto-execution for result share URLs
+  const autoExecutionKey = useRef<string | null>(null);
+  
+  useEffect(() => {
+    // Create a unique key for this auto-execution request
+    const currentKey = tab.resultShareData ? `${tab.id}-${tab.resultShareData.type}-${tab.resultShareData.name}` : null;
+    
+    // Only proceed if we have result share data and haven't executed for this specific key
+    if (
+      connectionStatus === 'Connected' &&
+      tab.resultShareData &&
+      currentKey &&
+      currentKey !== autoExecutionKey.current &&
+      ((tab.resultShareData.type === 'tool' && tools.length > 0) ||
+       (tab.resultShareData.type === 'resource' && (resources.length > 0 || resourceTemplates.length > 0)))
+    ) {
+      // Mark this execution as started
+      autoExecutionKey.current = currentKey;
+      console.log(`[Auto-Execute] Starting execution for key: ${currentKey}`);
+      
+      const { type, name, params } = tab.resultShareData;
+      
+      if (type === 'tool') {
+        // Find the tool by name
+        const tool = tools.find(t => t.name === name);
+        if (tool) {
+          console.log(`[Auto-Execute] Found tool: ${name}, preparing execution...`);
+          addLogEntry({ type: 'info', data: `Auto-executing tool: ${name}` });
+          
+          // Select the tool and set params
+          handleSelectTool(tool);
+          if (params) {
+            setToolParams(params);
+          }
+          
+          // Execute the tool
+          setTimeout(async () => {
+            console.log('[Auto-Execute] Executing tool now...');
+            
+            // Execute directly using the client instead of relying on selectedTool state
+            if (client && connectionStatus === 'Connected') {
+              try {
+                addLogEntry({ type: 'info', data: `Executing tool: ${tool.name}...` });
+                const result = await client.callTool({
+                  name: tool.name,
+                  arguments: params || {},
+                });
+                
+                console.log(`[DEBUG] SDK Client: Tool "${tool.name}" execution result:`, result);
+                
+                // Process and log the result
+                if (result?.content && Array.isArray(result.content)) {
+                  const resultLogEntry: LogEntry = {
+                    type: 'tool_result',
+                    data: result.content,
+                    timestamp: new Date().toLocaleTimeString(),
+                    callContext: {
+                      serverUrl: serverUrl,
+                      type: 'tool',
+                      name: tool.name,
+                      params: params || {}
+                    }
+                  };
+                  addLogEntry(resultLogEntry);
+                  setLastResult(resultLogEntry);
+                } else {
+                  const resultText = JSON.stringify(result);
+                  const warningLogEntry: LogEntry = { type: 'warning', data: `Tool ${tool.name} result (unexpected format): ${resultText}`, timestamp: new Date().toLocaleTimeString() };
+                  addLogEntry(warningLogEntry);
+                  setLastResult(warningLogEntry);
+                }
+                
+                // Clear the resultShareData after execution
+                onUpdateTab(tab.id, { resultShareData: undefined });
+              } catch (error: any) {
+                console.error(`[DEBUG] Error executing tool "${tool.name}" via SDK:`, error);
+                const errorLogEntry: LogEntry = { type: 'error', data: `Failed to execute tool ${tool.name}: ${error.message || error}`, timestamp: new Date().toLocaleTimeString() };
+                addLogEntry(errorLogEntry);
+                setLastResult(errorLogEntry);
+              }
+            }
+          }, 1000); // Delay to ensure state updates
+        } else {
+          addLogEntry({ type: 'error', data: `Tool not found: ${name}` });
+        }
+      } else if (type === 'resource') {
+        // First check if it's a direct resource
+        const resource = resources.find(r => r.uri === name);
+        if (resource) {
+          console.log(`[Auto-Execute] Found direct resource: ${name}, preparing access...`);
+          addLogEntry({ type: 'info', data: `Auto-accessing resource: ${name}` });
+          
+          // For direct resources, we need to create a pseudo-template
+          const pseudoTemplate = { uriTemplate: name };
+          handleSelectResourceTemplate(pseudoTemplate);
+          
+          // Access the resource
+          setTimeout(async () => {
+            console.log('[Auto-Execute] Accessing resource now...');
+            
+            if (client && connectionStatus === 'Connected') {
+              try {
+                addLogEntry({ type: 'info', data: `Accessing resource: ${name}...` });
+                const result = await client.readResource({ uri: name });
+                
+                console.log(`[DEBUG] SDK Client: Resource "${name}" access result:`, result);
+                
+                // Process and log the result
+                if (result?.contents && Array.isArray(result.contents)) {
+                  const resultLogEntry: LogEntry = {
+                    type: 'resource_result',
+                    data: result.contents,
+                    timestamp: new Date().toLocaleTimeString(),
+                    callContext: {
+                      serverUrl: serverUrl,
+                      type: 'resource',
+                      name: name,
+                      params: {}
+                    }
+                  };
+                  addLogEntry(resultLogEntry);
+                  setLastResult(resultLogEntry);
+                } else {
+                  const resultText = JSON.stringify(result);
+                  const warningLogEntry: LogEntry = { type: 'warning', data: `Resource ${name} result (unexpected format): ${resultText}`, timestamp: new Date().toLocaleTimeString() };
+                  addLogEntry(warningLogEntry);
+                  setLastResult(warningLogEntry);
+                }
+                
+                // Clear the resultShareData after execution
+                onUpdateTab(tab.id, { resultShareData: undefined });
+              } catch (error: any) {
+                console.error(`[DEBUG] Error accessing resource "${name}" via SDK:`, error);
+                const errorLogEntry: LogEntry = { type: 'error', data: `Failed to access resource ${name}: ${error.message || error}`, timestamp: new Date().toLocaleTimeString() };
+                addLogEntry(errorLogEntry);
+                setLastResult(errorLogEntry);
+              }
+            }
+          }, 1000);
+        } else {
+          // Check resource templates
+          const template = resourceTemplates.find(rt => {
+            // Match based on the URI pattern
+            const templatePattern = rt.uriTemplate.replace(/{[^}]+}/g, '[^/]+');
+            const regex = new RegExp(`^${templatePattern}$`);
+            return regex.test(name);
+          });
+          
+          if (template) {
+            console.log(`[Auto-Execute] Found resource template: ${template.uriTemplate}, preparing access...`);
+            addLogEntry({ type: 'info', data: `Auto-accessing resource template: ${name}` });
+            
+            // Select the template and set args
+            handleSelectResourceTemplate(template);
+            if (params) {
+              setResourceArgs(params);
+            }
+            
+            // Access the resource
+            setTimeout(async () => {
+              console.log('[Auto-Execute] Accessing resource template now...');
+              
+              if (client && connectionStatus === 'Connected') {
+                try {
+                  // Build the final URI from template
+                  let finalUri = template.uriTemplate;
+                  const templateArgs = parseUriTemplateArgs(finalUri);
+                  
+                  templateArgs.forEach(arg => {
+                    const value = params?.[arg];
+                    if (value !== undefined && value !== null && value !== '') {
+                      const pathRegex = new RegExp(`\\{${arg}\\}`, 'g');
+                      finalUri = finalUri.replace(pathRegex, encodeURIComponent(String(value)));
+                    }
+                  });
+                  
+                  addLogEntry({ type: 'info', data: `Accessing resource: ${finalUri}...` });
+                  const result = await client.readResource({ uri: finalUri });
+                  
+                  console.log(`[DEBUG] SDK Client: Resource "${finalUri}" access result:`, result);
+                  
+                  // Process and log the result
+                  if (result?.contents && Array.isArray(result.contents)) {
+                    const resultLogEntry: LogEntry = {
+                      type: 'resource_result',
+                      data: result.contents,
+                      timestamp: new Date().toLocaleTimeString(),
+                      callContext: {
+                        serverUrl: serverUrl,
+                        type: 'resource',
+                        name: finalUri,
+                        params: params || {}
+                      }
+                    };
+                    addLogEntry(resultLogEntry);
+                    setLastResult(resultLogEntry);
+                  } else {
+                    const resultText = JSON.stringify(result);
+                    const warningLogEntry: LogEntry = { type: 'warning', data: `Resource ${finalUri} result (unexpected format): ${resultText}`, timestamp: new Date().toLocaleTimeString() };
+                    addLogEntry(warningLogEntry);
+                    setLastResult(warningLogEntry);
+                  }
+                  
+                  // Clear the resultShareData after execution
+                  onUpdateTab(tab.id, { resultShareData: undefined });
+                } catch (error: any) {
+                  console.error(`[DEBUG] Error accessing resource template "${template.uriTemplate}" via SDK:`, error);
+                  const errorLogEntry: LogEntry = { type: 'error', data: `Failed to access resource: ${error.message || error}`, timestamp: new Date().toLocaleTimeString() };
+                  addLogEntry(errorLogEntry);
+                  setLastResult(errorLogEntry);
+                }
+              }
+            }, 1000);
+          } else {
+            addLogEntry({ type: 'error', data: `Resource not found: ${name}` });
+          }
+        }
+      }
+    }
+  }, [
+    connectionStatus,
+    tools,
+    resources, 
+    resourceTemplates,
+    tab.resultShareData,
+    tab.id,
+    client,
+    serverUrl
+  ]);
+
   // Wrapper function to handle resource access and save history
   const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
     logEvent('access_resource');
+    
+    setIsExecuting(true);
+    setExecutionStartTime(Date.now());
+    
     const uri = selectedResourceTemplate.uriTemplate;
     const result = await accessResource(selectedResourceTemplate, resourceArgs);
     setLastResult(result);
+    
+    setIsExecuting(false);
+    setExecutionStartTime(null);
 
     if (Object.keys(resourceArgs).length > 0) {
       setResourceAccessHistory(prevHistory => {
@@ -288,9 +561,16 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Wrapper for handleExecuteTool to save history
   const handleExecuteToolWrapper = async () => {
     if (!selectedTool || !client) return;
+    
+    setIsExecuting(true);
+    setExecutionStartTime(Date.now());
+    
     const toolName = selectedTool.name;
     const result = await handleExecuteTool();
     setLastResult(result);
+    
+    setIsExecuting(false);
+    setExecutionStartTime(null);
 
     if (Object.keys(toolParams).length > 0) {
       setToolCallHistory(prevHistory => {
@@ -310,8 +590,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Wrapper for handleExecutePrompt
   const handleExecutePromptWrapper = async () => {
     if (!selectedPrompt || !client) return;
+    
+    setIsExecuting(true);
+    setExecutionStartTime(Date.now());
+    
     const result = await handleExecutePrompt();
     setLastResult(result);
+    
+    setIsExecuting(false);
+    setExecutionStartTime(null);
   };
 
   // Wrapper for handleDisconnect to include state cleanup
@@ -436,12 +723,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 resourceHistory={resourceAccessHistory[selectedResourceTemplate?.uriTemplate as string ?? ''] || []}
                 setToolParams={setToolParams}
                 setResourceArgs={setResourceArgs}
+                isExecuting={isExecuting}
+                executionStartTime={executionStartTime}
               />
 
               {/* Result Panel */}
               <ResultPanel
                 lastResult={lastResult}
                 isConnected={isConnected}
+                serverUrl={tab.serverUrl}
               />
 
               {/* Logs & Events Panel */}

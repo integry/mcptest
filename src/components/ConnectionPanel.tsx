@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ConnectionErrorCard from './ConnectionErrorCard';
 import { TransportType } from '../types';
+import { getServerUrl } from '../utils/urlUtils';
 
 // List of suggested servers to randomly select from
 const SUGGESTED_SERVERS = [
@@ -65,15 +66,50 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
       if (interval) clearInterval(interval);
     };
   }, [isConnecting, connectionStartTime]);
+
+  // Handle share button click
+  const handleShareConnection = () => {
+    if (!serverUrl) return;
+    
+    // Normalize the server URL - remove protocol if present
+    const normalizedUrl = serverUrl.replace(/^https?:\/\//, '');
+    
+    // Determine transport method based on transportType
+    const transportMethod = transportType === 'legacy-sse' ? 'sse' : 
+                          transportType === 'streamable-http' ? 'mcp' : 
+                          undefined;
+    
+    // Generate share URL
+    const shareUrl = `${window.location.origin}${getServerUrl(normalizedUrl, transportMethod)}`;
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      // Show temporary feedback (we'll use a simple alert for now)
+      alert('Share link copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy share link:', err);
+      alert('Failed to copy share link. Please try again.');
+    });
+  };
   // Return JSX directly without outer parentheses
   return <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`}>
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
         <h5 className="mb-0">Server Connection</h5>
-        <div>
+        <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
           <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
             {connectionStatus}
           </span>
+          {isConnected && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={handleShareConnection}
+              title="Share connection link"
+            >
+              <i className="bi bi-share"></i>
+            </button>
+          )}
         </div>
       </div>
       <div className="card-body">

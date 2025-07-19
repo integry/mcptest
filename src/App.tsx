@@ -31,7 +31,7 @@ import {
 } from './types';
 
 // Import Utils
-import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath } from './utils/urlUtils';
+import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, parseServerUrl, parseResultShareUrl } from './utils/urlUtils';
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
@@ -132,6 +132,40 @@ function App() {
       return;
     }
     
+    // Check for server URL routes
+    const serverUrlData = parseServerUrl(path);
+    if (serverUrlData) {
+      console.log('[Server URL Route] Detected server URL:', serverUrlData);
+      
+      // Switch to inspector view
+      setActiveView('inspector');
+      setActiveDocPage(null);
+      
+      // Auto-connect to the specified server
+      handleServerUrlConnection(serverUrlData.serverUrl, serverUrlData.transportMethod);
+      
+      pageTitle = `Server: ${serverUrlData.serverUrl}`;
+      logPageView(path, pageTitle);
+      return;
+    }
+    
+    // Check for result share URL routes
+    const resultShareData = parseResultShareUrl(path, location.search);
+    if (resultShareData) {
+      console.log('[Result Share Route] Detected result share URL:', resultShareData);
+      
+      // Switch to inspector view
+      setActiveView('inspector');
+      setActiveDocPage(null);
+      
+      // Auto-connect and execute the tool/resource
+      handleResultShareConnection(resultShareData);
+      
+      pageTitle = `Result: ${resultShareData.name}`;
+      logPageView(path, pageTitle);
+      return;
+    }
+    
     const slug = extractSlugFromPath(path);
     
     if (slug) {
@@ -153,6 +187,80 @@ function App() {
     
     logPageView(path, pageTitle); // Log view change
   }, [location.pathname, spaces, navigate]);
+
+  // Server URL and result share handlers
+  const handleServerUrlConnection = (serverUrl: string, transportMethod?: string) => {
+    logEvent('server_url_connection', { serverUrl, transportMethod });
+    
+    // Find or create a tab for this server
+    let targetTab = tabs.find(tab => tab.serverUrl === serverUrl);
+    
+    if (!targetTab) {
+      // Create new tab with the server URL
+      targetTab = {
+        id: uuidv4(),
+        title: `Server: ${serverUrl}`,
+        serverUrl: serverUrl,
+        connectionStatus: 'Disconnected',
+      };
+      setTabs(prev => [...prev, targetTab!]);
+    }
+    
+    // Set as active tab
+    setActiveTabId(targetTab.id);
+    
+    // Update the tab's server URL and trigger connection
+    handleUpdateTab(targetTab.id, { 
+      serverUrl: serverUrl,
+      title: `Server: ${serverUrl}`
+    });
+  };
+
+  const handleResultShareConnection = (resultData: {
+    serverUrl: string;
+    type: 'tool' | 'resource';
+    name: string;
+    params?: Record<string, any>;
+  }) => {
+    logEvent('result_share_connection', { 
+      serverUrl: resultData.serverUrl, 
+      type: resultData.type, 
+      name: resultData.name 
+    });
+    
+    // Find or create a tab for this server
+    let targetTab = tabs.find(tab => tab.serverUrl === resultData.serverUrl);
+    
+    if (!targetTab) {
+      // Create new tab with the server URL
+      targetTab = {
+        id: uuidv4(),
+        title: `Result: ${resultData.name}`,
+        serverUrl: resultData.serverUrl,
+        connectionStatus: 'Disconnected',
+        resultShareData: {
+          type: resultData.type,
+          name: resultData.name,
+          params: resultData.params
+        }
+      };
+      setTabs(prev => [...prev, targetTab!]);
+    }
+    
+    // Set as active tab
+    setActiveTabId(targetTab.id);
+    
+    // Update the tab's server URL and trigger connection
+    handleUpdateTab(targetTab.id, { 
+      serverUrl: resultData.serverUrl,
+      title: `Result: ${resultData.name}`,
+      resultShareData: {
+        type: resultData.type,
+        name: resultData.name,
+        params: resultData.params
+      }
+    });
+  };
 
   // Tab handler functions
   const handleNewTab = () => {
