@@ -40,6 +40,18 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 const SPACES_KEY = 'mcpSpaces'; // New key for spaces
 const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
 
+// Helper to determine initial view from URL
+const getInitialView = (): 'inspector' | 'spaces' | 'docs' => {
+  const path = window.location.pathname;
+  if (path.startsWith('/docs/')) {
+    return 'docs';
+  }
+  if (path.startsWith('/space/')) {
+    return 'spaces';
+  }
+  return 'inspector';
+};
+
 // Helper to load spaces from localStorage
 const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   try {
@@ -88,10 +100,11 @@ declare global {
 
 function App() {
   // --- State ---
-  const [activeView, setActiveView] = useState<'inspector' | 'spaces' | 'docs'>('inspector');
+  const [activeView, setActiveView] = useState<'inspector' | 'spaces' | 'docs'>(getInitialView);
   const [activeDocPage, setActiveDocPage] = useState<string | null>(null);
   const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
+  const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -374,6 +387,7 @@ function App() {
   const performAllSpacesHealthCheck = async () => {
     logEvent('health_check_all_spaces', { space_count: spaces.length });
     console.log('[Health Check] Starting health check for all spaces...');
+    setHealthCheckLoading(true);
     
     // Execute all cards in all spaces to refresh their status
     for (const space of spaces) {
@@ -387,6 +401,7 @@ function App() {
       }
     }
     console.log('[Health Check] Completed health check for all spaces');
+    setHealthCheckLoading(false);
   };
 
   const getSpaceHealthColor = (spaceId: string): 'green' | 'orange' | 'red' | 'gray' => {
@@ -394,8 +409,7 @@ function App() {
     if (!space || space.cards.length === 0) return 'gray';
 
     // Check if any cards are currently loading
-    const hasLoadingCards = space.cards.some(card => card.loading);
-    if (hasLoadingCards) return 'gray';
+    if (healthCheckLoading) return 'gray';
 
     // Count successful vs failed cards
     const totalCards = space.cards.length;
@@ -412,16 +426,15 @@ function App() {
 
   const getSpaceHealthStatus = (spaceId: string) => {
     const space = spaces.find(s => s.id === spaceId);
-    if (!space) return { loading: false, successCount: 0, totalCount: 0 };
+    if (!space) return { loading: healthCheckLoading, successCount: 0, totalCount: 0 };
 
-    const hasLoadingCards = space.cards.some(card => card.loading);
     const totalCount = space.cards.length;
     const successCount = space.cards.filter(card => 
       !card.error && card.responseData && !card.loading
     ).length;
 
     return {
-      loading: hasLoadingCards,
+      loading: healthCheckLoading,
       successCount,
       totalCount
     };
@@ -448,6 +461,7 @@ function App() {
         });
       }, 2000); // 2 second delay to ensure everything is ready
     } else {
+      setHealthCheckLoading(false);
       console.log('[Health Check] No spaces with cards found, skipping auto health check');
     }
   }, []); // Run once on mount
@@ -661,6 +675,7 @@ function App() {
         const currentSpace = spaces.find(s => s.id === selectedSpaceId);
         if (currentSpace) {
           console.log(`[DEBUG] Entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards sequentially.`);
+          setHealthCheckLoading(true);
           // Use for...of loop to allow await inside
           for (const card of currentSpace.cards) {
             // Don't trigger if already loading to avoid redundant calls
@@ -672,6 +687,7 @@ function App() {
                console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because loading is true.`);
             }
           }
+          setHealthCheckLoading(false);
            console.log(`[DEBUG] Finished sequential refresh for space "${currentSpace.name}".`);
         }
       }
