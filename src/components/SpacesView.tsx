@@ -353,6 +353,8 @@ interface SpacesViewProps {
   onExecuteCard: (spaceId: string, cardId: string) => void; // Add execute handler prop
   onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Add move handler prop
   onAddCard: (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => void; // Add card handler prop
+  onRefreshSpace?: () => void; // Add refresh handler prop
+  isRefreshing?: boolean; // Add refreshing state prop
 }
 
 const SpacesView: React.FC<SpacesViewProps> = ({
@@ -364,6 +366,8 @@ const SpacesView: React.FC<SpacesViewProps> = ({
   onExecuteCard, // Destructure execute handler
   onMoveCard, // Destructure move handler
   onAddCard, // Destructure add card handler
+  onRefreshSpace, // Destructure refresh handler
+  isRefreshing = false, // Destructure refreshing state
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(space.name);
@@ -482,6 +486,27 @@ const SpacesView: React.FC<SpacesViewProps> = ({
           <h2 className="mb-0">{space.name}</h2>
         )}
         <div className="d-flex align-items-center gap-2">
+          {/* Refresh Button */}
+          {onRefreshSpace && (
+            <button
+              className="btn btn-sm btn-outline-secondary"
+              onClick={onRefreshSpace}
+              disabled={isRefreshing}
+              title="Refresh all cards in this space"
+            >
+              {isRefreshing ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-arrow-clockwise me-1"></i>
+                  Refresh
+                </>
+              )}
+            </button>
+          )}
           {/* Column Selector */}
           <div className="btn-group btn-group-sm" role="group" aria-label="Column count">
             <button

@@ -5,7 +5,6 @@ import { getSpaceUrl } from '../utils/urlUtils';
 
 interface SideNavProps {
   activeView: 'inspector' | 'spaces' | 'docs';
-  setActiveView: (view: 'inspector' | 'spaces' | 'docs') => void;
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -19,7 +18,6 @@ interface SideNavProps {
 
 const SideNav: React.FC<SideNavProps> = ({
   activeView,
-  setActiveView,
   spaces,
   selectedSpaceId,
   handleSelectSpace,
@@ -38,7 +36,6 @@ const SideNav: React.FC<SideNavProps> = ({
   const navigate = useNavigate();
 
   const handleInspectorClick = () => {
-    setActiveView('inspector');
     navigate('/');
     // Close mobile menu if open
     document.body.classList.remove('menu-open');
@@ -161,7 +158,14 @@ const SideNav: React.FC<SideNavProps> = ({
       return (
         <div 
           className="spinner-border spinner-border-sm me-2" 
-          style={{ width: '12px', height: '12px', color: '#6c757d' }}
+          style={{ 
+            width: '12px', 
+            height: '12px', 
+            color: '#6c757d',
+            verticalAlign: 'middle',
+            position: 'relative',
+            top: '-1px'
+          }}
           role="status"
         >
           <span className="visually-hidden">Loading...</span>
@@ -177,14 +181,18 @@ const SideNav: React.FC<SideNavProps> = ({
     };
 
     return (
-      <div
-        className="me-2"
+      <span
+        className={`me-2 health-indicator health-indicator-${color}`}
         style={{
+          display: 'inline-block',
           width: '12px',
           height: '12px',
           borderRadius: '50%',
           backgroundColor: colorMap[color],
-          flexShrink: 0
+          flexShrink: 0,
+          verticalAlign: 'middle',
+          position: 'relative',
+          top: '-1px'
         }}
         title={
           status.totalCount > 0
