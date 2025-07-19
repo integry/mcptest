@@ -10,6 +10,7 @@ interface McpResponseDisplayProps {
   spacesMode?: boolean; // Flag to enable spaces mode (simplified display)
   toolName?: string; // Optional tool name override for spaces mode
   showExcerpt?: boolean; // Flag to control whether to show excerpts by default
+  onRunAgain?: () => void; // Optional callback for "Run again" button
 }
 
 const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
@@ -20,16 +21,17 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   spacesMode = false, // Default to regular mode
   toolName: propToolName,
   showExcerpt = false, // Default to full content
+  onRunAgain,
 }) => {
   const converter = useRef<showdown.Converter | null>(null);
 
-  // Function to create excerpt from content (first 200 chars + last 50 chars)
+  // Function to create excerpt from content (first 100 chars + last 100 chars)
   const createExcerpt = (content: string): string => {
-    if (content.length <= 250) {
+    if (content.length <= 200) {
       return content; // No need to truncate if content is short
     }
-    const firstPart = content.substring(0, 200);
-    const lastPart = content.substring(content.length - 50);
+    const firstPart = content.substring(0, 100);
+    const lastPart = content.substring(content.length - 100);
     return `${firstPart}...${lastPart}`;
   };
 
@@ -310,6 +312,16 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           <div className="d-flex align-items-center justify-content-between mb-1">
             <span className="small text-muted">Output</span>
             <div className="btn-group" role="group">
+              {onRunAgain && (
+                <button
+                  className="btn btn-sm btn-outline-primary"
+                  style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}
+                  onClick={onRunAgain}
+                  title="Run again"
+                >
+                  <i className="bi bi-arrow-clockwise"></i> Run again
+                </button>
+              )}
               <button
                 className="btn btn-sm btn-outline-secondary"
                 style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}

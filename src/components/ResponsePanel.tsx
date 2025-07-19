@@ -17,6 +17,7 @@ interface ResponsePanelProps {
   selectedResourceTemplate: ResourceTemplate | null;
   toolParams: Record<string, any>;
   resourceArgs: Record<string, any>;
+  onRunAgain?: (callContext: LogEntry['callContext']) => void;
 }
 
 const ResponsePanel: React.FC<ResponsePanelProps> = ({
@@ -32,6 +33,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
   selectedResourceTemplate,
   toolParams,
   resourceArgs,
+  onRunAgain,
 }) => {
   const responseAreaRef = useRef<HTMLDivElement>(null);
 
@@ -161,6 +163,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
                        className="" 
                        addToSpaceButton={isResultType ? <AddToSpaceControl logEntry={item} /> : undefined}
                        showExcerpt={true}
+                       onRunAgain={isResultType && onRunAgain && item.callContext ? () => onRunAgain(item.callContext) : undefined}
                      />
                   </div>
                 );
