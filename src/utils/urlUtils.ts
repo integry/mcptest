@@ -59,7 +59,9 @@ export const getResultShareUrl = (
   name: string,
   params?: Record<string, any>
 ): string => {
-  const baseUrl = `/call/${serverUrl}/${type}/${encodeURIComponent(name)}`;
+  // Remove any trailing slashes from serverUrl to prevent double slashes
+  const cleanServerUrl = serverUrl.replace(/\/+$/, '');
+  const baseUrl = `/call/${cleanServerUrl}/${type}/${encodeURIComponent(name)}`;
   
   if (params && Object.keys(params).length > 0) {
     const searchParams = new URLSearchParams();
@@ -73,21 +75,41 @@ export const getResultShareUrl = (
 };
 
 // Parse result share URL
-export const parseResultShareUrl = (pathname: string): {
+export const parseResultShareUrl = (pathname: string, search?: string): {
   serverUrl: string;
   type: 'tool' | 'resource';
   name: string;
   params?: Record<string, any>;
 } | null => {
-  const match = pathname.match(/^\/call\/([^\/]+)\/(tool|resource)\/(.+)$/);
+  // Extract path and query separately
+  const pathOnly = pathname.split('?')[0];
+  const match = pathOnly.match(/^\/call\/([^\/]+)\/(tool|resource)\/(.+)$/);
   if (!match) return null;
   
   const [, serverUrl, type, encodedName] = match;
   const name = decodeURIComponent(encodedName);
   
+  // Parse query parameters if present
+  let params: Record<string, any> | undefined;
+  const queryString = search || pathname.split('?')[1];
+  if (queryString) {
+    const searchParams = new URLSearchParams(queryString);
+    params = {};
+    for (const [key, value] of searchParams.entries()) {
+      try {
+        // Try to parse as JSON first (for complex values)
+        params[key] = JSON.parse(value);
+      } catch {
+        // If not valid JSON, use as string
+        params[key] = value;
+      }
+    }
+  }
+  
   return {
     serverUrl,
     type: type as 'tool' | 'resource',
     name,
+    ...(params && { params })
   };
 };

@@ -150,7 +150,7 @@ function App() {
     }
     
     // Check for result share URL routes
-    const resultShareData = parseResultShareUrl(path);
+    const resultShareData = parseResultShareUrl(path, location.search);
     if (resultShareData) {
       console.log('[Result Share Route] Detected result share URL:', resultShareData);
       
@@ -238,6 +238,11 @@ function App() {
         title: `Result: ${resultData.name}`,
         serverUrl: resultData.serverUrl,
         connectionStatus: 'Disconnected',
+        resultShareData: {
+          type: resultData.type,
+          name: resultData.name,
+          params: resultData.params
+        }
       };
       setTabs(prev => [...prev, targetTab!]);
     }
@@ -248,11 +253,13 @@ function App() {
     // Update the tab's server URL and trigger connection
     handleUpdateTab(targetTab.id, { 
       serverUrl: resultData.serverUrl,
-      title: `Result: ${resultData.name}`
+      title: `Result: ${resultData.name}`,
+      resultShareData: {
+        type: resultData.type,
+        name: resultData.name,
+        params: resultData.params
+      }
     });
-    
-    // The actual tool/resource execution will be handled by the TabContent component
-    // once it detects the URL parameters
   };
 
   // Tab handler functions

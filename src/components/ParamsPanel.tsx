@@ -37,6 +37,9 @@ interface ParamsPanelProps {
   resourceHistory: any[];
   setToolParams: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   setResourceArgs: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  // Execution state
+  isExecuting: boolean;
+  executionStartTime: number | null;
 }
 
 const ParamsPanel: React.FC<ParamsPanelProps> = ({
@@ -59,7 +62,25 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   resourceHistory,
   setToolParams,
   setResourceArgs,
+  isExecuting,
+  executionStartTime,
 }) => {
+  // Timer state
+  const [elapsedTime, setElapsedTime] = React.useState<string>('');
+  
+  // Update timer display
+  React.useEffect(() => {
+    if (isExecuting && executionStartTime) {
+      const interval = setInterval(() => {
+        const elapsed = (Date.now() - executionStartTime) / 1000;
+        setElapsedTime(elapsed.toFixed(1) + 's');
+      }, 100);
+      
+      return () => clearInterval(interval);
+    } else {
+      setElapsedTime('');
+    }
+  }, [isExecuting, executionStartTime]);
 
   // Handler for Enter key press
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -292,9 +313,9 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
             id="executeToolBtn"
             className="btn btn-success w-100 mt-3"
             onClick={handleExecuteTool}
-            disabled={!selectedTool || !isConnected || isConnecting}
+            disabled={!selectedTool || !isConnected || isConnecting || isExecuting}
           >
-            Execute Tool
+            {isExecuting ? `Executing... ${elapsedTime}` : 'Execute Tool'}
           </button>
         )}
          {selectedPrompt && (
@@ -302,9 +323,9 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
             id="executePromptBtn"
             className="btn btn-primary w-100 mt-3"
             onClick={handleExecutePrompt}
-            disabled={!selectedPrompt || !isConnected || isConnecting}
+            disabled={!selectedPrompt || !isConnected || isConnecting || isExecuting}
           >
-            Execute Prompt
+            {isExecuting ? `Executing... ${elapsedTime}` : 'Execute Prompt'}
           </button>
         )}
         {selectedResourceTemplate && (
@@ -312,9 +333,9 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
             id="accessResourceBtn"
             className="btn btn-info w-100 mt-3"
             onClick={handleAccessResource}
-            disabled={!selectedResourceTemplate || !isConnected || isConnecting}
+            disabled={!selectedResourceTemplate || !isConnected || isConnecting || isExecuting}
           >
-            Access Resource
+            {isExecuting ? `Accessing... ${elapsedTime}` : 'Access Resource'}
           </button>
         )}
       </div>

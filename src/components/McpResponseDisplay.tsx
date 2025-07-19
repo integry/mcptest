@@ -46,13 +46,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
     }
   }, []);
 
-  // Force re-render with state to ensure fresh processing
-  const [, forceUpdate] = useState({});
-  
-  useEffect(() => {
-    // Force a re-render when logEntry data changes
-    forceUpdate({});
-  }, [logEntry.data, logEntry.type]);
+  // No need for force re-render - React will re-render when props change
 
   let textContent = ''; // Holds the plain text representation IF HTML fails or isn't used
   let htmlContent: string | null = null; // Holds Showdown output
