@@ -83,10 +83,44 @@ export const parseResultShareUrl = (pathname: string, search?: string): {
 } | null => {
   // Extract path and query separately
   const pathOnly = pathname.split('?')[0];
-  const match = pathOnly.match(/^\/call\/([^\/]+)\/(tool|resource)\/(.+)$/);
-  if (!match) return null;
   
-  const [, serverUrl, type, encodedName] = match;
+  // First try the new URL structure: /call/{server}/{owner}/{repo}/tool/{tool_name}
+  const newMatch = pathOnly.match(/^\/call\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(tool|resource)\/(.+)$/);
+  if (newMatch) {
+    const [, server, owner, repo, type, encodedName] = newMatch;
+    const name = decodeURIComponent(encodedName);
+    const serverUrl = `${server}/${owner}/${repo}`;
+    
+    // Parse query parameters if present
+    let params: Record<string, any> | undefined;
+    const queryString = search || pathname.split('?')[1];
+    if (queryString) {
+      const searchParams = new URLSearchParams(queryString);
+      params = {};
+      for (const [key, value] of searchParams.entries()) {
+        try {
+          // Try to parse as JSON first (for complex values)
+          params[key] = JSON.parse(value);
+        } catch {
+          // If not valid JSON, use as string
+          params[key] = value;
+        }
+      }
+    }
+    
+    return {
+      serverUrl,
+      type: type as 'tool' | 'resource',
+      name,
+      ...(params && { params })
+    };
+  }
+  
+  // Fall back to the old URL structure: /call/{serverUrl}/{type}/{name}
+  const oldMatch = pathOnly.match(/^\/call\/([^\/]+)\/(tool|resource)\/(.+)$/);
+  if (!oldMatch) return null;
+  
+  const [, serverUrl, type, encodedName] = oldMatch;
   const name = decodeURIComponent(encodedName);
   
   // Parse query parameters if present
