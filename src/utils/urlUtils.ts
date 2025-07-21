@@ -83,7 +83,10 @@ export const parseResultShareUrl = (pathname: string, search?: string): {
 } | null => {
   // Extract path and query separately
   const pathOnly = pathname.split('?')[0];
-  const match = pathOnly.match(/^\/call\/([^\/]+)\/(tool|resource)\/(.+)$/);
+  
+  // Updated regex to handle URLs like: /call/{server}/{path1}/{path2}/tool/{tool_name}
+  // This matches everything between /call/ and /tool/ or /resource/ as the server URL
+  const match = pathOnly.match(/^\/call\/(.+)\/(tool|resource)\/(.+)$/);
   if (!match) return null;
   
   const [, serverUrl, type, encodedName] = match;
