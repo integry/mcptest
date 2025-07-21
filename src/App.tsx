@@ -486,6 +486,17 @@ function App() {
 
   // Preload health checks on page load (cards connect to their own servers)
   useEffect(() => {
+    // Skip health check if we're loading with a result share URL or server URL
+    const path = window.location.pathname;
+    const isResultShareUrl = parseResultShareUrl(path, window.location.search) !== null;
+    const isServerUrl = parseServerUrl(path) !== null;
+    
+    if (isResultShareUrl || isServerUrl) {
+      console.log('[Health Check] Skipping auto health check due to deep link URL');
+      setHealthCheckLoading(false);
+      return;
+    }
+    
     const spacesWithCards = spaces.filter(space => space.cards.length > 0);
     console.log('[Health Check] Page loaded, checking for spaces with cards...', {
       totalSpaces: spaces.length,
