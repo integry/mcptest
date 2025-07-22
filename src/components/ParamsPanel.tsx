@@ -122,7 +122,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     }
 
     if (parameterDefinitions.length === 0) {
-      return <p className="text-muted">{paramType === 'tool' ? 'Tool' : 'Prompt'} has no defined parameters.</p>;
+      return <p className="text-muted">This {paramType} has no parameters.</p>;
     }
 
     // Helper function to render a single input based on schema/arg definition
@@ -213,7 +213,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     if (!selectedResourceTemplate) { return null; }
     const args = parseUriTemplateArgs(selectedResourceTemplate.uriTemplate);
     if (args.length === 0) {
-      return <p className="text-muted">Resource template has no arguments.</p>;
+      return <p className="text-muted">This resource has no parameters.</p>;
     }
 
     return (
@@ -284,12 +284,16 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
         </h5>
       </div>
       <div className="card-body" style={{ maxHeight: 'calc(100vh - 250px)', overflowY: 'auto' }}>
-        <div id="paramsArea">
-          {/* Render parameters/arguments based on selection */}
-          {selectedTool && renderInputParams(selectedTool, toolParams, 'tool')}
-          {selectedPrompt && renderInputParams(selectedPrompt, promptParams, 'prompt')}
-          {selectedResourceTemplate && renderResourceTemplateArgs()}
-          {!selectedTool && !selectedPrompt && !selectedResourceTemplate && <p className="text-muted p-2">Select a tool, prompt, or resource template.</p>}
+        {!isConnected ? (
+          <p className="text-muted p-2">Please connect to an MCP server to begin.</p>
+        ) : !selectedTool && !selectedResourceTemplate && !selectedPrompt ? (
+          <p className="text-muted p-2">Select a tool from the left to view its parameters and execute.</p>
+        ) : (
+          <div id="paramsArea">
+            {/* Render parameters/arguments based on selection */}
+            {selectedTool && renderInputParams(selectedTool, toolParams, 'tool')}
+            {selectedPrompt && renderInputParams(selectedPrompt, promptParams, 'prompt')}
+            {selectedResourceTemplate && renderResourceTemplateArgs()}
 
           {/* Render History */}
           {selectedTool && (
@@ -304,39 +308,26 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
               {renderHistoryList(resourceHistory, handleResourceHistoryClick)}
             </div>
           )}
-
-        </div>
+          </div>
+        )}
 
         {/* Buttons */}
-        {selectedTool && (
-          <button
-            id="executeToolBtn"
-            className="btn btn-success w-100 mt-3"
-            onClick={handleExecuteTool}
-            disabled={!selectedTool || !isConnected || isConnecting || isExecuting}
-          >
-            {isExecuting ? `Executing... ${elapsedTime}` : 'Execute Tool'}
-          </button>
-        )}
-         {selectedPrompt && (
-          <button
-            id="executePromptBtn"
-            className="btn btn-primary w-100 mt-3"
-            onClick={handleExecutePrompt}
-            disabled={!selectedPrompt || !isConnected || isConnecting || isExecuting}
-          >
-            {isExecuting ? `Executing... ${elapsedTime}` : 'Execute Prompt'}
-          </button>
-        )}
-        {selectedResourceTemplate && (
-          <button
-            id="accessResourceBtn"
-            className="btn btn-info w-100 mt-3"
-            onClick={handleAccessResource}
-            disabled={!selectedResourceTemplate || !isConnected || isConnecting || isExecuting}
-          >
-            {isExecuting ? `Accessing... ${elapsedTime}` : 'Access Resource'}
-          </button>
+        {(selectedTool || selectedPrompt || selectedResourceTemplate) && (
+           <button
+             id="executeBtn"
+             className="btn btn-success w-100 mt-3"
+             onClick={selectedTool ? handleExecuteTool : selectedPrompt ? handleExecutePrompt : handleAccessResource}
+             disabled={!isConnected || isConnecting || isExecuting}
+           >
+             {isExecuting ? (
+               <>
+                 <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                 <span className="ms-2">Running... {elapsedTime}</span>
+               </>
+             ) : (
+               'Execute'
+             )}
+           </button>
         )}
       </div>
     </div>

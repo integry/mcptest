@@ -359,8 +359,8 @@ header.bg-dark p {
   max-height: calc(100vh - 200px);
   overflow-y: auto;
 }
-.response-area {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+.response-area, .result-panel-body {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
   font-size: 0.8rem;
   line-height: 1.6;
   color: var(--text-color);
@@ -390,10 +390,10 @@ header.bg-dark p {
   word-break: break-word;
   color: var(--text-color);
 }
-.error-message { color: var(--danger-color); }
+.response-entry.error-message { color: #dc3545; }
 .success-message { color: var(--success-color); }
-.info-message { color: var(--info-color); }
-.warning-message { color: var(--warning-color); }
+.response-entry.info-message { color: #0dcaf0; }
+.response-entry.warning-message { color: #ffc107; }
 .text-muted { color: var(--text-muted) !important; }
 
 
