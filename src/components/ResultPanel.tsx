@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { LogEntry, Space, SpaceCard, SelectedTool, ResourceTemplate } from '../types';
 import McpResponseDisplay from './McpResponseDisplay';
 import { getResultShareUrl } from '../utils/urlUtils';
+import { useShare } from '../hooks/useShare';
 
 interface ResultPanelProps {
   lastResult: LogEntry | null;
@@ -28,6 +29,8 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
 }) => {
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const { share, shareStatus, shareMessage } = useShare();
+  
   // Handle share button click
   const handleShareResult = () => {
     if (!lastResult || !lastResult.callContext || !serverUrl) return;
@@ -43,13 +46,10 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
       lastResult.callContext.params
     )}`;
     
-    // Copy to clipboard
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      // Show temporary feedback (we'll use a simple alert for now)
-      alert('Result share link copied to clipboard!');
-    }).catch(err => {
-      console.error('Failed to copy result share link:', err);
-      alert('Failed to copy result share link. Please try again.');
+    share({
+      url: shareUrl,
+      title: `MCP Result: ${lastResult.callContext.name}`,
+      text: `Check out this MCP result from ${serverUrl}`,
     });
   };
 
@@ -99,15 +99,23 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
                 <i className="bi bi-arrows-fullscreen"></i>
               </button>
               {lastResult.callContext && serverUrl && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-secondary"
-                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                  onClick={handleShareResult}
-                  title="Share result link"
-                >
-                  <i className="bi bi-share"></i>
-                </button>
+                <div className="position-relative">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+                    onClick={handleShareResult}
+                    title="Share result link"
+                    disabled={shareStatus !== 'idle'}
+                  >
+                    {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
+                  </button>
+                  {shareStatus !== 'idle' && (
+                    <div className="notification-tooltip">
+                      {shareMessage}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             

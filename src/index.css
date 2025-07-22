@@ -1099,3 +1099,85 @@ span.health-indicator.health-indicator-gray {
 .event-data-wrapper {
   background-color: var(--card-bg) !important;
 }
+
+/* --- Notification Tooltip Styles --- */
+.notification-tooltip {
+  position: absolute;
+  background-color: #2d3748 !important; /* Dark background */
+  color: #ffffff !important; /* Light text */
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0.75rem;
+  max-width: 280px;
+  text-align: center;
+}
+
+/* Variant for right-aligned tooltips (used in SpacesView) */
+.notification-tooltip.right-aligned {
+  left: auto;
+  right: 0;
+  transform: translateX(0);
+}
+
+/* Arrow pointing down to the share button */
+.notification-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: #2d3748;
+  border-bottom: none;
+}
+
+/* Arrow border for better definition */
+.notification-tooltip::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 9px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.1);
+  border-bottom: none;
+  z-index: -1;
+}
+
+/* Arrow positioning for right-aligned tooltips */
+.notification-tooltip.right-aligned::after {
+  left: auto;
+  right: 1rem;
+  transform: translateX(0);
+}
+
+.notification-tooltip.right-aligned::before {
+  left: auto;
+  right: 1rem;
+  transform: translateX(0);
+}
+
+/* Animation for smooth appearance */
+.notification-tooltip {
+  animation: tooltipFadeIn 0.3s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}

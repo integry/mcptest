@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Space, SpaceCard } from '../types';
 import McpResponseDisplay from './McpResponseDisplay'; // Import the new display component
 import { getResultShareUrl } from '../utils/urlUtils';
+import { useShare } from '../hooks/useShare';
 
 // --- Card Component ---
 interface SpaceCardComponentProps {
@@ -31,6 +32,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   const [editedTitle, setEditedTitle] = useState(card.title);
   const [editedParams, setEditedParams] = useState<Record<string, any>>(card.params);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const { share, shareStatus, shareMessage } = useShare();
 
   // Remove automatic execution on mount. Execution will be triggered by refresh button.
   // useEffect(() => {
@@ -129,13 +131,10 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
       card.params
     )}`;
     
-    // Copy to clipboard
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      // Show temporary feedback (we'll use a simple alert for now)
-      alert('Result share link copied to clipboard!');
-    }).catch(err => {
-      console.error('Failed to copy result share link:', err);
-      alert('Failed to copy result share link. Please try again.');
+    share({
+      url: shareUrl,
+      title: `MCP Result: ${card.name}`,
+      text: `Check out this MCP result from ${card.serverUrl}`,
     });
   };
 
@@ -235,8 +234,12 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
                 </button>
               </li>
               <li>
-                <button className="dropdown-item" onClick={handleShareClick}>
-                  <i className="bi bi-share me-2"></i>Share
+                <button className="dropdown-item" onClick={handleShareClick} disabled={shareStatus !== 'idle'}>
+                  {shareStatus === 'success' ? (
+                    <><i className="bi bi-check-lg me-2"></i>Shared!</>
+                  ) : (
+                    <><i className="bi bi-share me-2"></i>Share</>
+                  )}
                 </button>
               </li>
               <li><hr className="dropdown-divider" /></li>
@@ -247,6 +250,11 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
               </li>
             </ul>
             </div>
+            {shareStatus !== 'idle' && (
+              <div className="notification-tooltip right-aligned">
+                {shareMessage}
+              </div>
+            )}
           </div>
         </div>
 

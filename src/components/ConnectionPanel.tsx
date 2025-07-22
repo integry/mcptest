@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ConnectionErrorCard from './ConnectionErrorCard';
 import { TransportType } from '../types';
 import { getServerUrl } from '../utils/urlUtils';
+import { useShare } from '../hooks/useShare';
 
 // List of suggested servers to randomly select from
 const SUGGESTED_SERVERS = [
@@ -50,6 +51,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   clearConnectionError,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
+  const { share, shareStatus, shareMessage } = useShare();
 
   // Update timer every second while connecting
   useEffect(() => {
@@ -82,13 +84,10 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
     // Generate share URL
     const shareUrl = `${window.location.origin}${getServerUrl(normalizedUrl, transportMethod)}`;
     
-    // Copy to clipboard
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      // Show temporary feedback (we'll use a simple alert for now)
-      alert('Share link copied to clipboard!');
-    }).catch(err => {
-      console.error('Failed to copy share link:', err);
-      alert('Failed to copy share link. Please try again.');
+    share({
+      url: shareUrl,
+      title: `MCP Connection: ${serverUrl}`,
+      text: `Connect to MCP server at ${serverUrl}`,
     });
   };
   // Return JSX directly without outer parentheses
@@ -101,14 +100,22 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             {connectionStatus}
           </span>
           {isConnected && (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={handleShareConnection}
-              title="Share connection link"
-            >
-              <i className="bi bi-share"></i>
-            </button>
+            <div className="position-relative">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={handleShareConnection}
+                title="Share connection link"
+                disabled={shareStatus !== 'idle'}
+              >
+                {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
+              </button>
+              {shareStatus !== 'idle' && (
+                <div className="notification-tooltip">
+                  {shareMessage}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

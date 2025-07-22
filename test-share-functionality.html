@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Share Functionality</title>
+    <script type="module">
+        // Test the share functionality
+        async function testShare() {
+            const shareData = {
+                url: 'https://example.com/test',
+                title: 'Test Share',
+                text: 'Testing the share functionality'
+            };
+
+            if (navigator.share) {
+                console.log('Web Share API is supported');
+                try {
+                    await navigator.share(shareData);
+                    console.log('Share successful');
+                } catch (error) {
+                    console.error('Share failed:', error);
+                }
+            } else {
+                console.log('Web Share API not supported, falling back to clipboard');
+                try {
+                    await navigator.clipboard.writeText(shareData.url);
+                    console.log('Copied to clipboard successfully');
+                } catch (error) {
+                    console.error('Clipboard copy failed:', error);
+                }
+            }
+        }
+
+        // Run test when button is clicked
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('testBtn').addEventListener('click', testShare);
+        });
+    </script>
+</head>
+<body>
+    <h1>Test Share Functionality</h1>
+    <button id="testBtn">Test Share</button>
+    <p>Check the console for results</p>
+</body>
+</html>
