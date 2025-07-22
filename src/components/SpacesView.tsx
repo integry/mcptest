@@ -251,10 +251,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
             </ul>
             </div>
             {shareStatus !== 'idle' && (
-              <div 
-                className="position-absolute bg-dark text-white p-1 rounded" 
-                style={{ bottom: '100%', right: '0', marginBottom: '5px', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
-              >
+              <div className="notification-tooltip right-aligned">
                 {shareMessage}
               </div>
             )}

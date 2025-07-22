@@ -111,10 +111,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
                     {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
                   </button>
                   {shareStatus !== 'idle' && (
-                    <div 
-                      className="position-absolute bg-dark text-white p-1 rounded" 
-                      style={{ bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: '5px', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
-                    >
+                    <div className="notification-tooltip">
                       {shareMessage}
                     </div>
                   )}
