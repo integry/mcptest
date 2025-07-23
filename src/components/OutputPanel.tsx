@@ -196,7 +196,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
         )}
       </div>
       <div className="card-body p-0 d-flex flex-column" style={{ height: 'calc(100vh - 250px)' }}>
-        <div className="tab-content flex-grow-1" id="outputTabsContent">
+        <div className="tab-content flex-grow-1 overflow-hidden" id="outputTabsContent">
           <div className={`tab-pane fade ${activeTab === 'result' ? 'show active' : ''} h-100`} id="result-panel" role="tabpanel" aria-labelledby="result-tab">
             <ResultPanel {...props} isContentExpanded={isContentExpanded} />
           </div>
