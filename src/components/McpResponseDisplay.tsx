@@ -189,8 +189,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           <div 
             className="event-data-wrapper"
             style={{ 
-              maxHeight: effectiveExpanded ? 'none' : '300px', 
-              overflowY: effectiveExpanded ? 'visible' : 'auto'
+              maxHeight: 'none', 
+              overflowY: 'visible'
             }}
           >
             {isJson ? (

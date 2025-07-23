@@ -8,8 +8,7 @@ import { UnifiedPanel } from './UnifiedPanel';
 import { RecentServersPanel } from './RecentServersPanel';
 import { SuggestedServersPanel } from './SuggestedServersPanel';
 import ParamsPanel from './ParamsPanel';
-import ResponsePanel from './ResponsePanel';
-import ResultPanel from './ResultPanel';
+import OutputPanel from './OutputPanel';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
@@ -694,13 +693,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         top: 0,
         left: 0,
         right: 0,
-        bottom: 0
+        bottom: 0,
+        display: 'flex',
+        flexDirection: 'column'
       }}
     >
-      <div className="inspector-layout row h-100" style={{ paddingTop: '1rem' }}>
-        {/* Left Panel */}
-        <div className={isConnected ? "col-md-4" : "col-12"}>
-          <ConnectionPanel
+      <ConnectionPanel
             serverUrl={serverUrl}
             setServerUrl={setServerUrl}
             connectionStatus={connectionStatus}
@@ -716,6 +714,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             connectionError={connectionError}
             clearConnectionError={clearConnectionError}
           />
+      <div className="inspector-layout row flex-grow-1" style={{ paddingTop: '1rem' }}>
+        {/* Left Panel */}
+        <div className={isConnected ? "col-md-4" : "col-12"}>
           {!isConnected && (
             <>
               <RecentServersPanel
@@ -753,11 +754,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           )}
         </div>
 
-        {/* Right Panel - Stacked Parameters and Logs */}
-        <div className="col-md-8">
+        {/* Right Panel */}
+        <div className="col-md-8 d-flex flex-column">
           {isConnected && (
             <>
-              {/* Parameters / Arguments Panel */}
+              {/* Action Panel */}
               <ParamsPanel
                 selectedTool={selectedTool}
                 selectedResourceTemplate={selectedResourceTemplate}
@@ -780,22 +781,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 isExecuting={isExecuting}
                 executionStartTime={executionStartTime}
               />
-
-              {/* Result Panel */}
-              <ResultPanel
+              {/* Output Panel */}
+              <OutputPanel
                 lastResult={lastResult}
-                isConnected={isConnected}
-                serverUrl={tab.serverUrl}
-                spaces={spaces}
-                onAddCardToSpace={onAddCardToSpace}
-                selectedTool={selectedTool}
-                selectedResourceTemplate={selectedResourceTemplate}
-                toolParams={toolParams}
-                resourceArgs={resourceArgs}
-              />
-
-              {/* Logs & Events Panel */}
-              <ResponsePanel
                 responses={responses}
                 autoScroll={autoScroll}
                 setAutoScroll={setAutoScroll}

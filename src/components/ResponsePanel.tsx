@@ -114,26 +114,13 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
 
   // --- Main Render ---
   return (
-      <div className={`card mb-3 ${!isConnected ? 'panel-deactivated' : ''}`}>
-        <div className="card-header d-flex justify-content-between">
-          <h5>Logs & Events</h5>
-          <div className="form-check form-switch">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="autoScrollSwitch"
-            checked={autoScroll}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAutoScroll(e.target.checked)}
-          />
-          <label className="form-check-label" htmlFor="autoScrollSwitch">Auto-scroll</label>
-        </div>
-      </div>
-      <div className="card-body p-0">
+    <div className={`h-100 d-flex flex-column ${!isConnected ? 'panel-deactivated' : ''}`}>
+      <div className="flex-grow-1 p-0">
         <div
           id="responseArea"
           ref={responseAreaRef}
-          className="response-area p-2"
-          style={{ height: 'calc(100vh - 250px)', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.85rem' }}
+          className="response-area p-2 h-100"
+          style={{ overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.85rem' }}
         >
           {responses.length === 0 ? (
             <p className="text-muted p-2">Logs and events will appear here...</p>
@@ -173,7 +160,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
           )}
         </div>
       </div>
-      <div className="card-footer">
+      <div className="p-2 border-top">
         <button
           id="clearResponseBtn"
           className="btn btn-sm btn-outline-secondary"
