@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "predev": "node scripts/generate-version.js",
     "dev": "vite",
+    "prebuild": "node scripts/generate-version.js",
     "build": "vite build"
   },
   "dependencies": {
