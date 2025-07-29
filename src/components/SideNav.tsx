@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
+import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 
 interface SideNavProps {
   activeView: 'inspector' | 'spaces' | 'docs';
@@ -204,7 +205,7 @@ const SideNav: React.FC<SideNavProps> = ({
   };
 
   return (
-    <nav className="nav flex-column">
+    <nav className="nav flex-column d-flex flex-grow-1">
       {/* Inspector Link */}
       <Link
         to="/"
@@ -330,6 +331,37 @@ const SideNav: React.FC<SideNavProps> = ({
             </Link>
           </li>
         </ul>
+      </div>
+
+      {/* Footer Content */}
+      <div className="mt-auto pt-3 border-top small">
+        <div className="px-2 text-center">
+          <p className="text-muted mb-1">
+            &copy; {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>.
+          </p>
+          <div className="mb-2">
+            <Link to="/docs/contact" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
+              Contact
+            </Link>
+            <Link to="/docs/privacy-policy" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
+              Privacy
+            </Link>
+            <Link to="/docs/terms-of-service" className="text-muted" style={{ fontSize: '0.8rem' }}>
+              Terms
+            </Link>
+          </div>
+          <div className="text-muted" style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+            <div>Updated: <a 
+                href={getGithubCommitUrl(VERSION_INFO.commitHash)} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-muted"
+                style={{ opacity: 0.7 }}
+              >
+                {new Date(VERSION_INFO.commitDate).toLocaleDateString()} {new Date(VERSION_INFO.commitDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+              </a></div>
+          </div>
+        </div>
       </div>
     </nav>
   );

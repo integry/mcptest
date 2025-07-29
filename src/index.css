@@ -1181,3 +1181,16 @@ span.health-indicator.health-indicator-gray {
     transform: translateX(-50%) translateY(0);
   }
 }
+
+/* Sidebar nav full height */
+.desktop-sidebar nav {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Mobile sidebar nav full height */
+.mobile-sidebar nav {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+}

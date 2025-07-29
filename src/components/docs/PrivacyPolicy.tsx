@@ -16,6 +16,9 @@ const PrivacyPolicy: React.FC = () => {
             <strong>We do not collect, transmit, or store any of your application data on our servers.</strong> Your information remains on your machine.
           </div>
           <p>
+            Your application data, including server connections and history, is stored only in your browser's local storage. No data is gathered or stored on our servers.
+          </p>
+          <p>
             Because data is stored locally, clearing your browser's cache or local storage will permanently delete your saved connections and history.
           </p>
         </div>

@@ -6,7 +6,6 @@ import { logPageView, logEvent } from './utils/analytics';
 
 // Import Components
 import Header from './components/Header';
-import Footer from './components/Footer';
 import TabContent from './components/TabContent';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
@@ -788,7 +787,7 @@ function App() {
       ></div>
 
       {/* Mobile Sidebar */}
-      <div className="mobile-sidebar">
+      <div className="mobile-sidebar d-flex flex-column">
         <button 
           className="mobile-close-btn"
           onClick={() => document.body.classList.remove('menu-open')}
@@ -814,7 +813,7 @@ function App() {
 
       <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
         {/* Desktop Side Navigation */}
-        <div className="desktop-sidebar col-auto bg-light border-end p-2" style={{ width: '250px', overflowY: 'auto' }}>
+        <div className="desktop-sidebar col-auto bg-light border-end p-2 d-flex flex-column" style={{ width: '250px', height: '100%' }}>
           <SideNav
             activeView={activeView}
             spaces={spaces}
@@ -927,7 +926,6 @@ function App() {
 
         </div>
       </div>
-      <Footer />
     </div>
   );
 }
