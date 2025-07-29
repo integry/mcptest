@@ -4,3 +4,7 @@ export const VERSION_INFO = {
   commitDate: '2025-07-29T14:20:09+03:00',
   shortHash: 'accac83'
 };
+
+export const getGithubCommitUrl = (commitHash: string): string => {
+  return `https://github.com/integry/mcptest/commit/${commitHash}`;
+};
