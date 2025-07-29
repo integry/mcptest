@@ -335,7 +335,7 @@ const SideNav: React.FC<SideNavProps> = ({
 
       {/* Footer Content */}
       <div className="mt-auto pt-3 border-top small">
-        <div className="px-2">
+        <div className="px-2 text-center">
           <p className="text-muted mb-1">
             &copy; {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>.
           </p>
@@ -350,12 +350,13 @@ const SideNav: React.FC<SideNavProps> = ({
               Terms
             </Link>
           </div>
-          <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+          <div className="text-muted" style={{ fontSize: '0.75rem', opacity: 0.7 }}>
             <div>Updated: <a 
                 href={getGithubCommitUrl(VERSION_INFO.commitHash)} 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-muted"
+                style={{ opacity: 0.7 }}
               >
                 {new Date(VERSION_INFO.commitDate).toLocaleDateString()} {new Date(VERSION_INFO.commitDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
               </a></div>
