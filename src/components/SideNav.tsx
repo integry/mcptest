@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
+import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 
 interface SideNavProps {
   activeView: 'inspector' | 'spaces' | 'docs';
@@ -204,7 +205,7 @@ const SideNav: React.FC<SideNavProps> = ({
   };
 
   return (
-    <nav className="nav flex-column">
+    <nav className="nav flex-column d-flex flex-grow-1">
       {/* Inspector Link */}
       <Link
         to="/"
@@ -330,6 +331,42 @@ const SideNav: React.FC<SideNavProps> = ({
             </Link>
           </li>
         </ul>
+      </div>
+
+      {/* Footer Content */}
+      <div className="mt-auto pt-3 border-top small">
+        <div className="px-2">
+          <p className="text-muted mb-1">
+            &copy; {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>. All rights reserved.
+          </p>
+          <p className="text-muted mb-2" style={{ fontSize: '0.8rem' }}>
+            Your application data, including server connections and history, is stored only in your browser's local storage. No data is gathered or stored on our servers.
+          </p>
+          <div className="mb-2">
+            <Link to="/docs/contact" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
+              Contact
+            </Link>
+            <Link to="/docs/privacy-policy" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
+              Privacy Policy
+            </Link>
+            <Link to="/docs/terms-of-service" className="text-muted" style={{ fontSize: '0.8rem' }}>
+              Terms of Service
+            </Link>
+          </div>
+          <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+            <div>
+              Version: <a 
+                href={getGithubCommitUrl(VERSION_INFO.commitHash)} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-muted"
+              >
+                {VERSION_INFO.shortHash}
+              </a>
+            </div>
+            <div>Updated: {new Date(VERSION_INFO.commitDate).toLocaleString()}</div>
+          </div>
+        </div>
       </div>
     </nav>
   );
