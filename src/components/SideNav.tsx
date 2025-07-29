@@ -337,34 +337,28 @@ const SideNav: React.FC<SideNavProps> = ({
       <div className="mt-auto pt-3 border-top small">
         <div className="px-2">
           <p className="text-muted mb-1">
-            &copy; {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>. All rights reserved.
-          </p>
-          <p className="text-muted mb-2" style={{ fontSize: '0.8rem' }}>
-            Your application data, including server connections and history, is stored only in your browser's local storage. No data is gathered or stored on our servers.
+            &copy; {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>.
           </p>
           <div className="mb-2">
             <Link to="/docs/contact" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
               Contact
             </Link>
             <Link to="/docs/privacy-policy" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
-              Privacy Policy
+              Privacy
             </Link>
             <Link to="/docs/terms-of-service" className="text-muted" style={{ fontSize: '0.8rem' }}>
-              Terms of Service
+              Terms
             </Link>
           </div>
           <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-            <div>
-              Version: <a 
+            <div>Updated: <a 
                 href={getGithubCommitUrl(VERSION_INFO.commitHash)} 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-muted"
               >
-                {VERSION_INFO.shortHash}
-              </a>
-            </div>
-            <div>Updated: {new Date(VERSION_INFO.commitDate).toLocaleString()}</div>
+                {new Date(VERSION_INFO.commitDate).toLocaleDateString()} {new Date(VERSION_INFO.commitDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+              </a></div>
           </div>
         </div>
       </div>
