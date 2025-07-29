@@ -35,6 +35,10 @@ export const VERSION_INFO = {
   commitDate: '${gitInfo.commitDate}',
   shortHash: '${gitInfo.shortHash}'
 };
+
+export const getGithubCommitUrl = (commitHash: string): string => {
+  return \`https://github.com/integry/mcptest/commit/\${commitHash}\`;
+};
 `;
 
   const outputPath = path.join(__dirname, '..', 'src', 'utils', 'versionInfo.ts');
