@@ -8,7 +8,8 @@
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
     "prebuild": "node scripts/generate-version.js",
-    "build": "vite build"
+    "build": "vite build",
+    "deploy-worker": "wrangler deploy"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",
@@ -21,6 +22,7 @@
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2",
     "showdown": "^2.1.0",
+    "use-debounce": "^10.0.5",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

@@ -20,6 +20,9 @@ import PrivacyPolicy from './components/docs/PrivacyPolicy';
 import TermsOfService from './components/docs/TermsOfService';
 import Contact from './components/docs/Contact';
 
+// Import Data Sync Hook
+import { useDataSync } from './hooks/useDataSync';
+
 import { v4 as uuidv4 } from 'uuid';
 
 // Import Types
@@ -114,6 +117,9 @@ function App() {
   // Router hooks
   const location = useLocation();
   const navigate = useNavigate();
+  
+  // Activate the data sync hook
+  useDataSync({ spaces, tabs, setSpaces, setTabs });
   
   // Derive active view and doc page from location
   const { activeView, activeDocPage } = useMemo(() => {
