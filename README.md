@@ -16,8 +16,30 @@ A web-based testing tool for Model Context Protocol (MCP) servers using the HTTP
 
 1. Clone this repository
 2. Install dependencies with `npm install`
-3. Start the server with `node server.js`
-4. Open your browser to `http://localhost:3000`
+3. Configure environment variables (see Configuration section below)
+4. Start the server with `node server.js`
+5. Open your browser to `http://localhost:3000`
+
+## Configuration
+
+### Firebase Authentication (Optional)
+
+The application supports optional Firebase authentication for Google sign-in. To enable it:
+
+1. Create a `.env` file in the root directory (copy from `.env.example`)
+2. Set `VITE_FIREBASE_AUTH_ENABLED=true`
+3. Add your Firebase configuration values:
+   ```
+   VITE_FIREBASE_API_KEY=your-api-key
+   VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your-project-id
+   VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+   VITE_FIREBASE_APP_ID=your-app-id
+   VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
+   ```
+
+**Note**: If Firebase authentication is enabled but not properly configured, you will see authentication errors. Make sure to use valid Firebase project credentials from your Firebase console.
 
 ## HTTP Stream Transport Protocol
 

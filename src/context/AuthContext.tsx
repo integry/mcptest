@@ -26,6 +26,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const loginWithGoogle = async () => {
     if (!auth) {
       console.error("Firebase auth not initialized. Check VITE_FIREBASE_AUTH_ENABLED and Firebase configuration.");
+      alert("Firebase authentication is not properly configured. Please check your Firebase configuration settings.");
       return;
     }
     
@@ -41,6 +42,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           message: error.message,
           customData: (error as any).customData
         });
+        
+        // Show user-friendly error message
+        if ((error as any).code === 'auth/configuration-not-found') {
+          alert("Firebase authentication is not properly configured. Please ensure you have valid Firebase configuration values in your environment variables.");
+        } else {
+          alert(`Authentication error: ${error.message}`);
+        }
       }
     }
   };
