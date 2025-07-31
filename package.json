@@ -8,7 +8,8 @@
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
     "prebuild": "node scripts/generate-version.js",
-    "build": "vite build"
+    "build": "vite build",
+    "deploy-worker": "wrangler deploy"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",

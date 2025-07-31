@@ -1,0 +1,16 @@
+name = "mcptest-state-api"
+main = "cloudflare-worker/src/index.js"
+compatibility_date = "2025-07-30"
+
+[vars]
+# Replace with your actual Firebase project ID
+FIREBASE_PROJECT_ID = "your-firebase-project-id"
+
+[durable_objects]
+bindings = [
+  { name = "USER_STATE", class_name = "UserState" }
+]
+
+[[durable_objects.migrations]]
+tag = "v1"
+new_classes = ["UserState"]
