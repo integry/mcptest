@@ -9,6 +9,15 @@ This Cloudflare Worker provides data persistence for the MCP Test application us
 - Provides GET endpoint to retrieve user data
 - Provides POST endpoint to update user data
 
+## Configuration
+
+Before deployment, update the `FIREBASE_PROJECT_ID` in `wrangler.toml` with your actual Firebase project ID:
+
+```toml
+[vars]
+FIREBASE_PROJECT_ID = "your-actual-firebase-project-id"
+```
+
 ## Deployment
 
 1. Install Wrangler CLI:
@@ -39,15 +48,30 @@ To run the worker locally:
 wrangler dev
 ```
 
-## Note on JWT Validation
+## JWT Validation
 
-The current implementation includes a placeholder JWT validation function. In production, you should:
+The worker now includes proper Firebase JWT validation that:
 
-1. Use a proper JWT validation library
-2. Verify the Firebase JWT signature using Firebase's public keys
-3. Check token expiration
-4. Validate the issuer and audience claims
+1. **Verifies JWT signatures** using Firebase's public keys fetched from Google's servers
+2. **Validates token expiration** to ensure the token hasn't expired
+3. **Checks issuer and audience claims** to ensure the token was issued by Firebase for your project
+4. **Caches public keys** to minimize API calls to Google's servers
 
-Example libraries for JWT validation in Workers:
-- `@tsndr/cloudflare-worker-jwt`
-- Custom implementation using Web Crypto API
+The implementation uses the Web Crypto API available in Cloudflare Workers for cryptographic operations.
+
+### Security Features
+
+- **Signature Verification**: Uses RSA-SHA256 to verify the JWT signature against Firebase's public keys
+- **Token Expiration**: Rejects expired tokens based on the `exp` claim
+- **Issuer Validation**: Ensures the token was issued by `https://securetoken.google.com/{projectId}`
+- **Audience Validation**: Ensures the token was issued for your specific Firebase project
+- **Key Caching**: Caches Firebase public keys with proper expiration based on HTTP cache headers
+
+### Error Handling
+
+The worker returns specific error messages for different validation failures:
+- "Invalid token format" - Token doesn't have three parts
+- "Token expired" - Token's expiration time has passed
+- "Invalid issuer" - Token wasn't issued by Firebase for your project
+- "Invalid audience" - Token wasn't issued for your project
+- "Invalid signature" - Token signature verification failed
