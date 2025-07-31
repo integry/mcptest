@@ -10,3 +10,7 @@ FIREBASE_PROJECT_ID = "your-firebase-project-id"
 bindings = [
   { name = "USER_STATE", class_name = "UserState" }
 ]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["UserState"]
