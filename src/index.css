@@ -909,8 +909,8 @@ select {
   }
 
   /* Stack columns on mobile */
-  .inspector-layout .col-md-4,
-  .inspector-layout .col-md-8 {
+  .playground-layout .col-md-4,
+  .playground-layout .col-md-8 {
     max-width: 100%;
     flex: 0 0 100%;
   }

@@ -714,7 +714,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             connectionError={connectionError}
             clearConnectionError={clearConnectionError}
           />
-      <div className="inspector-layout row flex-grow-1" style={{ paddingTop: '1rem' }}>
+      <div className="playground-layout row flex-grow-1" style={{ paddingTop: '1rem' }}>
         {/* Left Panel */}
         <div className={isConnected ? "col-md-4" : "col-12"}>
           {!isConnected && (

@@ -5,15 +5,15 @@ import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 
 interface SideNavProps {
-  activeView: 'inspector' | 'spaces' | 'docs';
+  activeView: 'playground' | 'dashboards' | 'docs';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
   handleCreateSpace: (name: string) => void; // Function to handle creation
-  handleReorderSpaces: (reorderedSpaces: Space[]) => void; // Function to handle reordering
+  handleReorderDashboards: (reorderedDashboards: Space[]) => void; // Function to handle reordering
   getSpaceHealthStatus: (spaceId: string) => { loading: boolean, successCount: number, totalCount: number };
   getSpaceHealthColor: (spaceId: string) => 'green' | 'orange' | 'red' | 'gray';
-  performAllSpacesHealthCheck: () => Promise<void>;
+  performAllDashboardsHealthCheck: () => Promise<void>;
   onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Function to handle card moves
 }
 
@@ -23,10 +23,10 @@ const SideNav: React.FC<SideNavProps> = ({
   selectedSpaceId,
   handleSelectSpace,
   handleCreateSpace,
-  handleReorderSpaces,
+  handleReorderDashboards,
   getSpaceHealthStatus,
   getSpaceHealthColor,
-  performAllSpacesHealthCheck,
+  performAllDashboardsHealthCheck,
   onMoveCard,
 }) => {
   const [newSpaceName, setNewSpaceName] = React.useState('');
@@ -36,7 +36,7 @@ const SideNav: React.FC<SideNavProps> = ({
   const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
   const navigate = useNavigate();
 
-  const handleInspectorClick = () => {
+  const handlePlaygroundClick = () => {
     navigate('/');
     // Close mobile menu if open
     document.body.classList.remove('menu-open');
@@ -140,8 +140,8 @@ const SideNav: React.FC<SideNavProps> = ({
     const [draggedSpace] = newSpaces.splice(draggedIndex, 1);
     newSpaces.splice(dropIndex, 0, draggedSpace);
     
-    // Update the spaces order
-    handleReorderSpaces(newSpaces);
+    // Update the dashboards order
+    handleReorderDashboards(newSpaces);
     setDraggedSpaceId(null);
   };
 
@@ -206,21 +206,21 @@ const SideNav: React.FC<SideNavProps> = ({
 
   return (
     <nav className="nav flex-column d-flex flex-grow-1">
-      {/* Inspector Link */}
+      {/* Playground Link */}
       <Link
         to="/"
-        className={`nav-link ${activeView === 'inspector' ? 'active fw-bold' : ''}`}
-        onClick={handleInspectorClick}
+        className={`nav-link ${activeView === 'playground' ? 'active fw-bold' : ''}`}
+        onClick={handlePlaygroundClick}
       >
-        <i className="bi bi-search me-2"></i> Inspector
+        <i className="bi bi-search me-2"></i> Playground
       </Link>
 
-      {/* Spaces Header */}
+      {/* Dashboards Header */}
       <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
-        <h6 className="nav-link text-muted mb-0">Spaces</h6>
+        <h6 className="nav-link text-muted mb-0">Dashboards</h6>
         <button
           className="btn btn-sm btn-outline-secondary"
-          onClick={performAllSpacesHealthCheck}
+          onClick={performAllDashboardsHealthCheck}
           title="Refresh health status"
           style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
         >
@@ -228,7 +228,7 @@ const SideNav: React.FC<SideNavProps> = ({
         </button>
       </div>
 
-      {/* List of Spaces */}
+      {/* List of Dashboards */}
       <ul className="nav flex-column ms-3">
         {spaces.map((space, index) => (
           <li 
@@ -263,14 +263,14 @@ const SideNav: React.FC<SideNavProps> = ({
         ))}
       </ul>
 
-      {/* Create New Space */}
+      {/* Create New Dashboard */}
       <div className="mt-2 ms-3">
         {showCreateInput ? (
           <div className="input-group input-group-sm">
             <input
               type="text"
               className="form-control form-control-sm"
-              placeholder="New space name..."
+              placeholder="New dashboard name..."
               value={newSpaceName}
               onChange={handleInputChange}
               onKeyDown={handleInputKeyDown}
@@ -285,7 +285,7 @@ const SideNav: React.FC<SideNavProps> = ({
           </div>
         ) : (
           <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick}>
-            <i className="bi bi-plus-lg me-1"></i> Create New Space
+            <i className="bi bi-plus-lg me-1"></i> Create New Dashboard
           </button>
         )}
       </div>

@@ -389,9 +389,9 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
 };
 
 
-// --- SpacesView Component ---
+// --- DashboardsView Component ---
 
-interface SpacesViewProps {
+interface DashboardsViewProps {
   space: Space;
   onUpdateSpace: (id: string, updatedData: Partial<Omit<Space, 'id'>>) => void;
   onDeleteSpace: (id: string) => void;
@@ -404,7 +404,7 @@ interface SpacesViewProps {
   isRefreshing?: boolean; // Add refreshing state prop
 }
 
-const SpacesView: React.FC<SpacesViewProps> = ({
+const DashboardsView: React.FC<DashboardsViewProps> = ({
   space,
   onUpdateSpace,
   onDeleteSpace,
@@ -455,7 +455,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
   };
 
   const handleDeleteClick = () => {
-    if (window.confirm(`Are you sure you want to delete the space "${space.name}"? This cannot be undone.`)) {
+    if (window.confirm(`Are you sure you want to delete the dashboard "${space.name}"? This cannot be undone.`)) {
         onDeleteSpace(space.id);
     }
   };
@@ -539,7 +539,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
               className="btn btn-sm btn-outline-secondary"
               onClick={onRefreshSpace}
               disabled={isRefreshing}
-              title="Refresh all cards in this space"
+              title="Refresh all cards in this dashboard"
             >
               {isRefreshing ? (
                 <>
@@ -590,11 +590,11 @@ const SpacesView: React.FC<SpacesViewProps> = ({
             </button>
           </div>
           {!isEditingName && (
-            <button className="btn btn-sm btn-outline-secondary" onClick={handleNameEditStart} title="Edit Space Name">
+            <button className="btn btn-sm btn-outline-secondary" onClick={handleNameEditStart} title="Edit Dashboard Name">
               <i className="bi bi-pencil"></i>
             </button>
           )}
-          <button className="btn btn-sm btn-outline-danger" onClick={handleDeleteClick} title="Delete Space">
+          <button className="btn btn-sm btn-outline-danger" onClick={handleDeleteClick} title="Delete Dashboard">
             <i className="bi bi-trash"></i>
           </button>
         </div>
@@ -602,7 +602,7 @@ const SpacesView: React.FC<SpacesViewProps> = ({
 
       {/* Cards Area */}
       {space.cards.length === 0 ? (
-        <div className="alert alert-info">This space is empty. Add results from the Inspector view using the <i className="bi bi-plus-square"></i> button in the Result panel.</div>
+        <div className="alert alert-info">This dashboard is empty. Add results from the Playground view using the <i className="bi bi-plus-square"></i> button in the Result panel.</div>
       ) : (
         <div className="row">
           {space.cards.map((card, index) => (
@@ -642,4 +642,4 @@ const SpacesView: React.FC<SpacesViewProps> = ({
   );
 };
 
-export default SpacesView;
+export default DashboardsView;
