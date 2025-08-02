@@ -197,7 +197,7 @@ async function verifyFirebaseToken(token: string, projectId: string): Promise<st
     // Get the public key
     const publicKey = await getFirebasePublicKey(header.kid);
     if (!publicKey) {
-      console.error('Public key not found');
+      console.error('Public key not found for kid:', header.kid);
       return null;
     }
 
@@ -252,7 +252,7 @@ async function getFirebasePublicKey(kid: string): Promise<ArrayBuffer | null> {
     const cacheKey = new Request(`https://cache.local/${PUBLIC_KEYS_CACHE_KEY}`);
     const cachedResponse = await cache.match(cacheKey);
 
-    let publicKeys;
+    let publicKeys: Record<string, string>;
     if (cachedResponse) {
       publicKeys = await cachedResponse.json();
     } else {
@@ -282,16 +282,29 @@ async function getFirebasePublicKey(kid: string): Promise<ArrayBuffer | null> {
     // Convert PEM to ArrayBuffer
     const pemHeader = '-----BEGIN CERTIFICATE-----';
     const pemFooter = '-----END CERTIFICATE-----';
-    const pemContents = publicKeyPem.substring(
-      pemHeader.length,
-      publicKeyPem.length - pemFooter.length
-    ).replace(/\s/g, '');
+    
+    // Find the positions of header and footer
+    const headerIndex = publicKeyPem.indexOf(pemHeader);
+    const footerIndex = publicKeyPem.indexOf(pemFooter);
+    
+    if (headerIndex === -1 || footerIndex === -1) {
+      console.error('Invalid PEM format');
+      return null;
+    }
+    
+    // Extract the base64 content between header and footer
+    const pemContents = publicKeyPem
+      .substring(headerIndex + pemHeader.length, footerIndex)
+      .replace(/\r?\n/g, '') // Remove line breaks
+      .replace(/\s/g, ''); // Remove any remaining whitespace
     
     let binaryString;
     try {
       binaryString = atob(pemContents);
     } catch (e) {
       console.error('Failed to decode PEM certificate:', e);
+      console.error('PEM contents length:', pemContents.length);
+      console.error('First 100 chars:', pemContents.substring(0, 100));
       return null;
     }
     
