@@ -52,7 +52,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
     });
   };
 
-  // Handle add to space
+  // Handle add to dashboard
   const handleAddToSpace = (spaceId: string) => {
     if (!props.lastResult || !props.lastResult.callContext) return;
     
@@ -146,16 +146,16 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
               )}
             </div>
             
-            {/* Add to Space button/dropdown */}
+            {/* Add to Dashboard button/dropdown */}
             {props.lastResult.callContext && props.spaces.length > 0 && (
               props.spaces.length === 1 ? (
                 <button
                   className="btn btn-sm btn-outline-primary ms-2"
                   style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                  title={`Add to space: ${props.spaces[0].name}`}
+                  title={`Add to dashboard: ${props.spaces[0].name}`}
                   onClick={() => handleAddToSpace(props.spaces[0].id)}
                 >
-                  <i className="bi bi-plus-square"></i> Add to space
+                  <i className="bi bi-plus-square"></i> Add to dashboard
                 </button>
               ) : (
                 <div className="dropdown ms-2">
@@ -166,9 +166,9 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                     id={`dropdownAddToSpace-result`}
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
-                    title="Add to Space..."
+                    title="Add to Dashboard..."
                   >
-                    <i className="bi bi-plus-square me-1"></i>Add to space
+                    <i className="bi bi-plus-square me-1"></i>Add to dashboard
                   </button>
                   <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-result`}>
                     {props.spaces.map(space => (

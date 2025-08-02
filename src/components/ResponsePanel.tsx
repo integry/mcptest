@@ -8,7 +8,7 @@ interface ResponsePanelProps {
   setAutoScroll: (autoScroll: boolean) => void;
   handleClearResponse: () => void;
   isConnected: boolean;
-  // Props for "Add to Space"
+  // Props for "Add to Dashboard"
   spaces: Space[];
   onAddCardToSpace: (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => void;
   // Context needed to create a card
@@ -45,7 +45,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     }
   }, [responses, autoScroll]);
 
-  // --- Add to Space Button/Dropdown Component ---
+  // --- Add to Dashboard Button/Dropdown Component ---
   const AddToSpaceControl: React.FC<{ logEntry: LogEntry }> = ({ logEntry }) => {
     const contextType = logEntry.type.toLowerCase() === 'tool_result' ? 'tool' : 'resource';
     // Use callContext if available, otherwise fallback to current selection
@@ -73,7 +73,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     };
 
     if (spaces.length === 0) {
-      return <span className="ms-2 text-muted small">(No spaces)</span>; // Indicate no spaces available
+      return <span className="ms-2 text-muted small">(No dashboards)</span>; // Indicate no dashboards available
     }
 
     if (spaces.length === 1) {
@@ -81,10 +81,10 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
         <button
           className="btn btn-sm btn-outline-primary flex-shrink-0"
           style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-          title={`Add to space: ${spaces[0].name}`}
+          title={`Add to dashboard: ${spaces[0].name}`}
           onClick={() => handleAddToSpace(spaces[0].id)}
         >
-          <i className="bi bi-plus-square"></i> Add to space
+          <i className="bi bi-plus-square"></i> Add to dashboard
         </button>
       );
     }
@@ -98,9 +98,9 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
           id={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`}
           data-bs-toggle="dropdown"
           aria-expanded="false"
-          title="Add to Space..."
+          title="Add to Dashboard..."
         >
-           <i className="bi bi-plus-square me-1"></i>Add to space
+           <i className="bi bi-plus-square me-1"></i>Add to dashboard
         </button>
         <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`}>
           {spaces.map(space => (

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { parseResultShareUrl } from '../utils/urlUtils';
 
-const DEFAULT_TITLE = 'mcptest.io - MCP Inspector';
+const DEFAULT_TITLE = 'mcptest.io - MCP Playground';
 const DEFAULT_DESCRIPTION = 'A web-based testing and debugging tool for Model Context Protocol (MCP) servers.';
 const BASE_URL = 'https://mcptest.io';
 const DEFAULT_IMAGE = `${BASE_URL}/logo.png`;

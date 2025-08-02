@@ -24,11 +24,11 @@ const sanitizePagePath = (path: string): string => {
 };
 
 /**
- * Sanitizes page title to remove user-specific space names
+ * Sanitizes page title to remove user-specific dashboard names
  */
 const sanitizePageTitle = (title: string): string => {
-  // Replace "Space: [name]" with generic "Space"
-  return title.replace(/^Space: .+$/, 'Space');
+  // Replace "Dashboard: [name]" with generic "Dashboard"
+  return title.replace(/^Dashboard: .+$/, 'Dashboard');
 };
 
 /**

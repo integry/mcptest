@@ -9,7 +9,7 @@ import Header from './components/Header';
 import TabContent from './components/TabContent';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
-import SpacesView from './components/SpacesView'; // New
+import DashboardsView from './components/DashboardsView'; // New
 import Tabs from './components/Tabs'; // New
 // Documentation components
 import WhatIsMcp from './components/docs/WhatIsMcp';
@@ -40,22 +40,22 @@ import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
 
 // Constants for localStorage keys
-const SPACES_KEY = 'mcpSpaces'; // New key for spaces
+const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
 const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'inspector' | 'spaces' | 'docs' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
   }
   if (path.startsWith('/space/')) {
-    return 'spaces';
+    return 'dashboards';
   }
-  return 'inspector';
+  return 'playground';
 };
 
-// Helper to load spaces from localStorage
+// Helper to load dashboards from localStorage
 const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   try {
     const stored = localStorage.getItem(key);
@@ -88,7 +88,7 @@ const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   return defaultValue;
 };
 
-// Helper to save spaces to localStorage
+// Helper to save dashboards to localStorage
 const saveData = (key: string, data: any) => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
@@ -113,17 +113,17 @@ function App() {
     return localStorage.getItem('mcp-theme') || 'light';
   });
   const [spaces, setSpaces] = useState<Space[]>(() => {
-    const loaded = loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]);
-    console.log('[DEBUG] Initial spaces loaded from localStorage:', loaded.map(s => ({
+    const loaded = loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Dashboard', cards: [] }]);
+    console.log('[DEBUG] Initial dashboards loaded from localStorage:', loaded.map(s => ({
       id: s.id,
       name: s.name,
       cardCount: s.cards.length
     })));
     return loaded;
   });
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first dashboard initially
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
-  const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which spaces have been loaded
+  const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which dashboards have been loaded
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -165,21 +165,23 @@ function App() {
       return { activeView: 'docs' as const, activeDocPage: docPage };
     }
     
-    // Check for space routes
+    // Check for dashboard routes
     const slug = extractSlugFromPath(path);
     if (slug) {
       const space = findSpaceBySlug(spaces, slug);
       if (space) {
-        return { activeView: 'spaces' as const, activeDocPage: null };
+        return { activeView: 'dashboards' as const, activeDocPage: null };
       }
     }
     
     // Default to inspector
-    return { activeView: 'inspector' as const, activeDocPage: null };
+    return { activeView: 'playground' as const, activeDocPage: null };
   }, [location.pathname, spaces]);
 
 
   // --- Effects ---
+
+  // Save dashboards whenever they change
 
   // ADD THIS EFFECT to manage theme class and localStorage
   useEffect(() => {
@@ -193,8 +195,9 @@ function App() {
   }, [theme]);
 
   // Save spaces whenever they change
+
   useEffect(() => {
-    // Create a sanitized version of spaces for persistence
+    // Create a sanitized version of dashboards for persistence
     const spacesToSave = spaces.map(space => ({
       ...space,
       cards: space.cards.map(card => {
@@ -205,7 +208,7 @@ function App() {
     }));
     
     // Add logging to debug the issue
-    console.log('[DEBUG] Saving spaces to localStorage:', spacesToSave.map(s => ({
+    console.log('[DEBUG] Saving dashboards to localStorage:', spacesToSave.map(s => ({
       id: s.id,
       name: s.name,
       cardCount: s.cards.length
@@ -230,7 +233,7 @@ function App() {
   // Handle URL routing and page view tracking
   useEffect(() => {
     const path = location.pathname;
-    let pageTitle = 'Inspector'; // Default title
+    let pageTitle = 'Playground'; // Default title
 
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
@@ -272,13 +275,13 @@ function App() {
       const space = findSpaceBySlug(spaces, slug);
       if (space) {
         setSelectedSpaceId(space.id);
-        pageTitle = `Space: ${space.name}`;
+        pageTitle = `Dashboard: ${space.name}`;
       } else {
         navigate('/', { replace: true });
-        pageTitle = 'Inspector'; // Redirected
+        pageTitle = 'Playground'; // Redirected
       }
     } else if (path === '/') {
-      pageTitle = 'Inspector';
+      pageTitle = 'Playground';
     }
     
     logPageView(path, pageTitle); // Log view change
@@ -405,12 +408,21 @@ function App() {
     ));
   }, []);
 
+  // --- Dashboard Management Functions ---
+  const handleCreateDashboard = (name: string) => {
+    logEvent('create_dashboard');
+    const newDashboard: Space = { id: Date.now().toString(), name, cards: [] };
+    setSpaces(prev => [...prev, newDashboard]);
+    setSelectedSpaceId(newDashboard.id); // Select the new dashboard
+    navigate(getSpaceUrl(newDashboard.name)); // Navigate to new dashboard URL
+  };
+              
   // --- Handlers ---
   const toggleTheme = useCallback(() => {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   }, []);
 
-  // --- Space Management Functions ---
+  // --- Dashboard Management Functions ---
   const handleCreateSpace = (name: string) => {
     logEvent('create_space');
     const newSpace: Space = { id: Date.now().toString(), name, cards: [] };
@@ -419,21 +431,21 @@ function App() {
     navigate(getSpaceUrl(newSpace.name)); // Navigate to new space URL
   };
 
-  const handleSelectSpace = (id: string) => {
+  const handleSelectDashboard = (id: string) => {
     const space = spaces.find(s => s.id === id);
     if (space) {
-      logEvent('select_space');
+      logEvent('select_dashboard');
       setSelectedSpaceId(id);
       navigate(getSpaceUrl(space.name));
     }
   };
 
-  const handleUpdateSpace = (id: string, updatedData: Partial<Omit<Space, 'id'>>) => {
-    logEvent('update_space', { updated_keys: Object.keys(updatedData).join(',') });
+  const handleUpdateDashboard = (id: string, updatedData: Partial<Omit<Space, 'id'>>) => {
+    logEvent('update_dashboard', { updated_keys: Object.keys(updatedData).join(',') });
     setSpaces(prev => prev.map(space => {
       if (space.id === id) {
         const updatedSpace = { ...space, ...updatedData };
-        // If we're updating the currently selected space and the name changed, update URL
+        // If we're updating the currently selected dashboard and the name changed, update URL
         if (selectedSpaceId === id && updatedData.name && updatedData.name !== space.name) {
           navigate(getSpaceUrl(updatedData.name), { replace: true });
         }
@@ -443,88 +455,88 @@ function App() {
     }));
   };
 
-  const handleDeleteSpace = (id: string) => {
-    logEvent('delete_space');
+  const handleDeleteDashboard = (id: string) => {
+    logEvent('delete_dashboard');
     const deletedSpace = spaces.find(s => s.id === id);
     setSpaces(prev => prev.filter(space => space.id !== id));
     
-    // If the deleted space was selected, handle navigation
+    // If the deleted dashboard was selected, handle navigation
     if (selectedSpaceId === id) {
       const remainingSpaces = spaces.filter(s => s.id !== id);
       if (remainingSpaces.length > 0) {
-        // Select the first remaining space
+        // Select the first remaining dashboard
         const firstSpace = remainingSpaces[0];
         setSelectedSpaceId(firstSpace.id);
         navigate(getSpaceUrl(firstSpace.name));
       } else {
-        // No spaces left, go to inspector
+        // No dashboards left, go to playground
         navigate('/');
       }
     }
   };
 
-  const handleReorderSpaces = (reorderedSpaces: Space[]) => {
-    logEvent('reorder_spaces');
+  const handleReorderDashboards = (reorderedDashboards: Space[]) => {
+    logEvent('reorder_dashboards');
     setSpaces(reorderedSpaces);
   };
 
-  // --- Space Health Check Functions ---
-  const performAllSpacesHealthCheck = async () => {
-    logEvent('health_check_all_spaces', { space_count: spaces.length });
-    console.log('[Health Check] Starting health check for all spaces...');
+  // --- Dashboard Health Check Functions ---
+  const performAllDashboardsHealthCheck = async () => {
+    logEvent('health_check_all_dashboards', { dashboard_count: spaces.length });
+    console.log('[Health Check] Starting health check for all dashboards...');
     setHealthCheckLoading(true);
     
-    // Don't clear loaded spaces - we want to track which spaces have been navigated to
+    // Don't clear loaded dashboards - we want to track which dashboards have been navigated to
     // This health check is for updating status, not for initial loading
     
-    // Execute all cards in all spaces to refresh their status
+    // Execute all cards in all dashboards to refresh their status
     for (const space of spaces) {
       if (space.cards.length > 0) {
         console.log(`[Health Check] Checking ${space.cards.length} cards in space "${space.name}"`);
-        // Execute all cards in this space (each card connects to its own server)
+        // Execute all cards in this dashboard (each card connects to its own server)
         await Promise.all(space.cards.map(card => {
           console.log(`[Health Check] Executing card "${card.title}" on server ${card.serverUrl}`);
           return handleExecuteCard(space.id, card.id);
         }));
         
-        // Mark spaces as loaded after health check
+        // Mark dashboards as loaded after health check
         setLoadedSpaces(prev => new Set(prev).add(space.id));
       }
     }
-    console.log('[Health Check] Completed health check for all spaces');
+    console.log('[Health Check] Completed health check for all dashboards');
     setHealthCheckLoading(false);
   };
   
-  const refreshCurrentSpace = async () => {
-    if (activeView === 'spaces' && selectedSpaceId) {
+  const refreshCurrentDashboard = async () => {
+    if (activeView === 'dashboards' && selectedSpaceId) {
       const currentSpace = spaces.find(s => s.id === selectedSpaceId);
       if (currentSpace && currentSpace.cards.length > 0) {
-        logEvent('refresh_current_space', { space_id: selectedSpaceId });
+        logEvent('refresh_current_dashboard', { dashboard_id: selectedSpaceId });
         console.log(`[Refresh] Manually refreshing space "${currentSpace.name}"`);
         setHealthCheckLoading(true);
         
-        // Remove from loaded spaces to force refresh
+        // Remove from loaded dashboards to force refresh
         setLoadedSpaces(prev => {
           const newSet = new Set(prev);
           newSet.delete(selectedSpaceId);
           return newSet;
         });
         
-        // Refresh all cards in the space
+        // Refresh all cards in the dashboard
         for (const card of currentSpace.cards) {
           if (!card.loading) {
             await handleExecuteCard(selectedSpaceId, card.id);
           }
         }
         
-        // Re-add to loaded spaces
+        // Re-add to loaded dashboards
         setLoadedSpaces(prev => new Set(prev).add(selectedSpaceId));
         setHealthCheckLoading(false);
       }
     }
   };
 
-  const getSpaceHealthColor = (spaceId: string): 'green' | 'orange' | 'red' | 'gray' => {
+  const getDashboardHealthColor = (spaceId: string): 'green' | 'orange' | 'red' | 'gray' => {
     const space = spaces.find(s => s.id === spaceId);
     if (!space || space.cards.length === 0) return 'gray';
 
@@ -544,7 +556,7 @@ function App() {
     return 'red';
   };
 
-  const getSpaceHealthStatus = (spaceId: string) => {
+  const getDashboardHealthStatus = (spaceId: string) => {
     const space = spaces.find(s => s.id === spaceId);
     if (!space) return { loading: false, successCount: 0, totalCount: 0 };
 
@@ -554,7 +566,7 @@ function App() {
       !card.error && card.responseData && !card.loading
     ).length;
 
-    // Space is loading if any of its cards are loading
+    // Dashboard is loading if any of its cards are loading
     const isLoading = loadingCount > 0;
 
     return {
@@ -577,19 +589,19 @@ function App() {
       return;
     }
     
-    const spacesWithCards = spaces.filter(space => space.cards.length > 0);
-    console.log('[Health Check] Page loaded, checking for spaces with cards...', {
-      totalSpaces: spaces.length,
-      spacesWithCards: spacesWithCards.length,
+    const dashboardsWithCards = spaces.filter(space => space.cards.length > 0);
+    console.log('[Health Check] Page loaded, checking for dashboards with cards...', {
+      totalDashboards: spaces.length,
+      dashboardsWithCards: dashboardsWithCards.length,
       totalCards: spaces.reduce((sum, space) => sum + space.cards.length, 0)
     });
     
-    // Run health checks if we have any spaces with cards
-    if (spacesWithCards.length > 0) {
-      console.log('[Health Check] Found spaces with cards, starting auto health check...');
+    // Run health checks if we have any dashboards with cards
+    if (dashboardsWithCards.length > 0) {
+      console.log('[Health Check] Found dashboards with cards, starting auto health check...');
       // Add a small delay to ensure component is fully mounted
       setTimeout(() => {
-        performAllSpacesHealthCheck().then(() => {
+        performAllDashboardsHealthCheck().then(() => {
           console.log('[Health Check] Auto-preload completed successfully');
         }).catch((error) => {
           console.error('[Health Check] Auto-preload failed:', error);
@@ -597,12 +609,26 @@ function App() {
       }, 2000); // 2 second delay to ensure everything is ready
     } else {
       setHealthCheckLoading(false);
-      console.log('[Health Check] No spaces with cards found, skipping auto health check');
+      console.log('[Health Check] No dashboards with cards found, skipping auto health check');
     }
   }, []); // Run once on mount
 
-  // --- Add to Space Functionality ---
-  const handleAddCardToSpace = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
+  // --- Add to Dashboard Functionality ---
+  const handleAddCardToDashboard = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
+      logEvent('add_card_to_dashboard', { 
+          card_type: cardData.type
+      });
+      const newCard = { ...cardData, id: Date.now().toString() };
+      setSpaces(prev => prev.map(space => {
+          if (space.id === spaceId) {
+              return { ...space, cards: [...space.cards, newCard] };
+          }
+          return space;
+      }));
+      console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
+  };
+
+  const handleAddCardToSpace = (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => {
       logEvent('add_card_to_space', { 
           card_type: cardData.type
       });
@@ -654,7 +680,7 @@ function App() {
       const cardToMove = sourceSpace.cards.find(card => card.id === cardId);
       if (!cardToMove) return prev;
       
-      // Remove card from source space and add to target space
+      // Remove card from source dashboard and add to target dashboard
       return prev.map(space => {
         if (space.id === sourceSpaceId) {
           return { ...space, cards: space.cards.filter(card => card.id !== cardId) };
@@ -812,10 +838,10 @@ function App() {
     } // End of retry loop
   };
 
-  // --- Effect to Auto-Refresh Cards on Space Entry (Sequentially with Retries) ---
+  // --- Effect to Auto-Refresh Cards on Dashboard Entry (Sequentially with Retries) ---
   useEffect(() => {
     const refreshCardsSequentially = async () => {
-      // Only refresh if we're viewing spaces AND this specific space hasn't been loaded yet
+      // Only refresh if we're viewing dashboards AND this specific dashboard hasn't been loaded yet
       // AND it has cards that have never been executed (no responseData)
       if (activeView === 'spaces' && selectedSpaceId && !loadedSpaces.has(selectedSpaceId)) {
         const currentSpace = spaces.find(s => s.id === selectedSpaceId);
@@ -839,14 +865,14 @@ function App() {
               }
             }
             setHealthCheckLoading(false);
-             console.log(`[DEBUG] Finished sequential refresh for space "${currentSpace.name}".`);
+             console.log(`[DEBUG] Finished sequential refresh for dashboard "${currentSpace.name}".`);
           }
           
-          // Mark this space as loaded regardless
+          // Mark this dashboard as loaded regardless
           setLoadedSpaces(prev => new Set(prev).add(selectedSpaceId));
         }
-      } else if (activeView === 'spaces' && selectedSpaceId && loadedSpaces.has(selectedSpaceId)) {
-        console.log(`[DEBUG] Space already loaded, skipping refresh.`);
+      } else if (activeView === 'dashboards' && selectedSpaceId && loadedSpaces.has(selectedSpaceId)) {
+        console.log(`[DEBUG] Dashboard already loaded, skipping refresh.`);
       }
     };
 
@@ -889,12 +915,12 @@ function App() {
           activeView={activeView}
           spaces={spaces}
           selectedSpaceId={selectedSpaceId}
-          handleSelectSpace={handleSelectSpace}
-          handleCreateSpace={handleCreateSpace}
-          handleReorderSpaces={handleReorderSpaces}
-          getSpaceHealthStatus={getSpaceHealthStatus}
-          getSpaceHealthColor={getSpaceHealthColor}
-          performAllSpacesHealthCheck={performAllSpacesHealthCheck}
+          handleSelectSpace={handleSelectDashboard}
+          handleCreateSpace={handleCreateDashboard}
+          handleReorderDashboards={handleReorderDashboards}
+          getSpaceHealthStatus={getDashboardHealthStatus}
+          getSpaceHealthColor={getDashboardHealthColor}
+          performAllDashboardsHealthCheck={performAllDashboardsHealthCheck}
           onMoveCard={handleMoveCard}
         />
       </div>
@@ -909,17 +935,17 @@ function App() {
             activeView={activeView}
             spaces={spaces}
             selectedSpaceId={selectedSpaceId}
-            handleSelectSpace={handleSelectSpace}
-            handleCreateSpace={handleCreateSpace} // Pass create function
-            handleReorderSpaces={handleReorderSpaces} // Pass reorder function
-            getSpaceHealthStatus={getSpaceHealthStatus}
-            getSpaceHealthColor={getSpaceHealthColor}
-            performAllSpacesHealthCheck={performAllSpacesHealthCheck}
+            handleSelectSpace={handleSelectDashboard}
+            handleCreateSpace={handleCreateDashboard} // Pass create function
+            handleReorderDashboards={handleReorderDashboards} // Pass reorder function
+            getSpaceHealthStatus={getDashboardHealthStatus}
+            getSpaceHealthColor={getDashboardHealthColor}
+            performAllDashboardsHealthCheck={performAllDashboardsHealthCheck}
             onMoveCard={handleMoveCard} // Pass move card function
           />
         </div>
 
-        {/* Main Panel (Inspector, Spaces, or Docs) - All views kept in DOM */}
+        {/* Main Panel (Playground, Dashboards, or Docs) - All views kept in DOM */}
         <div className="main-content col overflow-auto p-3 position-relative">
           
           {/* Documentation View */}
@@ -952,8 +978,8 @@ function App() {
             )}
           </div>
 
-          {/* Inspector View */}
-          <div className={`view-panel ${activeView === 'inspector' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+          {/* Playground View */}
+          <div className={`view-panel ${activeView === 'playground' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             <div className="h-100 d-flex flex-column">
               <div style={{ marginTop: '-0.75rem', marginBottom: '0.5rem' }}>
                 <Tabs
@@ -969,38 +995,38 @@ function App() {
                   <TabContent
                     key={tab.id}
                     tab={tab}
-                    isActive={activeTabId === tab.id && activeView === 'inspector'}
+                    isActive={activeTabId === tab.id && activeView === 'playground'}
                     onUpdateTab={handleUpdateTab}
                     spaces={spaces}
-                    onAddCardToSpace={handleAddCardToSpace}
+                    onAddCardToSpace={handleAddCardToDashboard}
                   />
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Spaces View */}
-          <div className={`view-panel ${activeView === 'spaces' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+          {/* Dashboards View */}
+          <div className={`view-panel ${activeView === 'dashboards' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             {selectedSpace ? (
-              <SpacesView
+              <DashboardsView
                 space={selectedSpace}
-                onUpdateSpace={handleUpdateSpace}
-                onDeleteSpace={handleDeleteSpace}
+                onUpdateSpace={handleUpdateDashboard}
+                onDeleteSpace={handleDeleteDashboard}
                 onUpdateCard={handleUpdateCard}
                 onDeleteCard={handleDeleteCard}
                 onExecuteCard={handleExecuteCard}
                 onMoveCard={handleMoveCard}
                 onAddCard={handleAddCardToSpace}
-                onRefreshSpace={refreshCurrentSpace}
+                onRefreshSpace={refreshCurrentDashboard}
                 isRefreshing={healthCheckLoading}
               />
             ) : (
-              <div className="alert alert-warning">No space selected or available. Create one from the side menu.</div>
+              <div className="alert alert-warning">No dashboard selected or available. Create one from the side menu.</div>
             )}
           </div>
 
-          {/* Keep TabContent components alive even when not in inspector */}
-          {activeView !== 'inspector' && (
+          {/* Keep TabContent components alive even when not in playground */}
+          {activeView !== 'playground' && (
             <div className="d-none">
               {tabs.map(tab => (
                 <TabContent

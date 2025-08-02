@@ -17,7 +17,7 @@ export interface LogEntry {
   id?: number | string;
   method?: string;
   params?: any;
-  // Optional context for "Add to Space" functionality
+  // Optional context for "Add to Dashboard" functionality
   callContext?: {
       serverUrl: string;
       type: 'tool' | 'resource';
@@ -39,7 +39,7 @@ export type SelectedTool = Tool | null;
 export type SelectedPrompt = Prompt | null;
 // SelectedResourceTemplate is used directly in the hook, no need for a separate type here unless desired
 
-// --- Space Types ---
+// --- Dashboard Types ---
 
 export interface SpaceCard {
   id: string;

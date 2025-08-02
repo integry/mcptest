@@ -126,7 +126,7 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
         
         if (!hasExistingData) {
           // Only set defaults if there's no existing data in localStorage
-          setSpaces([{ id: 'default', name: 'Default Space', cards: [] }]);
+          setSpaces([{ id: 'default', name: 'My first dashboard', cards: [] }]);
           setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
         }
       }
