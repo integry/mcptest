@@ -3,10 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
 [vars]
-FIREBASE_PROJECT_ID = "mcp-testing"
+FIREBASE_PROJECT_ID = "mcptest-a530d"
 
 # Deploy to workers.dev subdomain
-# After deployment, the URL will be: https://mcptest-cors-proxy.{your-account}.workers.dev/
+# After deployment, the URL will be: https://cors-proxy-worker.livecart.workers.dev/
 # Update VITE_PROXY_URL in your .env file with this URL
 
 # Optional: Configure custom routes if you have a custom domain
