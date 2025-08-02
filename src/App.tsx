@@ -628,6 +628,20 @@ function App() {
       console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
   };
 
+  const handleAddCardToSpace = (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => {
+      logEvent('add_card_to_space', { 
+          card_type: cardData.type
+      });
+      const newCard = { ...cardData, id: Date.now().toString() };
+      setSpaces(prev => prev.map(space => {
+          if (space.id === spaceId) {
+              return { ...space, cards: [...space.cards, newCard] };
+          }
+          return space;
+      }));
+      console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
+  };
+
   // --- Card Management Functions ---
   const handleUpdateCard = (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => {
     logEvent('update_card');
