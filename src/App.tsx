@@ -108,6 +108,10 @@ declare global {
 
 function App() {
   // --- State ---
+  const [theme, setTheme] = useState(() => {
+    // Initialize theme from localStorage or default to 'light'
+    return localStorage.getItem('mcp-theme') || 'light';
+  });
   const [spaces, setSpaces] = useState<Space[]>(() => {
     const loaded = loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]);
     console.log('[DEBUG] Initial spaces loaded from localStorage:', loaded.map(s => ({
@@ -176,6 +180,17 @@ function App() {
 
 
   // --- Effects ---
+
+  // ADD THIS EFFECT to manage theme class and localStorage
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.body.classList.add('dark-theme');
+    } else {
+      document.body.classList.remove('dark-theme');
+    }
+    localStorage.setItem('mcp-theme', theme);
+    logEvent('theme_changed', { theme_name: theme });
+  }, [theme]);
 
   // Save spaces whenever they change
   useEffect(() => {
@@ -388,6 +403,11 @@ function App() {
     setTabs(prevTabs => prevTabs.map(tab => 
       tab.id === tabId ? { ...tab, ...updates } : tab
     ));
+  }, []);
+
+  // --- Handlers ---
+  const toggleTheme = useCallback(() => {
+    setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   }, []);
 
   // --- Space Management Functions ---
@@ -879,7 +899,8 @@ function App() {
         />
       </div>
 
-      <Header />
+      {/* UPDATE Header props */}
+      <Header theme={theme} onToggleTheme={toggleTheme} />
 
       <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
         {/* Desktop Side Navigation */}

@@ -2,7 +2,7 @@ import React from 'react';
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-white border-top p-3 mt-auto">
+    <footer className="border-top p-3 mt-auto" style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-color)' }}>
       <div className="container-fluid">
         <div className="row align-items-center">
           <div className="col-md-8">
