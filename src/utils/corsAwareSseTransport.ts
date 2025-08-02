@@ -10,10 +10,15 @@ export class CorsAwareSSETransport extends SSEClientTransport {
   private corsTestDone = false;
   private serverSupportsMcpHeaders = false;
   private serverUrl: string;
+  private customHeaders: Record<string, string> = {};
 
   constructor(url: URL, opts?: any) {
     super(url, opts);
     this.serverUrl = url.toString();
+    // Store custom headers if provided
+    if (opts?.headers) {
+      this.customHeaders = opts.headers;
+    }
   }
 
   async start() {

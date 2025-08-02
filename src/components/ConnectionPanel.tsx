@@ -3,6 +3,7 @@ import ConnectionErrorCard from './ConnectionErrorCard';
 import { TransportType } from '../types';
 import { getServerUrl } from '../utils/urlUtils';
 import { useShare } from '../hooks/useShare';
+import { useAuth } from '../context/AuthContext';
 
 // List of suggested servers to randomly select from
 const SUGGESTED_SERVERS = [
@@ -56,6 +57,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const { share, shareStatus, shareMessage } = useShare();
+  const { currentUser } = useAuth();
 
   // Update timer every second while connecting
   useEffect(() => {
@@ -187,18 +189,27 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             </div>
           )}
           {import.meta.env.VITE_PROXY_URL && !isConnected && setUseProxy && (
-            <div className="form-check mt-2">
-              <input
-                className="form-check-input"
-                type="checkbox"
-                id="useProxyCheck"
-                checked={useProxy || false}
-                onChange={(e) => setUseProxy(e.target.checked)}
-                disabled={isConnecting}
-              />
-              <label className="form-check-label" htmlFor="useProxyCheck">
-                Use proxy (for CORS issues)
-              </label>
+            <div className="mt-2">
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="useProxyCheck"
+                  checked={useProxy || false}
+                  onChange={(e) => setUseProxy(e.target.checked)}
+                  disabled={isConnecting || !currentUser}
+                />
+                <label className="form-check-label" htmlFor="useProxyCheck">
+                  Use proxy (for CORS issues)
+                  {!currentUser && <span className="text-muted ms-1">(login required)</span>}
+                </label>
+              </div>
+              {!currentUser && useProxy && (
+                <small className="text-warning d-block mt-1">
+                  <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                  Please login to use the proxy feature
+                </small>
+              )}
             </div>
           )}
         </div>

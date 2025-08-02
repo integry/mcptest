@@ -7,6 +7,7 @@ import { formatErrorForDisplay } from '../utils/errorHandling';
 import { detectTransport, attemptParallelConnections } from '../utils/transportDetection';
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 import { logEvent } from '../utils/analytics';
+import { useAuth } from '../context/AuthContext';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -70,6 +71,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { currentUser } = useAuth();
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -159,6 +161,19 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     
     // If proxy is enabled and VITE_PROXY_URL is set, prepend it to the URL
     if (useProxy && import.meta.env.VITE_PROXY_URL) {
+      // Check if user is authenticated when using proxy
+      if (!currentUser) {
+        addLogEntry({ type: 'error', data: 'Authentication required to use proxy. Please login first.' });
+        setConnectionError({
+          error: 'Authentication required to use proxy. Please login first.',
+          serverUrl: rawUrl,
+          timestamp: new Date()
+        });
+        setIsConnecting(false);
+        setConnectionStatus('Error');
+        return;
+      }
+      
       const proxyUrl = import.meta.env.VITE_PROXY_URL;
       targetUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
       addLogEntry({ type: 'info', data: `Using proxy: ${proxyUrl}` });
@@ -229,6 +244,17 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       let result;
       let connectionUrl = connectUrl.toString();
       
+      // Get auth token if using proxy
+      let authToken: string | undefined;
+      if (useProxy && currentUser) {
+        try {
+          authToken = await currentUser.getIdToken();
+        } catch (error) {
+          console.error('Failed to get auth token:', error);
+          addLogEntry({ type: 'error', data: 'Failed to get authentication token' });
+        }
+      }
+      
       // If the original URL was protocol-less and we added HTTPS, try HTTPS first with HTTP fallback
       if (rawUrl === targetUrl.replace('https://', '') && targetUrl.startsWith('https://')) {
         console.log("[DEBUG] handleConnect: Attempting HTTPS connection first...");
@@ -237,7 +263,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         try {
           // Try HTTPS first
           result = await Promise.race([
-            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
             timeoutPromise
           ]);
           console.log("[DEBUG] handleConnect: HTTPS connection successful");
@@ -256,7 +282,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             
             // Try HTTP fallback
             result = await Promise.race([
-              attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+              attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
               timeoutPromise
             ]);
             console.log("[DEBUG] handleConnect: HTTP fallback successful");
@@ -269,7 +295,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         // If user explicitly provided a protocol, use it as-is
         console.log("[DEBUG] handleConnect: Using user-specified protocol...");
         result = await Promise.race([
-          attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+          attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
           timeoutPromise
         ]);
       }
