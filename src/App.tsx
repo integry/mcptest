@@ -275,7 +275,7 @@ function App() {
       const space = findSpaceBySlug(spaces, slug);
       if (space) {
         setSelectedSpaceId(space.id);
-        pageTitle = `Space: ${space.name}`;
+        pageTitle = `Dashboard: ${space.name}`;
       } else {
         navigate('/', { replace: true });
         pageTitle = 'Playground'; // Redirected
@@ -422,7 +422,7 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   }, []);
 
-  // --- Space Management Functions ---
+  // --- Dashboard Management Functions ---
   const handleCreateSpace = (name: string) => {
     logEvent('create_space');
     const newSpace: Space = { id: Date.now().toString(), name, cards: [] };

@@ -510,7 +510,7 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
 
   return (
     <div>
-      {/* Space Header */}
+      {/* Dashboard Header */}
       <div className="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
         {isEditingName ? (
           <div className="input-group">

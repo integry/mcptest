@@ -6,7 +6,7 @@ interface McpResponseDisplayProps {
   logEntry: Partial<LogEntry>; // Accept partial LogEntry, as cards won't have all fields
   className?: string; // Optional additional class names
   showTimestamp?: boolean; // Add flag to control timestamp visibility
-  addToSpaceButton?: React.ReactNode; // Optional add to space button
+  addToSpaceButton?: React.ReactNode; // Optional add to dashboard button
   spacesMode?: boolean; // Flag to enable spaces mode (simplified display)
   toolName?: string; // Optional tool name override for spaces mode
   showExcerpt?: boolean; // Flag to control whether to show excerpts by default
@@ -220,7 +220,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   // Regular mode: full display with timestamps, badges, details, etc.
   return (
     <div className={entryClassName} title={title}>
-      {/* First row: timestamp, type badge with tool name, details button, and add to space button */}
+      {/* First row: timestamp, type badge with tool name, details button, and add to dashboard button */}
       <div className="d-flex align-items-center justify-content-between mb-1">
         <div className="d-flex align-items-center">
           {showTimestamp && logEntry.timestamp && <span className="event-timestamp me-2">{logEntry.timestamp}</span>}

@@ -725,7 +725,7 @@ select {
   background-color: rgba(var(--primary-color), 0.1);
 }
 
-/* Space Drag & Drop Styles */
+/* Dashboard Drag & Drop Styles */
 .space-drag-over {
   border-left: 3px solid var(--primary-color) !important;
   background-color: rgba(59, 130, 246, 0.1) !important;
@@ -982,7 +982,7 @@ select {
   color: var(--secondary-color) !important;
 }
 
-/* Spaces mode specific styling */
+/* Dashboards mode specific styling */
 .spaces-mode .tool-result-content .btn-group {
   opacity: 0.8;
 }
