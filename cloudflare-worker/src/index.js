@@ -31,9 +31,9 @@ export default {
     const authHeader = request.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
         console.log("[DEBUG] Missing or invalid Authorization header");
-        return new Response("Unauthorized", { 
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { 
           status: 401,
-          headers: corsHeaders 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
         });
     }
     const token = authHeader.substring(7, authHeader.length);
@@ -44,9 +44,9 @@ export default {
     
     if (!verificationResult.valid) {
       console.log(`[DEBUG] Token verification failed: ${verificationResult.error}`);
-      return new Response(verificationResult.error || "Unauthorized", { 
+      return new Response(JSON.stringify({ error: verificationResult.error || "Unauthorized" }), { 
         status: 401,
-        headers: corsHeaders 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
       });
     }
 
