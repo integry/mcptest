@@ -47,22 +47,32 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
             cards: Array.isArray(space.cards) ? space.cards : []
           }));
           setSpaces(validatedSpaces);
-          // Immediately update localStorage with sanitized spaces
-          const spacesToSave = validatedSpaces.map((space: Space) => ({
-            ...space,
-            cards: space.cards.map((card: any) => {
-              const { loading, error, responseData, responseType, ...restOfCard } = card;
-              return restOfCard;
-            })
-          }));
-          localStorage.setItem(SPACES_KEY, JSON.stringify(spacesToSave));
-          console.log('[DataSync] Updated localStorage with spaces:', spacesToSave.length);
+          // Only update localStorage if we have non-empty data from Cloudflare
+          if (data.spaces.length > 0) {
+            // Immediately update localStorage with sanitized spaces
+            const spacesToSave = validatedSpaces.map((space: Space) => ({
+              ...space,
+              cards: space.cards.map((card: any) => {
+                const { loading, error, responseData, responseType, ...restOfCard } = card;
+                return restOfCard;
+              })
+            }));
+            localStorage.setItem(SPACES_KEY, JSON.stringify(spacesToSave));
+            console.log('[DataSync] Updated localStorage with spaces:', spacesToSave.length);
+          } else {
+            console.log('[DataSync] Skipping localStorage update - empty spaces data from Cloudflare');
+          }
         }
         if (data.tabs) {
           setTabs(data.tabs);
-          // Immediately update localStorage with tabs
-          localStorage.setItem(TABS_KEY, JSON.stringify(data.tabs));
-          console.log('[DataSync] Updated localStorage with tabs:', data.tabs.length);
+          // Only update localStorage if we have non-empty data from Cloudflare
+          if (data.tabs.length > 0) {
+            // Immediately update localStorage with tabs
+            localStorage.setItem(TABS_KEY, JSON.stringify(data.tabs));
+            console.log('[DataSync] Updated localStorage with tabs:', data.tabs.length);
+          } else {
+            console.log('[DataSync] Skipping localStorage update - empty tabs data from Cloudflare');
+          }
         }
       }
     } catch (error) {
