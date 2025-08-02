@@ -108,6 +108,10 @@ declare global {
 
 function App() {
   // --- State ---
+  const [theme, setTheme] = useState(() => {
+    // Initialize theme from localStorage or default to 'light'
+    return localStorage.getItem('mcp-theme') || 'light';
+  });
   const [spaces, setSpaces] = useState<Space[]>(() => {
     const loaded = loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Dashboard', cards: [] }]);
     console.log('[DEBUG] Initial dashboards loaded from localStorage:', loaded.map(s => ({
@@ -178,6 +182,20 @@ function App() {
   // --- Effects ---
 
   // Save dashboards whenever they change
+
+  // ADD THIS EFFECT to manage theme class and localStorage
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.body.classList.add('dark-theme');
+    } else {
+      document.body.classList.remove('dark-theme');
+    }
+    localStorage.setItem('mcp-theme', theme);
+    logEvent('theme_changed', { theme_name: theme });
+  }, [theme]);
+
+  // Save spaces whenever they change
+
   useEffect(() => {
     // Create a sanitized version of dashboards for persistence
     const spacesToSave = spaces.map(space => ({
@@ -397,6 +415,20 @@ function App() {
     setSpaces(prev => [...prev, newDashboard]);
     setSelectedSpaceId(newDashboard.id); // Select the new dashboard
     navigate(getSpaceUrl(newDashboard.name)); // Navigate to new dashboard URL
+  };
+              
+  // --- Handlers ---
+  const toggleTheme = useCallback(() => {
+    setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
+  }, []);
+
+  // --- Space Management Functions ---
+  const handleCreateSpace = (name: string) => {
+    logEvent('create_space');
+    const newSpace: Space = { id: Date.now().toString(), name, cards: [] };
+    setSpaces(prev => [...prev, newSpace]);
+    setSelectedSpaceId(newSpace.id); // Select the new space
+    navigate(getSpaceUrl(newSpace.name)); // Navigate to new space URL
   };
 
   const handleSelectDashboard = (id: string) => {
@@ -698,8 +730,17 @@ function App() {
 
         // --- Connection and Request Logic ---
         let connectUrl: URL;
+        let serverUrl = card.serverUrl;
+        
+        // If proxy is enabled for this card and VITE_PROXY_URL is set, prepend it to the URL
+        if (card.useProxy && import.meta.env.VITE_PROXY_URL) {
+          const proxyUrl = import.meta.env.VITE_PROXY_URL;
+          serverUrl = `${proxyUrl}?target=${encodeURIComponent(card.serverUrl)}`;
+          console.log(`[Execute Card ${cardId}] Using proxy: ${proxyUrl}`);
+        }
+        
         try {
-            connectUrl = new URL(card.serverUrl);
+            connectUrl = new URL(serverUrl);
             if (!connectUrl.pathname.endsWith('/mcp')) {
                 connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
             }
@@ -870,7 +911,8 @@ function App() {
         />
       </div>
 
-      <Header />
+      {/* UPDATE Header props */}
+      <Header theme={theme} onToggleTheme={toggleTheme} />
 
       <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
         {/* Desktop Side Navigation */}

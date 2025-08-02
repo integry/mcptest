@@ -97,7 +97,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     handleDisconnect,
     handleAbortConnection,
     removeRecentServer
-  } = useConnection(addLogEntry);
+  } = useConnection(addLogEntry, tab.useProxy);
 
   const {
     tools,
@@ -713,6 +713,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             recentServers={recentServers}
             connectionError={connectionError}
             clearConnectionError={clearConnectionError}
+            useProxy={tab.useProxy}
+            setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '1rem' }}>
         {/* Left Panel */}
@@ -797,6 +799,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 toolParams={toolParams}
                 resourceArgs={resourceArgs}
                 onRunAgain={handleRunAgain}
+                useProxy={tab.useProxy}
               />
             </>
           )}

@@ -10,7 +10,7 @@ const tabStyles = `
     left: 0;
     right: 0;
     height: 2px;
-    background-color: white;
+    background-color: var(--body-bg);
     z-index: 1;
   }
 `;
@@ -52,7 +52,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
     <div 
       className="nav nav-tabs" 
       role="tablist"
-      style={{ borderBottom: '1px solid #dee2e6', position: 'relative' }}
+      style={{ borderBottom: '1px solid var(--border-color)', position: 'relative' }}
     >
       {tabs.map(tab => (
         <div key={tab.id} className="nav-item">
