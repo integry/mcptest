@@ -18,7 +18,15 @@ const loadRecentServers = (): string[] => {
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) {
-        return parsed.filter(item => typeof item === 'string');
+        // Handle both old format (string[]) and new format ({ url: string, useProxy?: boolean }[])
+        return parsed.map(item => {
+          if (typeof item === 'string') {
+            return item;
+          } else if (item && typeof item.url === 'string') {
+            return item.url;
+          }
+          return null;
+        }).filter(Boolean) as string[];
       }
     }
   } catch (e) {
@@ -28,18 +36,19 @@ const loadRecentServers = (): string[] => {
 };
 
 // Helper to save recent servers to localStorage
-const saveRecentServers = (servers: string[]) => {
+// Helper to save recent servers to localStorage with proxy state
+const saveRecentServers = (servers: (string | { url: string; useProxy?: boolean })[]) => {
   console.log("[DEBUG] Attempting to save recent servers:", servers); // Log the array itself
-  // Check the type just before saving
-  if (!Array.isArray(servers) || !servers.every(s => typeof s === 'string')) {
-     console.error("[DEBUG] Invalid data type passed to saveRecentServers! Expected string[]. Got:", typeof servers, servers);
-     // Optionally throw an error or return early to prevent saving bad data
-     // throw new Error("Invalid data type for recent servers");
-     return;
-  }
   try {
-    // Stringify separately to potentially catch error here and log
-    const jsonString = JSON.stringify(servers);
+    // Convert to the format we want to save
+    const serversToSave = servers.map(server => {
+      if (typeof server === 'string') {
+        return { url: server };
+      }
+      return server;
+    });
+    
+    const jsonString = JSON.stringify(serversToSave);
     console.log("[DEBUG] Stringified recent servers:", jsonString);
     localStorage.setItem(RECENT_SERVERS_KEY, jsonString);
     console.log("[DEBUG] Successfully saved recent servers to localStorage.");
@@ -51,7 +60,7 @@ const saveRecentServers = (servers: string[]) => {
 };
 
 
-export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void) => {
+export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
@@ -146,7 +155,15 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     urlToConnect?: string // Optional URL parameter
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
-    const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    let targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    
+    // If proxy is enabled and VITE_PROXY_URL is set, prepend it to the URL
+    if (useProxy && import.meta.env.VITE_PROXY_URL) {
+      const proxyUrl = import.meta.env.VITE_PROXY_URL;
+      targetUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
+      addLogEntry({ type: 'info', data: `Using proxy: ${proxyUrl}` });
+    }
+    
     logEvent('connect_attempt');
 
     // Clear any previous connection error
@@ -178,13 +195,13 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
     // -----------------------------------------
 
-    // Update recent servers list using targetUrl
-    const updatedServers = [targetUrl, ...recentServers.filter(url => url !== targetUrl)];
+    // Update recent servers list using rawUrl (the non-proxied URL)
+    const updatedServers = [rawUrl, ...recentServers.filter(url => url !== rawUrl)];
     const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
     setRecentServers(limitedServers); // Update state
-    // Explicitly create a new array copy before saving to be extra safe
-    const serversToSave = Array.from(limitedServers);
-    saveRecentServers(serversToSave); // Save the copy to localStorage
+    // Save with proxy state information
+    const serversToSave = limitedServers.map(url => ({ url, useProxy: url === rawUrl ? useProxy : undefined }));
+    saveRecentServers(serversToSave); // Save with proxy info to localStorage
 
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
@@ -320,7 +337,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       
       cleanupConnection(); // Ensure cleanup on error
     }
-  }, [serverUrl, isConnecting, connectionStatus, addLogEntry, cleanupConnection]); // Removed setters
+  }, [serverUrl, isConnecting, connectionStatus, addLogEntry, cleanupConnection, useProxy]); // Removed setters
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {

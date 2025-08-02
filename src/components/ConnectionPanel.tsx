@@ -32,6 +32,8 @@ interface ConnectionPanelProps {
   handleAbortConnection: () => void;
   connectionError?: { error: string; serverUrl: string; timestamp: Date; details?: string } | null;
   clearConnectionError?: () => void;
+  useProxy?: boolean;
+  setUseProxy?: (useProxy: boolean) => void;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -49,6 +51,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   handleAbortConnection,
   connectionError,
   clearConnectionError,
+  useProxy,
+  setUseProxy,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const { share, shareStatus, shareMessage } = useShare();
@@ -96,6 +100,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         <h5 className="mb-0">Server Connection</h5>
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
+          {useProxy && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
           <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
             {connectionStatus}
           </span>
@@ -181,6 +186,21 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               </button>
             </div>
           )}
+          {import.meta.env.VITE_PROXY_URL && !isConnected && setUseProxy && (
+            <div className="form-check mt-2">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id="useProxyCheck"
+                checked={useProxy || false}
+                onChange={(e) => setUseProxy(e.target.checked)}
+                disabled={isConnecting}
+              />
+              <label className="form-check-label" htmlFor="useProxyCheck">
+                Use proxy (for CORS issues)
+              </label>
+            </div>
+          )}
         </div>
         
         {connectionError && (
@@ -188,6 +208,14 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             errorDetails={connectionError}
             onRetry={() => handleConnect()}
             onDismiss={clearConnectionError}
+            useProxy={useProxy}
+            showProxyOption={!!import.meta.env.VITE_PROXY_URL}
+            onRetryWithProxy={() => {
+              if (setUseProxy) {
+                setUseProxy(true);
+                setTimeout(() => handleConnect(), 100);
+              }
+            }}
           />
         )}
       </div>
