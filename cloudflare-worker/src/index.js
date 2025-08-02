@@ -217,11 +217,15 @@ async function importPublicKey(pem) {
     
     const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
     
-    // Import the certificate directly using Web Crypto API
-    // This is supported in Cloudflare Workers and properly extracts the public key
+    // Parse the certificate to extract the public key
+    // Since Cloudflare Workers doesn't support 'x509' format directly,
+    // we need to manually extract the RSA public key from the certificate
+    const publicKeyInfo = extractPublicKeyFromCertificate(binaryDer);
+    
+    // Import the extracted public key
     const publicKey = await crypto.subtle.importKey(
-      'x509',
-      binaryDer,
+      'spki',
+      publicKeyInfo,
       {
         name: 'RSASSA-PKCS1-v1_5',
         hash: 'SHA-256',
@@ -235,6 +239,90 @@ async function importPublicKey(pem) {
     console.error('Failed to import public key:', error);
     throw new Error('Failed to import public key from certificate');
   }
+}
+
+// Extract the public key from an X.509 certificate
+function extractPublicKeyFromCertificate(certDer) {
+  // This is a simplified ASN.1 parser to extract the SubjectPublicKeyInfo
+  // from an X.509 certificate
+  let offset = 0;
+  
+  // Helper function to read ASN.1 length
+  function readLength(data, pos) {
+    let length = data[pos];
+    let bytesRead = 1;
+    
+    if (length & 0x80) {
+      const numBytes = length & 0x7f;
+      length = 0;
+      for (let i = 0; i < numBytes; i++) {
+        length = (length << 8) | data[pos + 1 + i];
+      }
+      bytesRead += numBytes;
+    }
+    
+    return { length, bytesRead };
+  }
+  
+  // Helper function to find a sequence
+  function findSequence(data, startPos) {
+    let pos = startPos;
+    while (pos < data.length - 1) {
+      if (data[pos] === 0x30) { // SEQUENCE tag
+        const { length, bytesRead } = readLength(data, pos + 1);
+        return { pos, length, totalBytes: 1 + bytesRead + length };
+      }
+      pos++;
+    }
+    return null;
+  }
+  
+  // The certificate is a SEQUENCE
+  const cert = findSequence(certDer, 0);
+  if (!cert) throw new Error('Invalid certificate format');
+  
+  // TBSCertificate is the first element in the certificate SEQUENCE
+  const tbsCert = findSequence(certDer, cert.pos + 1);
+  if (!tbsCert) throw new Error('Invalid certificate format');
+  
+  // Skip through the TBSCertificate fields to find SubjectPublicKeyInfo
+  // Fields: version, serialNumber, signature, issuer, validity, subject
+  let currentPos = tbsCert.pos + 1;
+  
+  // Skip version (if present - it's optional and tagged [0])
+  if (certDer[currentPos] === 0xa0) {
+    const { length, bytesRead } = readLength(certDer, currentPos + 1);
+    currentPos += 1 + bytesRead + length;
+  }
+  
+  // Skip serialNumber (INTEGER)
+  if (certDer[currentPos] === 0x02) {
+    const { length, bytesRead } = readLength(certDer, currentPos + 1);
+    currentPos += 1 + bytesRead + length;
+  }
+  
+  // Skip signature (SEQUENCE)
+  const sig = findSequence(certDer, currentPos);
+  if (sig) currentPos = sig.pos + sig.totalBytes;
+  
+  // Skip issuer (SEQUENCE)
+  const issuer = findSequence(certDer, currentPos);
+  if (issuer) currentPos = issuer.pos + issuer.totalBytes;
+  
+  // Skip validity (SEQUENCE)
+  const validity = findSequence(certDer, currentPos);
+  if (validity) currentPos = validity.pos + validity.totalBytes;
+  
+  // Skip subject (SEQUENCE)
+  const subject = findSequence(certDer, currentPos);
+  if (subject) currentPos = subject.pos + subject.totalBytes;
+  
+  // Now we should be at SubjectPublicKeyInfo (SEQUENCE)
+  const spki = findSequence(certDer, currentPos);
+  if (!spki) throw new Error('SubjectPublicKeyInfo not found');
+  
+  // Extract the SubjectPublicKeyInfo
+  return certDer.slice(spki.pos, spki.pos + spki.totalBytes);
 }
 
 // Export the Durable Object class
