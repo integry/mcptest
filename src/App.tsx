@@ -123,9 +123,22 @@ function App() {
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
     const savedTabs = localStorage.getItem(TABS_KEY);
-    return savedTabs ? JSON.parse(savedTabs) : [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }];
+    if (savedTabs) {
+      const parsedTabs = JSON.parse(savedTabs);
+      if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+        return parsedTabs;
+      }
+    }
+    return [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }];
   });
-  const [activeTabId, setActiveTabId] = useState<string>(tabs[0]?.id || '');
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    // Ensure we always have a valid initial activeTabId
+    if (tabs.length > 0) {
+      return tabs[0].id;
+    }
+    // This should never happen, but just in case
+    return '';
+  });
 
   // Router hooks
   const location = useLocation();
@@ -185,6 +198,15 @@ function App() {
   useEffect(() => {
     localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
   }, [tabs]);
+
+  // Ensure activeTabId is valid when tabs change
+  useEffect(() => {
+    // If current activeTabId is not in the tabs array, set it to the first tab
+    if (tabs.length > 0 && !tabs.find(tab => tab.id === activeTabId)) {
+      console.log(`[DEBUG] Active tab ID "${activeTabId}" not found in tabs, setting to first tab: ${tabs[0].id}`);
+      setActiveTabId(tabs[0].id);
+    }
+  }, [tabs, activeTabId]);
 
   // Handle URL routing and page view tracking
   useEffect(() => {
