@@ -4,7 +4,7 @@ compatibility_date = "2025-07-30"
 
 [vars]
 # Replace with your actual Firebase project ID
-FIREBASE_PROJECT_ID = "your-firebase-project-id"
+FIREBASE_PROJECT_ID = "mcptest-a530d"
 
 [durable_objects]
 bindings = [

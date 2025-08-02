@@ -14,10 +14,16 @@ export class UserState {
         await this.storage.put("state", data);
         console.log("[DEBUG] UserState: Data successfully saved to Durable Object storage");
         
-        return new Response("State updated", { status: 200 });
+        return new Response(JSON.stringify({ message: "State updated" }), { 
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
       } catch (error) {
         console.error("[DEBUG] UserState: Error saving data:", error);
-        return new Response(`Error saving data: ${error.message}`, { status: 500 });
+        return new Response(JSON.stringify({ error: `Error saving data: ${error.message}` }), { 
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
       }
     }
 
@@ -30,7 +36,10 @@ export class UserState {
       });
     } catch (error) {
       console.error("[DEBUG] UserState: Error retrieving data:", error);
-      return new Response(`Error retrieving data: ${error.message}`, { status: 500 });
+      return new Response(JSON.stringify({ error: `Error retrieving data: ${error.message}` }), { 
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
     }
   }
 }
