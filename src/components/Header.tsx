@@ -17,7 +17,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
   };
 
   return (
-    <header className="bg-white border-bottom p-3 mb-3" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <header className="border-bottom p-3 mb-3" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--card-bg)', color: 'var(--text-color)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
         {/* MCP/AI Logo */}
         <span

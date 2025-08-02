@@ -258,7 +258,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             {Object.keys(params).length > 0 && (
               <div className="col-12">
                 <strong>Parameters:</strong>
-                <pre className="mt-1 mb-0 p-2 bg-white border rounded" style={{ fontSize: '0.7rem' }}>
+                <pre className="mt-1 mb-0 p-2 border rounded" style={{ fontSize: '0.7rem', backgroundColor: 'var(--card-bg-secondary)', color: 'var(--text-color)' }}>
                   {JSON.stringify(params, null, 2)}
                 </pre>
               </div>
