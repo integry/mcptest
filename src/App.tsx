@@ -162,13 +162,23 @@ function App() {
 
   // Save spaces whenever they change
   useEffect(() => {
+    // Create a sanitized version of spaces for persistence
+    const spacesToSave = spaces.map(space => ({
+      ...space,
+      cards: space.cards.map(card => {
+        // Omit transient fields before saving
+        const { loading, error, responseData, responseType, ...restOfCard } = card;
+        return restOfCard;
+      })
+    }));
+    
     // Add logging to debug the issue
-    console.log('[DEBUG] Saving spaces to localStorage:', spaces.map(s => ({
+    console.log('[DEBUG] Saving spaces to localStorage:', spacesToSave.map(s => ({
       id: s.id,
       name: s.name,
       cardCount: s.cards.length
     })));
-    saveData(SPACES_KEY, spaces);
+    saveData(SPACES_KEY, spacesToSave);
   }, [spaces]);
 
   // Save tabs whenever they change
