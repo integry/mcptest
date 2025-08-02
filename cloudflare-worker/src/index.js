@@ -110,10 +110,15 @@ async function verifyFirebaseToken(token, projectId) {
     
     // Get the signing key
     const publicKeys = await getFirebasePublicKeys();
+    console.log('[DEBUG] Available key IDs:', Object.keys(publicKeys));
+    console.log('[DEBUG] Looking for key ID:', header.kid);
+    
     const key = publicKeys[header.kid];
     if (!key) {
+      console.log('[DEBUG] Key not found! Available keys:', Object.keys(publicKeys));
       return { valid: false, error: "Invalid key ID" };
     }
+    console.log('[DEBUG] Found key for ID:', header.kid);
     
     // Verify the signature
     const isValid = await verifySignature(token, key);
@@ -168,17 +173,21 @@ async function verifySignature(token, publicKeyPem) {
     const [headerB64, payloadB64, signatureB64] = token.split('.');
     const message = `${headerB64}.${payloadB64}`;
     
+    console.log('[DEBUG] Verifying signature for token with header:', headerB64);
+    
     // Convert base64url to base64
     const signature = Uint8Array.from(atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    console.log('[DEBUG] Signature length:', signature.length);
     
     // Convert PEM to crypto key
     const publicKey = await importPublicKey(publicKeyPem);
+    console.log('[DEBUG] Successfully imported public key');
     
     // Verify the signature
     const encoder = new TextEncoder();
     const data = encoder.encode(message);
     
-    return await crypto.subtle.verify(
+    const isValid = await crypto.subtle.verify(
       {
         name: 'RSASSA-PKCS1-v1_5',
         hash: 'SHA-256',
@@ -187,8 +196,12 @@ async function verifySignature(token, publicKeyPem) {
       signature,
       data
     );
+    
+    console.log('[DEBUG] Signature verification result:', isValid);
+    return isValid;
   } catch (error) {
     console.error('Signature verification error:', error);
+    console.error('[DEBUG] Error stack:', error.stack);
     return false;
   }
 }
@@ -196,8 +209,7 @@ async function verifySignature(token, publicKeyPem) {
 // Import PEM certificate and extract public key for Web Crypto API
 async function importPublicKey(pem) {
   try {
-    // For Cloudflare Workers, we'll use a more reliable approach
-    // by importing the full certificate first
+    // Remove PEM headers and whitespace
     const pemContents = pem
       .replace(/-----BEGIN CERTIFICATE-----/g, '')
       .replace(/-----END CERTIFICATE-----/g, '')
@@ -205,90 +217,11 @@ async function importPublicKey(pem) {
     
     const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
     
-    // Use a simplified approach for extracting the public key
-    // This works with Firebase's certificates
-    const publicKey = await extractAndImportPublicKey(binaryDer);
-    
-    return publicKey;
-  } catch (error) {
-    console.error('Failed to import public key:', error);
-    throw new Error('Failed to import public key from certificate');
-  }
-}
-
-// Extract and import public key from X.509 certificate
-async function extractAndImportPublicKey(certDer) {
-  // For Firebase certificates, we can use a more direct approach
-  // The public key info typically starts after a specific pattern
-  
-  try {
-    // First, try to find the SubjectPublicKeyInfo section
-    // Look for the RSA encryption OID (1.2.840.113549.1.1.1) followed by NULL
-    const rsaOidPattern = new Uint8Array([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00]);
-    
-    let spkiStart = -1;
-    for (let i = 0; i < certDer.length - rsaOidPattern.length; i++) {
-      let match = true;
-      for (let j = 0; j < rsaOidPattern.length; j++) {
-        if (certDer[i + j] !== rsaOidPattern[j]) {
-          match = false;
-          break;
-        }
-      }
-      if (match) {
-        // Found the pattern, now backtrack to find the SEQUENCE start
-        // The SPKI SEQUENCE typically starts a few bytes before the OID
-        for (let k = i - 1; k >= Math.max(0, i - 20); k--) {
-          if (certDer[k] === 0x30 && certDer[k + 1] === 0x82) {
-            spkiStart = k;
-            break;
-          }
-        }
-        if (spkiStart !== -1) break;
-      }
-    }
-    
-    if (spkiStart === -1) {
-      // Fallback: Try a different approach for the public key
-      // Look for a BIT STRING (tag 0x03) with substantial length
-      for (let i = 100; i < certDer.length - 300; i++) {
-        if (certDer[i] === 0x03 && certDer[i + 1] === 0x82) {
-          const length = (certDer[i + 2] << 8) | certDer[i + 3];
-          if (length > 250 && length < 300) {
-            // This might be the public key bit string
-            // The actual key starts at i + 5 (skip tag, length, and unused bits)
-            const keyData = certDer.slice(i + 5);
-            
-            // Try to import it
-            try {
-              const key = await crypto.subtle.importKey(
-                'spki',
-                keyData,
-                {
-                  name: 'RSASSA-PKCS1-v1_5',
-                  hash: 'SHA-256',
-                },
-                false,
-                ['verify']
-              );
-              return key;
-            } catch (e) {
-              // Continue searching if this wasn't the right key
-            }
-          }
-        }
-      }
-      
-      throw new Error('Could not find public key in certificate');
-    }
-    
-    // Extract the SPKI data
-    const spkiData = certDer.slice(spkiStart);
-    
-    // Import the public key
+    // Import the certificate directly using Web Crypto API
+    // This is supported in Cloudflare Workers and properly extracts the public key
     const publicKey = await crypto.subtle.importKey(
-      'spki',
-      spkiData,
+      'x509',
+      binaryDer,
       {
         name: 'RSASSA-PKCS1-v1_5',
         hash: 'SHA-256',
@@ -299,8 +232,8 @@ async function extractAndImportPublicKey(certDer) {
     
     return publicKey;
   } catch (error) {
-    console.error('Failed to extract public key:', error);
-    throw new Error('Failed to extract public key from certificate');
+    console.error('Failed to import public key:', error);
+    throw new Error('Failed to import public key from certificate');
   }
 }
 
