@@ -21,6 +21,7 @@ interface OutputPanelProps {
   toolParams: Record<string, any>;
   resourceArgs: Record<string, any>;
   onRunAgain?: (callContext: LogEntry['callContext']) => void;
+  useProxy?: boolean;
 }
 
 const OutputPanel: React.FC<OutputPanelProps> = (props) => {
@@ -68,6 +69,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
       type: contextType,
       name: contextName,
       params: contextParams,
+      useProxy: props.useProxy,
     };
     
     props.onAddCardToSpace(spaceId, cardData);
