@@ -9,39 +9,82 @@ let publicKeysCacheExpiry = 0;
 
 export default {
   async fetch(request, env, ctx) {
+    // CORS headers
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "https://mcptest.io",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Max-Age": "86400",
+    };
+
+    // Handle preflight OPTIONS requests
+    if (request.method === "OPTIONS") {
+      console.log("[DEBUG] Handling OPTIONS preflight request");
+      return new Response(null, {
+        status: 200,
+        headers: corsHeaders
+      });
+    }
+
+    console.log(`[DEBUG] Handling ${request.method} request`);
+
     const authHeader = request.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return new Response("Unauthorized", { status: 401 });
+        console.log("[DEBUG] Missing or invalid Authorization header");
+        return new Response("Unauthorized", { 
+          status: 401,
+          headers: corsHeaders 
+        });
     }
     const token = authHeader.substring(7, authHeader.length);
     
     // Verify the JWT token
+    console.log("[DEBUG] Verifying Firebase JWT token");
     const verificationResult = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID);
     
     if (!verificationResult.valid) {
-      return new Response(verificationResult.error || "Unauthorized", { status: 401 });
+      console.log(`[DEBUG] Token verification failed: ${verificationResult.error}`);
+      return new Response(verificationResult.error || "Unauthorized", { 
+        status: 401,
+        headers: corsHeaders 
+      });
     }
 
+    console.log(`[DEBUG] Token verified successfully for user: ${verificationResult.userId}`);
     const userId = verificationResult.userId;
     const id = env.USER_STATE.idFromName(userId);
     const stub = env.USER_STATE.get(id);
 
-    return stub.fetch(request);
+    console.log("[DEBUG] Forwarding request to Durable Object");
+    const response = await stub.fetch(request);
+    
+    // Clone the response to add CORS headers
+    const newResponse = new Response(response.body, response);
+    Object.keys(corsHeaders).forEach(key => {
+      newResponse.headers.set(key, corsHeaders[key]);
+    });
+    
+    return newResponse;
   },
 };
 
 // Verify Firebase JWT token
 async function verifyFirebaseToken(token, projectId) {
   try {
+    console.log("[DEBUG] Starting JWT token verification");
+    
     // Parse the token
     const parts = token.split('.');
     if (parts.length !== 3) {
+      console.log("[DEBUG] Token has invalid format - expected 3 parts, got", parts.length);
       return { valid: false, error: "Invalid token format" };
     }
 
     // Decode header and payload
     const header = JSON.parse(atob(parts[0]));
     const payload = JSON.parse(atob(parts[1]));
+    console.log("[DEBUG] Token header:", JSON.stringify(header));
+    console.log("[DEBUG] Token payload (user ID):", payload.sub || payload.user_id);
     
     // Check token expiration
     const now = Math.floor(Date.now() / 1000);
