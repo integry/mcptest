@@ -60,7 +60,8 @@ export default {
     if (!token) {
       const authParam = url.searchParams.get('auth');
       if (authParam) {
-        token = authParam;
+        // URL decode the token since it's passed as a query parameter
+        token = decodeURIComponent(authParam);
         tokenFromQueryParam = true;
         console.log('Using auth token from query parameter');
       }
@@ -167,8 +168,14 @@ async function verifyFirebaseToken(token: string, projectId: string): Promise<st
     }
 
     // Decode header and payload
-    const header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    let header, payload;
+    try {
+      header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
+      payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    } catch (e) {
+      console.error('Failed to decode token parts:', e);
+      return null;
+    }
 
     // Verify token claims
     const now = Math.floor(Date.now() / 1000);
@@ -197,7 +204,13 @@ async function verifyFirebaseToken(token: string, projectId: string): Promise<st
     // Verify the signature
     const encoder = new TextEncoder();
     const data = encoder.encode(parts[0] + '.' + parts[1]);
-    const signature = Uint8Array.from(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    let signature;
+    try {
+      signature = Uint8Array.from(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    } catch (e) {
+      console.error('Failed to decode signature:', e);
+      return null;
+    }
 
     const cryptoKey = await crypto.subtle.importKey(
       'spki',
@@ -274,7 +287,14 @@ async function getFirebasePublicKey(kid: string): Promise<ArrayBuffer | null> {
       publicKeyPem.length - pemFooter.length
     ).replace(/\s/g, '');
     
-    const binaryString = atob(pemContents);
+    let binaryString;
+    try {
+      binaryString = atob(pemContents);
+    } catch (e) {
+      console.error('Failed to decode PEM certificate:', e);
+      return null;
+    }
+    
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
