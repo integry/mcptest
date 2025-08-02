@@ -59,26 +59,31 @@ const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   try {
     const stored = localStorage.getItem(key);
     if (stored) {
-      let parsed = JSON.parse(stored);
-      // Basic validation
-      if (typeof parsed === typeof defaultValue && parsed !== null) {
-        // Specifically for SPACES_KEY, strip transient fields from cards
-        if (key === SPACES_KEY && Array.isArray(parsed)) {
-          parsed = (parsed as Space[]).map(space => ({
+      const parsed = JSON.parse(stored);
+
+      // For SPACES_KEY, we expect an array.
+      if (key === SPACES_KEY) {
+        if (Array.isArray(parsed)) {
+          const spaces = (parsed as Space[]).map(space => ({
             ...space,
-            cards: space.cards.map(card => {
-              // Omit transient fields when loading
+            cards: (space.cards || []).map(card => { // Ensure cards is an array
               const { loading, error, responseData, responseType, ...restOfCard } = card;
               return restOfCard;
             })
           }));
+          return spaces as T;
         }
+        // If not an array, it's invalid, fall through to return default.
+      } 
+      // For other keys, use the original less-strict check
+      else if (typeof parsed === typeof defaultValue && parsed !== null) {
         return parsed as T;
       }
     }
   } catch (e) {
     console.error(`Failed to load or parse data from localStorage key "${key}":`, e);
   }
+  // Return default if stored value is missing, invalid, or doesn't match expected type
   return defaultValue;
 };
 
