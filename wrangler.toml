@@ -11,6 +11,6 @@ bindings = [
   { name = "USER_STATE", class_name = "UserState" }
 ]
 
-[[durable_objects.migrations]]
+[[migrations]]
 tag = "v1"
 new_classes = ["UserState"]
