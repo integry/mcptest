@@ -46,16 +46,32 @@ export default {
       });
     }
 
-    // Verify authentication
+    // Verify authentication - check both Authorization header and query parameter
+    let token: string | null = null;
+    let tokenFromQueryParam = false;
+    
+    // First check Authorization header
     const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+    
+    // If no header, check query parameter (for SSE support)
+    if (!token) {
+      const authParam = url.searchParams.get('auth');
+      if (authParam) {
+        token = authParam;
+        tokenFromQueryParam = true;
+        console.log('Using auth token from query parameter');
+      }
+    }
+    
+    if (!token) {
       return new Response('Error: Authentication required. Please login to use the proxy.', { 
         status: 401,
         headers: getCorsHeaders()
       });
     }
-
-    const token = authHeader.substring(7);
     
     try {
       // Verify the Firebase JWT token

@@ -11,13 +11,30 @@ export class CorsAwareSSETransport extends SSEClientTransport {
   private serverSupportsMcpHeaders = false;
   private serverUrl: string;
   private customHeaders: Record<string, string> = {};
+  private authToken?: string;
 
   constructor(url: URL, opts?: any) {
+    // If Authorization header is provided, append it as a query parameter
+    // since EventSource doesn't support custom headers
+    if (opts?.headers?.Authorization) {
+      const authHeader = opts.headers.Authorization;
+      if (authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        // Add auth token as query parameter for SSE
+        url.searchParams.set('auth', token);
+        console.log('[CORS SSE] Added auth token to URL as query parameter');
+      }
+    }
+    
     super(url, opts);
     this.serverUrl = url.toString();
     // Store custom headers if provided
     if (opts?.headers) {
       this.customHeaders = opts.headers;
+      // Extract auth token for potential use
+      if (opts.headers.Authorization && opts.headers.Authorization.startsWith('Bearer ')) {
+        this.authToken = opts.headers.Authorization.substring(7);
+      }
     }
   }
 
