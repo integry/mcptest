@@ -22,6 +22,7 @@ import Contact from './components/docs/Contact';
 
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
+import { useMetaTags } from './hooks/useMetaTags';
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -146,6 +147,9 @@ function App() {
   
   // Activate the data sync hook
   useDataSync({ spaces, tabs, setSpaces, setTabs });
+  
+  // Add dynamic meta tags based on URL
+  useMetaTags();
   
   // Derive active view and doc page from location
   const { activeView, activeDocPage } = useMemo(() => {
