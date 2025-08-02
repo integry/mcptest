@@ -1,4 +1,4 @@
-name = "mcptest-state-api"
+name = "mcptest-io"
 main = "cloudflare-worker/src/index.js"
 compatibility_date = "2025-07-30"
 
