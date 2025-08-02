@@ -28,6 +28,24 @@
   --accent-gradient: linear-gradient(135deg, #22c55e, #16a34a);
 }
 
+/* ADD THIS BLOCK FOR DARK THEME */
+body.dark-theme {
+  --body-bg: #121212;
+  --card-bg: #1e1e1e;
+  --card-bg-secondary: #2a2a2a;
+  --text-color: #e0e0e0;
+  --text-muted: #888888;
+  --primary-color: #22c55e;
+  --primary-hover: #16a34a;
+  --primary-light: #86efac;
+  --border-color: #333333;
+  --input-bg: #2a2a2a;
+  --input-border: #444444;
+  --input-focus-border: var(--primary-color);
+  --link-color: var(--primary-light);
+}
+/* --- END OF DARK THEME BLOCK --- */
+
 /* --- Global Styles --- */
 body {
   font-family: var(--font-family-sans-serif);
@@ -37,6 +55,13 @@ body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* ADD TRANSITION */
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ADD TRANSITIONS TO OTHER ELEMENTS */
+.card, .form-control, .btn, header, footer, .unified-panel, .mobile-sidebar, .nav-tabs, .nav-link {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 h1, h2, h3, h4, h5, h6 {
