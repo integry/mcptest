@@ -15,7 +15,7 @@ interface DataSyncProps {
 }
 
 export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps) => {
-  const { currentUser } = useAuth();
+  const { currentUser, loading } = useAuth();
   const workerUrl = import.meta.env.VITE_CLOUDFLARE_WORKER_URL;
 
   const getAuthHeader = async () => {
@@ -65,14 +65,22 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
 
   // Effect for initial load and logout
   useEffect(() => {
+    // Don't do anything while auth is still loading
+    if (loading) return;
+    
     if (currentUser) {
       fetchDataFromDO();
     } else {
-      // On logout, clear the state
-      setSpaces([{ id: 'default', name: 'Default Space', cards: [] }]);
-      setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
+      // Only clear the state if we have a logged-in user who is logging out
+      // Don't clear if the user was never logged in (to preserve localStorage data)
+      const hasExistingSpaces = spaces.some(space => space.cards && space.cards.length > 0);
+      if (!hasExistingSpaces) {
+        // Only set defaults if there's no existing data
+        setSpaces([{ id: 'default', name: 'Default Space', cards: [] }]);
+        setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
+      }
     }
-  }, [currentUser]);
+  }, [currentUser, loading, spaces]);
 
   // Effect to save data when it changes
   useEffect(() => {

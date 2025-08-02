@@ -107,7 +107,15 @@ declare global {
 
 function App() {
   // --- State ---
-  const [spaces, setSpaces] = useState<Space[]>(() => loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]));
+  const [spaces, setSpaces] = useState<Space[]>(() => {
+    const loaded = loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Space', cards: [] }]);
+    console.log('[DEBUG] Initial spaces loaded from localStorage:', loaded.map(s => ({
+      id: s.id,
+      name: s.name,
+      cardCount: s.cards.length
+    })));
+    return loaded;
+  });
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first space initially
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
   const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which spaces have been loaded
@@ -154,6 +162,12 @@ function App() {
 
   // Save spaces whenever they change
   useEffect(() => {
+    // Add logging to debug the issue
+    console.log('[DEBUG] Saving spaces to localStorage:', spaces.map(s => ({
+      id: s.id,
+      name: s.name,
+      cardCount: s.cards.length
+    })));
     saveData(SPACES_KEY, spaces);
   }, [spaces]);
 
