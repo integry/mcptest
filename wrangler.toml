@@ -13,4 +13,4 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["UserState"]
+new_sqlite_classes = ["UserState"]
