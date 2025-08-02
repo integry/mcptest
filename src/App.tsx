@@ -123,7 +123,13 @@ function App() {
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
     const savedTabs = localStorage.getItem(TABS_KEY);
-    return savedTabs ? JSON.parse(savedTabs) : [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }];
+    if (savedTabs) {
+      const parsedTabs = JSON.parse(savedTabs);
+      if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+        return parsedTabs;
+      }
+    }
+    return [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }];
   });
   const [activeTabId, setActiveTabId] = useState<string>(tabs[0]?.id || '');
 
