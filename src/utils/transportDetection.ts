@@ -5,7 +5,7 @@ import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
 
-export async function attemptParallelConnections(serverUrl: string, abortSignal?: AbortSignal): Promise<{
+export async function attemptParallelConnections(serverUrl: string, abortSignal?: AbortSignal, authToken?: string): Promise<{
   transport: any;
   transportType: TransportType;
   client: Client;
@@ -46,11 +46,18 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
   const sseClientWithSlash = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
   const sseClientWithoutSlash = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
   
+  // Create transport options with auth headers if token provided
+  const transportOpts = authToken ? {
+    headers: {
+      'Authorization': `Bearer ${authToken}`
+    }
+  } : undefined;
+  
   // Create transports for all combinations
-  const httpTransportWithSlash = new CorsAwareStreamableHTTPTransport(httpUrlWithSlash);
-  const httpTransportWithoutSlash = new CorsAwareStreamableHTTPTransport(httpUrlWithoutSlash);
-  const sseTransportWithSlash = new CorsAwareSSETransport(sseUrlWithSlash);
-  const sseTransportWithoutSlash = new CorsAwareSSETransport(sseUrlWithoutSlash);
+  const httpTransportWithSlash = new CorsAwareStreamableHTTPTransport(httpUrlWithSlash, transportOpts);
+  const httpTransportWithoutSlash = new CorsAwareStreamableHTTPTransport(httpUrlWithoutSlash, transportOpts);
+  const sseTransportWithSlash = new CorsAwareSSETransport(sseUrlWithSlash, transportOpts);
+  const sseTransportWithoutSlash = new CorsAwareSSETransport(sseUrlWithoutSlash, transportOpts);
   
   // Create connection promises that handle their own errors
   const httpPromiseWithSlash = httpClientWithSlash.connect(httpTransportWithSlash)

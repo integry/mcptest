@@ -10,10 +10,15 @@ export class CorsAwareStreamableHTTPTransport extends StreamableHTTPClientTransp
   private corsTestDone = false;
   private serverSupportsMcpHeaders = false;
   private serverUrl: string;
+  private customHeaders: Record<string, string> = {};
 
   constructor(url: URL, opts?: any) {
     super(url, opts);
     this.serverUrl = url.toString();
+    // Store custom headers if provided
+    if (opts?.headers) {
+      this.customHeaders = opts.headers;
+    }
   }
 
   async _commonHeaders() {
@@ -44,6 +49,11 @@ export class CorsAwareStreamableHTTPTransport extends StreamableHTTPClientTransp
     // Set proper Accept header for servers that require both content types
     headers.set('Accept', 'application/json, text/event-stream');
     console.log('[CORS] Set Accept header to: application/json, text/event-stream');
+    
+    // Add custom headers (like Authorization)
+    for (const [key, value] of Object.entries(this.customHeaders)) {
+      headers.set(key, value);
+    }
     
     return headers;
   }
