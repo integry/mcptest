@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDebouncedCallback } from 'use-debounce';
 import { Space, ConnectionTab } from '../types';
@@ -17,6 +17,7 @@ interface DataSyncProps {
 export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps) => {
   const { currentUser, loading } = useAuth();
   const workerUrl = import.meta.env.VITE_CLOUDFLARE_WORKER_URL;
+  const hasInitialized = useRef(false);
 
   const getAuthHeader = async () => {
     if (!currentUser) throw new Error("User not authenticated");
@@ -68,19 +69,32 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
     // Don't do anything while auth is still loading
     if (loading) return;
     
+    // Only run initialization once
+    if (hasInitialized.current) return;
+    
     if (currentUser) {
+      hasInitialized.current = true;
       fetchDataFromDO();
-    } else {
-      // Only clear the state if we have a logged-in user who is logging out
-      // Don't clear if the user was never logged in (to preserve localStorage data)
-      const hasExistingSpaces = spaces.some(space => space.cards && space.cards.length > 0);
-      if (!hasExistingSpaces) {
-        // Only set defaults if there's no existing data
+    } else if (!currentUser && !loading) {
+      // Only set defaults on the very first load when not logged in
+      hasInitialized.current = true;
+      
+      // Check localStorage to see if we have existing data
+      let hasExistingData = false;
+      try {
+        const storedSpaces = localStorage.getItem(SPACES_KEY);
+        hasExistingData = storedSpaces && JSON.parse(storedSpaces).length > 0;
+      } catch (e) {
+        console.error('Failed to parse localStorage data:', e);
+      }
+      
+      if (!hasExistingData) {
+        // Only set defaults if there's no existing data in localStorage
         setSpaces([{ id: 'default', name: 'Default Space', cards: [] }]);
         setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
       }
     }
-  }, [currentUser, loading, spaces]);
+  }, [currentUser, loading, fetchDataFromDO, setSpaces, setTabs]);
 
   // Effect to save data when it changes
   useEffect(() => {
