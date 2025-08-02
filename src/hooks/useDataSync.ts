@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDebouncedCallback } from 'use-debounce';
 import { Space, ConnectionTab } from '../types';
@@ -15,8 +15,9 @@ interface DataSyncProps {
 }
 
 export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps) => {
-  const { currentUser } = useAuth();
+  const { currentUser, loading } = useAuth();
   const workerUrl = import.meta.env.VITE_CLOUDFLARE_WORKER_URL;
+  const hasInitialized = useRef(false);
 
   const getAuthHeader = async () => {
     if (!currentUser) throw new Error("User not authenticated");
@@ -32,7 +33,14 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
 
       if (response.ok) {
         const data = await response.json();
-        if (data.spaces) setSpaces(data.spaces);
+        if (data.spaces) {
+          // Ensure each space has a cards array
+          const validatedSpaces = data.spaces.map((space: Space) => ({
+            ...space,
+            cards: Array.isArray(space.cards) ? space.cards : []
+          }));
+          setSpaces(validatedSpaces);
+        }
         if (data.tabs) setTabs(data.tabs);
       }
     } catch (error) {
@@ -58,14 +66,35 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
 
   // Effect for initial load and logout
   useEffect(() => {
+    // Don't do anything while auth is still loading
+    if (loading) return;
+    
+    // Only run initialization once
+    if (hasInitialized.current) return;
+    
     if (currentUser) {
+      hasInitialized.current = true;
       fetchDataFromDO();
-    } else {
-      // On logout, clear the state
-      setSpaces([{ id: 'default', name: 'Default Space', cards: [] }]);
-      setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
+    } else if (!currentUser && !loading) {
+      // Only set defaults on the very first load when not logged in
+      hasInitialized.current = true;
+      
+      // Check localStorage to see if we have existing data
+      let hasExistingData = false;
+      try {
+        const storedSpaces = localStorage.getItem(SPACES_KEY);
+        hasExistingData = storedSpaces && JSON.parse(storedSpaces).length > 0;
+      } catch (e) {
+        console.error('Failed to parse localStorage data:', e);
+      }
+      
+      if (!hasExistingData) {
+        // Only set defaults if there's no existing data in localStorage
+        setSpaces([{ id: 'default', name: 'Default Space', cards: [] }]);
+        setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
+      }
     }
-  }, [currentUser]);
+  }, [currentUser, loading, fetchDataFromDO, setSpaces, setTabs]);
 
   // Effect to save data when it changes
   useEffect(() => {
