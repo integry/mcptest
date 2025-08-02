@@ -32,7 +32,14 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
 
       if (response.ok) {
         const data = await response.json();
-        if (data.spaces) setSpaces(data.spaces);
+        if (data.spaces) {
+          // Ensure each space has a cards array
+          const validatedSpaces = data.spaces.map((space: Space) => ({
+            ...space,
+            cards: Array.isArray(space.cards) ? space.cards : []
+          }));
+          setSpaces(validatedSpaces);
+        }
         if (data.tabs) setTabs(data.tabs);
       }
     } catch (error) {
