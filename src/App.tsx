@@ -718,8 +718,17 @@ function App() {
 
         // --- Connection and Request Logic ---
         let connectUrl: URL;
+        let serverUrl = card.serverUrl;
+        
+        // If proxy is enabled for this card and VITE_PROXY_URL is set, prepend it to the URL
+        if (card.useProxy && import.meta.env.VITE_PROXY_URL) {
+          const proxyUrl = import.meta.env.VITE_PROXY_URL;
+          serverUrl = `${proxyUrl}?target=${encodeURIComponent(card.serverUrl)}`;
+          console.log(`[Execute Card ${cardId}] Using proxy: ${proxyUrl}`);
+        }
+        
         try {
-            connectUrl = new URL(card.serverUrl);
+            connectUrl = new URL(serverUrl);
             if (!connectUrl.pathname.endsWith('/mcp')) {
                 connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
             }

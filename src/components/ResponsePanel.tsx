@@ -18,6 +18,7 @@ interface ResponsePanelProps {
   toolParams: Record<string, any>;
   resourceArgs: Record<string, any>;
   onRunAgain?: (callContext: LogEntry['callContext']) => void;
+  useProxy?: boolean;
 }
 
 const ResponsePanel: React.FC<ResponsePanelProps> = ({
@@ -34,6 +35,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
   toolParams,
   resourceArgs,
   onRunAgain,
+  useProxy,
 }) => {
   const responseAreaRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +65,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
       type: contextType,
       name: contextName,
       params: contextParams,
+      useProxy: useProxy,
     };
 
     const handleAddToSpace = (spaceId: string) => {

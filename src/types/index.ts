@@ -48,6 +48,7 @@ export interface SpaceCard {
   type: 'tool' | 'resource'; // To know what kind of call it represents
   name: string; // Tool name or Resource URI (fixed)
   params: Record<string, any>; // Arguments/Parameters for the call
+  useProxy?: boolean; // Whether to use proxy for this connection
   // Transient state for execution results (not saved to localStorage)
   loading?: boolean;
   error?: any | null;
@@ -86,6 +87,7 @@ export interface ConnectionTab {
   serverUrl: string;
   connectionStatus: 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
   transportType?: TransportType | null;
+  useProxy?: boolean; // Whether to use proxy for this connection
   // Capabilities for this specific connection
   tools?: Tool[];
   resources?: Resource[];
