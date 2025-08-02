@@ -4,6 +4,7 @@
   "description": "CORS proxy worker for MCP Test with authentication",
   "main": "src/index.ts",
   "scripts": {
+    "build": "echo 'No build step required for TypeScript Workers'",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail"
