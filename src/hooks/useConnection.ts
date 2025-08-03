@@ -11,7 +11,6 @@ import { useAuth } from '../context/AuthContext';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
-const PROXY_URL = 'https://cors-proxy-worker.livecart.workers.dev/?target=';
 
 // Helper to load recent servers from localStorage
 const loadRecentServers = (): string[] => {
@@ -73,7 +72,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
-  const [isProxied, setIsProxied] = useState(false); // New state for proxy status
+  const [isProxied, setIsProxied] = useState(false); // State to track if current connection is proxied
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -106,7 +105,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setTransportType(null);
     setIsConnecting(false);
     setConnectionStartTime(null);
-    setIsProxied(false); // Reset proxy status on cleanup
+    setIsProxied(false);
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -177,7 +176,6 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setTransportType(null);
     setConnectionStartTime(new Date());
     setResponses([]); // Clear logs for new connection attempt
-    setIsProxied(false); // Reset proxy status for new connection attempt
     
     // Create abort controller for this connection attempt
     abortControllerRef.current = new AbortController();
@@ -213,42 +211,29 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     );
 
     try {
-        // --- Attempt 1: Direct Connection ---
-        addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
-        try {
-            const result = await Promise.race([
-                attemptParallelConnections(targetUrl, abortControllerRef.current?.signal),
-                timeoutPromise
-            ]);
-            finalClient = result.client;
-            finalTransportType = result.transportType;
-            connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Direct connection successful using ${result.transportType}` });
-        } catch (error: any) {
-            lastError = error;
-            console.warn('[Direct Connection] Failed:', error.message);
-            const errorMessage = error.message.toLowerCase();
-            if (!(errorMessage.includes('cors') || errorMessage.includes('failed to fetch') || errorMessage.includes('networkerror'))) {
-                throw error; // Not a CORS-like issue, fail fast
-            }
-        }
-
-        // --- Attempt 2: Proxy Connection (if direct failed with CORS-like error) ---
-        if (!connectionSuccess) {
-            const proxyUrl = `${PROXY_URL}${encodeURIComponent(targetUrl)}`;
+        // --- Connection (with optional proxy) ---
+        let connectionUrl = targetUrl;
+        
+        // If proxy is enabled and VITE_PROXY_URL is set, use proxy
+        if (useProxy && import.meta.env.VITE_PROXY_URL) {
+            const proxyUrl = import.meta.env.VITE_PROXY_URL;
+            connectionUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
             setIsProxied(true);
-            addLogEntry({ type: 'info', data: `Direct connection failed. Retrying via proxy...` });
-            
-            const result = await Promise.race([
-                attemptParallelConnections(proxyUrl, abortControllerRef.current?.signal),
-                timeoutPromise
-            ]);
-            
-            finalClient = result.client;
-            finalTransportType = result.transportType;
-            connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
+            addLogEntry({ type: 'info', data: `Attempting connection via proxy to ${targetUrl}...` });
+        } else {
+            setIsProxied(false);
+            addLogEntry({ type: 'info', data: `Attempting connection to ${targetUrl}...` });
         }
+        
+        const result = await Promise.race([
+            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+            timeoutPromise
+        ]);
+        
+        finalClient = result.client;
+        finalTransportType = result.transportType;
+        connectionSuccess = true;
+        addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
 
         // --- Finalize Connection ---
         if (connectionSuccess && finalClient && finalTransportType) {
@@ -260,12 +245,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
             logEvent('connect_success', { 
               transport_type: finalTransportType,
-              is_proxied: isProxied,
+              is_proxied: useProxy && !!import.meta.env.VITE_PROXY_URL,
             });
             setTools([]);
             setResources([]);
-        } else {
-            throw lastError || new Error('All connection attempts failed.');
         }
 
     } catch (error: any) {
@@ -286,7 +269,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection]); // Removed setters and useProxy
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy]); // Added useProxy dependency
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {
