@@ -11,7 +11,6 @@ import { useAuth } from '../context/AuthContext';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
-const PROXY_URL = 'https://cors-proxy-worker.livecart.workers.dev/?target=';
 
 // Helper to load recent servers from localStorage
 const loadRecentServers = (): string[] => {
@@ -106,7 +105,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setTransportType(null);
     setIsConnecting(false);
     setConnectionStartTime(null);
-    setIsProxied(false); // Reset proxy status on cleanup
+    setIsProxied(false);
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -212,10 +211,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     );
 
     try {
-        // --- Attempt 1: Direct Connection (or manual proxy if enabled) ---
+        // --- Connection (with optional proxy) ---
         let connectionUrl = targetUrl;
         
-        // If proxy is manually enabled and VITE_PROXY_URL is set, use proxy
+        // If proxy is enabled and VITE_PROXY_URL is set, use proxy
         if (useProxy && import.meta.env.VITE_PROXY_URL) {
             const proxyUrl = import.meta.env.VITE_PROXY_URL;
             connectionUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
@@ -223,43 +222,18 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             addLogEntry({ type: 'info', data: `Attempting connection via proxy to ${targetUrl}...` });
         } else {
             setIsProxied(false);
-            addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
+            addLogEntry({ type: 'info', data: `Attempting connection to ${targetUrl}...` });
         }
         
-        try {
-            const result = await Promise.race([
-                attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
-                timeoutPromise
-            ]);
-            finalClient = result.client;
-            finalTransportType = result.transportType;
-            connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `${useProxy ? 'Proxy' : 'Direct'} connection successful using ${result.transportType}` });
-        } catch (error: any) {
-            lastError = error;
-            console.warn(`[${useProxy ? 'Proxy' : 'Direct'} Connection] Failed:`, error.message);
-            const errorMessage = error.message.toLowerCase();
-            if (!useProxy && !(errorMessage.includes('cors') || errorMessage.includes('failed to fetch') || errorMessage.includes('networkerror'))) {
-                throw error; // Not a CORS-like issue, fail fast
-            }
-        }
-
-        // --- Attempt 2: Automatic Proxy Fallback (if direct failed with CORS-like error and proxy not already used) ---
-        if (!connectionSuccess && !useProxy) {
-            const proxyUrl = `${PROXY_URL}${encodeURIComponent(targetUrl)}`;
-            setIsProxied(true);
-            addLogEntry({ type: 'info', data: `Direct connection failed. Retrying via proxy...` });
-            
-            const result = await Promise.race([
-                attemptParallelConnections(proxyUrl, abortControllerRef.current?.signal),
-                timeoutPromise
-            ]);
-            
-            finalClient = result.client;
-            finalTransportType = result.transportType;
-            connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
-        }
+        const result = await Promise.race([
+            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+            timeoutPromise
+        ]);
+        
+        finalClient = result.client;
+        finalTransportType = result.transportType;
+        connectionSuccess = true;
+        addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
 
         // --- Finalize Connection ---
         if (connectionSuccess && finalClient && finalTransportType) {
@@ -271,12 +245,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
             logEvent('connect_success', { 
               transport_type: finalTransportType,
-              is_proxied: isProxied,
+              is_proxied: useProxy && !!import.meta.env.VITE_PROXY_URL,
             });
             setTools([]);
             setResources([]);
-        } else {
-            throw lastError || new Error('All connection attempts failed.');
         }
 
     } catch (error: any) {
