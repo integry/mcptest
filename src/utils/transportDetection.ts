@@ -12,9 +12,13 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
 }> {
   const baseUrl = new URL(serverUrl);
   
+  // Check if this is a proxy URL (contains a target parameter)
+  const isProxyUrl = baseUrl.searchParams.has('target');
+  
   // Detect preferred transport from URL path only (not domain)
   const originalPath = baseUrl.pathname;
   console.log(`[DEBUG] Original path: "${originalPath}"`);
+  console.log(`[DEBUG] Is proxy URL: ${isProxyUrl}`);
   console.log(`[DEBUG] Path analysis: endsWith('/sse')=${originalPath.endsWith('/sse')}, equals('/sse')=${originalPath === '/sse'}`);
   
   const preferredTransport = originalPath.endsWith('/sse') || originalPath.endsWith('/sse/') || originalPath === '/sse' ? 'sse' : 
@@ -24,18 +28,54 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
   console.log('[Parallel Connection] Attempting both SSE and Streamable HTTP with/without trailing slashes...');
   
   // Create URLs for each transport type and slash variation
-  const basePath = baseUrl.pathname.replace(/\/(mcp|sse)\/?$/, '').replace(/\/$/, '');
+  let httpUrlWithSlash: URL;
+  let httpUrlWithoutSlash: URL;
+  let sseUrlWithSlash: URL;
+  let sseUrlWithoutSlash: URL;
   
-  // Create all possible URL combinations
-  const httpUrlWithSlash = new URL(baseUrl);
-  const httpUrlWithoutSlash = new URL(baseUrl);
-  const sseUrlWithSlash = new URL(baseUrl);
-  const sseUrlWithoutSlash = new URL(baseUrl);
-  
-  httpUrlWithSlash.pathname = basePath + '/mcp/';
-  httpUrlWithoutSlash.pathname = basePath + '/mcp';
-  sseUrlWithSlash.pathname = basePath + '/sse/';
-  sseUrlWithoutSlash.pathname = basePath + '/sse';
+  if (isProxyUrl) {
+    // For proxy URLs, modify the target parameter instead of the proxy path
+    const targetUrl = baseUrl.searchParams.get('target');
+    if (!targetUrl) {
+      throw new Error('Proxy URL missing target parameter');
+    }
+    
+    const targetBaseUrl = new URL(targetUrl);
+    const targetBasePath = targetBaseUrl.pathname.replace(/\/(mcp|sse)\/?$/, '').replace(/\/$/, '');
+    
+    // Create modified target URLs
+    const httpTargetWithSlash = new URL(targetBaseUrl);
+    httpTargetWithSlash.pathname = targetBasePath + '/mcp/';
+    const httpTargetWithoutSlash = new URL(targetBaseUrl);
+    httpTargetWithoutSlash.pathname = targetBasePath + '/mcp';
+    const sseTargetWithSlash = new URL(targetBaseUrl);
+    sseTargetWithSlash.pathname = targetBasePath + '/sse/';
+    const sseTargetWithoutSlash = new URL(targetBaseUrl);
+    sseTargetWithoutSlash.pathname = targetBasePath + '/sse';
+    
+    // Create proxy URLs with modified targets
+    httpUrlWithSlash = new URL(baseUrl);
+    httpUrlWithSlash.searchParams.set('target', httpTargetWithSlash.toString());
+    httpUrlWithoutSlash = new URL(baseUrl);
+    httpUrlWithoutSlash.searchParams.set('target', httpTargetWithoutSlash.toString());
+    sseUrlWithSlash = new URL(baseUrl);
+    sseUrlWithSlash.searchParams.set('target', sseTargetWithSlash.toString());
+    sseUrlWithoutSlash = new URL(baseUrl);
+    sseUrlWithoutSlash.searchParams.set('target', sseTargetWithoutSlash.toString());
+  } else {
+    // For direct URLs, modify the path as before
+    const basePath = baseUrl.pathname.replace(/\/(mcp|sse)\/?$/, '').replace(/\/$/, '');
+    
+    httpUrlWithSlash = new URL(baseUrl);
+    httpUrlWithoutSlash = new URL(baseUrl);
+    sseUrlWithSlash = new URL(baseUrl);
+    sseUrlWithoutSlash = new URL(baseUrl);
+    
+    httpUrlWithSlash.pathname = basePath + '/mcp/';
+    httpUrlWithoutSlash.pathname = basePath + '/mcp';
+    sseUrlWithSlash.pathname = basePath + '/sse/';
+    sseUrlWithoutSlash.pathname = basePath + '/sse';
+  }
   
   console.log(`[Parallel Connection] Trying HTTP URLs: ${httpUrlWithSlash.toString()}, ${httpUrlWithoutSlash.toString()}`);
   console.log(`[Parallel Connection] Trying SSE URLs: ${sseUrlWithSlash.toString()}, ${sseUrlWithoutSlash.toString()}`);

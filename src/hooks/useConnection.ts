@@ -213,6 +213,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     try {
         // --- Connection (with optional proxy) ---
         let connectionUrl = targetUrl;
+        let authToken: string | undefined;
         
         // If proxy is enabled and VITE_PROXY_URL is set, use proxy
         if (useProxy && import.meta.env.VITE_PROXY_URL) {
@@ -220,13 +221,24 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             connectionUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
             setIsProxied(true);
             addLogEntry({ type: 'info', data: `Attempting connection via proxy to ${targetUrl}...` });
+            
+            // Get Firebase auth token for proxy authentication
+            if (currentUser) {
+                try {
+                    authToken = await currentUser.getIdToken();
+                    addLogEntry({ type: 'info', data: 'Authentication token obtained for proxy connection' });
+                } catch (error) {
+                    console.error('[DEBUG] Failed to get auth token:', error);
+                    addLogEntry({ type: 'error', data: 'Failed to obtain authentication token for proxy' });
+                }
+            }
         } else {
             setIsProxied(false);
             addLogEntry({ type: 'info', data: `Attempting connection to ${targetUrl}...` });
         }
         
         const result = await Promise.race([
-            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
             timeoutPromise
         ]);
         
