@@ -72,6 +72,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
+  const [isProxied, setIsProxied] = useState(false); // State to track if current connection is proxied
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -104,6 +105,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setTransportType(null);
     setIsConnecting(false);
     setConnectionStartTime(null);
+    setIsProxied(false);
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -157,28 +159,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     urlToConnect?: string // Optional URL parameter
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
-    let targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
-    
-    // If proxy is enabled and VITE_PROXY_URL is set, prepend it to the URL
-    if (useProxy && import.meta.env.VITE_PROXY_URL) {
-      // Check if user is authenticated when using proxy
-      if (!currentUser) {
-        addLogEntry({ type: 'error', data: 'Authentication required to use proxy. Please login first.' });
-        setConnectionError({
-          error: 'Authentication required to use proxy. Please login first.',
-          serverUrl: rawUrl,
-          timestamp: new Date()
-        });
-        setIsConnecting(false);
-        setConnectionStatus('Error');
-        return;
-      }
-      
-      const proxyUrl = import.meta.env.VITE_PROXY_URL;
-      targetUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
-      addLogEntry({ type: 'info', data: `Using proxy: ${proxyUrl}` });
-    }
-    
+    const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
     logEvent('connect_attempt');
 
     // Clear any previous connection error
@@ -210,160 +191,85 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
     // -----------------------------------------
 
-    // Update recent servers list using rawUrl (the non-proxied URL)
-    const updatedServers = [rawUrl, ...recentServers.filter(url => url !== rawUrl)];
+    // Update recent servers list using targetUrl (the original URL)
+    const updatedServers = [targetUrl, ...recentServers.filter(url => url !== targetUrl)];
     const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
     setRecentServers(limitedServers); // Update state
-    // Save with proxy state information
-    const serversToSave = limitedServers.map(url => ({ url, useProxy: url === rawUrl ? useProxy : undefined }));
-    saveRecentServers(serversToSave); // Save with proxy info to localStorage
+    saveRecentServers(Array.from(limitedServers)); // Save to localStorage
 
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
       clientRef.current = null; // Clear ref
     }
 
-    let connectUrl: URL;
-    try {
-      connectUrl = new URL(targetUrl); // Use targetUrl as-is, don't modify the path
-    } catch (e) {
-      addLogEntry({ type: 'error', data: `Invalid Server URL format: ${targetUrl}` }); // Use targetUrl in error
-      setIsConnecting(false); setConnectionStatus('Error'); return;
-    }
-
-    addLogEntry({ type: 'info', data: `Connecting to ${connectUrl.toString()} with parallel transport attempts...` });
-
-    try {
-      console.log("[DEBUG] handleConnect: Starting connection attempts...");
-      
-      // Add timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) => 
+    let connectionSuccess = false;
+    let finalClient: Client | null = null;
+    let finalTransportType: TransportType | null = null;
+    let lastError: any = null;
+    const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
-      );
-      
-      let result;
-      let connectionUrl = connectUrl.toString();
-      
-      // Get auth token if using proxy
-      let authToken: string | undefined;
-      if (useProxy && currentUser) {
-        try {
-          authToken = await currentUser.getIdToken();
-        } catch (error) {
-          console.error('Failed to get auth token:', error);
-          addLogEntry({ type: 'error', data: 'Failed to get authentication token' });
-        }
-      }
-      
-      // If the original URL was protocol-less and we added HTTPS, try HTTPS first with HTTP fallback
-      if (rawUrl === targetUrl.replace('https://', '') && targetUrl.startsWith('https://')) {
-        console.log("[DEBUG] handleConnect: Attempting HTTPS connection first...");
-        addLogEntry({ type: 'info', data: `Attempting HTTPS connection to ${connectionUrl}...` });
+    );
+
+    try {
+        // --- Connection (with optional proxy) ---
+        let connectionUrl = targetUrl;
         
-        try {
-          // Try HTTPS first
-          result = await Promise.race([
-            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
-            timeoutPromise
-          ]);
-          console.log("[DEBUG] handleConnect: HTTPS connection successful");
-        } catch (httpsError: any) {
-          console.log("[DEBUG] handleConnect: HTTPS failed, trying HTTP fallback...");
-          
-          // Only try HTTP fallback if the error suggests HTTPS issues
-          if (httpsError.message?.includes('SSL') || 
-              httpsError.message?.includes('certificate') || 
-              httpsError.message?.includes('HTTPS') ||
-              httpsError.message?.includes('timeout') ||
-              httpsError.message?.includes('network')) {
-            
-            connectionUrl = getHttpVersion(connectionUrl);
-            addLogEntry({ type: 'info', data: `HTTPS failed, trying HTTP fallback to ${connectionUrl}...` });
-            
-            // Try HTTP fallback
-            result = await Promise.race([
-              attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
-              timeoutPromise
-            ]);
-            console.log("[DEBUG] handleConnect: HTTP fallback successful");
-          } else {
-            // Re-throw if it's not a protocol-related error
-            throw httpsError;
-          }
+        // If proxy is enabled and VITE_PROXY_URL is set, use proxy
+        if (useProxy && import.meta.env.VITE_PROXY_URL) {
+            const proxyUrl = import.meta.env.VITE_PROXY_URL;
+            connectionUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
+            setIsProxied(true);
+            addLogEntry({ type: 'info', data: `Attempting connection via proxy to ${targetUrl}...` });
+        } else {
+            setIsProxied(false);
+            addLogEntry({ type: 'info', data: `Attempting connection to ${targetUrl}...` });
         }
-      } else {
-        // If user explicitly provided a protocol, use it as-is
-        console.log("[DEBUG] handleConnect: Using user-specified protocol...");
-        result = await Promise.race([
-          attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
-          timeoutPromise
+        
+        const result = await Promise.race([
+            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal),
+            timeoutPromise
         ]);
-      }
-      
-      // Update state with the winning connection
-      clientRef.current = result.client;
-      setTransportType(result.transportType);
-      addLogEntry({ type: 'info', data: `Connected using ${result.transportType} transport` });
-      logEvent('connect_success', { 
-        transport_type: result.transportType 
-      });
-      
-      console.log("[DEBUG] handleConnect: Connection completed with", result.transportType);
+        
+        finalClient = result.client;
+        finalTransportType = result.transportType;
+        connectionSuccess = true;
+        addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
 
-      // Update serverUrl state to reflect the final successful URL
-      if (connectionUrl !== serverUrl) {
-        setServerUrl(connectionUrl);
-      }
-
-      setConnectionStatus('Connected');
-      setIsConnecting(false);
-      // Log generic success as access method for serverInfo/capabilities is unclear
-      addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
-      console.log("[DEBUG] SDK Client Connected.");
-      // TODO: Investigate how to access serverInfo/capabilities in SDK v1.10.1 if needed
-
-      // Do not automatically fetch lists for stateless connection
-      console.log("[DEBUG] handleConnect: Skipping automatic initial list fetching for stateless connection.");
-      setTools([]); // Ensure lists are cleared on connect
-      setResources([]);
+        // --- Finalize Connection ---
+        if (connectionSuccess && finalClient && finalTransportType) {
+            clientRef.current = finalClient;
+            setTransportType(finalTransportType);
+            setServerUrl(targetUrl); // CRUCIAL: Set UI URL to the original target
+            setConnectionStatus('Connected');
+            setIsConnecting(false);
+            addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
+            logEvent('connect_success', { 
+              transport_type: finalTransportType,
+              is_proxied: useProxy && !!import.meta.env.VITE_PROXY_URL,
+            });
+            setTools([]);
+            setResources([]);
+        }
 
     } catch (error: any) {
-      console.error('[DEBUG] handleConnect: Connection failed:', error);
-      
-      // Don't show error card if connection was aborted by user
-      const isUserAborted = error.message && error.message.includes('Connection aborted by user');
-      
-      if (isUserAborted) {
-        // Just log that it was aborted, no error card
-        addLogEntry({ 
-          type: 'info', 
-          data: 'Connection aborted by user' 
-        });
-      } else {
-        // Use enhanced error formatting for actual errors
-        logEvent('connect_failure');
-        const errorDetails = formatErrorForDisplay(error, {
-          serverUrl: connectUrl.toString(),
-          operation: 'connection'
-        });
-        
-        // Set connection error state for error card display
-        setConnectionError({
-          error: errorDetails,
-          serverUrl: connectUrl.toString(),
-          timestamp: new Date(),
-          details: error.stack || error.toString()
-        });
-        
-        addLogEntry({ 
-          type: 'error', 
-          data: `Connection failed: ${errorDetails}` 
-        });
-      }
-      
-      cleanupConnection(); // Ensure cleanup on error
+        const isUserAborted = error.message && error.message.includes('Connection aborted by user');
+        if (!isUserAborted) {
+            logEvent('connect_failure');
+            const errorDetails = formatErrorForDisplay(error, {
+                serverUrl: targetUrl, // Report error against the target URL
+                operation: 'connection'
+            });
+            setConnectionError({
+                error: errorDetails,
+                serverUrl: targetUrl,
+                timestamp: new Date(),
+                details: error.stack || error.toString()
+            });
+            addLogEntry({ type: 'error', data: `Connection failed: ${errorDetails}` });
+        }
+        cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, addLogEntry, cleanupConnection, useProxy]); // Removed setters
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy]); // Added useProxy dependency
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {
@@ -385,6 +291,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     handleConnect, // Keep original signature for export, wrapper in App.tsx handles the override
     handleDisconnect,
     handleAbortConnection,
+    isProxied, // Expose proxy status
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
       const updatedServers = recentServers.filter(url => url !== urlToRemove);

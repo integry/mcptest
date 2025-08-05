@@ -35,6 +35,7 @@ interface ConnectionPanelProps {
   clearConnectionError?: () => void;
   useProxy?: boolean;
   setUseProxy?: (useProxy: boolean) => void;
+  isProxied?: boolean; // New prop
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -54,6 +55,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   clearConnectionError,
   useProxy,
   setUseProxy,
+  isProxied, // Destructure new prop
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const { share, shareStatus, shareMessage } = useShare();
@@ -102,7 +104,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         <h5 className="mb-0">Server Connection</h5>
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
-          {useProxy && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
+          {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
           <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
             {connectionStatus}
           </span>
