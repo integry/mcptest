@@ -981,7 +981,7 @@ function App() {
           {/* Playground View */}
           <div className={`view-panel ${activeView === 'playground' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             <div className="h-100 d-flex flex-column">
-              <div style={{ marginTop: '-0.75rem', marginBottom: '0' }}>
+              <div style={{ marginTop: '0', marginBottom: '0' }}>
                 <Tabs
                   tabs={tabs}
                   activeTabId={activeTabId}

@@ -109,7 +109,6 @@ a:hover {
 
 .card:hover {
   box-shadow: var(--box-shadow-xl);
-  transform: translateY(-2px);
 }
 
 .card-header {
@@ -468,6 +467,7 @@ input, textarea, select {
   position: relative;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  border: 1px solid var(--border-color);
 }
 
 .form-check-input[type="checkbox"]:checked {

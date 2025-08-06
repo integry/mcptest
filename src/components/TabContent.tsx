@@ -722,22 +722,26 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         {/* Left Panel */}
         <div className={isConnected ? "col-md-4" : "col-12"}>
           {!isConnected && (
-            <>
-              <RecentServersPanel
-                recentServers={recentServers}
-                setServerUrl={setServerUrl}
-                handleConnect={handleConnectWrapper}
-                removeRecentServer={removeRecentServer}
-                isConnected={isConnected}
-                isConnecting={isConnecting}
-              />
-              <SuggestedServersPanel
-                setServerUrl={setServerUrl}
-                handleConnect={handleConnectWrapper}
-                isConnected={isConnected}
-                isConnecting={isConnecting}
-              />
-            </>
+            <div className="row">
+              <div className="col-md-6">
+                <RecentServersPanel
+                  recentServers={recentServers}
+                  setServerUrl={setServerUrl}
+                  handleConnect={handleConnectWrapper}
+                  removeRecentServer={removeRecentServer}
+                  isConnected={isConnected}
+                  isConnecting={isConnecting}
+                />
+              </div>
+              <div className="col-md-6">
+                <SuggestedServersPanel
+                  setServerUrl={setServerUrl}
+                  handleConnect={handleConnectWrapper}
+                  isConnected={isConnected}
+                  isConnecting={isConnecting}
+                />
+              </div>
+            </div>
           )}
           {isConnected && (
             <UnifiedPanel

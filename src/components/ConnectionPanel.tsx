@@ -99,7 +99,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
     });
   };
   // Return JSX directly without outer parentheses
-  return <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`} style={{ marginTop: '0', borderTopLeftRadius: '0', borderTopRightRadius: '0' }}>
+  return <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`} style={{ marginTop: '0' }}>
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
         <h5 className="mb-0">Server Connection</h5>
         <div className="d-flex align-items-center gap-2">
