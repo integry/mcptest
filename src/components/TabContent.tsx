@@ -720,7 +720,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}
-        <div className={isConnected ? "col-md-4" : "col-12"}>
+        <div className="col-md-4">
           {!isConnected && (
             <div className="row">
               <div className="col-md-6">
@@ -763,7 +763,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         </div>
 
         {/* Right Panel */}
-        <div className="col-md-8 d-flex flex-column">
+        <div className={isConnected ? "col-md-8 d-flex flex-column" : "col-md-8">
           {isConnected && (
             <>
               {/* Action Panel */}

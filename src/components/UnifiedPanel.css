@@ -5,18 +5,7 @@
   overflow-y: auto; /* Allow scrolling if content overflows */
   height: 100%; /* Ensure it takes available height */
   transition: opacity 0.3s ease;
-  background-color: var(--card-bg); /* Dark background for the panel */
-  border-right: none; /* Remove border */
-  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05); /* Add subtle shadow */
-}
-
-.unified-panel h3 {
-    margin: 1rem 1rem 0.75rem 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 1.1em;
-    font-weight: 600;
-    color: var(--text-color);
+  /* Card styles already applied by .card class */
 }
 
 
@@ -32,10 +21,10 @@
 
 .filter-input {
   padding: 0.75rem;
-  margin: 0.5rem 1rem 1rem 1rem;
+  margin: 1rem 1.25rem;
   border: 1px solid var(--input-border);
   border-radius: var(--border-radius);
-  width: calc(100% - 2rem); /* Account for padding and margin */
+  width: calc(100% - 2.5rem); /* Account for padding and margin */
   box-sizing: border-box;
   background-color: var(--input-bg);
   color: var(--text-color);
@@ -54,7 +43,7 @@
 }
 
 .tree-view {
-    padding: 0 1rem 1rem 1rem;
+    padding: 0 1.25rem 1.25rem 1.25rem;
     flex-grow: 1;
     overflow-y: auto;
 }
@@ -148,21 +137,6 @@
     display: block;
     padding: 5px 0;
 }
-/* --- Unified Panel Header --- */
-.unified-panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 10px; /* Match tree-view padding */
-  margin-top: 10px; /* Add some top margin */
-}
-
-.unified-panel-header h3 {
-  margin: 0; /* Remove default margin from h3 */
-  padding: 0;
-  border: none; /* Remove border added previously */
-}
-
 .refresh-button {
   padding: 0.2rem 0.5rem; /* Make button smaller */
   font-size: 0.8rem;
