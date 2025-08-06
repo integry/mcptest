@@ -140,4 +140,5 @@
 .refresh-button {
   padding: 0.2rem 0.5rem; /* Make button smaller */
   font-size: 0.8rem;
+  margin: 0; /* Remove any default margin */
 }

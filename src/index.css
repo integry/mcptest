@@ -133,6 +133,24 @@ a:hover {
   letter-spacing: -0.025em;
 }
 
+/* Ensure buttons in card headers don't add extra height */
+.card-header .btn-sm {
+  margin: 0;
+  vertical-align: middle;
+}
+
+.card-header .position-relative {
+  display: inline-flex;
+  align-items: center;
+}
+
+.card-header h6 {
+  margin-bottom: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
 .card-body {
   padding: 1.5rem; /* Increased padding for more breathing room */
   background-color: var(--card-bg);
