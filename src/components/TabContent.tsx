@@ -718,7 +718,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
             isProxied={isProxied} // Pass the new prop
           />
-      <div className="playground-layout row flex-grow-1" style={{ paddingTop: '1rem' }}>
+      <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}
         <div className={isConnected ? "col-md-4" : "col-12"}>
           {!isConnected && (
