@@ -113,26 +113,22 @@ a:hover {
 }
 
 .card-header {
-  background-color: var(--card-bg);
-  border-bottom: none;
+  background-color: var(--card-bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   padding: 1rem 1.25rem;
   position: relative;
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
 }
 
 .card-header::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 1.25rem;
-  right: 1.25rem;
-  height: 1px;
-  background: linear-gradient(to right, transparent, var(--border-color), transparent);
+  display: none; /* Remove the gradient border */
 }
 .card-header h5 {
   margin-bottom: 0;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: var(--text-color);
+  letter-spacing: -0.025em;
 }
 
 .card-body {
@@ -332,6 +328,27 @@ a:hover {
 .form-check-label {
   color: var(--text-color);
   font-size: 0.875rem;
+}
+
+/* Form check alignment improvements */
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  padding-left: 0;
+  margin-bottom: 0.5rem;
+}
+
+.form-check-input {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.form-check-label {
+  margin: 0;
+  line-height: 1.5;
+  cursor: pointer;
 }
 
 /* Badges */
@@ -648,6 +665,53 @@ header.bg-dark p {
   color: var(--text-color); /* Use normal text color instead of primary */
   background-color: var(--card-bg); /* Use normal card background */
   font-weight: 600;
+}
+
+/* Tab-specific styling improvements */
+.nav-tabs {
+  border-bottom: 1px solid var(--border-color) !important;
+  gap: 0.25rem;
+  display: flex;
+  align-items: flex-end;
+}
+
+.nav-tabs .nav-link {
+  border: 1px solid transparent;
+  border-bottom: none;
+  background-color: transparent;
+  padding: 0.5rem 1rem;
+  margin-bottom: 0;
+  border-radius: 0.5rem 0.5rem 0 0 !important;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.nav-tabs .nav-link:not(.active) {
+  border-color: transparent;
+  background-color: var(--card-bg-secondary);
+  opacity: 0.7;
+}
+
+.nav-tabs .nav-link:not(.active):hover {
+  opacity: 0.85;
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+  border-bottom-color: var(--border-color);
+}
+
+.nav-tabs .nav-link.active {
+  background-color: var(--card-bg) !important;
+  border-color: var(--border-color) !important;
+  border-bottom: 1px solid var(--card-bg) !important;
+  opacity: 1;
+  z-index: 10;
+  margin-bottom: -1px;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Remove the rounded button look from active tabs */
+.nav-tabs .nav-link.active::after {
+  display: none;
 }
 
 /* Sidebar styling */
@@ -1465,14 +1529,21 @@ body.dark-theme .nav-tabs {
   border-bottom-color: var(--border-color) !important;
 }
 
-body.dark-theme .nav-link {
-  border-color: var(--border-color) !important;
+body.dark-theme .nav-tabs .nav-link:not(.active) {
+  background-color: var(--card-bg-secondary);
+  border-color: transparent;
 }
 
-body.dark-theme .nav-link.active {
-  border-color: var(--border-color) var(--border-color) var(--body-bg) !important;
+body.dark-theme .nav-tabs .nav-link:not(.active):hover {
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+}
+
+body.dark-theme .nav-tabs .nav-link.active {
+  border-color: var(--border-color) var(--border-color) var(--card-bg) !important;
   background-color: var(--card-bg) !important;
-  color: var(--text-color) !important; /* Ensure active tab text is visible */
+  color: var(--text-color) !important;
+  border-bottom: 1px solid var(--card-bg) !important;
 }
 
 /* Fix close button visibility in dark mode */

@@ -52,7 +52,6 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
     <div 
       className="nav nav-tabs" 
       role="tablist"
-      style={{ borderBottom: '1px solid var(--border-color)', position: 'relative' }}
     >
       {tabs.map(tab => (
         <div key={tab.id} className="nav-item">
