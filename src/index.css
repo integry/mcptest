@@ -2,6 +2,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 /* --- Color Palette & Variables --- */
+/* Default Light Theme Variables */
 :root {
   --font-family-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --body-bg: #ffffff; /* White background */
@@ -28,8 +29,8 @@
   --accent-gradient: linear-gradient(135deg, #22c55e, #16a34a);
 }
 
-/* ADD THIS BLOCK FOR DARK THEME */
-body.dark-theme {
+/* Dark Theme CSS Variables */
+:root[data-theme='dark'] {
   --body-bg: #121212;
   --card-bg: #242424; /* Lightened from #1e1e1e */
   --card-bg-secondary: #2a2a2a;
@@ -44,7 +45,6 @@ body.dark-theme {
   --input-focus-border: var(--primary-color);
   --link-color: var(--primary-light);
 }
-/* --- END OF DARK THEME BLOCK --- */
 
 /* --- Global Styles --- */
 body {
@@ -1221,51 +1221,51 @@ span.health-indicator.health-indicator-gray {
 }
 
 /* Dark mode tab fixes */
-body.dark-theme .nav-tabs {
+:root[data-theme='dark'] .nav-tabs {
   border-bottom-color: var(--border-color) !important;
 }
 
-body.dark-theme .nav-link {
+:root[data-theme='dark'] .nav-link {
   border-color: var(--border-color) !important;
 }
 
-body.dark-theme .nav-link.active {
+:root[data-theme='dark'] .nav-link.active {
   border-color: var(--border-color) var(--border-color) var(--body-bg) !important;
   background-color: var(--card-bg) !important;
   color: var(--text-color) !important; /* Ensure active tab text is visible */
 }
 
 /* Fix close button visibility in dark mode */
-body.dark-theme .btn-close {
+:root[data-theme='dark'] .btn-close {
   filter: invert(0.7); /* Makes the X visible in dark mode */
   opacity: 0.5;
 }
 
-body.dark-theme .nav-link:not(.active) .btn-close {
+:root[data-theme='dark'] .nav-link:not(.active) .btn-close {
   opacity: 0.3; /* Less visible in inactive tabs */
 }
 
-body.dark-theme .btn-close:hover {
+:root[data-theme='dark'] .btn-close:hover {
   opacity: 1;
 }
 
 /* Fix Bootstrap border overrides in dark mode */
-body.dark-theme .border-bottom {
+:root[data-theme='dark'] .border-bottom {
   border-bottom-color: var(--border-color) !important;
 }
 
-body.dark-theme .border-top {
+:root[data-theme='dark'] .border-top {
   border-top-color: var(--border-color) !important;
 }
 
-body.dark-theme .border-start {
+:root[data-theme='dark'] .border-start {
   border-left-color: var(--border-color) !important;
 }
 
-body.dark-theme .border-end {
+:root[data-theme='dark'] .border-end {
   border-right-color: var(--border-color) !important;
 }
 
-body.dark-theme .border {
+:root[data-theme='dark'] .border {
   border-color: var(--border-color) !important;
 }

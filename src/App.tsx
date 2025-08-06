@@ -43,6 +43,23 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
 const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
 
+// Helper function to get the initial theme
+const getInitialTheme = (): 'light' | 'dark' => {
+  // 1. Check for a saved theme in localStorage
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'light' || savedTheme === 'dark') {
+    return savedTheme;
+  }
+
+  // 2. If no saved theme, check system preference
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  
+  // 3. Default to light theme
+  return 'light';
+};
+
 // Helper to determine initial view from URL
 const getInitialView = (): 'playground' | 'dashboards' | 'docs' => {
   const path = window.location.pathname;
@@ -108,10 +125,7 @@ declare global {
 
 function App() {
   // --- State ---
-  const [theme, setTheme] = useState(() => {
-    // Initialize theme from localStorage or default to 'light'
-    return localStorage.getItem('mcp-theme') || 'light';
-  });
+  const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [spaces, setSpaces] = useState<Space[]>(() => {
     const loaded = loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Dashboard', cards: [] }]);
     console.log('[DEBUG] Initial dashboards loaded from localStorage:', loaded.map(s => ({
@@ -183,14 +197,16 @@ function App() {
 
   // Save dashboards whenever they change
 
-  // ADD THIS EFFECT to manage theme class and localStorage
+  // Manage theme attribute and localStorage
   useEffect(() => {
-    if (theme === 'dark') {
-      document.body.classList.add('dark-theme');
-    } else {
-      document.body.classList.remove('dark-theme');
-    }
-    localStorage.setItem('mcp-theme', theme);
+    // Apply the theme to the root element and save the preference
+    const root = window.document.documentElement;
+    
+    // Set the data-theme attribute based on the current theme
+    root.setAttribute('data-theme', theme);
+
+    // Save the current theme to localStorage
+    localStorage.setItem('theme', theme);
     logEvent('theme_changed', { theme_name: theme });
   }, [theme]);
 
