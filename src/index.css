@@ -117,6 +117,9 @@ a:hover {
   padding: 1rem 1.25rem;
   position: relative;
   border-radius: var(--border-radius) var(--border-radius) 0 0;
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
 }
 
 .card-header::after {
