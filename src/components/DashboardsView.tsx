@@ -532,7 +532,7 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
         ) : (
           <h2 className="mb-0">{space.name}</h2>
         )}
-        <div className="d-flex align-items-center gap-2">
+        <div className="d-flex align-items-center gap-2 dashboard-controls">
           {/* Refresh Button */}
           {onRefreshSpace && (
             <button
