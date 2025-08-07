@@ -51,7 +51,9 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
     <div className="card mb-3">
       <div className="card-header">
         <h6 className="mb-0">Suggested Servers</h6>
-        <small className="text-muted">Not sure where to begin? Check our curated list of remote MCP servers.</small>
+      </div>
+      <div className="card-body p-3">
+        <small className="text-muted d-block mb-3">Not sure where to begin? Check our curated list of remote MCP servers.</small>
       </div>
       <ul className="list-group list-group-flush">
         {SUGGESTED_SERVERS.map((server) => (
