@@ -723,7 +723,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         <div className="col-md-4">
           {!isConnected && (
             <div className="row g-3">
-              <div className="col-md-6">
+              <div className="col-md-12">
                 <RecentServersPanel
                   recentServers={recentServers}
                   setServerUrl={setServerUrl}
@@ -733,7 +733,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                   isConnecting={isConnecting}
                 />
               </div>
-              <div className="col-md-6">
+              <div className="col-md-12">
                 <SuggestedServersPanel
                   setServerUrl={setServerUrl}
                   handleConnect={handleConnectWrapper}
