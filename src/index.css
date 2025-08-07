@@ -1026,6 +1026,11 @@ select {
 /* Ensure all buttons have consistent modern styling */
 .card-header .btn {
   opacity: 1 !important;
+  height: 32px;
+  padding: 0.25rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Small button adjustments */
