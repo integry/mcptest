@@ -106,10 +106,10 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   };
 
   return (
-    <div className={`panel unified-panel ${!isConnected ? 'unified-panel-deactivated' : ''}`}>
+    <div className={`card unified-panel ${!isConnected ? 'unified-panel-deactivated' : ''}`}>
       {/* Panel Header with Title and Refresh Button */}
-      <div className="unified-panel-header">
-        <h3>Capabilities</h3>
+      <div className="card-header d-flex justify-content-between align-items-center">
+        <h5 className="mb-0">Capabilities</h5>
         <button
           className="btn btn-sm btn-outline-secondary refresh-button"
           onClick={onRefreshLists}

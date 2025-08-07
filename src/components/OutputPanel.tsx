@@ -77,8 +77,8 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   
   return (
     <div className="card mt-3 flex-grow-1">
-      <div className="card-header p-0 d-flex justify-content-between align-items-center">
-        <ul className="nav nav-tabs flex-grow-0" id="outputTabs" role="tablist">
+      <div className="card-header d-flex justify-content-between align-items-center" style={{ paddingBottom: 0 }}>
+        <ul className="nav nav-tabs flex-grow-0" id="outputTabs" role="tablist" style={{ marginBottom: '-1px' }}>
           <li className="nav-item" role="presentation">
             <button 
               className={`nav-link ${activeTab === 'result' ? 'active' : ''}`} 

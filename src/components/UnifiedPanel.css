@@ -5,16 +5,7 @@
   overflow-y: auto; /* Allow scrolling if content overflows */
   height: 100%; /* Ensure it takes available height */
   transition: opacity 0.3s ease;
-  background-color: var(--card-bg); /* Dark background for the panel */
-  border-right: 1px solid var(--border-color); /* Separator */
-}
-
-.unified-panel h3 {
-    margin: 10px 10px 5px 10px;
-    padding-bottom: 5px;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 1.1em;
-    color: var(--text-color);
+  /* Card styles already applied by .card class */
 }
 
 
@@ -29,14 +20,21 @@
 
 
 .filter-input {
-  padding: 8px;
-  margin: 5px 10px 10px 10px;
+  padding: 0.75rem;
+  margin: 1rem 1.25rem;
   border: 1px solid var(--input-border);
-  border-radius: 0.375rem;
-  width: calc(100% - 20px); /* Account for padding and margin */
+  border-radius: var(--border-radius);
+  width: calc(100% - 2.5rem); /* Account for padding and margin */
   box-sizing: border-box;
   background-color: var(--input-bg);
   color: var(--text-color);
+  transition: all 0.2s ease;
+}
+
+.filter-input:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+  outline: none;
 }
 
 .unified-panel-deactivated .filter-input {
@@ -45,7 +43,7 @@
 }
 
 .tree-view {
-    padding: 0 10px 10px 10px;
+    padding: 0 1.25rem 1.25rem 1.25rem;
     flex-grow: 1;
     overflow-y: auto;
 }
@@ -57,13 +55,13 @@
 
 .tree-view summary {
   cursor: pointer;
-  padding: 5px;
-  border-radius: 3px;
-  font-weight: bold;
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+  font-weight: 600;
   list-style: none; /* Remove default marker */
   display: flex;
   align-items: center;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .tree-view summary:hover {
@@ -96,11 +94,11 @@
 }
 
 .tree-item {
-  padding: 6px 8px;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
-  border-radius: 3px;
-  margin-bottom: 3px;
-  transition: background-color 0.2s ease;
+  border-radius: var(--border-radius);
+  margin-bottom: 0.25rem;
+  transition: all 0.2s ease;
   border: 1px solid transparent; /* Placeholder for selected border */
 }
 
@@ -109,8 +107,9 @@
 }
 
 .tree-item.selected {
-  background-color: rgba(6, 182, 212, 0.15);
-  border: 1px solid var(--primary-color);
+  background-color: rgba(34, 197, 94, 0.15);
+  border: none;
+  box-shadow: var(--box-shadow);
   font-weight: 500;
   color: var(--primary-color);
 }
@@ -138,22 +137,8 @@
     display: block;
     padding: 5px 0;
 }
-/* --- Unified Panel Header --- */
-.unified-panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 10px; /* Match tree-view padding */
-  margin-top: 10px; /* Add some top margin */
-}
-
-.unified-panel-header h3 {
-  margin: 0; /* Remove default margin from h3 */
-  padding: 0;
-  border: none; /* Remove border added previously */
-}
-
 .refresh-button {
   padding: 0.2rem 0.5rem; /* Make button smaller */
   font-size: 0.8rem;
+  margin: 0; /* Remove any default margin */
 }

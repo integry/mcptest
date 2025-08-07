@@ -718,26 +718,30 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
             isProxied={isProxied} // Pass the new prop
           />
-      <div className="playground-layout row flex-grow-1" style={{ paddingTop: '1rem' }}>
+      <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}
-        <div className={isConnected ? "col-md-4" : "col-12"}>
+        <div className="col-md-4">
           {!isConnected && (
-            <>
-              <RecentServersPanel
-                recentServers={recentServers}
-                setServerUrl={setServerUrl}
-                handleConnect={handleConnectWrapper}
-                removeRecentServer={removeRecentServer}
-                isConnected={isConnected}
-                isConnecting={isConnecting}
-              />
-              <SuggestedServersPanel
-                setServerUrl={setServerUrl}
-                handleConnect={handleConnectWrapper}
-                isConnected={isConnected}
-                isConnecting={isConnecting}
-              />
-            </>
+            <div className="row g-3">
+              <div className="col-md-6">
+                <RecentServersPanel
+                  recentServers={recentServers}
+                  setServerUrl={setServerUrl}
+                  handleConnect={handleConnectWrapper}
+                  removeRecentServer={removeRecentServer}
+                  isConnected={isConnected}
+                  isConnecting={isConnecting}
+                />
+              </div>
+              <div className="col-md-6">
+                <SuggestedServersPanel
+                  setServerUrl={setServerUrl}
+                  handleConnect={handleConnectWrapper}
+                  isConnected={isConnected}
+                  isConnecting={isConnecting}
+                />
+              </div>
+            </div>
           )}
           {isConnected && (
             <UnifiedPanel
@@ -759,7 +763,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         </div>
 
         {/* Right Panel */}
-        <div className="col-md-8 d-flex flex-column">
+        <div className={isConnected ? "col-md-8 d-flex flex-column" : "col-md-8"}>
           {isConnected && (
             <>
               {/* Action Panel */}
