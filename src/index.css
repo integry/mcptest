@@ -1082,26 +1082,26 @@ select {
   top: 1rem;
   left: 1rem;
   z-index: 1060;
-  background-color: var(--primary-color);
+  background: var(--accent-gradient);
   border: none;
   border-radius: var(--border-radius);
   padding: 0.5rem;
   color: white;
-  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
   width: 48px;
   height: 48px;
   transition: all 0.2s ease;
 }
 
 .mobile-menu-toggle:hover {
-  background-color: var(--primary-hover);
+  background: linear-gradient(135deg, var(--primary-hover), #0e7490);
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 6px 16px rgba(6, 182, 212, 0.4);
 }
 
 .mobile-menu-toggle:focus {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.3);
 }
 
 /* Hamburger icon */
@@ -1233,9 +1233,143 @@ select {
 
   /* Stack columns on mobile */
   .playground-layout .col-md-4,
-  .playground-layout .col-md-8 {
+  .playground-layout .col-md-8,
+  .inspector-layout .col-md-4,
+  .inspector-layout .col-md-8 {
     max-width: 100%;
     flex: 0 0 100%;
+  }
+
+  /* Make all columns full width on mobile */
+  .col-md-4,
+  .col-md-8,
+  .col-md-12 {
+    max-width: 100%;
+    flex: 0 0 100%;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  /* Mobile-friendly tap targets */
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5rem 1rem;
+  }
+
+  /* Mobile-friendly form inputs */
+  .form-control,
+  .form-select,
+  input[type="text"],
+  input[type="url"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    min-height: 44px;
+    font-size: 16px; /* Prevent zoom on iOS */
+    width: 100%;
+  }
+
+  /* Improve list item tap targets */
+  .list-group-item {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
+
+  /* Card improvements for mobile */
+  .card {
+    margin-bottom: 1rem !important;
+    border-radius: 8px;
+  }
+
+  .card-body {
+    padding: 1rem;
+  }
+
+  /* Table responsiveness */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modal improvements for mobile */
+  .modal-dialog {
+    margin: 0.5rem;
+    max-width: calc(100% - 1rem);
+  }
+
+  .modal-content {
+    border-radius: 8px;
+  }
+
+  /* Dashboard grid improvements */
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  /* Result and Response panel improvements */
+  .tab-content .card {
+    height: auto;
+    min-height: 200px;
+  }
+
+  /* Code blocks and pre elements */
+  pre {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    word-wrap: normal;
+  }
+
+  /* Navigation improvements */
+  .nav-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-tabs .nav-link {
+    white-space: nowrap;
+    padding: 0.5rem 1rem;
+  }
+
+  /* Spacing adjustments */
+  .container-fluid {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .p-3 {
+    padding: 1rem !important;
+  }
+
+  /* Text readability improvements */
+  body {
+    font-size: 14px;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+  }
+
+  /* Prevent horizontal scroll */
+  body {
+    overflow-x: hidden;
+  }
+
+  .row {
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
   }
 }
 

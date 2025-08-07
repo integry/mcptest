@@ -720,10 +720,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}
-        <div className="col-md-12">
+        <div className="col-12 col-md-4">
           {!isConnected && (
             <div className="row g-3">
-              <div className="col-md-6">
+              <div className="col-12 col-md-6">
                 <RecentServersPanel
                   recentServers={recentServers}
                   setServerUrl={setServerUrl}
@@ -733,7 +733,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                   isConnecting={isConnecting}
                 />
               </div>
-              <div className="col-md-6">
+              <div className="col-12 col-md-6">
                 <SuggestedServersPanel
                   setServerUrl={setServerUrl}
                   handleConnect={handleConnectWrapper}
@@ -763,7 +763,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         </div>
 
         {/* Right Panel */}
-        <div className={isConnected ? "col-md-8 d-flex flex-column" : "col-md-8"}>
+        <div className={isConnected ? "col-12 col-md-8 d-flex flex-column" : "col-12 col-md-8"}>
           {isConnected && (
             <>
               {/* Action Panel */}
