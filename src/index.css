@@ -2,6 +2,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* --- Color Palette & Variables --- */
+/* Default Light Theme Variables */
 :root {
   --font-family-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
   --font-family-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Monaco', 'Inconsolata', 'Source Code Pro', monospace;
@@ -31,8 +32,8 @@
   --accent-gradient: linear-gradient(135deg, #22c55e, #16a34a);
 }
 
-/* ADD THIS BLOCK FOR DARK THEME */
-body.dark-theme {
+/* Dark Theme CSS Variables */
+:root[data-theme='dark'] {
   --body-bg: #121212;
   --card-bg: #1e1e1e; /* Darker cards for better contrast */
   --card-bg-secondary: #2a2a2a; /* Darker than card for contrast */
@@ -50,7 +51,6 @@ body.dark-theme {
   --box-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
   --box-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
 }
-/* --- END OF DARK THEME BLOCK --- */
 
 /* --- Global Styles --- */
 body {
@@ -1549,58 +1549,52 @@ span.health-indicator.health-indicator-gray {
 }
 
 /* Dark mode tab fixes */
-body.dark-theme .nav-tabs {
+:root[data-theme='dark'] .nav-tabs {
   border-bottom-color: var(--border-color) !important;
 }
 
-body.dark-theme .nav-tabs .nav-link:not(.active) {
-  background-color: var(--card-bg-secondary);
-  border-color: transparent;
+:root[data-theme='dark'] .nav-link {
+  border-color: var(--border-color) !important;
 }
 
-body.dark-theme .nav-tabs .nav-link:not(.active):hover {
-  background-color: var(--card-bg);
-  border-color: var(--border-color);
-}
-
-body.dark-theme .nav-tabs .nav-link.active {
-  border-color: var(--border-color) var(--border-color) var(--card-bg) !important;
+:root[data-theme='dark'] .nav-link.active {
+  border-color: var(--border-color) var(--border-color) var(--body-bg) !important;
   background-color: var(--card-bg) !important;
   color: var(--text-color) !important;
   border-bottom: 1px solid var(--card-bg) !important;
 }
 
 /* Fix close button visibility in dark mode */
-body.dark-theme .btn-close {
+:root[data-theme='dark'] .btn-close {
   filter: invert(0.7); /* Makes the X visible in dark mode */
   opacity: 0.5;
 }
 
-body.dark-theme .nav-link:not(.active) .btn-close {
+:root[data-theme='dark'] .nav-link:not(.active) .btn-close {
   opacity: 0.3; /* Less visible in inactive tabs */
 }
 
-body.dark-theme .btn-close:hover {
+:root[data-theme='dark'] .btn-close:hover {
   opacity: 1;
 }
 
 /* Fix Bootstrap border overrides in dark mode */
-body.dark-theme .border-bottom {
+:root[data-theme='dark'] .border-bottom {
   border-bottom-color: var(--border-color) !important;
 }
 
-body.dark-theme .border-top {
+:root[data-theme='dark'] .border-top {
   border-top-color: var(--border-color) !important;
 }
 
-body.dark-theme .border-start {
+:root[data-theme='dark'] .border-start {
   border-left-color: var(--border-color) !important;
 }
 
-body.dark-theme .border-end {
+:root[data-theme='dark'] .border-end {
   border-right-color: var(--border-color) !important;
 }
 
-body.dark-theme .border {
+:root[data-theme='dark'] .border {
   border-color: var(--border-color) !important;
 }
