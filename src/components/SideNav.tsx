@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
+import { useAuth } from '../context/AuthContext';
 
 interface SideNavProps {
   activeView: 'playground' | 'dashboards' | 'docs';
@@ -15,6 +16,9 @@ interface SideNavProps {
   getSpaceHealthColor: (spaceId: string) => 'green' | 'orange' | 'red' | 'gray';
   performAllDashboardsHealthCheck: () => Promise<void>;
   onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Function to handle card moves
+  theme?: string;
+  onToggleTheme?: () => void;
+  isMobile?: boolean;
 }
 
 const SideNav: React.FC<SideNavProps> = ({
@@ -28,6 +32,9 @@ const SideNav: React.FC<SideNavProps> = ({
   getSpaceHealthColor,
   performAllDashboardsHealthCheck,
   onMoveCard,
+  theme,
+  onToggleTheme,
+  isMobile = false,
 }) => {
   const [newSpaceName, setNewSpaceName] = React.useState('');
   const [showCreateInput, setShowCreateInput] = React.useState(false);
@@ -35,6 +42,8 @@ const SideNav: React.FC<SideNavProps> = ({
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
   const navigate = useNavigate();
+  const { currentUser, loginWithGoogle, logout } = useAuth();
+  const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
 
   const handlePlaygroundClick = () => {
     navigate('/');
@@ -289,6 +298,39 @@ const SideNav: React.FC<SideNavProps> = ({
           </button>
         )}
       </div>
+
+      {/* Theme and Auth Controls - Only show on mobile */}
+      {isMobile && (
+        <div className="mt-4 px-3">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <span className="text-muted">Theme</span>
+            <button
+              onClick={onToggleTheme}
+              className="btn btn-outline-secondary btn-sm"
+              style={{ padding: '0.5rem 0.75rem', fontSize: '1.25rem', lineHeight: 1, border: 'none' }}
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              <i className={`bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
+            </button>
+          </div>
+          
+          {authEnabled && (
+            <div className="pb-3 border-bottom">
+              {currentUser ? (
+                <div className="d-flex flex-column align-items-center">
+                  <div className="d-flex align-items-center mb-2">
+                    <img src={currentUser.photoURL || undefined} alt={currentUser.displayName || 'User'} className="rounded-circle me-2" width="32" height="32" />
+                    <span>{currentUser.displayName}</span>
+                  </div>
+                  <button className="btn btn-sm btn-outline-secondary w-100" onClick={logout}>Logout</button>
+                </div>
+              ) : (
+                <button className="btn btn-sm btn-primary w-100" onClick={loginWithGoogle}>Login with Google</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Documentation Section */}
       <div className="mt-4">

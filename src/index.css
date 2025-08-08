@@ -1084,9 +1084,7 @@ select {
 /* --- Responsive Mobile Menu --- */
 .mobile-menu-toggle {
   display: none;
-  position: fixed;
-  top: 1rem;
-  left: 1rem;
+  position: relative;
   z-index: 1060;
   background: var(--accent-gradient);
   border: none;
@@ -1094,9 +1092,10 @@ select {
   padding: 0.5rem;
   color: white;
   box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .mobile-menu-toggle:hover {
@@ -1186,6 +1185,10 @@ select {
 }
 
 /* Menu state classes */
+.menu-open .mobile-menu-toggle {
+  opacity: 0.3;
+}
+
 .menu-open .mobile-menu-toggle .hamburger {
   background-color: transparent;
 }
@@ -1215,7 +1218,9 @@ select {
 /* Responsive breakpoints */
 @media (max-width: 768px) {
   .mobile-menu-toggle {
-    display: block;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
   }
 
   .desktop-sidebar {
@@ -1227,9 +1232,9 @@ select {
     width: 100% !important;
   }
 
-  /* Adjust header padding on mobile */
-  header.bg-dark {
-    padding-left: 4rem !important;
+  /* Adjust header title on mobile for smaller screens */
+  header h1 {
+    font-size: 1.5rem !important;
   }
 
   /* Adjust card margins on mobile */

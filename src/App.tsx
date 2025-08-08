@@ -903,14 +903,6 @@ function App() {
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">
-      {/* Mobile Menu Toggle */}
-      <button 
-        className="mobile-menu-toggle"
-        onClick={() => document.body.classList.toggle('menu-open')}
-        aria-label="Toggle navigation menu"
-      >
-        <span className="hamburger"></span>
-      </button>
 
       {/* Mobile Sidebar Overlay */}
       <div 
@@ -938,6 +930,9 @@ function App() {
           getSpaceHealthColor={getDashboardHealthColor}
           performAllDashboardsHealthCheck={performAllDashboardsHealthCheck}
           onMoveCard={handleMoveCard}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          isMobile={true}
         />
       </div>
 
