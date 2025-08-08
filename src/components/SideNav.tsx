@@ -358,7 +358,7 @@ const SideNav: React.FC<SideNavProps> = ({
                 className="text-muted"
                 style={{ opacity: 0.7 }}
               >
-                {new Date(VERSION_INFO.commitDate).toLocaleDateString()} {new Date(VERSION_INFO.commitDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                {new Date(VERSION_INFO.commitDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {new Date(VERSION_INFO.commitDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
               </a></div>
           </div>
         </div>
