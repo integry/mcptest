@@ -54,8 +54,7 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
       </div>
       <div className="card-body p-3">
         <small className="text-muted d-block mb-3">Not sure where to begin? Check our curated list of remote MCP servers.</small>
-      </div>
-      <ul className="list-group list-group-flush">
+        <ul className="list-group">
         {SUGGESTED_SERVERS.map((server) => (
           <li key={server.url} className="list-group-item p-3">
             <div
@@ -112,7 +111,8 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
             </div>
           </li>
         ))}
-      </ul>
+        </ul>
+      </div>
     </div>
   );
 };
