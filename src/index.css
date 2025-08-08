@@ -133,11 +133,7 @@ a:hover {
   letter-spacing: -0.025em;
 }
 
-/* Ensure buttons in card headers don't add extra height */
-.card-header .btn-sm {
-  margin: 0;
-  vertical-align: middle;
-}
+/* Button position alignment in card headers */
 
 .card-header .position-relative {
   display: inline-flex;
@@ -1026,18 +1022,28 @@ select {
 /* Ensure all buttons have consistent modern styling */
 .card-header .btn {
   opacity: 1 !important;
-  height: 32px;
-  padding: 0.25rem 0.5rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  height: 22px !important;
+  padding: .25rem .5rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
 }
 
 /* Small button adjustments */
 .btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.8125rem;
-  border-radius: 0.25rem;
+  padding: .375rem .75rem;
+  font-size: .8125rem;
+  border-radius: .25rem;
+}
+
+/* Override for card header buttons specifically */
+.card-header .btn-sm {
+  height: 22px !important;
+  padding: .25rem .5rem !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  vertical-align: middle !important;
 }
 
 /* Button groups - modern seamless design */

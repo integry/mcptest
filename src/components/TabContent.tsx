@@ -720,20 +720,22 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}
-        <div className="col-12 col-md-4">
+        <div className={isConnected ? "col-md-4" : "col-md-12"}>
           {!isConnected && (
             <div className="row g-3">
-              <div className="col-12 col-md-6">
-                <RecentServersPanel
-                  recentServers={recentServers}
-                  setServerUrl={setServerUrl}
-                  handleConnect={handleConnectWrapper}
-                  removeRecentServer={removeRecentServer}
-                  isConnected={isConnected}
-                  isConnecting={isConnecting}
-                />
-              </div>
-              <div className="col-12 col-md-6">
+              {recentServers.length > 0 && (
+                <div className="col-md-6">
+                  <RecentServersPanel
+                    recentServers={recentServers}
+                    setServerUrl={setServerUrl}
+                    handleConnect={handleConnectWrapper}
+                    removeRecentServer={removeRecentServer}
+                    isConnected={isConnected}
+                    isConnecting={isConnecting}
+                  />
+                </div>
+              )}
+              <div className="col-md-6">
                 <SuggestedServersPanel
                   setServerUrl={setServerUrl}
                   handleConnect={handleConnectWrapper}
