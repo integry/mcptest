@@ -111,7 +111,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
       <div className="card-header d-flex justify-content-between align-items-center">
         <h5 className="mb-0">Capabilities</h5>
         <button
-          className="btn btn-sm btn-outline-secondary refresh-button py-0"
+          className="btn btn-sm btn-outline-secondary refresh-button"
           onClick={onRefreshLists}
           disabled={!isConnected || isConnecting} // Disable if not connected or connecting
           title="Refresh Tools, Resources, and Prompts"

@@ -720,7 +720,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}
-        <div className="col-md-12">
+        <div className={isConnected ? "col-md-4" : "col-md-12"}>
           {!isConnected && (
             <div className="row g-3">
               {recentServers.length > 0 && (
