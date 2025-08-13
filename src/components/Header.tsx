@@ -20,18 +20,21 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
     <header className="border-bottom p-3 mb-3" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--card-bg)', color: 'var(--text-color)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
         {/* MCP/AI Logo */}
-        <span
-          style={{ display: 'inline-flex', alignItems: 'center', height: 48, cursor: 'pointer' }}
+        <button
           onClick={handleHomeClick}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', height: 48 }}
         >
           <img src="/logo.png" alt="MCP Logo" width="44" height="44" style={{ filter: 'drop-shadow(0 2px 8px rgba(34, 197, 94, 0.3))' }} />
-        </span>
-        <div style={{ cursor: 'pointer' }} onClick={handleHomeClick}>
+        </button>
+        <button
+          onClick={handleHomeClick}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+        >
           <h1 style={{ marginBottom: 0, fontWeight: 700, fontSize: '2.1rem', letterSpacing: '0.01em', lineHeight: 1, color: 'var(--text-color)' }}>mcptest.io</h1>
           <p className="mb-0" style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '1.08rem' }}>
             Test remote MCP servers
           </p>
-        </div>
+        </button>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
