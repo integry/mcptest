@@ -29,6 +29,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
+  const [addNotification, setAddNotification] = useState<{ message: string, spaceName: string } | null>(null);
   
   // Handle share button click
   const handleShareResult = () => {
@@ -73,6 +74,13 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
     };
     
     props.onAddCardToSpace(spaceId, cardData);
+
+    // Show notification
+    const space = props.spaces.find(s => s.id === spaceId);
+    if (space) {
+      setAddNotification({ message: 'Added to dashboard', spaceName: space.name });
+      setTimeout(() => setAddNotification(null), 3000);
+    }
   };
   
   return (
@@ -138,7 +146,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                     {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
                   </button>
                   {shareStatus !== 'idle' && (
-                    <div className="notification-tooltip">
+                    <div className="notification-tooltip" role="status" aria-live="polite">
                       {shareMessage}
                     </div>
                   )}
@@ -149,16 +157,23 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
             {/* Add to Dashboard button/dropdown */}
             {props.lastResult.callContext && props.spaces.length > 0 && (
               props.spaces.length === 1 ? (
-                <button
-                  className="btn btn-sm btn-outline-primary ms-2"
-                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                  title={`Add to dashboard: ${props.spaces[0].name}`}
-                  onClick={() => handleAddToSpace(props.spaces[0].id)}
-                >
-                  <i className="bi bi-plus-square"></i> Add to dashboard
-                </button>
+                <div className="position-relative">
+                  <button
+                    className="btn btn-sm btn-outline-primary ms-2"
+                    style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+                    title={`Add to dashboard: ${props.spaces[0].name}`}
+                    onClick={() => handleAddToSpace(props.spaces[0].id)}
+                  >
+                    <i className="bi bi-plus-square"></i> Add to dashboard
+                  </button>
+                  {addNotification && (
+                    <div className="notification-tooltip" role="status" aria-live="polite">
+                      {addNotification.message}: {addNotification.spaceName}
+                    </div>
+                  )}
+                </div>
               ) : (
-                <div className="dropdown ms-2">
+                <div className="dropdown ms-2 position-relative">
                   <button
                     className="btn btn-sm btn-outline-primary dropdown-toggle"
                     style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
@@ -179,6 +194,11 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                       </li>
                     ))}
                   </ul>
+                  {addNotification && (
+                    <div className="notification-tooltip" role="status" aria-live="polite">
+                      {addNotification.message}: {addNotification.spaceName}
+                    </div>
+                  )}
                 </div>
               )
             )}
