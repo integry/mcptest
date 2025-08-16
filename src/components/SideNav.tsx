@@ -284,7 +284,7 @@ const SideNav: React.FC<SideNavProps> = ({
             </button>
           </div>
         ) : (
-          <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick}>
+          <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick} aria-label="Create new dashboard">
             <i className="bi bi-plus-lg me-1"></i> Create New Dashboard
           </button>
         )}

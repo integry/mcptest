@@ -196,6 +196,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
               className="btn btn-sm btn-outline-secondary me-2"
               onClick={() => setIsFullscreen(true)}
               title="Fullscreen"
+              aria-label="View result in fullscreen"
             >
               <i className="bi bi-arrows-fullscreen"></i>
             </button>
@@ -234,7 +235,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
                 </button>
               </li>
               <li>
-                <button className="dropdown-item" onClick={handleShareClick} disabled={shareStatus !== 'idle'}>
+                <button className="dropdown-item" onClick={handleShareClick} disabled={shareStatus !== 'idle'} aria-label="Copy share link to clipboard">
                   {shareStatus === 'success' ? (
                     <><i className="bi bi-check-lg me-2"></i>Shared!</>
                   ) : (
