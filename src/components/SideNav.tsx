@@ -229,10 +229,11 @@ const SideNav: React.FC<SideNavProps> = ({
       </div>
 
       {/* List of Dashboards */}
-      <ul className="nav flex-column ms-3">
-        {spaces.map((space, index) => (
-          <li 
-            className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`} 
+      <nav aria-label="Dashboards">
+        <ul className="nav flex-column ms-3">
+          {spaces.map((space, index) => (
+            <li
+              className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
             key={space.id}
             onDragOver={(e) => handleSpaceDragOver(e, index)}
             onDragLeave={handleSpaceDragLeave}
@@ -261,7 +262,8 @@ const SideNav: React.FC<SideNavProps> = ({
             </Link>
           </li>
         ))}
-      </ul>
+        </ul>
+      </nav>
 
       {/* Create New Dashboard */}
       <div className="mt-2 ms-3">
