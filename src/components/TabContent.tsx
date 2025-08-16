@@ -765,7 +765,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         </div>
 
         {/* Right Panel */}
-        <div className={isConnected ? "col-md-8 d-flex flex-column" : "col-md-8"}>
+        <div className={isConnected ? "col-12 col-md-8 d-flex flex-column" : "col-12 col-md-8"}>
           {isConnected && (
             <>
               {/* Action Panel */}

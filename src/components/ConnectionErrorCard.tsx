@@ -182,7 +182,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
           <div className="mb-3">
             <strong>Test Connection via Terminal:</strong>
             <div className="row mt-2">
-              <div className="col-md-6">
+              <div className="col-12 col-md-6">
                 <div className="mb-2">
                   <strong className="small">Streamable HTTP (POST):</strong>
                 </div>
@@ -198,7 +198,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                   </button>
                 </div>
               </div>
-              <div className="col-md-6">
+              <div className="col-12 col-md-6">
                 <div className="mb-2">
                   <strong className="small">SSE (GET):</strong>
                 </div>

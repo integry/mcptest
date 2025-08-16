@@ -249,10 +249,10 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
       {isResultType && isDetailsExpanded && (
         <div className="details-section mb-2 p-2 bg-light border rounded small">
           <div className="row g-2">
-            <div className="col-md-6">
+            <div className="col-12 col-md-6">
               <strong>Server:</strong> <span className="text-muted">{serverUrl}</span>
             </div>
-            <div className="col-md-6">
+            <div className="col-12 col-md-6">
               <strong>Execution Time:</strong> <span className="text-muted">{executionTime}</span>
             </div>
             {Object.keys(params).length > 0 && (
