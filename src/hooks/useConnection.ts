@@ -210,42 +210,67 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
     );
 
-    try {
-        // --- Connection (with optional proxy) ---
-        let connectionUrl = targetUrl;
-        let authToken: string | undefined;
-        
-        // If proxy is enabled and VITE_PROXY_URL is set, use proxy
-        if (useProxy && import.meta.env.VITE_PROXY_URL) {
-            const proxyUrl = import.meta.env.VITE_PROXY_URL;
-            connectionUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
-            setIsProxied(true);
-            addLogEntry({ type: 'info', data: `Attempting connection via proxy to ${targetUrl}...` });
-            
-            // Get Firebase auth token for proxy authentication
-            if (currentUser) {
-                try {
-                    authToken = await currentUser.getIdToken();
-                    addLogEntry({ type: 'info', data: 'Authentication token obtained for proxy connection' });
-                } catch (error) {
-                    console.error('[DEBUG] Failed to get auth token:', error);
-                    addLogEntry({ type: 'error', data: 'Failed to obtain authentication token for proxy' });
-                }
-            }
-        } else {
-            setIsProxied(false);
-            addLogEntry({ type: 'info', data: `Attempting connection to ${targetUrl}...` });
+    // Helper function to attempt direct connection
+    const connectDirectly = async () => {
+      setIsProxied(false);
+      addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
+      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal);
+    };
+
+    // Helper function to attempt proxy connection
+    const connectViaProxy = async () => {
+      if (!import.meta.env.VITE_PROXY_URL) {
+        return Promise.reject(new Error("Proxy not configured."));
+      }
+      const proxyUrl = import.meta.env.VITE_PROXY_URL;
+      const connectionUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
+      setIsProxied(true);
+      addLogEntry({ type: 'info', data: `Direct connection failed with CORS error. Attempting connection via proxy to ${targetUrl}...` });
+      let authToken: string | undefined;
+      if (currentUser) {
+        try {
+          authToken = await currentUser.getIdToken();
+          addLogEntry({ type: 'info', data: 'Authentication token obtained for proxy connection' });
+        } catch (error) {
+          console.error('[DEBUG] Failed to get auth token:', error);
+          addLogEntry({ type: 'error', data: 'Failed to obtain authentication token for proxy' });
         }
-        
-        const result = await Promise.race([
-            attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken),
+      }
+      return attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken);
+    };
+
+    try {
+        // Always try direct connection first
+        try {
+          const result = await Promise.race([
+            connectDirectly(),
             timeoutPromise
-        ]);
-        
-        finalClient = result.client;
-        finalTransportType = result.transportType;
-        connectionSuccess = true;
-        addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
+          ]);
+          
+          finalClient = result.client;
+          finalTransportType = result.transportType;
+          connectionSuccess = true;
+          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
+        } catch (error: any) {
+          // Check if it's a CORS error and if automatic proxy fallback is enabled
+          const isCorsError = error.message?.toLowerCase().includes('cors') || 
+                            (error.message?.toLowerCase().includes('failed to fetch') && 
+                             !error.message?.toLowerCase().includes('network'));
+          
+          if (isCorsError && useProxy) {
+            // Attempt proxy connection as fallback
+            const result = await Promise.race([
+              connectViaProxy(),
+              timeoutPromise
+            ]);
+            finalClient = result.client;
+            finalTransportType = result.transportType;
+            connectionSuccess = true;
+            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
+          } else {
+            throw error; // Re-throw if not a CORS error or proxy is disabled
+          }
+        }
 
         // --- Finalize Connection ---
         if (connectionSuccess && finalClient && finalTransportType) {
@@ -257,7 +282,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
             logEvent('connect_success', { 
               transport_type: finalTransportType,
-              is_proxied: useProxy && !!import.meta.env.VITE_PROXY_URL,
+              is_proxied: isProxied,
             });
             setTools([]);
             setResources([]);
@@ -281,7 +306,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy]); // Added useProxy dependency
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied]); // Added useProxy, currentUser, and isProxied dependencies
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {

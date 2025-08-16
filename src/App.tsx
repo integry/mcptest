@@ -148,7 +148,7 @@ function App() {
         return parsedTabs;
       }
     }
-    return [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }];
+    return [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected', useProxy: true }];
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     // Ensure we always have a valid initial activeTabId
@@ -317,6 +317,7 @@ function App() {
         title: `Server: ${serverUrl}`,
         serverUrl: serverUrl,
         connectionStatus: 'Disconnected',
+        useProxy: true,
       };
       setTabs(prev => [...prev, targetTab!]);
     }
@@ -353,6 +354,7 @@ function App() {
         title: `Result: ${resultData.name}`,
         serverUrl: resultData.serverUrl,
         connectionStatus: 'Disconnected',
+        useProxy: true,
         resultShareData: {
           type: resultData.type,
           name: resultData.name,
@@ -385,6 +387,7 @@ function App() {
       title: 'New Connection',
       serverUrl: '',
       connectionStatus: 'Disconnected',
+      useProxy: true,
     };
     setTabs([...tabs, newTab]);
     setActiveTabId(newTab.id);
@@ -406,6 +409,7 @@ function App() {
         title: 'New Connection',
         serverUrl: '',
         connectionStatus: 'Disconnected',
+        useProxy: true,
       };
       setTabs([defaultTab]);
       setActiveTabId(defaultTab.id);

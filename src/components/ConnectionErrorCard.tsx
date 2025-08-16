@@ -101,7 +101,9 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
     if (error.toLowerCase().includes('cors')) {
       steps.push('CORS Issue: The server does not allow browser requests from this origin');
       if (!useProxy && showProxyOption) {
-        steps.push('⚠️ Try enabling the proxy option to bypass CORS restrictions');
+        steps.push('⚠️ Enable "Automatically use proxy for CORS errors" option in connection settings');
+      } else if (useProxy && showProxyOption) {
+        steps.push('✓ Automatic proxy fallback is enabled - connection will retry via proxy if needed');
       }
       steps.push('Try running the app over HTTPS if the server is HTTPS');
       steps.push('Contact the server administrator to add CORS headers');
@@ -142,9 +144,6 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
           
           <h6 className="alert-heading">
             MCP Server Connection Failed
-            {isCorsError && !useProxy && showProxyOption && (
-              <span className="badge bg-warning text-dark ms-2">CORS Issue - Try Proxy</span>
-            )}
           </h6>
           
           <div className="mb-3">
@@ -233,27 +232,15 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
         )}
       </div>
       
-      {(onRetry || (onRetryWithProxy && isCorsError && !useProxy && showProxyOption)) && (
+      {onRetry && (
         <div className="mt-3">
-          {onRetry && (
-            <button
-              type="button"
-              className="btn btn-outline-danger btn-sm me-2"
-              onClick={onRetry}
-            >
-              Retry Connection
-            </button>
-          )}
-          {onRetryWithProxy && isCorsError && !useProxy && showProxyOption && (
-            <button
-              type="button"
-              className="btn btn-warning btn-sm"
-              onClick={onRetryWithProxy}
-            >
-              <i className="bi bi-shield-check me-1"></i>
-              Retry with Proxy
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-outline-danger btn-sm"
+            onClick={onRetry}
+          >
+            Retry Connection
+          </button>
         </div>
       )}
     </div>
