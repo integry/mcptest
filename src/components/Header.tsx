@@ -41,7 +41,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           style={{ padding: '0.5rem 0.75rem', fontSize: '1.25rem', lineHeight: 1, border: 'none' }}
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
         >
-          <i className={`bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
+          <i className={`theme-toggle-icon bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
         </button>
         
         {authEnabled && (

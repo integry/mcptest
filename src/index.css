@@ -1609,3 +1609,16 @@ span.health-indicator.health-indicator-gray {
 :root[data-theme='dark'] .border {
   border-color: var(--border-color) !important;
 }
+
+/* --- Theme Toggle Animation --- */
+.theme-toggle-icon {
+  transition: transform 0.3s ease;
+}
+
+:root[data-theme='dark'] .theme-toggle-icon {
+  transform: rotate(180deg);
+}
+
+:root[data-theme='light'] .theme-toggle-icon {
+  transform: rotate(0deg);
+}
