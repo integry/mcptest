@@ -1127,6 +1127,7 @@ select {
   height: 2px;
   background-color: white;
   position: absolute;
+  left: 0;
   transition: all 0.3s ease;
 }
 
@@ -1186,7 +1187,7 @@ select {
 
 /* Menu state classes */
 .menu-open .mobile-menu-toggle {
-  opacity: 0.3;
+  opacity: 0;
 }
 
 .menu-open .mobile-menu-toggle .hamburger {
