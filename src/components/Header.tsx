@@ -52,7 +52,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
           aria-label="Toggle color theme"
         >
-          <i className={`bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
+          <i className={`theme-toggle-icon bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
         </button>
         
         {authEnabled && (

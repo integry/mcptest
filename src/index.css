@@ -1750,7 +1750,19 @@ span.health-indicator.health-indicator-gray {
   border-color: var(--border-color) !important;
 }
 
-/* --- Notification Popup Styles --- */
+/* --- Theme Toggle Animation --- */
+.theme-toggle-icon {
+  transition: transform 0.3s ease;
+}
+
+:root[data-theme='dark'] .theme-toggle-icon {
+  transform: rotate(180deg);
+}
+
+:root[data-theme='light'] .theme-toggle-icon {
+  transform: rotate(0deg);
+}
+
 .notification-popup {
   position: fixed;
   bottom: 20px;
