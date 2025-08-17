@@ -174,7 +174,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setTools,
           setResources,
           setResponses,
-          tab.serverUrl
+          tab.serverUrl,
+          tab.useProxy // Pass the current tab's useProxy value
         );
       }, 100);
     }
@@ -554,7 +555,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       setTools,
       setResources,
       setResponses,
-      urlToConnect
+      urlToConnect,
+      tab.useProxy // Pass the current tab's useProxy value
     );
   };
 

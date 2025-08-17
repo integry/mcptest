@@ -156,7 +156,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setTools: React.Dispatch<React.SetStateAction<any[]>>,
     setResources: React.Dispatch<React.SetStateAction<ResourceTemplate[]>>,
     setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
-    urlToConnect?: string // Optional URL parameter
+    urlToConnect?: string, // Optional URL parameter
+    forceUseProxy?: boolean // Optional proxy override
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
@@ -257,8 +258,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
                             (error.message?.toLowerCase().includes('failed to fetch') && 
                              !error.message?.toLowerCase().includes('network'));
           
-          if (isCorsError && useProxy) {
-            // Attempt proxy connection as fallback
+          // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
+          const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
+          
+          if (isCorsError && shouldUseProxy && currentUser) {
+            // Attempt proxy connection as fallback only if user is logged in
             const result = await Promise.race([
               connectViaProxy(),
               timeoutPromise
@@ -268,7 +272,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             connectionSuccess = true;
             addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
           } else {
-            throw error; // Re-throw if not a CORS error or proxy is disabled
+            if (isCorsError && shouldUseProxy && !currentUser) {
+              addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+            }
+            throw error; // Re-throw if not a CORS error, proxy is disabled, or user not logged in
           }
         }
 
