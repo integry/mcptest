@@ -18,7 +18,17 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
 
   return (
     <header className="border-bottom p-3 mb-3" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--card-bg)', color: 'var(--text-color)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {/* Mobile Menu Toggle */}
+        <button 
+          className="mobile-menu-toggle d-md-none position-relative"
+          onClick={() => document.body.classList.toggle('menu-open')}
+          aria-label="Toggle navigation menu"
+          style={{ position: 'relative', marginRight: '0.5rem' }}
+        >
+          <span className="hamburger"></span>
+        </button>
+
         {/* MCP/AI Logo */}
         <span
           style={{ display: 'inline-flex', alignItems: 'center', height: 48, cursor: 'pointer' }}
@@ -28,18 +38,19 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
         </span>
         <div style={{ cursor: 'pointer' }} onClick={handleHomeClick}>
           <h1 style={{ marginBottom: 0, fontWeight: 700, fontSize: '2.1rem', letterSpacing: '0.01em', lineHeight: 1, color: 'var(--text-color)' }}>mcptest.io</h1>
-          <p className="mb-0" style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '1.08rem' }}>
+          <p className="mb-0 d-none d-md-block" style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '1.08rem' }}>
             Test remote MCP servers
           </p>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div className="d-none d-md-flex" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <button
           onClick={onToggleTheme}
           className="btn btn-outline-secondary"
           style={{ padding: '0.5rem 0.75rem', fontSize: '1.25rem', lineHeight: 1, border: 'none' }}
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          aria-label="Toggle color theme"
         >
           <i className={`theme-toggle-icon bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
         </button>

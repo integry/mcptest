@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Tool, Resource, ResourceTemplate, Prompt, SelectedTool, SelectedPrompt } from '../types'; // Added Resource type
 import './UnifiedPanel.css'; // We'll create this CSS file next
 
@@ -47,6 +47,13 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     resourceTemplates: true,
     prompts: true,
   });
+  const [focusedIndex, setFocusedIndex] = useState<{ [key: string]: number }>({});
+  const listRefs = useRef<{ [key: string]: (HTMLLIElement | null)[] }>({});
+
+  useEffect(() => {
+    // Reset focus when filter text changes
+    setFocusedIndex({});
+  }, [filterText]);
 
   const isConnected = connectionStatus === 'Connected';
 
@@ -89,13 +96,40 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
 
   const { filteredTools, filteredResources, filteredResourceTemplates, filteredPrompts } = filteredItems;
 
+  const handleKeyDown = (e: React.KeyboardEvent, category: string, items: any[]) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const newIndex = (focusedIndex[category] ?? -1) + 1;
+      if (newIndex < items.length) {
+        setFocusedIndex({ ...focusedIndex, [category]: newIndex });
+        listRefs.current[category]?.[newIndex]?.focus();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const newIndex = (focusedIndex[category] ?? 0) - 1;
+      if (newIndex >= 0) {
+        setFocusedIndex({ ...focusedIndex, [category]: newIndex });
+        listRefs.current[category]?.[newIndex]?.focus();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const index = focusedIndex[category];
+      if (index !== undefined && items[index]) {
+        const item = items[index];
+        if (category === 'tools') handleSelectTool(item);
+        if (category === 'resourceTemplates') handleSelectResourceTemplate(item);
+        if (category === 'prompts') handleSelectPrompt(item);
+      }
+    }
+  };
+
   // Separate supported and unsupported capabilities
   // Use original arrays (not filtered) to determine if a capability is supported
   const allCapabilities = [
-    { key: 'tools', items: filteredTools, originalItems: tools, label: 'Tools' },
-    { key: 'resources', items: filteredResources, originalItems: resources, label: 'Resources' },
-    { key: 'resourceTemplates', items: filteredResourceTemplates, originalItems: resourceTemplates, label: 'Resource Templates' },
-    { key: 'prompts', items: filteredPrompts, originalItems: prompts, label: 'Prompts' }
+    { key: 'tools', items: filteredTools, originalItems: tools, label: 'Tools', handler: handleSelectTool },
+    { key: 'resources', items: filteredResources, originalItems: resources, label: 'Resources', handler: null },
+    { key: 'resourceTemplates', items: filteredResourceTemplates, originalItems: resourceTemplates, label: 'Resource Templates', handler: handleSelectResourceTemplate },
+    { key: 'prompts', items: filteredPrompts, originalItems: prompts, label: 'Prompts', handler: handleSelectPrompt }
   ];
 
   const supportedCapabilities = allCapabilities.filter(cap => cap.originalItems.length > 0);
@@ -127,12 +161,13 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         className="filter-input"
         disabled={!isConnected}
       />
-      <div className="tree-view">
+      <nav className="tree-view" aria-label="Playground tool lists">
         {/* Supported Capabilities - Only show sections with items */}
         {supportedCapabilities.map((capability) => {
-          const { key, items, label } = capability;
+          const { key, items, label, handler } = capability;
           const isExpanded = expandedCategories[key as keyof typeof expandedCategories];
-          
+          listRefs.current[key] = [];
+
           return (
             <details key={key} open={isExpanded} onToggle={(e) => setExpandedCategories(prev => ({...prev, [key]: (e.target as HTMLDetailsElement).open}))}>
               <summary onClick={(e) => { e.preventDefault(); toggleCategory(key as keyof typeof expandedCategories); }}>
@@ -140,50 +175,30 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
                 {label} ({items.length})
               </summary>
               {isExpanded && (
-                <ul>
-                  {key === 'tools' && items.map((tool: any) => (
-                    <li
-                      key={tool.name}
-                      className={`tree-item ${selectedTool?.name === tool.name ? 'selected' : ''}`}
-                      onClick={() => isConnected && handleSelectTool(tool)}
-                      title={tool.description}
-                    >
-                      <div className="item-name">{tool.name}</div>
-                      <div className="item-uri">{truncateDescription(tool.description)}</div>
-                    </li>
-                  ))}
-                  {key === 'resources' && items.map((res: any) => (
-                    <li
-                      key={res.uri || res.name}
-                      className={`tree-item`}
-                      title={res.description}
-                    >
-                      <div className="item-name">{res.name}</div>
-                      <div className="item-uri">{res.uri && truncateDescription(res.uri)} {res.description && truncateDescription(res.description)}</div>
-                    </li>
-                  ))}
-                  {key === 'resourceTemplates' && items.map((template: any) => (
-                    <li
-                      key={template.uriTemplate}
-                      className={`tree-item ${selectedResourceTemplate?.uriTemplate === template.uriTemplate ? 'selected' : ''}`}
-                      onClick={() => isConnected && handleSelectResourceTemplate(template)}
-                      title={template.description}
-                    >
-                      <div className="item-name">{template.name}</div>
-                      <div className="item-uri">{truncateDescription(template.uriTemplate)} {template.description && truncateDescription(template.description)}</div>
-                    </li>
-                  ))}
-                  {key === 'prompts' && items.map((prompt: any) => (
-                    <li
-                      key={prompt.name}
-                      className={`tree-item ${selectedPrompt?.name === prompt.name ? 'selected' : ''}`}
-                      onClick={() => isConnected && handleSelectPrompt(prompt)}
-                      title={prompt.description}
-                    >
-                      <div className="item-name">{prompt.name}</div>
-                      <div className="item-uri">{truncateDescription(prompt.description)}</div>
-                    </li>
-                  ))}
+                <ul onKeyDown={(e) => handleKeyDown(e, key, items)} role="listbox">
+                  {items.map((item: any, index: number) => {
+                    const isSelected =
+                      (key === 'tools' && selectedTool?.name === item.name) ||
+                      (key === 'resourceTemplates' && selectedResourceTemplate?.uriTemplate === item.uriTemplate) ||
+                      (key === 'prompts' && selectedPrompt?.name === item.name);
+
+                    return (
+                      <li
+                        key={item.name || item.uriTemplate || item.uri}
+                        ref={el => listRefs.current[key][index] = el}
+                        className={`tree-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => isConnected && handler && handler(item)}
+                        title={item.description}
+                        tabIndex={focusedIndex[key] === index ? 0 : -1}
+                        role="option"
+                        aria-selected={isSelected}
+                        onFocus={() => setFocusedIndex({ ...focusedIndex, [key]: index })}
+                      >
+                        <div className="item-name">{item.name}</div>
+                        <div className="item-uri">{truncateDescription(item.description || item.uriTemplate || item.uri)}</div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </details>
@@ -219,7 +234,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
             </div>
           </div>
         )}
-      </div>
+      </nav>
     </div>
   );
 };

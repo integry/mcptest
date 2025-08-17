@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
+import { useAuth } from '../context/AuthContext';
 
 interface SideNavProps {
   activeView: 'playground' | 'dashboards' | 'docs';
@@ -15,6 +16,9 @@ interface SideNavProps {
   getSpaceHealthColor: (spaceId: string) => 'green' | 'orange' | 'red' | 'gray';
   performAllDashboardsHealthCheck: () => Promise<void>;
   onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Function to handle card moves
+  theme?: string;
+  onToggleTheme?: () => void;
+  isMobile?: boolean;
 }
 
 const SideNav: React.FC<SideNavProps> = ({
@@ -28,13 +32,26 @@ const SideNav: React.FC<SideNavProps> = ({
   getSpaceHealthColor,
   performAllDashboardsHealthCheck,
   onMoveCard,
+  theme,
+  onToggleTheme,
+  isMobile = false,
 }) => {
   const [newSpaceName, setNewSpaceName] = React.useState('');
   const [showCreateInput, setShowCreateInput] = React.useState(false);
   const [draggedSpaceId, setDraggedSpaceId] = React.useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
+  const [focusedDashboardIndex, setFocusedDashboardIndex] = useState<number | null>(null);
+  const dashboardListRef = useRef<(HTMLLIElement | null)[]>([]);
   const navigate = useNavigate();
+  const { currentUser, loginWithGoogle, logout } = useAuth();
+  const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
+
+  useEffect(() => {
+    if (focusedDashboardIndex !== null && dashboardListRef.current[focusedDashboardIndex]) {
+      dashboardListRef.current[focusedDashboardIndex]?.focus();
+    }
+  }, [focusedDashboardIndex]);
 
   const handlePlaygroundClick = () => {
     navigate('/');
@@ -68,6 +85,26 @@ const SideNav: React.FC<SideNavProps> = ({
       handleCreateConfirm();
     } else if (event.key === 'Escape') {
       handleCreateCancel();
+    }
+  };
+
+  const handleDashboardKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const newIndex = focusedDashboardIndex === null ? 0 : Math.min(focusedDashboardIndex + 1, spaces.length - 1);
+      setFocusedDashboardIndex(newIndex);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const newIndex = focusedDashboardIndex === null ? spaces.length - 1 : Math.max(focusedDashboardIndex - 1, 0);
+      setFocusedDashboardIndex(newIndex);
+    } else if (event.key === 'Enter' && focusedDashboardIndex !== null) {
+      event.preventDefault();
+      const space = spaces[focusedDashboardIndex];
+      if (space) {
+        navigate(getSpaceUrl(space.name));
+        handleSelectSpace(space.id);
+        document.body.classList.remove('menu-open');
+      }
     }
   };
 
@@ -229,39 +266,46 @@ const SideNav: React.FC<SideNavProps> = ({
       </div>
 
       {/* List of Dashboards */}
-      <ul className="nav flex-column ms-3">
-        {spaces.map((space, index) => (
-          <li 
-            className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`} 
-            key={space.id}
-            onDragOver={(e) => handleSpaceDragOver(e, index)}
-            onDragLeave={handleSpaceDragLeave}
-            onDrop={(e) => handleSpaceDrop(e, index)}
-          >
-            <Link
-              to={getSpaceUrl(space.name)}
-              className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'spaces' ? 'active fw-bold' : ''}`}
-              draggable
-              onDragStart={(e) => handleSpaceDragStart(e, space.id)}
-              onDragEnd={handleSpaceDragEnd}
-              onClick={() => {
-                handleSelectSpace(space.id);
-                // Close mobile menu if open
-                document.body.classList.remove('menu-open');
-              }}
-              style={{ 
-                cursor: 'move',
-                opacity: draggedSpaceId === space.id ? 0.5 : 1,
-                transition: 'opacity 0.2s ease',
-                userSelect: 'none'
-              }}
+      <nav aria-label="Dashboards">
+        <ul className="nav flex-column ms-3" onKeyDown={handleDashboardKeyDown} role="listbox">
+          {spaces.map((space, index) => (
+            <li
+              ref={el => dashboardListRef.current[index] = el}
+              className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`} 
+              key={space.id}
+              onDragOver={(e) => handleSpaceDragOver(e, index)}
+              onDragLeave={handleSpaceDragLeave}
+              onDrop={(e) => handleSpaceDrop(e, index)}
+              tabIndex={focusedDashboardIndex === index ? 0 : -1}
+              role="option"
+              aria-selected={selectedSpaceId === space.id && activeView === 'spaces'}
+              onFocus={() => setFocusedDashboardIndex(index)}
             >
-              {renderHealthIndicator(space.id)}
-              {space.name} ({space.cards.length})
-            </Link>
+              <Link
+                to={getSpaceUrl(space.name)}
+                className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'spaces' ? 'active fw-bold' : ''}`}
+                draggable
+                onDragStart={(e) => handleSpaceDragStart(e, space.id)}
+                onDragEnd={handleSpaceDragEnd}
+                onClick={() => {
+                  handleSelectSpace(space.id);
+                  // Close mobile menu if open
+                  document.body.classList.remove('menu-open');
+                }}
+                style={{ 
+                  cursor: 'move',
+                  opacity: draggedSpaceId === space.id ? 0.5 : 1,
+                  transition: 'opacity 0.2s ease',
+                  userSelect: 'none'
+                }}
+              >
+                {renderHealthIndicator(space.id)}
+                {space.name} ({space.cards.length})
+              </Link>
           </li>
         ))}
-      </ul>
+        </ul>
+      </nav>
 
       {/* Create New Dashboard */}
       <div className="mt-2 ms-3">
@@ -284,11 +328,44 @@ const SideNav: React.FC<SideNavProps> = ({
             </button>
           </div>
         ) : (
-          <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick}>
+          <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick} aria-label="Create new dashboard">
             <i className="bi bi-plus-lg me-1"></i> Create New Dashboard
           </button>
         )}
       </div>
+
+      {/* Theme and Auth Controls - Only show on mobile */}
+      {isMobile && (
+        <div className="mt-4 px-3">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <span className="text-muted">Theme</span>
+            <button
+              onClick={onToggleTheme}
+              className="btn btn-outline-secondary btn-sm"
+              style={{ padding: '0.5rem 0.75rem', fontSize: '1.25rem', lineHeight: 1, border: 'none' }}
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              <i className={`bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
+            </button>
+          </div>
+          
+          {authEnabled && (
+            <div className="pb-3 border-bottom">
+              {currentUser ? (
+                <div className="d-flex flex-column align-items-center">
+                  <div className="d-flex align-items-center mb-2">
+                    <img src={currentUser.photoURL || undefined} alt={currentUser.displayName || 'User'} className="rounded-circle me-2" width="32" height="32" />
+                    <span>{currentUser.displayName}</span>
+                  </div>
+                  <button className="btn btn-sm btn-outline-secondary w-100" onClick={logout}>Logout</button>
+                </div>
+              ) : (
+                <button className="btn btn-sm btn-primary w-100" onClick={loginWithGoogle}>Login with Google</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Documentation Section */}
       <div className="mt-4">

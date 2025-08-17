@@ -105,9 +105,11 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
           {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
-          <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
-            {connectionStatus}
-          </span>
+          <div aria-live="polite" className="d-inline-block">
+            <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
+              {connectionStatus}
+            </span>
+          </div>
           {isConnected && (
             <div className="position-relative">
               <button
@@ -120,7 +122,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
               </button>
               {shareStatus !== 'idle' && (
-                <div className="notification-tooltip">
+                <div className="notification-tooltip" aria-live="polite">
                   {shareMessage}
                 </div>
               )}
@@ -196,13 +198,13 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 <input
                   className="form-check-input"
                   type="checkbox"
-                  id="useProxyCheck"
-                  checked={useProxy || false}
+                  id="proxyFallbackCheck"
+                  checked={useProxy !== undefined ? useProxy : true}
                   onChange={(e) => setUseProxy(e.target.checked)}
                   disabled={isConnecting || !currentUser}
                 />
-                <label className="form-check-label" htmlFor="useProxyCheck">
-                  Use proxy (for CORS issues)
+                <label className="form-check-label" htmlFor="proxyFallbackCheck">
+                  Automatically use proxy for CORS errors
                   {!currentUser && <span className="text-muted ms-1">(login required)</span>}
                 </label>
               </div>
