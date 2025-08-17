@@ -939,7 +939,7 @@ function App() {
       {/* UPDATE Header props */}
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
+      <main className="flex-grow-1 d-flex overflow-hidden" role="main"> {/* Main content area */}
         {/* Desktop Side Navigation */}
         <div className="desktop-sidebar col-auto bg-light border-end p-2 d-flex flex-column" style={{ width: '250px', height: '100%' }}>
           <SideNav
@@ -1053,7 +1053,7 @@ function App() {
           )}
 
         </div>
-      </div>
+      </main>
     </div>
   );
 }
