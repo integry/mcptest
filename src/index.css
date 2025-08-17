@@ -1761,6 +1761,7 @@ span.health-indicator.health-indicator-gray {
 
 :root[data-theme='light'] .theme-toggle-icon {
   transform: rotate(0deg);
+}
 
 .notification-popup {
   position: fixed;
