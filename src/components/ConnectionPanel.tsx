@@ -196,13 +196,13 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 <input
                   className="form-check-input"
                   type="checkbox"
-                  id="useProxyCheck"
-                  checked={useProxy || false}
+                  id="proxyFallbackCheck"
+                  checked={useProxy !== undefined ? useProxy : true}
                   onChange={(e) => setUseProxy(e.target.checked)}
                   disabled={isConnecting || !currentUser}
                 />
-                <label className="form-check-label" htmlFor="useProxyCheck">
-                  Use proxy (for CORS issues)
+                <label className="form-check-label" htmlFor="proxyFallbackCheck">
+                  Automatically use proxy for CORS errors
                   {!currentUser && <span className="text-muted ms-1">(login required)</span>}
                 </label>
               </div>
