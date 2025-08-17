@@ -7,6 +7,7 @@ import { logPageView, logEvent } from './utils/analytics';
 // Import Components
 import Header from './components/Header';
 import TabContent from './components/TabContent';
+import NotificationPopup from './components/NotificationPopup';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
 import DashboardsView from './components/DashboardsView'; // New
@@ -138,6 +139,7 @@ function App() {
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first dashboard initially
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
   const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which dashboards have been loaded
+  const [notification, setNotification] = useState<{ message: string; show: boolean }>({ message: '', show: false });
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -645,6 +647,8 @@ function App() {
           }
           return space;
       }));
+      setNotification({ message: 'Added to dashboard', show: true });
+      setTimeout(() => setNotification({ message: '', show: false }), 3000);
       console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
   };
 
@@ -659,6 +663,8 @@ function App() {
           }
           return space;
       }));
+      setNotification({ message: 'Added to dashboard', show: true });
+      setTimeout(() => setNotification({ message: '', show: false }), 3000);
       console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
   };
 
@@ -1058,6 +1064,7 @@ function App() {
 
         </div>
       </main>
+      <NotificationPopup message={notification.message} show={notification.show} />
     </div>
   );
 }
