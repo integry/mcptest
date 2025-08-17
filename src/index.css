@@ -1749,3 +1749,18 @@ span.health-indicator.health-indicator-gray {
 :root[data-theme='dark'] .border {
   border-color: var(--border-color) !important;
 }
+
+/* --- Notification Popup Styles --- */
+.notification-popup {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 5px;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  transition: opacity 0.3s, transform 0.3s;
+}

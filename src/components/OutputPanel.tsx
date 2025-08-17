@@ -140,7 +140,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                     {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
                   </button>
                   {shareStatus !== 'idle' && (
-                    <div className="notification-tooltip">
+                    <div className="notification-tooltip" aria-live="polite">
                       {shareMessage}
                     </div>
                   )}
