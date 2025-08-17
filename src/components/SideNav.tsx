@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
@@ -41,9 +41,17 @@ const SideNav: React.FC<SideNavProps> = ({
   const [draggedSpaceId, setDraggedSpaceId] = React.useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
+  const [focusedDashboardIndex, setFocusedDashboardIndex] = useState<number | null>(null);
+  const dashboardListRef = useRef<(HTMLLIElement | null)[]>([]);
   const navigate = useNavigate();
   const { currentUser, loginWithGoogle, logout } = useAuth();
   const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
+
+  useEffect(() => {
+    if (focusedDashboardIndex !== null && dashboardListRef.current[focusedDashboardIndex]) {
+      dashboardListRef.current[focusedDashboardIndex]?.focus();
+    }
+  }, [focusedDashboardIndex]);
 
   const handlePlaygroundClick = () => {
     navigate('/');
@@ -77,6 +85,26 @@ const SideNav: React.FC<SideNavProps> = ({
       handleCreateConfirm();
     } else if (event.key === 'Escape') {
       handleCreateCancel();
+    }
+  };
+
+  const handleDashboardKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const newIndex = focusedDashboardIndex === null ? 0 : Math.min(focusedDashboardIndex + 1, spaces.length - 1);
+      setFocusedDashboardIndex(newIndex);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const newIndex = focusedDashboardIndex === null ? spaces.length - 1 : Math.max(focusedDashboardIndex - 1, 0);
+      setFocusedDashboardIndex(newIndex);
+    } else if (event.key === 'Enter' && focusedDashboardIndex !== null) {
+      event.preventDefault();
+      const space = spaces[focusedDashboardIndex];
+      if (space) {
+        navigate(getSpaceUrl(space.name));
+        handleSelectSpace(space.id);
+        document.body.classList.remove('menu-open');
+      }
     }
   };
 
@@ -239,36 +267,41 @@ const SideNav: React.FC<SideNavProps> = ({
 
       {/* List of Dashboards */}
       <nav aria-label="Dashboards">
-        <ul className="nav flex-column ms-3">
+        <ul className="nav flex-column ms-3" onKeyDown={handleDashboardKeyDown} role="listbox">
           {spaces.map((space, index) => (
             <li
-              className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
-            key={space.id}
-            onDragOver={(e) => handleSpaceDragOver(e, index)}
-            onDragLeave={handleSpaceDragLeave}
-            onDrop={(e) => handleSpaceDrop(e, index)}
-          >
-            <Link
-              to={getSpaceUrl(space.name)}
-              className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'spaces' ? 'active fw-bold' : ''}`}
-              draggable
-              onDragStart={(e) => handleSpaceDragStart(e, space.id)}
-              onDragEnd={handleSpaceDragEnd}
-              onClick={() => {
-                handleSelectSpace(space.id);
-                // Close mobile menu if open
-                document.body.classList.remove('menu-open');
-              }}
-              style={{ 
-                cursor: 'move',
-                opacity: draggedSpaceId === space.id ? 0.5 : 1,
-                transition: 'opacity 0.2s ease',
-                userSelect: 'none'
-              }}
+              ref={el => dashboardListRef.current[index] = el}
+              className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`} 
+              key={space.id}
+              onDragOver={(e) => handleSpaceDragOver(e, index)}
+              onDragLeave={handleSpaceDragLeave}
+              onDrop={(e) => handleSpaceDrop(e, index)}
+              tabIndex={focusedDashboardIndex === index ? 0 : -1}
+              role="option"
+              aria-selected={selectedSpaceId === space.id && activeView === 'spaces'}
+              onFocus={() => setFocusedDashboardIndex(index)}
             >
-              {renderHealthIndicator(space.id)}
-              {space.name} ({space.cards.length})
-            </Link>
+              <Link
+                to={getSpaceUrl(space.name)}
+                className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'spaces' ? 'active fw-bold' : ''}`}
+                draggable
+                onDragStart={(e) => handleSpaceDragStart(e, space.id)}
+                onDragEnd={handleSpaceDragEnd}
+                onClick={() => {
+                  handleSelectSpace(space.id);
+                  // Close mobile menu if open
+                  document.body.classList.remove('menu-open');
+                }}
+                style={{ 
+                  cursor: 'move',
+                  opacity: draggedSpaceId === space.id ? 0.5 : 1,
+                  transition: 'opacity 0.2s ease',
+                  userSelect: 'none'
+                }}
+              >
+                {renderHealthIndicator(space.id)}
+                {space.name} ({space.cards.length})
+              </Link>
           </li>
         ))}
         </ul>
