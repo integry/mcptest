@@ -122,6 +122,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                 style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                 onClick={() => setIsFullscreen(true)}
                 title="Fullscreen"
+                aria-label="View result in fullscreen"
               >
                 <i className="bi bi-arrows-fullscreen"></i>
               </button>
@@ -134,6 +135,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                     onClick={handleShareResult}
                     title="Share result link"
                     disabled={shareStatus !== 'idle'}
+                    aria-label="Copy share link to clipboard"
                   >
                     {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
                   </button>
@@ -154,6 +156,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                   style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                   title={`Add to dashboard: ${props.spaces[0].name}`}
                   onClick={() => handleAddToSpace(props.spaces[0].id)}
+                  aria-label="Add result to dashboard"
                 >
                   <i className="bi bi-plus-square"></i> Add to dashboard
                 </button>
@@ -167,6 +170,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
                     title="Add to Dashboard..."
+                    aria-label="Add result to dashboard"
                   >
                     <i className="bi bi-plus-square me-1"></i>Add to dashboard
                   </button>

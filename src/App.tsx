@@ -903,14 +903,6 @@ function App() {
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">
-      {/* Mobile Menu Toggle */}
-      <button 
-        className="mobile-menu-toggle"
-        onClick={() => document.body.classList.toggle('menu-open')}
-        aria-label="Toggle navigation menu"
-      >
-        <span className="hamburger"></span>
-      </button>
 
       {/* Mobile Sidebar Overlay */}
       <div 
@@ -938,13 +930,16 @@ function App() {
           getSpaceHealthColor={getDashboardHealthColor}
           performAllDashboardsHealthCheck={performAllDashboardsHealthCheck}
           onMoveCard={handleMoveCard}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          isMobile={true}
         />
       </div>
 
       {/* UPDATE Header props */}
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
+      <main className="flex-grow-1 d-flex overflow-hidden" role="main"> {/* Main content area */}
         {/* Desktop Side Navigation */}
         <div className="desktop-sidebar col-auto bg-light border-end p-2 d-flex flex-column" style={{ width: '250px', height: '100%' }}>
           <SideNav
@@ -1058,7 +1053,7 @@ function App() {
           )}
 
         </div>
-      </div>
+      </main>
     </div>
   );
 }

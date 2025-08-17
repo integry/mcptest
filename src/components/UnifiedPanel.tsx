@@ -161,7 +161,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         className="filter-input"
         disabled={!isConnected}
       />
-      <div className="tree-view">
+      <nav className="tree-view" aria-label="Playground tool lists">
         {/* Supported Capabilities - Only show sections with items */}
         {supportedCapabilities.map((capability) => {
           const { key, items, label, handler } = capability;
@@ -234,7 +234,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
             </div>
           </div>
         )}
-      </div>
+      </nav>
     </div>
   );
 };
