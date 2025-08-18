@@ -73,6 +73,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
   const [isProxied, setIsProxied] = useState(false); // State to track if current connection is proxied
+  const [serverType, setServerType] = useState<'remote' | 'local'>('remote'); // Add server type state
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -240,8 +241,30 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       return attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken);
     };
 
+    // Check if this is a local stdio connection
+    if (serverType === 'local') {
+        // Stdio connections are not supported in browser environments
+        const errorMessage = 'Local stdio connections are not supported in the browser environment. Please use a desktop application or CLI tool for stdio connections.';
+        console.error('[DEBUG] Stdio not supported in browser');
+        setConnectionError({
+            error: errorMessage,
+            serverUrl: targetUrl,
+            timestamp: new Date(),
+            details: 'The StdioClientTransport requires Node.js APIs that are not available in the browser.'
+        });
+        setConnectionStatus('Error');
+        setIsConnecting(false);
+        addLogEntry({ type: 'error', data: errorMessage });
+        logEvent('connect_failure', { 
+            transport_type: 'stdio',
+            error_type: 'BrowserNotSupported',
+            error_message: errorMessage
+        });
+        return; // Exit early for stdio in browser
+    }
+    
     try {
-        // Always try direct connection first
+        // Always try direct connection first for remote servers
         try {
           const result = await Promise.race([
             connectDirectly(),
@@ -336,6 +359,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     handleDisconnect,
     handleAbortConnection,
     isProxied, // Expose proxy status
+    serverType,
+    setServerType,
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
       const updatedServers = recentServers.filter(url => url !== urlToRemove);

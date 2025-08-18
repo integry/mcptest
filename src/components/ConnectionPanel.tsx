@@ -36,6 +36,8 @@ interface ConnectionPanelProps {
   useProxy?: boolean;
   setUseProxy?: (useProxy: boolean) => void;
   isProxied?: boolean; // New prop
+  serverType?: 'remote' | 'local';
+  setServerType?: (type: 'remote' | 'local') => void;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -56,10 +58,13 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   useProxy,
   setUseProxy,
   isProxied, // Destructure new prop
+  serverType = 'remote',
+  setServerType,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const { share, shareStatus, shareMessage } = useShare();
   const { currentUser } = useAuth();
+  const [localServerType, setLocalServerType] = useState<'remote' | 'local'>(serverType);
 
   // Update timer every second while connecting
   useEffect(() => {
@@ -103,7 +108,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
         <h5 className="mb-0">Server Connection</h5>
         <div className="d-flex align-items-center gap-2">
-          {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
+          {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : transportType === 'stdio' ? 'bg-info' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : transportType === 'stdio' ? 'STDIO' : 'SSE'}</span>}
           {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
           <div aria-live="polite" className="d-inline-block">
             <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
@@ -131,14 +136,60 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         </div>
       </div>
       <div className="card-body">
+        {setServerType && (
+          <div className="mb-3">
+            <div className="form-check form-check-inline">
+              <input
+                className="form-check-input"
+                type="radio"
+                name="serverType"
+                id="remoteServer"
+                value="remote"
+                checked={localServerType === 'remote'}
+                onChange={() => {
+                  setLocalServerType('remote');
+                  setServerType('remote');
+                }}
+                disabled={isConnecting || isConnected}
+              />
+              <label className="form-check-label" htmlFor="remoteServer">
+                Remote (HTTP)
+              </label>
+            </div>
+            <div className="form-check form-check-inline">
+              <input
+                className="form-check-input"
+                type="radio"
+                name="serverType"
+                id="localServer"
+                value="local"
+                checked={localServerType === 'local'}
+                onChange={() => {
+                  setLocalServerType('local');
+                  setServerType('local');
+                }}
+                disabled={isConnecting || isConnected}
+              />
+              <label className="form-check-label" htmlFor="localServer">
+                Local (stdio)
+              </label>
+            </div>
+          </div>
+        )}
         <div className="mb-3">
-          <label htmlFor="serverUrl" className="form-label">MCP Server URL</label>
+          <label htmlFor="serverUrl" className="form-label">
+            {localServerType === 'remote' ? 'MCP Server URL' : 'Local Server Command'}
+          </label>
           <div className="input-group">
             <input
               type="text"
               className="form-control"
               id="serverUrl"
-              placeholder={`${getRandomServer()} (https:// added automatically)`}
+              placeholder={
+                localServerType === 'remote'
+                  ? `${getRandomServer()} (https:// added automatically)`
+                  : 'e.g., node path/to/server.js'
+              }
               value={serverUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -148,7 +199,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 }
               }}
               disabled={isConnecting || isConnected}
-              list={isConnected ? undefined : "recentServersList"}
+              list={isConnected || localServerType === 'local' ? undefined : "recentServersList"}
               readOnly={isConnected}
             />
             {isConnected ? (
@@ -178,7 +229,11 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   <option key={url} value={url} />
                 ))}
               </datalist>
-              <div className="form-text">For example, https://{getRandomServer()}/ or http://localhost:3001</div>
+              <div className="form-text">
+                {localServerType === 'remote' 
+                  ? `For example, https://${getRandomServer()}/ or http://localhost:3001`
+                  : 'Enter the command to start your local MCP server'}
+              </div>
             </>
           )}
           {isConnecting && (
@@ -192,7 +247,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               </button>
             </div>
           )}
-          {import.meta.env.VITE_PROXY_URL && !isConnected && setUseProxy && (
+          {import.meta.env.VITE_PROXY_URL && !isConnected && setUseProxy && localServerType === 'remote' && (
             <div className="mt-2">
               <div className="form-check">
                 <input
