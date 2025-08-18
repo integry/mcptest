@@ -485,6 +485,7 @@ input, textarea, select {
   cursor: pointer;
   transition: background-color 0.2s ease;
   border: 1px solid var(--border-color);
+  margin-left: 0.25rem; /* Indent toggle switches slightly to align with other inputs */
 }
 
 .form-check-input[type="checkbox"]:checked {
