@@ -185,7 +185,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               id="serverUrl"
               placeholder={
                 localServerType === 'remote'
-                  ? `${getRandomServer()}
+                  ? `${placeholder}`
                   : 'e.g., node path/to/server.js'
               }
               value={serverUrl}
