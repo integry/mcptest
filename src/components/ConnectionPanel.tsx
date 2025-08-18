@@ -12,12 +12,6 @@ const SUGGESTED_SERVERS = [
   'mcp.api.coingecko.com'
 ];
 
-// Select a random server for the placeholder
-const getRandomServer = () => {
-  const randomIndex = Math.floor(Math.random() * SUGGESTED_SERVERS.length);
-  return SUGGESTED_SERVERS[randomIndex];
-};
-
 interface ConnectionPanelProps {
   serverUrl: string;
   setServerUrl: (url: string) => void;
@@ -62,6 +56,10 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   setServerType,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
+  const [placeholder] = useState(() => {
+    const randomIndex = Math.floor(Math.random() * SUGGESTED_SERVERS.length);
+    return SUGGESTED_SERVERS[randomIndex];
+  });
   const { share, shareStatus, shareMessage } = useShare();
   const { currentUser } = useAuth();
   const [localServerType, setLocalServerType] = useState<'remote' | 'local'>(serverType);
@@ -187,7 +185,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               id="serverUrl"
               placeholder={
                 localServerType === 'remote'
-                  ? `${getRandomServer()} (https:// added automatically)`
+                  ? `${getRandomServer()}
                   : 'e.g., node path/to/server.js'
               }
               value={serverUrl}
@@ -231,7 +229,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               </datalist>
               <div className="form-text">
                 {localServerType === 'remote' 
-                  ? `For example, https://${getRandomServer()}/ or http://localhost:3001`
+                  ? `For example, https://${placeholder}/ or http://localhost:3001`
                   : 'Enter the command to start your local MCP server'}
               </div>
             </>
