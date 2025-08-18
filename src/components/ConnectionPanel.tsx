@@ -12,12 +12,6 @@ const SUGGESTED_SERVERS = [
   'mcp.api.coingecko.com'
 ];
 
-// Select a random server for the placeholder
-const getRandomServer = () => {
-  const randomIndex = Math.floor(Math.random() * SUGGESTED_SERVERS.length);
-  return SUGGESTED_SERVERS[randomIndex];
-};
-
 interface ConnectionPanelProps {
   serverUrl: string;
   setServerUrl: (url: string) => void;
@@ -58,6 +52,10 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   isProxied, // Destructure new prop
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
+  const [placeholder] = useState(() => {
+    const randomIndex = Math.floor(Math.random() * SUGGESTED_SERVERS.length);
+    return SUGGESTED_SERVERS[randomIndex];
+  });
   const { share, shareStatus, shareMessage } = useShare();
   const { currentUser } = useAuth();
 
@@ -138,7 +136,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               type="text"
               className="form-control"
               id="serverUrl"
-              placeholder={`${getRandomServer()} (https:// added automatically)`}
+              placeholder={`${placeholder} (https:// added automatically)`}
               value={serverUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -178,7 +176,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   <option key={url} value={url} />
                 ))}
               </datalist>
-              <div className="form-text">For example, https://{getRandomServer()}/ or http://localhost:3001</div>
+              <div className="form-text">For example, https://{placeholder}/ or http://localhost:3001</div>
             </>
           )}
           {isConnecting && (
