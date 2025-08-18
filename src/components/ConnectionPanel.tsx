@@ -216,7 +216,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                  onClick={() => handleConnect()} // Call without arguments
                  disabled={isConnecting || !serverUrl}
                >
-                 {isConnecting ? `Connecting... (${connectionTimer}s)` : 'Connect'}
+                 {isConnecting ? ('Connecting... (' + connectionTimer + 's)') : 'Connect'}
                </button>
             )}
           </div>
