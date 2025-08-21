@@ -25,11 +25,30 @@
   --input-border: #d1d5db;
   --input-focus-border: var(--primary-color);
   --link-color: var(--primary-color);
-  --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --box-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  --box-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  --border-radius: 0.5rem; /* Slightly larger radius for modern feel */
   --accent-gradient: linear-gradient(135deg, #22c55e, #16a34a);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
 }
 
 /* Dark Theme CSS Variables */
@@ -47,9 +66,10 @@
   --input-border: #3a3a3a; /* Darker border, was #444444 */
   --input-focus-border: var(--primary-color);
   --link-color: var(--primary-light);
-  --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --box-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
-  --box-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.25);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
 }
 
 /* --- Global Styles --- */
@@ -100,15 +120,15 @@ a:hover {
 .card {
   background-color: var(--card-bg);
   border: none;
-  border-radius: var(--border-radius);
-  box-shadow: var(--box-shadow);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   margin-bottom: 1.5rem !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transform: translateY(0);
 }
 
 .card:hover {
-  box-shadow: var(--box-shadow-xl);
+  box-shadow: var(--shadow-xl);
 }
 
 .card-header {
@@ -116,7 +136,7 @@ a:hover {
   border-bottom: 1px solid var(--border-color);
   padding: 1rem 1.25rem;
   position: relative;
-  border-radius: var(--border-radius) var(--border-radius) 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   min-height: 3.5rem;
   display: flex;
   align-items: center;
@@ -172,7 +192,7 @@ a:hover {
 
 /* Buttons */
 .btn {
-  border-radius: var(--border-radius);
+  border-radius: var(--radius-lg);
   padding: 0.5rem 1rem;
   font-weight: 500;
   font-size: 0.875rem;
@@ -304,7 +324,7 @@ a:hover {
 
 /* Forms */
 .form-control, .form-select {
-  border-radius: var(--border-radius);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--input-border);
   background-color: var(--input-bg) !important;
   color: var(--text-color) !important;
@@ -371,7 +391,7 @@ a:hover {
 
 /* Badges */
 .badge {
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   padding: 0.4em 0.75em;
   font-weight: 500;
   font-size: 0.75rem;
@@ -405,7 +425,7 @@ a:hover {
 
 /* Alerts */
 .alert {
-  border-radius: var(--border-radius);
+  border-radius: var(--radius-lg);
   border-width: 1px;
   border-style: solid;
   color: var(--text-color);
@@ -511,17 +531,17 @@ input, textarea, select {
 
 /* Layout Improvements */
 .playground-layout {
-  margin: 0 -0.75rem; /* Compensate for column padding */
+  margin: 0 calc(var(--space-3) * -1); /* Compensate for column padding */
 }
 
 .playground-layout > div {
-  padding-left: 0.75rem;
-  padding-right: 0.75rem;
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
 }
 
 /* Main content area spacing */
 .main-content {
-  padding: 1rem;
+  padding: var(--space-4);
 }
 
 /* --- Component Specific Styles --- */
@@ -530,7 +550,7 @@ input, textarea, select {
 header.bg-dark {
   background-color: var(--card-bg);
   color: var(--text-color) !important;
-  padding: 1.5rem 2rem !important;
+  padding: var(--space-6) var(--space-8) !important;
   margin-bottom: 0 !important;
   border-bottom: none;
   box-shadow: var(--box-shadow);
@@ -538,7 +558,7 @@ header.bg-dark {
 header.bg-dark h1 {
   color: var(--text-color);
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
   font-size: 1.75rem;
   letter-spacing: -0.025em;
 }
@@ -553,9 +573,9 @@ header.bg-dark p {
 .response-container {
   background-color: var(--card-bg);
   border: none;
-  border-radius: var(--border-radius);
-  box-shadow: var(--box-shadow);
-  padding: 1.5rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6);
   max-height: calc(100vh - 200px);
   overflow-y: auto;
   position: relative;
@@ -563,7 +583,7 @@ header.bg-dark p {
 }
 
 .response-container:hover {
-  box-shadow: var(--box-shadow-lg);
+  box-shadow: var(--shadow-lg);
 }
 .response-area, .result-panel-body {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
@@ -573,8 +593,8 @@ header.bg-dark p {
   background-color: var(--card-bg);
 }
 .event-entry {
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border-color);
 }
 .event-entry:last-child {
@@ -583,12 +603,12 @@ header.bg-dark p {
 .event-timestamp {
   color: var(--text-muted);
   font-size: 0.75rem;
-  margin-right: 0.75rem;
+  margin-right: var(--space-3);
   font-weight: 500;
 }
 .event-type {
   font-weight: 600;
-  margin-right: 0.75rem;
+  margin-right: var(--space-3);
   font-size: 0.8rem;
 }
 .event-data {
@@ -605,10 +625,10 @@ header.bg-dark p {
 
 /* Params Panel */
 .param-form {
-  margin-bottom: 1rem;
-  padding: 1.25rem;
+  margin-bottom: var(--space-4);
+  padding: var(--space-5);
   border: none;
-  border-radius: var(--border-radius);
+  border-radius: var(--radius-lg);
   background-color: var(--card-bg);
   box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -620,14 +640,14 @@ header.bg-dark p {
 .param-description {
   font-size: 0.875rem;
   color: var(--text-muted);
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
 }
 .tool-description {
   font-size: 0.875rem;
-  margin-bottom: 1rem;
-  padding: 1rem;
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), rgba(34, 197, 94, 0.1));
-  border-radius: var(--border-radius);
+  border-radius: var(--radius-lg);
   border: none;
   box-shadow: inset 0 1px 3px 0 rgba(34, 197, 94, 0.2);
   color: var(--text-color);
@@ -649,7 +669,7 @@ header.bg-dark p {
 .list-group-item {
   border: none;
   border-bottom: 1px solid var(--border-color);
-  padding: 1rem 1.25rem; /* Increased padding */
+  padding: var(--space-4) var(--space-5); /* Increased padding */
   background-color: var(--card-bg);
   color: var(--text-color);
   transition: all 0.2s ease;
@@ -673,8 +693,8 @@ header.bg-dark p {
 .nav-link {
   color: var(--text-color);
   transition: all 0.2s ease;
-  border-radius: 0.5rem;
-  margin-bottom: 0.25rem;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-1);
 }
 .nav-link:hover {
   color: var(--primary-color);
@@ -689,7 +709,7 @@ header.bg-dark p {
 /* Tab-specific styling improvements */
 .nav-tabs {
   border-bottom: 1px solid var(--border-color) !important;
-  gap: 0.25rem;
+  gap: var(--space-1);
   display: flex;
   align-items: flex-end;
   margin-bottom: 0 !important;
@@ -699,9 +719,9 @@ header.bg-dark p {
   border: 1px solid transparent;
   border-bottom: none;
   background-color: transparent;
-  padding: 0.5rem 1rem;
+  padding: var(--space-2) var(--space-4);
   margin-bottom: 0;
-  border-radius: 0.5rem 0.5rem 0 0 !important;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
   position: relative;
   transition: all 0.2s ease;
 }
@@ -738,15 +758,15 @@ header.bg-dark p {
 .bg-light {
   background-color: var(--card-bg) !important;
   border: none !important;
-  box-shadow: var(--box-shadow);
+  box-shadow: var(--shadow-md);
 }
 
 /* History List Specific */
 .list-group-item pre {
   font-size: 0.75rem;
   background-color: var(--card-bg-secondary) !important;
-  padding: 0.5rem;
-  border-radius: 0.5rem;
+  padding: var(--space-2);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   color: var(--text-color) !important;
   font-family: var(--font-family-mono);
@@ -769,17 +789,17 @@ header.bg-dark p {
 .dropdown-menu {
   background-color: var(--card-bg) !important;
   border: none !important;
-  box-shadow: var(--box-shadow-lg) !important;
-  border-radius: var(--border-radius);
-  padding: 0.5rem;
+  box-shadow: var(--shadow-lg) !important;
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
 }
 
 .dropdown-item {
   color: var(--text-color) !important;
   background-color: transparent !important;
-  border-radius: 0.25rem;
-  padding: 0.5rem 0.75rem;
-  margin: 0.125rem 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin: 2px 0;
   transition: all 0.2s ease;
 }
 
@@ -790,7 +810,7 @@ header.bg-dark p {
 }
 
 .dropdown-divider {
-  margin: 0.5rem 0;
+  margin: var(--space-2) 0;
   border-color: var(--border-color);
   opacity: 0.5;
 }
@@ -819,18 +839,18 @@ header.bg-dark p {
 
 /* Scrollbar styling for webkit browsers */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: var(--space-2);
+  height: var(--space-2);
 }
 
 ::-webkit-scrollbar-track {
   background: var(--card-bg-secondary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -865,11 +885,11 @@ select {
 
 /* Utility */
 .w-100 { width: 100% !important; }
-.mt-3 { margin-top: 1rem !important; }
-.mb-3 { margin-bottom: 1rem !important; }
-.p-2 { padding: 0.5rem !important; }
-.me-2 { margin-right: 0.5rem !important; }
-.ms-2 { margin-left: 0.5rem !important; }
+.mt-3 { margin-top: var(--space-4) !important; }
+.mb-3 { margin-bottom: var(--space-4) !important; }
+.p-2 { padding: var(--space-2) !important; }
+.me-2 { margin-right: var(--space-2) !important; }
+.ms-2 { margin-left: var(--space-2) !important; }
 .align-self-center { align-self: center !important; }
 .justify-content-between { justify-content: space-between !important; }
 .justify-content-start { justify-content: flex-start !important; }
@@ -896,11 +916,11 @@ select {
 .event-data pre {
   background-color: var(--card-bg);
   border: none;
-  border-radius: var(--border-radius);
+  border-radius: var(--radius-lg);
   box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
-  padding: 1.25rem;
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+  padding: var(--space-5);
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-2);
   overflow-x: auto;
   white-space: pre;
   color: var(--text-color);
@@ -920,12 +940,12 @@ select {
   content: var(--lang, ""); /* Use CSS variable for language name */
   position: absolute;
   top: 0;
-  right: 0.5rem;
+  right: var(--space-2);
   background-color: var(--secondary-color);
   color: white;
   font-size: 0.75rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 0 0 0.25rem 0.25rem;
+  padding: 1.6px 6.4px;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   font-family: var(--font-family-sans-serif); /* Use standard font */
   font-weight: 600;
   text-transform: lowercase;
@@ -966,7 +986,7 @@ select {
 .drag-over {
   border: 2px dashed var(--primary-color) !important;
   background-color: rgba(59, 130, 246, 0.1) !important;
-  border-radius: var(--border-radius);
+  border-radius: var(--radius-lg);
 }
 
 .drag-over .card {
@@ -1001,14 +1021,14 @@ select {
 .space-drag-over {
   border-left: 3px solid var(--primary-color) !important;
   background-color: rgba(59, 130, 246, 0.1) !important;
-  border-radius: 0 var(--border-radius) var(--border-radius) 0;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 
 /* Card Drop Target Styles */
 .card-drop-target {
   border-left: 3px solid var(--success-color) !important;
   background-color: rgba(16, 185, 129, 0.1) !important;
-  border-radius: 0 var(--border-radius) var(--border-radius) 0;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 
 .nav-item .nav-link[draggable="true"]:hover {
@@ -1032,15 +1052,15 @@ select {
 
 /* Small button adjustments */
 .btn-sm {
-  padding: .375rem .75rem;
+  padding: 6px var(--space-3);
   font-size: .8125rem;
-  border-radius: .25rem;
+  border-radius: var(--radius-sm);
 }
 
 /* Override for card header buttons specifically */
 .card-header .btn-sm {
   height: 22px !important;
-  padding: .25rem .5rem !important;
+  padding: var(--space-1) var(--space-2) !important;
   line-height: 1 !important;
   margin: 0 !important;
   vertical-align: middle !important;
@@ -1050,7 +1070,7 @@ select {
 .btn-group {
   display: inline-flex;
   box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1);
-  border-radius: 0.375rem;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -1085,13 +1105,13 @@ select {
 .mobile-menu-toggle {
   display: none;
   position: fixed;
-  top: 1rem;
-  left: 1rem;
+  top: var(--space-4);
+  left: var(--space-4);
   z-index: 1060;
   background-color: var(--primary-color);
   border: none;
-  border-radius: var(--border-radius);
-  padding: 0.5rem;
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
   color: white;
   box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
   width: 48px;
@@ -1162,7 +1182,7 @@ select {
   z-index: 1055;
   transition: left 0.3s ease;
   overflow-y: auto;
-  padding: 4rem 1rem 1rem 1rem;
+  padding: var(--space-10) var(--space-4) var(--space-4) var(--space-4);
   box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
   border-right: 1px solid var(--border-color);
 }
@@ -1170,15 +1190,15 @@ select {
 /* Mobile close button */
 .mobile-close-btn {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: var(--space-4);
+  right: var(--space-4);
   background: none;
   border: none;
   font-size: 1.5rem;
   color: var(--text-color);
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: var(--border-radius);
+  padding: var(--space-1);
+  border-radius: var(--radius-lg);
 }
 
 .mobile-close-btn:hover {
@@ -1229,12 +1249,12 @@ select {
 
   /* Adjust header padding on mobile */
   header.bg-dark {
-    padding-left: 4rem !important;
+    padding-left: var(--space-10) !important;
   }
 
   /* Adjust card margins on mobile */
   .card {
-    margin-bottom: 1rem !important;
+    margin-bottom: var(--space-4) !important;
   }
 
   /* Stack columns on mobile */
@@ -1302,7 +1322,7 @@ select {
 }
 
 .spaces-mode .tool-result-content {
-  margin-top: 1rem;
+  margin-top: var(--space-4);
 }
 
 .spaces-mode .event-data-wrapper {
@@ -1311,14 +1331,14 @@ select {
 }
 
 .spaces-mode .event-data {
-  padding: 0.75rem !important;
+  padding: var(--space-3) !important;
   margin: 0 !important;
   display: block;
 }
 
 .spaces-mode .btn-group {
-  margin-bottom: 0.5rem;
-  border-radius: 0.25rem;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-sm);
 }
 
 /* Remove card body padding in spaces */
@@ -1337,11 +1357,11 @@ select {
 .spaces-mode .event-data ul,
 .spaces-mode .event-data ol,
 .spaces-mode .event-data pre {
-  margin-bottom: 0.5rem !important;
+  margin-bottom: var(--space-2) !important;
 }
 
 .spaces-mode .event-data hr {
-  margin: 0.5rem 0 !important;
+  margin: var(--space-2) 0 !important;
 }
 
 /* Additional comprehensive fixes for any remaining white backgrounds */
@@ -1435,8 +1455,8 @@ span.health-indicator.health-indicator-gray {
   position: absolute;
   background-color: #2d3748 !important; /* Dark background */
   color: #ffffff !important; /* Light text */
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
   font-size: 0.875rem;
   font-weight: 500;
   white-space: nowrap;
@@ -1446,7 +1466,7 @@ span.health-indicator.health-indicator-gray {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-3);
   max-width: 280px;
   text-align: center;
 }
@@ -1486,13 +1506,13 @@ span.health-indicator.health-indicator-gray {
 /* Arrow positioning for right-aligned tooltips */
 .notification-tooltip.right-aligned::after {
   left: auto;
-  right: 1rem;
+  right: var(--space-4);
   transform: translateX(0);
 }
 
 .notification-tooltip.right-aligned::before {
   left: auto;
-  right: 1rem;
+  right: var(--space-4);
   transform: translateX(0);
 }
 
@@ -1504,7 +1524,7 @@ span.health-indicator.health-indicator-gray {
 @keyframes tooltipFadeIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(0.5rem);
+    transform: translateX(-50%) translateY(var(--space-2));
   }
   to {
     opacity: 1;
@@ -1527,19 +1547,19 @@ span.health-indicator.health-indicator-gray {
 
 /* Dashboard Controls Styling */
 .dashboard-controls {
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .dashboard-controls .btn-group {
   background-color: var(--card-bg-secondary);
-  padding: 0.125rem;
-  border-radius: 0.5rem;
+  padding: 2px;
+  border-radius: var(--radius-lg);
   box-shadow: inset 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .dashboard-controls .btn-group .btn {
   min-width: 2.5rem;
-  padding: 0.375rem 0.5rem;
+  padding: 6px var(--space-2);
   font-weight: 600;
   transition: all 0.2s ease;
 }
