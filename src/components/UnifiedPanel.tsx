@@ -208,7 +208,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         {/* Show message if no supported capabilities when connected */}
         {isConnected && supportedCapabilities.length === 0 && (
           <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            No supported capabilities found
+            This server has no tools to display.
           </div>
         )}
 
