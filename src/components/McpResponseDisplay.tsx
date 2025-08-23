@@ -180,7 +180,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   
   // Spaces mode: simplified display with only content and controls
   if (spacesMode && isResultType) {
-    const effectiveExpanded = forceExpanded !== undefined ? forceExpanded : isContentExpanded;
+    const effectiveExpanded = forceExpanded;
     
     return (
       <div className={`${entryClassName} spaces-mode`} title={title}>
@@ -189,27 +189,16 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           <div 
             className="event-data-wrapper"
             style={{ 
-              maxHeight: 'none', 
-              overflowY: 'visible'
+              maxHeight: effectiveExpanded ? 'none' : '300px',
+              overflowY: effectiveExpanded ? 'visible' : 'auto'
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{effectiveExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}</code></pre>
+                <pre><code className="language-json">{textContent}</code></pre>
             ) : htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ 
-                __html: (() => {
-                  if (effectiveExpanded) return htmlContent;
-                  if (showExcerpt) {
-                    const excerpt = createExcerpt(dataString);
-                    return converter.current?.makeHtml(excerpt) || htmlContent;
-                  }
-                  return htmlContent;
-                })()
-              }} />
+              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>
-                {effectiveExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
-              </span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
             )}
           </div>
         </div>
@@ -310,22 +299,11 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}</code></pre>
+                <pre><code className="language-json">{textContent}</code></pre>
             ) : htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ 
-                __html: (() => {
-                  if (isContentExpanded) return htmlContent;
-                  if (showExcerpt) {
-                    const excerpt = createExcerpt(dataString);
-                    return converter.current?.makeHtml(excerpt) || htmlContent;
-                  }
-                  return htmlContent;
-                })()
-              }} />
+              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>
-                {isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
-              </span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
             )}
           </div>
         </div>

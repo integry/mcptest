@@ -108,7 +108,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
         </ul>
         {activeTab === 'result' && props.lastResult && (
           <div className="d-flex align-items-center pe-3">
-            <div className="btn-group" role="group">
+            <div className="btn-group position-relative" role="group">
               <button
                 className="btn btn-sm btn-outline-secondary"
                 style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
@@ -127,23 +127,21 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                 <i className="bi bi-arrows-fullscreen"></i>
               </button>
               {props.lastResult.callContext && props.serverUrl && (
-                <div className="position-relative">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary"
-                    style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                    onClick={handleShareResult}
-                    title="Share result link"
-                    disabled={shareStatus !== 'idle'}
-                    aria-label="Copy share link to clipboard"
-                  >
-                    {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
-                  </button>
-                  {shareStatus !== 'idle' && (
-                    <div className="notification-tooltip" aria-live="polite">
-                      {shareMessage}
-                    </div>
-                  )}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+                  onClick={handleShareResult}
+                  title="Share result link"
+                  disabled={shareStatus !== 'idle'}
+                  aria-label="Copy share link to clipboard"
+                >
+                  {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
+                </button>
+              )}
+              {shareStatus !== 'idle' && (
+                <div className="notification-tooltip" style={{right: 0}} aria-live="polite">
+                  {shareMessage}
                 </div>
               )}
             </div>
@@ -225,7 +223,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                   onClick={() => setIsFullscreen(false)}
                 ></button>
               </div>
-              <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+              <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem', overflow: 'auto' }}>
                 <McpResponseDisplay
                   logEntry={props.lastResult}
                   showTimestamp={false}
