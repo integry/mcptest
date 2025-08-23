@@ -30,6 +30,8 @@ interface ConnectionPanelProps {
   useProxy?: boolean;
   setUseProxy?: (useProxy: boolean) => void;
   isProxied?: boolean; // New prop
+  useOAuth?: boolean;
+  setUseOAuth?: (useOAuth: boolean) => void;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -50,6 +52,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   useProxy,
   setUseProxy,
   isProxied, // Destructure new prop
+  useOAuth,
+  setUseOAuth,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -212,6 +216,23 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   Please login to use the proxy feature
                 </small>
               )}
+            </div>
+          )}
+          {!isConnected && setUseOAuth && (
+            <div className="mt-2">
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="useOAuthCheck"
+                  checked={useOAuth !== undefined ? useOAuth : false}
+                  onChange={(e) => setUseOAuth(e.target.checked)}
+                  disabled={isConnecting}
+                />
+                <label className="form-check-label" htmlFor="useOAuthCheck">
+                  Use OAuth Authentication
+                </label>
+              </div>
             </div>
           )}
         </div>

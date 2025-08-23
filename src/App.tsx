@@ -20,6 +20,8 @@ import Troubleshooting from './components/docs/Troubleshooting';
 import PrivacyPolicy from './components/docs/PrivacyPolicy';
 import TermsOfService from './components/docs/TermsOfService';
 import Contact from './components/docs/Contact';
+// OAuth callback component
+import OAuthCallback from './components/OAuthCallback';
 
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
@@ -252,6 +254,12 @@ function App() {
   useEffect(() => {
     const path = location.pathname;
     let pageTitle = 'Playground'; // Default title
+
+    // Check for OAuth callback route
+    if (path === '/oauth/callback') {
+      // OAuth callback is handled by the OAuthCallback component
+      return;
+    }
 
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
@@ -910,6 +918,11 @@ function App() {
 
  // --- Render Logic ---
   const selectedSpace = spaces.find(s => s.id === selectedSpaceId);
+
+  // Check if we're on the OAuth callback page
+  if (location.pathname === '/oauth/callback') {
+    return <OAuthCallback />;
+  }
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">

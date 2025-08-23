@@ -97,8 +97,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     handleDisconnect,
     handleAbortConnection,
     isProxied, // Destructure from useConnection
-    removeRecentServer
-  } = useConnection(addLogEntry, tab.useProxy);
+    removeRecentServer,
+    accessToken,
+    isAuthFlowActive
+  } = useConnection(addLogEntry, tab.useProxy, tab.useOAuth);
 
   const {
     tools,
@@ -719,6 +721,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             useProxy={tab.useProxy}
             setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
             isProxied={isProxied} // Pass the new prop
+            useOAuth={tab.useOAuth}
+            setUseOAuth={(useOAuth: boolean) => onUpdateTab(tab.id, { useOAuth })}
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}

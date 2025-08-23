@@ -88,6 +88,7 @@ export interface ConnectionTab {
   connectionStatus: 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
   transportType?: TransportType | null;
   useProxy?: boolean; // Whether to use proxy for this connection
+  useOAuth?: boolean; // Whether to use OAuth authentication for this connection
   // Capabilities for this specific connection
   tools?: Tool[];
   resources?: Resource[];

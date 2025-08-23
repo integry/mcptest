@@ -8,6 +8,7 @@ import { detectTransport, attemptParallelConnections } from '../utils/transportD
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
+import pkceChallenge from 'pkce-challenge';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -61,7 +62,7 @@ const saveRecentServers = (servers: (string | { url: string; useProxy?: boolean 
 };
 
 
-export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean) => {
+export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean, useOAuth?: boolean) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
@@ -73,6 +74,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
   const [isProxied, setIsProxied] = useState(false); // State to track if current connection is proxied
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [isAuthFlowActive, setIsAuthFlowActive] = useState(false);
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -80,6 +83,14 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   useEffect(() => {
     strictModeRenderCount.current += 1;
     return () => { if (strictModeRenderCount.current > 1) isRealUnmount.current = true; };
+  }, []);
+
+  // Check for stored access token on mount
+  useEffect(() => {
+    const storedToken = sessionStorage.getItem('oauth_access_token');
+    if (storedToken) {
+      setAccessToken(storedToken);
+    }
   }, []);
 
   // --- SDK Client Based Logic ---
@@ -172,6 +183,32 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         return;
     }
 
+    // Check if OAuth is enabled and initiate OAuth flow
+    if (useOAuth && !accessToken) {
+      console.log('[DEBUG] OAuth enabled but no access token, initiating OAuth flow...');
+      setIsAuthFlowActive(true);
+      
+      // Generate PKCE challenge
+      const { code_verifier, code_challenge } = pkceChallenge();
+      sessionStorage.setItem('pkce_code_verifier', code_verifier);
+      sessionStorage.setItem('oauth_server_url', targetUrl);
+
+      // Build authorization URL - derive from server URL
+      const authUrl = new URL(`${targetUrl}/oauth/authorize`);
+      authUrl.searchParams.set('response_type', 'code');
+      authUrl.searchParams.set('client_id', 'mcptest-client'); // This should be dynamic in a real app
+      authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+      authUrl.searchParams.set('code_challenge', code_challenge);
+      authUrl.searchParams.set('code_challenge_method', 'S256');
+      authUrl.searchParams.set('scope', 'openid profile email');
+
+      addLogEntry({ type: 'info', data: 'Redirecting to OAuth authorization server...' });
+      
+      // Redirect to authorization server
+      window.location.href = authUrl.toString();
+      return;
+    }
+
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
     setTransportType(null);
@@ -215,7 +252,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     const connectDirectly = async () => {
       setIsProxied(false);
       addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
-      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal);
+      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal, accessToken || undefined);
     };
 
     // Helper function to attempt proxy connection
@@ -313,7 +350,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied]); // Added useProxy, currentUser, and isProxied dependencies
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied, useOAuth, accessToken]); // Added useProxy, currentUser, isProxied, useOAuth, and accessToken dependencies
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {
@@ -336,6 +373,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     handleDisconnect,
     handleAbortConnection,
     isProxied, // Expose proxy status
+    accessToken, // Expose access token
+    isAuthFlowActive, // Expose auth flow status
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
       const updatedServers = recentServers.filter(url => url !== urlToRemove);
