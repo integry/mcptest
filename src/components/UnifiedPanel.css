@@ -20,11 +20,11 @@
 
 
 .filter-input {
-  padding: 0.75rem;
-  margin: 1rem 1.25rem;
+  padding: var(--space-3);
+  margin: var(--space-4) var(--space-5);
   border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
-  width: calc(100% - 2.5rem); /* Account for padding and margin */
+  border-radius: var(--radius-lg);
+  width: calc(100% - var(--space-10)); /* Account for padding and margin */
   box-sizing: border-box;
   background-color: var(--input-bg);
   color: var(--text-color);
@@ -43,20 +43,20 @@
 }
 
 .tree-view {
-    padding: 0 1.25rem 1.25rem 1.25rem;
+    padding: 0 var(--space-5) var(--space-5) var(--space-5);
     flex-grow: 1;
     overflow-y: auto;
 }
 
 
 .tree-view details {
-  margin-bottom: 5px;
+  margin-bottom: var(--space-1);
 }
 
 .tree-view summary {
   cursor: pointer;
-  padding: 0.5rem;
-  border-radius: var(--border-radius);
+  padding: var(--space-2);
+  border-radius: var(--radius-lg);
   font-weight: 600;
   list-style: none; /* Remove default marker */
   display: flex;
@@ -75,10 +75,10 @@
 
 .category-toggle {
   display: inline-block;
-  margin-right: 8px;
+  margin-right: var(--space-2);
   transition: transform 0.2s ease;
   font-size: 0.8em;
-  width: 10px; /* Ensure consistent spacing */
+  width: var(--space-2); /* Ensure consistent spacing */
 }
 
 .category-toggle.expanded {
@@ -88,16 +88,16 @@
 
 .tree-view ul {
   list-style: none;
-  padding-left: 25px; /* Indent items under category */
-  margin-top: 5px;
-  margin-bottom: 10px;
+  padding-left: var(--space-6); /* Indent items under category */
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-2);
 }
 
 .tree-item {
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
-  border-radius: var(--border-radius);
-  margin-bottom: 0.25rem;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-1);
   transition: all 0.2s ease;
   border: 1px solid transparent; /* Placeholder for selected border */
 }
@@ -109,7 +109,7 @@
 .tree-item.selected {
   background-color: rgba(34, 197, 94, 0.15);
   border: none;
-  box-shadow: var(--box-shadow);
+  box-shadow: var(--shadow-md);
   font-weight: 500;
   color: var(--primary-color);
 }
@@ -135,10 +135,10 @@
     color: var(--text-muted);
     font-style: italic;
     display: block;
-    padding: 5px 0;
+    padding: var(--space-1) 0;
 }
 .refresh-button {
-  padding: 0.25rem 0.75rem;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.875rem;
   line-height: 1.5;
   height: 22px;
