@@ -603,7 +603,7 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
 
       {/* Cards Area */}
       {space.cards.length === 0 ? (
-        <div className="alert alert-info">This dashboard is empty. Add results from the Playground view using the <i className="bi bi-plus-square"></i> button in the Result panel.</div>
+        <div className="alert alert-info">This dashboard is empty. Go to the Playground to add results.</div>
       ) : (
         <div className="row">
           {space.cards.map((card, index) => (

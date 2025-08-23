@@ -267,44 +267,50 @@ const SideNav: React.FC<SideNavProps> = ({
 
       {/* List of Dashboards */}
       <nav aria-label="Dashboards">
-        <ul className="nav flex-column ms-3" onKeyDown={handleDashboardKeyDown} role="listbox">
-          {spaces.map((space, index) => (
-            <li
-              ref={el => dashboardListRef.current[index] = el}
-              className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`} 
-              key={space.id}
-              onDragOver={(e) => handleSpaceDragOver(e, index)}
-              onDragLeave={handleSpaceDragLeave}
-              onDrop={(e) => handleSpaceDrop(e, index)}
-              tabIndex={focusedDashboardIndex === index ? 0 : -1}
-              role="option"
-              aria-selected={selectedSpaceId === space.id && activeView === 'spaces'}
-              onFocus={() => setFocusedDashboardIndex(index)}
-            >
-              <Link
-                to={getSpaceUrl(space.name)}
-                className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'spaces' ? 'active fw-bold' : ''}`}
-                draggable
-                onDragStart={(e) => handleSpaceDragStart(e, space.id)}
-                onDragEnd={handleSpaceDragEnd}
-                onClick={() => {
-                  handleSelectSpace(space.id);
-                  // Close mobile menu if open
-                  document.body.classList.remove('menu-open');
-                }}
-                style={{ 
-                  cursor: 'move',
-                  opacity: draggedSpaceId === space.id ? 0.5 : 1,
-                  transition: 'opacity 0.2s ease',
-                  userSelect: 'none'
-                }}
+        {spaces.length === 0 ? (
+          <div className="text-muted text-center p-3" style={{ fontStyle: 'italic' }}>
+            Create your first dashboard to get started.
+          </div>
+        ) : (
+          <ul className="nav flex-column ms-3" onKeyDown={handleDashboardKeyDown} role="listbox">
+            {spaces.map((space, index) => (
+              <li
+                ref={el => dashboardListRef.current[index] = el}
+                className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
+                key={space.id}
+                onDragOver={(e) => handleSpaceDragOver(e, index)}
+                onDragLeave={handleSpaceDragLeave}
+                onDrop={(e) => handleSpaceDrop(e, index)}
+                tabIndex={focusedDashboardIndex === index ? 0 : -1}
+                role="option"
+                aria-selected={selectedSpaceId === space.id && activeView === 'spaces'}
+                onFocus={() => setFocusedDashboardIndex(index)}
               >
-                {renderHealthIndicator(space.id)}
-                {space.name} ({space.cards.length})
-              </Link>
-          </li>
-        ))}
-        </ul>
+                <Link
+                  to={getSpaceUrl(space.name)}
+                  className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'spaces' ? 'active fw-bold' : ''}`}
+                  draggable
+                  onDragStart={(e) => handleSpaceDragStart(e, space.id)}
+                  onDragEnd={handleSpaceDragEnd}
+                  onClick={() => {
+                    handleSelectSpace(space.id);
+                    // Close mobile menu if open
+                    document.body.classList.remove('menu-open');
+                  }}
+                  style={{
+                    cursor: 'move',
+                    opacity: draggedSpaceId === space.id ? 0.5 : 1,
+                    transition: 'opacity 0.2s ease',
+                    userSelect: 'none'
+                  }}
+                >
+                  {renderHealthIndicator(space.id)}
+                  {space.name} ({space.cards.length})
+                </Link>
+            </li>
+          ))}
+          </ul>
+        )}
       </nav>
 
       {/* Create New Dashboard */}
