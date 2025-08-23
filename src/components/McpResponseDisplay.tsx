@@ -170,7 +170,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
 
   // --- Final Rendering ---
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
-  const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const [isContentExpanded, setIsContentExpanded] = useState(true); // Default to expanded
   const [isFullscreen, setIsFullscreen] = useState(false);
   
   const toolName = propToolName || logEntry.callContext?.name || 'Unknown Tool';
@@ -276,14 +276,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               <button
                 className="btn btn-sm btn-outline-secondary"
                 style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                onClick={() => setIsContentExpanded(!isContentExpanded)}
-                title={isContentExpanded ? 'Collapse' : 'Expand'}
-              >
-                <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
-              </button>
-              <button
-                className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                 onClick={() => setIsFullscreen(true)}
                 title="Fullscreen"
               >
@@ -294,8 +286,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           <div 
             className="event-data-wrapper border rounded p-2"
             style={{ 
-              maxHeight: isContentExpanded ? 'none' : '300px', 
-              overflowY: isContentExpanded ? 'visible' : 'auto'
+              maxHeight: 'none', 
+              overflowY: 'visible'
             }}
           >
             {isJson ? (

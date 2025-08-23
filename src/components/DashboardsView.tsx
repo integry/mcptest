@@ -200,7 +200,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
             >
               <i className="bi bi-arrows-fullscreen"></i>
             </button>
-            <div className="dropdown">
+            <div className="dropdown" style={{ position: 'relative' }}>
               <button
                 className="btn btn-sm btn-outline-secondary dropdown-toggle"
                 type="button"
