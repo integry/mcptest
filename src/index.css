@@ -1571,7 +1571,7 @@ span.health-indicator.health-indicator-gray {
   border-radius: 0.5rem;
   font-size: 0.875rem;
   font-weight: 500;
-  white-space: nowrap;
+  white-space: normal;
   z-index: 9999;
   box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1579,6 +1579,7 @@ span.health-indicator.health-indicator-gray {
   left: 50%;
   transform: translateX(-50%);
   margin-bottom: 0.75rem;
+  min-width: 200px;
   max-width: 280px;
   text-align: center;
 }

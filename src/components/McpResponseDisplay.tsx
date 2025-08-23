@@ -170,7 +170,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
 
   // --- Final Rendering ---
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
-  const [isContentExpanded, setIsContentExpanded] = useState(true); // Default to expanded
   const [isFullscreen, setIsFullscreen] = useState(false);
   
   const toolName = propToolName || logEntry.callContext?.name || 'Unknown Tool';
