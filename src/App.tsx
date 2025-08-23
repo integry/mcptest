@@ -7,6 +7,7 @@ import { logPageView, logEvent } from './utils/analytics';
 // Import Components
 import Header from './components/Header';
 import TabContent from './components/TabContent';
+import NotificationPopup from './components/NotificationPopup';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
 import DashboardsView from './components/DashboardsView'; // New
@@ -138,6 +139,7 @@ function App() {
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaces[0]?.id || 'default'); // Select first dashboard initially
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
   const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which dashboards have been loaded
+  const [notification, setNotification] = useState<{ message: string; show: boolean }>({ message: '', show: false });
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -148,7 +150,7 @@ function App() {
         return parsedTabs;
       }
     }
-    return [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }];
+    return [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected', useProxy: true }];
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     // Ensure we always have a valid initial activeTabId
@@ -317,6 +319,7 @@ function App() {
         title: `Server: ${serverUrl}`,
         serverUrl: serverUrl,
         connectionStatus: 'Disconnected',
+        useProxy: true,
       };
       setTabs(prev => [...prev, targetTab!]);
     }
@@ -353,6 +356,7 @@ function App() {
         title: `Result: ${resultData.name}`,
         serverUrl: resultData.serverUrl,
         connectionStatus: 'Disconnected',
+        useProxy: true,
         resultShareData: {
           type: resultData.type,
           name: resultData.name,
@@ -385,6 +389,7 @@ function App() {
       title: 'New Connection',
       serverUrl: '',
       connectionStatus: 'Disconnected',
+      useProxy: true,
     };
     setTabs([...tabs, newTab]);
     setActiveTabId(newTab.id);
@@ -406,6 +411,7 @@ function App() {
         title: 'New Connection',
         serverUrl: '',
         connectionStatus: 'Disconnected',
+        useProxy: true,
       };
       setTabs([defaultTab]);
       setActiveTabId(defaultTab.id);
@@ -641,6 +647,8 @@ function App() {
           }
           return space;
       }));
+      setNotification({ message: 'Added to dashboard', show: true });
+      setTimeout(() => setNotification({ message: '', show: false }), 3000);
       console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
   };
 
@@ -655,6 +663,8 @@ function App() {
           }
           return space;
       }));
+      setNotification({ message: 'Added to dashboard', show: true });
+      setTimeout(() => setNotification({ message: '', show: false }), 3000);
       console.log(`[DEBUG] Added card to space ${spaceId}:`, newCard);
   };
 
@@ -903,14 +913,6 @@ function App() {
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">
-      {/* Mobile Menu Toggle */}
-      <button 
-        className="mobile-menu-toggle"
-        onClick={() => document.body.classList.toggle('menu-open')}
-        aria-label="Toggle navigation menu"
-      >
-        <span className="hamburger"></span>
-      </button>
 
       {/* Mobile Sidebar Overlay */}
       <div 
@@ -938,13 +940,16 @@ function App() {
           getSpaceHealthColor={getDashboardHealthColor}
           performAllDashboardsHealthCheck={performAllDashboardsHealthCheck}
           onMoveCard={handleMoveCard}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          isMobile={true}
         />
       </div>
 
       {/* UPDATE Header props */}
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <div className="flex-grow-1 d-flex overflow-hidden"> {/* Main content area */}
+      <main className="flex-grow-1 d-flex overflow-hidden" role="main"> {/* Main content area */}
         {/* Desktop Side Navigation */}
         <div className="desktop-sidebar col-auto bg-light border-end p-2 d-flex flex-column" style={{ width: '250px', height: '100%' }}>
           <SideNav
@@ -1058,7 +1063,8 @@ function App() {
           )}
 
         </div>
-      </div>
+      </main>
+      <NotificationPopup message={notification.message} show={notification.show} />
     </div>
   );
 }

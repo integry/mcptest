@@ -32,6 +32,12 @@ const SUGGESTED_SERVERS: SuggestedServer[] = [
     url: 'https://mcp.api.coingecko.com',
     description: 'MCP Server for Crypto Price & Market Data. Access real-time market data, onchain analytics, and rich metadata for over 15k+ coins.',
     logo: '/coingecko-logo.png'
+  },
+  {
+    name: 'Semgrep',
+    url: 'https://mcp.semgrep.ai',
+    description: 'A fast, open-source, static analysis tool for finding bugs and enforcing code standards.',
+    logo: '/semgrep-logo.svg'
   }
 ];
 
