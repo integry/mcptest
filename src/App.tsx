@@ -173,6 +173,32 @@ function App() {
   // Add dynamic meta tags based on URL
   useMetaTags();
   
+  // Handle OAuth callback state
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.oauthSuccess) {
+      // OAuth was successful, trigger reconnection
+      console.log('[OAuth] Authentication successful, triggering reconnection...');
+      
+      // Find the tab that initiated OAuth (should have isAuthFlowActive)
+      const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+      if (oauthTab) {
+        // Update the tab to clear auth flow state and trigger reconnection
+        handleUpdateTab(oauthTab.id, { 
+          isAuthFlowActive: false,
+          shouldReconnect: true 
+        });
+      }
+      
+      // Clear the location state to prevent re-triggering
+      navigate(location.pathname, { replace: true });
+    } else if (state?.oauthError) {
+      console.error('[OAuth] Authentication error:', state.oauthError);
+      // Clear the location state
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.state, navigate, tabs, handleUpdateTab]);
+  
   // Derive active view and doc page from location
   const { activeView, activeDocPage } = useMemo(() => {
     const path = location.pathname;

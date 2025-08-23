@@ -100,7 +100,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     removeRecentServer,
     accessToken,
     isAuthFlowActive
-  } = useConnection(addLogEntry, tab.useProxy, tab.useOAuth);
+  } = useConnection(
+    addLogEntry, 
+    tab.useProxy, 
+    tab.useOAuth,
+    () => {
+      // Notify parent that OAuth flow is starting
+      onUpdateTab(tab.id, { isAuthFlowActive: true });
+    }
+  );
 
   const {
     tools,
@@ -513,6 +521,24 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   ]);
 
   // Wrapper function to handle resource access and save history
+  // Effect to handle OAuth callback reconnection
+  useEffect(() => {
+    if (tab.shouldReconnect && !isConnecting && connectionStatus === 'Disconnected') {
+      console.log('[OAuth] Reconnecting after successful authentication...');
+      // Clear the shouldReconnect flag
+      onUpdateTab(tab.id, { shouldReconnect: false });
+      
+      // Trigger reconnection
+      handleConnect(
+        setTools,
+        setResources,
+        setResponses,
+        tab.serverUrl,
+        tab.useProxy
+      );
+    }
+  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, setTools, setResources, setResponses, onUpdateTab]);
+
   const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
     logEvent('access_resource');

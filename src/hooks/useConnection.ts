@@ -62,7 +62,7 @@ const saveRecentServers = (servers: (string | { url: string; useProxy?: boolean 
 };
 
 
-export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean, useOAuth?: boolean) => {
+export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean, useOAuth?: boolean, onAuthFlowStart?: () => void) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
@@ -188,6 +188,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       console.log('[DEBUG] OAuth enabled but no access token, initiating OAuth flow...');
       setIsAuthFlowActive(true);
       
+      // Notify parent component that OAuth flow is starting
+      if (onAuthFlowStart) {
+        onAuthFlowStart();
+      }
+      
       // Generate PKCE challenge
       const { code_verifier, code_challenge } = pkceChallenge();
       sessionStorage.setItem('pkce_code_verifier', code_verifier);
@@ -202,11 +207,82 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       authUrl.searchParams.set('code_challenge_method', 'S256');
       authUrl.searchParams.set('scope', 'openid profile email');
 
-      addLogEntry({ type: 'info', data: 'Redirecting to OAuth authorization server...' });
+      addLogEntry({ type: 'info', data: 'Initiating OAuth authorization...' });
       
-      // Redirect to authorization server
-      window.location.href = authUrl.toString();
-      return;
+      // First, try to get server metadata to check if it requires authentication
+      try {
+        // Attempt to fetch the authorization endpoint with credentials
+        const authCheckResponse = await fetch(authUrl.toString(), {
+          method: 'GET',
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            // If we have any existing auth token, include it
+            ...(sessionStorage.getItem('mcp_auth_token') ? {
+              'Authorization': `Bearer ${sessionStorage.getItem('mcp_auth_token')}`
+            } : {})
+          },
+          redirect: 'manual' // Don't follow redirects automatically
+        });
+
+        if (authCheckResponse.status === 302 || authCheckResponse.status === 303) {
+          // Server wants to redirect - follow it
+          const redirectUrl = authCheckResponse.headers.get('Location');
+          if (redirectUrl) {
+            window.location.href = redirectUrl;
+            return;
+          }
+        } else if (authCheckResponse.status === 401) {
+          // Server requires authentication for the auth endpoint itself
+          // This is unusual - let's try to get initial auth token first
+          addLogEntry({ type: 'warning', data: 'Authorization endpoint requires authentication. Attempting to obtain initial token...' });
+          
+          // Try to get an initial token from the server
+          const tokenUrl = `${targetUrl}/oauth/token`;
+          const initialTokenResponse = await fetch(tokenUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              grant_type: 'client_credentials',
+              client_id: 'mcptest-client',
+              // Include any client secret if needed
+            }),
+          });
+
+          if (initialTokenResponse.ok) {
+            const { access_token } = await initialTokenResponse.json();
+            sessionStorage.setItem('mcp_auth_token', access_token);
+            
+            // Now redirect to auth URL with the token in URL (since we can't send headers in redirect)
+            // Some servers accept tokens as query parameters
+            authUrl.searchParams.set('access_token', access_token);
+            window.location.href = authUrl.toString();
+            return;
+          } else {
+            addLogEntry({ type: 'error', data: 'Failed to obtain initial authentication token' });
+            setConnectionError({
+              error: 'OAuth authorization endpoint requires authentication but initial token request failed',
+              serverUrl: targetUrl,
+              timestamp: new Date()
+            });
+            cleanupConnection();
+            return;
+          }
+        } else if (authCheckResponse.ok || authCheckResponse.status === 200) {
+          // If we get HTML content, redirect to the auth URL
+          window.location.href = authUrl.toString();
+          return;
+        } else {
+          // Unexpected response - log and try redirect anyway
+          console.log(`[DEBUG] Unexpected auth endpoint response: ${authCheckResponse.status}`);
+          window.location.href = authUrl.toString();
+          return;
+        }
+      } catch (error) {
+        // If fetch fails (CORS, network error, etc.), fall back to regular redirect
+        console.log('[DEBUG] Auth endpoint check failed, falling back to redirect:', error);
+        window.location.href = authUrl.toString();
+        return;
+      }
     }
 
     setIsConnecting(true);

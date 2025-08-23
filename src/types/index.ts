@@ -108,5 +108,8 @@ export interface ConnectionTab {
     name: string;
     params?: Record<string, any>;
   };
+  // OAuth flow state
+  isAuthFlowActive?: boolean; // Whether OAuth flow is currently active
+  shouldReconnect?: boolean; // Whether to reconnect after OAuth callback
   // Note: The client instance will be managed in a separate, non-serializable state
 }
