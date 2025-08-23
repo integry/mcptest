@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { LogEntry, Space, SpaceCard, SelectedTool, ResourceTemplate } from '../types';
 import McpResponseDisplay from './McpResponseDisplay';
 import ResultPanel from './ResultPanel';
@@ -26,7 +27,6 @@ interface OutputPanelProps {
 
 const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   const [activeTab, setActiveTab] = useState<'result' | 'logs'>('result');
-  const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
   
@@ -108,15 +108,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
         </ul>
         {activeTab === 'result' && props.lastResult && (
           <div className="d-flex align-items-center pe-3">
-            <div className="btn-group" role="group">
-              <button
-                className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                onClick={() => setIsContentExpanded(!isContentExpanded)}
-                title={isContentExpanded ? 'Collapse' : 'Expand'}
-              >
-                <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
-              </button>
+            <div className="btn-group position-relative" role="group">
               <button
                 className="btn btn-sm btn-outline-secondary"
                 style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
@@ -127,23 +119,21 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                 <i className="bi bi-arrows-fullscreen"></i>
               </button>
               {props.lastResult.callContext && props.serverUrl && (
-                <div className="position-relative">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary"
-                    style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                    onClick={handleShareResult}
-                    title="Share result link"
-                    disabled={shareStatus !== 'idle'}
-                    aria-label="Copy share link to clipboard"
-                  >
-                    {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
-                  </button>
-                  {shareStatus !== 'idle' && (
-                    <div className="notification-tooltip" aria-live="polite">
-                      {shareMessage}
-                    </div>
-                  )}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+                  onClick={handleShareResult}
+                  title="Share result link"
+                  disabled={shareStatus !== 'idle'}
+                  aria-label="Copy share link to clipboard"
+                >
+                  {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
+                </button>
+              )}
+              {shareStatus !== 'idle' && (
+                <div className="notification-tooltip" style={{right: 0}} aria-live="polite">
+                  {shareMessage}
                 </div>
               )}
             </div>
@@ -204,7 +194,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
       <div className="card-body p-0 d-flex flex-column" style={{ height: 'calc(100vh - 250px)' }}>
         <div className="tab-content flex-grow-1 overflow-hidden" id="outputTabsContent">
           <div className={`tab-pane fade ${activeTab === 'result' ? 'show active' : ''} h-100`} id="result-panel" role="tabpanel" aria-labelledby="result-tab">
-            <ResultPanel {...props} isContentExpanded={isContentExpanded} />
+            <ResultPanel {...props} />
           </div>
           <div className={`tab-pane fade ${activeTab === 'logs' ? 'show active' : ''} h-100`} id="logs-panel" role="tabpanel" aria-labelledby="logs-tab">
             <ResponsePanel {...props} />
@@ -213,10 +203,22 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
       </div>
       
       {/* Fullscreen modal */}
-      {isFullscreen && props.lastResult && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
-          <div className="modal-dialog modal-fullscreen">
-            <div className="modal-content">
+      {isFullscreen && props.lastResult && ReactDOM.createPortal(
+        <div 
+          className="modal show d-block" 
+          tabIndex={-1} 
+          style={{ 
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            zIndex: 9999
+          }}
+        >
+          <div className="modal-dialog modal-fullscreen" style={{ margin: 0 }}>
+            <div className="modal-content" style={{ height: '100vh', width: '100vw' }}>
               <div className="modal-header">
                 <h5 className="modal-title">{props.lastResult.callContext?.name || 'Result'} - Output</h5>
                 <button
@@ -225,7 +227,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                   onClick={() => setIsFullscreen(false)}
                 ></button>
               </div>
-              <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+              <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem', overflow: 'auto' }}>
                 <McpResponseDisplay
                   logEntry={props.lastResult}
                   showTimestamp={false}
@@ -237,7 +239,8 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

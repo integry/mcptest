@@ -170,7 +170,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
 
   // --- Final Rendering ---
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
-  const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   
   const toolName = propToolName || logEntry.callContext?.name || 'Unknown Tool';
@@ -180,7 +179,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   
   // Spaces mode: simplified display with only content and controls
   if (spacesMode && isResultType) {
-    const effectiveExpanded = forceExpanded !== undefined ? forceExpanded : isContentExpanded;
+    const effectiveExpanded = forceExpanded;
     
     return (
       <div className={`${entryClassName} spaces-mode`} title={title}>
@@ -189,27 +188,16 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           <div 
             className="event-data-wrapper"
             style={{ 
-              maxHeight: 'none', 
-              overflowY: 'visible'
+              maxHeight: effectiveExpanded ? 'none' : '300px',
+              overflowY: effectiveExpanded ? 'visible' : 'auto'
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{effectiveExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}</code></pre>
+                <pre><code className="language-json">{textContent}</code></pre>
             ) : htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ 
-                __html: (() => {
-                  if (effectiveExpanded) return htmlContent;
-                  if (showExcerpt) {
-                    const excerpt = createExcerpt(dataString);
-                    return converter.current?.makeHtml(excerpt) || htmlContent;
-                  }
-                  return htmlContent;
-                })()
-              }} />
+              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>
-                {effectiveExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
-              </span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
             )}
           </div>
         </div>
@@ -287,14 +275,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               <button
                 className="btn btn-sm btn-outline-secondary"
                 style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                onClick={() => setIsContentExpanded(!isContentExpanded)}
-                title={isContentExpanded ? 'Collapse' : 'Expand'}
-              >
-                <i className={`bi bi-arrows-${isContentExpanded ? 'collapse' : 'expand'}`}></i>
-              </button>
-              <button
-                className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                 onClick={() => setIsFullscreen(true)}
                 title="Fullscreen"
               >
@@ -305,27 +285,16 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           <div 
             className="event-data-wrapper border rounded p-2"
             style={{ 
-              maxHeight: isContentExpanded ? 'none' : '300px', 
-              overflowY: isContentExpanded ? 'visible' : 'auto'
+              maxHeight: 'none', 
+              overflowY: 'visible'
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}</code></pre>
+                <pre><code className="language-json">{textContent}</code></pre>
             ) : htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ 
-                __html: (() => {
-                  if (isContentExpanded) return htmlContent;
-                  if (showExcerpt) {
-                    const excerpt = createExcerpt(dataString);
-                    return converter.current?.makeHtml(excerpt) || htmlContent;
-                  }
-                  return htmlContent;
-                })()
-              }} />
+              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>
-                {isContentExpanded ? textContent : (showExcerpt ? createExcerpt(textContent) : textContent)}
-              </span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
             )}
           </div>
         </div>

@@ -23,7 +23,7 @@ export const useShare = () => {
       try {
         await navigator.clipboard.writeText(shareData.url);
         setShareStatus('success');
-        setShareMessage('Copied to clipboard!');
+        setShareMessage('Share link copied to clipboard');
       } catch (error) {
         console.error('Failed to copy to clipboard:', error);
         setShareStatus('error');

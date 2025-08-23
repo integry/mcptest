@@ -12,7 +12,6 @@ interface ResultPanelProps {
   selectedResourceTemplate: ResourceTemplate | null;
   toolParams: Record<string, any>;
   resourceArgs: Record<string, any>;
-  isContentExpanded?: boolean;
 }
 
 const ResultPanel: React.FC<ResultPanelProps> = ({ 
@@ -24,8 +23,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
   selectedTool,
   selectedResourceTemplate,
   toolParams,
-  resourceArgs,
-  isContentExpanded = false
+  resourceArgs
 }) => {
 
   return (
@@ -38,7 +36,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
             spacesMode={true}
             toolName={lastResult.callContext?.name}
             hideControls={true}
-            forceExpanded={isContentExpanded}
+            forceExpanded={true}
           />
         ) : (
           <p className="text-muted">The result of the last execution will appear here.</p>
