@@ -12,24 +12,17 @@ The OAuth worker requires a KV namespace to store authorization codes and tokens
 4. Name it: `oauth-worker-kv` (or any descriptive name)
 5. Note the generated namespace ID
 
-### Step 2: Configure KV Binding in Workers & Pages
+### Step 2: Configure KV Namespace ID as Secret
 
-#### For Cloudflare Workers:
 1. Go to **Workers & Pages** → Select `oauth-worker`
-2. Go to **Settings** → **Variables**
-3. Under **KV Namespace Bindings**, click **"Add binding"**
+2. Go to **Settings** → **Variables and Secrets**
+3. Under **Secrets**, click **"Add"**
 4. Set:
-   - Variable name: `OAUTH_KV` (MUST be this exact name)
-   - KV namespace: Select the namespace you created
+   - Secret name: `OAUTH_KV`
+   - Value: Your KV namespace ID (e.g., `c7741c3a32834498a8318f10968a018d`)
+5. Click **"Save"**
 
-#### For Cloudflare Pages (with Workers):
-1. Go to **Workers & Pages** → Select your Pages project
-2. Go to **Settings** → **Functions**
-3. Under **KV namespace bindings**, click **"Add binding"**
-4. Set:
-   - Variable name: `OAUTH_KV` (MUST be this exact name)
-   - KV namespace: Select the namespace you created
-5. Configure for both **Production** and **Preview** environments
+The `wrangler.toml` is configured to reference this secret for the KV namespace binding.
 
 ## Important Notes
 
