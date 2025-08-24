@@ -32,6 +32,8 @@ interface ConnectionPanelProps {
   isProxied?: boolean; // New prop
   useOAuth?: boolean;
   setUseOAuth?: (useOAuth: boolean) => void;
+  isAuthFlowActive?: boolean;
+  oauthProgress?: string;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -54,6 +56,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   isProxied, // Destructure new prop
   useOAuth,
   setUseOAuth,
+  isAuthFlowActive,
+  oauthProgress,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -236,6 +240,18 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             </div>
           )}
         </div>
+        
+        {isAuthFlowActive && oauthProgress && (
+          <div className="alert alert-info mt-3 d-flex align-items-center" role="status">
+            <div className="spinner-border spinner-border-sm me-2" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <div>
+              <strong>OAuth Authentication in Progress</strong>
+              <p className="mb-0 small">{oauthProgress}</p>
+            </div>
+          </div>
+        )}
         
         {connectionError && (
           <ConnectionErrorCard

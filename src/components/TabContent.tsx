@@ -99,7 +99,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     isProxied, // Destructure from useConnection
     removeRecentServer,
     accessToken,
-    isAuthFlowActive
+    isAuthFlowActive,
+    oauthProgress
   } = useConnection(
     addLogEntry, 
     tab.useProxy, 
@@ -763,6 +764,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             isProxied={isProxied} // Pass the new prop
             useOAuth={tab.useOAuth}
             setUseOAuth={(useOAuth: boolean) => onUpdateTab(tab.id, { useOAuth })}
+            isAuthFlowActive={isAuthFlowActive}
+            oauthProgress={oauthProgress}
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}

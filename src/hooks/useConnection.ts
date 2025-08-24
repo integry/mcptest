@@ -76,6 +76,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [isProxied, setIsProxied] = useState(false); // State to track if current connection is proxied
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isAuthFlowActive, setIsAuthFlowActive] = useState(false);
+  const [oauthProgress, setOauthProgress] = useState<string | null>(null);
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -117,6 +118,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setIsConnecting(false);
     setConnectionStartTime(null);
     setIsProxied(false);
+    setIsAuthFlowActive(false);
+    setOauthProgress(null);
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -186,11 +189,13 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     // Check if OAuth is enabled and initiate OAuth flow
     if (useOAuth && !accessToken) {
       console.log('[DEBUG] OAuth enabled but no access token, initiating OAuth flow...');
+      console.log('[OAuth Progress] Starting OAuth 2.1 authorization process');
       addLogEntry({ 
         type: 'info', 
         data: '🔐 OAuth Flow Started: Beginning OAuth 2.1 authorization process' 
       });
       setIsAuthFlowActive(true);
+      setOauthProgress('Starting OAuth 2.1 authorization process...');
       
       // Notify parent component that OAuth flow is starting
       if (onAuthFlowStart) {
@@ -205,6 +210,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         type: 'info', 
         data: '📋 Step 1/5: Generating PKCE (Proof Key for Code Exchange) parameters...' 
       });
+      setOauthProgress('Step 1/5: Generating PKCE security parameters...');
+      console.log('[OAuth Progress] Step 1/5: Generating PKCE parameters');
       
       try {
         const pkce = pkceChallenge();
@@ -216,6 +223,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           type: 'info', 
           data: `✅ PKCE generated successfully (verifier: ${code_verifier.length} chars, challenge: ${code_challenge.length} chars)` 
         });
+        console.log('[OAuth Progress] PKCE generated successfully');
       } catch (error) {
         console.error('PKCE generation error:', error);
         addLogEntry({ 
@@ -238,6 +246,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         type: 'info', 
         data: '💾 Step 2/5: Stored PKCE verifier and server URL in session storage' 
       });
+      setOauthProgress('Step 2/5: Storing security parameters...');
+      console.log('[OAuth Progress] Step 2/5: Stored PKCE verifier and server URL');
 
       // Validate PKCE values before proceeding
       if (!code_verifier || !code_challenge) {
@@ -259,6 +269,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         type: 'info', 
         data: '🔗 Step 3/5: Building OAuth authorization URL...' 
       });
+      setOauthProgress('Step 3/5: Building authorization URL...');
+      console.log('[OAuth Progress] Step 3/5: Building authorization URL');
       
       const authUrl = new URL(`${targetUrl}/oauth/authorize`);
       authUrl.searchParams.set('response_type', 'code');
@@ -273,12 +285,15 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         type: 'info', 
         data: `📝 Authorization URL built:\n  - Endpoint: ${targetUrl}/oauth/authorize\n  - Client ID: mcptest-client\n  - Redirect URI: ${window.location.origin}/oauth/callback\n  - Scopes: openid profile email\n  - PKCE Method: S256` 
       });
+      console.log('[OAuth Progress] Authorization URL:', authUrl.toString());
       
       // First, try to get server metadata to check if it requires authentication
       addLogEntry({ 
         type: 'info', 
         data: '🌐 Step 4/5: Checking authorization endpoint accessibility...' 
       });
+      setOauthProgress('Step 4/5: Checking authorization endpoint...');
+      console.log('[OAuth Progress] Step 4/5: Checking authorization endpoint');
       
       try {
         // Attempt to fetch the authorization endpoint with credentials
@@ -312,6 +327,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             type: 'info', 
             data: `✅ Step 5/5: Server returned redirect (${authCheckResponse.status})\n  - Redirect location: ${redirectUrl || 'Not provided'}\n  - Following redirect...` 
           });
+          setOauthProgress('Step 5/5: Redirecting to authorization server...');
+          console.log('[OAuth Progress] Step 5/5: Redirecting to:', redirectUrl || authUrl.toString());
           if (redirectUrl) {
             window.location.href = redirectUrl;
             return;
@@ -322,6 +339,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             type: 'error', 
             data: `❌ Step 5/5 FAILED: Authorization endpoint returned 401 Unauthorized\n  - The OAuth server requires authentication to access the /oauth/authorize endpoint\n  - This typically means the server configuration needs adjustment\n  - Request URL: ${authUrl.toString()}` 
           });
+          console.error('[OAuth Progress] OAuth endpoint returned 401 Unauthorized');
+          setOauthProgress('OAuth authorization failed - server requires authentication');
           
           // Log the response details for debugging
           try {
@@ -342,9 +361,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           }
           
           setConnectionError({
-            error: 'OAuth authorization endpoint requires authentication. Please check your server configuration and client credentials.',
+            error: 'OAuth authorization endpoint requires authentication. Please check your server configuration and client credentials. For testing OAuth locally, use http://localhost:3000 as the server URL.',
             serverUrl: targetUrl,
-            timestamp: new Date()
+            timestamp: new Date(),
+            details: 'The OAuth server at ' + targetUrl + ' requires authentication to access its authorization endpoint. This is a server configuration issue.'
           });
           cleanupConnection();
           return;
@@ -354,6 +374,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             type: 'info', 
             data: `✅ Step 5/5: Authorization endpoint is accessible (${authCheckResponse.status})\n  - Redirecting to authorization page...` 
           });
+          setOauthProgress('Step 5/5: Redirecting to authorization page...');
+          console.log('[OAuth Progress] Step 5/5: Redirecting to authorization page');
           window.location.href = authUrl.toString();
           return;
         } else {
@@ -363,6 +385,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             type: 'warning', 
             data: `⚠️ Step 5/5: Unexpected response from authorization endpoint (${authCheckResponse.status})\n  - Attempting redirect anyway...` 
           });
+          setOauthProgress('Step 5/5: Redirecting to authorization page...');
           window.location.href = authUrl.toString();
           return;
         }
@@ -377,6 +400,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           type: 'info', 
           data: `➡️ Step 5/5: Redirecting directly to authorization URL...` 
         });
+        setOauthProgress('Step 5/5: Redirecting to authorization URL...');
+        console.log('[OAuth Progress] Step 5/5: Direct redirect to:', authUrl.toString());
         window.location.href = authUrl.toString();
         return;
       }
@@ -548,6 +573,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     isProxied, // Expose proxy status
     accessToken, // Expose access token
     isAuthFlowActive, // Expose auth flow status
+    oauthProgress, // Expose OAuth progress message
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
       const updatedServers = recentServers.filter(url => url !== urlToRemove);
