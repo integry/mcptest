@@ -12,19 +12,16 @@ The OAuth worker requires a KV namespace to store authorization codes and tokens
 4. Name it: `oauth-worker-kv` (or any descriptive name)
 5. Note the generated namespace ID
 
-### Step 2: Configure KV Namespace Binding in Dashboard
+### Step 2: KV Namespace Configuration
 
-**Important**: KV namespace bindings cannot use secrets. You must configure the binding directly in the dashboard.
+The KV namespace ID is now configured in `wrangler.toml` with your namespace ID: `c7741c3a32834498a8318f10968a018d`
 
-1. Go to **Workers & Pages** → Select `oauth-worker`
-2. Go to **Settings** → **Bindings**
-3. Under **KV namespace bindings**, click **"Add binding"**
-4. Set:
-   - Variable name: `OAUTH_KV` (MUST be exactly this name)
-   - KV namespace: Select your namespace from the dropdown or paste the ID: `c7741c3a32834498a8318f10968a018d`
-5. Click **"Save"**
+This ensures the binding persists across deployments. The binding will be created automatically when the worker is deployed.
 
-**Note**: Do NOT add this as a secret. KV bindings must be configured as bindings, not secrets.
+**Note**: 
+- The binding name MUST be `OAUTH_KV` as required by the OAuth provider package
+- Dashboard bindings get overwritten by wrangler deployments, so the ID must be in `wrangler.toml`
+- For different environments (staging/production), you can use different namespace IDs
 
 ## Important Notes
 
