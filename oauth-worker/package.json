@@ -11,6 +11,9 @@
   "keywords": ["oauth", "cloudflare-worker", "oauth2.1"],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.0.0"
+  },
   "devDependencies": {
     "wrangler": "^3.0.0"
   }

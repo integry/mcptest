@@ -1,141 +1,110 @@
-# OAuth Cloudflare Worker
+# OAuth 2.1 Cloudflare Worker
 
-This Cloudflare Worker provides OAuth 2.1 authorization endpoints to replace the localhost server for production deployments. It handles authorization code flow with PKCE for secure authentication.
+This Cloudflare Worker implements OAuth 2.1 authorization endpoints using the `@cloudflare/workers-oauth-provider` package.
 
 ## Features
 
-- OAuth 2.1 compliant authorization code flow
+- OAuth 2.1 compliant authorization server
 - PKCE (Proof Key for Code Exchange) support
-- Cloudflare KV storage for authorization codes
-- CORS support for cross-origin requests
-- Secure token generation
-- 10-minute authorization code expiration
+- Automatic token management
+- End-to-end encryption for sensitive data
+- Support for dynamic client registration
+
+## Setup
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Create a KV namespace in Cloudflare:
+   ```bash
+   wrangler kv:namespace create "OAUTH_KV"
+   ```
+
+3. Update `wrangler.toml` with your KV namespace ID from the output above.
+
+4. Deploy the worker:
+   ```bash
+   npm run deploy
+   ```
+
+5. Initialize the OAuth client:
+   After deployment, the `mcptest-client` needs to be created. This can be done by:
+   - Using the Cloudflare Workers dashboard to manually invoke the `setupClient` function
+   - Creating a temporary endpoint that calls `setupClient`
+   - Using Wrangler tail to execute the function
+
+## Configuration
+
+The worker is configured to:
+- Use `/oauth/authorize` for the authorization endpoint
+- Use `/oauth/token` for the token endpoint
+- Support dynamic client registration at `/oauth/register`
+- Automatically approve authorization requests (for testing purposes)
 
 ## Endpoints
 
-- `GET /oauth/authorize` - Authorization endpoint
-- `POST /oauth/token` - Token exchange endpoint
+- `GET /oauth/authorize` - OAuth 2.1 authorization endpoint
+- `POST /oauth/token` - OAuth 2.1 token endpoint
+- `POST /oauth/register` - Dynamic client registration (RFC 7591)
+- `GET /.well-known/oauth-authorization-server` - OAuth 2.1 metadata discovery (RFC 8414)
 
-## Prerequisites
+## Application Configuration
 
-1. Cloudflare account with Workers enabled
-2. Wrangler CLI installed (`npm install -g wrangler`)
-3. Node.js and npm installed
-
-## Setup Instructions
-
-### 1. Install Dependencies
-
-```bash
-cd oauth-worker
-npm install
-```
-
-### 2. Create KV Namespace
-
-Create a KV namespace for storing OAuth codes:
-
-```bash
-wrangler kv namespace create "OAUTH_CODES"
-```
-
-Copy the namespace ID from the output and update it in `wrangler.toml`:
-
-```toml
-[[kv_namespaces]]
-binding = "OAUTH_CODES"
-id = "YOUR_KV_NAMESPACE_ID"
-```
-
-### 3. Deploy the Worker
-
-```bash
-./deploy.sh
-```
-
-Or manually:
-
-```bash
-wrangler deploy
-```
-
-### 4. Configure Your Application
-
-Update your `.env` file:
+Update your application's `.env` file:
 
 ```env
-# Enable Cloudflare OAuth
-VITE_USE_CLOUDFLARE_OAUTH=true
-
 # Your deployed worker URL
 VITE_OAUTH_WORKER_URL=https://mcptest-oauth-worker.workers.dev
 ```
 
+## Security
+
+The `@cloudflare/workers-oauth-provider` package provides:
+- Secrets stored only by hash
+- End-to-end encryption for props/user data
+- Automatic token expiration and rotation
+- Protection against common OAuth attacks
+
 ## Development
 
-To run locally:
-
+Run the worker locally:
 ```bash
-wrangler dev
+npm run dev
 ```
 
-## Security Considerations
+View logs:
+```bash
+npm run tail
+```
 
-1. **PKCE Verification**: The worker verifies PKCE challenges to prevent authorization code interception
-2. **Code Expiration**: Authorization codes expire after 10 minutes
-3. **One-time Use**: Authorization codes are deleted after successful token exchange
-4. **CORS**: Configure CORS headers as needed for your deployment
+## Implementation Details
 
-## Customization
+This worker uses the `@cloudflare/workers-oauth-provider` package which:
 
-### Client Configuration
+1. **Handles all OAuth 2.1 protocol details** - Authorization codes, PKCE verification, token generation
+2. **Provides secure storage** - Uses KV with encrypted props and hashed secrets
+3. **Supports modern OAuth features** - Dynamic client registration, metadata discovery
+4. **Simplifies implementation** - Wraps your worker code with OAuth functionality
 
-Currently, the worker uses a hardcoded client ID (`mcptest-client`). For production use, consider:
-
-1. Storing client configurations in KV
-2. Implementing client registration endpoints
-3. Adding client secret validation (for confidential clients)
-
-### Token Format
-
-The current implementation generates random tokens. For production, consider:
-
-1. Using JWT tokens with proper signing
-2. Implementing token introspection endpoints
-3. Adding refresh token rotation
+The current implementation auto-approves authorization requests for testing purposes. In a production environment, you would implement a proper consent UI.
 
 ## Troubleshooting
 
 ### KV Namespace Issues
+- Ensure the namespace ID in `wrangler.toml` is correct
+- Verify the namespace exists: `wrangler kv:namespace list`
+- The binding must be named `OAUTH_KV` as required by the package
 
-If you encounter KV namespace errors:
-
-1. Ensure the namespace ID in `wrangler.toml` is correct
-2. Verify the namespace exists: `wrangler kv namespace list`
-3. Check worker logs: `wrangler tail`
+### Client Setup
+- The client must be created before use (see step 5 in Setup)
+- Check worker logs for client creation status
+- Verify redirect URIs match your application URLs
 
 ### CORS Errors
-
-If you see CORS errors:
-
-1. Verify the `Access-Control-Allow-Origin` header matches your application origin
-2. Check that preflight OPTIONS requests are handled correctly
-3. Ensure all required headers are included in `Access-Control-Allow-Headers`
-
-### Authorization Flow Issues
-
-1. Check browser console for detailed error messages
-2. Verify PKCE parameters are being stored and retrieved correctly
-3. Ensure redirect URIs match exactly
-4. Monitor worker logs for server-side errors
-
-## Monitoring
-
-View real-time logs:
-
-```bash
-wrangler tail
-```
+- The package handles CORS automatically for OAuth endpoints
+- For custom endpoints, add appropriate CORS headers
 
 ## License
 
