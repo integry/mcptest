@@ -207,6 +207,44 @@ const defaultHandler = {
     }
 
 
+    // Delete mcptest-client endpoint
+    if (url.pathname == "/delete-client" && request.method === "DELETE") {
+      try {
+        // Try to delete via OAuth provider
+        try {
+          await env.OAUTH_PROVIDER.deleteClient('mcptest-client');
+        } catch (e) {
+          console.log('OAuth provider delete failed:', e.message);
+        }
+        
+        // Also try direct KV delete
+        await env.OAUTH_KV.delete('client:mcptest-client');
+        
+        return new Response(JSON.stringify({ 
+          success: true,
+          message: 'Client deleted'
+        }), {
+          status: 200,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      } catch (error) {
+        console.error('[OAuth Worker] Delete client error:', error);
+        return new Response(JSON.stringify({ 
+          error: 'server_error',
+          error_description: error.message 
+        }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      }
+    }
+
     // Initialize mcptest-client endpoint
     if (url.pathname == "/init-client" && request.method === "POST") {
       try {
@@ -224,20 +262,31 @@ const defaultHandler = {
             }
           });
         } catch (e) {
-          // Client doesn't exist, create it
-          await env.OAUTH_PROVIDER.createClient({
+          // Client doesn't exist, create it using the KV store directly
+          // The OAuth provider might expect a specific format
+          const clientData = {
             clientId: "mcptest-client",
             clientName: "MCP SSE Tester",
             redirectUris: [
               "https://mcptest.io/oauth/callback",
-              "https://app.mcptest.io/oauth/callback",
+              "https://app.mcptest.io/oauth/callback", 
               "https://staging.mcptest.io/oauth/callback"
             ],
             publicClient: true,
             grantTypes: ["authorization_code"],
             responseTypes: ["code"],
-            scope: "openid profile email"
-          });
+            scope: "openid profile email",
+            createdAt: new Date().toISOString()
+          };
+          
+          // Try both the OAuth provider method and direct KV write
+          try {
+            await env.OAUTH_PROVIDER.createClient(clientData);
+          } catch (createError) {
+            console.error('OAuth provider createClient failed:', createError);
+            // Try direct KV write as fallback
+            await env.OAUTH_KV.put(`client:mcptest-client`, JSON.stringify(clientData));
+          }
           
           return new Response(JSON.stringify({ 
             success: true,
@@ -280,13 +329,33 @@ const defaultHandler = {
           const client = await env.OAUTH_PROVIDER.lookupClient('mcptest-client');
           debugInfo.mcptestClient = {
             exists: true,
-            redirectUris: client.redirectUris || []
+            client: client,
+            redirectUris: client?.redirectUris || []
           };
         } catch (e) {
           debugInfo.mcptestClient = {
             exists: false,
             error: e.message
           };
+          
+          // Try direct KV lookup
+          try {
+            const kvData = await env.OAUTH_KV.get('client:mcptest-client');
+            if (kvData) {
+              debugInfo.kvDirectLookup = {
+                found: true,
+                data: JSON.parse(kvData)
+              };
+            } else {
+              debugInfo.kvDirectLookup = {
+                found: false
+              };
+            }
+          } catch (kvError) {
+            debugInfo.kvDirectLookup = {
+              error: kvError.message
+            };
+          }
         }
         
         return new Response(JSON.stringify(debugInfo, null, 2), {
