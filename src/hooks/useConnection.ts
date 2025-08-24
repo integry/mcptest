@@ -9,6 +9,7 @@ import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import pkceChallenge from '../utils/pkce';
+import { oauthConfig, getOAuthServerType } from '../config/oauth';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -272,7 +273,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       setOauthProgress('Step 3/5: Building authorization URL...');
       console.log('[OAuth Progress] Step 3/5: Building authorization URL');
       
-      const authUrl = new URL(`${targetUrl}/oauth/authorize`);
+      const authUrl = new URL(oauthConfig.authorizationEndpoint);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('client_id', 'mcptest-client'); // This should be dynamic in a real app
       authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
@@ -283,7 +284,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       // Log the authorization URL for debugging
       addLogEntry({ 
         type: 'info', 
-        data: `📝 Authorization URL built:\n  - Endpoint: ${targetUrl}/oauth/authorize\n  - Client ID: mcptest-client\n  - Redirect URI: ${window.location.origin}/oauth/callback\n  - Scopes: openid profile email\n  - PKCE Method: S256` 
+        data: `📝 Authorization URL built:\n  - Server Type: ${getOAuthServerType()}\n  - Endpoint: ${oauthConfig.authorizationEndpoint}\n  - Client ID: ${oauthConfig.clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Scopes: ${oauthConfig.scope}\n  - PKCE Method: S256` 
       });
       console.log('[OAuth Progress] Authorization URL:', authUrl.toString());
       

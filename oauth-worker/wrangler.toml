@@ -1,0 +1,20 @@
+name = "mcptest-oauth-worker"
+main = "src/index.js"
+compatibility_date = "2025-08-24"
+
+# KV namespace for storing OAuth codes and tokens
+[[kv_namespaces]]
+binding = "OAUTH_CODES"
+id = "YOUR_KV_NAMESPACE_ID" # Replace with actual KV namespace ID
+
+# Environment variables (if needed)
+[vars]
+# Add any environment-specific variables here
+
+# Route configuration (optional - can be configured in Cloudflare dashboard)
+# [[routes]]
+# pattern = "oauth.yourdomain.com/*"
+# zone_name = "yourdomain.com"
+
+[observability.logs]
+enabled = true

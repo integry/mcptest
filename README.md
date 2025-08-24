@@ -41,6 +41,36 @@ The application supports optional Firebase authentication for Google sign-in. To
 
 **Note**: If Firebase authentication is enabled but not properly configured, you will see authentication errors. Make sure to use valid Firebase project credentials from your Firebase console.
 
+### OAuth 2.1 Support
+
+The application includes OAuth 2.1 authorization code flow with PKCE for secure authentication with MCP servers. By default, it uses a localhost Express server, but for production deployments, you can use the included Cloudflare Worker.
+
+#### Using Cloudflare Worker for OAuth (Production)
+
+1. Deploy the OAuth worker:
+   ```bash
+   cd oauth-worker
+   npm install
+   ./deploy.sh
+   ```
+
+2. Update your `.env` file:
+   ```
+   VITE_USE_CLOUDFLARE_OAUTH=true
+   VITE_OAUTH_WORKER_URL=https://your-oauth-worker.workers.dev
+   ```
+
+3. The OAuth flow will now use the Cloudflare Worker endpoints instead of localhost
+
+#### OAuth Features
+
+- OAuth 2.1 compliant authorization code flow
+- PKCE (Proof Key for Code Exchange) for enhanced security
+- Automatic token management
+- Support for both localhost (development) and Cloudflare Worker (production)
+
+For detailed OAuth worker setup instructions, see [oauth-worker/README.md](oauth-worker/README.md).
+
 ## HTTP Stream Transport Protocol
 
 The HTTP Stream Transport is the recommended transport mechanism for web-based MCP applications, implementing the Streamable HTTP transport protocol from the MCP specification.

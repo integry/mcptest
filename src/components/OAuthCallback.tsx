@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { oauthConfig, getOAuthServerType } from '../config/oauth';
 
 const OAuthCallback: React.FC = () => {
   const location = useLocation();
@@ -49,16 +50,16 @@ const OAuthCallback: React.FC = () => {
         addOAuthLog('info', '✅ All required parameters present, proceeding with token exchange...');
         
         try {
-          // Derive token endpoint from server URL
-          const tokenUrl = `${serverUrl}/oauth/token`;
+          // Use token endpoint from config
+          const tokenUrl = oauthConfig.tokenEndpoint;
           
-          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: mcptest-client\n  - Redirect URI: ${window.location.origin}/oauth/callback\n  - Code verifier length: ${codeVerifier.length} chars`);
+          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Server Type: ${getOAuthServerType()}\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${oauthConfig.clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
           
           const requestBody = {
             grant_type: 'authorization_code',
             code,
-            redirect_uri: `${window.location.origin}/oauth/callback`,
-            client_id: 'mcptest-client',
+            redirect_uri: oauthConfig.redirectUri,
+            client_id: oauthConfig.clientId,
             code_verifier: codeVerifier,
           };
           
