@@ -2,3 +2,4 @@ node_modules
 dist
 issues.sh
 .env
+.dev.vars

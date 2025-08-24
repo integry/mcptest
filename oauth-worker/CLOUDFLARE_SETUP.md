@@ -12,16 +12,28 @@ The OAuth worker requires a KV namespace to store authorization codes and tokens
 4. Name it: `oauth-worker-kv` (or any descriptive name)
 5. Note the generated namespace ID
 
-### Step 2: KV Namespace Configuration
+### Step 2: Configure KV Namespace ID as Environment Variable
 
-The KV namespace ID is now configured in `wrangler.toml` with your namespace ID: `c7741c3a32834498a8318f10968a018d`
+The `wrangler.toml` is configured to use an environment variable for the KV namespace ID.
 
-This ensures the binding persists across deployments. The binding will be created automatically when the worker is deployed.
+#### Option A: Cloudflare Pages/Workers Dashboard (Recommended)
+1. Go to **Workers & Pages** → Select `oauth-worker`
+2. Go to **Settings** → **Environment Variables**
+3. Add a new environment variable:
+   - Variable name: `OAUTH_KV_NAMESPACE_ID`
+   - Value: `c7741c3a32834498a8318f10968a018d`
+4. Save the changes
+
+#### Option B: Local Development
+For local development, create a `.dev.vars` file in the oauth-worker directory:
+```
+OAUTH_KV_NAMESPACE_ID=c7741c3a32834498a8318f10968a018d
+```
 
 **Note**: 
 - The binding name MUST be `OAUTH_KV` as required by the OAuth provider package
-- Dashboard bindings get overwritten by wrangler deployments, so the ID must be in `wrangler.toml`
-- For different environments (staging/production), you can use different namespace IDs
+- Environment variables in Cloudflare dashboard are the secure way to store the namespace ID
+- Different environments (staging/production) can have different namespace IDs
 
 ## Important Notes
 
