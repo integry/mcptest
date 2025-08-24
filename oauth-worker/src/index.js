@@ -207,6 +207,109 @@ const defaultHandler = {
     }
 
 
+    // Initialize mcptest-client endpoint
+    if (url.pathname == "/init-client" && request.method === "POST") {
+      try {
+        // Check if client already exists
+        try {
+          await env.OAUTH_PROVIDER.lookupClient('mcptest-client');
+          return new Response(JSON.stringify({ 
+            success: true,
+            message: 'Client already exists'
+          }), {
+            status: 200,
+            headers: { 
+              "Content-Type": "application/json",
+              ...corsHeaders
+            }
+          });
+        } catch (e) {
+          // Client doesn't exist, create it
+          await env.OAUTH_PROVIDER.createClient({
+            clientId: "mcptest-client",
+            clientName: "MCP SSE Tester",
+            redirectUris: [
+              "https://mcptest.io/oauth/callback",
+              "https://app.mcptest.io/oauth/callback",
+              "https://staging.mcptest.io/oauth/callback"
+            ],
+            publicClient: true,
+            grantTypes: ["authorization_code"],
+            responseTypes: ["code"],
+            scope: "openid profile email"
+          });
+          
+          return new Response(JSON.stringify({ 
+            success: true,
+            message: 'Client created successfully'
+          }), {
+            status: 201,
+            headers: { 
+              "Content-Type": "application/json",
+              ...corsHeaders
+            }
+          });
+        }
+      } catch (error) {
+        console.error('[OAuth Worker] Init client error:', error);
+        return new Response(JSON.stringify({ 
+          error: 'server_error',
+          error_description: error.message 
+        }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      }
+    }
+
+    // Debug endpoint to check OAuth provider state
+    if (url.pathname == "/debug/oauth-state") {
+      try {
+        // Try to list all clients (this might not work depending on the library)
+        const debugInfo = {
+          timestamp: new Date().toISOString(),
+          kvNamespace: env.OAUTH_KV ? 'Connected' : 'Not connected',
+          oauthProvider: env.OAUTH_PROVIDER ? 'Initialized' : 'Not initialized'
+        };
+        
+        // Try to look up mcptest-client
+        try {
+          const client = await env.OAUTH_PROVIDER.lookupClient('mcptest-client');
+          debugInfo.mcptestClient = {
+            exists: true,
+            redirectUris: client.redirectUris || []
+          };
+        } catch (e) {
+          debugInfo.mcptestClient = {
+            exists: false,
+            error: e.message
+          };
+        }
+        
+        return new Response(JSON.stringify(debugInfo, null, 2), {
+          status: 200,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ 
+          error: 'debug_error',
+          message: error.message 
+        }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      }
+    }
+
     return new Response("Not found", { status: 404 });
   }
 };
