@@ -273,6 +273,49 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       setOauthProgress('Step 3/5: Building authorization URL...');
       console.log('[OAuth Progress] Step 3/5: Building authorization URL');
       
+      // First check/create the OAuth client
+      const checkClientUrl = new URL(oauthConfig.authorizationEndpoint.replace('/authorize', '/check-client'));
+      checkClientUrl.searchParams.set('client_id', 'mcptest-client');
+      checkClientUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+      
+      try {
+        addLogEntry({ 
+          type: 'info', 
+          data: '🔍 Checking/creating OAuth client...' 
+        });
+        
+        const checkResponse = await fetch(checkClientUrl.toString(), {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        const checkResult = await checkResponse.json();
+        
+        if (!checkResponse.ok || !checkResult.success) {
+          throw new Error(checkResult.error_description || 'Failed to setup OAuth client');
+        }
+        
+        addLogEntry({ 
+          type: 'info', 
+          data: `✅ OAuth client ready: ${checkResult.message}` 
+        });
+      } catch (error) {
+        console.error('Failed to check/create OAuth client:', error);
+        addLogEntry({ 
+          type: 'error', 
+          data: `Failed to setup OAuth client: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+        setConnectionError({
+          error: 'Failed to setup OAuth client. Please try again.',
+          serverUrl: targetUrl,
+          timestamp: new Date()
+        });
+        setIsConnecting(false);
+        return;
+      }
+      
       const authUrl = new URL(oauthConfig.authorizationEndpoint);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('client_id', 'mcptest-client'); // This should be dynamic in a real app

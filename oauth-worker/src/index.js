@@ -43,10 +43,9 @@ const defaultHandler = {
       });
     }
 
-    // Handle the authorization UI
-    if (url.pathname == "/oauth/authorize") {
+    // Handle client setup/check endpoint
+    if (url.pathname == "/oauth/check-client") {
       try {
-        // First, check if this is mcptest-client and auto-register if needed
         const urlParams = new URLSearchParams(url.search);
         const clientId = urlParams.get('client_id');
         const redirectUri = urlParams.get('redirect_uri');
@@ -58,15 +57,40 @@ const defaultHandler = {
                                   redirectUrl.hostname.endsWith('.mcptest.io');
           
           if (!isValidRedirect || redirectUrl.pathname !== '/oauth/callback') {
-            throw new Error('Invalid redirect URI - must be https://*.mcptest.io/oauth/callback');
+            return new Response(JSON.stringify({ 
+              error: 'invalid_redirect_uri',
+              error_description: 'Invalid redirect URI - must be https://*.mcptest.io/oauth/callback'
+            }), {
+              status: 400,
+              headers: { 
+                "Content-Type": "application/json",
+                ...corsHeaders
+              }
+            });
           }
           
-          // Try to ensure the client exists before the OAuth provider processes the request
+          // Check if client exists
           try {
-            await env.OAUTH_PROVIDER.lookupClient(clientId);
+            const clientInfo = await env.OAUTH_PROVIDER.lookupClient(clientId);
+            // Check if this redirect URI needs to be added
+            if (!clientInfo.redirectUris.includes(redirectUri)) {
+              clientInfo.redirectUris.push(redirectUri);
+              await env.OAUTH_PROVIDER.updateClient(clientId, clientInfo);
+            }
+            return new Response(JSON.stringify({ 
+              success: true,
+              client_exists: true,
+              message: 'Client exists and redirect URI is registered'
+            }), {
+              status: 200,
+              headers: { 
+                "Content-Type": "application/json",
+                ...corsHeaders
+              }
+            });
           } catch (error) {
             // Client doesn't exist, create it
-            console.log('[OAuth Worker] Auto-registering mcptest-client for:', redirectUri);
+            console.log('[OAuth Worker] Creating mcptest-client for:', redirectUri);
             await env.OAUTH_PROVIDER.createClient({
               clientId: "mcptest-client",
               clientName: "MCP SSE Tester",
@@ -76,10 +100,49 @@ const defaultHandler = {
               responseTypes: ["code"],
               scope: "openid profile email"
             });
+            return new Response(JSON.stringify({ 
+              success: true,
+              client_exists: true,
+              message: 'Client created successfully'
+            }), {
+              status: 200,
+              headers: { 
+                "Content-Type": "application/json",
+                ...corsHeaders
+              }
+            });
           }
         }
         
-        // Now parse the OAuth authorization request
+        return new Response(JSON.stringify({ 
+          error: 'invalid_request',
+          error_description: 'Invalid client_id or missing redirect_uri'
+        }), {
+          status: 400,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      } catch (error) {
+        console.error('[OAuth Worker] Check client error:', error);
+        return new Response(JSON.stringify({ 
+          error: 'server_error',
+          error_description: error.message 
+        }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      }
+    }
+
+    // Handle the authorization UI
+    if (url.pathname == "/oauth/authorize") {
+      try {
+        // Parse the OAuth authorization request
         let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(request);
         
         // Look up client information

@@ -9,7 +9,7 @@ export interface OAuthConfig {
 }
 
 // Cloudflare Worker URL - should be configured in environment
-const cloudflareWorkerUrl = import.meta.env.VITE_OAUTH_WORKER_URL || 'https://mcptest-oauth-worker.workers.dev';
+const cloudflareWorkerUrl = import.meta.env.VITE_OAUTH_WORKER_URL || 'https://oauth-worker.livecart.workers.dev';
 
 // OAuth configuration
 export const oauthConfig: OAuthConfig = {
