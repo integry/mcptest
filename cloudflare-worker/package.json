@@ -1,0 +1,16 @@
+{
+  "name": "mcptest-cloudflare-worker",
+  "version": "1.0.0",
+  "description": "MCP Test Cloudflare Worker with Durable Objects",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": ["cloudflare-worker", "durable-objects"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
