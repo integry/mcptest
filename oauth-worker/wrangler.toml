@@ -1,4 +1,4 @@
-name = "mcptest-oauth-worker"
+name = "oauth-worker"
 main = "src/index.js"
 compatibility_date = "2025-08-24"
 
