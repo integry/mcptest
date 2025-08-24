@@ -42,7 +42,19 @@ const OAuthCallback: React.FC = () => {
           } else {
             const errorData = await tokenResponse.text();
             console.error('Failed to exchange authorization code for token:', errorData);
-            navigate('/', { state: { oauthError: 'Failed to obtain access token' } });
+            
+            // Provide more specific error message based on status code
+            let errorMessage = 'Failed to obtain access token';
+            if (tokenResponse.status === 401) {
+              errorMessage = 'Authentication failed: Invalid client credentials or authorization code';
+            } else if (tokenResponse.status === 400) {
+              errorMessage = 'Bad request: Invalid OAuth parameters';
+            }
+            
+            navigate('/', { state: { 
+              oauthError: errorMessage,
+              oauthErrorDetails: errorData 
+            } });
           }
         } catch (error) {
           console.error('Error during token exchange:', error);

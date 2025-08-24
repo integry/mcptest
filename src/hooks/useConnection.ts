@@ -194,10 +194,43 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       }
       
       // Generate PKCE challenge
-      const { code_verifier, code_challenge } = pkceChallenge();
+      let code_verifier: string;
+      let code_challenge: string;
+      
+      try {
+        const pkce = pkceChallenge();
+        code_verifier = pkce.code_verifier;
+        code_challenge = pkce.code_challenge;
+        
+        // Add debug logging
+        addLogEntry({ 
+          type: 'info', 
+          data: `Generated PKCE challenge (length: ${code_challenge.length})` 
+        });
+      } catch (error) {
+        addLogEntry({ 
+          type: 'error', 
+          data: `Failed to generate PKCE challenge: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+        setError('Failed to generate PKCE challenge. Please try again.');
+        setConnecting(false);
+        return;
+      }
+      
       sessionStorage.setItem('pkce_code_verifier', code_verifier);
       sessionStorage.setItem('oauth_server_url', targetUrl);
 
+      // Validate PKCE values before proceeding
+      if (!code_verifier || !code_challenge) {
+        addLogEntry({ 
+          type: 'error', 
+          data: 'Invalid PKCE values generated' 
+        });
+        setError('Failed to generate secure authentication parameters. Please try again.');
+        setConnecting(false);
+        return;
+      }
+      
       // Build authorization URL - derive from server URL
       const authUrl = new URL(`${targetUrl}/oauth/authorize`);
       authUrl.searchParams.set('response_type', 'code');
@@ -233,40 +266,31 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           }
         } else if (authCheckResponse.status === 401) {
           // Server requires authentication for the auth endpoint itself
-          // This is unusual - let's try to get initial auth token first
-          addLogEntry({ type: 'warning', data: 'Authorization endpoint requires authentication. Attempting to obtain initial token...' });
-          
-          // Try to get an initial token from the server
-          const tokenUrl = `${targetUrl}/oauth/token`;
-          const initialTokenResponse = await fetch(tokenUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              grant_type: 'client_credentials',
-              client_id: 'mcptest-client',
-              // Include any client secret if needed
-            }),
+          addLogEntry({ 
+            type: 'error', 
+            data: 'Authorization endpoint returned 401. The server may require different authentication settings.' 
           });
-
-          if (initialTokenResponse.ok) {
-            const { access_token } = await initialTokenResponse.json();
-            sessionStorage.setItem('mcp_auth_token', access_token);
-            
-            // Now redirect to auth URL with the token in URL (since we can't send headers in redirect)
-            // Some servers accept tokens as query parameters
-            authUrl.searchParams.set('access_token', access_token);
-            window.location.href = authUrl.toString();
-            return;
-          } else {
-            addLogEntry({ type: 'error', data: 'Failed to obtain initial authentication token' });
-            setConnectionError({
-              error: 'OAuth authorization endpoint requires authentication but initial token request failed',
-              serverUrl: targetUrl,
-              timestamp: new Date()
-            });
-            cleanupConnection();
-            return;
+          
+          // Log the response details for debugging
+          try {
+            const responseText = await authCheckResponse.text();
+            if (responseText) {
+              addLogEntry({ 
+                type: 'error', 
+                data: `Server response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}` 
+              });
+            }
+          } catch (e) {
+            // Ignore text parsing errors
           }
+          
+          setConnectionError({
+            error: 'OAuth authorization endpoint requires authentication. Please check your server configuration and client credentials.',
+            serverUrl: targetUrl,
+            timestamp: new Date()
+          });
+          cleanupConnection();
+          return;
         } else if (authCheckResponse.ok || authCheckResponse.status === 200) {
           // If we get HTML content, redirect to the auth URL
           window.location.href = authUrl.toString();

@@ -459,6 +459,18 @@ function App() {
       navigate(location.pathname, { replace: true });
     } else if (state?.oauthError) {
       console.error('[OAuth] Authentication error:', state.oauthError);
+      
+      // Show error to user
+      setNotification({
+        message: state.oauthError,
+        show: true
+      });
+      
+      // Clear notification after 7 seconds for error messages
+      setTimeout(() => {
+        setNotification({ message: '', show: false });
+      }, 7000);
+      
       // Clear the location state
       navigate(location.pathname, { replace: true });
     }
