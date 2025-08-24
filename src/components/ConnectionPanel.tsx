@@ -30,6 +30,10 @@ interface ConnectionPanelProps {
   useProxy?: boolean;
   setUseProxy?: (useProxy: boolean) => void;
   isProxied?: boolean; // New prop
+  useOAuth?: boolean;
+  setUseOAuth?: (useOAuth: boolean) => void;
+  isAuthFlowActive?: boolean;
+  oauthProgress?: string;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -50,6 +54,10 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   useProxy,
   setUseProxy,
   isProxied, // Destructure new prop
+  useOAuth,
+  setUseOAuth,
+  isAuthFlowActive,
+  oauthProgress,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -214,7 +222,36 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               )}
             </div>
           )}
+          {!isConnected && setUseOAuth && (
+            <div className="mt-2">
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="useOAuthCheck"
+                  checked={useOAuth !== undefined ? useOAuth : false}
+                  onChange={(e) => setUseOAuth(e.target.checked)}
+                  disabled={isConnecting}
+                />
+                <label className="form-check-label" htmlFor="useOAuthCheck">
+                  Use OAuth Authentication
+                </label>
+              </div>
+            </div>
+          )}
         </div>
+        
+        {isAuthFlowActive && oauthProgress && (
+          <div className="alert alert-info mt-3 d-flex align-items-center" role="status">
+            <div className="spinner-border spinner-border-sm me-2" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <div>
+              <strong>OAuth Authentication in Progress</strong>
+              <p className="mb-0 small">{oauthProgress}</p>
+            </div>
+          </div>
+        )}
         
         {connectionError && (
           <ConnectionErrorCard

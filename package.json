@@ -2,22 +2,20 @@
   "name": "mcp-sse-tester",
   "version": "1.0.0",
   "description": "Web-based MCP SSE server testing tool",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
     "prebuild": "node scripts/generate-version.js",
     "build": "vite build",
-    "deploy-worker": "wrangler deploy"
+    "deploy-worker": "wrangler deploy",
+    "deploy-oauth-worker": "cd oauth-worker && npm install && ./deploy.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",
     "@types/showdown": "^2.0.6",
     "@types/uuid": "^10.0.0",
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
     "firebase": "^10.12.2",
+    "pkce-challenge": "^5.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2",
@@ -30,6 +28,7 @@
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.8.3",
-    "vite": "^6.2.6"
+    "vite": "^6.2.6",
+    "wrangler": "^3.0.0"
   }
 }

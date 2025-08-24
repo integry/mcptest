@@ -20,6 +20,8 @@ import Troubleshooting from './components/docs/Troubleshooting';
 import PrivacyPolicy from './components/docs/PrivacyPolicy';
 import TermsOfService from './components/docs/TermsOfService';
 import Contact from './components/docs/Contact';
+// OAuth callback component
+import OAuthCallback from './components/OAuthCallback';
 
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
@@ -253,6 +255,12 @@ function App() {
     const path = location.pathname;
     let pageTitle = 'Playground'; // Default title
 
+    // Check for OAuth callback route
+    if (path === '/oauth/callback') {
+      // OAuth callback is handled by the OAuthCallback component
+      return;
+    }
+
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
@@ -429,6 +437,75 @@ function App() {
       tab.id === tabId ? { ...tab, ...updates } : tab
     ));
   }, []);
+
+  // Handle OAuth callback state
+  useEffect(() => {
+    const state = location.state as any;
+    
+    // Check for OAuth callback logs in sessionStorage
+    const oauthLogsJson = sessionStorage.getItem('oauth_callback_logs');
+    if (oauthLogsJson) {
+      try {
+        const oauthLogs = JSON.parse(oauthLogsJson);
+        if (oauthLogs && oauthLogs.length > 0) {
+          // Find the tab that initiated OAuth (should have isAuthFlowActive)
+          const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+          if (oauthTab) {
+            // Add the OAuth logs to the tab's log entries
+            const logEntries = oauthLogs.map((log: any) => ({
+              type: log.type,
+              data: log.message,
+              timestamp: new Date(log.timestamp).toLocaleTimeString()
+            }));
+            
+            // Update the tab with the OAuth logs
+            handleUpdateTab(oauthTab.id, { 
+              oauthCallbackLogs: logEntries
+            });
+          }
+          
+          // Clear the logs from sessionStorage
+          sessionStorage.removeItem('oauth_callback_logs');
+        }
+      } catch (e) {
+        console.error('Failed to parse OAuth callback logs:', e);
+      }
+    }
+    
+    if (state?.oauthSuccess) {
+      // OAuth was successful, trigger reconnection
+      console.log('[OAuth] Authentication successful, triggering reconnection...');
+      
+      // Find the tab that initiated OAuth (should have isAuthFlowActive)
+      const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+      if (oauthTab) {
+        // Update the tab to clear auth flow state and trigger reconnection
+        handleUpdateTab(oauthTab.id, { 
+          isAuthFlowActive: false,
+          shouldReconnect: true 
+        });
+      }
+      
+      // Clear the location state to prevent re-triggering
+      navigate(location.pathname, { replace: true });
+    } else if (state?.oauthError) {
+      console.error('[OAuth] Authentication error:', state.oauthError);
+      
+      // Show error to user
+      setNotification({
+        message: state.oauthError,
+        show: true
+      });
+      
+      // Clear notification after 7 seconds for error messages
+      setTimeout(() => {
+        setNotification({ message: '', show: false });
+      }, 7000);
+      
+      // Clear the location state
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.state, navigate, tabs, handleUpdateTab]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
@@ -910,6 +987,11 @@ function App() {
 
  // --- Render Logic ---
   const selectedSpace = spaces.find(s => s.id === selectedSpaceId);
+
+  // Check if we're on the OAuth callback page
+  if (location.pathname === '/oauth/callback') {
+    return <OAuthCallback />;
+  }
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">

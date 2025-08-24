@@ -17,8 +17,8 @@ A web-based testing tool for Model Context Protocol (MCP) servers using the HTTP
 1. Clone this repository
 2. Install dependencies with `npm install`
 3. Configure environment variables (see Configuration section below)
-4. Start the server with `node server.js`
-5. Open your browser to `http://localhost:3000`
+4. Start the development server with `npm run dev`
+5. Open your browser to `http://localhost:5173`
 
 ## Configuration
 
@@ -40,6 +40,35 @@ The application supports optional Firebase authentication for Google sign-in. To
    ```
 
 **Note**: If Firebase authentication is enabled but not properly configured, you will see authentication errors. Make sure to use valid Firebase project credentials from your Firebase console.
+
+### OAuth 2.1 Support
+
+The application includes OAuth 2.1 authorization code flow with PKCE for secure authentication with MCP servers, using a Cloudflare Worker for OAuth endpoints.
+
+#### OAuth Configuration
+
+1. Deploy the OAuth worker:
+   ```bash
+   cd oauth-worker
+   npm install
+   ./deploy.sh
+   ```
+
+2. Update your `.env` file with your worker URL:
+   ```
+   VITE_OAUTH_WORKER_URL=https://your-oauth-worker.workers.dev
+   ```
+
+3. Follow the setup instructions in [oauth-worker/README.md](oauth-worker/README.md) to create the KV namespace and initialize the client
+
+#### OAuth Features
+
+- OAuth 2.1 compliant authorization code flow
+- PKCE (Proof Key for Code Exchange) for enhanced security
+- Automatic token management
+- Cloudflare Worker-based OAuth server using @cloudflare/workers-oauth-provider
+
+For detailed OAuth worker setup instructions, see [oauth-worker/README.md](oauth-worker/README.md).
 
 ## HTTP Stream Transport Protocol
 
@@ -125,7 +154,7 @@ To modify the tester:
 
 1. Edit `index.html` for UI changes
 2. Edit `script.js` for client-side logic
-3. Edit `server.js` for server-side logic
+3. Edit OAuth worker in `oauth-worker/src/index.js` for OAuth customization
 4. Edit `styles.css` for styling
 
 ## License

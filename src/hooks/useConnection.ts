@@ -8,6 +8,8 @@ import { detectTransport, attemptParallelConnections } from '../utils/transportD
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
+import pkceChallenge from '../utils/pkce';
+import { oauthConfig, getOAuthServerType } from '../config/oauth';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -61,7 +63,7 @@ const saveRecentServers = (servers: (string | { url: string; useProxy?: boolean 
 };
 
 
-export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean) => {
+export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean, useOAuth?: boolean, onAuthFlowStart?: () => void) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
@@ -73,6 +75,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
   const [isProxied, setIsProxied] = useState(false); // State to track if current connection is proxied
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [isAuthFlowActive, setIsAuthFlowActive] = useState(false);
+  const [oauthProgress, setOauthProgress] = useState<string | null>(null);
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -80,6 +85,14 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   useEffect(() => {
     strictModeRenderCount.current += 1;
     return () => { if (strictModeRenderCount.current > 1) isRealUnmount.current = true; };
+  }, []);
+
+  // Check for stored access token on mount
+  useEffect(() => {
+    const storedToken = sessionStorage.getItem('oauth_access_token');
+    if (storedToken) {
+      setAccessToken(storedToken);
+    }
   }, []);
 
   // --- SDK Client Based Logic ---
@@ -106,6 +119,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setIsConnecting(false);
     setConnectionStartTime(null);
     setIsProxied(false);
+    setIsAuthFlowActive(false);
+    setOauthProgress(null);
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -172,6 +187,227 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         return;
     }
 
+    // Check if OAuth is enabled and initiate OAuth flow
+    if (useOAuth && !accessToken) {
+      console.log('[DEBUG] OAuth enabled but no access token, initiating OAuth flow...');
+      console.log('[OAuth Progress] Starting OAuth 2.1 authorization process');
+      addLogEntry({ 
+        type: 'info', 
+        data: '🔐 OAuth Flow Started: Beginning OAuth 2.1 authorization process' 
+      });
+      setIsAuthFlowActive(true);
+      setOauthProgress('Starting OAuth 2.1 authorization process...');
+      
+      // Notify parent component that OAuth flow is starting
+      if (onAuthFlowStart) {
+        onAuthFlowStart();
+      }
+      
+      // Generate PKCE challenge
+      let code_verifier: string;
+      let code_challenge: string;
+      
+      addLogEntry({ 
+        type: 'info', 
+        data: '📋 Step 1/5: Generating PKCE (Proof Key for Code Exchange) parameters...' 
+      });
+      setOauthProgress('Step 1/5: Generating PKCE security parameters...');
+      console.log('[OAuth Progress] Step 1/5: Generating PKCE parameters');
+      
+      try {
+        const pkce = pkceChallenge();
+        code_verifier = pkce.code_verifier;
+        code_challenge = pkce.code_challenge;
+        
+        // Add debug logging
+        addLogEntry({ 
+          type: 'info', 
+          data: `✅ PKCE generated successfully (verifier: ${code_verifier.length} chars, challenge: ${code_challenge.length} chars)` 
+        });
+        console.log('[OAuth Progress] PKCE generated successfully');
+      } catch (error) {
+        console.error('PKCE generation error:', error);
+        addLogEntry({ 
+          type: 'error', 
+          data: `Failed to generate PKCE challenge: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+        setConnectionError({
+          error: 'Failed to generate PKCE challenge. Please try again.',
+          serverUrl: targetUrl,
+          timestamp: new Date()
+        });
+        setIsConnecting(false);
+        return;
+      }
+      
+      sessionStorage.setItem('pkce_code_verifier', code_verifier);
+      sessionStorage.setItem('oauth_server_url', targetUrl);
+      
+      addLogEntry({ 
+        type: 'info', 
+        data: '💾 Step 2/5: Stored PKCE verifier and server URL in session storage' 
+      });
+      setOauthProgress('Step 2/5: Storing security parameters...');
+      console.log('[OAuth Progress] Step 2/5: Stored PKCE verifier and server URL');
+
+      // Validate PKCE values before proceeding
+      if (!code_verifier || !code_challenge) {
+        addLogEntry({ 
+          type: 'error', 
+          data: 'Invalid PKCE values generated' 
+        });
+        setConnectionError({
+          error: 'Failed to generate secure authentication parameters. Please try again.',
+          serverUrl: targetUrl,
+          timestamp: new Date()
+        });
+        setIsConnecting(false);
+        return;
+      }
+      
+      // Build authorization URL - derive from server URL
+      addLogEntry({ 
+        type: 'info', 
+        data: '🔗 Step 3/5: Building OAuth authorization URL...' 
+      });
+      setOauthProgress('Step 3/5: Building authorization URL...');
+      console.log('[OAuth Progress] Step 3/5: Building authorization URL');
+      
+      const authUrl = new URL(oauthConfig.authorizationEndpoint);
+      authUrl.searchParams.set('response_type', 'code');
+      authUrl.searchParams.set('client_id', 'mcptest-client'); // This should be dynamic in a real app
+      authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+      authUrl.searchParams.set('code_challenge', code_challenge);
+      authUrl.searchParams.set('code_challenge_method', 'S256');
+      authUrl.searchParams.set('scope', 'openid profile email');
+      
+      // Log the authorization URL for debugging
+      addLogEntry({ 
+        type: 'info', 
+        data: `📝 Authorization URL built:\n  - Server Type: ${getOAuthServerType()}\n  - Endpoint: ${oauthConfig.authorizationEndpoint}\n  - Client ID: ${oauthConfig.clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Scopes: ${oauthConfig.scope}\n  - PKCE Method: S256` 
+      });
+      console.log('[OAuth Progress] Authorization URL:', authUrl.toString());
+      
+      // First, try to get server metadata to check if it requires authentication
+      addLogEntry({ 
+        type: 'info', 
+        data: '🌐 Step 4/5: Checking authorization endpoint accessibility...' 
+      });
+      setOauthProgress('Step 4/5: Checking authorization endpoint...');
+      console.log('[OAuth Progress] Step 4/5: Checking authorization endpoint');
+      
+      try {
+        // Attempt to fetch the authorization endpoint with credentials
+        const existingToken = sessionStorage.getItem('mcp_auth_token');
+        addLogEntry({ 
+          type: 'info', 
+          data: `🔍 Making GET request to: ${authUrl.toString()}\n  - Including existing token: ${existingToken ? 'Yes' : 'No'}\n  - Redirect mode: manual` 
+        });
+        
+        const authCheckResponse = await fetch(authUrl.toString(), {
+          method: 'GET',
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            // If we have any existing auth token, include it
+            ...(existingToken ? {
+              'Authorization': `Bearer ${existingToken}`
+            } : {})
+          },
+          redirect: 'manual' // Don't follow redirects automatically
+        });
+
+        addLogEntry({ 
+          type: 'info', 
+          data: `📡 Authorization endpoint response: ${authCheckResponse.status} ${authCheckResponse.statusText}` 
+        });
+        
+        if (authCheckResponse.status === 302 || authCheckResponse.status === 303) {
+          // Server wants to redirect - follow it
+          const redirectUrl = authCheckResponse.headers.get('Location');
+          addLogEntry({ 
+            type: 'info', 
+            data: `✅ Step 5/5: Server returned redirect (${authCheckResponse.status})\n  - Redirect location: ${redirectUrl || 'Not provided'}\n  - Following redirect...` 
+          });
+          setOauthProgress('Step 5/5: Redirecting to authorization server...');
+          console.log('[OAuth Progress] Step 5/5: Redirecting to:', redirectUrl || authUrl.toString());
+          if (redirectUrl) {
+            window.location.href = redirectUrl;
+            return;
+          }
+        } else if (authCheckResponse.status === 401) {
+          // Server requires authentication for the auth endpoint itself
+          addLogEntry({ 
+            type: 'error', 
+            data: `❌ Step 5/5 FAILED: Authorization endpoint returned 401 Unauthorized\n  - The OAuth server requires authentication to access the /oauth/authorize endpoint\n  - This typically means the server configuration needs adjustment\n  - Request URL: ${authUrl.toString()}` 
+          });
+          console.error('[OAuth Progress] OAuth endpoint returned 401 Unauthorized');
+          setOauthProgress('OAuth authorization failed - server requires authentication');
+          
+          // Log the response details for debugging
+          try {
+            const responseText = await authCheckResponse.text();
+            const responseHeaders = Array.from(authCheckResponse.headers.entries())
+              .map(([key, value]) => `    ${key}: ${value}`)
+              .join('\n');
+            
+            addLogEntry({ 
+              type: 'error', 
+              data: `📋 Response details:\n  - Status: ${authCheckResponse.status} ${authCheckResponse.statusText}\n  - Headers:\n${responseHeaders}\n  - Body: ${responseText ? responseText.substring(0, 200) + (responseText.length > 200 ? '...' : '') : '(empty)'}` 
+            });
+          } catch (e) {
+            addLogEntry({ 
+              type: 'error', 
+              data: `⚠️ Could not read response body: ${e instanceof Error ? e.message : 'Unknown error'}` 
+            });
+          }
+          
+          setConnectionError({
+            error: 'OAuth authorization endpoint requires authentication. Please check your server configuration and client credentials. For testing OAuth locally, use http://localhost:3000 as the server URL.',
+            serverUrl: targetUrl,
+            timestamp: new Date(),
+            details: 'The OAuth server at ' + targetUrl + ' requires authentication to access its authorization endpoint. This is a server configuration issue.'
+          });
+          cleanupConnection();
+          return;
+        } else if (authCheckResponse.ok || authCheckResponse.status === 200) {
+          // If we get HTML content, redirect to the auth URL
+          addLogEntry({ 
+            type: 'info', 
+            data: `✅ Step 5/5: Authorization endpoint is accessible (${authCheckResponse.status})\n  - Redirecting to authorization page...` 
+          });
+          setOauthProgress('Step 5/5: Redirecting to authorization page...');
+          console.log('[OAuth Progress] Step 5/5: Redirecting to authorization page');
+          window.location.href = authUrl.toString();
+          return;
+        } else {
+          // Unexpected response - log and try redirect anyway
+          console.log(`[DEBUG] Unexpected auth endpoint response: ${authCheckResponse.status}`);
+          addLogEntry({ 
+            type: 'warning', 
+            data: `⚠️ Step 5/5: Unexpected response from authorization endpoint (${authCheckResponse.status})\n  - Attempting redirect anyway...` 
+          });
+          setOauthProgress('Step 5/5: Redirecting to authorization page...');
+          window.location.href = authUrl.toString();
+          return;
+        }
+      } catch (error) {
+        // If fetch fails (CORS, network error, etc.), fall back to regular redirect
+        console.log('[DEBUG] Auth endpoint check failed, falling back to redirect:', error);
+        addLogEntry({ 
+          type: 'warning', 
+          data: `⚠️ Step 4/5: Could not check authorization endpoint\n  - Error: ${error instanceof Error ? error.message : 'Unknown error'}\n  - This might be due to CORS restrictions\n  - Proceeding with direct redirect...` 
+        });
+        addLogEntry({ 
+          type: 'info', 
+          data: `➡️ Step 5/5: Redirecting directly to authorization URL...` 
+        });
+        setOauthProgress('Step 5/5: Redirecting to authorization URL...');
+        console.log('[OAuth Progress] Step 5/5: Direct redirect to:', authUrl.toString());
+        window.location.href = authUrl.toString();
+        return;
+      }
+    }
+
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
     setTransportType(null);
@@ -215,7 +451,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     const connectDirectly = async () => {
       setIsProxied(false);
       addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
-      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal);
+      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal, accessToken || undefined);
     };
 
     // Helper function to attempt proxy connection
@@ -313,7 +549,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied]); // Added useProxy, currentUser, and isProxied dependencies
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied, useOAuth, accessToken]); // Added useProxy, currentUser, isProxied, useOAuth, and accessToken dependencies
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {
@@ -336,6 +572,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     handleDisconnect,
     handleAbortConnection,
     isProxied, // Expose proxy status
+    accessToken, // Expose access token
+    isAuthFlowActive, // Expose auth flow status
+    oauthProgress, // Expose OAuth progress message
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {
       const updatedServers = recentServers.filter(url => url !== urlToRemove);

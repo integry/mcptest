@@ -88,6 +88,7 @@ export interface ConnectionTab {
   connectionStatus: 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
   transportType?: TransportType | null;
   useProxy?: boolean; // Whether to use proxy for this connection
+  useOAuth?: boolean; // Whether to use OAuth authentication for this connection
   // Capabilities for this specific connection
   tools?: Tool[];
   resources?: Resource[];
@@ -107,5 +108,9 @@ export interface ConnectionTab {
     name: string;
     params?: Record<string, any>;
   };
+  // OAuth flow state
+  isAuthFlowActive?: boolean; // Whether OAuth flow is currently active
+  shouldReconnect?: boolean; // Whether to reconnect after OAuth callback
+  oauthCallbackLogs?: LogEntry[]; // Logs from OAuth callback to be displayed
   // Note: The client instance will be managed in a separate, non-serializable state
 }
