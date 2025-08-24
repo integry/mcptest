@@ -111,5 +111,6 @@ export interface ConnectionTab {
   // OAuth flow state
   isAuthFlowActive?: boolean; // Whether OAuth flow is currently active
   shouldReconnect?: boolean; // Whether to reconnect after OAuth callback
+  oauthCallbackLogs?: LogEntry[]; // Logs from OAuth callback to be displayed
   // Note: The client instance will be managed in a separate, non-serializable state
 }

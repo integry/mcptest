@@ -441,6 +441,37 @@ function App() {
   // Handle OAuth callback state
   useEffect(() => {
     const state = location.state as any;
+    
+    // Check for OAuth callback logs in sessionStorage
+    const oauthLogsJson = sessionStorage.getItem('oauth_callback_logs');
+    if (oauthLogsJson) {
+      try {
+        const oauthLogs = JSON.parse(oauthLogsJson);
+        if (oauthLogs && oauthLogs.length > 0) {
+          // Find the tab that initiated OAuth (should have isAuthFlowActive)
+          const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+          if (oauthTab) {
+            // Add the OAuth logs to the tab's log entries
+            const logEntries = oauthLogs.map((log: any) => ({
+              type: log.type,
+              data: log.message,
+              timestamp: new Date(log.timestamp).toLocaleTimeString()
+            }));
+            
+            // Update the tab with the OAuth logs
+            handleUpdateTab(oauthTab.id, { 
+              oauthCallbackLogs: logEntries
+            });
+          }
+          
+          // Clear the logs from sessionStorage
+          sessionStorage.removeItem('oauth_callback_logs');
+        }
+      } catch (e) {
+        console.error('Failed to parse OAuth callback logs:', e);
+      }
+    }
+    
     if (state?.oauthSuccess) {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');

@@ -538,6 +538,20 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       );
     }
   }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, setTools, setResources, setResponses, onUpdateTab]);
+  
+  // Effect to handle OAuth callback logs
+  useEffect(() => {
+    if (tab.oauthCallbackLogs && tab.oauthCallbackLogs.length > 0) {
+      console.log('[OAuth] Adding OAuth callback logs to tab output...');
+      // Add OAuth callback logs to the response panel
+      tab.oauthCallbackLogs.forEach((log: LogEntry) => {
+        addLogEntry(log);
+      });
+      
+      // Clear the OAuth callback logs from the tab
+      onUpdateTab(tab.id, { oauthCallbackLogs: undefined });
+    }
+  }, [tab.oauthCallbackLogs, tab.id, addLogEntry, onUpdateTab]);
 
   const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
