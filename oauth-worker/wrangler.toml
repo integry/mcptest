@@ -2,10 +2,11 @@ name = "oauth-worker"
 main = "src/index.js"
 compatibility_date = "2025-08-24"
 
-# KV namespace required by @cloudflare/workers-oauth-provider
-[[kv_namespaces]]
-binding = "OAUTH_KV"
-id = "YOUR_KV_NAMESPACE_ID" # Replace with actual KV namespace ID
+# KV namespace binding - configure this in Cloudflare dashboard
+# The binding name MUST be "OAUTH_KV" for the OAuth provider package
+# [[kv_namespaces]]
+# binding = "OAUTH_KV"
+# id = "will-be-set-via-dashboard"
 
 # Environment variables (if needed)
 [vars]

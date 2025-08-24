@@ -1,58 +1,35 @@
 # Cloudflare OAuth Worker Setup Guide
 
-## Quick Fix for KV Namespace Error
+## Setting Up KV Namespace for OAuth Worker
 
-The deployment is failing because a KV namespace ID needs to be configured. Here's how to fix it:
+The OAuth worker requires a KV namespace to store authorization codes and tokens. The best approach is to configure this through the Cloudflare dashboard rather than hardcoding it in `wrangler.toml`.
 
-### Option 1: Create KV Namespace via Cloudflare Dashboard (Recommended)
+### Step 1: Create the KV Namespace
 
-1. Go to your Cloudflare Dashboard
-2. Navigate to Workers & Pages → KV
-3. Click "Create namespace"
-4. Name it: `oauth-worker-kv` (or any name you prefer)
-5. Copy the namespace ID that's generated
-6. Update `wrangler.toml` line 8 with the actual ID:
-   ```toml
-   id = "YOUR_ACTUAL_KV_NAMESPACE_ID_HERE"
-   ```
+1. Go to your [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Navigate to **Workers & Pages** → **KV**
+3. Click **"Create namespace"**
+4. Name it: `oauth-worker-kv` (or any descriptive name)
+5. Note the generated namespace ID
 
-### Option 2: Create KV Namespace via Wrangler CLI
+### Step 2: Configure KV Binding in Workers & Pages
 
-1. Install wrangler globally if not already installed:
-   ```bash
-   npm install -g wrangler
-   ```
+#### For Cloudflare Workers:
+1. Go to **Workers & Pages** → Select `oauth-worker`
+2. Go to **Settings** → **Variables**
+3. Under **KV Namespace Bindings**, click **"Add binding"**
+4. Set:
+   - Variable name: `OAUTH_KV` (MUST be this exact name)
+   - KV namespace: Select the namespace you created
 
-2. Authenticate with Cloudflare:
-   ```bash
-   wrangler login
-   ```
-
-3. Create the KV namespace:
-   ```bash
-   wrangler kv namespace create "OAUTH_KV" --account-id YOUR_ACCOUNT_ID
-   ```
-
-4. The command will output something like:
-   ```
-   🌀 Creating namespace with title "oauth-worker-OAUTH_KV"
-   ✨ Success!
-   Add the following to your configuration file in your kv_namespaces array:
-   { binding = "OAUTH_KV", id = "abcd1234567890..." }
-   ```
-
-5. Copy the ID and update `wrangler.toml`
-
-### Option 3: Use Environment-Specific KV Namespace
-
-If you're using Cloudflare Pages with different environments, you can:
-
-1. Create the KV namespace in your Cloudflare dashboard
-2. Go to your Pages project settings
-3. Add the KV namespace binding in the "Functions" tab
-4. Set the binding name as `OAUTH_KV`
-
-This way, you don't need to hardcode the ID in `wrangler.toml`.
+#### For Cloudflare Pages (with Workers):
+1. Go to **Workers & Pages** → Select your Pages project
+2. Go to **Settings** → **Functions**
+3. Under **KV namespace bindings**, click **"Add binding"**
+4. Set:
+   - Variable name: `OAUTH_KV` (MUST be this exact name)
+   - KV namespace: Select the namespace you created
+5. Configure for both **Production** and **Preview** environments
 
 ## Important Notes
 
