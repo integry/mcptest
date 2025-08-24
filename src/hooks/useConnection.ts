@@ -212,8 +212,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           type: 'error', 
           data: `Failed to generate PKCE challenge: ${error instanceof Error ? error.message : 'Unknown error'}` 
         });
-        setError('Failed to generate PKCE challenge. Please try again.');
-        setConnecting(false);
+        setConnectionError({
+          error: 'Failed to generate PKCE challenge. Please try again.',
+          serverUrl: targetUrl,
+          timestamp: new Date()
+        });
+        setIsConnecting(false);
         return;
       }
       
@@ -226,8 +230,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           type: 'error', 
           data: 'Invalid PKCE values generated' 
         });
-        setError('Failed to generate secure authentication parameters. Please try again.');
-        setConnecting(false);
+        setConnectionError({
+          error: 'Failed to generate secure authentication parameters. Please try again.',
+          serverUrl: targetUrl,
+          timestamp: new Date()
+        });
+        setIsConnecting(false);
         return;
       }
       
