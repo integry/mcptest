@@ -186,6 +186,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     // Check if OAuth is enabled and initiate OAuth flow
     if (useOAuth && !accessToken) {
       console.log('[DEBUG] OAuth enabled but no access token, initiating OAuth flow...');
+      addLogEntry({ 
+        type: 'info', 
+        data: '🔐 OAuth Flow Started: Beginning OAuth 2.1 authorization process' 
+      });
       setIsAuthFlowActive(true);
       
       // Notify parent component that OAuth flow is starting
@@ -197,6 +201,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       let code_verifier: string;
       let code_challenge: string;
       
+      addLogEntry({ 
+        type: 'info', 
+        data: '📋 Step 1/5: Generating PKCE (Proof Key for Code Exchange) parameters...' 
+      });
+      
       try {
         const pkce = pkceChallenge();
         code_verifier = pkce.code_verifier;
@@ -205,7 +214,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         // Add debug logging
         addLogEntry({ 
           type: 'info', 
-          data: `Generated PKCE challenge (verifier: ${code_verifier.length} chars, challenge: ${code_challenge.length} chars)` 
+          data: `✅ PKCE generated successfully (verifier: ${code_verifier.length} chars, challenge: ${code_challenge.length} chars)` 
         });
       } catch (error) {
         console.error('PKCE generation error:', error);
@@ -224,6 +233,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       
       sessionStorage.setItem('pkce_code_verifier', code_verifier);
       sessionStorage.setItem('oauth_server_url', targetUrl);
+      
+      addLogEntry({ 
+        type: 'info', 
+        data: '💾 Step 2/5: Stored PKCE verifier and server URL in session storage' 
+      });
 
       // Validate PKCE values before proceeding
       if (!code_verifier || !code_challenge) {
@@ -241,6 +255,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       }
       
       // Build authorization URL - derive from server URL
+      addLogEntry({ 
+        type: 'info', 
+        data: '🔗 Step 3/5: Building OAuth authorization URL...' 
+      });
+      
       const authUrl = new URL(`${targetUrl}/oauth/authorize`);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('client_id', 'mcptest-client'); // This should be dynamic in a real app
@@ -252,29 +271,47 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       // Log the authorization URL for debugging
       addLogEntry({ 
         type: 'info', 
-        data: `Redirecting to OAuth authorization URL: ${authUrl.toString()}` 
+        data: `📝 Authorization URL built:\n  - Endpoint: ${targetUrl}/oauth/authorize\n  - Client ID: mcptest-client\n  - Redirect URI: ${window.location.origin}/oauth/callback\n  - Scopes: openid profile email\n  - PKCE Method: S256` 
       });
-
-      addLogEntry({ type: 'info', data: 'Initiating OAuth authorization...' });
       
       // First, try to get server metadata to check if it requires authentication
+      addLogEntry({ 
+        type: 'info', 
+        data: '🌐 Step 4/5: Checking authorization endpoint accessibility...' 
+      });
+      
       try {
         // Attempt to fetch the authorization endpoint with credentials
+        const existingToken = sessionStorage.getItem('mcp_auth_token');
+        addLogEntry({ 
+          type: 'info', 
+          data: `🔍 Making GET request to: ${authUrl.toString()}\n  - Including existing token: ${existingToken ? 'Yes' : 'No'}\n  - Redirect mode: manual` 
+        });
+        
         const authCheckResponse = await fetch(authUrl.toString(), {
           method: 'GET',
           headers: {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             // If we have any existing auth token, include it
-            ...(sessionStorage.getItem('mcp_auth_token') ? {
-              'Authorization': `Bearer ${sessionStorage.getItem('mcp_auth_token')}`
+            ...(existingToken ? {
+              'Authorization': `Bearer ${existingToken}`
             } : {})
           },
           redirect: 'manual' // Don't follow redirects automatically
         });
 
+        addLogEntry({ 
+          type: 'info', 
+          data: `📡 Authorization endpoint response: ${authCheckResponse.status} ${authCheckResponse.statusText}` 
+        });
+        
         if (authCheckResponse.status === 302 || authCheckResponse.status === 303) {
           // Server wants to redirect - follow it
           const redirectUrl = authCheckResponse.headers.get('Location');
+          addLogEntry({ 
+            type: 'info', 
+            data: `✅ Step 5/5: Server returned redirect (${authCheckResponse.status})\n  - Redirect location: ${redirectUrl || 'Not provided'}\n  - Following redirect...` 
+          });
           if (redirectUrl) {
             window.location.href = redirectUrl;
             return;
@@ -283,20 +320,25 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           // Server requires authentication for the auth endpoint itself
           addLogEntry({ 
             type: 'error', 
-            data: 'Authorization endpoint returned 401. The server may require different authentication settings.' 
+            data: `❌ Step 5/5 FAILED: Authorization endpoint returned 401 Unauthorized\n  - The OAuth server requires authentication to access the /oauth/authorize endpoint\n  - This typically means the server configuration needs adjustment\n  - Request URL: ${authUrl.toString()}` 
           });
           
           // Log the response details for debugging
           try {
             const responseText = await authCheckResponse.text();
-            if (responseText) {
-              addLogEntry({ 
-                type: 'error', 
-                data: `Server response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}` 
-              });
-            }
+            const responseHeaders = Array.from(authCheckResponse.headers.entries())
+              .map(([key, value]) => `    ${key}: ${value}`)
+              .join('\n');
+            
+            addLogEntry({ 
+              type: 'error', 
+              data: `📋 Response details:\n  - Status: ${authCheckResponse.status} ${authCheckResponse.statusText}\n  - Headers:\n${responseHeaders}\n  - Body: ${responseText ? responseText.substring(0, 200) + (responseText.length > 200 ? '...' : '') : '(empty)'}` 
+            });
           } catch (e) {
-            // Ignore text parsing errors
+            addLogEntry({ 
+              type: 'error', 
+              data: `⚠️ Could not read response body: ${e instanceof Error ? e.message : 'Unknown error'}` 
+            });
           }
           
           setConnectionError({
@@ -308,17 +350,33 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           return;
         } else if (authCheckResponse.ok || authCheckResponse.status === 200) {
           // If we get HTML content, redirect to the auth URL
+          addLogEntry({ 
+            type: 'info', 
+            data: `✅ Step 5/5: Authorization endpoint is accessible (${authCheckResponse.status})\n  - Redirecting to authorization page...` 
+          });
           window.location.href = authUrl.toString();
           return;
         } else {
           // Unexpected response - log and try redirect anyway
           console.log(`[DEBUG] Unexpected auth endpoint response: ${authCheckResponse.status}`);
+          addLogEntry({ 
+            type: 'warning', 
+            data: `⚠️ Step 5/5: Unexpected response from authorization endpoint (${authCheckResponse.status})\n  - Attempting redirect anyway...` 
+          });
           window.location.href = authUrl.toString();
           return;
         }
       } catch (error) {
         // If fetch fails (CORS, network error, etc.), fall back to regular redirect
         console.log('[DEBUG] Auth endpoint check failed, falling back to redirect:', error);
+        addLogEntry({ 
+          type: 'warning', 
+          data: `⚠️ Step 4/5: Could not check authorization endpoint\n  - Error: ${error instanceof Error ? error.message : 'Unknown error'}\n  - This might be due to CORS restrictions\n  - Proceeding with direct redirect...` 
+        });
+        addLogEntry({ 
+          type: 'info', 
+          data: `➡️ Step 5/5: Redirecting directly to authorization URL...` 
+        });
         window.location.href = authUrl.toString();
         return;
       }
