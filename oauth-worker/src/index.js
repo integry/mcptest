@@ -33,6 +33,50 @@ const defaultHandler = {
         // Parse the OAuth authorization request
         let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(request);
         
+        // Auto-register mcptest-client if it doesn't exist
+        if (oauthReqInfo.clientId === "mcptest-client") {
+          // Check if the redirect URI is valid for mcptest.io domain
+          const redirectUrl = new URL(oauthReqInfo.redirectUri);
+          const isValidRedirect = redirectUrl.hostname === 'mcptest.io' || 
+                                  redirectUrl.hostname.endsWith('.mcptest.io');
+          
+          if (!isValidRedirect || redirectUrl.pathname !== '/oauth/callback') {
+            throw new Error('Invalid redirect URI - must be https://*.mcptest.io/oauth/callback');
+          }
+          
+          try {
+            // Try to look up the client first
+            await env.OAUTH_PROVIDER.lookupClient(oauthReqInfo.clientId);
+          } catch (error) {
+            // Client doesn't exist, create it automatically with the specific redirect URI
+            console.log('[OAuth Worker] Auto-registering mcptest-client for:', oauthReqInfo.redirectUri);
+            await env.OAUTH_PROVIDER.createClient({
+              clientId: "mcptest-client",
+              clientName: "MCP SSE Tester",
+              redirectUris: [
+                oauthReqInfo.redirectUri  // Use the actual redirect URI from the request
+              ],
+              publicClient: true,
+              grantTypes: ["authorization_code"],
+              responseTypes: ["code"],
+              scope: "openid profile email"
+            });
+          }
+          
+          // Check if we need to add this redirect URI to existing client
+          try {
+            const clientInfo = await env.OAUTH_PROVIDER.lookupClient(oauthReqInfo.clientId);
+            if (!clientInfo.redirectUris.includes(oauthReqInfo.redirectUri)) {
+              // Add the new redirect URI to the existing client
+              console.log('[OAuth Worker] Adding new redirect URI to mcptest-client:', oauthReqInfo.redirectUri);
+              clientInfo.redirectUris.push(oauthReqInfo.redirectUri);
+              await env.OAUTH_PROVIDER.updateClient(oauthReqInfo.clientId, clientInfo);
+            }
+          } catch (updateError) {
+            console.error('Failed to update client redirect URIs:', updateError);
+          }
+        }
+        
         // Look up client information
         let clientInfo = await env.OAUTH_PROVIDER.lookupClient(oauthReqInfo.clientId);
         
@@ -91,6 +135,7 @@ const defaultHandler = {
       });
     }
 
+
     return new Response("Not found", { status: 404 });
   }
 };
@@ -144,10 +189,7 @@ export async function setupClient(env) {
     clientId: clientId,
     clientName: "MCP SSE Tester",
     redirectUris: [
-      "http://localhost:5173/oauth/callback",
-      "http://localhost:3000/oauth/callback",
-      "https://mcptest.pages.dev/oauth/callback",
-      "https://mcptest.integry.io/oauth/callback"
+      "https://mcptest.io/oauth/callback"
     ],
     // Public client (no secret) for SPA
     publicClient: true,
