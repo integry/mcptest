@@ -8,7 +8,7 @@ import { detectTransport, attemptParallelConnections } from '../utils/transportD
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
-import pkceChallenge from 'pkce-challenge';
+import pkceChallenge from '../utils/pkce';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -205,9 +205,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         // Add debug logging
         addLogEntry({ 
           type: 'info', 
-          data: `Generated PKCE challenge (length: ${code_challenge.length})` 
+          data: `Generated PKCE challenge (verifier: ${code_verifier.length} chars, challenge: ${code_challenge.length} chars)` 
         });
       } catch (error) {
+        console.error('PKCE generation error:', error);
         addLogEntry({ 
           type: 'error', 
           data: `Failed to generate PKCE challenge: ${error instanceof Error ? error.message : 'Unknown error'}` 
@@ -247,6 +248,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       authUrl.searchParams.set('code_challenge', code_challenge);
       authUrl.searchParams.set('code_challenge_method', 'S256');
       authUrl.searchParams.set('scope', 'openid profile email');
+      
+      // Log the authorization URL for debugging
+      addLogEntry({ 
+        type: 'info', 
+        data: `Redirecting to OAuth authorization URL: ${authUrl.toString()}` 
+      });
 
       addLogEntry({ type: 'info', data: 'Initiating OAuth authorization...' });
       
