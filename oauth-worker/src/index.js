@@ -27,16 +27,33 @@ const defaultHandler = {
   async fetch(request, env, ctx) {
     let url = new URL(request.url);
 
+    // Add CORS headers for all responses
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': 'https://mcptest.io',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400',
+    };
+
+    // Handle OPTIONS preflight requests
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 200,
+        headers: corsHeaders
+      });
+    }
+
     // Handle the authorization UI
     if (url.pathname == "/oauth/authorize") {
       try {
-        // Parse the OAuth authorization request
-        let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(request);
+        // First, check if this is mcptest-client and auto-register if needed
+        const urlParams = new URLSearchParams(url.search);
+        const clientId = urlParams.get('client_id');
+        const redirectUri = urlParams.get('redirect_uri');
         
-        // Auto-register mcptest-client if it doesn't exist
-        if (oauthReqInfo.clientId === "mcptest-client") {
+        if (clientId === "mcptest-client" && redirectUri) {
           // Check if the redirect URI is valid for mcptest.io domain
-          const redirectUrl = new URL(oauthReqInfo.redirectUri);
+          const redirectUrl = new URL(redirectUri);
           const isValidRedirect = redirectUrl.hostname === 'mcptest.io' || 
                                   redirectUrl.hostname.endsWith('.mcptest.io');
           
@@ -44,38 +61,26 @@ const defaultHandler = {
             throw new Error('Invalid redirect URI - must be https://*.mcptest.io/oauth/callback');
           }
           
+          // Try to ensure the client exists before the OAuth provider processes the request
           try {
-            // Try to look up the client first
-            await env.OAUTH_PROVIDER.lookupClient(oauthReqInfo.clientId);
+            await env.OAUTH_PROVIDER.lookupClient(clientId);
           } catch (error) {
-            // Client doesn't exist, create it automatically with the specific redirect URI
-            console.log('[OAuth Worker] Auto-registering mcptest-client for:', oauthReqInfo.redirectUri);
+            // Client doesn't exist, create it
+            console.log('[OAuth Worker] Auto-registering mcptest-client for:', redirectUri);
             await env.OAUTH_PROVIDER.createClient({
               clientId: "mcptest-client",
               clientName: "MCP SSE Tester",
-              redirectUris: [
-                oauthReqInfo.redirectUri  // Use the actual redirect URI from the request
-              ],
+              redirectUris: [redirectUri],
               publicClient: true,
               grantTypes: ["authorization_code"],
               responseTypes: ["code"],
               scope: "openid profile email"
             });
           }
-          
-          // Check if we need to add this redirect URI to existing client
-          try {
-            const clientInfo = await env.OAUTH_PROVIDER.lookupClient(oauthReqInfo.clientId);
-            if (!clientInfo.redirectUris.includes(oauthReqInfo.redirectUri)) {
-              // Add the new redirect URI to the existing client
-              console.log('[OAuth Worker] Adding new redirect URI to mcptest-client:', oauthReqInfo.redirectUri);
-              clientInfo.redirectUris.push(oauthReqInfo.redirectUri);
-              await env.OAUTH_PROVIDER.updateClient(oauthReqInfo.clientId, clientInfo);
-            }
-          } catch (updateError) {
-            console.error('Failed to update client redirect URIs:', updateError);
-          }
         }
+        
+        // Now parse the OAuth authorization request
+        let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(request);
         
         // Look up client information
         let clientInfo = await env.OAUTH_PROVIDER.lookupClient(oauthReqInfo.clientId);
@@ -114,7 +119,10 @@ const defaultHandler = {
           error_description: error.message 
         }), {
           status: 500,
-          headers: { "Content-Type": "application/json" }
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
         });
       }
     }
