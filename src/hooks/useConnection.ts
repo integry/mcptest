@@ -701,6 +701,54 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     } catch (error: any) {
         const isUserAborted = error.message && error.message.includes('Connection aborted by user');
         if (!isUserAborted) {
+            // Check if this is a 401 Unauthorized error
+            const is401Error = error.message && (
+                error.message.includes('401') || 
+                error.message.toLowerCase().includes('unauthorized') ||
+                error.statusCode === 401 ||
+                error.status === 401
+            );
+            
+            if (is401Error && !useOAuth) {
+                // Attempt OAuth discovery for 401 errors
+                console.log('[OAuth] 401 error detected, attempting OAuth discovery...');
+                addLogEntry({ type: 'info', data: '🔐 Authentication required. Checking for OAuth support...' });
+                
+                try {
+                    const oauthConfig = await getOAuthConfig(targetUrl);
+                    
+                    if (oauthConfig) {
+                        // OAuth is available for this service
+                        const serviceName = getOAuthServiceName(targetUrl);
+                        addLogEntry({ 
+                            type: 'info', 
+                            data: `✅ OAuth authentication available${serviceName ? ` for ${serviceName}` : ''}. Configuration required.` 
+                        });
+                        
+                        // Show OAuth configuration dialog
+                        setNeedsOAuthConfig(true);
+                        setOAuthConfigServerUrl(targetUrl);
+                        setIsConnecting(false);
+                        
+                        // Clear the connection error since we're handling it with OAuth
+                        return;
+                    } else {
+                        // No OAuth available, show the original error
+                        addLogEntry({ 
+                            type: 'warning', 
+                            data: 'OAuth discovery failed. The server requires authentication but does not support OAuth.' 
+                        });
+                    }
+                } catch (discoveryError) {
+                    console.error('OAuth discovery error:', discoveryError);
+                    addLogEntry({ 
+                        type: 'warning', 
+                        data: `OAuth discovery failed: ${discoveryError instanceof Error ? discoveryError.message : 'Unknown error'}` 
+                    });
+                }
+            }
+            
+            // Handle all other errors normally
             logEvent('connect_failure');
             const errorDetails = formatErrorForDisplay(error, {
                 serverUrl: targetUrl, // Report error against the target URL
