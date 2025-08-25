@@ -10,7 +10,7 @@ import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import { generatePKCE } from '../utils/pkce';
 import { oauthConfig, getOAuthServerType } from '../config/oauth';
-import { getOAuthConfig, isOAuthService, getOAuthServiceName } from '../utils/oauthDiscovery';
+import { getOAuthConfig, isOAuthService, getOAuthServiceName, getOrRegisterOAuthClient } from '../utils/oauthDiscovery';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -336,96 +336,101 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       // Store discovered endpoints for callback
       sessionStorage.setItem('oauth_endpoints', JSON.stringify(oauthEndpoints));
       
-      // Check if we have client credentials
-      const existingClientId = sessionStorage.getItem('oauth_client_id');
-      
-      // If client registration is required and we don't have credentials, show config dialog
-      if (oauthEndpoints.requiresClientRegistration && !existingClientId) {
-        addLogEntry({ 
-          type: 'warning', 
-          data: `⚠️ OAuth client registration required. You need to:\n  1. Register your application with ${serviceName || 'the OAuth provider'}\n  2. Configure the client ID and secret\n  3. Add ${window.location.origin}/oauth/callback as a redirect URI` 
-        });
-        
-        // Show OAuth config dialog
-        setNeedsOAuthConfig(true);
-        setOAuthConfigServerUrl(targetUrl);
-        setIsConnecting(false);
-        setIsAuthFlowActive(false);
-        addLogEntry({ 
-          type: 'info', 
-          data: '📋 OAuth client configuration required. Please configure your OAuth credentials.' 
-        });
-        return;
-      }
-      
       // Build authorization URL
       addLogEntry({ 
         type: 'info', 
-        data: '🔗 Step 4/6: Building OAuth authorization URL...' 
+        data: '🔗 Step 4/7: Checking for dynamic client registration...' 
       });
-      setOauthProgress('Step 4/6: Building authorization URL...');
-      console.log('[OAuth Progress] Step 4/6: Building authorization URL');
+      setOauthProgress('Step 4/7: Checking client registration...');
+      console.log('[OAuth Progress] Step 4/7: Checking client registration');
       
-      // Use existing client ID or try to get one dynamically
-      let oauthClientId = existingClientId;
+      let oauthClientId: string | null = null;
+      let oauthClientSecret: string | null = null;
       
-      if (!oauthClientId) {
-        // Check if this looks like our test server
-        if (targetUrl.includes('localhost') || targetUrl.includes('oauth-worker.livecart.workers.dev')) {
-          // Try to get dynamic client for test server
-          const ensureClientUrl = new URL(oauthEndpoints.authorizationEndpoint.replace('/authorize', '/ensure-client'));
+      // Try dynamic client registration if supported
+      if (oauthEndpoints.requiresDynamicRegistration && oauthEndpoints.registrationEndpoint) {
+        addLogEntry({ 
+          type: 'info', 
+          data: '🔐 Step 5/7: Performing dynamic client registration...' 
+        });
+        setOauthProgress('Step 5/7: Registering OAuth client...');
+        console.log('[OAuth Progress] Step 5/7: Dynamic client registration at', oauthEndpoints.registrationEndpoint);
+        
+        const clientRegistration = await getOrRegisterOAuthClient(targetUrl, oauthEndpoints.registrationEndpoint);
+        
+        if (clientRegistration) {
+          oauthClientId = clientRegistration.clientId;
+          oauthClientSecret = clientRegistration.clientSecret || null;
           
-          try {
-            addLogEntry({ 
-              type: 'info', 
-              data: '🔍 Getting OAuth client ID from test server...' 
-            });
-            
-            const ensureResponse = await fetch(ensureClientUrl.toString(), {
-              method: 'GET',
-              headers: {
-                'Accept': 'application/json'
-              }
-            });
-            
-            const clientData = await ensureResponse.json();
-            
-            if (!ensureResponse.ok || !clientData.clientId) {
-              throw new Error(clientData.error_description || 'Failed to get OAuth client');
-            }
-            
-            oauthClientId = clientData.clientId;
-            sessionStorage.setItem('oauth_client_id', oauthClientId);
-            
-            addLogEntry({ 
-              type: 'info', 
-              data: `✅ OAuth client ready: ${clientData.clientName} (${oauthClientId})` 
-            });
-          } catch (error) {
-            console.error('Failed to get OAuth client:', error);
-            // For test server, use default client ID
-            oauthClientId = 'mcptest-client';
-          }
+          addLogEntry({ 
+            type: 'info', 
+            data: `✅ OAuth client registered successfully:\n  - Client ID: ${oauthClientId}\n  - Client Secret: ${oauthClientSecret ? 'Provided' : 'Not required (public client)'}` 
+          });
         } else {
-          // For real services, client configuration is required
           addLogEntry({ 
             type: 'error', 
-            data: 'OAuth client ID not configured. This should have been caught earlier.' 
+            data: '❌ Dynamic client registration failed. The server may not support RFC7591.' 
           });
+          
+          // For known services that don't support dynamic registration, show config dialog
+          if (serviceName && oauthEndpoints.requiresClientRegistration) {
+            addLogEntry({ 
+              type: 'warning', 
+              data: `⚠️ ${serviceName} requires manual OAuth client registration. You need to:\n  1. Register your application with ${serviceName}\n  2. Configure the client ID and secret\n  3. Add ${window.location.origin}/oauth/callback as a redirect URI` 
+            });
+            
+            // Show OAuth config dialog
+            setNeedsOAuthConfig(true);
+            setOAuthConfigServerUrl(targetUrl);
+            setIsConnecting(false);
+            setIsAuthFlowActive(false);
+            return;
+          }
+          
+          // For unknown services, we cannot proceed without client registration
           setConnectionError({
-            error: 'OAuth client ID not configured',
+            error: 'OAuth client registration failed. This server requires OAuth but does not support dynamic client registration.',
             serverUrl: targetUrl,
-            timestamp: new Date()
+            timestamp: new Date(),
+            details: 'Per MCP specification, dynamic client registration (RFC7591) is recommended for OAuth-enabled servers.'
           });
           setIsConnecting(false);
+          setIsAuthFlowActive(false);
+          return;
+        }
+      } else {
+        // Check if we have manually configured credentials (for services that don't support dynamic registration)
+        const existingClientId = sessionStorage.getItem('oauth_client_id');
+        const existingClientSecret = sessionStorage.getItem('oauth_client_secret');
+        
+        if (existingClientId) {
+          oauthClientId = existingClientId;
+          oauthClientSecret = existingClientSecret;
+          addLogEntry({ 
+            type: 'info', 
+            data: '📋 Step 5/7: Using manually configured OAuth credentials' 
+          });
+        } else if (oauthEndpoints.requiresClientRegistration) {
+          // No dynamic registration and no manual credentials
+          addLogEntry({ 
+            type: 'warning', 
+            data: `⚠️ OAuth client registration required. ${serviceName || 'This service'} does not support dynamic registration.` 
+          });
+          
+          // Show OAuth config dialog
+          setNeedsOAuthConfig(true);
+          setOAuthConfigServerUrl(targetUrl);
+          setIsConnecting(false);
+          setIsAuthFlowActive(false);
           return;
         }
       }
       
+      // Ensure we have a client ID
       if (!oauthClientId) {
         addLogEntry({ 
           type: 'error', 
-          data: 'OAuth client ID not configured. Please set up OAuth client credentials first.' 
+          data: 'OAuth client ID not available. Cannot proceed with authorization.' 
         });
         setConnectionError({
           error: 'OAuth client ID not configured',
@@ -435,6 +440,19 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         setIsConnecting(false);
         return;
       }
+      
+      // Store client credentials for the callback to use
+      if (oauthClientSecret) {
+        sessionStorage.setItem('oauth_client_secret', oauthClientSecret);
+      }
+      
+      // Build authorization URL
+      addLogEntry({ 
+        type: 'info', 
+        data: '🔗 Step 6/7: Building OAuth authorization URL...' 
+      });
+      setOauthProgress('Step 6/7: Building authorization URL...');
+      console.log('[OAuth Progress] Step 6/7: Building authorization URL');
       
       const authUrl = new URL(oauthEndpoints.authorizationEndpoint);
       authUrl.searchParams.set('response_type', 'code');
@@ -458,10 +476,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       // First, try to get server metadata to check if it requires authentication
       addLogEntry({ 
         type: 'info', 
-        data: '🌐 Step 5/6: Checking authorization endpoint accessibility...' 
+        data: '🌐 Step 7/7: Checking authorization endpoint accessibility...' 
       });
-      setOauthProgress('Step 5/6: Checking authorization endpoint...');
-      console.log('[OAuth Progress] Step 5/6: Checking authorization endpoint');
+      setOauthProgress('Step 7/7: Checking authorization endpoint...');
+      console.log('[OAuth Progress] Step 7/7: Checking authorization endpoint');
       
       try {
         // Attempt to fetch the authorization endpoint with credentials
@@ -493,10 +511,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           const redirectUrl = authCheckResponse.headers.get('Location');
           addLogEntry({ 
             type: 'info', 
-            data: `✅ Step 6/6: Server returned redirect (${authCheckResponse.status})\n  - Redirect location: ${redirectUrl || 'Not provided'}\n  - Following redirect...` 
+            data: `✅ Authorization endpoint returned redirect (${authCheckResponse.status})\n  - Redirect location: ${redirectUrl || 'Not provided'}\n  - Following redirect...` 
           });
-          setOauthProgress('Step 6/6: Redirecting to authorization server...');
-          console.log('[OAuth Progress] Step 6/6: Redirecting to:', redirectUrl || authUrl.toString());
+          setOauthProgress('Redirecting to authorization server...');
+          console.log('[OAuth Progress] Redirecting to:', redirectUrl || authUrl.toString());
           if (redirectUrl) {
             window.location.href = redirectUrl;
             return;
@@ -540,10 +558,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           // If we get HTML content, redirect to the auth URL
           addLogEntry({ 
             type: 'info', 
-            data: `✅ Step 6/6: Authorization endpoint is accessible (${authCheckResponse.status})\n  - Redirecting to authorization page...` 
+            data: `✅ Authorization endpoint is accessible (${authCheckResponse.status})\n  - Redirecting to authorization page...` 
           });
-          setOauthProgress('Step 6/6: Redirecting to authorization page...');
-          console.log('[OAuth Progress] Step 6/6: Redirecting to authorization page');
+          setOauthProgress('Redirecting to authorization page...');
+          console.log('[OAuth Progress] Redirecting to authorization page');
           window.location.href = authUrl.toString();
           return;
         } else {
@@ -551,9 +569,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           console.log(`[DEBUG] Unexpected auth endpoint response: ${authCheckResponse.status}`);
           addLogEntry({ 
             type: 'warning', 
-            data: `⚠️ Step 6/6: Unexpected response from authorization endpoint (${authCheckResponse.status})\n  - Attempting redirect anyway...` 
+            data: `⚠️ Unexpected response from authorization endpoint (${authCheckResponse.status})\n  - Attempting redirect anyway...` 
           });
-          setOauthProgress('Step 6/6: Redirecting to authorization page...');
+          setOauthProgress('Redirecting to authorization page...');
           window.location.href = authUrl.toString();
           return;
         }
@@ -562,14 +580,14 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         console.log('[DEBUG] Auth endpoint check failed, falling back to redirect:', error);
         addLogEntry({ 
           type: 'warning', 
-          data: `⚠️ Step 4/5: Could not check authorization endpoint\n  - Error: ${error instanceof Error ? error.message : 'Unknown error'}\n  - This might be due to CORS restrictions\n  - Proceeding with direct redirect...` 
+          data: `⚠️ Could not check authorization endpoint\n  - Error: ${error instanceof Error ? error.message : 'Unknown error'}\n  - This might be due to CORS restrictions\n  - Proceeding with direct redirect...` 
         });
         addLogEntry({ 
           type: 'info', 
-          data: `➡️ Step 6/6: Redirecting directly to authorization URL...` 
+          data: `➡️ Redirecting directly to authorization URL...` 
         });
-        setOauthProgress('Step 6/6: Redirecting to authorization URL...');
-        console.log('[OAuth Progress] Step 6/6: Direct redirect to:', authUrl.toString());
+        setOauthProgress('Redirecting to authorization URL...');
+        console.log('[OAuth Progress] Direct redirect to:', authUrl.toString());
         window.location.href = authUrl.toString();
         return;
       }
