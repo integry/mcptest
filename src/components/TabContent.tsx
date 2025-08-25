@@ -9,6 +9,7 @@ import { RecentServersPanel } from './RecentServersPanel';
 import { SuggestedServersPanel } from './SuggestedServersPanel';
 import ParamsPanel from './ParamsPanel';
 import OutputPanel from './OutputPanel';
+import OAuthConfig from './OAuthConfig';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
@@ -100,7 +101,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     removeRecentServer,
     accessToken,
     isAuthFlowActive,
-    oauthProgress
+    oauthProgress,
+    needsOAuthConfig,
+    oauthConfigServerUrl,
+    clearOAuthConfigNeed
   } = useConnection(
     addLogEntry, 
     tab.useProxy, 
@@ -862,6 +866,21 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           )}
         </div>
       </div>
+      
+      {/* OAuth Configuration Dialog */}
+      {needsOAuthConfig && oauthConfigServerUrl && (
+        <OAuthConfig
+          serverUrl={oauthConfigServerUrl}
+          onConfigured={() => {
+            clearOAuthConfigNeed();
+            // Retry connection after configuration
+            handleConnectWrapper(undefined, tab.useProxy);
+          }}
+          onCancel={() => {
+            clearOAuthConfigNeed();
+          }}
+        />
+      )}
     </div>
   );
 };

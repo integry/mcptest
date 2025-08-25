@@ -51,18 +51,37 @@ const OAuthCallback: React.FC = () => {
         addOAuthLog('info', '✅ All required parameters present, proceeding with token exchange...');
         
         try {
-          // Use token endpoint from config
-          const tokenUrl = oauthConfig.tokenEndpoint;
+          // Get saved OAuth endpoints from discovery
+          const savedEndpoints = sessionStorage.getItem('oauth_endpoints');
+          let tokenUrl = oauthConfig.tokenEndpoint; // Default fallback
+          let supportsPKCE = true;
+          let customHeaders: Record<string, string> = {};
+          
+          if (savedEndpoints) {
+            try {
+              const endpoints = JSON.parse(savedEndpoints);
+              tokenUrl = endpoints.tokenEndpoint;
+              supportsPKCE = endpoints.supportsPKCE ?? true;
+              customHeaders = endpoints.customHeaders || {};
+              addOAuthLog('info', `📋 Using discovered OAuth endpoints:\n  - Token endpoint: ${tokenUrl}\n  - PKCE support: ${supportsPKCE ? 'Yes' : 'No'}`);
+            } catch (e) {
+              addOAuthLog('warning', '⚠️ Failed to parse saved OAuth endpoints, using defaults');
+            }
+          }
           
           addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Server Type: ${getOAuthServerType()}\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
           
-          const requestBody = {
+          const requestBody: any = {
             grant_type: 'authorization_code',
             code,
             redirect_uri: oauthConfig.redirectUri,
             client_id: clientId,
-            code_verifier: codeVerifier,
           };
+          
+          // Only include code_verifier if PKCE is supported
+          if (supportsPKCE) {
+            requestBody.code_verifier = codeVerifier;
+          }
           
           addOAuthLog('info', '📤 Step 2/3: Sending POST request to token endpoint...');
           
@@ -73,7 +92,10 @@ const OAuthCallback: React.FC = () => {
           
           const tokenResponse = await fetch(tokenUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: { 
+              'Content-Type': 'application/x-www-form-urlencoded',
+              ...customHeaders // Include any service-specific headers
+            },
             body: formData.toString(),
           });
           
