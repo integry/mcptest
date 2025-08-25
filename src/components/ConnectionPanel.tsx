@@ -130,25 +130,36 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
           {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
-          {isConnected && isOAuthConnection && <span className="badge bg-info text-white">OAuth</span>}
-          {isConnected && isOAuthConnection && oauthUserInfo && (
-            <button
-              className="btn btn-sm btn-link text-decoration-none p-0 d-flex align-items-center gap-1"
-              onClick={() => setShowUserInfoModal(true)}
-              title="View OAuth user info"
-            >
-              {oauthUserInfo.picture && (
-                <img
-                  src={oauthUserInfo.picture}
-                  alt="User avatar"
-                  className="rounded-circle"
-                  style={{ width: '24px', height: '24px' }}
-                />
-              )}
-              <span className="text-muted small">
-                {oauthUserInfo.name || oauthUserInfo.email || 'OAuth User'}
+          {isConnected && isOAuthConnection && (
+            <div className="d-flex align-items-center gap-1">
+              <span className="badge bg-secondary text-white d-flex align-items-center gap-1">
+                OAuth
+                {oauthUserInfo && (
+                  <>
+                    {oauthUserInfo.picture && (
+                      <img
+                        src={oauthUserInfo.picture}
+                        alt="User avatar"
+                        className="rounded-circle"
+                        style={{ width: '16px', height: '16px' }}
+                      />
+                    )}
+                    <span className="small">
+                      {oauthUserInfo.name || oauthUserInfo.email || 'User'}
+                    </span>
+                  </>
+                )}
               </span>
-            </button>
+              {oauthUserInfo && (
+                <button
+                  className="btn btn-sm btn-link text-decoration-none p-0"
+                  onClick={() => setShowUserInfoModal(true)}
+                  title="View detailed OAuth user info"
+                >
+                  <i className="bi bi-info-circle"></i>
+                </button>
+              )}
+            </div>
           )}
           <div aria-live="polite" className="d-inline-block">
             <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
