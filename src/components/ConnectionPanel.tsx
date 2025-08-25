@@ -34,6 +34,7 @@ interface ConnectionPanelProps {
   setUseOAuth?: (useOAuth: boolean) => void;
   isAuthFlowActive?: boolean;
   oauthProgress?: string;
+  oauthUserInfo?: any; // User info from OAuth
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -58,12 +59,14 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   setUseOAuth,
   isAuthFlowActive,
   oauthProgress,
+  oauthUserInfo,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
     const randomIndex = Math.floor(Math.random() * SUGGESTED_SERVERS.length);
     return SUGGESTED_SERVERS[randomIndex];
   });
+  const [showUserInfoModal, setShowUserInfoModal] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
   const { currentUser } = useAuth();
 
@@ -105,12 +108,34 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
     });
   };
   // Return JSX directly without outer parentheses
-  return <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`} style={{ marginTop: '0', minHeight: '200px' }}>
+  return (
+    <>
+      <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`} style={{ marginTop: '0', minHeight: '200px' }}>
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
         <h5 className="mb-0">Server Connection</h5>
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
           {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
+          {isConnected && oauthUserInfo && <span className="badge bg-info text-white">OAuth</span>}
+          {isConnected && oauthUserInfo && (
+            <button
+              className="btn btn-sm btn-link text-decoration-none p-0 d-flex align-items-center gap-1"
+              onClick={() => setShowUserInfoModal(true)}
+              title="View OAuth user info"
+            >
+              {oauthUserInfo.picture && (
+                <img
+                  src={oauthUserInfo.picture}
+                  alt="User avatar"
+                  className="rounded-circle"
+                  style={{ width: '24px', height: '24px' }}
+                />
+              )}
+              <span className="text-muted small">
+                {oauthUserInfo.name || oauthUserInfo.email || 'OAuth User'}
+              </span>
+            </button>
+          )}
           <div aria-live="polite" className="d-inline-block">
             <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
               {connectionStatus}
@@ -269,7 +294,61 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           />
         )}
       </div>
-    </div>;
+    </div>
+
+    {/* OAuth User Info Modal */}
+    {showUserInfoModal && oauthUserInfo && (
+      <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">OAuth User Information</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowUserInfoModal(false)}
+                aria-label="Close"
+              ></button>
+            </div>
+            <div className="modal-body">
+              {oauthUserInfo.picture && (
+                <div className="text-center mb-3">
+                  <img
+                    src={oauthUserInfo.picture}
+                    alt="User avatar"
+                    className="rounded-circle"
+                    style={{ width: '100px', height: '100px' }}
+                  />
+                </div>
+              )}
+              <div className="table-responsive">
+                <table className="table table-sm">
+                  <tbody>
+                    {Object.entries(oauthUserInfo).map(([key, value]) => (
+                      <tr key={key}>
+                        <td className="fw-bold">{key}:</td>
+                        <td>{typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowUserInfoModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  );
 };
 
 export default ConnectionPanel;

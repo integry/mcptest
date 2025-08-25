@@ -81,6 +81,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [oauthProgress, setOauthProgress] = useState<string | null>(null);
   const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
+  const [oauthUserInfo, setOauthUserInfo] = useState<any>(null);
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -98,6 +99,57 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       console.log('[OAuth] Access token found in sessionStorage');
     }
   }, [connectionStatus]); // Re-check when connection status changes
+
+  // Fetch OAuth user info when we have an access token
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      if (!accessToken || connectionStatus !== 'Connected') {
+        return;
+      }
+
+      try {
+        // Get OAuth endpoints from session storage
+        const storedEndpoints = sessionStorage.getItem('oauth_endpoints');
+        if (!storedEndpoints) {
+          console.log('[OAuth] No OAuth endpoints found, skipping user info fetch');
+          return;
+        }
+
+        const oauthEndpoints = JSON.parse(storedEndpoints);
+        if (!oauthEndpoints.userinfo_endpoint) {
+          console.log('[OAuth] No userinfo endpoint in OAuth configuration');
+          return;
+        }
+
+        console.log('[OAuth] Fetching user info from:', oauthEndpoints.userinfo_endpoint);
+        
+        const response = await fetch(oauthEndpoints.userinfo_endpoint, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const userInfo = await response.json();
+          console.log('[OAuth] User info fetched successfully:', userInfo);
+          setOauthUserInfo(userInfo);
+          addLogEntry({
+            type: 'info',
+            data: '✅ OAuth user information retrieved successfully'
+          });
+        } else {
+          console.error('[OAuth] Failed to fetch user info:', response.status, response.statusText);
+          // Don't show error to user as this is optional
+        }
+      } catch (error) {
+        console.error('[OAuth] Error fetching user info:', error);
+        // Don't show error to user as this is optional
+      }
+    };
+
+    fetchUserInfo();
+  }, [accessToken, connectionStatus, addLogEntry]);
 
   // --- SDK Client Based Logic ---
 
@@ -127,6 +179,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setOauthProgress(null);
     setNeedsOAuthConfig(false);
     setOAuthConfigServerUrl(null);
+    setOauthUserInfo(null);
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -809,6 +862,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     accessToken, // Expose access token
     isAuthFlowActive, // Expose auth flow status
     oauthProgress, // Expose OAuth progress message
+    oauthUserInfo, // Expose OAuth user info
     needsOAuthConfig, // Expose if OAuth config is needed
     oauthConfigServerUrl, // Expose the server URL that needs config
     clearOAuthConfigNeed: () => {
