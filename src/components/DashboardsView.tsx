@@ -15,15 +15,16 @@ const OAuthStatusIndicator: React.FC<OAuthStatusIndicatorProps> = ({ serverUrl }
   const [hasOAuthToken, setHasOAuthToken] = useState(false);
 
   useEffect(() => {
-    // Check if we have an OAuth token
-    const token = sessionStorage.getItem('oauth_access_token');
+    // Check if we have an OAuth token for this server
+    const serverHost = new URL(serverUrl).host;
+    const token = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
     setHasOAuthToken(!!token);
 
     // If we have a token, try to fetch user info
     if (token) {
       const fetchUserInfo = async () => {
         try {
-          const storedEndpoints = sessionStorage.getItem('oauth_endpoints');
+          const storedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
           if (!storedEndpoints) return;
 
           const oauthEndpoints = JSON.parse(storedEndpoints);
@@ -47,7 +48,7 @@ const OAuthStatusIndicator: React.FC<OAuthStatusIndicatorProps> = ({ serverUrl }
 
       fetchUserInfo();
     }
-  }, []);
+  }, [serverUrl]);
 
   if (!hasOAuthToken) {
     return null; // No OAuth token, don't show anything

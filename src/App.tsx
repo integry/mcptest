@@ -932,7 +932,8 @@ function App() {
         }
 
         // Check for OAuth token and include it in transport headers
-        const oauthToken = sessionStorage.getItem('oauth_access_token');
+        const serverHost = new URL(serverUrl).host;
+        const oauthToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
         const transportOptions: any = {};
         
         if (oauthToken) {
@@ -1036,9 +1037,10 @@ function App() {
   const handleReauthorizeCard = async (spaceId: string, cardId: string, serverUrl: string) => {
     console.log(`[Reauthorize] Starting OAuth reauth for card ${cardId} on ${serverUrl}`);
     
-    // Clear the existing invalid token
-    sessionStorage.removeItem('oauth_access_token');
-    sessionStorage.removeItem('oauth_refresh_token');
+    // Clear the existing invalid token for this server
+    const serverHost = new URL(serverUrl).host;
+    sessionStorage.removeItem(`oauth_access_token_${serverHost}`);
+    sessionStorage.removeItem(`oauth_refresh_token_${serverHost}`);
     
     // Store the server URL for OAuth callback
     sessionStorage.setItem('oauth_server_url', serverUrl);
@@ -1058,7 +1060,7 @@ function App() {
         const { codeVerifier, codeChallenge } = await generatePKCE();
         
         sessionStorage.setItem('oauth_code_verifier', codeVerifier);
-        sessionStorage.setItem('oauth_endpoints', JSON.stringify(oauthConfig));
+        sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
         
         const clientId = sessionStorage.getItem('oauth_client_id');
         if (!clientId) {

@@ -74,8 +74,9 @@ const OAuthCallback: React.FC = () => {
         addOAuthLog('info', '✅ All required parameters present, proceeding with token exchange...');
         
         try {
-          // Get saved OAuth endpoints from discovery
-          const savedEndpoints = sessionStorage.getItem('oauth_endpoints');
+          // Get saved OAuth endpoints from discovery (per server)
+          const serverHost = serverUrl ? new URL(serverUrl).host : '';
+          const savedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
           let tokenUrl = oauthConfig.tokenEndpoint; // Default fallback
           let supportsPKCE = true;
           let customHeaders: Record<string, string> = {};
@@ -140,9 +141,11 @@ const OAuthCallback: React.FC = () => {
             
             addOAuthLog('info', `🎉 Tokens received:\n  - Access token: ${access_token ? `${access_token.substring(0, 20)}...` : 'Not provided'}\n  - Refresh token: ${refresh_token ? 'Yes' : 'No'}\n  - Token type: ${token_type || 'Bearer'}\n  - Expires in: ${expires_in ? `${expires_in} seconds` : 'Not specified'}`);
             
-            sessionStorage.setItem('oauth_access_token', access_token);
+            // Store tokens per server
+            const serverHost = serverUrl ? new URL(serverUrl).host : '';
+            sessionStorage.setItem(`oauth_access_token_${serverHost}`, access_token);
             if (refresh_token) {
-              sessionStorage.setItem('oauth_refresh_token', refresh_token);
+              sessionStorage.setItem(`oauth_refresh_token_${serverHost}`, refresh_token);
             }
             sessionStorage.removeItem('pkce_code_verifier');
             

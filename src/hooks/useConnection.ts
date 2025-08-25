@@ -94,7 +94,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
   // Check for stored access token on mount and when connection changes
   useEffect(() => {
-    const storedToken = sessionStorage.getItem('oauth_access_token');
+    const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
     if (storedToken) {
       setAccessToken(storedToken);
       console.log('[OAuth] Access token found in sessionStorage');
@@ -103,7 +103,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
   // Always check sessionStorage for the latest token before connecting
   const getLatestAccessToken = useCallback(() => {
-    const storedToken = sessionStorage.getItem('oauth_access_token');
+    const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
     if (storedToken && storedToken !== accessToken) {
       console.log('[OAuth] Found updated access token in sessionStorage');
       setAccessToken(storedToken);
@@ -124,8 +124,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       }
 
       try {
-        // Get OAuth endpoints from session storage
-        const storedEndpoints = sessionStorage.getItem('oauth_endpoints');
+        // Get OAuth endpoints from session storage (per server)
+        const serverHost = new URL(addProtocolIfMissing(serverUrl)).host;
+        const storedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
         if (!storedEndpoints) {
           console.log('[OAuth] No OAuth endpoints found, skipping user info fetch');
           return;
@@ -134,6 +135,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         const oauthEndpoints = JSON.parse(storedEndpoints);
         if (!oauthEndpoints.userinfo_endpoint) {
           console.log('[OAuth] No userinfo endpoint in OAuth configuration');
+          // Set a default user info if userinfo endpoint is not available
+          setOauthUserInfo({
+            name: 'OAuth User',
+            email: 'OAuth authenticated',
+            sub: 'oauth-user'
+          });
           return;
         }
 
@@ -197,13 +204,30 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setOAuthConfigServerUrl(null);
     setOauthUserInfo(null);
     setIsOAuthConnection(false);
+    
+    // Clear server-specific OAuth tokens and endpoints on disconnect
+    if (serverUrl) {
+      try {
+        const serverHost = new URL(addProtocolIfMissing(serverUrl)).host;
+        sessionStorage.removeItem(`oauth_access_token_${serverHost}`);
+        sessionStorage.removeItem(`oauth_refresh_token_${serverHost}`);
+        sessionStorage.removeItem(`oauth_endpoints_${serverHost}`);
+        console.log(`[OAuth] Cleared tokens and endpoints for server: ${serverHost}`);
+      } catch (error) {
+        console.error('[OAuth] Error clearing server-specific tokens:', error);
+      }
+    }
+    
+    // Clear access token from state
+    setAccessToken(null);
+    
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
     console.log('[DEBUG] Connection cleanup complete.');
-  }, [addLogEntry]); // Added addLogEntry dependency
+  }, [addLogEntry, serverUrl]); // Added addLogEntry and serverUrl dependencies
 
   const handleDisconnect = useCallback(async () => {
     if (connectionStatus !== 'Disconnected' && !isConnecting) {
@@ -407,8 +431,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         return;
       }
       
-      // Store discovered endpoints for callback
-      sessionStorage.setItem('oauth_endpoints', JSON.stringify(oauthEndpoints));
+      // Store discovered endpoints for callback (per server)
+      const serverHost = new URL(targetUrl).host;
+      sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthEndpoints));
       
       // Build authorization URL
       addLogEntry({ 

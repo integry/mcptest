@@ -133,8 +133,9 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           {isConnected && isOAuthConnection && (
             <div className="d-flex align-items-center gap-1">
               <span className="badge bg-secondary text-white d-flex align-items-center gap-1">
+                <i className="bi bi-shield-lock"></i>
                 OAuth
-                {oauthUserInfo && (
+                {oauthUserInfo ? (
                   <>
                     {oauthUserInfo.picture && (
                       <img
@@ -148,17 +149,17 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                       {oauthUserInfo.name || oauthUserInfo.email || 'User'}
                     </span>
                   </>
+                ) : (
+                  <span className="small">Authenticated</span>
                 )}
               </span>
-              {oauthUserInfo && (
-                <button
-                  className="btn btn-sm btn-link text-decoration-none p-0"
-                  onClick={() => setShowUserInfoModal(true)}
-                  title="View detailed OAuth user info"
-                >
-                  <i className="bi bi-info-circle"></i>
-                </button>
-              )}
+              <button
+                className="btn btn-sm btn-link text-decoration-none p-0"
+                onClick={() => setShowUserInfoModal(true)}
+                title={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
+              >
+                <i className="bi bi-info-circle"></i>
+              </button>
             </div>
           )}
           <div aria-live="polite" className="d-inline-block">
@@ -322,12 +323,12 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
     </div>
 
     {/* OAuth User Info Modal */}
-    {showUserInfoModal && oauthUserInfo && (
+    {showUserInfoModal && (
       <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
         <div className="modal-dialog">
           <div className="modal-content">
             <div className="modal-header">
-              <h5 className="modal-title">OAuth User Information</h5>
+              <h5 className="modal-title">OAuth {oauthUserInfo ? 'User' : 'Session'} Information</h5>
               <button
                 type="button"
                 className="btn-close"
@@ -336,28 +337,63 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               ></button>
             </div>
             <div className="modal-body">
-              {oauthUserInfo.picture && (
-                <div className="text-center mb-3">
-                  <img
-                    src={oauthUserInfo.picture}
-                    alt="User avatar"
-                    className="rounded-circle"
-                    style={{ width: '100px', height: '100px' }}
-                  />
+              {oauthUserInfo ? (
+                <>
+                  {oauthUserInfo.picture && (
+                    <div className="text-center mb-3">
+                      <img
+                        src={oauthUserInfo.picture}
+                        alt="User avatar"
+                        className="rounded-circle"
+                        style={{ width: '100px', height: '100px' }}
+                      />
+                    </div>
+                  )}
+                  <div className="table-responsive">
+                    <table className="table table-sm">
+                      <tbody>
+                        {Object.entries(oauthUserInfo).map(([key, value]) => (
+                          <tr key={key}>
+                            <td className="fw-bold">{key}:</td>
+                            <td>{typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <div className="alert alert-info">
+                    <i className="bi bi-shield-lock me-2"></i>
+                    OAuth authentication is active for this connection
+                  </div>
+                  <h6>Session Details:</h6>
+                  <table className="table table-sm">
+                    <tbody>
+                      <tr>
+                        <td className="fw-bold">Status:</td>
+                        <td>Authenticated</td>
+                      </tr>
+                      <tr>
+                        <td className="fw-bold">Server:</td>
+                        <td>{serverUrl}</td>
+                      </tr>
+                      <tr>
+                        <td className="fw-bold">Token Type:</td>
+                        <td>Bearer</td>
+                      </tr>
+                      <tr>
+                        <td className="fw-bold">Connection Type:</td>
+                        <td>OAuth 2.1 with PKCE</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p className="text-muted small mt-3">
+                    User information is not available from this OAuth provider.
+                  </p>
                 </div>
               )}
-              <div className="table-responsive">
-                <table className="table table-sm">
-                  <tbody>
-                    {Object.entries(oauthUserInfo).map(([key, value]) => (
-                      <tr key={key}>
-                        <td className="fw-bold">{key}:</td>
-                        <td>{typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
             <div className="modal-footer">
               <button

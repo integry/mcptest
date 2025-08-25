@@ -232,6 +232,7 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
   authorizationEndpoint: string;
   tokenEndpoint: string;
   registrationEndpoint?: string;
+  userinfo_endpoint?: string;
   scope: string;
   supportsPKCE: boolean;
   requiresClientRegistration: boolean;
@@ -253,6 +254,7 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
         authorizationEndpoint: discovered.authorization_endpoint,
         tokenEndpoint: discovered.token_endpoint,
         registrationEndpoint: discovered.registration_endpoint,
+        userinfo_endpoint: discovered.userinfo_endpoint,
         scope: serviceConfig?.scope || discovered.scopes_supported?.join(' ') || 'openid profile email',
         // OAuth 2.1 requires PKCE for public clients - always enable it
         supportsPKCE: true,
@@ -278,6 +280,7 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
           authorizationEndpoint: serviceConfig.authorizationEndpoint,
           tokenEndpoint: serviceConfig.tokenEndpoint,
           registrationEndpoint: serviceConfig.registrationEndpoint,
+          userinfo_endpoint: undefined, // Known services with static config typically don't provide userinfo endpoint
           scope: serviceConfig.scope || 'openid profile email',
           // OAuth 2.1 requires PKCE for public clients - always enable it
           supportsPKCE: true,
@@ -293,6 +296,7 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
       authorizationEndpoint: `${authorizationBaseUrl}/authorize`,
       tokenEndpoint: `${authorizationBaseUrl}/token`,
       registrationEndpoint: `${authorizationBaseUrl}/register`,
+      userinfo_endpoint: `${authorizationBaseUrl}/userinfo`, // Standard OpenID Connect endpoint
       scope: 'openid profile email',
       supportsPKCE: true,
       requiresClientRegistration: true,
