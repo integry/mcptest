@@ -506,6 +506,35 @@ function App() {
         }
       }
       
+      // Handle card refresh after OAuth completion
+      const cardsToRefreshJson = sessionStorage.getItem('oauth_cards_to_refresh');
+      if (cardsToRefreshJson) {
+        try {
+          const cardsToRefresh = JSON.parse(cardsToRefreshJson);
+          console.log('[OAuth Card Refresh] Refreshing cards after OAuth completion:', cardsToRefresh);
+          
+          // Refresh each card that was waiting for OAuth
+          cardsToRefresh.forEach(({ spaceId, cardId }: { spaceId: string; cardId: string }) => {
+            console.log(`[OAuth Card Refresh] Refreshing card ${cardId} in space ${spaceId}`);
+            handleExecuteCard(spaceId, cardId);
+          });
+          
+          // Clear the refresh queue
+          sessionStorage.removeItem('oauth_cards_to_refresh');
+          
+          // Show success message
+          setNotification({ 
+            message: 'OAuth authentication successful - refreshing cards', 
+            show: true 
+          });
+          setTimeout(() => setNotification({ message: '', show: false }), 3000);
+          
+        } catch (error) {
+          console.error('[OAuth Card Refresh] Failed to parse cards to refresh:', error);
+          sessionStorage.removeItem('oauth_cards_to_refresh');
+        }
+      }
+      
       // Clear the location state to prevent re-triggering
       navigate(location.pathname, { replace: true });
     } else if (state?.oauthError) {
@@ -525,38 +554,7 @@ function App() {
       // Clear the location state
       navigate(location.pathname, { replace: true });
     }
-  }, [location.state, navigate, tabs, handleUpdateTab]);
-
-  // --- Effect to handle card refresh after OAuth completion ---
-  useEffect(() => {
-    const cardsToRefreshJson = sessionStorage.getItem('oauth_cards_to_refresh');
-    if (cardsToRefreshJson && sessionStorage.getItem('oauth_access_token')) {
-      try {
-        const cardsToRefresh = JSON.parse(cardsToRefreshJson);
-        console.log('[OAuth Card Refresh] Refreshing cards after OAuth completion:', cardsToRefresh);
-        
-        // Refresh each card that was waiting for OAuth
-        cardsToRefresh.forEach(({ spaceId, cardId }: { spaceId: string; cardId: string }) => {
-          console.log(`[OAuth Card Refresh] Refreshing card ${cardId} in space ${spaceId}`);
-          handleExecuteCard(spaceId, cardId);
-        });
-        
-        // Clear the refresh queue
-        sessionStorage.removeItem('oauth_cards_to_refresh');
-        
-        // Show success message
-        setNotification({ 
-          message: 'OAuth authentication successful - refreshing cards', 
-          show: true 
-        });
-        setTimeout(() => setNotification({ message: '', show: false }), 3000);
-        
-      } catch (error) {
-        console.error('[OAuth Card Refresh] Failed to parse cards to refresh:', error);
-        sessionStorage.removeItem('oauth_cards_to_refresh');
-      }
-    }
-  }, [sessionStorage.getItem('oauth_access_token'), handleExecuteCard]);
+  }, [location.state, navigate, tabs, handleUpdateTab, handleExecuteCard]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
