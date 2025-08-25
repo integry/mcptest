@@ -90,13 +90,14 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     return () => { if (strictModeRenderCount.current > 1) isRealUnmount.current = true; };
   }, []);
 
-  // Check for stored access token on mount
+  // Check for stored access token on mount and when connection changes
   useEffect(() => {
     const storedToken = sessionStorage.getItem('oauth_access_token');
     if (storedToken) {
       setAccessToken(storedToken);
+      console.log('[OAuth] Access token found in sessionStorage');
     }
-  }, []);
+  }, [connectionStatus]); // Re-check when connection status changes
 
   // --- SDK Client Based Logic ---
 

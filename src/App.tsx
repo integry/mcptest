@@ -458,10 +458,16 @@ function App() {
               timestamp: new Date(log.timestamp).toLocaleTimeString()
             }));
             
-            // Update the tab with the OAuth logs
-            handleUpdateTab(oauthTab.id, { 
-              oauthCallbackLogs: logEntries
-            });
+            // Get the OAuth server URL from sessionStorage to ensure tab has correct URL
+            const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
+            const updateData: any = { oauthCallbackLogs: logEntries };
+            if (oauthServerUrl && oauthTab.serverUrl !== oauthServerUrl) {
+              updateData.serverUrl = oauthServerUrl;
+              console.log('[OAuth] Updating tab server URL from logs:', oauthServerUrl);
+            }
+            
+            // Update the tab with the OAuth logs and possibly the server URL
+            handleUpdateTab(oauthTab.id, updateData);
           }
           
           // Clear the logs from sessionStorage
@@ -479,11 +485,25 @@ function App() {
       // Find the tab that initiated OAuth (should have isAuthFlowActive)
       const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
       if (oauthTab) {
-        // Update the tab to clear auth flow state and trigger reconnection
-        handleUpdateTab(oauthTab.id, { 
-          isAuthFlowActive: false,
-          shouldReconnect: true 
-        });
+        // Get the OAuth server URL from sessionStorage
+        const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
+        if (oauthServerUrl) {
+          console.log('[OAuth] Updating tab with OAuth server URL:', oauthServerUrl);
+          // Update the tab to use the correct OAuth server URL, clear auth flow state and trigger reconnection
+          handleUpdateTab(oauthTab.id, { 
+            serverUrl: oauthServerUrl,
+            isAuthFlowActive: false,
+            shouldReconnect: true 
+          });
+          // Clean up the OAuth server URL from sessionStorage after using it
+          sessionStorage.removeItem('oauth_server_url');
+        } else {
+          // Fallback: just trigger reconnection without updating URL
+          handleUpdateTab(oauthTab.id, { 
+            isAuthFlowActive: false,
+            shouldReconnect: true 
+          });
+        }
       }
       
       // Clear the location state to prevent re-triggering
