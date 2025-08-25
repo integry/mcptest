@@ -20,6 +20,7 @@ import Troubleshooting from './components/docs/Troubleshooting';
 import PrivacyPolicy from './components/docs/PrivacyPolicy';
 import TermsOfService from './components/docs/TermsOfService';
 import Contact from './components/docs/Contact';
+import McpTestVsInspector from './components/docs/McpTestVsInspector';
 // OAuth callback component
 import OAuthCallback from './components/OAuthCallback';
 
@@ -1074,7 +1075,10 @@ function App() {
             <div className={activeDocPage === 'contact' ? '' : 'd-none'}>
               <Contact />
             </div>
-            {activeDocPage && !['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting', 'privacy-policy', 'terms-of-service', 'contact'].includes(activeDocPage) && (
+            <div className={activeDocPage === 'mcp-test-vs-inspector' ? '' : 'd-none'}>
+              <McpTestVsInspector />
+            </div>
+            {activeDocPage && !['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting', 'privacy-policy', 'terms-of-service', 'contact', 'mcp-test-vs-inspector'].includes(activeDocPage) && (
               <div className="alert alert-warning">
                 Documentation page not found. Please select a page from the navigation.
               </div>

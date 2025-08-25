@@ -397,6 +397,15 @@ const SideNav: React.FC<SideNavProps> = ({
           </li>
           <li className="nav-item">
             <Link
+              to="/docs/mcp-test-vs-inspector"
+              className="nav-link py-1"
+              onClick={() => document.body.classList.remove('menu-open')}
+            >
+              <i className="bi bi-diagram-3 me-2"></i> MCP Test vs Inspector
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link
               to="/docs/testing-guide"
               className="nav-link py-1"
               onClick={() => document.body.classList.remove('menu-open')}
