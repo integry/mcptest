@@ -14,6 +14,13 @@ const McpTestVsInspector: React.FC = () => {
             Both <strong>MCP Test</strong> and <strong>MCP Inspector</strong> are developer tools for the Model Context Protocol, but they serve different primary purposes. MCP Test is for automated testing and monitoring, while MCP Inspector is for manual, interactive debugging.
           </div>
 
+          <div className="mb-4">
+            <a href="https://modelcontextprotocol.io/legacy/tools/inspector" target="_blank" rel="noopener noreferrer" className="btn btn-outline-primary">
+              <i className="bi bi-box-arrow-up-right me-2"></i>
+              Visit MCP Inspector
+            </a>
+          </div>
+
           <h2>Key Differences at a Glance</h2>
           <div className="table-responsive mb-4">
             <table className="table table-bordered table-hover">
