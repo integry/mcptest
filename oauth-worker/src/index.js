@@ -139,61 +139,71 @@ const defaultHandler = {
       }
     }
 
-    // Handle the authorization UI
-    if (url.pathname == "/oauth/authorize") {
+    // Special endpoint to get or create mcptest client
+    if (url.pathname == "/oauth/ensure-client") {
       try {
-        // For mcptest-client, validate redirect URI manually
-        const urlParams = new URLSearchParams(url.search);
-        const clientId = urlParams.get('client_id');
-        const redirectUri = urlParams.get('redirect_uri');
+        // First try to find an existing client with our redirect URIs
+        const targetRedirectUri = "https://mcptest.io/oauth/callback";
         
-        if (clientId === 'mcptest-client' && redirectUri) {
-          // Validate that it's a *.mcptest.io domain
-          const redirectUrl = new URL(redirectUri);
-          const isValidDomain = redirectUrl.hostname === 'mcptest.io' || 
-                               redirectUrl.hostname.endsWith('.mcptest.io');
-          
-          if (isValidDomain && redirectUrl.pathname === '/oauth/callback') {
-            // Create a modified request with a known redirect URI
-            const modifiedUrl = new URL(request.url);
-            modifiedUrl.searchParams.set('redirect_uri', 'https://mcptest.io/oauth/callback');
-            
-            const modifiedRequest = new Request(modifiedUrl.toString(), {
-              method: request.method,
-              headers: request.headers,
-              body: request.body
-            });
-            
-            // Parse with the modified request
-            let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(modifiedRequest);
-            
-            // Complete the authorization with the original redirect URI
-            let { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
-              request: oauthReqInfo,
-              userId: "mcptest-user",
-              metadata: {
-                authorized_at: new Date().toISOString(),
-                client_name: "MCP SSE Tester"
-              },
-              scope: oauthReqInfo.scope || ["openid", "profile", "email"],
-              props: {
-                userId: "mcptest-user",
-                username: "MCP Test User",
-                email: "user@mcptest.example.com"
-              }
-            });
-            
-            // Replace the redirect URI in the response with the original one
-            const finalRedirectUrl = new URL(redirectTo);
-            const originalRedirectUrl = new URL(redirectUri);
-            finalRedirectUrl.hostname = originalRedirectUrl.hostname;
-            
-            console.log('[OAuth Worker] Redirecting to:', finalRedirectUrl.toString());
-            return Response.redirect(finalRedirectUrl.toString(), 302);
+        // List all clients and find one that matches our needs
+        const clients = await env.OAUTH_PROVIDER.listClients();
+        let mcptestClient = null;
+        
+        for (const client of clients) {
+          if (client.clientName === "MCP SSE Tester" && 
+              client.redirectUris && 
+              client.redirectUris.includes(targetRedirectUri)) {
+            mcptestClient = client;
+            break;
           }
         }
         
-        // Parse the OAuth authorization request normally
+        // If no client found, create one
+        if (!mcptestClient) {
+          mcptestClient = await env.OAUTH_PROVIDER.createClient({
+            clientName: "MCP SSE Tester",
+            redirectUris: [
+              "https://mcptest.io/oauth/callback",
+              "https://app.mcptest.io/oauth/callback",
+              "https://staging.mcptest.io/oauth/callback"
+            ],
+            grantTypes: ["authorization_code"],
+            responseTypes: ["code"],
+            tokenEndpointAuthMethod: "none",
+            publicClient: true
+          });
+        }
+        
+        return new Response(JSON.stringify({
+          clientId: mcptestClient.clientId,
+          clientName: mcptestClient.clientName,
+          redirectUris: mcptestClient.redirectUris
+        }), {
+          status: 200,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      } catch (error) {
+        console.error('[OAuth Worker] Ensure client error:', error);
+        return new Response(JSON.stringify({ 
+          error: 'server_error',
+          error_description: error.message 
+        }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      }
+    }
+
+    // Handle the authorization UI
+    if (url.pathname == "/oauth/authorize") {
+      try {
+        // Parse the OAuth authorization request
         let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(request);
         
         // Look up client information
@@ -258,112 +268,6 @@ const defaultHandler = {
     }
 
 
-    // Delete mcptest-client endpoint
-    if (url.pathname == "/delete-client" && request.method === "DELETE") {
-      try {
-        // Try to delete via OAuth provider
-        try {
-          await env.OAUTH_PROVIDER.deleteClient('mcptest-client');
-        } catch (e) {
-          console.log('OAuth provider delete failed:', e.message);
-        }
-        
-        // Also try direct KV delete
-        await env.OAUTH_KV.delete('client:mcptest-client');
-        
-        return new Response(JSON.stringify({ 
-          success: true,
-          message: 'Client deleted'
-        }), {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      } catch (error) {
-        console.error('[OAuth Worker] Delete client error:', error);
-        return new Response(JSON.stringify({ 
-          error: 'server_error',
-          error_description: error.message 
-        }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      }
-    }
-
-    // Initialize mcptest-client endpoint
-    if (url.pathname == "/init-client" && request.method === "POST") {
-      try {
-        // Check if client already exists
-        try {
-          await env.OAUTH_PROVIDER.lookupClient('mcptest-client');
-          return new Response(JSON.stringify({ 
-            success: true,
-            message: 'Client already exists'
-          }), {
-            status: 200,
-            headers: { 
-              "Content-Type": "application/json",
-              ...corsHeaders
-            }
-          });
-        } catch (e) {
-          // Client doesn't exist, create it using the KV store directly
-          // The OAuth provider might expect a specific format
-          const clientData = {
-            clientId: "mcptest-client",
-            clientName: "MCP SSE Tester",
-            redirectUris: [
-              "https://mcptest.io/oauth/callback",
-              "https://app.mcptest.io/oauth/callback", 
-              "https://staging.mcptest.io/oauth/callback"
-            ],
-            publicClient: true,
-            grantTypes: ["authorization_code"],
-            responseTypes: ["code"],
-            scope: "openid profile email",
-            createdAt: new Date().toISOString()
-          };
-          
-          // Try both the OAuth provider method and direct KV write
-          try {
-            await env.OAUTH_PROVIDER.createClient(clientData);
-          } catch (createError) {
-            console.error('OAuth provider createClient failed:', createError);
-            // Try direct KV write as fallback
-            await env.OAUTH_KV.put(`client:mcptest-client`, JSON.stringify(clientData));
-          }
-          
-          return new Response(JSON.stringify({ 
-            success: true,
-            message: 'Client created successfully'
-          }), {
-            status: 201,
-            headers: { 
-              "Content-Type": "application/json",
-              ...corsHeaders
-            }
-          });
-        }
-      } catch (error) {
-        console.error('[OAuth Worker] Init client error:', error);
-        return new Response(JSON.stringify({ 
-          error: 'server_error',
-          error_description: error.message 
-        }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      }
-    }
 
     // Debug endpoint to check OAuth provider state
     if (url.pathname == "/debug/oauth-state") {
@@ -455,6 +359,7 @@ const defaultHandler = {
       }
     }
 
+    
     return new Response("Not found", { status: 404 });
   }
 };
@@ -486,15 +391,6 @@ export default new OAuthProvider({
   // Allow public client registration for SPAs like our MCP tester
   disallowPublicClientRegistration: false,
   
-  // Pre-register static clients
-  staticClients: [{
-    clientId: "mcptest-client",
-    clientName: "MCP SSE Tester", 
-    redirectUris: ["https://mcptest.io/oauth/callback"],
-    grantTypes: ["authorization_code"],
-    responseTypes: ["code"],
-    tokenEndpointAuthMethod: "none"
-  }]
 });
 
 // Helper function to create the initial client (can be called separately)

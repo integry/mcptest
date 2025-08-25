@@ -30,6 +30,7 @@ const OAuthCallback: React.FC = () => {
       const errorDescription = params.get('error_description');
       const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
       const serverUrl = sessionStorage.getItem('oauth_server_url');
+      const clientId = sessionStorage.getItem('oauth_client_id') || oauthConfig.clientId;
       
       // Log received parameters
       addOAuthLog('info', `📄 Callback parameters:\n  - Authorization code: ${code ? `${code.substring(0, 10)}...` : 'Not provided'}\n  - Error: ${error || 'None'}\n  - Error description: ${errorDescription || 'None'}\n  - PKCE verifier stored: ${codeVerifier ? 'Yes' : 'No'}\n  - Server URL stored: ${serverUrl || 'Not found'}`);
@@ -53,22 +54,27 @@ const OAuthCallback: React.FC = () => {
           // Use token endpoint from config
           const tokenUrl = oauthConfig.tokenEndpoint;
           
-          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Server Type: ${getOAuthServerType()}\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${oauthConfig.clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
+          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Server Type: ${getOAuthServerType()}\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
           
           const requestBody = {
             grant_type: 'authorization_code',
             code,
             redirect_uri: oauthConfig.redirectUri,
-            client_id: oauthConfig.clientId,
+            client_id: clientId,
             code_verifier: codeVerifier,
           };
           
           addOAuthLog('info', '📤 Step 2/3: Sending POST request to token endpoint...');
           
+          const formData = new URLSearchParams();
+          Object.entries(requestBody).forEach(([key, value]) => {
+            formData.append(key, value);
+          });
+          
           const tokenResponse = await fetch(tokenUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData.toString(),
           });
           
           addOAuthLog('info', `📥 Token endpoint response: ${tokenResponse.status} ${tokenResponse.statusText}`);
