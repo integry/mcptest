@@ -142,49 +142,33 @@ const defaultHandler = {
     // Special endpoint to get or create mcptest client
     if (url.pathname == "/oauth/ensure-client") {
       try {
-        // First try to find an existing client with our redirect URIs
-        const targetRedirectUri = "https://mcptest.io/oauth/callback";
+        // Use the existing client ID that we know works
+        // This was created via dynamic registration and has the correct redirect URIs
+        const clientId = "5iA4IxGmFOIEau2p";
         
-        // List all clients and find one that matches our needs
-        const clients = await env.OAUTH_PROVIDER.listClients();
-        let mcptestClient = null;
-        
-        for (const client of clients) {
-          if (client.clientName === "MCP SSE Tester" && 
-              client.redirectUris && 
-              client.redirectUris.includes(targetRedirectUri)) {
-            mcptestClient = client;
-            break;
-          }
-        }
-        
-        // If no client found, create one
-        if (!mcptestClient) {
-          mcptestClient = await env.OAUTH_PROVIDER.createClient({
-            clientName: "MCP SSE Tester",
-            redirectUris: [
+        // Verify the client exists
+        try {
+          const client = await env.OAUTH_PROVIDER.lookupClient(clientId);
+          
+          return new Response(JSON.stringify({
+            clientId: clientId,
+            clientName: client.clientName || "MCP SSE Tester",
+            redirectUris: client.redirectUris || [
               "https://mcptest.io/oauth/callback",
               "https://app.mcptest.io/oauth/callback",
               "https://staging.mcptest.io/oauth/callback"
-            ],
-            grantTypes: ["authorization_code"],
-            responseTypes: ["code"],
-            tokenEndpointAuthMethod: "none",
-            publicClient: true
+            ]
+          }), {
+            status: 200,
+            headers: { 
+              "Content-Type": "application/json",
+              ...corsHeaders
+            }
           });
+        } catch (lookupError) {
+          // If client doesn't exist, return error
+          throw new Error(`Client ${clientId} not found. Please use the dynamic registration endpoint.`);
         }
-        
-        return new Response(JSON.stringify({
-          clientId: mcptestClient.clientId,
-          clientName: mcptestClient.clientName,
-          redirectUris: mcptestClient.redirectUris
-        }), {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
       } catch (error) {
         console.error('[OAuth Worker] Ensure client error:', error);
         return new Response(JSON.stringify({ 
