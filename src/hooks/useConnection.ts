@@ -8,7 +8,7 @@ import { detectTransport, attemptParallelConnections } from '../utils/transportD
 import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
-import pkceChallenge from '../utils/pkce';
+import { generatePKCE } from '../utils/pkce';
 import { oauthConfig, getOAuthServerType } from '../config/oauth';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
@@ -215,7 +215,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       console.log('[OAuth Progress] Step 1/5: Generating PKCE parameters');
       
       try {
-        const pkce = pkceChallenge();
+        const pkce = await generatePKCE();
         code_verifier = pkce.code_verifier;
         code_challenge = pkce.code_challenge;
         

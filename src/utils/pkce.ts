@@ -24,41 +24,40 @@ function generateRandomString(length: number): string {
   return result;
 }
 
-// Simple hash function for code challenge (not cryptographically secure, but works for demo)
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  
-  // Convert to base64-like string
-  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-  let result = '';
-  let value = Math.abs(hash);
-  
-  while (value > 0 || result.length < 43) {
-    result += charset[value % charset.length];
-    value = Math.floor(value / charset.length);
-    if (value === 0 && result.length < 43) {
-      // Pad with additional characters based on input
-      value = str.charCodeAt(result.length % str.length);
-    }
-  }
-  
-  return result;
+// Generate SHA256 hash for PKCE code challenge
+async function sha256(plain: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(plain);
+  return crypto.subtle.digest('SHA-256', data);
 }
 
-// Default export for backward compatibility
-export default function pkceChallenge(): { code_verifier: string; code_challenge: string } {
+// Convert ArrayBuffer to base64url string
+function base64urlencode(arrayBuffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(arrayBuffer);
+  let str = '';
+  for (let i = 0; i < bytes.length; i++) {
+    str += String.fromCharCode(bytes[i]);
+  }
+  // Convert to base64
+  const base64 = btoa(str);
+  // Convert to base64url
+  return base64
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+// Generate PKCE challenge asynchronously with proper SHA256
+export async function generatePKCE(): Promise<{ code_verifier: string; code_challenge: string }> {
   try {
     // Generate code verifier (43-128 characters as per RFC 7636)
     const code_verifier = generateRandomString(64);
     
-    // For a proper implementation, we would use SHA256, but for immediate functionality
-    // we'll use a deterministic transformation
-    const code_challenge = simpleHash(code_verifier);
+    // Generate SHA256 hash of the verifier
+    const hashed = await sha256(code_verifier);
+    
+    // Convert to base64url
+    const code_challenge = base64urlencode(hashed);
     
     return {
       code_verifier,
@@ -66,11 +65,23 @@ export default function pkceChallenge(): { code_verifier: string; code_challenge
     };
   } catch (error) {
     console.error('Error generating PKCE challenge:', error);
-    // Return a fallback value to prevent the app from crashing
-    const fallbackVerifier = 'fallback_' + Date.now() + '_' + Math.random().toString(36).substring(2);
-    return {
-      code_verifier: fallbackVerifier,
-      code_challenge: fallbackVerifier // In a real implementation, this should be SHA256(verifier)
-    };
+    throw error;
   }
+}
+
+// Default export for backward compatibility (synchronous but incorrect)
+// This is deprecated and should not be used
+export default function pkceChallenge(): { code_verifier: string; code_challenge: string } {
+  console.warn('Using synchronous PKCE generation - this is deprecated and insecure!');
+  
+  // Generate code verifier
+  const code_verifier = generateRandomString(64);
+  
+  // Return a dummy challenge - this won't work with real OAuth!
+  const code_challenge = generateRandomString(43);
+  
+  return {
+    code_verifier,
+    code_challenge
+  };
 }
