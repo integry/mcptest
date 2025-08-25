@@ -101,6 +101,16 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
   }, [connectionStatus]); // Re-check when connection status changes
 
+  // Always check sessionStorage for the latest token before connecting
+  const getLatestAccessToken = useCallback(() => {
+    const storedToken = sessionStorage.getItem('oauth_access_token');
+    if (storedToken && storedToken !== accessToken) {
+      console.log('[OAuth] Found updated access token in sessionStorage');
+      setAccessToken(storedToken);
+    }
+    return storedToken || accessToken;
+  }, [accessToken])
+
   // Fetch OAuth user info when we have an access token
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -253,8 +263,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         return;
     }
 
+    // Always get the latest access token from sessionStorage
+    const latestAccessToken = getLatestAccessToken();
+    
     // Check if OAuth is enabled and initiate OAuth flow
-    if (useOAuth && !accessToken) {
+    if (useOAuth && !latestAccessToken) {
       console.log('[DEBUG] OAuth enabled but no access token, initiating OAuth flow...');
       
       // Check if this is a known OAuth service
@@ -698,8 +711,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       setIsProxied(false);
       addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
       // Set OAuth connection flag based on whether we have an access token
-      setIsOAuthConnection(!!accessToken);
-      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal, accessToken || undefined);
+      setIsOAuthConnection(!!latestAccessToken);
+      if (latestAccessToken) {
+        console.log('[OAuth] Using access token for connection:', latestAccessToken.substring(0, 20) + '...');
+        addLogEntry({ type: 'info', data: `🔐 Using OAuth access token for authenticated connection` });
+      }
+      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal, latestAccessToken || undefined);
     };
 
     // Helper function to attempt proxy connection
@@ -721,9 +738,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           addLogEntry({ type: 'error', data: 'Failed to obtain authentication token for proxy' });
         }
       }
-      // Set OAuth connection flag based on whether we have an auth token
-      setIsOAuthConnection(!!authToken);
-      return attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken);
+      // For proxy connections, prefer OAuth token over Firebase token
+      const proxyAuthToken = latestAccessToken || authToken;
+      // Set OAuth connection flag based on whether we have an OAuth token
+      setIsOAuthConnection(!!latestAccessToken);
+      return attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, proxyAuthToken);
     };
 
     try {
@@ -847,7 +866,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied, useOAuth, accessToken]); // Added useProxy, currentUser, isProxied, useOAuth, and accessToken dependencies
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied, useOAuth, accessToken, getLatestAccessToken]); // Added useProxy, currentUser, isProxied, useOAuth, accessToken, and getLatestAccessToken dependencies
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {

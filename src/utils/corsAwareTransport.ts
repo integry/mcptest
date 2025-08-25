@@ -53,6 +53,9 @@ export class CorsAwareStreamableHTTPTransport extends StreamableHTTPClientTransp
     // Add custom headers (like Authorization)
     for (const [key, value] of Object.entries(this.customHeaders)) {
       headers.set(key, value);
+      if (key === 'Authorization') {
+        console.log('[CORS Transport] Setting Authorization header:', value.substring(0, 30) + '...');
+      }
     }
     
     return headers;

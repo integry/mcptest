@@ -4,6 +4,139 @@ import McpResponseDisplay from './McpResponseDisplay'; // Import the new display
 import { getResultShareUrl } from '../utils/urlUtils';
 import { useShare } from '../hooks/useShare';
 
+// --- OAuth Status Indicator Component ---
+interface OAuthStatusIndicatorProps {
+  serverUrl: string;
+}
+
+const OAuthStatusIndicator: React.FC<OAuthStatusIndicatorProps> = ({ serverUrl }) => {
+  const [oauthUserInfo, setOauthUserInfo] = useState<any>(null);
+  const [showUserInfoModal, setShowUserInfoModal] = useState(false);
+  const [hasOAuthToken, setHasOAuthToken] = useState(false);
+
+  useEffect(() => {
+    // Check if we have an OAuth token
+    const token = sessionStorage.getItem('oauth_access_token');
+    setHasOAuthToken(!!token);
+
+    // If we have a token, try to fetch user info
+    if (token) {
+      const fetchUserInfo = async () => {
+        try {
+          const storedEndpoints = sessionStorage.getItem('oauth_endpoints');
+          if (!storedEndpoints) return;
+
+          const oauthEndpoints = JSON.parse(storedEndpoints);
+          if (!oauthEndpoints.userinfo_endpoint) return;
+
+          const response = await fetch(oauthEndpoints.userinfo_endpoint, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const userInfo = await response.json();
+            setOauthUserInfo(userInfo);
+          }
+        } catch (error) {
+          console.error('Failed to fetch OAuth user info for card:', error);
+        }
+      };
+
+      fetchUserInfo();
+    }
+  }, []);
+
+  if (!hasOAuthToken) {
+    return null; // No OAuth token, don't show anything
+  }
+
+  return (
+    <>
+      <div className="d-flex align-items-center">
+        <span className="badge bg-success me-2">
+          <i className="bi bi-shield-check me-1"></i>
+          OAuth
+        </span>
+        {oauthUserInfo && (
+          <button
+            className="btn btn-sm btn-link text-decoration-none p-0"
+            onClick={() => setShowUserInfoModal(true)}
+            title="View OAuth session info"
+            style={{ fontSize: '0.8rem' }}
+          >
+            <i className="bi bi-info-circle"></i>
+          </button>
+        )}
+      </div>
+
+      {/* OAuth User Info Modal */}
+      {showUserInfoModal && oauthUserInfo && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">OAuth Session Information</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowUserInfoModal(false)}
+                  aria-label="Close"
+                ></button>
+              </div>
+              <div className="modal-body">
+                {oauthUserInfo.picture && (
+                  <div className="text-center mb-3">
+                    <img
+                      src={oauthUserInfo.picture}
+                      alt="User avatar"
+                      className="rounded-circle"
+                      style={{ width: '80px', height: '80px' }}
+                    />
+                  </div>
+                )}
+                <div className="table-responsive">
+                  <table className="table table-sm">
+                    <tbody>
+                      {Object.entries(oauthUserInfo).map(([key, value]) => (
+                        <tr key={key}>
+                          <td className="fw-bold text-capitalize">{key.replace(/_/g, ' ')}</td>
+                          <td>
+                            {typeof value === 'string' && value.length > 100 
+                              ? `${value.substring(0, 100)}...` 
+                              : String(value)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3">
+                  <small className="text-muted">
+                    <i className="bi bi-clock me-1"></i>
+                    Session active for server: {serverUrl}
+                  </small>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowUserInfoModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 // --- Card Component ---
 interface SpaceCardComponentProps {
   spaceId: string;
@@ -15,6 +148,7 @@ interface SpaceCardComponentProps {
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   isDragging: boolean;
+  onReauthorizeCard?: (spaceId: string, cardId: string, serverUrl: string) => void; // Add reauth handler prop
 }
 
 const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
@@ -27,6 +161,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
   onDragStart,
   onDragEnd,
   isDragging,
+  onReauthorizeCard, // Destructure reauth handler
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(card.title);
@@ -268,8 +403,30 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
                 </div>
              </div>
           ) : card.error ? (
-             // Pass error info as a partial LogEntry, hide timestamp
-             <McpResponseDisplay key={`${card.id}-error`} logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
+             <div>
+               {/* Show "Authorize Again" button for auth errors */}
+               {card.error && typeof card.error === 'object' && card.error.isAuthError && onReauthorizeCard && (
+                 <div className="auth-error-banner mb-3 p-2 bg-warning-subtle border border-warning rounded">
+                   <div className="d-flex justify-content-between align-items-center">
+                     <div>
+                       <i className="bi bi-shield-exclamation text-warning me-2"></i>
+                       <strong>Authentication Required</strong>
+                       <div className="small text-muted">The server requires OAuth authentication to access this resource.</div>
+                     </div>
+                     <button
+                       className="btn btn-warning btn-sm"
+                       onClick={() => onReauthorizeCard(spaceId, card.id, card.serverUrl)}
+                       title="Start OAuth authentication flow"
+                     >
+                       <i className="bi bi-shield-check me-1"></i>
+                       Authorize Again
+                     </button>
+                   </div>
+                 </div>
+               )}
+               {/* Pass error info as a partial LogEntry, hide timestamp */}
+               <McpResponseDisplay key={`${card.id}-error`} logEntry={{ type: 'error', data: card.error }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
+             </div>
           ) : (
              // Pass result info as a partial LogEntry, hide timestamp
              <McpResponseDisplay key={`${card.id}-${card.responseType}`} logEntry={{ type: card.responseType ?? 'unknown', data: card.responseData }} showTimestamp={false} className="" spacesMode={true} toolName={card.name} />
@@ -280,6 +437,11 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
         <div className="card-footer text-muted small" style={{ maxHeight: '200px', overflow: 'auto', flexShrink: 0 }}>
           <div title={card.serverUrl}>Server: {truncate(card.serverUrl, 40)}</div>
           <div title={card.name}>{card.type === 'tool' ? 'Tool' : 'Resource'}: {truncate(card.name, 40)}</div>
+          
+          {/* OAuth Status */}
+          <div className="mt-2">
+            <OAuthStatusIndicator serverUrl={card.serverUrl} />
+          </div>
           
           {/* Parameters Section */}
           <div className="mt-2">
@@ -403,6 +565,7 @@ interface DashboardsViewProps {
   onAddCard: (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => void; // Add card handler prop
   onRefreshSpace?: () => void; // Add refresh handler prop
   isRefreshing?: boolean; // Add refreshing state prop
+  onReauthorizeCard?: (spaceId: string, cardId: string, serverUrl: string) => void; // Add reauth handler prop
 }
 
 const DashboardsView: React.FC<DashboardsViewProps> = ({
@@ -416,6 +579,7 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
   onAddCard, // Destructure add card handler
   onRefreshSpace, // Destructure refresh handler
   isRefreshing = false, // Destructure refreshing state
+  onReauthorizeCard, // Destructure reauth handler
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(space.name);
@@ -634,6 +798,7 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
                 onDragStart={(e) => handleDragStart(e, card.id)}
                 onDragEnd={handleDragEnd}
                 isDragging={draggedCardId === card.id}
+                onReauthorizeCard={onReauthorizeCard} // Pass down the reauth handler
               />
             </div>
           ))}

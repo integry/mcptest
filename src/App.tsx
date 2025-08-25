@@ -527,6 +527,37 @@ function App() {
     }
   }, [location.state, navigate, tabs, handleUpdateTab]);
 
+  // --- Effect to handle card refresh after OAuth completion ---
+  useEffect(() => {
+    const cardsToRefreshJson = sessionStorage.getItem('oauth_cards_to_refresh');
+    if (cardsToRefreshJson && sessionStorage.getItem('oauth_access_token')) {
+      try {
+        const cardsToRefresh = JSON.parse(cardsToRefreshJson);
+        console.log('[OAuth Card Refresh] Refreshing cards after OAuth completion:', cardsToRefresh);
+        
+        // Refresh each card that was waiting for OAuth
+        cardsToRefresh.forEach(({ spaceId, cardId }: { spaceId: string; cardId: string }) => {
+          console.log(`[OAuth Card Refresh] Refreshing card ${cardId} in space ${spaceId}`);
+          handleExecuteCard(spaceId, cardId);
+        });
+        
+        // Clear the refresh queue
+        sessionStorage.removeItem('oauth_cards_to_refresh');
+        
+        // Show success message
+        setNotification({ 
+          message: 'OAuth authentication successful - refreshing cards', 
+          show: true 
+        });
+        setTimeout(() => setNotification({ message: '', show: false }), 3000);
+        
+      } catch (error) {
+        console.error('[OAuth Card Refresh] Failed to parse cards to refresh:', error);
+        sessionStorage.removeItem('oauth_cards_to_refresh');
+      }
+    }
+  }, [sessionStorage.getItem('oauth_access_token'), handleExecuteCard]);
+
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
     logEvent('create_dashboard');
@@ -885,8 +916,19 @@ function App() {
             throw new Error(`Invalid Server URL format in card: ${card.serverUrl}`);
         }
 
+        // Check for OAuth token and include it in transport headers
+        const oauthToken = sessionStorage.getItem('oauth_access_token');
+        const transportOptions: any = {};
+        
+        if (oauthToken) {
+          console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
+          transportOptions.headers = {
+            'Authorization': `Bearer ${oauthToken}`
+          };
+        }
+
         tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
-        const transport = new CorsAwareStreamableHTTPTransport(connectUrl);
+        const transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
 
         console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
         await tempClient.connect(transport);
@@ -914,9 +956,16 @@ function App() {
         console.warn(`[Execute Card ${cardId} Attempt ${attempt}] Error:`, err);
         lastError = err; // Store the error
 
-        // --- Check if it's a retryable conflict error ---
-        // This check might need adjustment based on how the SDK/server surfaces the 409 error
+        // --- Check for different error types ---
         const isConflict = err.message?.includes('Conflict') || err.message?.includes('409') || err.status === 409;
+        const is401Error = err.message && (
+          err.message.includes('401') || 
+          err.message.toLowerCase().includes('unauthorized') ||
+          err.message.includes('invalid_token') ||
+          err.message.includes('Missing or invalid access token') ||
+          err.statusCode === 401 ||
+          err.status === 401
+        );
 
         if (isConflict && attempt < MAX_RETRIES) {
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Conflict detected, retrying after ${RETRY_DELAY_MS}ms...`);
@@ -937,7 +986,14 @@ function App() {
             operation: card.type === 'tool' ? `execute tool ${card.name}` : `access resource ${card.name}`
           });
           
-          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorDetails, responseData: null, responseType: 'error' }));
+          // Mark error with auth information for UI handling
+          const errorWithAuthInfo = {
+            ...errorDetails,
+            isAuthError: is401Error,
+            serverUrl: card.serverUrl
+          };
+          
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
           break; // Exit the loop
         }
       } finally {
@@ -959,6 +1015,63 @@ function App() {
           }
       }
     } // End of retry loop
+  };
+
+  // --- OAuth Re-authorization Function ---
+  const handleReauthorizeCard = async (spaceId: string, cardId: string, serverUrl: string) => {
+    console.log(`[Reauthorize] Starting OAuth reauth for card ${cardId} on ${serverUrl}`);
+    
+    // Clear the existing invalid token
+    sessionStorage.removeItem('oauth_access_token');
+    sessionStorage.removeItem('oauth_refresh_token');
+    
+    // Store the server URL for OAuth callback
+    sessionStorage.setItem('oauth_server_url', serverUrl);
+    
+    // Store cards to refresh after OAuth
+    const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
+    sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
+    
+    // Start OAuth flow - similar to connection logic
+    try {
+      const { getOAuthConfig } = await import('./utils/oauthDiscovery');
+      const oauthConfig = await getOAuthConfig(serverUrl);
+      
+      if (oauthConfig) {
+        // Set up OAuth flow
+        const { generatePKCE } = await import('./utils/pkce');
+        const { codeVerifier, codeChallenge } = await generatePKCE();
+        
+        sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+        sessionStorage.setItem('oauth_endpoints', JSON.stringify(oauthConfig));
+        
+        const clientId = sessionStorage.getItem('oauth_client_id');
+        if (!clientId) {
+          throw new Error('OAuth client credentials not configured');
+        }
+        
+        // Build authorization URL
+        const authUrl = new URL(oauthConfig.authorization_endpoint);
+        authUrl.searchParams.set('response_type', 'code');
+        authUrl.searchParams.set('client_id', clientId);
+        authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+        authUrl.searchParams.set('code_challenge', codeChallenge);
+        authUrl.searchParams.set('code_challenge_method', 'S256');
+        authUrl.searchParams.set('scope', 'read write');
+        
+        console.log(`[Reauthorize] Redirecting to OAuth authorization URL: ${authUrl.toString()}`);
+        window.location.href = authUrl.toString();
+      } else {
+        throw new Error('OAuth configuration not available for this server');
+      }
+    } catch (error) {
+      console.error('[Reauthorize] Failed to start OAuth flow:', error);
+      setNotification({ 
+        message: `Failed to start OAuth reauthorization: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+        show: true 
+      });
+      setTimeout(() => setNotification({ message: '', show: false }), 5000);
+    }
   };
 
   // --- Effect to Auto-Refresh Cards on Dashboard Entry (Sequentially with Retries) ---
@@ -1142,6 +1255,7 @@ function App() {
                 onAddCard={handleAddCardToSpace}
                 onRefreshSpace={refreshCurrentDashboard}
                 isRefreshing={healthCheckLoading}
+                onReauthorizeCard={handleReauthorizeCard}
               />
             ) : (
               <div className="alert alert-warning">No dashboard selected or available. Create one from the side menu.</div>

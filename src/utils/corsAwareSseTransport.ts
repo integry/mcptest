@@ -22,7 +22,7 @@ export class CorsAwareSSETransport extends SSEClientTransport {
         const token = authHeader.substring(7);
         // Add auth token as query parameter for SSE
         url.searchParams.set('auth', token);
-        console.log('[CORS SSE] Added auth token to URL as query parameter');
+        console.log('[CORS SSE] Added auth token to URL as query parameter:', token.substring(0, 20) + '...');
       }
     }
     
