@@ -198,19 +198,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       
       // Check if this is a known OAuth service
       const serviceName = getOAuthServiceName(targetUrl);
-      const isKnownService = isOAuthService(targetUrl);
       
-      if (isKnownService) {
-        addLogEntry({ 
-          type: 'info', 
-          data: `🔐 OAuth Flow Started: Detected ${serviceName || 'OAuth service'} - Beginning OAuth 2.1 authorization process` 
-        });
-      } else {
-        addLogEntry({ 
-          type: 'info', 
-          data: '🔐 OAuth Flow Started: Beginning OAuth 2.1 authorization process' 
-        });
-      }
+      addLogEntry({ 
+        type: 'info', 
+        data: `🔐 OAuth 2.1 Flow Started: ${serviceName ? `Detected ${serviceName} - ` : ''}Beginning authorization with PKCE` 
+      });
       
       setIsAuthFlowActive(true);
       setOauthProgress('Starting OAuth 2.1 authorization process...');
@@ -297,22 +289,29 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         oauthEndpoints = await getOAuthConfig(targetUrl);
         
         if (!oauthEndpoints) {
-          // Fall back to default config for test server
-          if (targetUrl.includes('localhost') || targetUrl.includes('oauth-worker.livecart.workers.dev')) {
-            addLogEntry({ 
-              type: 'info', 
-              data: '📋 Using default test OAuth configuration' 
-            });
-            oauthEndpoints = {
-              authorizationEndpoint: oauthConfig.authorizationEndpoint,
-              tokenEndpoint: oauthConfig.tokenEndpoint,
-              scope: oauthConfig.scope,
-              supportsPKCE: true,
-              requiresClientRegistration: false,
-            };
-          } else {
-            throw new Error('OAuth endpoints not found. This service may not support OAuth 2.0.');
-          }
+          // For any server where discovery fails, try to construct standard OAuth endpoints
+          const url = new URL(targetUrl);
+          const baseUrl = `${url.protocol}//${url.host}`;
+          
+          addLogEntry({ 
+            type: 'info', 
+            data: '📋 OAuth discovery failed, trying standard OAuth paths...' 
+          });
+          
+          // Try common OAuth 2.1 endpoint patterns
+          // According to MCP spec, these should be the standard paths
+          oauthEndpoints = {
+            authorizationEndpoint: `${baseUrl}/oauth/authorize`,
+            tokenEndpoint: `${baseUrl}/oauth/token`,
+            scope: 'openid profile email',
+            supportsPKCE: true, // OAuth 2.1 requires PKCE
+            requiresClientRegistration: true,
+          };
+          
+          addLogEntry({ 
+            type: 'info', 
+            data: `✅ Using standard OAuth endpoints:\n  - Authorization: ${oauthEndpoints.authorizationEndpoint}\n  - Token: ${oauthEndpoints.tokenEndpoint}` 
+          });
         } else {
           addLogEntry({ 
             type: 'info', 
@@ -337,28 +336,26 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       // Store discovered endpoints for callback
       sessionStorage.setItem('oauth_endpoints', JSON.stringify(oauthEndpoints));
       
-      // Check if client registration is required
-      if (oauthEndpoints.requiresClientRegistration) {
+      // Check if we have client credentials
+      const existingClientId = sessionStorage.getItem('oauth_client_id');
+      
+      // If client registration is required and we don't have credentials, show config dialog
+      if (oauthEndpoints.requiresClientRegistration && !existingClientId) {
         addLogEntry({ 
           type: 'warning', 
-          data: `⚠️ This OAuth service requires client registration. You need to:\n  1. Register your application with ${serviceName || 'the service'}\n  2. Configure the client ID and secret\n  3. Add ${window.location.origin}/oauth/callback as a redirect URI` 
+          data: `⚠️ OAuth client registration required. You need to:\n  1. Register your application with ${serviceName || 'the OAuth provider'}\n  2. Configure the client ID and secret\n  3. Add ${window.location.origin}/oauth/callback as a redirect URI` 
         });
         
-        // For now, we'll need to use a pre-configured client ID
-        // In the future, we could implement dynamic client registration (RFC 7591)
-        const clientId = sessionStorage.getItem('oauth_client_id');
-        if (!clientId) {
-          // Show OAuth config dialog
-          setNeedsOAuthConfig(true);
-          setOAuthConfigServerUrl(targetUrl);
-          setIsConnecting(false);
-          setIsAuthFlowActive(false);
-          addLogEntry({ 
-            type: 'info', 
-            data: '📋 OAuth client configuration required. Please configure your OAuth credentials.' 
-          });
-          return;
-        }
+        // Show OAuth config dialog
+        setNeedsOAuthConfig(true);
+        setOAuthConfigServerUrl(targetUrl);
+        setIsConnecting(false);
+        setIsAuthFlowActive(false);
+        addLogEntry({ 
+          type: 'info', 
+          data: '📋 OAuth client configuration required. Please configure your OAuth credentials.' 
+        });
+        return;
       }
       
       // Build authorization URL
@@ -369,44 +366,59 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       setOauthProgress('Step 4/6: Building authorization URL...');
       console.log('[OAuth Progress] Step 4/6: Building authorization URL');
       
-      // Get or create OAuth client dynamically (for test server)
-      let oauthClientId = sessionStorage.getItem('oauth_client_id');
+      // Use existing client ID or try to get one dynamically
+      let oauthClientId = existingClientId;
       
-      if (!oauthClientId && !oauthEndpoints.requiresClientRegistration) {
-        // Only for test server - try to get dynamic client
-        const ensureClientUrl = new URL(oauthEndpoints.authorizationEndpoint.replace('/authorize', '/ensure-client'));
-        
-        try {
-          addLogEntry({ 
-            type: 'info', 
-            data: '🔍 Getting OAuth client ID...' 
-          });
+      if (!oauthClientId) {
+        // Check if this looks like our test server
+        if (targetUrl.includes('localhost') || targetUrl.includes('oauth-worker.livecart.workers.dev')) {
+          // Try to get dynamic client for test server
+          const ensureClientUrl = new URL(oauthEndpoints.authorizationEndpoint.replace('/authorize', '/ensure-client'));
           
-          const ensureResponse = await fetch(ensureClientUrl.toString(), {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json'
+          try {
+            addLogEntry({ 
+              type: 'info', 
+              data: '🔍 Getting OAuth client ID from test server...' 
+            });
+            
+            const ensureResponse = await fetch(ensureClientUrl.toString(), {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json'
+              }
+            });
+            
+            const clientData = await ensureResponse.json();
+            
+            if (!ensureResponse.ok || !clientData.clientId) {
+              throw new Error(clientData.error_description || 'Failed to get OAuth client');
             }
-          });
-          
-          const clientData = await ensureResponse.json();
-          
-          if (!ensureResponse.ok || !clientData.clientId) {
-            throw new Error(clientData.error_description || 'Failed to get OAuth client');
+            
+            oauthClientId = clientData.clientId;
+            sessionStorage.setItem('oauth_client_id', oauthClientId);
+            
+            addLogEntry({ 
+              type: 'info', 
+              data: `✅ OAuth client ready: ${clientData.clientName} (${oauthClientId})` 
+            });
+          } catch (error) {
+            console.error('Failed to get OAuth client:', error);
+            // For test server, use default client ID
+            oauthClientId = 'mcptest-client';
           }
-          
-          oauthClientId = clientData.clientId;
-          sessionStorage.setItem('oauth_client_id', oauthClientId);
-          
+        } else {
+          // For real services, client configuration is required
           addLogEntry({ 
-            type: 'info', 
-            data: `✅ OAuth client ready: ${clientData.clientName} (${oauthClientId})` 
+            type: 'error', 
+            data: 'OAuth client ID not configured. This should have been caught earlier.' 
           });
-        } catch (error) {
-          console.error('Failed to get OAuth client:', error);
-          // For test server, use default client ID
-          oauthClientId = 'mcptest-client';
-          sessionStorage.setItem('oauth_client_id', oauthClientId);
+          setConnectionError({
+            error: 'OAuth client ID not configured',
+            serverUrl: targetUrl,
+            timestamp: new Date()
+          });
+          setIsConnecting(false);
+          return;
         }
       }
       
@@ -429,11 +441,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       authUrl.searchParams.set('client_id', oauthClientId);
       authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
       
-      // Only add PKCE if supported
-      if (oauthEndpoints.supportsPKCE) {
-        authUrl.searchParams.set('code_challenge', code_challenge);
-        authUrl.searchParams.set('code_challenge_method', 'S256');
-      }
+      // OAuth 2.1 requires PKCE for all public clients
+      // Always add PKCE parameters
+      authUrl.searchParams.set('code_challenge', code_challenge);
+      authUrl.searchParams.set('code_challenge_method', 'S256');
       
       authUrl.searchParams.set('scope', oauthEndpoints.scope);
       

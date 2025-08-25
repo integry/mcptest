@@ -1,6 +1,12 @@
 /**
- * OAuth 2.0 Discovery and OpenID Connect Discovery implementation
- * Follows RFC 8414 (OAuth 2.0 Authorization Server Metadata) and OpenID Connect Discovery 1.0
+ * OAuth 2.1 Discovery and OpenID Connect Discovery implementation
+ * Follows RFC 8414 (OAuth 2.0 Authorization Server Metadata), OpenID Connect Discovery 1.0,
+ * and OAuth 2.1 draft specification requirements
+ * 
+ * OAuth 2.1 Requirements:
+ * - PKCE is required for all public clients
+ * - Implicit flow is deprecated
+ * - Authorization code flow with PKCE is the recommended flow
  */
 
 export interface OAuthDiscoveryDocument {
@@ -92,6 +98,30 @@ export const OAUTH_SERVICES: Record<string, OAuthServiceConfig> = {
       'Notion-Version': '2022-06-28',
     },
   },
+  'notion.com': {
+    name: 'Notion',
+    authorizationEndpoint: 'https://api.notion.com/v1/oauth/authorize',
+    tokenEndpoint: 'https://api.notion.com/v1/oauth/token',
+    scope: 'read_user',
+    supportsDiscovery: false,
+    supportsPKCE: false,
+    requiresClientRegistration: true,
+    customHeaders: {
+      'Notion-Version': '2022-06-28',
+    },
+  },
+  'mcp.notion.com': {
+    name: 'Notion MCP',
+    authorizationEndpoint: 'https://api.notion.com/v1/oauth/authorize',
+    tokenEndpoint: 'https://api.notion.com/v1/oauth/token',
+    scope: 'read_user',
+    supportsDiscovery: false,
+    supportsPKCE: false,
+    requiresClientRegistration: true,
+    customHeaders: {
+      'Notion-Version': '2022-06-28',
+    },
+  },
 };
 
 /**
@@ -126,9 +156,12 @@ export function extractOAuthDomain(url: string): string | null {
 export async function discoverOAuthEndpoints(serverUrl: string): Promise<OAuthDiscoveryDocument | null> {
   try {
     const url = new URL(serverUrl);
+    const baseUrl = `${url.protocol}//${url.host}`;
     
     // Try OpenID Connect Discovery first
     const wellKnownUrls = [
+      `${baseUrl}/.well-known/openid-configuration`,
+      `${baseUrl}/.well-known/oauth-authorization-server`,
       `${url.origin}/.well-known/openid-configuration`,
       `${url.origin}/.well-known/oauth-authorization-server`,
       // For multi-tenant services, try the base domain
@@ -186,55 +219,46 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
   customHeaders?: Record<string, string>;
 } | null> {
   try {
-    // Check if it's a known service first
+    // Always try discovery first for any service
+    const discovered = await discoverOAuthEndpoints(serverUrl);
+    if (discovered) {
+      // Check if it's a known service for custom configurations
+      const serviceDomain = extractOAuthDomain(serverUrl);
+      const serviceConfig = serviceDomain ? OAUTH_SERVICES[serviceDomain] : null;
+      
+      return {
+        authorizationEndpoint: discovered.authorization_endpoint,
+        tokenEndpoint: discovered.token_endpoint,
+        registrationEndpoint: discovered.registration_endpoint,
+        scope: serviceConfig?.scope || discovered.scopes_supported?.join(' ') || 'openid profile email',
+        // OAuth 2.1 requires PKCE for public clients - always enable it
+        supportsPKCE: true,
+        requiresClientRegistration: serviceConfig?.requiresClientRegistration ?? true,
+        customHeaders: serviceConfig?.customHeaders,
+      };
+    }
+    
+    // Check if it's a known service with static configuration
     const serviceDomain = extractOAuthDomain(serverUrl);
     if (serviceDomain && OAUTH_SERVICES[serviceDomain]) {
       const serviceConfig = OAUTH_SERVICES[serviceDomain];
       
-      // If service supports discovery, try that first
-      if (serviceConfig.supportsDiscovery) {
-        const discovered = await discoverOAuthEndpoints(serverUrl);
-        if (discovered) {
-          return {
-            authorizationEndpoint: discovered.authorization_endpoint,
-            tokenEndpoint: discovered.token_endpoint,
-            registrationEndpoint: discovered.registration_endpoint,
-            scope: serviceConfig.scope || 'openid profile email',
-            supportsPKCE: serviceConfig.supportsPKCE !== false && 
-                         (discovered.code_challenge_methods_supported?.includes('S256') ?? true),
-            requiresClientRegistration: serviceConfig.requiresClientRegistration ?? true,
-            customHeaders: serviceConfig.customHeaders,
-          };
-        }
-      }
-      
-      // Fall back to static configuration if available
+      // Use static configuration if available
       if (serviceConfig.authorizationEndpoint && serviceConfig.tokenEndpoint) {
         return {
           authorizationEndpoint: serviceConfig.authorizationEndpoint,
           tokenEndpoint: serviceConfig.tokenEndpoint,
           registrationEndpoint: serviceConfig.registrationEndpoint,
           scope: serviceConfig.scope || 'openid profile email',
-          supportsPKCE: serviceConfig.supportsPKCE ?? true,
+          // OAuth 2.1 requires PKCE for public clients - always enable it
+          supportsPKCE: true,
           requiresClientRegistration: serviceConfig.requiresClientRegistration ?? true,
           customHeaders: serviceConfig.customHeaders,
         };
       }
     }
     
-    // Try discovery for unknown services
-    const discovered = await discoverOAuthEndpoints(serverUrl);
-    if (discovered) {
-      return {
-        authorizationEndpoint: discovered.authorization_endpoint,
-        tokenEndpoint: discovered.token_endpoint,
-        registrationEndpoint: discovered.registration_endpoint,
-        scope: discovered.scopes_supported?.join(' ') || 'openid profile email',
-        supportsPKCE: discovered.code_challenge_methods_supported?.includes('S256') ?? true,
-        requiresClientRegistration: true,
-      };
-    }
-    
+    // No discovery or known configuration found
     return null;
   } catch (error) {
     console.error('[OAuth Config] Error getting OAuth configuration:', error);

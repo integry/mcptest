@@ -7,6 +7,14 @@
     "cloudflare": {
       "type": "http",
       "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "mcpjam": {
+      "type": "http",
+      "url": "https://gitmcp.io/MCPJam/inspector"
+    },
+    "mcp-inspector": {
+      "type": "http",
+      "url": "https://github.com/modelcontextprotocol/inspector"
     }
   }
 }

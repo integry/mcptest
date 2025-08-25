@@ -78,8 +78,8 @@ const OAuthCallback: React.FC = () => {
             client_id: clientId,
           };
           
-          // Only include code_verifier if PKCE is supported
-          if (supportsPKCE) {
+          // OAuth 2.1 requires PKCE - always include code_verifier
+          if (codeVerifier) {
             requestBody.code_verifier = codeVerifier;
           }
           
