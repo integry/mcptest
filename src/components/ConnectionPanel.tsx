@@ -35,6 +35,7 @@ interface ConnectionPanelProps {
   isAuthFlowActive?: boolean;
   oauthProgress?: string;
   oauthUserInfo?: any; // User info from OAuth
+  isOAuthConnection?: boolean; // Whether current connection uses OAuth
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -60,6 +61,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   isAuthFlowActive,
   oauthProgress,
   oauthUserInfo,
+  isOAuthConnection,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -107,6 +109,18 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
       text: `Connect to MCP server at ${serverUrl}`,
     });
   };
+  // Debug OAuth state
+  useEffect(() => {
+    console.log('[ConnectionPanel Debug] OAuth state:', {
+      isConnected,
+      useOAuth,
+      isAuthFlowActive,
+      oauthUserInfo,
+      oauthProgress,
+      isOAuthConnection
+    });
+  }, [isConnected, useOAuth, isAuthFlowActive, oauthUserInfo, oauthProgress, isOAuthConnection]);
+
   // Return JSX directly without outer parentheses
   return (
     <>
@@ -116,8 +130,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
           {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
-          {isConnected && oauthUserInfo && <span className="badge bg-info text-white">OAuth</span>}
-          {isConnected && oauthUserInfo && (
+          {isConnected && isOAuthConnection && <span className="badge bg-info text-white">OAuth</span>}
+          {isConnected && isOAuthConnection && oauthUserInfo && (
             <button
               className="btn btn-sm btn-link text-decoration-none p-0 d-flex align-items-center gap-1"
               onClick={() => setShowUserInfoModal(true)}

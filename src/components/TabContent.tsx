@@ -103,6 +103,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     isAuthFlowActive,
     oauthProgress,
     oauthUserInfo,
+    isOAuthConnection,
     needsOAuthConfig,
     oauthConfigServerUrl,
     clearOAuthConfigNeed
@@ -772,6 +773,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             isAuthFlowActive={isAuthFlowActive}
             oauthProgress={oauthProgress}
             oauthUserInfo={oauthUserInfo}
+            isOAuthConnection={isOAuthConnection}
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}

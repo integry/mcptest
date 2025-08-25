@@ -82,6 +82,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
   const [oauthUserInfo, setOauthUserInfo] = useState<any>(null);
+  const [isOAuthConnection, setIsOAuthConnection] = useState(false); // Track if current connection uses OAuth
 
   // Ref for strict mode check
   const isRealUnmount = useRef(false);
@@ -103,7 +104,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   // Fetch OAuth user info when we have an access token
   useEffect(() => {
     const fetchUserInfo = async () => {
-      if (!accessToken || connectionStatus !== 'Connected') {
+      if (!accessToken || connectionStatus !== 'Connected' || !isOAuthConnection) {
+        console.log('[OAuth] Skipping user info fetch:', { 
+          hasAccessToken: !!accessToken, 
+          connectionStatus, 
+          isOAuthConnection 
+        });
         return;
       }
 
@@ -149,7 +155,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     };
 
     fetchUserInfo();
-  }, [accessToken, connectionStatus, addLogEntry]);
+  }, [accessToken, connectionStatus, isOAuthConnection, addLogEntry]);
 
   // --- SDK Client Based Logic ---
 
@@ -180,6 +186,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setNeedsOAuthConfig(false);
     setOAuthConfigServerUrl(null);
     setOauthUserInfo(null);
+    setIsOAuthConnection(false);
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -690,6 +697,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     const connectDirectly = async () => {
       setIsProxied(false);
       addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
+      // Set OAuth connection flag based on whether we have an access token
+      setIsOAuthConnection(!!accessToken);
       return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal, accessToken || undefined);
     };
 
@@ -712,6 +721,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           addLogEntry({ type: 'error', data: 'Failed to obtain authentication token for proxy' });
         }
       }
+      // Set OAuth connection flag based on whether we have an auth token
+      setIsOAuthConnection(!!authToken);
       return attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, authToken);
     };
 
@@ -863,6 +874,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     isAuthFlowActive, // Expose auth flow status
     oauthProgress, // Expose OAuth progress message
     oauthUserInfo, // Expose OAuth user info
+    isOAuthConnection, // Expose if current connection uses OAuth
     needsOAuthConfig, // Expose if OAuth config is needed
     oauthConfigServerUrl, // Expose the server URL that needs config
     clearOAuthConfigNeed: () => {
