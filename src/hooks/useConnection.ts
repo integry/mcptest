@@ -222,9 +222,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         // Add debug logging
         addLogEntry({ 
           type: 'info', 
-          data: `✅ PKCE generated successfully (verifier: ${code_verifier.length} chars, challenge: ${code_challenge.length} chars)` 
+          data: `✅ PKCE generated successfully:\n  - Verifier: ${code_verifier.substring(0, 10)}... (${code_verifier.length} chars)\n  - Challenge: ${code_challenge.substring(0, 10)}... (${code_challenge.length} chars)` 
         });
         console.log('[OAuth Progress] PKCE generated successfully');
+        console.log('[OAuth Debug] PKCE verifier:', code_verifier);
+        console.log('[OAuth Debug] PKCE challenge:', code_challenge);
       } catch (error) {
         console.error('PKCE generation error:', error);
         addLogEntry({ 

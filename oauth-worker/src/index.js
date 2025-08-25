@@ -199,7 +199,9 @@ const defaultHandler = {
           clientId: oauthReqInfo.clientId,
           redirectUri: oauthReqInfo.redirectUri,
           scope: oauthReqInfo.scope,
-          state: oauthReqInfo.state
+          state: oauthReqInfo.state,
+          codeChallenge: oauthReqInfo.codeChallenge,
+          codeChallengeMethod: oauthReqInfo.codeChallengeMethod
         });
         
         // Complete the authorization
@@ -218,7 +220,7 @@ const defaultHandler = {
           }
         });
 
-        console.log('[OAuth Worker] Redirecting to:', redirectTo);
+        console.log('[OAuth Worker] Authorization completed, redirecting to:', redirectTo);
         return Response.redirect(redirectTo, 302);
       } catch (error) {
         console.error('[OAuth Worker] Authorization error:', error);
@@ -252,6 +254,64 @@ const defaultHandler = {
     }
 
 
+
+    // Debug endpoint to test PKCE
+    if (url.pathname == "/debug/pkce-test") {
+      try {
+        const testVerifier = url.searchParams.get('verifier');
+        const testChallenge = url.searchParams.get('challenge');
+        
+        if (!testVerifier || !testChallenge) {
+          return new Response(JSON.stringify({
+            error: 'Missing parameters',
+            usage: 'Add ?verifier=XXX&challenge=YYY to test PKCE'
+          }), {
+            status: 400,
+            headers: { 
+              "Content-Type": "application/json",
+              ...corsHeaders
+            }
+          });
+        }
+        
+        // Test PKCE verification
+        const encoder = new TextEncoder();
+        const data = encoder.encode(testVerifier);
+        const digest = await crypto.subtle.digest('SHA-256', data);
+        const computedChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=/g, '');
+        
+        const matches = computedChallenge === testChallenge;
+        
+        return new Response(JSON.stringify({
+          verifier: testVerifier,
+          providedChallenge: testChallenge,
+          computedChallenge: computedChallenge,
+          matches: matches,
+          verifierLength: testVerifier.length,
+          challengeLength: testChallenge.length
+        }, null, 2), {
+          status: 200,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ 
+          error: 'pkce_test_error',
+          message: error.message 
+        }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        });
+      }
+    }
 
     // Debug endpoint to check OAuth provider state
     if (url.pathname == "/debug/oauth-state") {
@@ -375,6 +435,18 @@ export default new OAuthProvider({
   // Allow public client registration for SPAs like our MCP tester
   disallowPublicClientRegistration: false,
   
+  // Custom error handler to log more details
+  onError: ({ code, description, status, headers }) => {
+    console.error(`[OAuth Worker] Error response: ${status} ${code} - ${description}`);
+    
+    // Log additional details for PKCE errors
+    if (code === 'invalid_grant' && description.includes('PKCE')) {
+      console.error('[OAuth Worker] PKCE verification failed. This usually means:');
+      console.error('  1. The code_verifier sent to /token doesn\'t match the code_challenge from /authorize');
+      console.error('  2. The authorization code was used with a different session');
+      console.error('  3. The PKCE parameters were not properly stored between requests');
+    }
+  }
 });
 
 // Helper function to create the initial client (can be called separately)

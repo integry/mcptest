@@ -33,7 +33,7 @@ const OAuthCallback: React.FC = () => {
       const clientId = sessionStorage.getItem('oauth_client_id') || oauthConfig.clientId;
       
       // Log received parameters
-      addOAuthLog('info', `📄 Callback parameters:\n  - Authorization code: ${code ? `${code.substring(0, 10)}...` : 'Not provided'}\n  - Error: ${error || 'None'}\n  - Error description: ${errorDescription || 'None'}\n  - PKCE verifier stored: ${codeVerifier ? 'Yes' : 'No'}\n  - Server URL stored: ${serverUrl || 'Not found'}`);
+      addOAuthLog('info', `📄 Callback parameters:\n  - Authorization code: ${code ? `${code.substring(0, 10)}...` : 'Not provided'}\n  - Error: ${error || 'None'}\n  - Error description: ${errorDescription || 'None'}\n  - PKCE verifier stored: ${codeVerifier ? 'Yes' : 'No'}\n  - PKCE verifier value: ${codeVerifier ? `${codeVerifier.substring(0, 10)}...` : 'Not found'}\n  - Server URL stored: ${serverUrl || 'Not found'}\n  - Client ID stored: ${clientId}`);
       
       // Check for authorization errors
       if (error) {
