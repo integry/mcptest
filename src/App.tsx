@@ -513,10 +513,27 @@ function App() {
           const cardsToRefresh = JSON.parse(cardsToRefreshJson);
           console.log('[OAuth Card Refresh] Refreshing cards after OAuth completion:', cardsToRefresh);
           
-          // Refresh each card that was waiting for OAuth
-          cardsToRefresh.forEach(({ spaceId, cardId }: { spaceId: string; cardId: string }) => {
-            console.log(`[OAuth Card Refresh] Refreshing card ${cardId} in space ${spaceId}`);
-            handleExecuteCard(spaceId, cardId);
+          // Store cards to refresh in state to handle after component renders
+          setSpaces(prev => {
+            // Mark cards as needing refresh
+            return prev.map(space => {
+              if (cardsToRefresh.some((c: any) => c.spaceId === space.id)) {
+                return {
+                  ...space,
+                  cards: space.cards.map(card => {
+                    const needsRefresh = cardsToRefresh.some((c: any) => 
+                      c.spaceId === space.id && c.cardId === card.id
+                    );
+                    if (needsRefresh) {
+                      console.log(`[OAuth Card Refresh] Marking card ${card.id} for refresh`);
+                      return { ...card, needsOAuthRefresh: true };
+                    }
+                    return card;
+                  })
+                };
+              }
+              return space;
+            });
           });
           
           // Clear the refresh queue
@@ -554,7 +571,7 @@ function App() {
       // Clear the location state
       navigate(location.pathname, { replace: true });
     }
-  }, [location.state, navigate, tabs, handleUpdateTab, handleExecuteCard]);
+  }, [location.state, navigate, tabs, handleUpdateTab]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
@@ -1071,6 +1088,40 @@ function App() {
       setTimeout(() => setNotification({ message: '', show: false }), 5000);
     }
   };
+
+  // Effect to handle OAuth refresh cards
+  useEffect(() => {
+    const refreshOAuthCards = async () => {
+      for (const space of spaces) {
+        const cardsNeedingRefresh = space.cards.filter(card => (card as any).needsOAuthRefresh);
+        if (cardsNeedingRefresh.length > 0) {
+          console.log(`[OAuth Refresh Effect] Found ${cardsNeedingRefresh.length} cards needing OAuth refresh in space ${space.id}`);
+          for (const card of cardsNeedingRefresh) {
+            console.log(`[OAuth Refresh Effect] Executing card ${card.id}`);
+            await handleExecuteCard(space.id, card.id);
+            // Remove the needsOAuthRefresh flag after execution
+            setSpaces(prev => prev.map(s => {
+              if (s.id === space.id) {
+                return {
+                  ...s,
+                  cards: s.cards.map(c => {
+                    if (c.id === card.id) {
+                      const { needsOAuthRefresh, ...rest } = c as any;
+                      return rest;
+                    }
+                    return c;
+                  })
+                };
+              }
+              return s;
+            }));
+          }
+        }
+      }
+    };
+    
+    refreshOAuthCards();
+  }, [spaces.filter(s => s.cards.some((c: any) => c.needsOAuthRefresh)).length]); // Only run when cards need OAuth refresh
 
   // --- Effect to Auto-Refresh Cards on Dashboard Entry (Sequentially with Retries) ---
   useEffect(() => {
