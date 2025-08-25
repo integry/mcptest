@@ -321,8 +321,20 @@ const defaultHandler = {
         const debugInfo = {
           timestamp: new Date().toISOString(),
           kvNamespace: env.OAUTH_KV ? 'Connected' : 'Not connected',
-          oauthProvider: env.OAUTH_PROVIDER ? 'Initialized' : 'Not initialized'
+          oauthProvider: env.OAUTH_PROVIDER ? 'Initialized' : 'Not initialized',
+          kvKeys: []
         };
+        
+        // List all KV keys to see what's stored
+        try {
+          const list = await env.OAUTH_KV.list();
+          debugInfo.kvKeys = list.keys.map(k => ({ 
+            name: k.name, 
+            metadata: k.metadata 
+          }));
+        } catch (e) {
+          debugInfo.kvListError = e.message;
+        }
         
         // Try to look up mcptest-client
         try {
@@ -408,7 +420,22 @@ export default new OAuthProvider({
   allowImplicitFlow: false,
   
   // Allow public client registration for SPAs like our MCP tester
-  disallowPublicClientRegistration: false
+  disallowPublicClientRegistration: false,
+  
+  // Pre-register static clients
+  staticClients: [{
+    clientId: "mcptest-client",
+    clientName: "MCP SSE Tester",
+    redirectUris: [
+      "https://mcptest.io/oauth/callback",
+      "https://app.mcptest.io/oauth/callback",
+      "https://staging.mcptest.io/oauth/callback"
+    ],
+    publicClient: true,
+    grantTypes: ["authorization_code"],
+    responseTypes: ["code"],
+    scope: "openid profile email"
+  }]
 });
 
 // Helper function to create the initial client (can be called separately)
