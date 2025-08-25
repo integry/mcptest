@@ -142,7 +142,58 @@ const defaultHandler = {
     // Handle the authorization UI
     if (url.pathname == "/oauth/authorize") {
       try {
-        // Parse the OAuth authorization request
+        // For mcptest-client, validate redirect URI manually
+        const urlParams = new URLSearchParams(url.search);
+        const clientId = urlParams.get('client_id');
+        const redirectUri = urlParams.get('redirect_uri');
+        
+        if (clientId === 'mcptest-client' && redirectUri) {
+          // Validate that it's a *.mcptest.io domain
+          const redirectUrl = new URL(redirectUri);
+          const isValidDomain = redirectUrl.hostname === 'mcptest.io' || 
+                               redirectUrl.hostname.endsWith('.mcptest.io');
+          
+          if (isValidDomain && redirectUrl.pathname === '/oauth/callback') {
+            // Create a modified request with a known redirect URI
+            const modifiedUrl = new URL(request.url);
+            modifiedUrl.searchParams.set('redirect_uri', 'https://mcptest.io/oauth/callback');
+            
+            const modifiedRequest = new Request(modifiedUrl.toString(), {
+              method: request.method,
+              headers: request.headers,
+              body: request.body
+            });
+            
+            // Parse with the modified request
+            let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(modifiedRequest);
+            
+            // Complete the authorization with the original redirect URI
+            let { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
+              request: oauthReqInfo,
+              userId: "mcptest-user",
+              metadata: {
+                authorized_at: new Date().toISOString(),
+                client_name: "MCP SSE Tester"
+              },
+              scope: oauthReqInfo.scope || ["openid", "profile", "email"],
+              props: {
+                userId: "mcptest-user",
+                username: "MCP Test User",
+                email: "user@mcptest.example.com"
+              }
+            });
+            
+            // Replace the redirect URI in the response with the original one
+            const finalRedirectUrl = new URL(redirectTo);
+            const originalRedirectUrl = new URL(redirectUri);
+            finalRedirectUrl.hostname = originalRedirectUrl.hostname;
+            
+            console.log('[OAuth Worker] Redirecting to:', finalRedirectUrl.toString());
+            return Response.redirect(finalRedirectUrl.toString(), 302);
+          }
+        }
+        
+        // Parse the OAuth authorization request normally
         let oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(request);
         
         // Look up client information
@@ -332,6 +383,19 @@ const defaultHandler = {
             name: k.name, 
             metadata: k.metadata 
           }));
+          
+          // Get the actual data for each client
+          debugInfo.kvClients = {};
+          for (const key of list.keys) {
+            if (key.name.startsWith('client:')) {
+              try {
+                const data = await env.OAUTH_KV.get(key.name);
+                debugInfo.kvClients[key.name] = JSON.parse(data);
+              } catch (e) {
+                debugInfo.kvClients[key.name] = { error: e.message };
+              }
+            }
+          }
         } catch (e) {
           debugInfo.kvListError = e.message;
         }
@@ -425,16 +489,11 @@ export default new OAuthProvider({
   // Pre-register static clients
   staticClients: [{
     clientId: "mcptest-client",
-    clientName: "MCP SSE Tester",
-    redirectUris: [
-      "https://mcptest.io/oauth/callback",
-      "https://app.mcptest.io/oauth/callback",
-      "https://staging.mcptest.io/oauth/callback"
-    ],
-    publicClient: true,
+    clientName: "MCP SSE Tester", 
+    redirectUris: ["https://mcptest.io/oauth/callback"],
     grantTypes: ["authorization_code"],
     responseTypes: ["code"],
-    scope: "openid profile email"
+    tokenEndpointAuthMethod: "none"
   }]
 });
 
