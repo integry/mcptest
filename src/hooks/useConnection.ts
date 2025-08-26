@@ -94,21 +94,32 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
   // Check for stored access token on mount and when connection changes
   useEffect(() => {
-    const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
-    if (storedToken) {
-      setAccessToken(storedToken);
-      console.log('[OAuth] Access token found in sessionStorage');
+    if (!serverUrl) return; // Skip if no serverUrl
+    try {
+      const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
+      if (storedToken) {
+        setAccessToken(storedToken);
+        console.log('[OAuth] Access token found in sessionStorage');
+      }
+    } catch (error) {
+      console.warn('[OAuth] Invalid serverUrl for token lookup:', serverUrl, error);
     }
   }, [connectionStatus]); // Re-check when connection status changes
 
   // Always check sessionStorage for the latest token before connecting
   const getLatestAccessToken = useCallback(() => {
-    const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
-    if (storedToken && storedToken !== accessToken) {
-      console.log('[OAuth] Found updated access token in sessionStorage');
-      setAccessToken(storedToken);
+    if (!serverUrl) return accessToken; // Return existing token if no serverUrl
+    try {
+      const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
+      if (storedToken && storedToken !== accessToken) {
+        console.log('[OAuth] Found updated access token in sessionStorage');
+        setAccessToken(storedToken);
+      }
+      return storedToken || accessToken;
+    } catch (error) {
+      console.warn('[OAuth] Invalid serverUrl for token lookup:', serverUrl, error);
+      return accessToken;
     }
-    return storedToken || accessToken;
   }, [accessToken])
 
   // Fetch OAuth user info when we have an access token
@@ -125,6 +136,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
       try {
         // Get OAuth endpoints from session storage (per server)
+        if (!serverUrl) {
+          console.log('[OAuth] No serverUrl available for user info fetch');
+          return;
+        }
         const serverHost = new URL(addProtocolIfMissing(serverUrl)).host;
         const storedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
         if (!storedEndpoints) {
@@ -553,7 +568,42 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       setOauthProgress('Step 6/7: Building authorization URL...');
       console.log('[OAuth Progress] Step 6/7: Building authorization URL');
       
-      const authUrl = new URL(oauthEndpoints.authorizationEndpoint);
+      // Validate authorization endpoint before constructing URL
+      if (!oauthEndpoints.authorizationEndpoint) {
+        addLogEntry({ 
+          type: 'error', 
+          data: '❌ OAuth authorization endpoint is missing or undefined' 
+        });
+        setConnectionError({
+          error: 'OAuth configuration error: Authorization endpoint is missing',
+          serverUrl: targetUrl,
+          timestamp: new Date(),
+          details: 'The OAuth service did not provide a valid authorization endpoint URL.'
+        });
+        setIsConnecting(false);
+        setIsAuthFlowActive(false);
+        return;
+      }
+      
+      let authUrl: URL;
+      try {
+        authUrl = new URL(oauthEndpoints.authorizationEndpoint);
+      } catch (error) {
+        addLogEntry({ 
+          type: 'error', 
+          data: `❌ Invalid OAuth authorization endpoint URL: ${oauthEndpoints.authorizationEndpoint}` 
+        });
+        setConnectionError({
+          error: `Invalid OAuth authorization endpoint: ${oauthEndpoints.authorizationEndpoint}`,
+          serverUrl: targetUrl,
+          timestamp: new Date(),
+          details: `Failed to construct URL: ${error instanceof Error ? error.message : 'Invalid URL format'}`
+        });
+        setIsConnecting(false);
+        setIsAuthFlowActive(false);
+        return;
+      }
+      
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('client_id', oauthClientId);
       authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);

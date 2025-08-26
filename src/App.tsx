@@ -1038,6 +1038,10 @@ function App() {
     console.log(`[Reauthorize] Starting OAuth reauth for card ${cardId} on ${serverUrl}`);
     
     // Clear the existing invalid token for this server
+    if (!serverUrl) {
+      console.error('[Reauthorize] No serverUrl provided');
+      return;
+    }
     const serverHost = new URL(serverUrl).host;
     sessionStorage.removeItem(`oauth_access_token_${serverHost}`);
     sessionStorage.removeItem(`oauth_refresh_token_${serverHost}`);
@@ -1068,7 +1072,17 @@ function App() {
         }
         
         // Build authorization URL
-        const authUrl = new URL(oauthConfig.authorization_endpoint);
+        if (!oauthConfig.authorizationEndpoint) {
+          throw new Error('OAuth authorization endpoint is missing');
+        }
+        
+        let authUrl: URL;
+        try {
+          authUrl = new URL(oauthConfig.authorizationEndpoint);
+        } catch (error) {
+          throw new Error(`Invalid OAuth authorization endpoint URL: ${oauthConfig.authorizationEndpoint}`);
+        }
+        
         authUrl.searchParams.set('response_type', 'code');
         authUrl.searchParams.set('client_id', clientId);
         authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
