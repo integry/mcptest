@@ -462,7 +462,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       let oauthClientSecret: string | null = null;
       
       // Try dynamic client registration if supported
-      if (oauthEndpoints.requiresDynamicRegistration && oauthEndpoints.registrationEndpoint) {
+      if (oauthEndpoints.registrationEndpoint) {
         addLogEntry({ 
           type: 'info', 
           data: '🔐 Step 5/7: Performing dynamic client registration...' 

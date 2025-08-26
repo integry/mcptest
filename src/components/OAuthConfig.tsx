@@ -132,15 +132,15 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">
-              OAuth 2.1 Manual Configuration {serviceName && `for ${serviceName}`}
+              OAuth 2.1 Configuration {serviceName && `for ${serviceName}`}
             </h5>
             <button type="button" className="btn-close" onClick={onCancel}></button>
           </div>
           <div className="modal-body">
-            <div className="alert alert-warning">
-              <h6 className="alert-heading">⚠️ Manual Configuration Required</h6>
-              <p className="mb-2">This OAuth provider does not support dynamic client registration (RFC7591).</p>
-              <p className="mb-0">Per MCP specification, dynamic client registration is recommended for OAuth-enabled servers to allow seamless connection without manual configuration.</p>
+            <div className="alert alert-info">
+              <h6 className="alert-heading">ℹ️ OAuth Client Configuration</h6>
+              <p className="mb-2">Please provide your OAuth client credentials to connect to this service.</p>
+              <p className="mb-0">If dynamic client registration failed, you may need to manually register your application with the OAuth provider.</p>
             </div>
             
             <div className="alert alert-info">
