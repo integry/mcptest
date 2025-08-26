@@ -22,6 +22,7 @@ import TermsOfService from './components/docs/TermsOfService';
 import Contact from './components/docs/Contact';
 // OAuth callback component
 import OAuthCallback from './components/OAuthCallback';
+import OAuthConfig from './components/OAuthConfig';
 
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
@@ -142,6 +143,8 @@ function App() {
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
   const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which dashboards have been loaded
   const [notification, setNotification] = useState<{ message: string; show: boolean }>({ message: '', show: false });
+  const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
+  const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -1068,7 +1071,18 @@ function App() {
         
         const clientId = sessionStorage.getItem('oauth_client_id');
         if (!clientId) {
-          throw new Error('OAuth client credentials not configured');
+          // Store the server URL and space/card info to continue after OAuth config
+          sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
+            spaceId,
+            cardId,
+            serverUrl
+          }));
+          
+          // Show OAuth configuration modal
+          setNeedsOAuthConfig(true);
+          setOAuthConfigServerUrl(serverUrl);
+          console.log('[Reauthorize] No OAuth client configured, showing config modal');
+          return;
         }
         
         // Build authorization URL
@@ -1346,6 +1360,36 @@ function App() {
         </div>
       </main>
       <NotificationPopup message={notification.message} show={notification.show} />
+      
+      {/* OAuth Configuration Modal */}
+      {needsOAuthConfig && oauthConfigServerUrl && (
+        <OAuthConfig 
+          serverUrl={oauthConfigServerUrl}
+          onConfigured={async () => {
+            setNeedsOAuthConfig(false);
+            setOAuthConfigServerUrl(null);
+            
+            // Check if we have pending reauth
+            const pendingReauth = sessionStorage.getItem('oauth_pending_reauth');
+            if (pendingReauth) {
+              try {
+                const { spaceId, cardId, serverUrl } = JSON.parse(pendingReauth);
+                sessionStorage.removeItem('oauth_pending_reauth');
+                console.log('[OAuth Config] Continuing with reauth after config');
+                // Retry the reauth now that we have credentials
+                await handleReauthorizeCard(spaceId, cardId, serverUrl);
+              } catch (error) {
+                console.error('[OAuth Config] Failed to continue reauth:', error);
+              }
+            }
+          }}
+          onCancel={() => {
+            setNeedsOAuthConfig(false);
+            setOAuthConfigServerUrl(null);
+            sessionStorage.removeItem('oauth_pending_reauth');
+          }}
+        />
+      )}
     </div>
   );
 }
