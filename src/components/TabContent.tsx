@@ -875,10 +875,56 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       {needsOAuthConfig && oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
-          onConfigured={() => {
+          onConfigured={async () => {
             clearOAuthConfigNeed();
-            // Retry connection after configuration
-            handleConnectWrapper(undefined, tab.useProxy);
+            // After OAuth configuration, continue with the authorization flow
+            // instead of retrying the entire connection which could cause cycling
+            try {
+              const { getOAuthConfig } = await import('../utils/oauthDiscovery');
+              const { generatePKCE } = await import('../utils/pkce');
+              const { v4: uuidv4 } = await import('uuid');
+              
+              const oauthConfig = await getOAuthConfig(oauthConfigServerUrl);
+              
+              if (oauthConfig) {
+                const { codeVerifier, codeChallenge } = await generatePKCE();
+                const serverHost = new URL(oauthConfigServerUrl).host;
+                
+                sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+                sessionStorage.setItem('oauth_server_url', oauthConfigServerUrl);
+                sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
+                
+                const clientId = sessionStorage.getItem('oauth_client_id');
+                if (clientId && oauthConfig.authorizationEndpoint) {
+                  // Build authorization URL
+                  const authUrl = new URL(oauthConfig.authorizationEndpoint);
+                  authUrl.searchParams.set('response_type', 'code');
+                  authUrl.searchParams.set('client_id', clientId);
+                  authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+                  authUrl.searchParams.set('code_challenge', codeChallenge);
+                  authUrl.searchParams.set('code_challenge_method', 'S256');
+                  authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
+                  authUrl.searchParams.set('state', uuidv4());
+                  
+                  console.log('[OAuth Config] Redirecting to authorization URL');
+                  addLogEntry({ 
+                    type: 'info', 
+                    data: '🔐 OAuth credentials configured. Redirecting to authorization...' 
+                  });
+                  window.location.href = authUrl.toString();
+                  return;
+                }
+              }
+              
+              // If something went wrong, fallback to retry connection
+              handleConnectWrapper(undefined, tab.useProxy);
+            } catch (error) {
+              console.error('[OAuth Config] Failed to continue auth flow:', error);
+              addLogEntry({ 
+                type: 'error', 
+                data: 'Failed to continue OAuth authorization. Please try connecting again.' 
+              });
+            }
           }}
           onCancel={() => {
             clearOAuthConfigNeed();

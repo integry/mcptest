@@ -1066,7 +1066,7 @@ function App() {
         const { generatePKCE } = await import('./utils/pkce');
         const { codeVerifier, codeChallenge } = await generatePKCE();
         
-        sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+        sessionStorage.setItem('pkce_code_verifier', codeVerifier);
         sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
         
         const clientId = sessionStorage.getItem('oauth_client_id');
@@ -1376,10 +1376,44 @@ function App() {
                 const { spaceId, cardId, serverUrl } = JSON.parse(pendingReauth);
                 sessionStorage.removeItem('oauth_pending_reauth');
                 console.log('[OAuth Config] Continuing with reauth after config');
-                // Retry the reauth now that we have credentials
-                await handleReauthorizeCard(spaceId, cardId, serverUrl);
+                
+                // Instead of calling handleReauthorizeCard again which could cause a cycle,
+                // continue with the OAuth flow directly since we now have credentials
+                const { getOAuthConfig } = await import('./utils/oauthDiscovery');
+                const oauthConfig = await getOAuthConfig(serverUrl);
+                
+                if (oauthConfig) {
+                  const { generatePKCE } = await import('./utils/pkce');
+                  const { codeVerifier, codeChallenge } = await generatePKCE();
+                  const serverHost = new URL(serverUrl).host;
+                  
+                  sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+                  sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
+                  
+                  // Store cards to refresh after OAuth
+                  const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
+                  sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
+                  sessionStorage.setItem('oauth_server_url', serverUrl);
+                  
+                  const clientId = sessionStorage.getItem('oauth_client_id');
+                  if (clientId && oauthConfig.authorizationEndpoint) {
+                    // Build authorization URL
+                    const authUrl = new URL(oauthConfig.authorizationEndpoint);
+                    authUrl.searchParams.set('response_type', 'code');
+                    authUrl.searchParams.set('client_id', clientId);
+                    authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+                    authUrl.searchParams.set('code_challenge', codeChallenge);
+                    authUrl.searchParams.set('code_challenge_method', 'S256');
+                    authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
+                    authUrl.searchParams.set('state', uuidv4());
+                    
+                    console.log('[OAuth Config] Redirecting to authorization URL');
+                    window.location.href = authUrl.toString();
+                  }
+                }
               } catch (error) {
                 console.error('[OAuth Config] Failed to continue reauth:', error);
+                showNotification('Failed to continue OAuth authorization. Please try again.');
               }
             }
           }}
