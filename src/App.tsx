@@ -1205,6 +1205,50 @@ function App() {
     return <OAuthCallback />;
   }
 
+  // Handle OAuth provider's install-integration redirect
+  // Some OAuth providers (like Notion) redirect to this path as part of their flow
+  if (location.pathname === '/install-integration') {
+    // Check if this is part of an OAuth flow by looking for OAuth parameters
+    const params = new URLSearchParams(location.search);
+    const responseType = params.get('response_type');
+    const code = params.get('code');
+    
+    if (code) {
+      // If we have a code parameter, treat this as an OAuth callback
+      console.log('[OAuth] Detected authorization code in install-integration URL, redirecting to callback handler...');
+      navigate('/oauth/callback' + location.search, { replace: true });
+      return (
+        <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <h4>Completing authentication...</h4>
+          </div>
+        </div>
+      );
+    } else if (responseType === 'code') {
+      // This is an OAuth authorization request, not a callback
+      // The OAuth provider is trying to initiate its own flow
+      console.log('[OAuth] OAuth provider attempting to initiate authorization at install-integration');
+      // Redirect to home to prevent the OAuth loop
+      navigate('/', { replace: true });
+      return (
+        <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">
+          <div className="text-center">
+            <h4>OAuth configuration in progress...</h4>
+            <p>Redirecting to home...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    // Unknown install-integration request, redirect to home
+    console.log('[OAuth] Unknown install-integration request, redirecting to home...');
+    navigate('/', { replace: true });
+    return null;
+  }
+
   return (
     <div className="container-fluid vh-100 d-flex flex-column p-0">
 

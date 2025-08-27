@@ -108,9 +108,24 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
 
   // Always check sessionStorage for the latest token before connecting
   const getLatestAccessToken = useCallback(() => {
-    if (!serverUrl) return accessToken; // Return existing token if no serverUrl
+    if (!serverUrl) {
+      console.log('[OAuth] No serverUrl provided for token lookup');
+      return accessToken; // Return existing token if no serverUrl
+    }
     try {
-      const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
+      const normalizedUrl = addProtocolIfMissing(serverUrl);
+      const host = new URL(normalizedUrl).host;
+      const storedToken = sessionStorage.getItem(`oauth_access_token_${host}`);
+      
+      console.log('[OAuth] Token lookup:', {
+        serverUrl,
+        host,
+        tokenKey: `oauth_access_token_${host}`,
+        hasStoredToken: !!storedToken,
+        hasCurrentToken: !!accessToken,
+        tokensMatch: storedToken === accessToken
+      });
+      
       if (storedToken && storedToken !== accessToken) {
         console.log('[OAuth] Found updated access token in sessionStorage');
         setAccessToken(storedToken);
@@ -120,7 +135,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       console.warn('[OAuth] Invalid serverUrl for token lookup:', serverUrl, error);
       return accessToken;
     }
-  }, [accessToken])
+  }, [accessToken, serverUrl])
 
   // Fetch OAuth user info when we have an access token
   useEffect(() => {
@@ -307,6 +322,24 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     
     // Check if OAuth is enabled and initiate OAuth flow
     if (useOAuth && !latestAccessToken) {
+      // Check if we just completed OAuth (to prevent immediate re-authentication)
+      const oauthCompletedTime = sessionStorage.getItem('oauth_completed_time');
+      if (oauthCompletedTime) {
+        const timeSinceCompletion = Date.now() - parseInt(oauthCompletedTime);
+        // If OAuth was completed within the last 10 seconds, don't restart it
+        if (timeSinceCompletion < 10000) {
+          console.log('[DEBUG] OAuth was just completed, skipping re-authentication');
+          addLogEntry({ 
+            type: 'warning', 
+            data: `⚠️ OAuth authentication was just completed ${Math.round(timeSinceCompletion / 1000)}s ago. Connection may require additional configuration.` 
+          });
+          setIsConnecting(false);
+          setConnectionStatus('Disconnected');
+          cleanupConnection();
+          return;
+        }
+      }
+      
       console.log('[DEBUG] OAuth enabled but no access token, initiating OAuth flow...');
       
       // Check if this is a known OAuth service

@@ -149,6 +149,9 @@ const OAuthCallback: React.FC = () => {
             }
             sessionStorage.removeItem('pkce_code_verifier');
             
+            // Mark OAuth as completed to prevent immediate re-authentication
+            sessionStorage.setItem('oauth_completed_time', Date.now().toString());
+            
             addOAuthLog('info', '💾 Tokens stored in session storage, cleaning up PKCE verifier...');
             addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting to home page...');
             

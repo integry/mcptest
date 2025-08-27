@@ -535,14 +535,18 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       // Clear the shouldReconnect flag
       onUpdateTab(tab.id, { shouldReconnect: false });
       
-      // Trigger reconnection
-      handleConnect(
-        setTools,
-        setResources,
-        setResponses,
-        tab.serverUrl,
-        tab.useProxy
-      );
+      // Add a small delay to ensure token is properly stored and available
+      setTimeout(() => {
+        console.log('[OAuth] Triggering reconnection after delay...');
+        // Trigger reconnection
+        handleConnect(
+          setTools,
+          setResources,
+          setResponses,
+          tab.serverUrl,
+          tab.useProxy
+        );
+      }, 500); // 500ms delay to ensure token is available
     }
   }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, setTools, setResources, setResponses, onUpdateTab]);
   
