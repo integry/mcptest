@@ -441,7 +441,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
           
           {/* OAuth Status */}
           <div className="mt-2">
-            <OAuthStatusIndicator serverUrl={card.serverUrl} />
+            <OAuthStatusIndicator key={`oauth-${card.serverUrl}-${card.responseData ? 'updated' : 'initial'}`} serverUrl={card.serverUrl} />
           </div>
           
           {/* Parameters Section */}

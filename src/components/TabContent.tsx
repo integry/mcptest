@@ -112,8 +112,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     tab.useProxy, 
     tab.useOAuth,
     () => {
-      // Notify parent that OAuth flow is starting
+      // Notify parent that OAuth flow is starting and store tab ID
       onUpdateTab(tab.id, { isAuthFlowActive: true });
+      sessionStorage.setItem('oauth_tab_id', tab.id);
     }
   );
 

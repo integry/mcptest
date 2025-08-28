@@ -451,8 +451,20 @@ function App() {
       try {
         const oauthLogs = JSON.parse(oauthLogsJson);
         if (oauthLogs && oauthLogs.length > 0) {
-          // Find the tab that initiated OAuth (should have isAuthFlowActive)
-          const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+          // Get the OAuth server URL and tab ID from sessionStorage
+          const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
+          const oauthTabId = sessionStorage.getItem('oauth_tab_id');
+          
+          // Find the specific tab that initiated OAuth
+          let oauthTab = null;
+          if (oauthTabId) {
+            oauthTab = tabs.find(tab => tab.id === oauthTabId);
+          }
+          // Fallback to finding by isAuthFlowActive if tab ID not found
+          if (!oauthTab) {
+            oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+          }
+          
           if (oauthTab) {
             // Add the OAuth logs to the tab's log entries
             const logEntries = oauthLogs.map((log: any) => ({
@@ -461,8 +473,6 @@ function App() {
               timestamp: new Date(log.timestamp).toLocaleTimeString()
             }));
             
-            // Get the OAuth server URL from sessionStorage to ensure tab has correct URL
-            const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
             const updateData: any = { oauthCallbackLogs: logEntries };
             if (oauthServerUrl && oauthTab.serverUrl !== oauthServerUrl) {
               updateData.serverUrl = oauthServerUrl;
@@ -471,10 +481,14 @@ function App() {
             
             // Update the tab with the OAuth logs and possibly the server URL
             handleUpdateTab(oauthTab.id, updateData);
+            
+            // Make sure this tab is selected
+            setActiveTabId(oauthTab.id);
           }
           
           // Clear the logs from sessionStorage
           sessionStorage.removeItem('oauth_callback_logs');
+          sessionStorage.removeItem('oauth_tab_id');
         }
       } catch (e) {
         console.error('Failed to parse OAuth callback logs:', e);
@@ -485,28 +499,64 @@ function App() {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');
       
-      // Find the tab that initiated OAuth (should have isAuthFlowActive)
-      const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+      // Get the OAuth server URL and tab ID from sessionStorage
+      const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
+      const oauthTabId = sessionStorage.getItem('oauth_tab_id');
+      
+      // Find the specific tab that initiated OAuth
+      let oauthTab = null;
+      if (oauthTabId) {
+        oauthTab = tabs.find(tab => tab.id === oauthTabId);
+      }
+      // Fallback to finding by isAuthFlowActive if tab ID not found
+      if (!oauthTab) {
+        oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+      }
+      
       if (oauthTab) {
-        // Get the OAuth server URL from sessionStorage
-        const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
-        if (oauthServerUrl) {
+        console.log('[OAuth] Found OAuth tab, updating and reconnecting...');
+        
+        // Update the OAuth tab first
+        if (oauthServerUrl && oauthTab.serverUrl !== oauthServerUrl) {
           console.log('[OAuth] Updating tab with OAuth server URL:', oauthServerUrl);
-          // Update the tab to use the correct OAuth server URL, clear auth flow state and trigger reconnection
-          handleUpdateTab(oauthTab.id, { 
-            serverUrl: oauthServerUrl,
-            isAuthFlowActive: false,
-            shouldReconnect: true 
-          });
-          // Clean up the OAuth server URL from sessionStorage after using it
-          sessionStorage.removeItem('oauth_server_url');
-        } else {
-          // Fallback: just trigger reconnection without updating URL
-          handleUpdateTab(oauthTab.id, { 
-            isAuthFlowActive: false,
-            shouldReconnect: true 
-          });
         }
+        
+        // Update the tab to use the correct OAuth server URL, clear auth flow state and trigger reconnection
+        handleUpdateTab(oauthTab.id, { 
+          serverUrl: oauthServerUrl || oauthTab.serverUrl,
+          isAuthFlowActive: false,
+          shouldReconnect: true 
+        });
+        
+        // Make sure this tab is selected
+        setActiveTabId(oauthTab.id);
+      }
+      
+      // Reconnect all tabs that have the same OAuth server (they might have been disconnected during OAuth)
+      if (oauthServerUrl) {
+        const serverHost = new URL(oauthServerUrl).host;
+        const tabsToReconnect = tabs.filter(tab => {
+          if (!tab.serverUrl || tab.id === oauthTabId) return false;
+          try {
+            const tabHost = new URL(tab.serverUrl).host;
+            // Reconnect any tab that's using the same OAuth server
+            return tabHost === serverHost;
+          } catch {
+            return false;
+          }
+        });
+        
+        console.log(`[OAuth] Found ${tabsToReconnect.length} other tabs to reconnect for server ${serverHost}`);
+        
+        // Trigger reconnection for all tabs using the same server
+        tabsToReconnect.forEach(tab => {
+          console.log(`[OAuth] Triggering reconnection for tab ${tab.id} (${tab.title})`);
+          handleUpdateTab(tab.id, { shouldReconnect: true });
+        });
+        
+        // Clean up after using
+        sessionStorage.removeItem('oauth_server_url');
+        sessionStorage.removeItem('oauth_tab_id');
       }
       
       // Handle card refresh after OAuth completion
@@ -935,8 +985,9 @@ function App() {
         }
 
         // Check for OAuth token and include it in transport headers
-        const serverHost = new URL(serverUrl).host;
-        const oauthToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
+        // Use the original card.serverUrl (not the proxy URL) for OAuth token lookup
+        const originalServerHost = new URL(card.serverUrl).host;
+        const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
         const transportOptions: any = {};
         
         if (oauthToken) {
@@ -1122,10 +1173,21 @@ function App() {
   // Effect to handle OAuth refresh cards
   useEffect(() => {
     const refreshOAuthCards = async () => {
+      // Add a delay to ensure OAuth tokens are properly stored in sessionStorage
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       for (const space of spaces) {
         const cardsNeedingRefresh = space.cards.filter(card => (card as any).needsOAuthRefresh);
         if (cardsNeedingRefresh.length > 0) {
           console.log(`[OAuth Refresh Effect] Found ${cardsNeedingRefresh.length} cards needing OAuth refresh in space ${space.id}`);
+          
+          // Log OAuth token status for debugging
+          for (const card of cardsNeedingRefresh) {
+            const serverHost = new URL(card.serverUrl).host;
+            const hasToken = !!sessionStorage.getItem(`oauth_access_token_${serverHost}`);
+            console.log(`[OAuth Refresh Effect] Card ${card.id} - Server: ${serverHost}, Has OAuth token: ${hasToken}`);
+          }
+          
           for (const card of cardsNeedingRefresh) {
             console.log(`[OAuth Refresh Effect] Executing card ${card.id}`);
             await handleExecuteCard(space.id, card.id);
