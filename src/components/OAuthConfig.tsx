@@ -138,6 +138,12 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
           </div>
           <div className="modal-body">
             <div className="alert alert-info">
+              <h6 className="alert-heading">ℹ️ OAuth Client Configuration</h6>
+              <p className="mb-2">Please provide your OAuth client credentials to connect to this service.</p>
+              <p className="mb-0">If dynamic client registration failed, you may need to manually register your application with the OAuth provider.</p>
+            </div>
+            
+            <div className="alert alert-info">
               <h6 className="alert-heading">Setup Instructions</h6>
               <pre className="mb-0" style={{ whiteSpace: 'pre-wrap' }}>{serviceGuide.trim()}</pre>
             </div>

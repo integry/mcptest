@@ -66,9 +66,10 @@ export const logEvent = (eventName: string, eventParams?: { [key: string]: any }
  * @param title The title of the page.
  */
 export const logPageView = (path: string, title: string) => {
+    const sanitizedPath = sanitizePagePath(path);
+    const sanitizedTitle = sanitizePageTitle(title);
+    
     if (analytics) {
-        const sanitizedPath = sanitizePagePath(path);
-        const sanitizedTitle = sanitizePageTitle(title);
         firebaseLogEvent(analytics, 'page_view', {
             page_location: window.location.origin + sanitizedPath,
             page_path: sanitizedPath,

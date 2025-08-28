@@ -29,9 +29,9 @@ const defaultHandler = {
 
     // Add CORS headers for all responses
     const corsHeaders = {
-      'Access-Control-Allow-Origin': 'https://mcptest.io',
+      'Access-Control-Allow-Origin': '*', // Allow any origin for dynamic client registration
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, MCP-Protocol-Version',
       'Access-Control-Max-Age': '86400',
     };
 
@@ -40,6 +40,34 @@ const defaultHandler = {
       return new Response(null, {
         status: 200,
         headers: corsHeaders
+      });
+    }
+    
+    // Handle OAuth 2.0 Authorization Server Metadata (RFC8414)
+    if (url.pathname === "/.well-known/oauth-authorization-server") {
+      const baseUrl = `${url.protocol}//${url.host}`;
+      
+      const metadata = {
+        issuer: baseUrl,
+        authorization_endpoint: `${baseUrl}/oauth/authorize`,
+        token_endpoint: `${baseUrl}/oauth/token`,
+        registration_endpoint: `${baseUrl}/oauth/register`,
+        scopes_supported: ["openid", "profile", "email"],
+        response_types_supported: ["code"],
+        response_modes_supported: ["query"],
+        grant_types_supported: ["authorization_code"],
+        code_challenge_methods_supported: ["S256"],
+        token_endpoint_auth_methods_supported: ["none"], // Public clients only
+        service_documentation: "https://mcptest.io/docs",
+        ui_locales_supported: ["en"],
+      };
+      
+      return new Response(JSON.stringify(metadata, null, 2), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
       });
     }
 
@@ -237,20 +265,109 @@ const defaultHandler = {
       }
     }
 
-    // Handle client registration UI (if needed)
-    if (url.pathname == "/oauth/register-client") {
-      // In a real application, you would have a UI for client registration
-      // For now, we'll create a simple client registration endpoint
-      return new Response(`
-        <html>
-          <body>
-            <h1>Client Registration</h1>
-            <p>Use the OAuthHelpers API to register clients programmatically.</p>
-          </body>
-        </html>
-      `, {
-        headers: { "Content-Type": "text/html" }
-      });
+    // Handle dynamic client registration endpoint (RFC7591)
+    if (url.pathname == "/oauth/register") {
+      // Handle OPTIONS preflight for CORS
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          status: 200,
+          headers: corsHeaders
+        });
+      }
+      
+      if (request.method !== 'POST') {
+        return new Response(JSON.stringify({
+          error: 'invalid_request',
+          error_description: 'Only POST method is allowed for client registration'
+        }), {
+          status: 405,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        });
+      }
+      
+      try {
+        const registrationRequest = await request.json();
+        console.log('[OAuth Worker] Dynamic client registration request:', registrationRequest);
+        
+        // Validate required fields per RFC7591
+        if (!registrationRequest.redirect_uris || !Array.isArray(registrationRequest.redirect_uris) || registrationRequest.redirect_uris.length === 0) {
+          return new Response(JSON.stringify({
+            error: 'invalid_client_metadata',
+            error_description: 'redirect_uris is required and must be a non-empty array'
+          }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          });
+        }
+        
+        // Generate a unique client ID
+        const clientId = `mcp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        
+        // Create the client
+        const clientData = {
+          clientId: clientId,
+          clientName: registrationRequest.client_name || 'MCP Client',
+          redirectUris: registrationRequest.redirect_uris,
+          publicClient: true, // MCP clients are public clients
+          grantTypes: registrationRequest.grant_types || ['authorization_code'],
+          responseTypes: registrationRequest.response_types || ['code'],
+          scope: registrationRequest.scope || 'openid profile email',
+          tokenEndpointAuthMethod: 'none', // Public client
+          clientUri: registrationRequest.client_uri,
+          logoUri: registrationRequest.logo_uri,
+          tosUri: registrationRequest.tos_uri,
+          policyUri: registrationRequest.policy_uri
+        };
+        
+        // Register the client with the OAuth provider
+        await env.OAUTH_PROVIDER.createClient(clientData);
+        
+        console.log('[OAuth Worker] Client registered successfully:', clientId);
+        
+        // Return the registration response per RFC7591
+        const registrationResponse = {
+          client_id: clientId,
+          client_id_issued_at: Math.floor(Date.now() / 1000),
+          redirect_uris: registrationRequest.redirect_uris,
+          grant_types: clientData.grantTypes,
+          response_types: clientData.responseTypes,
+          scope: clientData.scope,
+          token_endpoint_auth_method: 'none',
+          client_name: clientData.clientName,
+          client_uri: registrationRequest.client_uri,
+          logo_uri: registrationRequest.logo_uri,
+          tos_uri: registrationRequest.tos_uri,
+          policy_uri: registrationRequest.policy_uri
+        };
+        
+        return new Response(JSON.stringify(registrationResponse), {
+          status: 201,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'Pragma': 'no-cache',
+            ...corsHeaders
+          }
+        });
+      } catch (error) {
+        console.error('[OAuth Worker] Registration error:', error);
+        return new Response(JSON.stringify({
+          error: 'server_error',
+          error_description: error.message
+        }), {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        });
+      }
     }
 
 
@@ -432,8 +549,11 @@ export default new OAuthProvider({
   // Disable implicit flow (following OAuth 2.1 best practices)
   allowImplicitFlow: false,
   
-  // Allow public client registration for SPAs like our MCP tester
+  // Allow public client registration for SPAs per MCP specification
   disallowPublicClientRegistration: false,
+  
+  // Enable dynamic client registration per RFC7591 and MCP spec
+  dynamicClientRegistration: true,
   
   // Custom error handler to log more details
   onError: ({ code, description, status, headers }) => {

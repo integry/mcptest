@@ -34,6 +34,8 @@ interface ConnectionPanelProps {
   setUseOAuth?: (useOAuth: boolean) => void;
   isAuthFlowActive?: boolean;
   oauthProgress?: string;
+  oauthUserInfo?: any; // User info from OAuth
+  isOAuthConnection?: boolean; // Whether current connection uses OAuth
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -58,12 +60,15 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   setUseOAuth,
   isAuthFlowActive,
   oauthProgress,
+  oauthUserInfo,
+  isOAuthConnection,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
     const randomIndex = Math.floor(Math.random() * SUGGESTED_SERVERS.length);
     return SUGGESTED_SERVERS[randomIndex];
   });
+  const [showUserInfoModal, setShowUserInfoModal] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
   const { currentUser } = useAuth();
 
@@ -104,13 +109,59 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
       text: `Connect to MCP server at ${serverUrl}`,
     });
   };
+  // Debug OAuth state
+  useEffect(() => {
+    console.log('[ConnectionPanel Debug] OAuth state:', {
+      isConnected,
+      useOAuth,
+      isAuthFlowActive,
+      oauthUserInfo,
+      oauthProgress,
+      isOAuthConnection
+    });
+  }, [isConnected, useOAuth, isAuthFlowActive, oauthUserInfo, oauthProgress, isOAuthConnection]);
+
   // Return JSX directly without outer parentheses
-  return <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`} style={{ marginTop: '0', minHeight: '200px' }}>
+  return (
+    <>
+      <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`} style={{ marginTop: '0', minHeight: '200px' }}>
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
         <h5 className="mb-0">Server Connection</h5>
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
           {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
+          {isConnected && isOAuthConnection && (
+            <div className="d-flex align-items-center gap-1">
+              <span className="badge bg-secondary text-white d-flex align-items-center gap-1">
+                <i className="bi bi-shield-lock"></i>
+                OAuth
+                {oauthUserInfo ? (
+                  <>
+                    {oauthUserInfo.picture && (
+                      <img
+                        src={oauthUserInfo.picture}
+                        alt="User avatar"
+                        className="rounded-circle"
+                        style={{ width: '16px', height: '16px' }}
+                      />
+                    )}
+                    <span className="small">
+                      {oauthUserInfo.name || oauthUserInfo.email || 'User'}
+                    </span>
+                  </>
+                ) : (
+                  <span className="small">Authenticated</span>
+                )}
+              </span>
+              <button
+                className="btn btn-sm btn-link text-decoration-none p-0"
+                onClick={() => setShowUserInfoModal(true)}
+                title={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
+              >
+                <i className="bi bi-info-circle"></i>
+              </button>
+            </div>
+          )}
           <div aria-live="polite" className="d-inline-block">
             <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
               {connectionStatus}
@@ -269,7 +320,96 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           />
         )}
       </div>
-    </div>;
+    </div>
+
+    {/* OAuth User Info Modal */}
+    {showUserInfoModal && (
+      <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">OAuth {oauthUserInfo ? 'User' : 'Session'} Information</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowUserInfoModal(false)}
+                aria-label="Close"
+              ></button>
+            </div>
+            <div className="modal-body">
+              {oauthUserInfo ? (
+                <>
+                  {oauthUserInfo.picture && (
+                    <div className="text-center mb-3">
+                      <img
+                        src={oauthUserInfo.picture}
+                        alt="User avatar"
+                        className="rounded-circle"
+                        style={{ width: '100px', height: '100px' }}
+                      />
+                    </div>
+                  )}
+                  <div className="table-responsive">
+                    <table className="table table-sm">
+                      <tbody>
+                        {Object.entries(oauthUserInfo).map(([key, value]) => (
+                          <tr key={key}>
+                            <td className="fw-bold">{key}:</td>
+                            <td>{typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <div className="alert alert-info">
+                    <i className="bi bi-shield-lock me-2"></i>
+                    OAuth authentication is active for this connection
+                  </div>
+                  <h6>Session Details:</h6>
+                  <table className="table table-sm">
+                    <tbody>
+                      <tr>
+                        <td className="fw-bold">Status:</td>
+                        <td>Authenticated</td>
+                      </tr>
+                      <tr>
+                        <td className="fw-bold">Server:</td>
+                        <td>{serverUrl}</td>
+                      </tr>
+                      <tr>
+                        <td className="fw-bold">Token Type:</td>
+                        <td>Bearer</td>
+                      </tr>
+                      <tr>
+                        <td className="fw-bold">Connection Type:</td>
+                        <td>OAuth 2.1 with PKCE</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p className="text-muted small mt-3">
+                    User information is not available from this OAuth provider.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowUserInfoModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  );
 };
 
 export default ConnectionPanel;

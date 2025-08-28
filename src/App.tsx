@@ -22,6 +22,7 @@ import TermsOfService from './components/docs/TermsOfService';
 import Contact from './components/docs/Contact';
 // OAuth callback component
 import OAuthCallback from './components/OAuthCallback';
+import OAuthConfig from './components/OAuthConfig';
 
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
@@ -142,6 +143,8 @@ function App() {
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(true);
   const [loadedSpaces, setLoadedSpaces] = useState<Set<string>>(new Set()); // Track which dashboards have been loaded
   const [notification, setNotification] = useState<{ message: string; show: boolean }>({ message: '', show: false });
+  const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
+  const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -448,8 +451,20 @@ function App() {
       try {
         const oauthLogs = JSON.parse(oauthLogsJson);
         if (oauthLogs && oauthLogs.length > 0) {
-          // Find the tab that initiated OAuth (should have isAuthFlowActive)
-          const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+          // Get the OAuth server URL and tab ID from sessionStorage
+          const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
+          const oauthTabId = sessionStorage.getItem('oauth_tab_id');
+          
+          // Find the specific tab that initiated OAuth
+          let oauthTab = null;
+          if (oauthTabId) {
+            oauthTab = tabs.find(tab => tab.id === oauthTabId);
+          }
+          // Fallback to finding by isAuthFlowActive if tab ID not found
+          if (!oauthTab) {
+            oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+          }
+          
           if (oauthTab) {
             // Add the OAuth logs to the tab's log entries
             const logEntries = oauthLogs.map((log: any) => ({
@@ -458,14 +473,22 @@ function App() {
               timestamp: new Date(log.timestamp).toLocaleTimeString()
             }));
             
-            // Update the tab with the OAuth logs
-            handleUpdateTab(oauthTab.id, { 
-              oauthCallbackLogs: logEntries
-            });
+            const updateData: any = { oauthCallbackLogs: logEntries };
+            if (oauthServerUrl && oauthTab.serverUrl !== oauthServerUrl) {
+              updateData.serverUrl = oauthServerUrl;
+              console.log('[OAuth] Updating tab server URL from logs:', oauthServerUrl);
+            }
+            
+            // Update the tab with the OAuth logs and possibly the server URL
+            handleUpdateTab(oauthTab.id, updateData);
+            
+            // Make sure this tab is selected
+            setActiveTabId(oauthTab.id);
           }
           
           // Clear the logs from sessionStorage
           sessionStorage.removeItem('oauth_callback_logs');
+          sessionStorage.removeItem('oauth_tab_id');
         }
       } catch (e) {
         console.error('Failed to parse OAuth callback logs:', e);
@@ -476,14 +499,124 @@ function App() {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');
       
-      // Find the tab that initiated OAuth (should have isAuthFlowActive)
-      const oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+      // Restore tabs that were stored before OAuth redirect
+      const storedTabsJson = sessionStorage.getItem('oauth_tabs_before_redirect');
+      if (storedTabsJson) {
+        try {
+          const storedTabs = JSON.parse(storedTabsJson);
+          console.log('[OAuth] Restoring tabs from before OAuth redirect:', storedTabs);
+          setTabs(storedTabs);
+          localStorage.setItem(TABS_KEY, storedTabsJson);
+          sessionStorage.removeItem('oauth_tabs_before_redirect');
+        } catch (e) {
+          console.error('[OAuth] Failed to restore tabs:', e);
+        }
+      }
+      
+      // Get the OAuth server URL and tab ID from sessionStorage
+      const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
+      const oauthTabId = sessionStorage.getItem('oauth_tab_id');
+      
+      // Find the specific tab that initiated OAuth
+      let oauthTab = null;
+      if (oauthTabId) {
+        oauthTab = tabs.find(tab => tab.id === oauthTabId);
+      }
+      // Fallback to finding by isAuthFlowActive if tab ID not found
+      if (!oauthTab) {
+        oauthTab = tabs.find(tab => tab.isAuthFlowActive);
+      }
+      
       if (oauthTab) {
-        // Update the tab to clear auth flow state and trigger reconnection
+        console.log('[OAuth] Found OAuth tab, updating and reconnecting...');
+        
+        // Update the OAuth tab first
+        if (oauthServerUrl && oauthTab.serverUrl !== oauthServerUrl) {
+          console.log('[OAuth] Updating tab with OAuth server URL:', oauthServerUrl);
+        }
+        
+        // Update the tab to use the correct OAuth server URL, clear auth flow state and trigger reconnection
         handleUpdateTab(oauthTab.id, { 
+          serverUrl: oauthServerUrl || oauthTab.serverUrl,
           isAuthFlowActive: false,
           shouldReconnect: true 
         });
+        
+        // Make sure this tab is selected
+        setActiveTabId(oauthTab.id);
+      }
+      
+      // Reconnect all tabs that have the same OAuth server (they might have been disconnected during OAuth)
+      if (oauthServerUrl) {
+        const serverHost = new URL(oauthServerUrl).host;
+        const tabsToReconnect = tabs.filter(tab => {
+          if (!tab.serverUrl || tab.id === oauthTabId) return false;
+          try {
+            const tabHost = new URL(tab.serverUrl).host;
+            // Reconnect any tab that's using the same OAuth server
+            return tabHost === serverHost;
+          } catch {
+            return false;
+          }
+        });
+        
+        console.log(`[OAuth] Found ${tabsToReconnect.length} other tabs to reconnect for server ${serverHost}`);
+        
+        // Trigger reconnection for all tabs using the same server
+        tabsToReconnect.forEach(tab => {
+          console.log(`[OAuth] Triggering reconnection for tab ${tab.id} (${tab.title})`);
+          handleUpdateTab(tab.id, { shouldReconnect: true });
+        });
+        
+        // Clean up after using
+        sessionStorage.removeItem('oauth_server_url');
+        sessionStorage.removeItem('oauth_tab_id');
+      }
+      
+      // Handle card refresh after OAuth completion
+      const cardsToRefreshJson = sessionStorage.getItem('oauth_cards_to_refresh');
+      if (cardsToRefreshJson) {
+        try {
+          const cardsToRefresh = JSON.parse(cardsToRefreshJson);
+          console.log('[OAuth Card Refresh] Refreshing cards after OAuth completion:', cardsToRefresh);
+          
+          // Store cards to refresh in state to handle after component renders
+          setSpaces(prev => {
+            // Mark cards as needing refresh
+            return prev.map(space => {
+              if (cardsToRefresh.some((c: any) => c.spaceId === space.id)) {
+                return {
+                  ...space,
+                  cards: space.cards.map(card => {
+                    const needsRefresh = cardsToRefresh.some((c: any) => 
+                      c.spaceId === space.id && c.cardId === card.id
+                    );
+                    if (needsRefresh) {
+                      console.log(`[OAuth Card Refresh] Marking card ${card.id} for refresh`);
+                      return { ...card, needsOAuthRefresh: true };
+                    }
+                    return card;
+                  })
+                };
+              }
+              return space;
+            });
+          });
+          
+          // Clear the refresh queue
+          sessionStorage.removeItem('oauth_cards_to_refresh');
+          
+          // Show success message
+          setNotification({ 
+            message: 'OAuth authentication successful - refreshing cards', 
+            show: true 
+          });
+          setTimeout(() => setNotification({ message: '', show: false }), 3000);
+          
+        } catch (error) {
+          console.error('[OAuth Card Refresh] Failed to parse cards to refresh:', error);
+          sessionStorage.removeItem('oauth_cards_to_refresh');
+        }
       }
       
       // Clear the location state to prevent re-triggering
@@ -849,8 +982,31 @@ function App() {
         let connectUrl: URL;
         let serverUrl = card.serverUrl;
         
-        // If proxy is enabled for this card and VITE_PROXY_URL is set, prepend it to the URL
-        if (card.useProxy && import.meta.env.VITE_PROXY_URL) {
+        // Check for OAuth token first - use the original card.serverUrl for OAuth token lookup
+        const originalServerHost = new URL(card.serverUrl).host;
+        const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
+        const transportOptions: any = {};
+        
+        if (oauthToken) {
+          console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
+          transportOptions.headers = {
+            'Authorization': `Bearer ${oauthToken}`
+          };
+        }
+        
+        // Determine if proxy should be used
+        let shouldUseProxy = false;
+        
+        // If card.useProxy is explicitly set, respect that
+        if (card.useProxy !== undefined) {
+          shouldUseProxy = card.useProxy;
+        } else if (!oauthToken && import.meta.env.VITE_PROXY_URL) {
+          // If no OAuth token and proxy is available, use proxy by default
+          shouldUseProxy = true;
+        }
+        
+        // Apply proxy to the server URL if needed
+        if (shouldUseProxy && import.meta.env.VITE_PROXY_URL) {
           const proxyUrl = import.meta.env.VITE_PROXY_URL;
           serverUrl = `${proxyUrl}?target=${encodeURIComponent(card.serverUrl)}`;
           console.log(`[Execute Card ${cardId}] Using proxy: ${proxyUrl}`);
@@ -866,7 +1022,7 @@ function App() {
         }
 
         tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
-        const transport = new CorsAwareStreamableHTTPTransport(connectUrl);
+        const transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
 
         console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
         await tempClient.connect(transport);
@@ -894,9 +1050,16 @@ function App() {
         console.warn(`[Execute Card ${cardId} Attempt ${attempt}] Error:`, err);
         lastError = err; // Store the error
 
-        // --- Check if it's a retryable conflict error ---
-        // This check might need adjustment based on how the SDK/server surfaces the 409 error
+        // --- Check for different error types ---
         const isConflict = err.message?.includes('Conflict') || err.message?.includes('409') || err.status === 409;
+        const is401Error = err.message && (
+          err.message.includes('401') || 
+          err.message.toLowerCase().includes('unauthorized') ||
+          err.message.includes('invalid_token') ||
+          err.message.includes('Missing or invalid access token') ||
+          err.statusCode === 401 ||
+          err.status === 401
+        );
 
         if (isConflict && attempt < MAX_RETRIES) {
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Conflict detected, retrying after ${RETRY_DELAY_MS}ms...`);
@@ -917,7 +1080,15 @@ function App() {
             operation: card.type === 'tool' ? `execute tool ${card.name}` : `access resource ${card.name}`
           });
           
-          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorDetails, responseData: null, responseType: 'error' }));
+          // Mark error with auth information for UI handling
+          const errorWithAuthInfo = {
+            ...errorDetails,
+            isAuthError: is401Error,
+            serverUrl: card.serverUrl,
+            isProxied: shouldUseProxy
+          };
+          
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
           break; // Exit the loop
         }
       } finally {
@@ -940,6 +1111,141 @@ function App() {
       }
     } // End of retry loop
   };
+
+  // --- OAuth Re-authorization Function ---
+  const handleReauthorizeCard = async (spaceId: string, cardId: string, serverUrl: string) => {
+    console.log(`[Reauthorize] Starting OAuth reauth for card ${cardId} on ${serverUrl}`);
+    
+    // Clear the existing invalid token for this server
+    if (!serverUrl) {
+      console.error('[Reauthorize] No serverUrl provided');
+      return;
+    }
+    const serverHost = new URL(serverUrl).host;
+    sessionStorage.removeItem(`oauth_access_token_${serverHost}`);
+    sessionStorage.removeItem(`oauth_refresh_token_${serverHost}`);
+    
+    // Store the server URL for OAuth callback
+    sessionStorage.setItem('oauth_server_url', serverUrl);
+    
+    // Store cards to refresh after OAuth
+    const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
+    sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
+    
+    // Store all active tabs before OAuth redirect so we can restore them
+    const activeTabs = localStorage.getItem(TABS_KEY);
+    if (activeTabs) {
+      sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+      console.log('[OAuth] Stored active tabs before redirect for card reauth');
+    }
+    
+    // Start OAuth flow - similar to connection logic
+    try {
+      const { getOAuthConfig } = await import('./utils/oauthDiscovery');
+      const oauthConfig = await getOAuthConfig(serverUrl);
+      
+      if (oauthConfig) {
+        // Set up OAuth flow
+        const { generatePKCE } = await import('./utils/pkce');
+        const { codeVerifier, codeChallenge } = await generatePKCE();
+        
+        sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+        sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
+        
+        const clientId = sessionStorage.getItem('oauth_client_id');
+        if (!clientId) {
+          // Store the server URL and space/card info to continue after OAuth config
+          sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
+            spaceId,
+            cardId,
+            serverUrl
+          }));
+          
+          // Show OAuth configuration modal
+          setNeedsOAuthConfig(true);
+          setOAuthConfigServerUrl(serverUrl);
+          console.log('[Reauthorize] No OAuth client configured, showing config modal');
+          return;
+        }
+        
+        // Build authorization URL
+        if (!oauthConfig.authorizationEndpoint) {
+          throw new Error('OAuth authorization endpoint is missing');
+        }
+        
+        let authUrl: URL;
+        try {
+          authUrl = new URL(oauthConfig.authorizationEndpoint);
+        } catch (error) {
+          throw new Error(`Invalid OAuth authorization endpoint URL: ${oauthConfig.authorizationEndpoint}`);
+        }
+        
+        authUrl.searchParams.set('response_type', 'code');
+        authUrl.searchParams.set('client_id', clientId);
+        authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+        authUrl.searchParams.set('code_challenge', codeChallenge);
+        authUrl.searchParams.set('code_challenge_method', 'S256');
+        authUrl.searchParams.set('scope', 'read write');
+        
+        console.log(`[Reauthorize] Redirecting to OAuth authorization URL: ${authUrl.toString()}`);
+        window.location.href = authUrl.toString();
+      } else {
+        throw new Error('OAuth configuration not available for this server');
+      }
+    } catch (error) {
+      console.error('[Reauthorize] Failed to start OAuth flow:', error);
+      setNotification({ 
+        message: `Failed to start OAuth reauthorization: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+        show: true 
+      });
+      setTimeout(() => setNotification({ message: '', show: false }), 5000);
+    }
+  };
+
+  // Effect to handle OAuth refresh cards
+  useEffect(() => {
+    const refreshOAuthCards = async () => {
+      // Add a delay to ensure OAuth tokens are properly stored in sessionStorage
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      for (const space of spaces) {
+        const cardsNeedingRefresh = space.cards.filter(card => (card as any).needsOAuthRefresh);
+        if (cardsNeedingRefresh.length > 0) {
+          console.log(`[OAuth Refresh Effect] Found ${cardsNeedingRefresh.length} cards needing OAuth refresh in space ${space.id}`);
+          
+          // Log OAuth token status for debugging
+          for (const card of cardsNeedingRefresh) {
+            const serverHost = new URL(card.serverUrl).host;
+            const hasToken = !!sessionStorage.getItem(`oauth_access_token_${serverHost}`);
+            console.log(`[OAuth Refresh Effect] Card ${card.id} - Server: ${serverHost}, Has OAuth token: ${hasToken}`);
+          }
+          
+          for (const card of cardsNeedingRefresh) {
+            console.log(`[OAuth Refresh Effect] Executing card ${card.id}`);
+            await handleExecuteCard(space.id, card.id);
+            // Remove the needsOAuthRefresh flag after execution
+            setSpaces(prev => prev.map(s => {
+              if (s.id === space.id) {
+                return {
+                  ...s,
+                  cards: s.cards.map(c => {
+                    if (c.id === card.id) {
+                      const { needsOAuthRefresh, ...rest } = c as any;
+                      return rest;
+                    }
+                    return c;
+                  })
+                };
+              }
+              return s;
+            }));
+          }
+        }
+      }
+    };
+    
+    refreshOAuthCards();
+  }, [spaces.filter(s => s.cards.some((c: any) => c.needsOAuthRefresh)).length]); // Only run when cards need OAuth refresh
 
   // --- Effect to Auto-Refresh Cards on Dashboard Entry (Sequentially with Retries) ---
   useEffect(() => {
@@ -991,6 +1297,50 @@ function App() {
   // Check if we're on the OAuth callback page
   if (location.pathname === '/oauth/callback') {
     return <OAuthCallback />;
+  }
+
+  // Handle OAuth provider's install-integration redirect
+  // Some OAuth providers (like Notion) redirect to this path as part of their flow
+  if (location.pathname === '/install-integration') {
+    // Check if this is part of an OAuth flow by looking for OAuth parameters
+    const params = new URLSearchParams(location.search);
+    const responseType = params.get('response_type');
+    const code = params.get('code');
+    
+    if (code) {
+      // If we have a code parameter, treat this as an OAuth callback
+      console.log('[OAuth] Detected authorization code in install-integration URL, redirecting to callback handler...');
+      navigate('/oauth/callback' + location.search, { replace: true });
+      return (
+        <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <h4>Completing authentication...</h4>
+          </div>
+        </div>
+      );
+    } else if (responseType === 'code') {
+      // This is an OAuth authorization request, not a callback
+      // The OAuth provider is trying to initiate its own flow
+      console.log('[OAuth] OAuth provider attempting to initiate authorization at install-integration');
+      // Redirect to home to prevent the OAuth loop
+      navigate('/', { replace: true });
+      return (
+        <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">
+          <div className="text-center">
+            <h4>OAuth configuration in progress...</h4>
+            <p>Redirecting to home...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    // Unknown install-integration request, redirect to home
+    console.log('[OAuth] Unknown install-integration request, redirecting to home...');
+    navigate('/', { replace: true });
+    return null;
   }
 
   return (
@@ -1122,6 +1472,7 @@ function App() {
                 onAddCard={handleAddCardToSpace}
                 onRefreshSpace={refreshCurrentDashboard}
                 isRefreshing={healthCheckLoading}
+                onReauthorizeCard={handleReauthorizeCard}
               />
             ) : (
               <div className="alert alert-warning">No dashboard selected or available. Create one from the side menu.</div>
@@ -1147,6 +1498,77 @@ function App() {
         </div>
       </main>
       <NotificationPopup message={notification.message} show={notification.show} />
+      
+      {/* OAuth Configuration Modal */}
+      {needsOAuthConfig && oauthConfigServerUrl && (
+        <OAuthConfig 
+          serverUrl={oauthConfigServerUrl}
+          onConfigured={async () => {
+            setNeedsOAuthConfig(false);
+            setOAuthConfigServerUrl(null);
+            
+            // Check if we have pending reauth
+            const pendingReauth = sessionStorage.getItem('oauth_pending_reauth');
+            if (pendingReauth) {
+              try {
+                const { spaceId, cardId, serverUrl } = JSON.parse(pendingReauth);
+                sessionStorage.removeItem('oauth_pending_reauth');
+                console.log('[OAuth Config] Continuing with reauth after config');
+                
+                // Instead of calling handleReauthorizeCard again which could cause a cycle,
+                // continue with the OAuth flow directly since we now have credentials
+                const { getOAuthConfig } = await import('./utils/oauthDiscovery');
+                const oauthConfig = await getOAuthConfig(serverUrl);
+                
+                if (oauthConfig) {
+                  const { generatePKCE } = await import('./utils/pkce');
+                  const { codeVerifier, codeChallenge } = await generatePKCE();
+                  const serverHost = new URL(serverUrl).host;
+                  
+                  sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+                  sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
+                  
+                  // Store cards to refresh after OAuth
+                  const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
+                  sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
+                  sessionStorage.setItem('oauth_server_url', serverUrl);
+                  
+                  // Store all active tabs before OAuth redirect so we can restore them
+                  const activeTabs = localStorage.getItem(TABS_KEY);
+                  if (activeTabs) {
+                    sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+                    console.log('[OAuth] Stored active tabs before redirect from OAuthConfig callback');
+                  }
+                  
+                  const clientId = sessionStorage.getItem('oauth_client_id');
+                  if (clientId && oauthConfig.authorizationEndpoint) {
+                    // Build authorization URL
+                    const authUrl = new URL(oauthConfig.authorizationEndpoint);
+                    authUrl.searchParams.set('response_type', 'code');
+                    authUrl.searchParams.set('client_id', clientId);
+                    authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
+                    authUrl.searchParams.set('code_challenge', codeChallenge);
+                    authUrl.searchParams.set('code_challenge_method', 'S256');
+                    authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
+                    authUrl.searchParams.set('state', uuidv4());
+                    
+                    console.log('[OAuth Config] Redirecting to authorization URL');
+                    window.location.href = authUrl.toString();
+                  }
+                }
+              } catch (error) {
+                console.error('[OAuth Config] Failed to continue reauth:', error);
+                showNotification('Failed to continue OAuth authorization. Please try again.');
+              }
+            }
+          }}
+          onCancel={() => {
+            setNeedsOAuthConfig(false);
+            setOAuthConfigServerUrl(null);
+            sessionStorage.removeItem('oauth_pending_reauth');
+          }}
+        />
+      )}
     </div>
   );
 }

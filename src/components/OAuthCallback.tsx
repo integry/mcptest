@@ -30,7 +30,30 @@ const OAuthCallback: React.FC = () => {
       const errorDescription = params.get('error_description');
       const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
       const serverUrl = sessionStorage.getItem('oauth_server_url');
-      const clientId = sessionStorage.getItem('oauth_client_id') || oauthConfig.clientId;
+      // Get client ID from dynamic registration or manual configuration
+      const serverHost = serverUrl ? new URL(serverUrl).host : '';
+      const dynamicClientKey = `oauth_client_${serverHost}`;
+      const dynamicClientData = sessionStorage.getItem(dynamicClientKey);
+      let clientId = sessionStorage.getItem('oauth_client_id');
+      let clientSecret = sessionStorage.getItem('oauth_client_secret');
+      
+      // Check for dynamically registered client
+      if (dynamicClientData) {
+        try {
+          const parsedClient = JSON.parse(dynamicClientData);
+          clientId = parsedClient.clientId;
+          clientSecret = parsedClient.clientSecret;
+          addOAuthLog('info', `📋 Using dynamically registered client: ${clientId}`);
+        } catch (e) {
+          addOAuthLog('warning', '⚠️ Failed to parse dynamic client data');
+        }
+      }
+      
+      // Fallback to hardcoded client ID only for test server
+      if (!clientId && serverUrl && (serverUrl.includes('localhost') || serverUrl.includes('oauth-worker.livecart.workers.dev'))) {
+        clientId = oauthConfig.clientId;
+        addOAuthLog('info', '📋 Using fallback client ID for test server');
+      }
       
       // Log received parameters
       addOAuthLog('info', `📄 Callback parameters:\n  - Authorization code: ${code ? `${code.substring(0, 10)}...` : 'Not provided'}\n  - Error: ${error || 'None'}\n  - Error description: ${errorDescription || 'None'}\n  - PKCE verifier stored: ${codeVerifier ? 'Yes' : 'No'}\n  - PKCE verifier value: ${codeVerifier ? `${codeVerifier.substring(0, 10)}...` : 'Not found'}\n  - Server URL stored: ${serverUrl || 'Not found'}\n  - Client ID stored: ${clientId}`);
@@ -51,8 +74,9 @@ const OAuthCallback: React.FC = () => {
         addOAuthLog('info', '✅ All required parameters present, proceeding with token exchange...');
         
         try {
-          // Get saved OAuth endpoints from discovery
-          const savedEndpoints = sessionStorage.getItem('oauth_endpoints');
+          // Get saved OAuth endpoints from discovery (per server)
+          const serverHost = serverUrl ? new URL(serverUrl).host : '';
+          const savedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
           let tokenUrl = oauthConfig.tokenEndpoint; // Default fallback
           let supportsPKCE = true;
           let customHeaders: Record<string, string> = {};
@@ -83,6 +107,14 @@ const OAuthCallback: React.FC = () => {
             requestBody.code_verifier = codeVerifier;
           }
           
+          // Include client_secret if available (for confidential clients)
+          if (clientSecret) {
+            requestBody.client_secret = clientSecret;
+            addOAuthLog('info', '🔑 Including client_secret in token request (confidential client)');
+          } else {
+            addOAuthLog('info', '🔓 No client_secret provided (public client)');
+          }
+          
           addOAuthLog('info', '📤 Step 2/3: Sending POST request to token endpoint...');
           
           const formData = new URLSearchParams();
@@ -109,11 +141,16 @@ const OAuthCallback: React.FC = () => {
             
             addOAuthLog('info', `🎉 Tokens received:\n  - Access token: ${access_token ? `${access_token.substring(0, 20)}...` : 'Not provided'}\n  - Refresh token: ${refresh_token ? 'Yes' : 'No'}\n  - Token type: ${token_type || 'Bearer'}\n  - Expires in: ${expires_in ? `${expires_in} seconds` : 'Not specified'}`);
             
-            sessionStorage.setItem('oauth_access_token', access_token);
+            // Store tokens per server
+            const serverHost = serverUrl ? new URL(serverUrl).host : '';
+            sessionStorage.setItem(`oauth_access_token_${serverHost}`, access_token);
             if (refresh_token) {
-              sessionStorage.setItem('oauth_refresh_token', refresh_token);
+              sessionStorage.setItem(`oauth_refresh_token_${serverHost}`, refresh_token);
             }
             sessionStorage.removeItem('pkce_code_verifier');
+            
+            // Mark OAuth as completed to prevent immediate re-authentication
+            sessionStorage.setItem('oauth_completed_time', Date.now().toString());
             
             addOAuthLog('info', '💾 Tokens stored in session storage, cleaning up PKCE verifier...');
             addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting to home page...');
