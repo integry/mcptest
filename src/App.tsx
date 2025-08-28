@@ -1250,32 +1250,28 @@ function App() {
   // --- Effect to Auto-Refresh Cards on Dashboard Entry (Sequentially with Retries) ---
   useEffect(() => {
     const refreshCardsSequentially = async () => {
-      // Only refresh if we're viewing dashboards AND this specific dashboard hasn't been loaded yet
-      // AND it has cards that have never been executed (no responseData)
+      // Only refresh if we're viewing dashboards AND this specific dashboard hasn't been loaded yet in this session
       if (activeView === 'spaces' && selectedSpaceId && !loadedSpaces.has(selectedSpaceId)) {
         const currentSpace = spaces.find(s => s.id === selectedSpaceId);
         if (currentSpace && currentSpace.cards.length > 0) {
-          // Check if any cards need initial loading (no responseData yet)
-          const needsInitialLoad = currentSpace.cards.some(card => !card.responseData && !card.loading);
+          // Always refresh all cards when entering a dashboard for the first time in this session
+          // This ensures OAuth tokens are validated even for cards with saved responseData
+          console.log(`[DEBUG] First time entering space "${currentSpace.name}" in this session, refreshing ${currentSpace.cards.length} cards sequentially.`);
+          setHealthCheckLoading(true);
           
-          if (needsInitialLoad) {
-            console.log(`[DEBUG] First time entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards sequentially.`);
-            setHealthCheckLoading(true);
-            
-            // Use for...of loop to allow await inside
-            for (const card of currentSpace.cards) {
-              // Only execute cards that haven't been loaded yet
-              if (!card.loading && !card.responseData) {
-                 console.log(`[DEBUG] Effect loop: Awaiting handleExecuteCard for card ${card.id}.`);
-                 await handleExecuteCard(selectedSpaceId, card.id); // Await execution
-                 console.log(`[DEBUG] Effect loop: Finished handleExecuteCard for card ${card.id}.`);
-              } else {
-                 console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because it's already loaded or loading.`);
-              }
+          // Use for...of loop to allow await inside
+          for (const card of currentSpace.cards) {
+            // Execute all cards that aren't currently loading
+            if (!card.loading) {
+               console.log(`[DEBUG] Effect loop: Awaiting handleExecuteCard for card ${card.id}.`);
+               await handleExecuteCard(selectedSpaceId, card.id); // Await execution
+               console.log(`[DEBUG] Effect loop: Finished handleExecuteCard for card ${card.id}.`);
+            } else {
+               console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because it's already loading.`);
             }
-            setHealthCheckLoading(false);
-             console.log(`[DEBUG] Finished sequential refresh for dashboard "${currentSpace.name}".`);
           }
+          setHealthCheckLoading(false);
+          console.log(`[DEBUG] Finished sequential refresh for dashboard "${currentSpace.name}".`)
           
           // Mark this dashboard as loaded regardless
           setLoadedSpaces(prev => new Set(prev).add(selectedSpaceId));
