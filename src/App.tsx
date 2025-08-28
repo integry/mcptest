@@ -1033,7 +1033,7 @@ function App() {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Calling tool: ${card.name}`);
             result = await tempClient.callTool({ name: card.name, arguments: card.params });
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Tool result received.`);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null, useProxy: shouldUseProxy }));
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null }));
         } else if (card.type === 'resource') {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${card.name}`);
             result = await tempClient.request({
@@ -1041,7 +1041,7 @@ function App() {
                 params: { uri: card.name, arguments: card.params }
             }, AccessResourceResultSchema);
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result', error: null, useProxy: shouldUseProxy }));
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result', error: null }));
         }
         // --- Success: Break the retry loop ---
         break;
@@ -1088,7 +1088,7 @@ function App() {
             isProxied: shouldUseProxy
           };
           
-          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error', useProxy: shouldUseProxy }));
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
           break; // Exit the loop
         }
       } finally {

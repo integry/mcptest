@@ -46,6 +46,12 @@ export class CorsAwareStreamableHTTPTransport extends StreamableHTTPClientTransp
       console.log('[CORS] Removed mcp-protocol-version header - server does not support it');
     }
     
+    // Preserve mcp-session-id header if present (critical for session management)
+    // The parent class may set this header, and we must preserve it
+    if (headers.has('mcp-session-id')) {
+      console.log('[CORS] Preserving mcp-session-id header');
+    }
+    
     // Set proper Accept header for servers that require both content types
     headers.set('Accept', 'application/json, text/event-stream');
     console.log('[CORS] Set Accept header to: application/json, text/event-stream');

@@ -65,7 +65,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
       type: contextType,
       name: contextName,
       params: contextParams,
-      useProxy: useProxy,
+      useProxy: useProxy, // This now correctly represents isProxied state
     };
 
     const handleAddToSpace = (spaceId: string) => {
