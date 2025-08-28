@@ -869,7 +869,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 toolParams={toolParams}
                 resourceArgs={resourceArgs}
                 onRunAgain={handleRunAgain}
-                useProxy={tab.useProxy}
+                useProxy={isProxied}
               />
             </>
           )}
