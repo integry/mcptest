@@ -499,6 +499,20 @@ function App() {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');
       
+      // Restore tabs that were stored before OAuth redirect
+      const storedTabsJson = sessionStorage.getItem('oauth_tabs_before_redirect');
+      if (storedTabsJson) {
+        try {
+          const storedTabs = JSON.parse(storedTabsJson);
+          console.log('[OAuth] Restoring tabs from before OAuth redirect:', storedTabs);
+          setTabs(storedTabs);
+          localStorage.setItem(TABS_KEY, storedTabsJson);
+          sessionStorage.removeItem('oauth_tabs_before_redirect');
+        } catch (e) {
+          console.error('[OAuth] Failed to restore tabs:', e);
+        }
+      }
+      
       // Get the OAuth server URL and tab ID from sessionStorage
       const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
       const oauthTabId = sessionStorage.getItem('oauth_tab_id');
@@ -968,8 +982,31 @@ function App() {
         let connectUrl: URL;
         let serverUrl = card.serverUrl;
         
-        // If proxy is enabled for this card and VITE_PROXY_URL is set, prepend it to the URL
-        if (card.useProxy && import.meta.env.VITE_PROXY_URL) {
+        // Check for OAuth token first - use the original card.serverUrl for OAuth token lookup
+        const originalServerHost = new URL(card.serverUrl).host;
+        const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
+        const transportOptions: any = {};
+        
+        if (oauthToken) {
+          console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
+          transportOptions.headers = {
+            'Authorization': `Bearer ${oauthToken}`
+          };
+        }
+        
+        // Determine if proxy should be used
+        let shouldUseProxy = false;
+        
+        // If card.useProxy is explicitly set, respect that
+        if (card.useProxy !== undefined) {
+          shouldUseProxy = card.useProxy;
+        } else if (!oauthToken && import.meta.env.VITE_PROXY_URL) {
+          // If no OAuth token and proxy is available, use proxy by default
+          shouldUseProxy = true;
+        }
+        
+        // Apply proxy to the server URL if needed
+        if (shouldUseProxy && import.meta.env.VITE_PROXY_URL) {
           const proxyUrl = import.meta.env.VITE_PROXY_URL;
           serverUrl = `${proxyUrl}?target=${encodeURIComponent(card.serverUrl)}`;
           console.log(`[Execute Card ${cardId}] Using proxy: ${proxyUrl}`);
@@ -984,19 +1021,6 @@ function App() {
             throw new Error(`Invalid Server URL format in card: ${card.serverUrl}`);
         }
 
-        // Check for OAuth token and include it in transport headers
-        // Use the original card.serverUrl (not the proxy URL) for OAuth token lookup
-        const originalServerHost = new URL(card.serverUrl).host;
-        const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
-        const transportOptions: any = {};
-        
-        if (oauthToken) {
-          console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
-          transportOptions.headers = {
-            'Authorization': `Bearer ${oauthToken}`
-          };
-        }
-
         tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
         const transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
 
@@ -1009,7 +1033,7 @@ function App() {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Calling tool: ${card.name}`);
             result = await tempClient.callTool({ name: card.name, arguments: card.params });
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Tool result received.`);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null }));
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null, useProxy: shouldUseProxy }));
         } else if (card.type === 'resource') {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${card.name}`);
             result = await tempClient.request({
@@ -1017,7 +1041,7 @@ function App() {
                 params: { uri: card.name, arguments: card.params }
             }, AccessResourceResultSchema);
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result', error: null }));
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result', error: null, useProxy: shouldUseProxy }));
         }
         // --- Success: Break the retry loop ---
         break;
@@ -1060,10 +1084,11 @@ function App() {
           const errorWithAuthInfo = {
             ...errorDetails,
             isAuthError: is401Error,
-            serverUrl: card.serverUrl
+            serverUrl: card.serverUrl,
+            isProxied: shouldUseProxy
           };
           
-          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error', useProxy: shouldUseProxy }));
           break; // Exit the loop
         }
       } finally {
@@ -1106,6 +1131,13 @@ function App() {
     // Store cards to refresh after OAuth
     const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
     sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
+    
+    // Store all active tabs before OAuth redirect so we can restore them
+    const activeTabs = localStorage.getItem(TABS_KEY);
+    if (activeTabs) {
+      sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+      console.log('[OAuth] Stored active tabs before redirect for card reauth');
+    }
     
     // Start OAuth flow - similar to connection logic
     try {
@@ -1500,6 +1532,13 @@ function App() {
                   const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
                   sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
                   sessionStorage.setItem('oauth_server_url', serverUrl);
+                  
+                  // Store all active tabs before OAuth redirect so we can restore them
+                  const activeTabs = localStorage.getItem(TABS_KEY);
+                  if (activeTabs) {
+                    sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+                    console.log('[OAuth] Stored active tabs before redirect from OAuthConfig callback');
+                  }
                   
                   const clientId = sessionStorage.getItem('oauth_client_id');
                   if (clientId && oauthConfig.authorizationEndpoint) {

@@ -439,9 +439,15 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
           <div title={card.serverUrl}>Server: {truncate(card.serverUrl, 40)}</div>
           <div title={card.name}>{card.type === 'tool' ? 'Tool' : 'Resource'}: {truncate(card.name, 40)}</div>
           
-          {/* OAuth Status */}
-          <div className="mt-2">
+          {/* OAuth Status and Proxy Badge */}
+          <div className="mt-2 d-flex align-items-center gap-2">
             <OAuthStatusIndicator key={`oauth-${card.serverUrl}-${card.responseData ? 'updated' : 'initial'}`} serverUrl={card.serverUrl} />
+            {card.useProxy && (
+              <span className="badge bg-info" title="Using proxy for this connection">
+                <i className="bi bi-arrow-left-right me-1"></i>
+                Proxy
+              </span>
+            )}
           </div>
           
           {/* Parameters Section */}

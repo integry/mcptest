@@ -899,6 +899,13 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 sessionStorage.setItem('oauth_server_url', oauthConfigServerUrl);
                 sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
                 
+                // Store all active tabs before OAuth redirect so we can restore them
+                const activeTabs = localStorage.getItem('mcpConnectionTabs');
+                if (activeTabs) {
+                  sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+                  console.log('[OAuth] Stored active tabs before redirect from TabContent');
+                }
+                
                 const clientId = sessionStorage.getItem('oauth_client_id');
                 if (clientId && oauthConfig.authorizationEndpoint) {
                   // Build authorization URL

@@ -400,6 +400,13 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       sessionStorage.setItem('pkce_code_verifier', code_verifier);
       sessionStorage.setItem('oauth_server_url', targetUrl);
       
+      // Store all active tabs before OAuth redirect so we can restore them
+      const activeTabs = localStorage.getItem('mcpConnectionTabs');
+      if (activeTabs) {
+        sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+        console.log('[OAuth] Stored active tabs before redirect');
+      }
+      
       addLogEntry({ 
         type: 'info', 
         data: '💾 Step 2/5: Stored PKCE verifier and server URL in session storage' 
