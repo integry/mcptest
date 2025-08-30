@@ -41,6 +41,7 @@ import {
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, parseServerUrl, parseResultShareUrl } from './utils/urlUtils';
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
+import { CorsAwareSSETransport } from './utils/corsAwareSseTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
 
 // Constants for localStorage keys
@@ -972,6 +973,7 @@ function App() {
 
     let tempClient: any = null;
     let lastError: any = null;
+    let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -995,7 +997,7 @@ function App() {
         }
         
         // Determine if proxy should be used
-        let shouldUseProxy = false;
+        shouldUseProxy = false; // Reset for each attempt
         
         // If card.useProxy is explicitly set, respect that
         if (card.useProxy !== undefined) {
@@ -1014,7 +1016,8 @@ function App() {
         
         try {
             connectUrl = new URL(serverUrl);
-            if (!connectUrl.pathname.endsWith('/mcp')) {
+            // Don't append /mcp if the URL already ends with /sse or /mcp
+            if (!connectUrl.pathname.endsWith('/mcp') && !connectUrl.pathname.endsWith('/sse')) {
                 connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
             }
         } catch (e) {
@@ -1022,7 +1025,16 @@ function App() {
         }
 
         tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
-        const transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
+        
+        // Use SSE transport for SSE endpoints, HTTP transport for others
+        let transport;
+        if (connectUrl.pathname.endsWith('/sse')) {
+          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using SSE transport for ${connectUrl.toString()}`);
+          transport = new CorsAwareSSETransport(connectUrl, transportOptions);
+        } else {
+          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using HTTP transport for ${connectUrl.toString()}`);
+          transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
+        }
 
         console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
         await tempClient.connect(transport);
