@@ -1164,7 +1164,46 @@ function App() {
         sessionStorage.setItem('pkce_code_verifier', codeVerifier);
         sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
         
-        const clientId = sessionStorage.getItem('oauth_client_id');
+        // Try dynamic client registration if supported
+        let clientId: string | null = sessionStorage.getItem('oauth_client_id');
+        let clientSecret: string | null = sessionStorage.getItem('oauth_client_secret');
+        
+        // Also check for server-specific stored client registration
+        const serverClientKey = `oauth_client_${serverHost}`;
+        const storedServerClient = sessionStorage.getItem(serverClientKey);
+        if (!clientId && storedServerClient) {
+          try {
+            const clientData = JSON.parse(storedServerClient);
+            clientId = clientData.clientId;
+            clientSecret = clientData.clientSecret;
+            console.log('[Reauthorize] Using stored server-specific client registration');
+          } catch (e) {
+            console.error('[Reauthorize] Failed to parse stored client data:', e);
+          }
+        }
+        
+        if (!clientId && oauthConfig.registrationEndpoint) {
+          console.log('[Reauthorize] Attempting dynamic client registration...');
+          
+          try {
+            const { getOrRegisterOAuthClient } = await import('./utils/oauthDiscovery');
+            const clientRegistration = await getOrRegisterOAuthClient(serverUrl, oauthConfig.registrationEndpoint);
+            
+            if (clientRegistration) {
+              clientId = clientRegistration.clientId;
+              clientSecret = clientRegistration.clientSecret || null;
+              console.log('[Reauthorize] Dynamic client registration successful');
+              
+              // Store for future use if needed
+              if (clientId) sessionStorage.setItem('oauth_client_id', clientId);
+              if (clientSecret) sessionStorage.setItem('oauth_client_secret', clientSecret);
+            }
+          } catch (error) {
+            console.error('[Reauthorize] Dynamic client registration failed:', error);
+          }
+        }
+        
+        // If still no client ID, show config modal
         if (!clientId) {
           // Store the server URL and space/card info to continue after OAuth config
           sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
@@ -1176,7 +1215,7 @@ function App() {
           // Show OAuth configuration modal
           setNeedsOAuthConfig(true);
           setOAuthConfigServerUrl(serverUrl);
-          console.log('[Reauthorize] No OAuth client configured, showing config modal');
+          console.log('[Reauthorize] No OAuth client configured and dynamic registration unavailable, showing config modal');
           return;
         }
         
