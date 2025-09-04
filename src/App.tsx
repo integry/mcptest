@@ -1218,21 +1218,29 @@ function App() {
         sessionStorage.setItem('pkce_code_verifier', codeVerifier);
         sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
         
-        // Try dynamic client registration if supported
-        let clientId: string | null = sessionStorage.getItem('oauth_client_id');
-        let clientSecret: string | null = sessionStorage.getItem('oauth_client_secret');
+        // First check for server-specific stored client registration
+        let clientId: string | null = null;
+        let clientSecret: string | null = null;
         
-        // Also check for server-specific stored client registration
         const serverClientKey = `oauth_client_${serverHost}`;
         const storedServerClient = sessionStorage.getItem(serverClientKey);
-        if (!clientId && storedServerClient) {
+        if (storedServerClient) {
           try {
             const clientData = JSON.parse(storedServerClient);
             clientId = clientData.clientId;
             clientSecret = clientData.clientSecret;
-            console.log('[Reauthorize] Using stored server-specific client registration');
+            console.log('[Reauthorize] Using stored server-specific client registration:', clientId);
           } catch (e) {
             console.error('[Reauthorize] Failed to parse stored client data:', e);
+          }
+        }
+        
+        // Fallback to global OAuth credentials if no server-specific client found
+        if (!clientId) {
+          clientId = sessionStorage.getItem('oauth_client_id');
+          clientSecret = sessionStorage.getItem('oauth_client_secret');
+          if (clientId) {
+            console.log('[Reauthorize] Using global OAuth client credentials:', clientId);
           }
         }
         
@@ -1246,11 +1254,10 @@ function App() {
             if (clientRegistration) {
               clientId = clientRegistration.clientId;
               clientSecret = clientRegistration.clientSecret || null;
-              console.log('[Reauthorize] Dynamic client registration successful');
+              console.log('[Reauthorize] Dynamic client registration successful:', clientId);
               
-              // Store for future use if needed
-              if (clientId) sessionStorage.setItem('oauth_client_id', clientId);
-              if (clientSecret) sessionStorage.setItem('oauth_client_secret', clientSecret);
+              // Note: The client registration is already stored by getOrRegisterOAuthClient
+              // with the server-specific key, so we don't need to store it again
             }
           } catch (error) {
             console.error('[Reauthorize] Dynamic client registration failed:', error);
@@ -1682,7 +1689,28 @@ function App() {
                   }));
                   console.log('[OAuth] Stored return view state for dashboard from config modal:', spaceId);
                   
-                  const clientId = sessionStorage.getItem('oauth_client_id');
+                  // Check for server-specific client first, then fall back to global
+                  let clientId = null;
+                  const serverClientKey = `oauth_client_${serverHost}`;
+                  const storedServerClient = sessionStorage.getItem(serverClientKey);
+                  if (storedServerClient) {
+                    try {
+                      const clientData = JSON.parse(storedServerClient);
+                      clientId = clientData.clientId;
+                      console.log('[OAuth Config] Using server-specific client ID:', clientId);
+                    } catch (e) {
+                      console.error('[OAuth Config] Failed to parse stored client data:', e);
+                    }
+                  }
+                  
+                  // Fallback to global OAuth client ID
+                  if (!clientId) {
+                    clientId = sessionStorage.getItem('oauth_client_id');
+                    if (clientId) {
+                      console.log('[OAuth Config] Using global OAuth client ID:', clientId);
+                    }
+                  }
+                  
                   if (clientId && oauthConfig.authorizationEndpoint) {
                     // Build authorization URL
                     const authUrl = new URL(oauthConfig.authorizationEndpoint);
