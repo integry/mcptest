@@ -1572,6 +1572,12 @@ function App() {
                   const { codeVerifier, codeChallenge } = await generatePKCE();
                   const serverHost = new URL(serverUrl).host;
                   
+                  // Debug logging for PKCE parameters
+                  console.log('[OAuth Config] Generated PKCE parameters:', {
+                    codeVerifier: codeVerifier.substring(0, 10) + '...',
+                    codeChallenge: codeChallenge.substring(0, 10) + '...'
+                  });
+                  
                   sessionStorage.setItem('pkce_code_verifier', codeVerifier);
                   sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
                   
@@ -1599,6 +1605,7 @@ function App() {
                     authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
                     authUrl.searchParams.set('state', uuidv4());
                     
+                    console.log('[OAuth Config] Authorization URL:', authUrl.toString());
                     console.log('[OAuth Config] Redirecting to authorization URL');
                     window.location.href = authUrl.toString();
                   }
