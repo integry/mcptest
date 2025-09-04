@@ -407,6 +407,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         console.log('[OAuth] Stored active tabs before redirect');
       }
       
+      // Store the current tab ID to return to it after OAuth
+      if (tabId) {
+        sessionStorage.setItem('oauth_tab_id', tabId);
+        console.log('[OAuth] Stored tab ID for return navigation:', tabId);
+      }
+      
       addLogEntry({ 
         type: 'info', 
         data: '💾 Step 2/5: Stored PKCE verifier and server URL in session storage' 

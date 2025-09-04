@@ -122,6 +122,20 @@ export const OAUTH_SERVICES: Record<string, OAuthServiceConfig> = {
       'Notion-Version': '2022-06-28',
     },
   },
+  'paypal.com': {
+    name: 'PayPal',
+    supportsDiscovery: true,
+    supportsPKCE: true,
+    requiresClientRegistration: true,
+    scope: 'openid profile email',
+  },
+  'mcp.paypal.com': {
+    name: 'PayPal MCP',
+    supportsDiscovery: true,
+    supportsPKCE: true,
+    requiresClientRegistration: true,
+    scope: 'openid profile email',
+  },
 };
 
 /**

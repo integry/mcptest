@@ -620,6 +620,43 @@ function App() {
         }
       }
       
+      // Restore the view state if we came from a dashboard
+      const returnViewJson = sessionStorage.getItem('oauth_return_view');
+      if (returnViewJson) {
+        try {
+          const returnView = JSON.parse(returnViewJson);
+          console.log('[OAuth] Restoring view state:', returnView);
+          
+          if (returnView.activeView === 'spaces' && returnView.selectedSpaceId) {
+            // Find the dashboard and navigate to it
+            const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
+            if (targetSpace) {
+              setActiveView('spaces');
+              setSelectedSpaceId(returnView.selectedSpaceId);
+              navigate(getSpaceUrl(targetSpace.name), { replace: true });
+              console.log('[OAuth] Navigated back to dashboard:', targetSpace.name);
+              
+              // Clear the stored view state
+              sessionStorage.removeItem('oauth_return_view');
+              return; // Skip the default navigation below
+            }
+          } else if (returnView.activeView === 'playground' && returnView.activeTabId) {
+            // Return to playground view with the specific tab
+            setActiveView('playground');
+            setActiveTabId(returnView.activeTabId);
+            navigate('/', { replace: true });
+            console.log('[OAuth] Navigated back to playground tab:', returnView.activeTabId);
+            
+            // Clear the stored view state
+            sessionStorage.removeItem('oauth_return_view');
+            return; // Skip the default navigation below
+          }
+        } catch (error) {
+          console.error('[OAuth] Failed to restore view state:', error);
+        }
+        sessionStorage.removeItem('oauth_return_view');
+      }
+      
       // Clear the location state to prevent re-triggering
       navigate(location.pathname, { replace: true });
     } else if (state?.oauthError) {
@@ -1160,6 +1197,14 @@ function App() {
       console.log('[OAuth] Stored active tabs before redirect for card reauth');
     }
     
+    // Store the current view state to restore after OAuth
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'spaces', // Dashboard view
+      selectedSpaceId: spaceId,
+      timestamp: Date.now()
+    }));
+    console.log('[OAuth] Stored return view state for dashboard:', spaceId);
+    
     // Start OAuth flow - similar to connection logic
     try {
       const { getOAuthConfig } = await import('./utils/oauthDiscovery');
@@ -1245,7 +1290,9 @@ function App() {
         authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
         authUrl.searchParams.set('code_challenge', codeChallenge);
         authUrl.searchParams.set('code_challenge_method', 'S256');
-        authUrl.searchParams.set('scope', 'read write');
+        // Use the scope from OAuth configuration, or default to 'read write' for backward compatibility
+        const scope = oauthConfig.scope || 'read write';
+        authUrl.searchParams.set('scope', scope);
         
         console.log(`[Reauthorize] Redirecting to OAuth authorization URL: ${authUrl.toString()}`);
         window.location.href = authUrl.toString();
@@ -1602,6 +1649,14 @@ function App() {
                     console.log('[OAuth] Stored active tabs before redirect from OAuthConfig callback');
                   }
                   
+                  // Store the current view state to restore after OAuth
+                  sessionStorage.setItem('oauth_return_view', JSON.stringify({
+                    activeView: 'spaces', // Dashboard view
+                    selectedSpaceId: spaceId,
+                    timestamp: Date.now()
+                  }));
+                  console.log('[OAuth] Stored return view state for dashboard from config modal:', spaceId);
+                  
                   const clientId = sessionStorage.getItem('oauth_client_id');
                   if (clientId && oauthConfig.authorizationEndpoint) {
                     // Build authorization URL
@@ -1611,7 +1666,9 @@ function App() {
                     authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
                     authUrl.searchParams.set('code_challenge', codeChallenge);
                     authUrl.searchParams.set('code_challenge_method', 'S256');
-                    authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
+                    // Use the scope from OAuth configuration
+                    const scope = oauthConfig.scope || 'openid profile email';
+                    authUrl.searchParams.set('scope', scope);
                     authUrl.searchParams.set('state', uuidv4());
                     
                     console.log('[OAuth Config] Authorization URL:', authUrl.toString());

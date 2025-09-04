@@ -153,7 +153,18 @@ const OAuthCallback: React.FC = () => {
             sessionStorage.setItem('oauth_completed_time', Date.now().toString());
             
             addOAuthLog('info', '💾 Tokens stored in session storage, cleaning up PKCE verifier...');
-            addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting to home page...');
+            addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting...');
+            
+            // Check if we have a stored return view state
+            const returnViewJson = sessionStorage.getItem('oauth_return_view');
+            if (returnViewJson) {
+              try {
+                const returnView = JSON.parse(returnViewJson);
+                addOAuthLog('info', `🔄 Returning to ${returnView.activeView} view`);
+              } catch (e) {
+                addOAuthLog('warning', '⚠️ Failed to parse return view state');
+              }
+            }
             
             // Redirect to home page with success message
             navigate('/', { state: { oauthSuccess: true } });

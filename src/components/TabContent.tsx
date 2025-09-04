@@ -906,6 +906,13 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                   console.log('[OAuth] Stored active tabs before redirect from TabContent');
                 }
                 
+                // Store return to playground view
+                sessionStorage.setItem('oauth_return_view', JSON.stringify({
+                  activeView: 'playground',
+                  activeTabId: tab.id,
+                  timestamp: Date.now()
+                }));
+                
                 const clientId = sessionStorage.getItem('oauth_client_id');
                 if (clientId && oauthConfig.authorizationEndpoint) {
                   // Build authorization URL
