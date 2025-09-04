@@ -638,7 +638,7 @@ function App() {
             // Find the dashboard and navigate to it
             const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
             if (targetSpace) {
-              setActiveView('spaces');
+              // Navigate to the dashboard URL which will set the active view
               setSelectedSpaceId(returnView.selectedSpaceId);
               navigate(getSpaceUrl(targetSpace.name), { replace: true });
               console.log('[OAuth] Navigated back to dashboard:', targetSpace.name);
@@ -651,7 +651,7 @@ function App() {
             }
           } else if (returnView.activeView === 'playground' && returnView.activeTabId) {
             // Return to playground view with the specific tab
-            setActiveView('playground');
+            // Navigate to home which will set the active view to playground
             setActiveTabId(returnView.activeTabId);
             navigate('/', { replace: true });
             console.log('[OAuth] Navigated back to playground tab:', returnView.activeTabId);
@@ -685,7 +685,7 @@ function App() {
       // Clear the location state
       navigate(location.pathname, { replace: true });
     }
-  }, [location.state, navigate, tabs, handleUpdateTab, spaces, setActiveView, setSelectedSpaceId, setActiveTabId]);
+  }, [location.state, navigate, tabs, handleUpdateTab, spaces, setSelectedSpaceId, setActiveTabId]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
