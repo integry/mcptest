@@ -407,10 +407,10 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         console.log('[OAuth] Stored active tabs before redirect');
       }
       
-      // Store the current tab ID to return to it after OAuth
-      if (tabId) {
-        sessionStorage.setItem('oauth_tab_id', tabId);
-        console.log('[OAuth] Stored tab ID for return navigation:', tabId);
+      // The tab ID is already stored by the TabContent component when OAuth flow starts
+      const storedTabId = sessionStorage.getItem('oauth_tab_id');
+      if (storedTabId) {
+        console.log('[OAuth] Tab ID already stored for return navigation:', storedTabId);
       }
       
       addLogEntry({ 
@@ -659,7 +659,16 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       authUrl.searchParams.set('code_challenge', code_challenge);
       authUrl.searchParams.set('code_challenge_method', 'S256');
       
-      authUrl.searchParams.set('scope', oauthEndpoints.scope);
+      // PayPal requires proper space encoding in scopes - use %20 instead of +
+      if (serverHost.includes('paypal.com')) {
+        // For PayPal, manually encode the scope with %20 instead of letting URLSearchParams convert to +
+        const encodedScope = encodeURIComponent(oauthEndpoints.scope).replace(/%20/g, '%20');
+        // Manually append to preserve %20 encoding
+        const currentParams = authUrl.toString();
+        authUrl = new URL(currentParams + '&scope=' + encodedScope);
+      } else {
+        authUrl.searchParams.set('scope', oauthEndpoints.scope);
+      }
       
       // Log the authorization URL for debugging
       addLogEntry({ 
@@ -757,6 +766,20 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           });
           setOauthProgress('Redirecting to authorization page...');
           console.log('[OAuth Progress] Redirecting to authorization page');
+          
+          // For PayPal, add additional logging to debug the 400 error
+          if (serverHost.includes('paypal.com')) {
+            console.log('[PayPal OAuth Debug] Authorization parameters:', {
+              response_type: authUrl.searchParams.get('response_type'),
+              client_id: authUrl.searchParams.get('client_id'),
+              redirect_uri: authUrl.searchParams.get('redirect_uri'),
+              code_challenge: authUrl.searchParams.get('code_challenge'),
+              code_challenge_method: authUrl.searchParams.get('code_challenge_method'),
+              scope: authUrl.searchParams.get('scope'),
+              fullUrl: authUrl.toString()
+            });
+          }
+          
           window.location.href = authUrl.toString();
           return;
         } else {
