@@ -30,23 +30,26 @@ const OAuthCallback: React.FC = () => {
       const errorDescription = params.get('error_description');
       const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
       const serverUrl = sessionStorage.getItem('oauth_server_url');
-      // Get client ID from dynamic registration or manual configuration
+      // Get client ID from server-specific registration only
       const serverHost = serverUrl ? new URL(serverUrl).host : '';
       const dynamicClientKey = `oauth_client_${serverHost}`;
       const dynamicClientData = sessionStorage.getItem(dynamicClientKey);
-      let clientId = sessionStorage.getItem('oauth_client_id');
-      let clientSecret = sessionStorage.getItem('oauth_client_secret');
+      let clientId: string | null = null;
+      let clientSecret: string | null = null;
       
-      // Check for dynamically registered client
+      // Check for server-specific client (either dynamically registered or manually configured)
       if (dynamicClientData) {
         try {
           const parsedClient = JSON.parse(dynamicClientData);
           clientId = parsedClient.clientId;
           clientSecret = parsedClient.clientSecret;
-          addOAuthLog('info', `📋 Using dynamically registered client: ${clientId}`);
+          const registrationType = parsedClient.registeredManually ? 'manually configured' : 'dynamically registered';
+          addOAuthLog('info', `📋 Using ${registrationType} client for ${serverHost}: ${clientId}`);
         } catch (e) {
-          addOAuthLog('warning', '⚠️ Failed to parse dynamic client data');
+          addOAuthLog('warning', '⚠️ Failed to parse server-specific client data');
         }
+      } else {
+        addOAuthLog('error', `❌ No OAuth client credentials found for ${serverHost}`);
       }
       
       

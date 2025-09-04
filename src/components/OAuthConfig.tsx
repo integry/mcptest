@@ -15,15 +15,23 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
   const [serviceGuide, setServiceGuide] = useState<string>('');
 
   useEffect(() => {
-    // Load existing credentials if any
-    const savedClientId = sessionStorage.getItem('oauth_client_id');
-    if (savedClientId) {
-      setClientId(savedClientId);
-    }
+    // Load existing server-specific credentials if any
+    const serverHost = new URL(serverUrl).host;
+    const dynamicClientKey = `oauth_client_${serverHost}`;
+    const storedClient = sessionStorage.getItem(dynamicClientKey);
     
-    const savedClientSecret = sessionStorage.getItem('oauth_client_secret');
-    if (savedClientSecret) {
-      setClientSecret(savedClientSecret);
+    if (storedClient) {
+      try {
+        const clientData = JSON.parse(storedClient);
+        if (clientData.clientId) {
+          setClientId(clientData.clientId);
+        }
+        if (clientData.clientSecret) {
+          setClientSecret(clientData.clientSecret);
+        }
+      } catch (e) {
+        console.error('[OAuth Config] Failed to parse stored client data:', e);
+      }
     }
     
     // Always use generic guide for OAuth service
@@ -57,11 +65,19 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
       return;
     }
     
-    // Save credentials to session storage
-    sessionStorage.setItem('oauth_client_id', clientId);
-    if (clientSecret) {
-      sessionStorage.setItem('oauth_client_secret', clientSecret);
-    }
+    // Save credentials to session storage per server
+    const serverHost = new URL(serverUrl).host;
+    const dynamicClientKey = `oauth_client_${serverHost}`;
+    
+    const clientData = {
+      clientId,
+      clientSecret: clientSecret || undefined,
+      registeredAt: new Date().toISOString(),
+      registeredManually: true
+    };
+    
+    sessionStorage.setItem(dynamicClientKey, JSON.stringify(clientData));
+    console.log(`[OAuth Config] Saved server-specific credentials for ${serverHost}`);
     
     onConfigured();
   };
@@ -78,9 +94,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
           </div>
           <div className="modal-body">
             <div className="alert alert-info">
-              <h6 className="alert-heading">ℹ️ OAuth Client Configuration</h6>
-              <p className="mb-2">Please provide your OAuth client credentials to connect to this service.</p>
-              <p className="mb-0">If dynamic client registration failed, you may need to manually register your application with the OAuth provider.</p>
+              <h6 className="alert-heading">ℹ️ OAuth Client Configuration for {new URL(serverUrl).host}</h6>
+              <p className="mb-2">Please provide your OAuth client credentials to connect to {new URL(serverUrl).host}.</p>
+              <p className="mb-0">These credentials will be stored specifically for this server. Each server requires its own OAuth client credentials.</p>
             </div>
             
             <div className="alert alert-info">

@@ -913,7 +913,20 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                   timestamp: Date.now()
                 }));
                 
-                const clientId = sessionStorage.getItem('oauth_client_id');
+                // Get server-specific client credentials
+                const dynamicClientKey = `oauth_client_${serverHost}`;
+                const storedClientData = sessionStorage.getItem(dynamicClientKey);
+                let clientId: string | null = null;
+                
+                if (storedClientData) {
+                  try {
+                    const clientData = JSON.parse(storedClientData);
+                    clientId = clientData.clientId;
+                  } catch (e) {
+                    console.error('[OAuth] Failed to parse stored client data:', e);
+                  }
+                }
+                
                 if (clientId && oauthConfig.authorizationEndpoint) {
                   // Build authorization URL
                   const authUrl = new URL(oauthConfig.authorizationEndpoint);

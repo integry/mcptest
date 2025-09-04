@@ -1235,15 +1235,7 @@ function App() {
           }
         }
         
-        // Fallback to global OAuth credentials if no server-specific client found
-        if (!clientId) {
-          clientId = sessionStorage.getItem('oauth_client_id');
-          clientSecret = sessionStorage.getItem('oauth_client_secret');
-          if (clientId) {
-            console.log('[Reauthorize] Using global OAuth client credentials:', clientId);
-          }
-        }
-        
+        // If no server-specific client found, attempt dynamic registration
         if (!clientId && oauthConfig.registrationEndpoint) {
           console.log('[Reauthorize] Attempting dynamic client registration...');
           
@@ -1703,14 +1695,7 @@ function App() {
                     }
                   }
                   
-                  // Fallback to global OAuth client ID
-                  if (!clientId) {
-                    clientId = sessionStorage.getItem('oauth_client_id');
-                    if (clientId) {
-                      console.log('[OAuth Config] Using global OAuth client ID:', clientId);
-                    }
-                  }
-                  
+                  // Only proceed if we have a server-specific client ID
                   if (clientId && oauthConfig.authorizationEndpoint) {
                     // Build authorization URL
                     const authUrl = new URL(oauthConfig.authorizationEndpoint);
