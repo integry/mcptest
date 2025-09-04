@@ -815,9 +815,18 @@ function App() {
     const path = window.location.pathname;
     const isResultShareUrl = parseResultShareUrl(path, window.location.search) !== null;
     const isServerUrl = parseServerUrl(path) !== null;
+    const isOAuthCallback = path === '/oauth/callback';
     
-    if (isResultShareUrl || isServerUrl) {
-      console.log('[Health Check] Skipping auto health check due to deep link URL');
+    // Check if we just completed OAuth (to prevent health check from interfering)
+    const oauthCompletedTime = sessionStorage.getItem('oauth_completed_time');
+    const recentOAuthCompletion = oauthCompletedTime && (Date.now() - parseInt(oauthCompletedTime) < 30000); // 30 seconds
+    
+    if (isResultShareUrl || isServerUrl || isOAuthCallback || recentOAuthCompletion) {
+      console.log('[Health Check] Skipping auto health check due to:', {
+        deepLinkUrl: isResultShareUrl || isServerUrl,
+        oauthCallback: isOAuthCallback,
+        recentOAuth: recentOAuthCompletion
+      });
       setHealthCheckLoading(false);
       return;
     }
