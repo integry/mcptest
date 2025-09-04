@@ -628,6 +628,13 @@ function App() {
           console.log('[OAuth] Restoring view state:', returnView);
           
           if (returnView.activeView === 'spaces' && returnView.selectedSpaceId) {
+            // Ensure spaces are loaded before attempting to navigate
+            if (spaces.length === 0) {
+              console.log('[OAuth] Spaces not loaded yet, deferring view restoration');
+              // Keep the return view in session storage for next render
+              return;
+            }
+            
             // Find the dashboard and navigate to it
             const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
             if (targetSpace) {
@@ -639,6 +646,8 @@ function App() {
               // Clear the stored view state
               sessionStorage.removeItem('oauth_return_view');
               return; // Skip the default navigation below
+            } else {
+              console.log('[OAuth] Target space not found:', returnView.selectedSpaceId);
             }
           } else if (returnView.activeView === 'playground' && returnView.activeTabId) {
             // Return to playground view with the specific tab
@@ -653,8 +662,8 @@ function App() {
           }
         } catch (error) {
           console.error('[OAuth] Failed to restore view state:', error);
+          sessionStorage.removeItem('oauth_return_view');
         }
-        sessionStorage.removeItem('oauth_return_view');
       }
       
       // Clear the location state to prevent re-triggering
@@ -676,7 +685,7 @@ function App() {
       // Clear the location state
       navigate(location.pathname, { replace: true });
     }
-  }, [location.state, navigate, tabs, handleUpdateTab]);
+  }, [location.state, navigate, tabs, handleUpdateTab, spaces, setActiveView, setSelectedSpaceId, setActiveTabId]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
@@ -1037,6 +1046,15 @@ function App() {
         
         if (oauthToken) {
           console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
+          // Log token details for debugging (especially for PayPal)
+          if (originalServerHost.includes('paypal.com')) {
+            console.log(`[Execute Card ${cardId}] PayPal token format:`, {
+              tokenLength: oauthToken.length,
+              tokenPreview: oauthToken.substring(0, 30) + '...',
+              hasLoginPrefix: oauthToken.startsWith('login:'),
+              colonCount: (oauthToken.match(/:/g) || []).length
+            });
+          }
           transportOptions.headers = {
             'Authorization': `Bearer ${oauthToken}`
           };
