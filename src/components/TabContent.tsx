@@ -892,7 +892,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               const oauthConfig = await getOAuthConfig(oauthConfigServerUrl);
               
               if (oauthConfig) {
-                const { codeVerifier, codeChallenge } = await generatePKCE();
+                const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
                 const serverHost = new URL(oauthConfigServerUrl).host;
                 
                 sessionStorage.setItem('pkce_code_verifier', codeVerifier);

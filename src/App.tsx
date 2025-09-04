@@ -1168,7 +1168,7 @@ function App() {
       if (oauthConfig) {
         // Set up OAuth flow
         const { generatePKCE } = await import('./utils/pkce');
-        const { codeVerifier, codeChallenge } = await generatePKCE();
+        const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
         
         sessionStorage.setItem('pkce_code_verifier', codeVerifier);
         sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
@@ -1578,7 +1578,7 @@ function App() {
                 
                 if (oauthConfig) {
                   const { generatePKCE } = await import('./utils/pkce');
-                  const { codeVerifier, codeChallenge } = await generatePKCE();
+                  const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
                   const serverHost = new URL(serverUrl).host;
                   
                   // Debug logging for PKCE parameters
