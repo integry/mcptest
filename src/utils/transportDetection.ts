@@ -9,6 +9,7 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
   transport: any;
   transportType: TransportType;
   client: Client;
+  url: string;
 }> {
   const baseUrl = new URL(serverUrl);
   
@@ -221,7 +222,8 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
               return {
                 transport: successfulResult.transport,
                 transportType: successfulResult.transportType,
-                client: successfulResult.client
+                client: successfulResult.client,
+                url: successfulResult.url
               };
             }
           }
@@ -290,7 +292,8 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
         return {
           transport: successfulResult.transport,
           transportType: successfulResult.transportType,
-          client: successfulResult.client
+          client: successfulResult.client,
+          url: successfulResult.url
         };
       } else {
         // All connections failed

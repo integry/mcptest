@@ -802,12 +802,6 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
     // -----------------------------------------
 
-    // Update recent servers list using targetUrl (the original URL)
-    const updatedServers = [targetUrl, ...recentServers.filter(url => url !== targetUrl)];
-    const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
-    setRecentServers(limitedServers); // Update state
-    saveRecentServers(Array.from(limitedServers)); // Save to localStorage
-
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
       clientRef.current = null; // Clear ref
@@ -816,6 +810,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     let connectionSuccess = false;
     let finalClient: Client | null = null;
     let finalTransportType: TransportType | null = null;
+    let finalUrl: string | null = null;
     let lastError: any = null;
     const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
@@ -861,51 +856,60 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     };
 
     try {
+    try {
+        let result;
         // Always try direct connection first
         try {
-          const result = await Promise.race([
-            connectDirectly(),
-            timeoutPromise
-          ]);
-          
-          finalClient = result.client;
-          finalTransportType = result.transportType;
-          connectionSuccess = true;
-          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
-        } catch (error: any) {
-          // Check if it's a CORS error and if automatic proxy fallback is enabled
-          const isCorsError = error.message?.toLowerCase().includes('cors') || 
-                            (error.message?.toLowerCase().includes('failed to fetch') && 
-                             !error.message?.toLowerCase().includes('network'));
-          
-          // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
-          const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
-          
-          if (isCorsError && shouldUseProxy && currentUser) {
-            // Attempt proxy connection as fallback only if user is logged in
-            const result = await Promise.race([
-              connectViaProxy(),
-              timeoutPromise
+            result = await Promise.race([
+                connectDirectly(),
+                timeoutPromise
             ]);
-            finalClient = result.client;
-            finalTransportType = result.transportType;
-            connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
-          } else {
-            if (isCorsError && shouldUseProxy && !currentUser) {
-              addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+            addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
+        } catch (error: any) {
+            // Check if it's a CORS error and if automatic proxy fallback is enabled
+            const isCorsError = error.message?.toLowerCase().includes('cors') ||
+                (error.message?.toLowerCase().includes('failed to fetch') &&
+                    !error.message?.toLowerCase().includes('network'));
+
+            // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
+            const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
+
+            if (isCorsError && shouldUseProxy && currentUser) {
+                // Attempt proxy connection as fallback only if user is logged in
+                result = await Promise.race([
+                    connectViaProxy(),
+                    timeoutPromise
+                ]);
+                addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
+            } else {
+                if (isCorsError && shouldUseProxy && !currentUser) {
+                    addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+                }
+                throw error; // Re-throw if not a CORS error, proxy is disabled, or user not logged in
             }
-            throw error; // Re-throw if not a CORS error, proxy is disabled, or user not logged in
-          }
         }
 
         // --- Finalize Connection ---
-        if (connectionSuccess && finalClient && finalTransportType) {
+        if (result) {
+            finalClient = result.client;
+            finalTransportType = result.transportType;
+            finalUrl = result.url; // Extract the successful URL
+            connectionSuccess = true;
+        }
+
+        if (connectionSuccess && finalClient && finalTransportType && finalUrl) {
             clientRef.current = finalClient;
             setTransportType(finalTransportType);
-            setServerUrl(targetUrl); // CRUCIAL: Set UI URL to the original target
+            setServerUrl(finalUrl); // CRUCIAL: Set UI URL to the *successful* URL
             setConnectionStatus('Connected');
             setIsConnecting(false);
+
+            // Update recent servers list with the successful URL
+            const updatedServers = [finalUrl, ...recentServers.filter(url => url !== finalUrl && url !== targetUrl)];
+            const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
+            setRecentServers(limitedServers);
+            saveRecentServers(Array.from(limitedServers));
+
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
             logEvent('connect_success', { 
               transport_type: finalTransportType,
