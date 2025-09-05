@@ -6,7 +6,7 @@ import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs';
+  activeView: 'playground' | 'dashboards' | 'docs' | 'report';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -243,14 +243,28 @@ const SideNav: React.FC<SideNavProps> = ({
 
   return (
     <nav className="nav flex-column d-flex flex-grow-1">
-      {/* Playground Link */}
-      <Link
-        to="/"
-        className={`nav-link ${activeView === 'playground' ? 'active fw-bold' : ''}`}
-        onClick={handlePlaygroundClick}
-      >
-        <i className="bi bi-search me-2"></i> Playground
-      </Link>
+      {/* Playground Section */}
+      <div>
+        <Link
+          to="/"
+          className={`nav-link ${activeView === 'playground' ? 'active fw-bold' : ''}`}
+          onClick={handlePlaygroundClick}
+        >
+          <i className="bi bi-search me-2"></i> Playground
+        </Link>
+        
+        {/* Report Link - shown as subsection under Playground */}
+        <Link
+          to="/report"
+          className={`nav-link ms-3 ${activeView === 'report' ? 'active fw-bold' : ''}`}
+          onClick={() => {
+            navigate('/report');
+            document.body.classList.remove('menu-open');
+          }}
+        >
+          <i className="bi bi-clipboard-check me-2"></i> Report
+        </Link>
+      </div>
 
       {/* Dashboards Header */}
       <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
