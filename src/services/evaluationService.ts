@@ -1,4 +1,4 @@
-import { getFirebaseAuthToken } from '../firebase';
+import { auth } from '../firebase';
 
 // --- Type Definitions ---
 
@@ -51,7 +51,7 @@ const proxiedFetch = async (targetUrl: string, options: RequestInit = {}): Promi
     throw new Error("Proxy URL is not configured.");
   }
 
-  const token = await getFirebaseAuthToken();
+  const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
   if (!token) {
     throw new Error("Authentication required. Please log in to use the evaluation service.");
   }
