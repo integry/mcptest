@@ -153,14 +153,30 @@ const OAuthCallback: React.FC = () => {
             addOAuthLog('info', '💾 Tokens stored in session storage, cleaning up PKCE verifier...');
             addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting...');
             
-            // Check if we have a stored return view state
+            // Check if we have a stored return view state and navigate directly to it
             const returnViewJson = sessionStorage.getItem('oauth_return_view');
             let targetPath = '/'; // Default to home
+            let navigationState = { oauthSuccess: true };
             
             if (returnViewJson) {
               try {
                 const returnView = JSON.parse(returnViewJson);
                 addOAuthLog('info', `🔄 Returning to ${returnView.activeView} view`);
+                
+                // If we have a dashboard view with a space, navigate directly there
+                if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId && returnView.selectedSpaceName) {
+                  // Use the same slug generation as App.tsx to ensure consistency
+                  const { getSpaceUrl } = await import('../utils/urlUtils');
+                  targetPath = getSpaceUrl(returnView.selectedSpaceName);
+                  addOAuthLog('info', `🔄 Navigating directly to dashboard: ${targetPath}`);
+                  
+                  // Add the space info to navigation state so App.tsx can set selectedSpaceId correctly
+                  navigationState = { 
+                    ...navigationState,
+                    targetSpaceId: returnView.selectedSpaceId,
+                    fromOAuthReturn: true
+                  };
+                }
                 
                 // Don't clear the return view here - let App.tsx handle it after navigation
                 // This ensures the view state is available when App.tsx processes the OAuth success
@@ -169,8 +185,8 @@ const OAuthCallback: React.FC = () => {
               }
             }
             
-            // Redirect with success message - App.tsx will handle the actual navigation based on return view
-            navigate(targetPath, { state: { oauthSuccess: true } });
+            // Redirect to the appropriate path
+            navigate(targetPath, { state: navigationState });
           } else {
             addOAuthLog('error', `❌ Step 3/3 FAILED: Token exchange failed with status ${tokenResponse.status}`);
             

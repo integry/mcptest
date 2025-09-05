@@ -536,6 +536,12 @@ function App() {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');
       
+      // If we're returning from OAuth with a specific space target, set it immediately
+      if (state?.fromOAuthReturn && state?.targetSpaceId) {
+        console.log('[OAuth] Setting selectedSpaceId from OAuth return:', state.targetSpaceId);
+        setSelectedSpaceId(state.targetSpaceId);
+      }
+      
       // Clear the location state immediately to prevent re-triggering
       navigate(location.pathname, { replace: true });
       
@@ -750,8 +756,18 @@ function App() {
       try {
         const returnView = JSON.parse(returnViewJson);
         
+        // Check if we're already on the correct path (direct navigation from OAuth callback)
+        const currentSlug = extractSlugFromPath(location.pathname);
+        const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
+        
+        if (targetSpace && currentSlug === generateSpaceSlug(targetSpace.name)) {
+          console.log('[OAuth Deferred] Already navigated to correct dashboard, clearing return view');
+          sessionStorage.removeItem('oauth_return_view');
+          setSelectedSpaceId(targetSpace.id);
+          return;
+        }
+        
         if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
-          const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
           if (targetSpace) {
             console.log('[OAuth Deferred] Found target space after loading, navigating to dashboard:', targetSpace.name);
             
@@ -779,7 +795,7 @@ function App() {
         sessionStorage.removeItem('oauth_return_view');
       }
     }
-  }, [spaces, navigate]);
+  }, [spaces, navigate, location.pathname]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
@@ -1302,12 +1318,14 @@ function App() {
     }
     
     // Store the current view state to restore after OAuth
+    const currentSpace = spaces.find(s => s.id === spaceId);
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
       activeView: 'dashboards', // Dashboard view
       selectedSpaceId: spaceId,
+      selectedSpaceName: currentSpace?.name || '',
       timestamp: Date.now()
     }));
-    console.log('[OAuth] Stored return view state for dashboard:', spaceId);
+    console.log('[OAuth] Stored return view state for dashboard:', spaceId, currentSpace?.name);
     
     // Start OAuth flow - similar to connection logic
     try {
@@ -1755,12 +1773,14 @@ function App() {
                   }
                   
                   // Store the current view state to restore after OAuth
+                  const currentSpace = spaces.find(s => s.id === spaceId);
                   sessionStorage.setItem('oauth_return_view', JSON.stringify({
                     activeView: 'dashboards', // Dashboard view
                     selectedSpaceId: spaceId,
+                    selectedSpaceName: currentSpace?.name || '',
                     timestamp: Date.now()
                   }));
-                  console.log('[OAuth] Stored return view state for dashboard from config modal:', spaceId);
+                  console.log('[OAuth] Stored return view state for dashboard from config modal:', spaceId, currentSpace?.name);
                   
                   // Check for server-specific client first, then fall back to global
                   let clientId = null;
