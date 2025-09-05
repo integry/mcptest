@@ -88,7 +88,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress }) => {
 const ServerReport: React.FC = () => {
   const { serverHost } = useParams<{ serverHost: string }>();
   const navigate = useNavigate();
-  const { currentUser, getAuthToken } = useAuth();
+  const { currentUser } = useAuth();
   const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
   const [progress, setProgress] = useState<EvaluationProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +123,7 @@ const ServerReport: React.FC = () => {
 
     try {
       // Get auth token if user is logged in
-      const authToken = currentUser ? await getAuthToken() : null;
+      const authToken = currentUser ? await currentUser.getIdToken() : null;
       console.log('Auth token:', authToken ? 'present' : 'absent');
       
       const result = await evaluateServer(serverUrl, authToken, (progress) => {
@@ -140,7 +140,7 @@ const ServerReport: React.FC = () => {
       setIsEvaluating(false);
       console.log('Evaluation complete');
     }
-  }, [serverUrl, currentUser, getAuthToken]);
+  }, [serverUrl, currentUser]);
 
   useEffect(() => {
     console.log('useEffect triggered, serverUrl:', serverUrl);
