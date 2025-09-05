@@ -198,6 +198,12 @@ function App() {
         console.log('[ActiveView] Detected dashboards view for space:', space.name);
         return { activeView: 'dashboards' as const, activeDocPage: null };
       }
+      // If we have a slug but no matching space yet (e.g., during OAuth callback when spaces aren't loaded),
+      // still treat it as a dashboard view to prevent flashing
+      if (spaces.length === 0 || sessionStorage.getItem('oauth_return_view')) {
+        console.log('[ActiveView] Dashboard path detected, waiting for spaces to load');
+        return { activeView: 'dashboards' as const, activeDocPage: null };
+      }
     }
     
     // Default to inspector
@@ -679,6 +685,18 @@ function App() {
           console.log('[OAuth] Restoring view state:', returnView);
           
           if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
+            // Check if we're already on the correct dashboard path (from OAuthCallback direct navigation)
+            const currentSlug = extractSlugFromPath(location.pathname);
+            const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
+            
+            if (targetSpace && currentSlug === generateSpaceSlug(targetSpace.name)) {
+              // We're already on the correct path from OAuthCallback navigation
+              console.log('[OAuth] Already on correct dashboard path, just setting state');
+              setSelectedSpaceId(returnView.selectedSpaceId);
+              sessionStorage.removeItem('oauth_return_view');
+              return;
+            }
+            
             // Set the selected space ID
             setSelectedSpaceId(returnView.selectedSpaceId);
             
@@ -688,7 +706,6 @@ function App() {
               // Don't clear the return view yet - let the spaces loading effect handle it
             } else {
               // Find the dashboard and navigate to it
-              const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
               if (targetSpace) {
                 // Navigate to the dashboard URL which will automatically set the active view
                 console.log('[OAuth] Found target space, navigating to dashboard:', targetSpace.name);
@@ -763,7 +780,10 @@ function App() {
         if (targetSpace && currentSlug === generateSpaceSlug(targetSpace.name)) {
           console.log('[OAuth Deferred] Already navigated to correct dashboard, clearing return view');
           sessionStorage.removeItem('oauth_return_view');
-          setSelectedSpaceId(targetSpace.id);
+          // Ensure the selectedSpaceId is set correctly
+          if (selectedSpaceId !== targetSpace.id) {
+            setSelectedSpaceId(targetSpace.id);
+          }
           return;
         }
         
@@ -795,7 +815,7 @@ function App() {
         sessionStorage.removeItem('oauth_return_view');
       }
     }
-  }, [spaces, navigate, location.pathname]);
+  }, [spaces, navigate, location.pathname, selectedSpaceId]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
