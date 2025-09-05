@@ -815,11 +815,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
     // -----------------------------------------
 
-    // Update recent servers list using targetUrl (the original URL)
-    const updatedServers = [targetUrl, ...recentServers.filter(url => url !== targetUrl)];
-    const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
-    setRecentServers(limitedServers); // Update state
-    saveRecentServers(Array.from(limitedServers)); // Save to localStorage
+    // We'll update the recent servers list after successful connection with the actual working URL
 
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
@@ -829,6 +825,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     let connectionSuccess = false;
     let finalClient: Client | null = null;
     let finalTransportType: TransportType | null = null;
+    let finalUrl: string | null = null;
     let lastError: any = null;
     const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
@@ -883,8 +880,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           
           finalClient = result.client;
           finalTransportType = result.transportType;
+          finalUrl = result.url;
           connectionSuccess = true;
-          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
+          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType} at ${result.url}` });
         } catch (error: any) {
           // Check if it's a CORS error and if automatic proxy fallback is enabled
           const isCorsError = error.message?.toLowerCase().includes('cors') || 
@@ -902,8 +900,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             ]);
             finalClient = result.client;
             finalTransportType = result.transportType;
+            finalUrl = result.url;
             connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
+            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} at ${result.url}` });
           } else {
             if (isCorsError && shouldUseProxy && !currentUser) {
               addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
@@ -913,7 +912,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
 
         // --- Finalize Connection ---
-        if (connectionSuccess && finalClient && finalTransportType) {
+        if (connectionSuccess && finalClient && finalTransportType && finalUrl) {
             clientRef.current = finalClient;
             setTransportType(finalTransportType);
             setServerUrl(targetUrl); // CRUCIAL: Set UI URL to the original target
@@ -926,6 +925,27 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             });
             setTools([]);
             setResources([]);
+            
+            // Update recent servers list with the actual working URL
+            // Extract the successful URL without proxy wrapper if it's a proxy connection
+            let urlToSave = finalUrl;
+            if (isProxied && finalUrl.includes('target=')) {
+              try {
+                const proxyUrl = new URL(finalUrl);
+                const targetParam = proxyUrl.searchParams.get('target');
+                if (targetParam) {
+                  urlToSave = targetParam;
+                }
+              } catch (e) {
+                console.error('[DEBUG] Error parsing proxy URL:', e);
+              }
+            }
+            
+            const updatedServers = [urlToSave, ...recentServers.filter(url => url !== urlToSave)];
+            const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
+            setRecentServers(limitedServers); // Update state
+            saveRecentServers(Array.from(limitedServers)); // Save to localStorage
+            console.log('[DEBUG] Saved successful URL to recent servers:', urlToSave);
         }
 
     } catch (error: any) {
