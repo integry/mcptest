@@ -355,7 +355,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                     data: result.content,
                     timestamp: new Date().toLocaleTimeString(),
                     callContext: {
-                      serverUrl: serverUrl,
+                      serverUrl: tab.serverUrl || serverUrl,
                       type: 'tool',
                       name: tool.name,
                       params: params || {}
@@ -412,7 +412,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                     data: result.contents,
                     timestamp: new Date().toLocaleTimeString(),
                     callContext: {
-                      serverUrl: serverUrl,
+                      serverUrl: tab.serverUrl || serverUrl,
                       type: 'resource',
                       name: name,
                       params: {}
@@ -486,7 +486,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                       data: result.contents,
                       timestamp: new Date().toLocaleTimeString(),
                       callContext: {
-                        serverUrl: serverUrl,
+                        serverUrl: tab.serverUrl || serverUrl,
                         type: 'resource',
                         name: finalUri,
                         params: params || {}
@@ -863,7 +863,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 isConnected={isConnected}
                 spaces={spaces}
                 onAddCardToSpace={onAddCardToSpace}
-                serverUrl={serverUrl}
+                serverUrl={tab.serverUrl || serverUrl}
                 selectedTool={selectedTool}
                 selectedResourceTemplate={selectedResourceTemplate}
                 toolParams={toolParams}

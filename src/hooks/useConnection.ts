@@ -815,11 +815,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
     // -----------------------------------------
 
-    // Update recent servers list using targetUrl (the original URL)
-    const updatedServers = [targetUrl, ...recentServers.filter(url => url !== targetUrl)];
-    const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
-    setRecentServers(limitedServers); // Update state
-    saveRecentServers(Array.from(limitedServers)); // Save to localStorage
+    // We'll update the recent servers list after successful connection with the actual working URL
 
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
@@ -829,6 +825,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     let connectionSuccess = false;
     let finalClient: Client | null = null;
     let finalTransportType: TransportType | null = null;
+    let finalUrl: string | null = null;
     let lastError: any = null;
     const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
@@ -883,8 +880,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           
           finalClient = result.client;
           finalTransportType = result.transportType;
+          finalUrl = result.url;
           connectionSuccess = true;
-          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType}` });
+          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType} at ${result.url}` });
         } catch (error: any) {
           // Check if it's a CORS error and if automatic proxy fallback is enabled
           const isCorsError = error.message?.toLowerCase().includes('cors') || 
@@ -902,8 +900,9 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             ]);
             finalClient = result.client;
             finalTransportType = result.transportType;
+            finalUrl = result.url;
             connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType}` });
+            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} at ${result.url}` });
           } else {
             if (isCorsError && shouldUseProxy && !currentUser) {
               addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
@@ -913,10 +912,30 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
 
         // --- Finalize Connection ---
-        if (connectionSuccess && finalClient && finalTransportType) {
+        if (connectionSuccess && finalClient && finalTransportType && finalUrl) {
             clientRef.current = finalClient;
             setTransportType(finalTransportType);
-            setServerUrl(targetUrl); // CRUCIAL: Set UI URL to the original target
+            
+            // Extract the actual URL that was connected to (with correct endpoint)
+            let displayUrl = targetUrl; // Default to original target
+            try {
+                const finalUrlObj = new URL(finalUrl);
+                
+                // For proxy URLs, extract the target parameter
+                if (finalUrlObj.searchParams.has('target')) {
+                    displayUrl = finalUrlObj.searchParams.get('target') || targetUrl;
+                } else {
+                    // For direct URLs, use the final URL which includes the correct endpoint
+                    displayUrl = finalUrl;
+                }
+                
+                console.log(`[DEBUG] Setting display URL: ${displayUrl} (from finalUrl: ${finalUrl})`);
+            } catch (error) {
+                console.error('[DEBUG] Error parsing final URL:', error);
+                // Fall back to original target URL
+            }
+            
+            setServerUrl(displayUrl); // Set UI URL to the actual connected URL with endpoint
             setConnectionStatus('Connected');
             setIsConnecting(false);
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
@@ -926,6 +945,26 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             });
             setTools([]);
             setResources([]);
+            
+            // Update recent servers list with the original URL (without transport-specific endpoints)
+            // We want to save the base URL without /mcp or /sse endpoints for flexibility
+            let urlToSave = targetUrl; // Default to original target URL
+            
+            try {
+                // Remove transport-specific endpoints from the URL before saving
+                const url = new URL(targetUrl);
+                url.pathname = url.pathname.replace(/\/(mcp|sse)\/?$/, '');
+                urlToSave = url.toString();
+            } catch (error) {
+                console.error('[DEBUG] Error normalizing URL for recent servers:', error);
+                // Fall back to original target URL
+            }
+            
+            const updatedServers = [urlToSave, ...recentServers.filter(url => url !== urlToSave)];
+            const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
+            setRecentServers(limitedServers); // Update state
+            saveRecentServers(Array.from(limitedServers)); // Save to localStorage
+            console.log('[DEBUG] Saved successful URL to recent servers:', urlToSave);
         }
 
     } catch (error: any) {
