@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Routes, Route } from 'react-router-dom';
 
 // Import Analytics helpers
 import { logPageView, logEvent } from './utils/analytics';
@@ -23,6 +23,8 @@ import Contact from './components/docs/Contact';
 // OAuth callback component
 import OAuthCallback from './components/OAuthCallback';
 import OAuthConfig from './components/OAuthConfig';
+// Server Report component
+import ServerReport from './components/ServerReport';
 
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
@@ -66,13 +68,16 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
   }
   if (path.startsWith('/space/')) {
     return 'dashboards';
+  }
+  if (path === '/report' || path.startsWith('/report/')) {
+    return 'report';
   }
   return 'playground';
 };
@@ -189,6 +194,12 @@ function App() {
       return { activeView: 'docs' as const, activeDocPage: docPage };
     }
     
+    // Check for report routes
+    if (path === '/report' || path.startsWith('/report/')) {
+      console.log('[ActiveView] Detected report view');
+      return { activeView: 'report' as const, activeDocPage: null };
+    }
+    
     // Check for dashboard routes
     const slug = extractSlugFromPath(path);
     if (slug) {
@@ -280,6 +291,18 @@ function App() {
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
       pageTitle = `Docs: ${docPage.replace(/-/g, ' ')}`;
+      logPageView(path, pageTitle);
+      return;
+    }
+    
+    // Check for report routes
+    if (path === '/report' || path.startsWith('/report/')) {
+      if (path === '/report') {
+        pageTitle = 'Report';
+      } else {
+        const serverHost = path.replace('/report/', '');
+        pageTitle = `Report: ${serverHost}`;
+      }
       logPageView(path, pageTitle);
       return;
     }
@@ -1723,6 +1746,15 @@ function App() {
             ) : (
               <div className="alert alert-warning">No dashboard selected or available. Create one from the side menu.</div>
             )}
+          </div>
+
+          {/* Report View */}
+          <div className={`view-panel ${activeView === 'report' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            <Routes>
+              <Route path="/report/:serverHost" element={<ServerReport />} />
+              <Route path="/report" element={<ServerReport />} />
+              <Route path="*" element={<ServerReport />} />
+            </Routes>
           </div>
 
           {/* Keep TabContent components alive even when not in playground */}
