@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Routes, Route } from 'react-router-dom';
 
 // Import Analytics helpers
 import { logPageView, logEvent } from './utils/analytics';
@@ -1750,7 +1750,11 @@ function App() {
 
           {/* Report View */}
           <div className={`view-panel ${activeView === 'report' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            <ServerReport />
+            <Routes>
+              <Route path="/report/:serverHost" element={<ServerReport />} />
+              <Route path="/report" element={<ServerReport />} />
+              <Route path="*" element={<ServerReport />} />
+            </Routes>
           </div>
 
           {/* Keep TabContent components alive even when not in playground */}
