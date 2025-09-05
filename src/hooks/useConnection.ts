@@ -442,28 +442,29 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         oauthEndpoints = await getOAuthConfig(targetUrl);
         
         if (!oauthEndpoints) {
-          // For any server where discovery fails, try to construct standard OAuth endpoints
+          // For any server where discovery fails, construct standard OAuth endpoints
           const url = new URL(targetUrl);
           const baseUrl = `${url.protocol}//${url.host}`;
           
           addLogEntry({ 
             type: 'info', 
-            data: '📋 OAuth discovery failed, trying standard OAuth paths...' 
+            data: '📋 OAuth discovery failed, using standard MCP fallback paths...'
           });
           
-          // Try common OAuth 2.1 endpoint patterns
           // According to MCP spec, these should be the standard paths
           oauthEndpoints = {
-            authorizationEndpoint: `${baseUrl}/oauth/authorize`,
-            tokenEndpoint: `${baseUrl}/oauth/token`,
-            scope: 'openid profile email',
+            authorizationEndpoint: `${baseUrl}/authorize`,
+            tokenEndpoint: `${baseUrl}/token`,
+            registrationEndpoint: `${baseUrl}/register`,
+            scope: 'openid profile email', // A reasonable default scope
             supportsPKCE: true, // OAuth 2.1 requires PKCE
-            requiresClientRegistration: true,
+            requiresClientRegistration: true, // Assume registration is needed
+            requiresDynamicRegistration: true, // Assume dynamic registration is supported
           };
           
           addLogEntry({ 
             type: 'info', 
-            data: `✅ Using standard OAuth endpoints:\n  - Authorization: ${oauthEndpoints.authorizationEndpoint}\n  - Token: ${oauthEndpoints.tokenEndpoint}` 
+            data: `✅ Using standard MCP fallback endpoints:\n  - Authorization: ${oauthEndpoints.authorizationEndpoint}\n  - Token: ${oauthEndpoints.tokenEndpoint}\n  - Registration: ${oauthEndpoints.registrationEndpoint}`
           });
         } else {
           addLogEntry({ 
