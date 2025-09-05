@@ -628,27 +628,31 @@ function App() {
           console.log('[OAuth] Restoring view state:', returnView);
           
           if (returnView.activeView === 'spaces' && returnView.selectedSpaceId) {
+            // Set a flag to restore the view after spaces are loaded
+            setSelectedSpaceId(returnView.selectedSpaceId);
+            setActiveView('spaces');
+            
             // Ensure spaces are loaded before attempting to navigate
             if (spaces.length === 0) {
-              console.log('[OAuth] Spaces not loaded yet, deferring view restoration');
-              // Keep the return view in session storage for next render
-              return;
-            }
-            
-            // Find the dashboard and navigate to it
-            const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
-            if (targetSpace) {
-              // Navigate to the dashboard URL which will set the active view
-              setSelectedSpaceId(returnView.selectedSpaceId);
-              navigate(getSpaceUrl(targetSpace.name), { replace: true });
-              console.log('[OAuth] Navigated back to dashboard:', targetSpace.name);
-              
-              // Clear the stored view state
-              sessionStorage.removeItem('oauth_return_view');
-              return; // Skip the default navigation below
+              console.log('[OAuth] Spaces not loaded yet, will restore view after loading');
+              // Don't clear the return view yet - let the spaces loading effect handle it
             } else {
-              console.log('[OAuth] Target space not found:', returnView.selectedSpaceId);
+              // Find the dashboard and navigate to it
+              const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
+              if (targetSpace) {
+                // Navigate to the dashboard URL which will set the active view
+                navigate(getSpaceUrl(targetSpace.name), { replace: true });
+                console.log('[OAuth] Navigated back to dashboard:', targetSpace.name);
+                
+                // Clear the stored view state
+                sessionStorage.removeItem('oauth_return_view');
+              } else {
+                console.log('[OAuth] Target space not found:', returnView.selectedSpaceId);
+                // Clear invalid view state
+                sessionStorage.removeItem('oauth_return_view');
+              }
             }
+            return; // Skip the default navigation below
           } else if (returnView.activeView === 'playground' && returnView.activeTabId) {
             // Return to playground view with the specific tab
             // Navigate to home which will set the active view to playground
@@ -686,6 +690,31 @@ function App() {
       navigate(location.pathname, { replace: true });
     }
   }, [location.state, navigate, tabs, handleUpdateTab, spaces, setSelectedSpaceId, setActiveTabId]);
+
+  // Effect to handle deferred OAuth return navigation when spaces are loaded
+  useEffect(() => {
+    const returnViewJson = sessionStorage.getItem('oauth_return_view');
+    if (returnViewJson && spaces.length > 0) {
+      try {
+        const returnView = JSON.parse(returnViewJson);
+        
+        if (returnView.activeView === 'spaces' && returnView.selectedSpaceId) {
+          const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
+          if (targetSpace) {
+            // Navigate to the dashboard URL
+            navigate(getSpaceUrl(targetSpace.name), { replace: true });
+            console.log('[OAuth] Deferred navigation to dashboard:', targetSpace.name);
+            
+            // Clear the stored view state
+            sessionStorage.removeItem('oauth_return_view');
+          }
+        }
+      } catch (error) {
+        console.error('[OAuth] Failed to process deferred navigation:', error);
+        sessionStorage.removeItem('oauth_return_view');
+      }
+    }
+  }, [spaces, navigate]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
@@ -1054,10 +1083,18 @@ function App() {
               hasLoginPrefix: oauthToken.startsWith('login:'),
               colonCount: (oauthToken.match(/:/g) || []).length
             });
+            
+            // PayPal might expect a different authorization format
+            // Try using the token directly without Bearer prefix for PayPal
+            transportOptions.headers = {
+              'Authorization': oauthToken
+            };
+            console.log(`[Execute Card ${cardId}] Using PayPal token without Bearer prefix`);
+          } else {
+            transportOptions.headers = {
+              'Authorization': `Bearer ${oauthToken}`
+            };
           }
-          transportOptions.headers = {
-            'Authorization': `Bearer ${oauthToken}`
-          };
         }
         
         // Determine if proxy should be used
