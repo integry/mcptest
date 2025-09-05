@@ -926,20 +926,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             setTools([]);
             setResources([]);
             
-            // Update recent servers list with the actual working URL
+            // Update recent servers list with the original URL (without transport-specific endpoints)
             // Extract the successful URL without proxy wrapper if it's a proxy connection
-            let urlToSave = finalUrl;
-            if (isProxied && finalUrl.includes('target=')) {
-              try {
-                const proxyUrl = new URL(finalUrl);
-                const targetParam = proxyUrl.searchParams.get('target');
-                if (targetParam) {
-                  urlToSave = targetParam;
-                }
-              } catch (e) {
-                console.error('[DEBUG] Error parsing proxy URL:', e);
-              }
-            }
+            let urlToSave = targetUrl; // Use the original target URL, not the transport-specific one
+            
+            // For proxy URLs, we've already saved the correct target URL above
+            // No need for additional extraction since targetUrl is already clean
             
             const updatedServers = [urlToSave, ...recentServers.filter(url => url !== urlToSave)];
             const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
