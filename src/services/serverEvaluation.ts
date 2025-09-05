@@ -50,6 +50,7 @@ class ServerEvaluator {
   }
 
   private updateProgress(category: EvaluationProgress['currentCategory'], message: string, details?: string) {
+    console.log('Progress:', { category, message, details });
     this.progressCallback({ currentCategory: category, message, details });
   }
 
@@ -72,6 +73,7 @@ class ServerEvaluator {
   }
 
   async evaluateCoreProtocol(): Promise<CategoryResult> {
+    console.log('Starting Core Protocol evaluation for:', this.serverUrl);
     this.updateProgress('protocol', 'Core Protocol Adherence and Feature Support', 'Testing server capabilities and JSON-RPC compliance');
     
     const result: CategoryResult = {
@@ -483,6 +485,7 @@ export async function evaluateServer(
   authToken: string | null,
   progressCallback: ProgressCallback
 ): Promise<EvaluationResult> {
+  console.log('evaluateServer called with:', { serverUrl, authToken: authToken ? 'present' : 'null' });
   const evaluator = new ServerEvaluator(serverUrl, authToken, progressCallback);
   return evaluator.evaluate();
 }

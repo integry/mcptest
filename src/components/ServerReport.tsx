@@ -94,14 +94,28 @@ const ServerReport: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
 
-  const serverUrl = serverHost ? `https://${serverHost}/mcp` : '';
+  // Process the server host to create a proper URL
+  let serverUrl = '';
+  if (serverHost) {
+    // Remove any /mcp or /sse suffixes from the hostname if they were included
+    let cleanHost = serverHost;
+    cleanHost = cleanHost.replace(/\/mcp$/, '').replace(/\/sse$/, '');
+    
+    // Construct the full URL with /mcp endpoint
+    serverUrl = `https://${cleanHost}/mcp`;
+    console.log('Constructed server URL:', serverUrl);
+  }
 
   const runEvaluation = useCallback(async () => {
+    console.log('runEvaluation called with serverUrl:', serverUrl);
+    
     if (!serverUrl) {
+      console.error('No server URL available');
       setError('Invalid server URL');
       return;
     }
 
+    console.log('Starting evaluation...');
     setIsEvaluating(true);
     setError(null);
     setProgress(null);
@@ -110,24 +124,30 @@ const ServerReport: React.FC = () => {
     try {
       // Get auth token if user is logged in
       const authToken = currentUser ? await getAuthToken() : null;
+      console.log('Auth token:', authToken ? 'present' : 'absent');
       
       const result = await evaluateServer(serverUrl, authToken, (progress) => {
+        console.log('Progress update:', progress);
         setProgress(progress);
       });
       
+      console.log('Evaluation result:', result);
       setEvaluationResult(result);
     } catch (err) {
+      console.error('Evaluation error:', err);
       setError(err instanceof Error ? err.message : 'Failed to evaluate server');
     } finally {
       setIsEvaluating(false);
+      console.log('Evaluation complete');
     }
   }, [serverUrl, currentUser, getAuthToken]);
 
   useEffect(() => {
+    console.log('useEffect triggered, serverUrl:', serverUrl);
     if (serverUrl) {
       runEvaluation();
     }
-  }, [serverUrl]);
+  }, [serverUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getGradeFromScore = (score: number): string => {
     if (score >= 90) return 'A';
@@ -170,22 +190,30 @@ const ServerReport: React.FC = () => {
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     const formData = new FormData(e.currentTarget);
-                    const serverUrl = formData.get('serverUrl') as string;
+                    let serverUrl = formData.get('serverUrl') as string;
                     if (serverUrl) {
+                      console.log('Form submitted with URL:', serverUrl);
                       try {
+                        // If input doesn't have protocol, add https://
+                        if (!serverUrl.startsWith('http://') && !serverUrl.startsWith('https://')) {
+                          serverUrl = `https://${serverUrl}`;
+                        }
+                        
                         const url = new URL(serverUrl);
+                        console.log('Navigating to:', `/report/${url.hostname}`);
                         navigate(`/report/${url.hostname}`);
                       } catch (err) {
+                        console.error('Invalid URL:', err);
                         alert('Please enter a valid URL');
                       }
                     }
                   }}>
                     <div className="input-group">
                       <input
-                        type="url"
+                        type="text"
                         name="serverUrl"
                         className="form-control"
-                        placeholder="https://example.com/mcp"
+                        placeholder="https://example.com/mcp or example.com"
                         required
                       />
                       <button type="submit" className="btn btn-primary">
