@@ -627,10 +627,10 @@ function App() {
           const returnView = JSON.parse(returnViewJson);
           console.log('[OAuth] Restoring view state:', returnView);
           
-          if (returnView.activeView === 'spaces' && returnView.selectedSpaceId) {
+          if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
             // Set a flag to restore the view after spaces are loaded
             setSelectedSpaceId(returnView.selectedSpaceId);
-            setActiveView('spaces');
+            setActiveView('dashboards');
             
             // Ensure spaces are loaded before attempting to navigate
             if (spaces.length === 0) {
@@ -698,7 +698,7 @@ function App() {
       try {
         const returnView = JSON.parse(returnViewJson);
         
-        if (returnView.activeView === 'spaces' && returnView.selectedSpaceId) {
+        if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
           const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
           if (targetSpace) {
             // Navigate to the dashboard URL
@@ -1238,7 +1238,7 @@ function App() {
     
     // Store the current view state to restore after OAuth
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
-      activeView: 'spaces', // Dashboard view
+      activeView: 'dashboards', // Dashboard view
       selectedSpaceId: spaceId,
       timestamp: Date.now()
     }));
@@ -1398,7 +1398,7 @@ function App() {
   useEffect(() => {
     const refreshCardsSequentially = async () => {
       // Only refresh if we're viewing dashboards AND this specific dashboard hasn't been loaded yet in this session
-      if (activeView === 'spaces' && selectedSpaceId && !loadedSpaces.has(selectedSpaceId)) {
+      if (activeView === 'dashboards' && selectedSpaceId && !loadedSpaces.has(selectedSpaceId)) {
         const currentSpace = spaces.find(s => s.id === selectedSpaceId);
         if (currentSpace && currentSpace.cards.length > 0) {
           // Always refresh all cards when entering a dashboard for the first time in this session
@@ -1691,7 +1691,7 @@ function App() {
                   
                   // Store the current view state to restore after OAuth
                   sessionStorage.setItem('oauth_return_view', JSON.stringify({
-                    activeView: 'spaces', // Dashboard view
+                    activeView: 'dashboards', // Dashboard view
                     selectedSpaceId: spaceId,
                     timestamp: Date.now()
                   }));
