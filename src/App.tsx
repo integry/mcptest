@@ -76,7 +76,7 @@ const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' => {
   if (path.startsWith('/space/')) {
     return 'dashboards';
   }
-  if (path.startsWith('/report/')) {
+  if (path === '/report' || path.startsWith('/report/')) {
     return 'report';
   }
   return 'playground';
@@ -195,7 +195,7 @@ function App() {
     }
     
     // Check for report routes
-    if (path.startsWith('/report/')) {
+    if (path === '/report' || path.startsWith('/report/')) {
       console.log('[ActiveView] Detected report view');
       return { activeView: 'report' as const, activeDocPage: null };
     }
@@ -296,9 +296,13 @@ function App() {
     }
     
     // Check for report routes
-    if (path.startsWith('/report/')) {
-      const serverHost = path.replace('/report/', '');
-      pageTitle = `Report: ${serverHost}`;
+    if (path === '/report' || path.startsWith('/report/')) {
+      if (path === '/report') {
+        pageTitle = 'Report';
+      } else {
+        const serverHost = path.replace('/report/', '');
+        pageTitle = `Report: ${serverHost}`;
+      }
       logPageView(path, pageTitle);
       return;
     }
