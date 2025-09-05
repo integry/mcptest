@@ -1075,26 +1075,10 @@ function App() {
         
         if (oauthToken) {
           console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
-          // Log token details for debugging (especially for PayPal)
-          if (originalServerHost.includes('paypal.com')) {
-            console.log(`[Execute Card ${cardId}] PayPal token format:`, {
-              tokenLength: oauthToken.length,
-              tokenPreview: oauthToken.substring(0, 30) + '...',
-              hasLoginPrefix: oauthToken.startsWith('login:'),
-              colonCount: (oauthToken.match(/:/g) || []).length
-            });
-            
-            // PayPal might expect a different authorization format
-            // Try using the token directly without Bearer prefix for PayPal
-            transportOptions.headers = {
-              'Authorization': oauthToken
-            };
-            console.log(`[Execute Card ${cardId}] Using PayPal token without Bearer prefix`);
-          } else {
-            transportOptions.headers = {
-              'Authorization': `Bearer ${oauthToken}`
-            };
-          }
+          // Use consistent Bearer token format for all services
+          transportOptions.headers = {
+            'Authorization': `Bearer ${oauthToken}`
+          };
         }
         
         // Determine if proxy should be used
@@ -1347,32 +1331,9 @@ function App() {
         // Use the scope from OAuth configuration, or default to 'read write' for backward compatibility
         const scope = oauthConfig.scope || 'read write';
         
-        // PayPal requires proper space encoding in scopes - use %20 instead of +
-        if (serverHost.includes('paypal.com')) {
-          // For PayPal, manually encode the scope with %20 instead of letting URLSearchParams convert to +
-          authUrl.searchParams.delete('scope');
-          const encodedScope = encodeURIComponent(scope).replace(/%20/g, '%20');
-          // Manually append to preserve %20 encoding
-          const currentParams = authUrl.toString();
-          authUrl = new URL(currentParams + '&scope=' + encodedScope);
-        } else {
-          authUrl.searchParams.set('scope', scope);
-        }
+        authUrl.searchParams.set('scope', scope);
         
         console.log(`[Reauthorize] Redirecting to OAuth authorization URL: ${authUrl.toString()}`);
-        
-        // For PayPal, add additional logging to debug the 400 error
-        if (serverHost.includes('paypal.com')) {
-          console.log('[PayPal OAuth Debug] Authorization parameters:', {
-            response_type: authUrl.searchParams.get('response_type'),
-            client_id: authUrl.searchParams.get('client_id'),
-            redirect_uri: authUrl.searchParams.get('redirect_uri'),
-            code_challenge: authUrl.searchParams.get('code_challenge'),
-            code_challenge_method: authUrl.searchParams.get('code_challenge_method'),
-            scope: authUrl.searchParams.get('scope'),
-            fullUrl: authUrl.toString()
-          });
-        }
         
         window.location.href = authUrl.toString();
       } else {
