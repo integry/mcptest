@@ -18,11 +18,18 @@ export class CorsAwareSSETransport extends SSEClientTransport {
     // since EventSource doesn't support custom headers
     if (opts?.headers?.Authorization) {
       const authHeader = opts.headers.Authorization;
+      
       if (authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         // Add auth token as query parameter for SSE
-        url.searchParams.set('auth', token);
-        console.log('[CORS SSE] Added auth token to URL as query parameter:', token.substring(0, 20) + '...');
+        // URL encode the token to handle special characters
+        const encodedToken = encodeURIComponent(token);
+        url.searchParams.set('auth', encodedToken);
+        console.log('[CORS SSE] Added auth token to URL as query parameter:', {
+          originalToken: token.substring(0, 20) + '...',
+          encodedToken: encodedToken.substring(0, 30) + '...',
+          fullUrl: url.toString().substring(0, 100) + '...'
+        });
       }
     }
     

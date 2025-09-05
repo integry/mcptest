@@ -41,6 +41,7 @@ import {
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, parseServerUrl, parseResultShareUrl } from './utils/urlUtils';
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
+import { CorsAwareSSETransport } from './utils/corsAwareSseTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
 
 // Constants for localStorage keys
@@ -179,10 +180,12 @@ function App() {
   // Derive active view and doc page from location
   const { activeView, activeDocPage } = useMemo(() => {
     const path = location.pathname;
+    console.log('[ActiveView Calculation] Path:', path, 'Spaces count:', spaces.length);
     
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
+      console.log('[ActiveView] Detected docs view');
       return { activeView: 'docs' as const, activeDocPage: docPage };
     }
     
@@ -190,12 +193,21 @@ function App() {
     const slug = extractSlugFromPath(path);
     if (slug) {
       const space = findSpaceBySlug(spaces, slug);
+      console.log('[ActiveView] Checking slug:', slug, 'Found space:', !!space);
       if (space) {
+        console.log('[ActiveView] Detected dashboards view for space:', space.name);
+        return { activeView: 'dashboards' as const, activeDocPage: null };
+      }
+      // If we have a slug but no matching space yet (e.g., during OAuth callback when spaces aren't loaded),
+      // still treat it as a dashboard view to prevent flashing
+      if (spaces.length === 0 || sessionStorage.getItem('oauth_return_view')) {
+        console.log('[ActiveView] Dashboard path detected, waiting for spaces to load');
         return { activeView: 'dashboards' as const, activeDocPage: null };
       }
     }
     
     // Default to inspector
+    console.log('[ActiveView] Defaulting to playground view');
     return { activeView: 'playground' as const, activeDocPage: null };
   }, [location.pathname, spaces]);
 
@@ -305,9 +317,20 @@ function App() {
       if (space) {
         setSelectedSpaceId(space.id);
         pageTitle = `Dashboard: ${space.name}`;
+        console.log('[Routing] Selected dashboard:', space.name, 'with id:', space.id);
       } else {
-        navigate('/', { replace: true });
-        pageTitle = 'Playground'; // Redirected
+        // Don't immediately redirect if we just completed OAuth and might be waiting for spaces to load
+        const justCompletedOAuth = sessionStorage.getItem('oauth_completed_time');
+        const isRecentOAuth = justCompletedOAuth && (Date.now() - parseInt(justCompletedOAuth) < 5000); // 5 seconds
+        
+        if (!isRecentOAuth) {
+          console.log('[Routing] Dashboard not found for slug:', slug, 'Available spaces:', spaces.map(s => ({ name: s.name, slug: generateSpaceSlug(s.name) })));
+          navigate('/', { replace: true });
+          pageTitle = 'Playground'; // Redirected
+        } else {
+          console.log('[Routing] Dashboard not found but OAuth just completed, waiting for spaces to load...');
+          pageTitle = 'Loading...';
+        }
       }
     } else if (path === '/') {
       pageTitle = 'Playground';
@@ -445,6 +468,26 @@ function App() {
   useEffect(() => {
     const state = location.state as any;
     
+    // Prevent processing the same OAuth success multiple times
+    if (state?.oauthSuccess) {
+      const processedKey = 'oauth_success_processed';
+      const alreadyProcessed = sessionStorage.getItem(processedKey) === 'true';
+      
+      if (alreadyProcessed) {
+        // Already processed this OAuth success, clear the state and return
+        navigate(location.pathname, { replace: true });
+        return;
+      }
+      
+      // Mark as processed immediately
+      sessionStorage.setItem(processedKey, 'true');
+      
+      // Clear the flag after a short delay to allow for future OAuth flows
+      setTimeout(() => {
+        sessionStorage.removeItem(processedKey);
+      }, 5000);
+    }
+    
     // Check for OAuth callback logs in sessionStorage
     const oauthLogsJson = sessionStorage.getItem('oauth_callback_logs');
     if (oauthLogsJson) {
@@ -498,6 +541,21 @@ function App() {
     if (state?.oauthSuccess) {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');
+      
+      // If we're returning from OAuth with a specific space target, set it immediately
+      if (state?.fromOAuthReturn && state?.targetSpaceId) {
+        console.log('[OAuth] Setting selectedSpaceId from OAuth return:', state.targetSpaceId);
+        setSelectedSpaceId(state.targetSpaceId);
+      }
+      
+      // Clear the location state immediately to prevent re-triggering
+      navigate(location.pathname, { replace: true });
+      
+      // Mark OAuth completion time to prevent health checks from interfering
+      sessionStorage.setItem('oauth_completed_time', Date.now().toString());
+      
+      // Clear OAuth authentication state on tabs
+      setTabs(prevTabs => prevTabs.map(tab => ({ ...tab, isAuthFlowActive: false })));
       
       // Restore tabs that were stored before OAuth redirect
       const storedTabsJson = sessionStorage.getItem('oauth_tabs_before_redirect');
@@ -619,8 +677,76 @@ function App() {
         }
       }
       
-      // Clear the location state to prevent re-triggering
-      navigate(location.pathname, { replace: true });
+      // Restore the view state if we came from a dashboard
+      const returnViewJson = sessionStorage.getItem('oauth_return_view');
+      if (returnViewJson) {
+        try {
+          const returnView = JSON.parse(returnViewJson);
+          console.log('[OAuth] Restoring view state:', returnView);
+          
+          if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
+            // Check if we're already on the correct dashboard path (from OAuthCallback direct navigation)
+            const currentSlug = extractSlugFromPath(location.pathname);
+            const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
+            
+            if (targetSpace && currentSlug === generateSpaceSlug(targetSpace.name)) {
+              // We're already on the correct path from OAuthCallback navigation
+              console.log('[OAuth] Already on correct dashboard path, just setting state');
+              setSelectedSpaceId(returnView.selectedSpaceId);
+              sessionStorage.removeItem('oauth_return_view');
+              return;
+            }
+            
+            // Set the selected space ID
+            setSelectedSpaceId(returnView.selectedSpaceId);
+            
+            // Ensure spaces are loaded before attempting to navigate
+            if (spaces.length === 0) {
+              console.log('[OAuth] Spaces not loaded yet, will restore view after loading');
+              // Don't clear the return view yet - let the spaces loading effect handle it
+            } else {
+              // Find the dashboard and navigate to it
+              if (targetSpace) {
+                // Navigate to the dashboard URL which will automatically set the active view
+                console.log('[OAuth] Found target space, navigating to dashboard:', targetSpace.name);
+                
+                // Use setTimeout to ensure navigation happens after state updates
+                setTimeout(() => {
+                  navigate(getSpaceUrl(targetSpace.name), { replace: true });
+                  console.log('[OAuth] Navigation executed to:', getSpaceUrl(targetSpace.name));
+                  
+                  // Force a re-render by updating selectedSpaceId again after navigation
+                  setTimeout(() => {
+                    setSelectedSpaceId(targetSpace.id);
+                  }, 50);
+                }, 100);
+                
+                // Clear the stored view state
+                sessionStorage.removeItem('oauth_return_view');
+              } else {
+                console.log('[OAuth] Target space not found:', returnView.selectedSpaceId);
+                console.log('[OAuth] Available spaces:', spaces.map(s => ({ id: s.id, name: s.name })));
+                // Clear invalid view state
+                sessionStorage.removeItem('oauth_return_view');
+              }
+            }
+            return; // Skip the default navigation below
+          } else if (returnView.activeView === 'playground' && returnView.activeTabId) {
+            // Return to playground view with the specific tab
+            // Navigate to home which will set the active view to playground
+            setActiveTabId(returnView.activeTabId);
+            navigate('/', { replace: true });
+            console.log('[OAuth] Navigated back to playground tab:', returnView.activeTabId);
+            
+            // Clear the stored view state
+            sessionStorage.removeItem('oauth_return_view');
+            return; // Skip the default navigation below
+          }
+        } catch (error) {
+          console.error('[OAuth] Failed to restore view state:', error);
+          sessionStorage.removeItem('oauth_return_view');
+        }
+      }
     } else if (state?.oauthError) {
       console.error('[OAuth] Authentication error:', state.oauthError);
       
@@ -638,7 +764,58 @@ function App() {
       // Clear the location state
       navigate(location.pathname, { replace: true });
     }
-  }, [location.state, navigate, tabs, handleUpdateTab]);
+  }, [location.state, navigate, tabs, handleUpdateTab, spaces, setSelectedSpaceId, setActiveTabId]);
+
+  // Effect to handle deferred OAuth return navigation when spaces are loaded
+  useEffect(() => {
+    const returnViewJson = sessionStorage.getItem('oauth_return_view');
+    if (returnViewJson && spaces.length > 0) {
+      try {
+        const returnView = JSON.parse(returnViewJson);
+        
+        // Check if we're already on the correct path (direct navigation from OAuth callback)
+        const currentSlug = extractSlugFromPath(location.pathname);
+        const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
+        
+        if (targetSpace && currentSlug === generateSpaceSlug(targetSpace.name)) {
+          console.log('[OAuth Deferred] Already navigated to correct dashboard, clearing return view');
+          sessionStorage.removeItem('oauth_return_view');
+          // Ensure the selectedSpaceId is set correctly
+          if (selectedSpaceId !== targetSpace.id) {
+            setSelectedSpaceId(targetSpace.id);
+          }
+          return;
+        }
+        
+        if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
+          if (targetSpace) {
+            console.log('[OAuth Deferred] Found target space after loading, navigating to dashboard:', targetSpace.name);
+            
+            // Use setTimeout to ensure navigation happens after all state updates
+            setTimeout(() => {
+              navigate(getSpaceUrl(targetSpace.name), { replace: true });
+              console.log('[OAuth Deferred] Navigation executed to:', getSpaceUrl(targetSpace.name));
+              
+              // Force a re-render by updating selectedSpaceId again after navigation
+              setTimeout(() => {
+                setSelectedSpaceId(targetSpace.id);
+              }, 50);
+              
+              // Clear the stored view state after navigation
+              sessionStorage.removeItem('oauth_return_view');
+            }, 200);
+          } else {
+            console.log('[OAuth Deferred] Target space still not found after loading:', returnView.selectedSpaceId);
+            console.log('[OAuth Deferred] Available spaces:', spaces.map(s => ({ id: s.id, name: s.name })));
+            sessionStorage.removeItem('oauth_return_view');
+          }
+        }
+      } catch (error) {
+        console.error('[OAuth] Failed to process deferred navigation:', error);
+        sessionStorage.removeItem('oauth_return_view');
+      }
+    }
+  }, [spaces, navigate, location.pathname, selectedSpaceId]);
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
@@ -814,9 +991,18 @@ function App() {
     const path = window.location.pathname;
     const isResultShareUrl = parseResultShareUrl(path, window.location.search) !== null;
     const isServerUrl = parseServerUrl(path) !== null;
+    const isOAuthCallback = path === '/oauth/callback';
     
-    if (isResultShareUrl || isServerUrl) {
-      console.log('[Health Check] Skipping auto health check due to deep link URL');
+    // Check if we just completed OAuth (to prevent health check from interfering)
+    const oauthCompletedTime = sessionStorage.getItem('oauth_completed_time');
+    const recentOAuthCompletion = oauthCompletedTime && (Date.now() - parseInt(oauthCompletedTime) < 30000); // 30 seconds
+    
+    if (isResultShareUrl || isServerUrl || isOAuthCallback || recentOAuthCompletion) {
+      console.log('[Health Check] Skipping auto health check due to:', {
+        deepLinkUrl: isResultShareUrl || isServerUrl,
+        oauthCallback: isOAuthCallback,
+        recentOAuth: recentOAuthCompletion
+      });
       setHealthCheckLoading(false);
       return;
     }
@@ -972,6 +1158,7 @@ function App() {
 
     let tempClient: any = null;
     let lastError: any = null;
+    let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -989,13 +1176,14 @@ function App() {
         
         if (oauthToken) {
           console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
+          // Use consistent Bearer token format for all services
           transportOptions.headers = {
             'Authorization': `Bearer ${oauthToken}`
           };
         }
         
         // Determine if proxy should be used
-        let shouldUseProxy = false;
+        shouldUseProxy = false; // Reset for each attempt
         
         // If card.useProxy is explicitly set, respect that
         if (card.useProxy !== undefined) {
@@ -1014,7 +1202,8 @@ function App() {
         
         try {
             connectUrl = new URL(serverUrl);
-            if (!connectUrl.pathname.endsWith('/mcp')) {
+            // Don't append /mcp if the URL already ends with /sse or /mcp
+            if (!connectUrl.pathname.endsWith('/mcp') && !connectUrl.pathname.endsWith('/sse')) {
                 connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
             }
         } catch (e) {
@@ -1022,7 +1211,16 @@ function App() {
         }
 
         tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
-        const transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
+        
+        // Use SSE transport for SSE endpoints, HTTP transport for others
+        let transport;
+        if (connectUrl.pathname.endsWith('/sse')) {
+          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using SSE transport for ${connectUrl.toString()}`);
+          transport = new CorsAwareSSETransport(connectUrl, transportOptions);
+        } else {
+          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using HTTP transport for ${connectUrl.toString()}`);
+          transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
+        }
 
         console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
         await tempClient.connect(transport);
@@ -1139,6 +1337,16 @@ function App() {
       console.log('[OAuth] Stored active tabs before redirect for card reauth');
     }
     
+    // Store the current view state to restore after OAuth
+    const currentSpace = spaces.find(s => s.id === spaceId);
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'dashboards', // Dashboard view
+      selectedSpaceId: spaceId,
+      selectedSpaceName: currentSpace?.name || '',
+      timestamp: Date.now()
+    }));
+    console.log('[OAuth] Stored return view state for dashboard:', spaceId, currentSpace?.name);
+    
     // Start OAuth flow - similar to connection logic
     try {
       const { getOAuthConfig } = await import('./utils/oauthDiscovery');
@@ -1147,12 +1355,50 @@ function App() {
       if (oauthConfig) {
         // Set up OAuth flow
         const { generatePKCE } = await import('./utils/pkce');
-        const { codeVerifier, codeChallenge } = await generatePKCE();
+        const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
         
         sessionStorage.setItem('pkce_code_verifier', codeVerifier);
         sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
         
-        const clientId = sessionStorage.getItem('oauth_client_id');
+        // First check for server-specific stored client registration
+        let clientId: string | null = null;
+        let clientSecret: string | null = null;
+        
+        const serverClientKey = `oauth_client_${serverHost}`;
+        const storedServerClient = sessionStorage.getItem(serverClientKey);
+        if (storedServerClient) {
+          try {
+            const clientData = JSON.parse(storedServerClient);
+            clientId = clientData.clientId;
+            clientSecret = clientData.clientSecret;
+            console.log('[Reauthorize] Using stored server-specific client registration:', clientId);
+          } catch (e) {
+            console.error('[Reauthorize] Failed to parse stored client data:', e);
+          }
+        }
+        
+        // If no server-specific client found, attempt dynamic registration
+        if (!clientId && oauthConfig.registrationEndpoint) {
+          console.log('[Reauthorize] Attempting dynamic client registration...');
+          
+          try {
+            const { getOrRegisterOAuthClient } = await import('./utils/oauthDiscovery');
+            const clientRegistration = await getOrRegisterOAuthClient(serverUrl, oauthConfig.registrationEndpoint);
+            
+            if (clientRegistration) {
+              clientId = clientRegistration.clientId;
+              clientSecret = clientRegistration.clientSecret || null;
+              console.log('[Reauthorize] Dynamic client registration successful:', clientId);
+              
+              // Note: The client registration is already stored by getOrRegisterOAuthClient
+              // with the server-specific key, so we don't need to store it again
+            }
+          } catch (error) {
+            console.error('[Reauthorize] Dynamic client registration failed:', error);
+          }
+        }
+        
+        // If still no client ID, show config modal
         if (!clientId) {
           // Store the server URL and space/card info to continue after OAuth config
           sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
@@ -1164,7 +1410,7 @@ function App() {
           // Show OAuth configuration modal
           setNeedsOAuthConfig(true);
           setOAuthConfigServerUrl(serverUrl);
-          console.log('[Reauthorize] No OAuth client configured, showing config modal');
+          console.log('[Reauthorize] No OAuth client configured and dynamic registration unavailable, showing config modal');
           return;
         }
         
@@ -1185,9 +1431,13 @@ function App() {
         authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
         authUrl.searchParams.set('code_challenge', codeChallenge);
         authUrl.searchParams.set('code_challenge_method', 'S256');
-        authUrl.searchParams.set('scope', 'read write');
+        // Use the scope from OAuth configuration, or default to 'read write' for backward compatibility
+        const scope = oauthConfig.scope || 'read write';
+        
+        authUrl.searchParams.set('scope', scope);
         
         console.log(`[Reauthorize] Redirecting to OAuth authorization URL: ${authUrl.toString()}`);
+        
         window.location.href = authUrl.toString();
       } else {
         throw new Error('OAuth configuration not available for this server');
@@ -1250,32 +1500,28 @@ function App() {
   // --- Effect to Auto-Refresh Cards on Dashboard Entry (Sequentially with Retries) ---
   useEffect(() => {
     const refreshCardsSequentially = async () => {
-      // Only refresh if we're viewing dashboards AND this specific dashboard hasn't been loaded yet
-      // AND it has cards that have never been executed (no responseData)
-      if (activeView === 'spaces' && selectedSpaceId && !loadedSpaces.has(selectedSpaceId)) {
+      // Only refresh if we're viewing dashboards AND this specific dashboard hasn't been loaded yet in this session
+      if (activeView === 'dashboards' && selectedSpaceId && !loadedSpaces.has(selectedSpaceId)) {
         const currentSpace = spaces.find(s => s.id === selectedSpaceId);
         if (currentSpace && currentSpace.cards.length > 0) {
-          // Check if any cards need initial loading (no responseData yet)
-          const needsInitialLoad = currentSpace.cards.some(card => !card.responseData && !card.loading);
+          // Always refresh all cards when entering a dashboard for the first time in this session
+          // This ensures OAuth tokens are validated even for cards with saved responseData
+          console.log(`[DEBUG] First time entering space "${currentSpace.name}" in this session, refreshing ${currentSpace.cards.length} cards sequentially.`);
+          setHealthCheckLoading(true);
           
-          if (needsInitialLoad) {
-            console.log(`[DEBUG] First time entering space "${currentSpace.name}", refreshing ${currentSpace.cards.length} cards sequentially.`);
-            setHealthCheckLoading(true);
-            
-            // Use for...of loop to allow await inside
-            for (const card of currentSpace.cards) {
-              // Only execute cards that haven't been loaded yet
-              if (!card.loading && !card.responseData) {
-                 console.log(`[DEBUG] Effect loop: Awaiting handleExecuteCard for card ${card.id}.`);
-                 await handleExecuteCard(selectedSpaceId, card.id); // Await execution
-                 console.log(`[DEBUG] Effect loop: Finished handleExecuteCard for card ${card.id}.`);
-              } else {
-                 console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because it's already loaded or loading.`);
-              }
+          // Use for...of loop to allow await inside
+          for (const card of currentSpace.cards) {
+            // Execute all cards that aren't currently loading
+            if (!card.loading) {
+               console.log(`[DEBUG] Effect loop: Awaiting handleExecuteCard for card ${card.id}.`);
+               await handleExecuteCard(selectedSpaceId, card.id); // Await execution
+               console.log(`[DEBUG] Effect loop: Finished handleExecuteCard for card ${card.id}.`);
+            } else {
+               console.log(`[DEBUG] Effect loop: Skipping execution for card ${card.id} because it's already loading.`);
             }
-            setHealthCheckLoading(false);
-             console.log(`[DEBUG] Finished sequential refresh for dashboard "${currentSpace.name}".`);
           }
+          setHealthCheckLoading(false);
+          console.log(`[DEBUG] Finished sequential refresh for dashboard "${currentSpace.name}".`)
           
           // Mark this dashboard as loaded regardless
           setLoadedSpaces(prev => new Set(prev).add(selectedSpaceId));
@@ -1522,8 +1768,14 @@ function App() {
                 
                 if (oauthConfig) {
                   const { generatePKCE } = await import('./utils/pkce');
-                  const { codeVerifier, codeChallenge } = await generatePKCE();
+                  const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
                   const serverHost = new URL(serverUrl).host;
+                  
+                  // Debug logging for PKCE parameters
+                  console.log('[OAuth Config] Generated PKCE parameters:', {
+                    codeVerifier: codeVerifier.substring(0, 10) + '...',
+                    codeChallenge: codeChallenge.substring(0, 10) + '...'
+                  });
                   
                   sessionStorage.setItem('pkce_code_verifier', codeVerifier);
                   sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
@@ -1540,7 +1792,31 @@ function App() {
                     console.log('[OAuth] Stored active tabs before redirect from OAuthConfig callback');
                   }
                   
-                  const clientId = sessionStorage.getItem('oauth_client_id');
+                  // Store the current view state to restore after OAuth
+                  const currentSpace = spaces.find(s => s.id === spaceId);
+                  sessionStorage.setItem('oauth_return_view', JSON.stringify({
+                    activeView: 'dashboards', // Dashboard view
+                    selectedSpaceId: spaceId,
+                    selectedSpaceName: currentSpace?.name || '',
+                    timestamp: Date.now()
+                  }));
+                  console.log('[OAuth] Stored return view state for dashboard from config modal:', spaceId, currentSpace?.name);
+                  
+                  // Check for server-specific client first, then fall back to global
+                  let clientId = null;
+                  const serverClientKey = `oauth_client_${serverHost}`;
+                  const storedServerClient = sessionStorage.getItem(serverClientKey);
+                  if (storedServerClient) {
+                    try {
+                      const clientData = JSON.parse(storedServerClient);
+                      clientId = clientData.clientId;
+                      console.log('[OAuth Config] Using server-specific client ID:', clientId);
+                    } catch (e) {
+                      console.error('[OAuth Config] Failed to parse stored client data:', e);
+                    }
+                  }
+                  
+                  // Only proceed if we have a server-specific client ID
                   if (clientId && oauthConfig.authorizationEndpoint) {
                     // Build authorization URL
                     const authUrl = new URL(oauthConfig.authorizationEndpoint);
@@ -1549,9 +1825,12 @@ function App() {
                     authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
                     authUrl.searchParams.set('code_challenge', codeChallenge);
                     authUrl.searchParams.set('code_challenge_method', 'S256');
-                    authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
+                    // Use the scope from OAuth configuration
+                    const scope = oauthConfig.scope || 'openid profile email';
+                    authUrl.searchParams.set('scope', scope);
                     authUrl.searchParams.set('state', uuidv4());
                     
+                    console.log('[OAuth Config] Authorization URL:', authUrl.toString());
                     console.log('[OAuth Config] Redirecting to authorization URL');
                     window.location.href = authUrl.toString();
                   }

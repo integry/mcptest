@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getOAuthServiceName, OAUTH_SERVICES } from '../utils/oauthDiscovery';
+import { getOAuthServiceName } from '../utils/oauthDiscovery';
 
 interface OAuthConfigProps {
   serverUrl: string;
@@ -15,100 +15,48 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
   const [serviceGuide, setServiceGuide] = useState<string>('');
 
   useEffect(() => {
-    const name = getOAuthServiceName(serverUrl);
-    setServiceName(name);
+    // Load existing server-specific credentials if any
+    const serverHost = new URL(serverUrl).host;
+    const dynamicClientKey = `oauth_client_${serverHost}`;
+    const storedClient = sessionStorage.getItem(dynamicClientKey);
     
-    // Load existing credentials if any
-    const savedClientId = sessionStorage.getItem('oauth_client_id');
-    if (savedClientId) {
-      setClientId(savedClientId);
-    }
-    
-    const savedClientSecret = sessionStorage.getItem('oauth_client_secret');
-    if (savedClientSecret) {
-      setClientSecret(savedClientSecret);
-    }
-    
-    // Set service-specific guide
-    if (name) {
-      switch (name) {
-        case 'GitHub':
-          setServiceGuide(`
-            To register your OAuth application with GitHub:
-            1. Go to https://github.com/settings/developers
-            2. Click "New OAuth App"
-            3. Fill in:
-               - Application name: MCP SSE Tester
-               - Homepage URL: ${window.location.origin}
-               - Authorization callback URL: ${window.location.origin}/oauth/callback
-            4. Click "Register application"
-            5. Copy the Client ID and Client Secret below
-          `);
-          break;
-        case 'Google':
-          setServiceGuide(`
-            To register your OAuth application with Google:
-            1. Go to https://console.cloud.google.com/apis/credentials
-            2. Create a new OAuth 2.0 Client ID
-            3. Choose "Web application"
-            4. Add authorized redirect URI: ${window.location.origin}/oauth/callback
-            5. Copy the Client ID and Client Secret below
-          `);
-          break;
-        case 'Microsoft':
-          setServiceGuide(`
-            To register your OAuth application with Microsoft:
-            1. Go to https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
-            2. Click "New registration"
-            3. Add redirect URI: ${window.location.origin}/oauth/callback (Web platform)
-            4. Copy the Application (client) ID below
-            5. Create a client secret under "Certificates & secrets"
-          `);
-          break;
-        case 'Notion':
-        case 'Notion MCP':
-          setServiceGuide(`
-            To register your OAuth application with Notion:
-            1. Go to https://www.notion.so/my-integrations
-            2. Click "New integration"
-            3. Configure OAuth settings:
-               - Redirect URI: ${window.location.origin}/oauth/callback
-            4. Copy the OAuth client ID and secret below
-          `);
-          break;
-        default:
-          setServiceGuide(`
-            To use OAuth with ${name}:
-            1. Register your application in the service's developer portal
-            2. Set the redirect URI to: ${window.location.origin}/oauth/callback
-            3. Copy the client credentials below
-          `);
+    if (storedClient) {
+      try {
+        const clientData = JSON.parse(storedClient);
+        if (clientData.clientId) {
+          setClientId(clientData.clientId);
+        }
+        if (clientData.clientSecret) {
+          setClientSecret(clientData.clientSecret);
+        }
+      } catch (e) {
+        console.error('[OAuth Config] Failed to parse stored client data:', e);
       }
-    } else {
-      // Generic guide for any OAuth service
-      const url = new URL(serverUrl);
-      const serviceDomain = url.hostname;
-      
-      setServiceGuide(`
-        OAuth 2.1 Authentication Required for ${serviceDomain}:
-        
-        This MCP server requires OAuth 2.1 authentication with PKCE.
-        
-        1. Register your application with the OAuth provider at ${serviceDomain}
-        2. Configure the following settings:
-           - Application Name: MCP SSE Tester (or your preferred name)
-           - Application Type: Public (SPA/Native)
-           - Redirect URI: ${window.location.origin}/oauth/callback
-           - Grant Type: Authorization Code with PKCE
-           - Scopes: As required by the service
-        3. Copy the OAuth client credentials provided:
-           - Client ID (required)
-           - Client Secret (optional for public clients)
-        4. Enter the credentials below to continue
-        
-        Note: This implementation follows OAuth 2.1 best practices with mandatory PKCE.
-      `);
     }
+    
+    // Always use generic guide for OAuth service
+    const url = new URL(serverUrl);
+    const serviceDomain = url.hostname;
+    
+    setServiceGuide(`
+      OAuth 2.1 Authentication Required for ${serviceDomain}:
+      
+      This MCP server requires OAuth 2.1 authentication with PKCE.
+      
+      1. Register your application with the OAuth provider
+      2. Configure the following settings:
+         - Application Name: MCP SSE Tester (or your preferred name)
+         - Application Type: Public (SPA/Native)
+         - Redirect URI: ${window.location.origin}/oauth/callback
+         - Grant Type: Authorization Code with PKCE
+         - Scopes: As required by the service
+      3. Copy the OAuth client credentials provided:
+         - Client ID (required)
+         - Client Secret (optional for public clients)
+      4. Enter the credentials below to continue
+      
+      Note: This implementation follows OAuth 2.1 best practices with mandatory PKCE.
+    `);
   }, [serverUrl]);
 
   const handleSave = () => {
@@ -117,11 +65,19 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
       return;
     }
     
-    // Save credentials to session storage
-    sessionStorage.setItem('oauth_client_id', clientId);
-    if (clientSecret) {
-      sessionStorage.setItem('oauth_client_secret', clientSecret);
-    }
+    // Save credentials to session storage per server
+    const serverHost = new URL(serverUrl).host;
+    const dynamicClientKey = `oauth_client_${serverHost}`;
+    
+    const clientData = {
+      clientId,
+      clientSecret: clientSecret || undefined,
+      registeredAt: new Date().toISOString(),
+      registeredManually: true
+    };
+    
+    sessionStorage.setItem(dynamicClientKey, JSON.stringify(clientData));
+    console.log(`[OAuth Config] Saved server-specific credentials for ${serverHost}`);
     
     onConfigured();
   };
@@ -132,15 +88,15 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">
-              OAuth 2.1 Configuration {serviceName && `for ${serviceName}`}
+              OAuth 2.1 Configuration
             </h5>
             <button type="button" className="btn-close" onClick={onCancel}></button>
           </div>
           <div className="modal-body">
             <div className="alert alert-info">
-              <h6 className="alert-heading">ℹ️ OAuth Client Configuration</h6>
-              <p className="mb-2">Please provide your OAuth client credentials to connect to this service.</p>
-              <p className="mb-0">If dynamic client registration failed, you may need to manually register your application with the OAuth provider.</p>
+              <h6 className="alert-heading">ℹ️ OAuth Client Configuration for {new URL(serverUrl).host}</h6>
+              <p className="mb-2">Please provide your OAuth client credentials to connect to {new URL(serverUrl).host}.</p>
+              <p className="mb-0">These credentials will be stored specifically for this server. Each server requires its own OAuth client credentials.</p>
             </div>
             
             <div className="alert alert-info">

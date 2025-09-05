@@ -45,84 +45,6 @@ export interface OAuthServiceConfig {
   customHeaders?: Record<string, string>;
 }
 
-// Well-known OAuth service configurations
-export const OAUTH_SERVICES: Record<string, OAuthServiceConfig> = {
-  'github.com': {
-    name: 'GitHub',
-    authorizationEndpoint: 'https://github.com/login/oauth/authorize',
-    tokenEndpoint: 'https://github.com/login/oauth/access_token',
-    scope: 'read:user user:email',
-    supportsDiscovery: false,
-    supportsPKCE: false,
-    requiresClientRegistration: true,
-  },
-  'accounts.google.com': {
-    name: 'Google',
-    discoveryUrl: 'https://accounts.google.com/.well-known/openid-configuration',
-    scope: 'openid profile email',
-    supportsDiscovery: true,
-    supportsPKCE: true,
-    requiresClientRegistration: true,
-  },
-  'login.microsoftonline.com': {
-    name: 'Microsoft',
-    discoveryUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
-    scope: 'openid profile email',
-    supportsDiscovery: true,
-    supportsPKCE: true,
-    requiresClientRegistration: true,
-  },
-  'auth0.com': {
-    name: 'Auth0',
-    supportsDiscovery: true,
-    supportsPKCE: true,
-    requiresClientRegistration: true,
-    scope: 'openid profile email',
-  },
-  'okta.com': {
-    name: 'Okta',
-    supportsDiscovery: true,
-    supportsPKCE: true,
-    requiresClientRegistration: true,
-    scope: 'openid profile email',
-  },
-  'notion.so': {
-    name: 'Notion',
-    authorizationEndpoint: 'https://api.notion.com/v1/oauth/authorize',
-    tokenEndpoint: 'https://api.notion.com/v1/oauth/token',
-    scope: 'read_user',
-    supportsDiscovery: false,
-    supportsPKCE: false,
-    requiresClientRegistration: true,
-    customHeaders: {
-      'Notion-Version': '2022-06-28',
-    },
-  },
-  'notion.com': {
-    name: 'Notion',
-    authorizationEndpoint: 'https://api.notion.com/v1/oauth/authorize',
-    tokenEndpoint: 'https://api.notion.com/v1/oauth/token',
-    scope: 'read_user',
-    supportsDiscovery: false,
-    supportsPKCE: false,
-    requiresClientRegistration: true,
-    customHeaders: {
-      'Notion-Version': '2022-06-28',
-    },
-  },
-  'mcp.notion.com': {
-    name: 'Notion MCP',
-    authorizationEndpoint: 'https://api.notion.com/v1/oauth/authorize',
-    tokenEndpoint: 'https://api.notion.com/v1/oauth/token',
-    scope: 'read_user',
-    supportsDiscovery: false,
-    supportsPKCE: false,
-    requiresClientRegistration: true,
-    customHeaders: {
-      'Notion-Version': '2022-06-28',
-    },
-  },
-};
 
 /**
  * Extract the OAuth service domain from a URL
@@ -130,21 +52,7 @@ export const OAUTH_SERVICES: Record<string, OAuthServiceConfig> = {
 export function extractOAuthDomain(url: string): string | null {
   try {
     const urlObj = new URL(url);
-    const hostname = urlObj.hostname;
-    
-    // Check for exact matches first
-    if (OAUTH_SERVICES[hostname]) {
-      return hostname;
-    }
-    
-    // Check for subdomain matches (e.g., *.auth0.com, *.okta.com)
-    for (const domain of Object.keys(OAUTH_SERVICES)) {
-      if (hostname.endsWith(`.${domain}`)) {
-        return domain;
-      }
-    }
-    
-    return null;
+    return urlObj.hostname;
   } catch {
     return null;
   }
@@ -193,29 +101,6 @@ export async function discoverOAuthEndpoints(serverUrl: string): Promise<OAuthDi
       console.log(`[OAuth Discovery] Failed to fetch metadata:`, error);
     }
     
-    // If it's a known service with static configuration, we can still try that as a last resort
-    // but per MCP spec, discovery should be attempted first
-    const serviceDomain = extractOAuthDomain(serverUrl);
-    if (serviceDomain && OAUTH_SERVICES[serviceDomain]?.discoveryUrl) {
-      try {
-        console.log(`[OAuth Discovery] Trying known service discovery URL: ${OAUTH_SERVICES[serviceDomain].discoveryUrl}`);
-        const response = await fetch(OAUTH_SERVICES[serviceDomain].discoveryUrl!, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
-        
-        if (response.ok) {
-          const metadata = await response.json();
-          if (metadata.authorization_endpoint && metadata.token_endpoint) {
-            return metadata as OAuthDiscoveryDocument;
-          }
-        }
-      } catch (error) {
-        console.log(`[OAuth Discovery] Known service discovery failed:`, error);
-      }
-    }
     
     return null;
   } catch (error) {
@@ -246,50 +131,24 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
     // Always try discovery first for any service
     const discovered = await discoverOAuthEndpoints(serverUrl);
     if (discovered) {
-      // Check if it's a known service for custom configurations
-      const serviceDomain = extractOAuthDomain(serverUrl);
-      const serviceConfig = serviceDomain ? OAUTH_SERVICES[serviceDomain] : null;
-      
       return {
         authorizationEndpoint: discovered.authorization_endpoint,
         tokenEndpoint: discovered.token_endpoint,
         registrationEndpoint: discovered.registration_endpoint,
         userinfo_endpoint: discovered.userinfo_endpoint,
-        scope: serviceConfig?.scope || discovered.scopes_supported?.join(' ') || 'openid profile email',
+        scope: discovered.scopes_supported?.join(' ') || 'openid profile email',
         // OAuth 2.1 requires PKCE for public clients - always enable it
         supportsPKCE: true,
-        requiresClientRegistration: serviceConfig?.requiresClientRegistration ?? true,
+        requiresClientRegistration: true,
         // If registration endpoint is available, we should use dynamic registration
         requiresDynamicRegistration: !!discovered.registration_endpoint,
-        customHeaders: serviceConfig?.customHeaders,
+        customHeaders: {},
       };
     }
     
     // Per MCP spec: For servers that do not implement OAuth 2.0 Authorization Server Metadata,
     // clients MUST use the following default endpoint paths relative to the authorization base URL
     console.log('[OAuth Config] No discovery available, using MCP default endpoints');
-    
-    // Check if it's a known service with static configuration first
-    const serviceDomain = extractOAuthDomain(serverUrl);
-    if (serviceDomain && OAUTH_SERVICES[serviceDomain]) {
-      const serviceConfig = OAUTH_SERVICES[serviceDomain];
-      
-      // Use static configuration if available
-      if (serviceConfig.authorizationEndpoint && serviceConfig.tokenEndpoint) {
-        return {
-          authorizationEndpoint: serviceConfig.authorizationEndpoint,
-          tokenEndpoint: serviceConfig.tokenEndpoint,
-          registrationEndpoint: serviceConfig.registrationEndpoint,
-          userinfo_endpoint: undefined, // Known services with static config typically don't provide userinfo endpoint
-          scope: serviceConfig.scope || 'openid profile email',
-          // OAuth 2.1 requires PKCE for public clients - always enable it
-          supportsPKCE: true,
-          requiresClientRegistration: serviceConfig.requiresClientRegistration ?? true,
-          requiresDynamicRegistration: false, // Known services typically don't support dynamic registration
-          customHeaders: serviceConfig.customHeaders,
-        };
-      }
-    }
     
     // Use MCP default endpoints as fallback
     return {
@@ -313,16 +172,18 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
  * Check if a URL might be an OAuth-enabled service
  */
 export function isOAuthService(url: string): boolean {
-  const serviceDomain = extractOAuthDomain(url);
-  return serviceDomain !== null;
+  // Without hardcoded services, we can't determine this statically
+  // Return true to allow OAuth flow for any service
+  return true;
 }
 
 /**
  * Format OAuth service name for display
  */
 export function getOAuthServiceName(url: string): string | null {
-  const serviceDomain = extractOAuthDomain(url);
-  return serviceDomain ? OAUTH_SERVICES[serviceDomain]?.name : null;
+  // Without hardcoded services, we return null
+  // The UI will display the domain name instead
+  return null;
 }
 
 /**

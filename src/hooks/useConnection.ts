@@ -407,6 +407,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         console.log('[OAuth] Stored active tabs before redirect');
       }
       
+      // The tab ID is already stored by the TabContent component when OAuth flow starts
+      const storedTabId = sessionStorage.getItem('oauth_tab_id');
+      if (storedTabId) {
+        console.log('[OAuth] Tab ID already stored for return navigation:', storedTabId);
+      }
+      
       addLogEntry({ 
         type: 'info', 
         data: '💾 Step 2/5: Stored PKCE verifier and server URL in session storage' 
@@ -553,18 +559,28 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           return;
         }
       } else {
-        // Check if we have manually configured credentials (for services that don't support dynamic registration)
-        const existingClientId = sessionStorage.getItem('oauth_client_id');
-        const existingClientSecret = sessionStorage.getItem('oauth_client_secret');
+        // Check if we have manually configured server-specific credentials
+        const serverHost = new URL(targetUrl).host;
+        const dynamicClientKey = `oauth_client_${serverHost}`;
+        const storedClientData = sessionStorage.getItem(dynamicClientKey);
         
-        if (existingClientId) {
-          oauthClientId = existingClientId;
-          oauthClientSecret = existingClientSecret;
-          addLogEntry({ 
-            type: 'info', 
-            data: '📋 Step 5/7: Using manually configured OAuth credentials' 
-          });
-        } else if (oauthEndpoints.requiresClientRegistration) {
+        if (storedClientData) {
+          try {
+            const clientData = JSON.parse(storedClientData);
+            if (clientData.registeredManually && clientData.clientId) {
+              oauthClientId = clientData.clientId;
+              oauthClientSecret = clientData.clientSecret;
+              addLogEntry({ 
+                type: 'info', 
+                data: `📋 Step 5/7: Using manually configured OAuth credentials for ${serverHost}` 
+              });
+            }
+          } catch (e) {
+            console.error('[OAuth] Failed to parse stored client data:', e);
+          }
+        }
+        
+        if (!oauthClientId && oauthEndpoints.requiresClientRegistration) {
           // No dynamic registration and no manual credentials
           addLogEntry({ 
             type: 'warning', 
@@ -593,11 +609,6 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         });
         setIsConnecting(false);
         return;
-      }
-      
-      // Store client credentials for the callback to use
-      if (oauthClientSecret) {
-        sessionStorage.setItem('oauth_client_secret', oauthClientSecret);
       }
       
       // Build authorization URL
@@ -751,6 +762,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           });
           setOauthProgress('Redirecting to authorization page...');
           console.log('[OAuth Progress] Redirecting to authorization page');
+          
+          
           window.location.href = authUrl.toString();
           return;
         } else {

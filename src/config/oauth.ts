@@ -3,7 +3,6 @@
 export interface OAuthConfig {
   authorizationEndpoint: string;
   tokenEndpoint: string;
-  clientId: string; // Only used as fallback for test servers
   redirectUri: string;
   scope: string;
 }
@@ -16,7 +15,6 @@ const cloudflareWorkerUrl = import.meta.env.VITE_OAUTH_WORKER_URL || 'https://oa
 export const oauthConfig: OAuthConfig = {
   authorizationEndpoint: `${cloudflareWorkerUrl}/oauth/authorize`,
   tokenEndpoint: `${cloudflareWorkerUrl}/oauth/token`,
-  clientId: 'mcptest-client', // ONLY used as fallback for test server
   redirectUri: `${window.location.origin}/oauth/callback`,
   scope: 'openid profile email'
 };

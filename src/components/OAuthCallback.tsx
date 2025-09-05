@@ -30,30 +30,28 @@ const OAuthCallback: React.FC = () => {
       const errorDescription = params.get('error_description');
       const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
       const serverUrl = sessionStorage.getItem('oauth_server_url');
-      // Get client ID from dynamic registration or manual configuration
+      // Get client ID from server-specific registration only
       const serverHost = serverUrl ? new URL(serverUrl).host : '';
       const dynamicClientKey = `oauth_client_${serverHost}`;
       const dynamicClientData = sessionStorage.getItem(dynamicClientKey);
-      let clientId = sessionStorage.getItem('oauth_client_id');
-      let clientSecret = sessionStorage.getItem('oauth_client_secret');
+      let clientId: string | null = null;
+      let clientSecret: string | null = null;
       
-      // Check for dynamically registered client
+      // Check for server-specific client (either dynamically registered or manually configured)
       if (dynamicClientData) {
         try {
           const parsedClient = JSON.parse(dynamicClientData);
           clientId = parsedClient.clientId;
           clientSecret = parsedClient.clientSecret;
-          addOAuthLog('info', `📋 Using dynamically registered client: ${clientId}`);
+          const registrationType = parsedClient.registeredManually ? 'manually configured' : 'dynamically registered';
+          addOAuthLog('info', `📋 Using ${registrationType} client for ${serverHost}: ${clientId}`);
         } catch (e) {
-          addOAuthLog('warning', '⚠️ Failed to parse dynamic client data');
+          addOAuthLog('warning', '⚠️ Failed to parse server-specific client data');
         }
+      } else {
+        addOAuthLog('error', `❌ No OAuth client credentials found for ${serverHost}`);
       }
       
-      // Fallback to hardcoded client ID only for test server
-      if (!clientId && serverUrl && (serverUrl.includes('localhost') || serverUrl.includes('oauth-worker.livecart.workers.dev'))) {
-        clientId = oauthConfig.clientId;
-        addOAuthLog('info', '📋 Using fallback client ID for test server');
-      }
       
       // Log received parameters
       addOAuthLog('info', `📄 Callback parameters:\n  - Authorization code: ${code ? `${code.substring(0, 10)}...` : 'Not provided'}\n  - Error: ${error || 'None'}\n  - Error description: ${errorDescription || 'None'}\n  - PKCE verifier stored: ${codeVerifier ? 'Yes' : 'No'}\n  - PKCE verifier value: ${codeVerifier ? `${codeVerifier.substring(0, 10)}...` : 'Not found'}\n  - Server URL stored: ${serverUrl || 'Not found'}\n  - Client ID stored: ${clientId}`);
@@ -153,10 +151,42 @@ const OAuthCallback: React.FC = () => {
             sessionStorage.setItem('oauth_completed_time', Date.now().toString());
             
             addOAuthLog('info', '💾 Tokens stored in session storage, cleaning up PKCE verifier...');
-            addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting to home page...');
+            addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting...');
             
-            // Redirect to home page with success message
-            navigate('/', { state: { oauthSuccess: true } });
+            // Check if we have a stored return view state and navigate directly to it
+            const returnViewJson = sessionStorage.getItem('oauth_return_view');
+            let targetPath = '/'; // Default to home
+            let navigationState = { oauthSuccess: true };
+            
+            if (returnViewJson) {
+              try {
+                const returnView = JSON.parse(returnViewJson);
+                addOAuthLog('info', `🔄 Returning to ${returnView.activeView} view`);
+                
+                // If we have a dashboard view with a space, navigate directly there
+                if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId && returnView.selectedSpaceName) {
+                  // Use the same slug generation as App.tsx to ensure consistency
+                  const { getSpaceUrl } = await import('../utils/urlUtils');
+                  targetPath = getSpaceUrl(returnView.selectedSpaceName);
+                  addOAuthLog('info', `🔄 Navigating directly to dashboard: ${targetPath}`);
+                  
+                  // Add the space info to navigation state so App.tsx can set selectedSpaceId correctly
+                  navigationState = { 
+                    ...navigationState,
+                    targetSpaceId: returnView.selectedSpaceId,
+                    fromOAuthReturn: true
+                  };
+                }
+                
+                // Don't clear the return view here - let App.tsx handle it after navigation
+                // This ensures the view state is available when App.tsx processes the OAuth success
+              } catch (e) {
+                addOAuthLog('warning', '⚠️ Failed to parse return view state');
+              }
+            }
+            
+            // Redirect to the appropriate path
+            navigate(targetPath, { state: navigationState });
           } else {
             addOAuthLog('error', `❌ Step 3/3 FAILED: Token exchange failed with status ${tokenResponse.status}`);
             
