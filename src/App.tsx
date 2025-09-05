@@ -180,10 +180,12 @@ function App() {
   // Derive active view and doc page from location
   const { activeView, activeDocPage } = useMemo(() => {
     const path = location.pathname;
+    console.log('[ActiveView Calculation] Path:', path, 'Spaces count:', spaces.length);
     
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
+      console.log('[ActiveView] Detected docs view');
       return { activeView: 'docs' as const, activeDocPage: docPage };
     }
     
@@ -191,12 +193,15 @@ function App() {
     const slug = extractSlugFromPath(path);
     if (slug) {
       const space = findSpaceBySlug(spaces, slug);
+      console.log('[ActiveView] Checking slug:', slug, 'Found space:', !!space);
       if (space) {
+        console.log('[ActiveView] Detected dashboards view for space:', space.name);
         return { activeView: 'dashboards' as const, activeDocPage: null };
       }
     }
     
     // Default to inspector
+    console.log('[ActiveView] Defaulting to playground view');
     return { activeView: 'playground' as const, activeDocPage: null };
   }, [location.pathname, spaces]);
 
@@ -306,6 +311,7 @@ function App() {
       if (space) {
         setSelectedSpaceId(space.id);
         pageTitle = `Dashboard: ${space.name}`;
+        console.log('[Routing] Selected dashboard:', space.name, 'with id:', space.id);
       } else {
         // Don't immediately redirect if we just completed OAuth and might be waiting for spaces to load
         const justCompletedOAuth = sessionStorage.getItem('oauth_completed_time');
@@ -510,6 +516,12 @@ function App() {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');
       
+      // Mark OAuth completion time to prevent health checks from interfering
+      sessionStorage.setItem('oauth_completed_time', Date.now().toString());
+      
+      // Clear OAuth authentication state on tabs
+      setTabs(prevTabs => prevTabs.map(tab => ({ ...tab, isAuthFlowActive: false })));
+      
       // Restore tabs that were stored before OAuth redirect
       const storedTabsJson = sessionStorage.getItem('oauth_tabs_before_redirect');
       if (storedTabsJson) {
@@ -656,6 +668,11 @@ function App() {
                 setTimeout(() => {
                   navigate(getSpaceUrl(targetSpace.name), { replace: true });
                   console.log('[OAuth] Navigation executed to:', getSpaceUrl(targetSpace.name));
+                  
+                  // Force a re-render by updating selectedSpaceId again after navigation
+                  setTimeout(() => {
+                    setSelectedSpaceId(targetSpace.id);
+                  }, 50);
                 }, 100);
                 
                 // Clear the stored view state
@@ -722,6 +739,11 @@ function App() {
             setTimeout(() => {
               navigate(getSpaceUrl(targetSpace.name), { replace: true });
               console.log('[OAuth Deferred] Navigation executed to:', getSpaceUrl(targetSpace.name));
+              
+              // Force a re-render by updating selectedSpaceId again after navigation
+              setTimeout(() => {
+                setSelectedSpaceId(targetSpace.id);
+              }, 50);
               
               // Clear the stored view state after navigation
               sessionStorage.removeItem('oauth_return_view');
