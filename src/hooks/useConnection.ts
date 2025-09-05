@@ -915,7 +915,27 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         if (connectionSuccess && finalClient && finalTransportType && finalUrl) {
             clientRef.current = finalClient;
             setTransportType(finalTransportType);
-            setServerUrl(targetUrl); // CRUCIAL: Set UI URL to the original target
+            
+            // Extract the actual URL that was connected to (with correct endpoint)
+            let displayUrl = targetUrl; // Default to original target
+            try {
+                const finalUrlObj = new URL(finalUrl);
+                
+                // For proxy URLs, extract the target parameter
+                if (finalUrlObj.searchParams.has('target')) {
+                    displayUrl = finalUrlObj.searchParams.get('target') || targetUrl;
+                } else {
+                    // For direct URLs, use the final URL which includes the correct endpoint
+                    displayUrl = finalUrl;
+                }
+                
+                console.log(`[DEBUG] Setting display URL: ${displayUrl} (from finalUrl: ${finalUrl})`);
+            } catch (error) {
+                console.error('[DEBUG] Error parsing final URL:', error);
+                // Fall back to original target URL
+            }
+            
+            setServerUrl(displayUrl); // Set UI URL to the actual connected URL with endpoint
             setConnectionStatus('Connected');
             setIsConnecting(false);
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
@@ -927,11 +947,18 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             setResources([]);
             
             // Update recent servers list with the original URL (without transport-specific endpoints)
-            // Extract the successful URL without proxy wrapper if it's a proxy connection
-            let urlToSave = targetUrl; // Use the original target URL, not the transport-specific one
+            // We want to save the base URL without /mcp or /sse endpoints for flexibility
+            let urlToSave = targetUrl; // Default to original target URL
             
-            // For proxy URLs, we've already saved the correct target URL above
-            // No need for additional extraction since targetUrl is already clean
+            try {
+                // Remove transport-specific endpoints from the URL before saving
+                const url = new URL(targetUrl);
+                url.pathname = url.pathname.replace(/\/(mcp|sse)\/?$/, '');
+                urlToSave = url.toString();
+            } catch (error) {
+                console.error('[DEBUG] Error normalizing URL for recent servers:', error);
+                // Fall back to original target URL
+            }
             
             const updatedServers = [urlToSave, ...recentServers.filter(url => url !== urlToSave)];
             const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
