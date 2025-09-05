@@ -802,6 +802,12 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
     // -----------------------------------------
 
+    // Update recent servers list using targetUrl (the original URL)
+    const updatedServers = [targetUrl, ...recentServers.filter(url => url !== targetUrl)];
+    const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
+    setRecentServers(limitedServers); // Update state
+    saveRecentServers(Array.from(limitedServers)); // Save to localStorage
+
     if (clientRef.current) {
       console.log("[DEBUG] Cleaning up previous client instance before connecting.");
       clientRef.current = null; // Clear ref
@@ -812,7 +818,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     let finalTransportType: TransportType | null = null;
     let finalUrl: string | null = null;
     let lastError: any = null;
-    const timeoutPromise = new Promise<never>((_, reject) => 
+    const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
     );
 
@@ -855,7 +861,6 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       return attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, proxyAuthToken);
     };
 
-    try {
     try {
         let result;
         // Always try direct connection first
@@ -911,7 +916,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             saveRecentServers(Array.from(limitedServers));
 
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
-            logEvent('connect_success', { 
+            logEvent('connect_success', {
               transport_type: finalTransportType,
               is_proxied: isProxied,
             });
