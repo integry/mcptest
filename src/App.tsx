@@ -307,8 +307,18 @@ function App() {
         setSelectedSpaceId(space.id);
         pageTitle = `Dashboard: ${space.name}`;
       } else {
-        navigate('/', { replace: true });
-        pageTitle = 'Playground'; // Redirected
+        // Don't immediately redirect if we just completed OAuth and might be waiting for spaces to load
+        const justCompletedOAuth = sessionStorage.getItem('oauth_completed_time');
+        const isRecentOAuth = justCompletedOAuth && (Date.now() - parseInt(justCompletedOAuth) < 5000); // 5 seconds
+        
+        if (!isRecentOAuth) {
+          console.log('[Routing] Dashboard not found for slug:', slug, 'Available spaces:', spaces.map(s => ({ name: s.name, slug: generateSpaceSlug(s.name) })));
+          navigate('/', { replace: true });
+          pageTitle = 'Playground'; // Redirected
+        } else {
+          console.log('[Routing] Dashboard not found but OAuth just completed, waiting for spaces to load...');
+          pageTitle = 'Loading...';
+        }
       }
     } else if (path === '/') {
       pageTitle = 'Playground';
@@ -628,9 +638,8 @@ function App() {
           console.log('[OAuth] Restoring view state:', returnView);
           
           if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
-            // Set a flag to restore the view after spaces are loaded
+            // Set the selected space ID
             setSelectedSpaceId(returnView.selectedSpaceId);
-            setActiveView('dashboards');
             
             // Ensure spaces are loaded before attempting to navigate
             if (spaces.length === 0) {
@@ -640,14 +649,20 @@ function App() {
               // Find the dashboard and navigate to it
               const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
               if (targetSpace) {
-                // Navigate to the dashboard URL which will set the active view
-                navigate(getSpaceUrl(targetSpace.name), { replace: true });
-                console.log('[OAuth] Navigated back to dashboard:', targetSpace.name);
+                // Navigate to the dashboard URL which will automatically set the active view
+                console.log('[OAuth] Found target space, navigating to dashboard:', targetSpace.name);
+                
+                // Use setTimeout to ensure navigation happens after state updates
+                setTimeout(() => {
+                  navigate(getSpaceUrl(targetSpace.name), { replace: true });
+                  console.log('[OAuth] Navigation executed to:', getSpaceUrl(targetSpace.name));
+                }, 100);
                 
                 // Clear the stored view state
                 sessionStorage.removeItem('oauth_return_view');
               } else {
                 console.log('[OAuth] Target space not found:', returnView.selectedSpaceId);
+                console.log('[OAuth] Available spaces:', spaces.map(s => ({ id: s.id, name: s.name })));
                 // Clear invalid view state
                 sessionStorage.removeItem('oauth_return_view');
               }
@@ -701,11 +716,19 @@ function App() {
         if (returnView.activeView === 'dashboards' && returnView.selectedSpaceId) {
           const targetSpace = spaces.find(s => s.id === returnView.selectedSpaceId);
           if (targetSpace) {
-            // Navigate to the dashboard URL
-            navigate(getSpaceUrl(targetSpace.name), { replace: true });
-            console.log('[OAuth] Deferred navigation to dashboard:', targetSpace.name);
+            console.log('[OAuth Deferred] Found target space after loading, navigating to dashboard:', targetSpace.name);
             
-            // Clear the stored view state
+            // Use setTimeout to ensure navigation happens after all state updates
+            setTimeout(() => {
+              navigate(getSpaceUrl(targetSpace.name), { replace: true });
+              console.log('[OAuth Deferred] Navigation executed to:', getSpaceUrl(targetSpace.name));
+              
+              // Clear the stored view state after navigation
+              sessionStorage.removeItem('oauth_return_view');
+            }, 200);
+          } else {
+            console.log('[OAuth Deferred] Target space still not found after loading:', returnView.selectedSpaceId);
+            console.log('[OAuth Deferred] Available spaces:', spaces.map(s => ({ id: s.id, name: s.name })));
             sessionStorage.removeItem('oauth_return_view');
           }
         }

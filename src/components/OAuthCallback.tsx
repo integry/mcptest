@@ -155,17 +155,22 @@ const OAuthCallback: React.FC = () => {
             
             // Check if we have a stored return view state
             const returnViewJson = sessionStorage.getItem('oauth_return_view');
+            let targetPath = '/'; // Default to home
+            
             if (returnViewJson) {
               try {
                 const returnView = JSON.parse(returnViewJson);
                 addOAuthLog('info', `🔄 Returning to ${returnView.activeView} view`);
+                
+                // Don't clear the return view here - let App.tsx handle it after navigation
+                // This ensures the view state is available when App.tsx processes the OAuth success
               } catch (e) {
                 addOAuthLog('warning', '⚠️ Failed to parse return view state');
               }
             }
             
-            // Redirect to home page with success message
-            navigate('/', { state: { oauthSuccess: true } });
+            // Redirect with success message - App.tsx will handle the actual navigation based on return view
+            navigate(targetPath, { state: { oauthSuccess: true } });
           } else {
             addOAuthLog('error', `❌ Step 3/3 FAILED: Token exchange failed with status ${tokenResponse.status}`);
             
