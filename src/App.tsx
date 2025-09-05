@@ -462,6 +462,26 @@ function App() {
   useEffect(() => {
     const state = location.state as any;
     
+    // Prevent processing the same OAuth success multiple times
+    if (state?.oauthSuccess) {
+      const processedKey = 'oauth_success_processed';
+      const alreadyProcessed = sessionStorage.getItem(processedKey) === 'true';
+      
+      if (alreadyProcessed) {
+        // Already processed this OAuth success, clear the state and return
+        navigate(location.pathname, { replace: true });
+        return;
+      }
+      
+      // Mark as processed immediately
+      sessionStorage.setItem(processedKey, 'true');
+      
+      // Clear the flag after a short delay to allow for future OAuth flows
+      setTimeout(() => {
+        sessionStorage.removeItem(processedKey);
+      }, 5000);
+    }
+    
     // Check for OAuth callback logs in sessionStorage
     const oauthLogsJson = sessionStorage.getItem('oauth_callback_logs');
     if (oauthLogsJson) {
@@ -515,6 +535,9 @@ function App() {
     if (state?.oauthSuccess) {
       // OAuth was successful, trigger reconnection
       console.log('[OAuth] Authentication successful, triggering reconnection...');
+      
+      // Clear the location state immediately to prevent re-triggering
+      navigate(location.pathname, { replace: true });
       
       // Mark OAuth completion time to prevent health checks from interfering
       sessionStorage.setItem('oauth_completed_time', Date.now().toString());
@@ -701,9 +724,6 @@ function App() {
           sessionStorage.removeItem('oauth_return_view');
         }
       }
-      
-      // Clear the location state to prevent re-triggering
-      navigate(location.pathname, { replace: true });
     } else if (state?.oauthError) {
       console.error('[OAuth] Authentication error:', state.oauthError);
       
