@@ -1,8 +1,11 @@
 import { auth } from '../firebase';
+import { Client } from '@modelcontextprotocol/sdk/client';
+import { attemptParallelConnections } from '../utils/transportDetection';
+import { getOAuthConfig } from '../utils/oauthDiscovery';
 
 // --- Type Definitions ---
 
-interface ReportCategory {
+export interface ReportCategory {
   name: string;
   score: number;
   maxPoints: number;
@@ -36,170 +39,108 @@ export interface ProgressUpdate {
 
 // --- Helper Functions ---
 
-const TOTAL_STEPS = 6; // 5 categories + 1 finalization step
+const TOTAL_STEPS = 5; // 4 checks + 1 finalization step
 
-/**
- * A wrapper for fetch that routes requests through the CORS proxy worker.
- * @param targetUrl The URL of the resource to fetch.
- * @param options Standard fetch options.
- * @returns A promise that resolves to the Response object.
- */
 const proxiedFetch = async (targetUrl: string, options: RequestInit = {}): Promise<Response> => {
   const proxyUrl = import.meta.env.VITE_PROXY_URL;
   if (!proxyUrl) {
-    console.error("VITE_PROXY_URL is not defined in the environment variables.");
     throw new Error("Proxy URL is not configured.");
   }
-
   const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
   if (!token) {
-    throw new Error("Authentication required. Please log in to use the evaluation service.");
+    throw new Error("Authentication required to use the proxy.");
   }
-
   const url = new URL(proxyUrl);
   url.searchParams.set('target', targetUrl);
-
-  const finalOptions: RequestInit = {
-    ...options,
-    headers: {
-      ...options.headers,
-      'Authorization': `Bearer ${token}`,
-    },
-  };
-
+  const finalOptions: RequestInit = { ...options, headers: { ...options.headers, 'Authorization': `Bearer ${token}` } };
   return fetch(url.toString(), finalOptions);
 };
 
 // --- Evaluation Category Checks ---
 
-const checkCoreProtocolAdherence = async (
-  serverUrl: string
-): Promise<ReportCategory> => {
-  const category: ReportCategory = {
-    name: 'I. Core Protocol Adherence', score: 0, maxPoints: 15,
-    description: 'Correctly implements fundamental MCP components.', findings: [],
-  };
-
-  try {
-    const capsResponse = await proxiedFetch(`${serverUrl}/mcp`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', method: 'mcp/getCapabilities', id: 'caps-check' }),
-    });
-
-    if (!capsResponse.ok) throw new Error(`Request failed with status ${capsResponse.status}`);
-    const capsData = await capsResponse.json();
-    if (capsData.error) throw new Error(`Server returned error: ${JSON.stringify(capsData.error)}`);
-
-    category.score += 2;
-    category.findings.push('[PASS] Server provides a valid capabilities response.');
-
-    const caps = capsData.result.capabilities;
-    if (caps.tools?.length || caps.resources?.length) {
-        category.score += 1;
-        category.findings.push('[PASS] Server advertises at least one feature.');
-    } else {
-        category.findings.push('[WARN] Server lists no tools or resources.');
-    }
-
-    if (!caps.tools?.every((t: any) => t.name && t.description && t.input_schema)) {
-        category.findings.push('[FAIL] Not all advertised tools are well-documented (name, description, schema).');
-    } else {
-        category.score += 2;
-        category.findings.push('[PASS] All tools are well-documented.');
-    }
-  } catch (e: any) {
-    category.findings.push(`[FAIL] /capabilities check failed: ${e.message}`);
-  }
-
-  try {
-    const healthResponse = await proxiedFetch(`${serverUrl}/health`);
-    if (healthResponse.ok) {
-        category.score += 3;
-        category.findings.push('[PASS] Server provides a /health endpoint.');
-    } else {
-        category.findings.push('[INFO] No working /health endpoint found.');
-    }
-  } catch (e) {
-      category.findings.push('[INFO] No working /health endpoint found.');
-  }
-
-  // JSON-RPC compliance checks
-  // Omitted for brevity in this example, but would test ID echoing, error codes, etc.
-  category.score += 7;
-  category.findings.push('[PASS] JSON-RPC compliance checks passed (simulated).');
-
-
-  return category;
-};
-
-const checkTransportLayerModernity = async (
-  serverUrl: string
-): Promise<ReportCategory> => {
-    const category: ReportCategory = {
+const checkConnectionAndCapabilities = async (serverUrl: string): Promise<{ transportCategory: ReportCategory, coreCategory: ReportCategory }> => {
+    let client: Client | null = null;
+    const transportCategory: ReportCategory = {
         name: 'II. Transport Layer Modernity', score: 0, maxPoints: 15,
         description: 'Uses the latest Streamable HTTP transport.', findings: [],
     };
+    const coreCategory: ReportCategory = {
+        name: 'I. Core Protocol Adherence', score: 0, maxPoints: 15,
+        description: 'Correctly implements fundamental MCP components.', findings: [],
+    };
 
     try {
-        const response = await proxiedFetch(`${serverUrl}/mcp`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jsonrpc: '2.0', method: 'mcp/getCapabilities', id: 'transport-check' }),
-        });
-        if (response.ok) {
-            category.score = 15;
-            category.findings.push('[PASS] Server supports the modern Streamable HTTP transport.');
+        const { client: connectedClient, transportType } = await attemptParallelConnections(serverUrl);
+        client = connectedClient;
+
+        if (transportType === 'streamable-http') {
+            transportCategory.score = 15;
+            transportCategory.findings.push('[PASS] Server supports the modern Streamable HTTP transport.');
+        } else if (transportType === 'legacy-sse') {
+            transportCategory.score = 0;
+            transportCategory.findings.push('[FAIL] Server uses the deprecated HTTP+SSE transport.');
+        }
+
+        const capabilities = await client.getCapabilities();
+        coreCategory.findings.push('[PASS] Successfully retrieved capabilities from the server.');
+        coreCategory.score += 5;
+
+        const { tools, resources } = capabilities;
+        if (tools?.length || resources?.length) {
+            coreCategory.findings.push('[PASS] Server advertises at least one tool or resource.');
+            coreCategory.score += 5;
         } else {
-             throw new Error(`Failed with status ${response.status}`);
+            coreCategory.findings.push('[WARN] Server advertises no tools or resources.');
         }
-    } catch (e) {
-        try {
-            const sseResponse = await proxiedFetch(`${serverUrl}/sse`);
-            if (sseResponse.ok) {
-                category.score = 0;
-                category.findings.push('[FAIL] Server uses the deprecated HTTP+SSE transport.');
-            } else {
-                category.findings.push('[FAIL] Could not connect using modern or legacy transports.');
-            }
-        } catch (e2) {
-             category.findings.push('[FAIL] Could not connect using modern or legacy transports.');
+
+        if (!tools?.every((t: any) => t.name && t.description && t.input_schema)) {
+            coreCategory.findings.push('[FAIL] Not all advertised tools are well-documented (name, description, schema).');
+        } else {
+            coreCategory.findings.push('[PASS] All advertised tools are well-documented.');
+            coreCategory.score += 5;
         }
+
+    } catch (e: any) {
+        transportCategory.findings.push(`[FAIL] Connection failed: ${e.message}`);
+        coreCategory.findings.push(`[FAIL] Could not retrieve capabilities: ${e.message}`);
+    } finally {
+        await client?.close();
     }
-    return category;
+
+    return { transportCategory, coreCategory };
 };
 
-const checkSecurityPosture = async (
-  serverUrl: string
-): Promise<ReportCategory> => {
+
+const checkSecurityPosture = async (serverUrl: string): Promise<ReportCategory> => {
     const category: ReportCategory = {
         name: 'III. Security Posture (OAuth 2.1)', score: 0, maxPoints: 40,
         description: 'Implements modern, secure authentication.', findings: [],
     };
 
     try {
-        const response = await proxiedFetch(`${serverUrl}/.well-known/oauth-authorization-server`);
-        if (!response.ok) throw new Error(`Discovery request failed with status ${response.status}`);
-        const metadata = await response.json();
+        const oauthConfig = await getOAuthConfig(serverUrl);
+        if (!oauthConfig) throw new Error('OAuth configuration could not be determined.');
 
-        category.findings.push('[PASS] Provides an OAuth metadata discovery document.');
+        category.findings.push('[PASS] Server provides a valid OAuth 2.1 configuration (via discovery or default).');
         category.score += 10;
 
-        if (metadata.code_challenge_methods_supported?.includes('S256')) {
-            category.findings.push('[PASS] Server advertises support for PKCE (S256).');
-            category.score += 20; // Critical requirement
+        if (oauthConfig.supportsPKCE) {
+            category.findings.push('[PASS] Server configuration indicates support for PKCE (REQUIRED).');
+            category.score += 20;
         } else {
-            category.findings.push('[FAIL] Server does not advertise PKCE support. CRITICAL FAILURE.');
-            category.score = 0;
+            category.findings.push('[FAIL] Server does not support PKCE. This is a critical security failure.');
+            category.score = 0; // Reset score on critical failure
             return category;
         }
 
-        if (metadata.registration_endpoint) {
-            category.findings.push('[PASS] Supports Dynamic Client Registration.');
+        if (oauthConfig.registrationEndpoint || oauthConfig.requiresDynamicRegistration) {
+            category.findings.push('[PASS] Server supports Dynamic Client Registration.');
             category.score += 5;
         } else {
-            category.findings.push('[INFO] Does not support Dynamic Client Registration.');
+            category.findings.push('[INFO] Server does not appear to support Dynamic Client Registration.');
         }
 
-        if (metadata.token_endpoint) {
+        if (oauthConfig.tokenEndpoint) {
              category.findings.push('[PASS] Provides a secure token endpoint.');
              category.score += 5;
         }
@@ -211,16 +152,13 @@ const checkSecurityPosture = async (
     return category;
 };
 
-const checkWebClientAccessibility = async (
-  serverUrl: string
-): Promise<ReportCategory> => {
+const checkWebClientAccessibility = async (serverUrl: string): Promise<ReportCategory> => {
     const category: ReportCategory = {
         name: 'IV. Web Client Accessibility (CORS)', score: 0, maxPoints: 15,
         description: 'Properly configured for browser-based clients.', findings: [],
     };
 
     try {
-        // This MUST be a direct fetch, not proxied.
         const response = await fetch(`${serverUrl}/mcp`, {
             method: 'OPTIONS',
             headers: { 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' },
@@ -229,7 +167,6 @@ const checkWebClientAccessibility = async (
         if (response.ok) {
             category.findings.push('[PASS] Server handles preflight OPTIONS requests.');
             category.score += 8;
-
             const allowOrigin = response.headers.get('access-control-allow-origin');
             if (allowOrigin === '*') {
                 category.findings.push('[WARN] Uses a wildcard (*) for Access-Control-Allow-Origin.');
@@ -244,7 +181,7 @@ const checkWebClientAccessibility = async (
     } catch (e) {
         if (e instanceof TypeError) {
             category.findings.push('[FAIL] Request blocked by browser CORS policy.');
-            category.findings.push('[INFO] This test runs in the browser to simulate a real web client. A "blocked" result indicates a CORS misconfiguration, but the browser prevents inspection of the specific error details.');
+            category.findings.push('[INFO] This test runs in the browser. A "blocked" result indicates a CORS misconfiguration, but the browser prevents inspection of the specific error details.');
         } else {
             category.findings.push(`[FAIL] An unexpected error occurred during the CORS check: ${(e as Error).message}`);
         }
@@ -252,9 +189,7 @@ const checkWebClientAccessibility = async (
     return category;
 };
 
-const checkPerformanceBaseline = async (
-  serverUrl: string
-): Promise<ReportCategory & { ttfb: number, totalTime: number, tier: string }> => {
+const checkPerformanceBaseline = async (serverUrl: string): Promise<ReportCategory & { ttfb: number, totalTime: number, tier: string }> => {
     const category: ReportCategory & { ttfb: number, totalTime: number, tier: string } = {
         name: 'V. Performance Baseline (Latency)', score: 0, maxPoints: 15,
         description: 'Responsiveness for interactive applications.', findings: [],
@@ -263,7 +198,8 @@ const checkPerformanceBaseline = async (
 
     try {
         const start = performance.now();
-        const response = await proxiedFetch(`${serverUrl}/health`);
+        // Use proxiedFetch to a non-protocol endpoint to measure baseline network/server overhead
+        const response = await proxiedFetch(`${new URL(serverUrl).origin}/health`, { method: 'GET' });
         const ttfb = performance.now() - start;
         await response.text();
         const totalTime = performance.now() - start;
@@ -279,12 +215,11 @@ const checkPerformanceBaseline = async (
         category.findings.push(`[PASS] Performance rated as: ${category.tier}.`);
 
     } catch (e: any) {
-        category.findings.push(`[FAIL] Performance test failed: ${e.message}`);
+        category.findings.push(`[FAIL] Performance test on /health endpoint failed: ${e.message}`);
         category.tier = 'Error';
     }
     return category;
 };
-
 
 // --- Main Evaluation Service ---
 
@@ -293,37 +228,28 @@ export const runEvaluation = async (
   progressCallback: (update: ProgressUpdate) => void
 ): Promise<Report> => {
 
-  progressCallback({ stage: 'Starting Evaluation', details: `Preparing to evaluate ${serverUrl}`, step: 0, totalSteps: TOTAL_STEPS });
+  progressCallback({ stage: '1. Connection & Capabilities', details: 'Detecting transport and fetching capabilities...', step: 1, totalSteps: TOTAL_STEPS });
+  const { transportCategory, coreCategory } = await checkConnectionAndCapabilities(serverUrl);
 
-  const coreProtocolResult = await checkCoreProtocolAdherence(serverUrl);
-  progressCallback({ stage: '1. Core Protocol Adherence', details: 'Finished checks.', step: 1, totalSteps: TOTAL_STEPS });
-
-  const transportResult = await checkTransportLayerModernity(serverUrl);
-  progressCallback({ stage: '2. Transport Layer Modernity', details: 'Finished checks.', step: 2, totalSteps: TOTAL_STEPS });
-
+  progressCallback({ stage: '2. Security Posture', details: 'Analyzing OAuth 2.1 implementation...', step: 2, totalSteps: TOTAL_STEPS });
   const securityResult = await checkSecurityPosture(serverUrl);
-  progressCallback({ stage: '3. Security Posture', details: 'Finished checks.', step: 3, totalSteps: TOTAL_STEPS });
 
+  progressCallback({ stage: '3. Web Client Accessibility', details: 'Reviewing CORS configuration...', step: 3, totalSteps: TOTAL_STEPS });
   const corsResult = await checkWebClientAccessibility(serverUrl);
-  progressCallback({ stage: '4. Web Client Accessibility', details: 'Finished checks.', step: 4, totalSteps: TOTAL_STEPS });
 
+  progressCallback({ stage: '4. Performance Baseline', details: 'Measuring connection and request latency...', step: 4, totalSteps: TOTAL_STEPS });
   const performanceResult = await checkPerformanceBaseline(serverUrl);
-  progressCallback({ stage: '5. Performance Baseline', details: 'Finished checks.', step: 5, totalSteps: TOTAL_STEPS });
 
-  progressCallback({ stage: 'Finalizing Report', details: 'Compiling scores and findings...', step: 6, totalSteps: TOTAL_STEPS });
+  progressCallback({ stage: '5. Finalizing Report', details: 'Compiling scores and findings...', step: 5, totalSteps: TOTAL_STEPS });
 
-  const categories = [coreProtocolResult, transportResult, securityResult, corsResult, performanceResult];
+  const categories = [coreCategory, transportCategory, securityResult, corsResult, performanceResult];
   const finalScore = categories.reduce((sum, cat) => sum + cat.score, 0);
 
   const getGrade = (score: number): string => {
-    if (score >= 90) return 'A+';
-    if (score >= 85) return 'A';
-    if (score >= 80) return 'A-';
-    if (score >= 75) return 'B+';
-    if (score >= 70) return 'B';
-    if (score >= 65) return 'C+';
-    if (score >= 60) return 'C';
-    if (score >= 50) return 'D';
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
     return 'F';
   };
 
