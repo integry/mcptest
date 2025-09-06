@@ -184,7 +184,7 @@ const ReportCard: React.FC<{ report: Report, onRunAgain: () => void }> = ({ repo
 };
 
 
-import { runEvaluation, Report, ProgressUpdate } from '../services/evaluationService';
+import { runEvaluation, Report, ProgressUpdate, EvaluationResult } from '../services/evaluationService';
 
 // --- Main ReportView Component ---
 
@@ -198,9 +198,56 @@ const ReportView: React.FC = () => {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const handleRunReport = async (url?: string) => {
+    const urlToRun = url || serverUrl;
+    if (!urlToRun.trim()) {
+      setError('Please enter a server URL to evaluate.');
+      return;
+    }
+
+    const normalizedUrl = urlToRun.replace(/^https?:\/\//, '');
+    navigate(`/report/${normalizedUrl}`, { replace: true });
+
+    setStatus('in-progress');
+    setError(null);
+    setReport(null);
+
+    try {
+      const result = await runEvaluation(urlToRun, (progressUpdate) => {
+        setProgress(progressUpdate);
+      });
+
+      if (result.type === 'complete') {
+        setReport(result.report);
+        setStatus('complete');
+      } else if (result.type === 'auth_required') {
+        setStatus('authenticating');
+        setProgress({ stage: 'Redirecting for authentication...', details: 'Please complete the login with the provider.', step: 1, totalSteps: 1 });
+        sessionStorage.setItem('oauth_return_to_report', JSON.stringify({ serverUrl: urlToRun }));
+        window.location.href = result.authUrl;
+      }
+
+    } catch (e: any) {
+      console.error("Evaluation failed:", e);
+      setError(`An error occurred during evaluation: ${e.message}`);
+      setStatus('error');
+    }
+  };
+
   useEffect(() => {
-    if (urlParam) {
-      // Basic validation and sanitization
+    const returnInfoRaw = sessionStorage.getItem('oauth_return_to_report');
+    if (returnInfoRaw) {
+        sessionStorage.removeItem('oauth_return_to_report');
+        try {
+            const returnInfo = JSON.parse(returnInfoRaw);
+            if (returnInfo.serverUrl) {
+                setServerUrl(returnInfo.serverUrl);
+                handleRunReport(returnInfo.serverUrl);
+            }
+        } catch (e) {
+            console.error("Failed to parse return-to-report info", e);
+        }
+    } else if (urlParam) {
       let decodedUrl = decodeURIComponent(urlParam);
       if (!/^https?:\/\//i.test(decodedUrl)) {
         decodedUrl = `https://${decodedUrl}`;
@@ -208,34 +255,6 @@ const ReportView: React.FC = () => {
       setServerUrl(decodedUrl);
     }
   }, [urlParam]);
-
-  const handleRunReport = async () => {
-    if (!serverUrl.trim()) {
-      setError('Please enter a server URL to evaluate.');
-      return;
-    }
-
-    const normalizedUrl = serverUrl.replace(/^https?:\/\//, '');
-    navigate(`/report/${normalizedUrl}`);
-
-    setStatus('in-progress');
-    setError(null);
-    setReport(null);
-
-    try {
-      const finalReport = await runEvaluation(serverUrl, (progressUpdate) => {
-        setProgress(progressUpdate);
-      });
-      setReport(finalReport);
-      setStatus('complete');
-    } catch (e: any) {
-      console.error("Evaluation failed:", e);
-      setError(`An error occurred during evaluation: ${e.message}`);
-      setStatus('error');
-    } finally {
-      setProgress(null);
-    }
-  };
 
   const handleRunAgain = () => {
     setStatus('idle');
