@@ -6,14 +6,14 @@ import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs';
+  activeView: 'playground' | 'dashboards' | 'docs' | 'report';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
   handleCreateSpace: (name: string) => void; // Function to handle creation
   handleReorderDashboards: (reorderedDashboards: Space[]) => void; // Function to handle reordering
   getSpaceHealthStatus: (spaceId: string) => { loading: boolean, successCount: number, totalCount: number };
-  getSpaceHealthColor: (spaceId: string) => 'green' | 'orange' | 'red' | 'gray';
+  getSpaceHealthColor: (spaceId:string) => 'green' | 'orange' | 'red' | 'gray';
   performAllDashboardsHealthCheck: () => Promise<void>;
   onMoveCard: (sourceSpaceId: string, targetSpaceId: string, cardId: string) => void; // Function to handle card moves
   theme?: string;
@@ -55,6 +55,12 @@ const SideNav: React.FC<SideNavProps> = ({
 
   const handlePlaygroundClick = () => {
     navigate('/');
+    // Close mobile menu if open
+    document.body.classList.remove('menu-open');
+  };
+
+  const handleReportClick = () => {
+    navigate('/report');
     // Close mobile menu if open
     document.body.classList.remove('menu-open');
   };
@@ -250,6 +256,15 @@ const SideNav: React.FC<SideNavProps> = ({
         onClick={handlePlaygroundClick}
       >
         <i className="bi bi-search me-2"></i> Playground
+      </Link>
+
+      {/* Report Link */}
+      <Link
+        to="/report"
+        className={`nav-link ${activeView === 'report' ? 'active fw-bold' : ''}`}
+        onClick={handleReportClick}
+      >
+        <i className="bi bi-file-earmark-text me-2"></i> Report
       </Link>
 
       {/* Dashboards Header */}

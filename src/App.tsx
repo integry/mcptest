@@ -11,6 +11,7 @@ import NotificationPopup from './components/NotificationPopup';
 // Placeholders for new components
 import SideNav from './components/SideNav'; // New
 import DashboardsView from './components/DashboardsView'; // New
+import ReportView from './components/ReportView'; // New
 import Tabs from './components/Tabs'; // New
 // Documentation components
 import WhatIsMcp from './components/docs/WhatIsMcp';
@@ -66,13 +67,16 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
   }
   if (path.startsWith('/space/')) {
     return 'dashboards';
+  }
+  if (path.startsWith('/report')) {
+    return 'report';
   }
   return 'playground';
 };
@@ -187,6 +191,12 @@ function App() {
       const docPage = path.replace('/docs/', '');
       console.log('[ActiveView] Detected docs view');
       return { activeView: 'docs' as const, activeDocPage: docPage };
+    }
+
+    // Check for report routes
+    if (path.startsWith('/report')) {
+      console.log('[ActiveView] Detected report view');
+      return { activeView: 'report' as const, activeDocPage: null };
     }
     
     // Check for dashboard routes
@@ -1675,6 +1685,11 @@ function App() {
                 Documentation page not found. Please select a page from the navigation.
               </div>
             )}
+          </div>
+
+          {/* Report View */}
+          <div className={`view-panel ${activeView === 'report' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            <ReportView />
           </div>
 
           {/* Playground View */}
