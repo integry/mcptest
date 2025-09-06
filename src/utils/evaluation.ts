@@ -173,12 +173,8 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       }
     });
     
-    // Get server info from the client
-    try {
-      initData = mcpClient.getServerCapabilities ? mcpClient.getServerCapabilities() : {};
-    } catch (e) {
-      // Fallback to manual check if needed
-    }
+    // Note: The MCP SDK client doesn't expose the initialize response data directly
+    // We'll check capabilities by making actual requests below
   } else {
     // Fallback to direct HTTP check if client connection failed
     try {
@@ -243,10 +239,16 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
           metadata: { contentType }
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       protocolSection.details.push({
-        text: `✗ Failed to connect to server: ${error}`,
-        context: 'Connection failure prevents any MCP protocol validation. Check server availability and CORS configuration.'
+        text: `✗ Failed to connect to server: ${error.message || error}`,
+        context: 'Connection failure prevents any MCP protocol validation. Check server availability and CORS configuration.',
+        metadata: {
+          error: 'connection_failed',
+          errorMessage: error.message,
+          endpoint: `${serverUrl}/mcp/v1/initialize`,
+          method: 'POST'
+        }
       });
     }
   }
@@ -270,104 +272,254 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       try {
         // List available tools
         const toolsResponse = await mcpClient.request({ method: 'tools/list' }, { });
-        if (toolsResponse?.tools && toolsResponse.tools.length > 0) {
-          capabilitiesSection.score += 3;
+        if (toolsResponse?.tools && Array.isArray(toolsResponse.tools)) {
+          if (toolsResponse.tools.length > 0) {
+            capabilitiesSection.score += 3;
+            capabilitiesSection.details.push({
+              text: '✓ Server supports tools capability',
+              context: `Tools allow servers to expose executable functions. Found ${toolsResponse.tools.length} tools.`,
+              metadata: {
+                method: 'tools/list',
+                response: 'success',
+                toolCount: toolsResponse.tools.length,
+                tools: toolsResponse.tools.map((tool: any) => ({
+                  name: tool.name,
+                  description: tool.description,
+                  inputSchema: tool.inputSchema
+                }))
+              }
+            });
+          } else {
+            capabilitiesSection.score += 3;
+            capabilitiesSection.details.push({
+              text: '✓ Server supports tools capability',
+              context: 'Server has tools capability enabled but currently exposes no tools.',
+              metadata: {
+                method: 'tools/list',
+                response: 'success',
+                toolCount: 0,
+                tools: []
+              }
+            });
+          }
+        } else {
           capabilitiesSection.details.push({
-            text: '✓ Server supports tools capability',
-            context: `Tools allow servers to expose executable functions. Found ${toolsResponse.tools.length} tools.`,
+            text: '✗ Invalid response format for tools listing',
+            context: 'Server returned an unexpected response format. Expected { tools: [...] }.',
             metadata: {
-              toolCount: toolsResponse.tools.length,
-              tools: toolsResponse.tools.map((tool: any) => ({
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.inputSchema
-              }))
+              method: 'tools/list',
+              response: 'invalid_format',
+              actualResponse: toolsResponse
+            }
+          });
+        }
+      } catch (e: any) {
+        // Check if it's a method not found error which means tools aren't supported
+        if (e.message?.includes('method not found') || e.code === -32601) {
+          capabilitiesSection.details.push({
+            text: '✗ Server does not support tools capability',
+            context: 'Tools are a core MCP feature for exposing server functionality. Add tools to capabilities.',
+            metadata: {
+              method: 'tools/list',
+              error: 'method_not_found',
+              errorMessage: e.message
             }
           });
         } else {
           capabilitiesSection.details.push({
-            text: '✗ Server does not support tools capability',
-            context: 'Tools are a core MCP feature for exposing server functionality. Add tools to capabilities.'
+            text: '✗ Failed to check tools capability',
+            context: `Error occurred while checking tools support: ${e.message}`,
+            metadata: {
+              method: 'tools/list',
+              error: 'request_failed',
+              errorMessage: e.message,
+              errorCode: e.code
+            }
           });
         }
-      } catch (e) {
-        // Tools not supported
-        capabilitiesSection.details.push({
-          text: '✗ Server does not support tools capability',
-          context: 'Tools are a core MCP feature for exposing server functionality. Add tools to capabilities.'
-        });
       }
 
       try {
         // List available resources  
         const resourcesResponse = await mcpClient.request({ method: 'resources/list' }, { });
-        if (resourcesResponse?.resources && resourcesResponse.resources.length > 0) {
-          capabilitiesSection.score += 3;
+        if (resourcesResponse?.resources && Array.isArray(resourcesResponse.resources)) {
+          if (resourcesResponse.resources.length > 0) {
+            capabilitiesSection.score += 3;
+            capabilitiesSection.details.push({
+              text: '✓ Server supports resources capability',
+              context: `Resources allow servers to expose data. Found ${resourcesResponse.resources.length} resources.`,
+              metadata: {
+                method: 'resources/list',
+                response: 'success',
+                resourceCount: resourcesResponse.resources.length,
+                resources: resourcesResponse.resources.map((resource: any) => ({
+                  uri: resource.uri,
+                  name: resource.name,
+                  description: resource.description,
+                  mimeType: resource.mimeType
+                }))
+              }
+            });
+          } else {
+            capabilitiesSection.score += 3;
+            capabilitiesSection.details.push({
+              text: '✓ Server supports resources capability',
+              context: 'Server has resources capability enabled but currently exposes no resources.',
+              metadata: {
+                method: 'resources/list',
+                response: 'success',
+                resourceCount: 0,
+                resources: []
+              }
+            });
+          }
+        } else {
           capabilitiesSection.details.push({
-            text: '✓ Server supports resources capability',
-            context: `Resources allow servers to expose data. Found ${resourcesResponse.resources.length} resources.`,
+            text: '✗ Invalid response format for resources listing',
+            context: 'Server returned an unexpected response format. Expected { resources: [...] }.',
             metadata: {
-              resourceCount: resourcesResponse.resources.length,
-              resources: resourcesResponse.resources.map((resource: any) => ({
-                uri: resource.uri,
-                name: resource.name,
-                description: resource.description,
-                mimeType: resource.mimeType
-              }))
+              method: 'resources/list',
+              response: 'invalid_format',
+              actualResponse: resourcesResponse
+            }
+          });
+        }
+      } catch (e: any) {
+        // Check if it's a method not found error which means resources aren't supported
+        if (e.message?.includes('method not found') || e.code === -32601) {
+          capabilitiesSection.details.push({
+            text: '✗ Server does not support resources capability',
+            context: 'Resources enable data sharing between server and client. Add resources to capabilities.',
+            metadata: {
+              method: 'resources/list',
+              error: 'method_not_found',
+              errorMessage: e.message
             }
           });
         } else {
           capabilitiesSection.details.push({
-            text: '✗ Server does not support resources capability',
-            context: 'Resources enable data sharing between server and client. Add resources to capabilities.'
+            text: '✗ Failed to check resources capability',
+            context: `Error occurred while checking resources support: ${e.message}`,
+            metadata: {
+              method: 'resources/list',
+              error: 'request_failed',
+              errorMessage: e.message,
+              errorCode: e.code
+            }
           });
         }
-      } catch (e) {
-        // Resources not supported
-        capabilitiesSection.details.push({
-          text: '✗ Server does not support resources capability',
-          context: 'Resources enable data sharing between server and client. Add resources to capabilities.'
-        });
       }
 
       try {
         // List available prompts
         const promptsResponse = await mcpClient.request({ method: 'prompts/list' }, { });
-        if (promptsResponse?.prompts && promptsResponse.prompts.length > 0) {
-          capabilitiesSection.score += 2;
+        if (promptsResponse?.prompts && Array.isArray(promptsResponse.prompts)) {
+          if (promptsResponse.prompts.length > 0) {
+            capabilitiesSection.score += 2;
+            capabilitiesSection.details.push({
+              text: '✓ Server supports prompts capability',
+              context: `Prompts allow servers to define reusable prompt templates. Found ${promptsResponse.prompts.length} prompts.`,
+              metadata: {
+                method: 'prompts/list',
+                response: 'success',
+                promptCount: promptsResponse.prompts.length,
+                prompts: promptsResponse.prompts.map((prompt: any) => ({
+                  name: prompt.name,
+                  description: prompt.description,
+                  arguments: prompt.arguments
+                }))
+              }
+            });
+          } else {
+            capabilitiesSection.score += 2;
+            capabilitiesSection.details.push({
+              text: '✓ Server supports prompts capability',
+              context: 'Server has prompts capability enabled but currently exposes no prompts.',
+              metadata: {
+                method: 'prompts/list',
+                response: 'success',
+                promptCount: 0,
+                prompts: []
+              }
+            });
+          }
+        } else {
           capabilitiesSection.details.push({
-            text: '✓ Server supports prompts capability',
-            context: `Prompts allow servers to define reusable prompt templates. Found ${promptsResponse.prompts.length} prompts.`,
+            text: '✗ Invalid response format for prompts listing',
+            context: 'Server returned an unexpected response format. Expected { prompts: [...] }.',
             metadata: {
-              promptCount: promptsResponse.prompts.length,
-              prompts: promptsResponse.prompts.map((prompt: any) => ({
-                name: prompt.name,
-                description: prompt.description,
-                arguments: prompt.arguments
-              }))
+              method: 'prompts/list',
+              response: 'invalid_format',
+              actualResponse: promptsResponse
+            }
+          });
+        }
+      } catch (e: any) {
+        // Check if it's a method not found error which means prompts aren't supported
+        if (e.message?.includes('method not found') || e.code === -32601) {
+          capabilitiesSection.details.push({
+            text: '✗ Server does not support prompts capability',
+            context: 'Prompts help standardize LLM interactions. Add prompts to capabilities.',
+            metadata: {
+              method: 'prompts/list',
+              error: 'method_not_found',
+              errorMessage: e.message
             }
           });
         } else {
           capabilitiesSection.details.push({
-            text: '✗ Server does not support prompts capability',
-            context: 'Prompts help standardize LLM interactions. Add prompts to capabilities.'
+            text: '✗ Failed to check prompts capability',
+            context: `Error occurred while checking prompts support: ${e.message}`,
+            metadata: {
+              method: 'prompts/list',
+              error: 'request_failed',
+              errorMessage: e.message,
+              errorCode: e.code
+            }
           });
         }
-      } catch (e) {
-        // Prompts not supported
-        capabilitiesSection.details.push({
-          text: '✗ Server does not support prompts capability',
-          context: 'Prompts help standardize LLM interactions. Add prompts to capabilities.'
-        });
       }
 
-      // Logging capability is typically declared in initialize response
-      // For now, give credit if the client connected successfully
-      capabilitiesSection.score += 2;
-      capabilitiesSection.details.push({
-        text: '✓ Server supports logging capability',
-        context: 'Logging enables debugging and monitoring of MCP interactions.'
-      });
+      // Logging capability check
+      // Try to check if the server accepts logging messages
+      try {
+        // Send a test log message
+        await mcpClient.request({ method: 'logging/setLevel' }, { level: 'info' });
+        capabilitiesSection.score += 2;
+        capabilitiesSection.details.push({
+          text: '✓ Server supports logging capability',
+          context: 'Logging enables debugging and monitoring of MCP interactions.',
+          metadata: {
+            method: 'logging/setLevel',
+            response: 'success',
+            testLevel: 'info'
+          }
+        });
+      } catch (e: any) {
+        // If method not found, logging is not supported
+        if (e.message?.includes('method not found') || e.code === -32601) {
+          capabilitiesSection.details.push({
+            text: '✗ Server does not support logging capability',
+            context: 'Logging is useful for debugging MCP integrations. Add logging to capabilities.',
+            metadata: {
+              method: 'logging/setLevel',
+              error: 'method_not_found',
+              errorMessage: e.message
+            }
+          });
+        } else {
+          // For other errors, assume logging is supported since we connected successfully
+          capabilitiesSection.score += 2;
+          capabilitiesSection.details.push({
+            text: '✓ Server supports logging capability',
+            context: 'Logging enables debugging and monitoring of MCP interactions.',
+            metadata: {
+              method: 'connection_successful',
+              note: 'Inferred from successful connection'
+            }
+          });
+        }
+      }
     } else if (initData) {
       // Fallback to checking initialize response data
       
@@ -436,10 +588,14 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         context: 'Server must respond successfully to initialize request to validate capabilities.'
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     capabilitiesSection.details.push({
-      text: `✗ Failed to parse capabilities: ${error}`,
-      context: 'Error parsing server response. Ensure server returns valid JSON-RPC 2.0 format.'
+      text: `✗ Failed to parse capabilities: ${error.message || error}`,
+      context: 'Error parsing server response. Ensure server returns valid JSON-RPC 2.0 format.',
+      metadata: {
+        error: 'capabilities_check_failed',
+        errorMessage: error.message
+      }
     });
   }
 
@@ -543,10 +699,15 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       text: '✓ Server uses modern HTTP protocols',
       context: 'Server supports HTTP/2 or HTTP/3, providing improved performance through multiplexing and reduced latency.'
     });
-    } catch (error) {
+    } catch (error: any) {
       transportSection.details.push({
-        text: `✗ Transport check failed: ${error}`,
-        context: 'Unable to validate transport layer capabilities. This may indicate network issues or server configuration problems.'
+        text: `✗ Transport check failed: ${error.message || error}`,
+        context: 'Unable to validate transport layer capabilities. This may indicate network issues or server configuration problems.',
+        metadata: {
+          error: 'transport_check_failed',
+          errorMessage: error.message,
+          endpoint: `${serverUrl}/mcp/v1/stream`
+        }
       });
     }
   }
@@ -572,17 +733,18 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         details: []
       };
 
+      const discoveryData = await oauthDiscoveryResponse.json();
+      
       securitySection.score += 20;
       securitySection.details.push({
         text: '✓ OAuth 2.1 discovery endpoint available',
         context: 'OAuth 2.1 discovery allows automatic configuration of authentication endpoints, improving security and user experience.',
         metadata: {
           discoveryEndpoint: `${serverUrl}/.well-known/oauth-authorization-server`,
+          responseStatus: oauthDiscoveryResponse.status,
           discoveryData: discoveryData
         }
       });
-      
-      const discoveryData = await oauthDiscoveryResponse.json();
       if (discoveryData.token_endpoint) {
         securitySection.score += 10;
         securitySection.details.push({
@@ -666,7 +828,12 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     } else {
       corsSection.details.push({
         text: '✗ CORS origin not properly configured',
-        context: 'Browser clients cannot connect without proper CORS headers. Add Access-Control-Allow-Origin header to enable web access.'
+        context: 'Browser clients cannot connect without proper CORS headers. Add Access-Control-Allow-Origin header to enable web access.',
+        metadata: {
+          'Access-Control-Allow-Origin': allowOrigin || 'not present',
+          testedOrigin: 'https://mcp.dev',
+          responseStatus: corsResponse.status
+        }
       });
     }
 
@@ -683,7 +850,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     } else {
       corsSection.details.push({
         text: '✗ CORS methods not properly configured',
-        context: 'POST method must be allowed for MCP requests. Add POST to Access-Control-Allow-Methods header.'
+        context: 'POST method must be allowed for MCP requests. Add POST to Access-Control-Allow-Methods header.',
+        metadata: {
+          'Access-Control-Allow-Methods': allowMethods || 'not present',
+          requiredMethods: ['POST', 'OPTIONS']
+        }
       });
     }
 
@@ -700,13 +871,23 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     } else {
       corsSection.details.push({
         text: '✗ CORS headers not properly configured',
-        context: 'Authorization header must be allowed for API authentication. Add to Access-Control-Allow-Headers.'
+        context: 'Authorization header must be allowed for API authentication. Add to Access-Control-Allow-Headers.',
+        metadata: {
+          'Access-Control-Allow-Headers': allowHeaders || 'not present',
+          requiredHeaders: ['content-type', 'authorization']
+        }
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     corsSection.details.push({
-      text: `✗ CORS check failed: ${error}`,
-      context: 'Unable to validate CORS configuration. This typically indicates the server does not handle OPTIONS preflight requests.'
+      text: `✗ CORS check failed: ${error.message || error}`,
+      context: 'Unable to validate CORS configuration. This typically indicates the server does not handle OPTIONS preflight requests.',
+      metadata: {
+        error: 'cors_check_failed',
+        errorMessage: error.message,
+        endpoint: `${serverUrl}/mcp/v1/initialize`,
+        method: 'OPTIONS'
+      }
     });
   }
 
@@ -784,10 +965,15 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         }
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     performanceSection.details.push({
-      text: `✗ Performance check failed: ${error}`,
-      context: 'Unable to measure server response time. This may indicate connectivity issues or server unavailability.'
+      text: `✗ Performance check failed: ${error.message || error}`,
+      context: 'Unable to measure server response time. This may indicate connectivity issues or server unavailability.',
+      metadata: {
+        error: 'performance_check_failed',
+        errorMessage: error.message,
+        endpoint: `${serverUrl}/mcp/v1/initialize`
+      }
     });
   }
 
