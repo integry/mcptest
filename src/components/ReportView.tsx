@@ -265,7 +265,7 @@ const ReportView: React.FC = () => {
         </div>
       )}
 
-      {progress.length > 0 && (
+      {progress.length > 0 && !report && (
         <div className="card mb-3">
           <div className="card-header">Progress</div>
           <ul className="list-group list-group-flush">
@@ -281,6 +281,9 @@ const ReportView: React.FC = () => {
             <h3 className={`text-${getScoreColor(report.finalScore)}`}>
               Final Score: {report.finalScore} / 100 ({getScoreGrade(report.finalScore)})
             </h3>
+            {!report.sections.security && (
+              <small className="text-muted">Note: OAuth not supported - maximum 60 points possible</small>
+            )}
           </div>
           <div className="card-body">
             {report.sections && report.sections.auth && (
@@ -385,18 +388,26 @@ const ReportView: React.FC = () => {
                   <div className="card">
                     <div className="card-header">
                       <h5>{section.name}</h5>
-                      <span className={`badge bg-${getScoreColor(section.score / section.maxScore * 100)}`}>
-                        {section.score} / {section.maxScore} points
-                      </span>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span className={`text-${getScoreColor(section.score / section.maxScore * 100)} fw-bold`}>
+                          {section.score} / {section.maxScore} points
+                        </span>
+                        <span className={`badge bg-${getScoreColor(section.score / section.maxScore * 100)}`}>
+                          {Math.round(section.score / section.maxScore * 100)}%
+                        </span>
+                      </div>
+                      <small className="text-muted">{section.description}</small>
                     </div>
                     <div className="card-body">
-                      <p>{section.description}</p>
                       {section.details && (
-                        <ul className="list-group">
+                        <div>
                           {section.details.map((detail: string, i: number) => (
-                            <li key={i} className="list-group-item">{detail}</li>
+                            <div key={i} className={`d-flex align-items-center mb-2 ${detail.startsWith('✓') ? 'text-success' : detail.startsWith('✗') ? 'text-danger' : 'text-warning'}`}>
+                              <span style={{ marginRight: '10px' }}>{detail.startsWith('✓') ? '✓' : detail.startsWith('✗') ? '✗' : '⚠'}</span>
+                              <span>{detail.substring(2)}</span>
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       )}
                     </div>
                   </div>

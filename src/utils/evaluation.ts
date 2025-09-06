@@ -46,6 +46,8 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     sections: {}
   };
 
+  let oauthSupported = false;  // Track if OAuth is supported
+
   // Check if server requires authentication by attempting a basic request
   if (!accessToken) {
     onProgress('Checking if server requires OAuth authentication...');
@@ -131,17 +133,36 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
   };
 
   try {
-    // Check for SSE support
-    const sseResponse = await proxiedFetch(`${serverUrl}/mcp/v1/sse`, token, {
-      method: 'GET',
-      headers: { 'Accept': 'text/event-stream' }
+    // Check for HTTP streaming support (preferred over SSE)
+    const streamResponse = await proxiedFetch(`${serverUrl}/mcp/v1/stream`, token, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/x-ndjson, text/event-stream'
+      },
+      body: JSON.stringify({
+        protocolVersion: '2024-11-05',
+        capabilities: {}
+      })
     }, accessToken);
 
-    if (sseResponse.ok && sseResponse.headers.get('content-type')?.includes('text/event-stream')) {
+    if (streamResponse.ok && 
+        (streamResponse.headers.get('content-type')?.includes('application/x-ndjson') || 
+         streamResponse.headers.get('content-type')?.includes('text/event-stream'))) {
       transportSection.score += 10;
-      transportSection.details.push('✓ Server supports Server-Sent Events (SSE)');
+      transportSection.details.push('✓ Server supports HTTP streaming (modern standard)');
     } else {
-      transportSection.details.push('✗ Server does not support SSE');
+      transportSection.details.push('✗ Server does not support HTTP streaming');
+      
+      // Check for SSE support (legacy, no penalty but no points)
+      const sseResponse = await proxiedFetch(`${serverUrl}/mcp/v1/sse`, token, {
+        method: 'GET',
+        headers: { 'Accept': 'text/event-stream' }
+      }, accessToken);
+
+      if (sseResponse.ok && sseResponse.headers.get('content-type')?.includes('text/event-stream')) {
+        transportSection.details.push('⚠ Server supports SSE (legacy standard - no points awarded)');
+      }
     }
 
     // Check for HTTP/2 support (placeholder - would need more complex check)
@@ -154,21 +175,24 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
   report.sections.transport = transportSection;
   report.finalScore += transportSection.score;
 
-  // 3. Security Posture (40 points)
+  // 3. Security Posture (40 points if OAuth supported, otherwise excluded)
   onProgress('Checking Security Posture...');
-  const securitySection: EvaluationSection = {
-    name: 'Security Posture',
-    description: 'Evaluates OAuth 2.1 implementation and security headers',
-    score: 0,
-    maxScore: 40,
-    details: []
-  };
-
+  
   try {
     // Check for OAuth discovery endpoint
     const oauthDiscoveryResponse = await proxiedFetch(`${serverUrl}/.well-known/oauth-authorization-server`, token, {}, accessToken);
     
     if (oauthDiscoveryResponse.ok) {
+      // OAuth is supported, include security section
+      oauthSupported = true;
+      const securitySection: EvaluationSection = {
+        name: 'Security Posture',
+        description: 'Evaluates OAuth 2.1 implementation and security headers',
+        score: 0,
+        maxScore: 40,
+        details: []
+      };
+
       securitySection.score += 20;
       securitySection.details.push('✓ OAuth 2.1 discovery endpoint available');
       
@@ -176,20 +200,27 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       if (discoveryData.token_endpoint) {
         securitySection.score += 10;
         securitySection.details.push('✓ Token endpoint properly configured');
+      } else {
+        securitySection.details.push('✗ Token endpoint not configured');
       }
+      
       if (discoveryData.code_challenge_methods_supported?.includes('S256')) {
         securitySection.score += 10;
         securitySection.details.push('✓ PKCE support enabled');
+      } else {
+        securitySection.details.push('✗ PKCE support not enabled');
       }
+
+      report.sections.security = securitySection;
+      report.finalScore += securitySection.score;
     } else {
-      securitySection.details.push('✗ OAuth 2.1 discovery endpoint not found');
+      // OAuth not supported - don't include in scoring
+      onProgress('OAuth not supported by server - excluding from scoring');
     }
   } catch (error) {
-    securitySection.details.push(`✗ Security check failed: ${error}`);
+    // OAuth check failed - assume not supported
+    onProgress('OAuth check failed - excluding from scoring');
   }
-
-  report.sections.security = securitySection;
-  report.finalScore += securitySection.score;
 
   // 4. Web Client Accessibility (15 points)
   onProgress('Checking Web Client Accessibility (CORS)...');
@@ -284,6 +315,14 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
 
   report.sections.performance = performanceSection;
   report.finalScore += performanceSection.score;
+  
+  // Calculate maximum possible score
+  const maxPossibleScore = oauthSupported ? 100 : 60;
+  
+  // Normalize final score to be out of 100
+  if (!oauthSupported && report.finalScore > 0) {
+    report.finalScore = Math.round((report.finalScore / maxPossibleScore) * 100);
+  }
   
   onProgress('Evaluation complete.');
   return report;
