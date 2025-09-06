@@ -176,6 +176,17 @@ const OAuthCallback: React.FC = () => {
                     targetSpaceId: returnView.selectedSpaceId,
                     fromOAuthReturn: true
                   };
+                } else if (returnView.activeView === 'report' && returnView.serverUrl) {
+                  // If returning to report view, navigate back to the report URL
+                  targetPath = `/report/${encodeURIComponent(returnView.serverUrl)}`;
+                  addOAuthLog('info', `🔄 Navigating back to report: ${targetPath}`);
+                  
+                  // Add info to navigation state
+                  navigationState = {
+                    ...navigationState,
+                    fromOAuthReturn: true,
+                    serverUrl: returnView.serverUrl
+                  };
                 }
                 
                 // Don't clear the return view here - let App.tsx handle it after navigation
