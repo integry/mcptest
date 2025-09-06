@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getOAuthConfig, discoverOAuthEndpoints } from '../utils/oauthDiscovery';
 
 // Helper functions for score display
 const getScoreColor = (score: number): string => {
@@ -34,6 +35,49 @@ const ReportView: React.FC = () => {
     }
   }, [urlParam]);
 
+  const checkOAuthAuthentication = async (serverUrl: string): Promise<boolean> => {
+    try {
+      // Check if we already have an OAuth token for this server
+      const serverHost = new URL(serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`).host;
+      const existingToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
+      
+      if (existingToken) {
+        setProgress(prev => [...prev, 'Found existing OAuth token for server']);
+        return true;
+      }
+
+      // Check if server has OAuth endpoints
+      setProgress(prev => [...prev, 'Checking if server requires OAuth authentication...']);
+      const discovered = await discoverOAuthEndpoints(serverUrl);
+      
+      if (discovered) {
+        setProgress(prev => [...prev, 'Server requires OAuth authentication']);
+        
+        // Store the current state so we can return after OAuth
+        sessionStorage.setItem('oauth_return_view', JSON.stringify({
+          activeView: 'report',
+          serverUrl: serverUrl
+        }));
+        
+        // Redirect to OAuth flow
+        const confirmAuth = confirm('This server requires OAuth authentication. Would you like to authenticate now?');
+        if (confirmAuth) {
+          // Navigate to connection panel to handle OAuth
+          navigate('/', { state: { serverUrl, needsAuth: true } });
+          return false;
+        } else {
+          setProgress(prev => [...prev, 'OAuth authentication cancelled by user']);
+          return false;
+        }
+      }
+      
+      return true; // No OAuth required or already authenticated
+    } catch (error) {
+      console.error('Error checking OAuth:', error);
+      return true; // Continue without OAuth on error
+    }
+  };
+
   const handleRunReport = async (urlToTest: string) => {
     if (!currentUser) {
       alert('Please login to run a report.');
@@ -46,6 +90,13 @@ const ReportView: React.FC = () => {
     setReport(null);
     navigate(`/report/${encodeURIComponent(urlToTest)}`);
 
+    // Check if OAuth authentication is needed
+    const canProceed = await checkOAuthAuthentication(urlToTest);
+    if (!canProceed) {
+      setIsRunning(false);
+      return;
+    }
+
     const worker = new Worker(new URL('../workers/reportWorker.ts', import.meta.url), { type: 'module' });
 
     worker.onmessage = (e) => {
@@ -56,6 +107,11 @@ const ReportView: React.FC = () => {
         setReport(data);
         setIsRunning(false);
         worker.terminate();
+        
+        // If authentication is required, show a button to authenticate
+        if (data && data.sections && data.sections.auth) {
+          setProgress(prev => [...prev, 'Authentication required. Please authenticate with the server and run the report again.']);
+        }
       }
     };
 
@@ -103,6 +159,25 @@ const ReportView: React.FC = () => {
             </h3>
           </div>
           <div className="card-body">
+            {report.sections && report.sections.auth && (
+              <div className="alert alert-warning mb-3">
+                <h5>OAuth Authentication Required</h5>
+                <p>This server requires OAuth authentication before it can be evaluated.</p>
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => {
+                    // Store the current state so we can return after OAuth
+                    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+                      activeView: 'report',
+                      serverUrl: report.serverUrl
+                    }));
+                    navigate('/', { state: { serverUrl: report.serverUrl, needsAuth: true } });
+                  }}
+                >
+                  Authenticate with Server
+                </button>
+              </div>
+            )}
             <div className="row">
               {Object.entries(report.sections as Record<string, any>).map(([key, section]) => (
                 <div key={key} className="col-12 mb-3">

@@ -15,15 +15,30 @@ interface EvaluationReport {
   sections: Record<string, EvaluationSection>;
 }
 
-async function proxiedFetch(url: string, token: string, options: RequestInit = {}): Promise<Response> {
+async function proxiedFetch(url: string, token: string, options: RequestInit = {}, oauthToken?: string | null): Promise<Response> {
   const target = `${PROXY_URL}?target=${encodeURIComponent(url)}`;
   const headers = new Headers(options.headers);
   headers.set('Authorization', `Bearer ${token}`);
+  
+  // If we have an OAuth token for the server, add it to the request
+  if (oauthToken) {
+    headers.set('X-OAuth-Token', oauthToken);
+  }
   
   return fetch(target, { ...options, headers });
 }
 
 export async function evaluateServer(serverUrl: string, token: string, onProgress: (message: string) => void): Promise<EvaluationReport> {
+  // Check if we need OAuth authentication for this server
+  let accessToken: string | null = null;
+  const serverHost = new URL(serverUrl).host;
+  
+  // First check if we have a stored OAuth access token for this server
+  const storedAccessToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
+  if (storedAccessToken) {
+    onProgress('Using stored OAuth access token for server authentication');
+    accessToken = storedAccessToken;
+  }
   // Ensure serverUrl has protocol
   if (!serverUrl.startsWith('http://') && !serverUrl.startsWith('https://')) {
     serverUrl = `https://${serverUrl}`;
@@ -34,6 +49,37 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     finalScore: 0,
     sections: {}
   };
+
+  // Check if server requires authentication by attempting a basic request
+  if (!accessToken) {
+    onProgress('Checking if server requires OAuth authentication...');
+    try {
+      const testResponse = await proxiedFetch(`${serverUrl}/mcp/v1/initialize`, token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          protocolVersion: '2024-11-05',
+          capabilities: {}
+        })
+      });
+      
+      if (testResponse.status === 401 || testResponse.status === 403) {
+        // Server requires authentication
+        onProgress('Server requires OAuth authentication. Please authenticate first.');
+        report.sections.auth = {
+          name: 'Authentication Required',
+          description: 'Server requires OAuth authentication before evaluation',
+          score: 0,
+          maxScore: 0,
+          details: ['⚠️ Server returned 401/403 - OAuth authentication required', '⚠️ Please authenticate with the server before running the report']
+        };
+        report.finalScore = 0;
+        return report;
+      }
+    } catch (error) {
+      // Continue with evaluation even if initial test fails
+    }
+  }
 
   // 1. Core Protocol Adherence (15 points)
   onProgress('Checking Core Protocol Adherence...');
@@ -54,7 +100,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         protocolVersion: '2024-11-05',
         capabilities: {}
       })
-    });
+    }, accessToken);
 
     if (response.ok) {
       protocolSection.score += 10;
@@ -93,7 +139,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     const sseResponse = await proxiedFetch(`${serverUrl}/mcp/v1/sse`, token, {
       method: 'GET',
       headers: { 'Accept': 'text/event-stream' }
-    });
+    }, accessToken);
 
     if (sseResponse.ok && sseResponse.headers.get('content-type')?.includes('text/event-stream')) {
       transportSection.score += 10;
@@ -124,7 +170,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
 
   try {
     // Check for OAuth discovery endpoint
-    const oauthDiscoveryResponse = await proxiedFetch(`${serverUrl}/.well-known/oauth-authorization-server`, token);
+    const oauthDiscoveryResponse = await proxiedFetch(`${serverUrl}/.well-known/oauth-authorization-server`, token, {}, accessToken);
     
     if (oauthDiscoveryResponse.ok) {
       securitySection.score += 20;
@@ -168,7 +214,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         'Access-Control-Request-Method': 'POST',
         'Access-Control-Request-Headers': 'content-type,authorization'
       }
-    });
+    }, accessToken);
 
     const allowOrigin = corsResponse.headers.get('access-control-allow-origin');
     const allowMethods = corsResponse.headers.get('access-control-allow-methods');
@@ -220,7 +266,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         protocolVersion: '2024-11-05',
         capabilities: {}
       })
-    });
+    }, accessToken);
     const responseTime = Date.now() - startTime;
 
     if (responseTime < 200) {
