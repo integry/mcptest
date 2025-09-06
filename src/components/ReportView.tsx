@@ -321,34 +321,34 @@ const ReportView: React.FC = () => {
       return;
     }
 
-    const worker = new Worker(new URL('../workers/reportWorker.ts', import.meta.url), { type: 'module' });
-
-    worker.onmessage = (e) => {
-      const { type, data } = e.data;
-      if (type === 'progress') {
-        setProgress(prev => [...prev, data]);
-      } else if (type === 'complete') {
-        setReport(data);
-        setIsRunning(false);
-        isRunningRef.current = false;
-        worker.terminate();
-        
-        // If authentication is required, show a button to authenticate
-        if (data && data.sections && data.sections.auth) {
-          setProgress(prev => [...prev, 'Authentication required. Please authenticate with the server and run the report again.']);
-        }
-      }
-    };
-
     // Get OAuth access token from sessionStorage if available
     const serverHost = new URL(urlToTest.startsWith('http') ? urlToTest : `https://${urlToTest}`).host;
     const oauthAccessToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
-
-    worker.postMessage({ 
-      serverUrl: urlToTest, 
-      token: await currentUser.getIdToken(),
-      oauthAccessToken: oauthAccessToken 
-    });
+    
+    // Get Firebase auth token
+    const token = await currentUser.getIdToken();
+    
+    // Progress callback
+    const onProgress = (message: string) => {
+      setProgress(prev => [...prev, message]);
+    };
+    
+    try {
+      const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
+      setReport(reportData);
+      
+      // If authentication is required, show a button to authenticate
+      if (reportData && reportData.sections && reportData.sections.auth) {
+        setProgress(prev => [...prev, 'Authentication required. Please authenticate with the server and run the report again.']);
+      }
+    } catch (error) {
+      console.error('Report error:', error);
+      setProgress(prev => [...prev, `Error: ${(error as Error).message}`]);
+      setReport(null);
+    } finally {
+      setIsRunning(false);
+      isRunningRef.current = false;
+    }
   };
 
   return (

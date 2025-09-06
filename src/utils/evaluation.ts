@@ -25,16 +25,33 @@ interface EvaluationReport {
 }
 
 async function proxiedFetch(url: string, token: string, options: RequestInit = {}, oauthToken?: string | null): Promise<Response> {
-  const target = `${PROXY_URL}?target=${encodeURIComponent(url)}`;
   const headers = new Headers(options.headers);
-  headers.set('Authorization', `Bearer ${token}`);
+  
+  // Try direct fetch first if we have an OAuth token
+  if (oauthToken) {
+    headers.set('Authorization', `Bearer ${oauthToken}`);
+    try {
+      return await fetch(url, { ...options, headers });
+    } catch (error) {
+      console.log('[Evaluation] Direct fetch failed, falling back to proxy');
+    }
+  }
+  
+  // Fallback to proxy if direct fetch fails or no OAuth token
+  if (!PROXY_URL) {
+    throw new Error('Direct connection failed and no proxy configured');
+  }
+  
+  const target = `${PROXY_URL}?target=${encodeURIComponent(url)}`;
+  const proxyHeaders = new Headers(options.headers);
+  proxyHeaders.set('Authorization', `Bearer ${token}`);
   
   // If we have an OAuth token for the server, add it to the request
   if (oauthToken) {
-    headers.set('X-OAuth-Token', oauthToken);
+    proxyHeaders.set('X-OAuth-Token', oauthToken);
   }
   
-  return fetch(target, { ...options, headers });
+  return fetch(target, { ...options, headers: proxyHeaders });
 }
 
 export async function evaluateServer(serverUrl: string, token: string, onProgress: (message: string) => void, oauthAccessToken?: string | null): Promise<EvaluationReport> {
@@ -67,35 +84,32 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
   const abortController = new AbortController();
   
   try {
-    if (accessToken) {
-      // If we have an OAuth token, try direct connection first
-      onProgress('Attempting direct connection with OAuth token...');
-      try {
-        const connectionResult = await attemptParallelConnections(serverUrl, abortController.signal, accessToken);
-        mcpClient = connectionResult.client;
-        connectionUrl = connectionResult.url;
-        onProgress(`Connected successfully using ${connectionResult.transportType} transport (direct with OAuth)`);
-      } catch (directError: any) {
-        // Direct connection failed, try proxy as fallback
+    // Always try direct connection first
+    try {
+      onProgress('Attempting direct connection to server...');
+      const authTokenToUse = accessToken || undefined;
+      const connectionResult = await attemptParallelConnections(serverUrl, abortController.signal, authTokenToUse);
+      mcpClient = connectionResult.client;
+      connectionUrl = connectionResult.url;
+      const authType = accessToken ? 'with OAuth' : 'without auth';
+      onProgress(`Connected successfully using ${connectionResult.transportType} transport (direct ${authType})`);
+    } catch (directError: any) {
+      // Direct connection failed, only try proxy if configured
+      if (PROXY_URL) {
         onProgress('Direct connection failed, attempting proxy connection...');
         const proxyUrl = `${PROXY_URL}?target=${encodeURIComponent(serverUrl)}`;
         
-        // For proxy connections with OAuth, use the OAuth token as the auth token
-        // This matches the behavior in useConnection.ts line 867
-        const connectionResult = await attemptParallelConnections(proxyUrl, abortController.signal, accessToken);
+        // Use OAuth token if available, otherwise use Firebase token for proxy auth
+        const proxyAuthToken = accessToken || token;
+        const connectionResult = await attemptParallelConnections(proxyUrl, abortController.signal, proxyAuthToken);
         mcpClient = connectionResult.client;
         connectionUrl = connectionResult.url;
         usedProxy = true;
-        onProgress(`Connected successfully using ${connectionResult.transportType} transport (proxy with OAuth)`);
+        const authType = accessToken ? 'with OAuth' : 'with Firebase token';
+        onProgress(`Connected successfully using ${connectionResult.transportType} transport (proxy ${authType})`);
+      } else {
+        throw directError;
       }
-    } else {
-      // No OAuth token, use proxy with Firebase token
-      const proxyUrl = `${PROXY_URL}?target=${encodeURIComponent(serverUrl)}`;
-      const connectionResult = await attemptParallelConnections(proxyUrl, abortController.signal, token);
-      mcpClient = connectionResult.client;
-      connectionUrl = connectionResult.url;
-      usedProxy = true;
-      onProgress(`Connected successfully using ${connectionResult.transportType} transport (proxy)`);
     }
   } catch (connectionError) {
     onProgress('Failed to establish MCP connection using standard transports');
