@@ -243,8 +243,8 @@ const ReportView: React.FC = () => {
   };
 
   return (
-    <div className="container-fluid h-100 d-flex flex-column">
-      <h2>MCP Server Report Card</h2>
+    <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
+      <h2 className="mb-3">MCP Server Report Card</h2>
       <div className="input-group mb-3">
         <input
           type="text"
@@ -275,14 +275,14 @@ const ReportView: React.FC = () => {
       )}
 
       {report && (
-        <div className="card">
+        <div className="card mb-4">
           <div className="card-header">
             <h4>Report for: {report.serverUrl}</h4>
-            <h3 className={`text-${getScoreColor(report.finalScore)}`}>
-              Final Score: {report.finalScore} / 100 ({getScoreGrade(report.finalScore)})
+            <h3 className={`text-${getScoreColor(!report.sections.security ? (report.finalScore / 70) * 100 : (report.finalScore / 110) * 100)}`}>
+              Final Score: {report.finalScore} / {!report.sections.security ? 70 : 110} ({getScoreGrade(!report.sections.security ? (report.finalScore / 70) * 100 : (report.finalScore / 110) * 100)})
             </h3>
             {!report.sections.security && (
-              <small className="text-muted">Note: OAuth not supported - maximum 60 points possible</small>
+              <small className="text-muted">Note: OAuth not supported - score calculated out of 70 points</small>
             )}
           </div>
           <div className="card-body">
@@ -382,31 +382,50 @@ const ReportView: React.FC = () => {
                 </button>
               </div>
             )}
-            <div className="row">
+            <div className="row g-3">
               {Object.entries(report.sections as Record<string, any>).map(([key, section]) => (
-                <div key={key} className="col-12 mb-3">
-                  <div className="card">
+                <div key={key} className="col-12">
+                  <div className="card h-100 shadow-sm">
                     <div className="card-header">
-                      <h5>{section.name}</h5>
-                      <div className="d-flex justify-content-between align-items-center">
-                        <span className={`text-${getScoreColor(section.score / section.maxScore * 100)} fw-bold`}>
-                          {section.score} / {section.maxScore} points
-                        </span>
-                        <span className={`badge bg-${getScoreColor(section.score / section.maxScore * 100)}`}>
-                          {Math.round(section.score / section.maxScore * 100)}%
-                        </span>
+                      <div className="d-flex justify-content-between align-items-start mb-2">
+                        <h5 className="mb-0">{section.name}</h5>
+                        <div className="d-flex align-items-center gap-2">
+                          <span className={`text-${getScoreColor(section.score / section.maxScore * 100)} fw-bold`}>
+                            {section.score} / {section.maxScore} points
+                          </span>
+                          <span className={`badge bg-${getScoreColor(section.score / section.maxScore * 100)}`}>
+                            {Math.round(section.score / section.maxScore * 100)}%
+                          </span>
+                        </div>
                       </div>
-                      <small className="text-muted">{section.description}</small>
+                      <small className="text-muted d-block">{section.description}</small>
                     </div>
                     <div className="card-body">
                       {section.details && (
                         <div>
-                          {section.details.map((detail: string, i: number) => (
-                            <div key={i} className={`d-flex align-items-center mb-2 ${detail.startsWith('✓') ? 'text-success' : detail.startsWith('✗') ? 'text-danger' : 'text-warning'}`}>
-                              <span style={{ marginRight: '10px' }}>{detail.startsWith('✓') ? '✓' : detail.startsWith('✗') ? '✗' : '⚠'}</span>
-                              <span>{detail.substring(2)}</span>
-                            </div>
-                          ))}
+                          {section.details.map((detail: any, i: number) => {
+                            const detailText = typeof detail === 'string' ? detail : detail.text;
+                            const detailContext = typeof detail === 'object' ? detail.context : null;
+                            const isSuccess = detailText.startsWith('✓');
+                            const isError = detailText.startsWith('✗');
+                            const isWarning = detailText.startsWith('⚠');
+                            
+                            return (
+                              <div key={i} className="mb-3">
+                                <div className={`d-flex align-items-start ${isSuccess ? 'text-success' : isError ? 'text-danger' : 'text-warning'}`}>
+                                  <span style={{ marginRight: '10px', marginTop: '2px' }}>{isSuccess ? '✓' : isError ? '✗' : '⚠'}</span>
+                                  <div className="flex-grow-1">
+                                    <div>{detailText.substring(2)}</div>
+                                    {detailContext && (
+                                      <small className="text-muted d-block mt-1" style={{ marginLeft: '20px' }}>
+                                        {detailContext}
+                                      </small>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
