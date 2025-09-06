@@ -109,6 +109,7 @@ const ReportView: React.FC = () => {
             // Generate PKCE parameters
             const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
             sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+            sessionStorage.setItem('oauth_server_url', serverUrl);
             
             // Extract server host
             const serverHost = new URL(serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`).hostname;
@@ -301,6 +302,7 @@ const ReportView: React.FC = () => {
                       
                       const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
                       sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+                      sessionStorage.setItem('oauth_server_url', report.serverUrl);
                       
                       const serverHost = new URL(report.serverUrl.startsWith('http') ? report.serverUrl : `https://${report.serverUrl}`).hostname;
                       sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
