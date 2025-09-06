@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getOAuthConfig, discoverOAuthEndpoints } from '../utils/oauthDiscovery';
+import { evaluateServer } from '../utils/evaluation';
 
 // Helper functions for score display
 const getScoreColor = (score: number): string => {
