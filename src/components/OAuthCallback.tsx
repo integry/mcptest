@@ -151,7 +151,7 @@ const OAuthCallback: React.FC = () => {
             sessionStorage.setItem('oauth_completed_time', Date.now().toString());
             
             addOAuthLog('info', '💾 Tokens stored in session storage, cleaning up PKCE verifier...');
-            addOAuthLog('info', '✅ OAuth flow completed successfully! Redirecting...');
+            addOAuthLog('info', `✅ OAuth flow completed successfully! Server: ${serverHost}`);
             
             // Check if we have a stored return view state and navigate directly to it
             const returnViewJson = sessionStorage.getItem('oauth_return_view');
@@ -180,6 +180,7 @@ const OAuthCallback: React.FC = () => {
                   // If returning to report view, navigate back to the report URL
                   targetPath = `/report/${encodeURIComponent(returnView.serverUrl)}`;
                   addOAuthLog('info', `🔄 Navigating back to report: ${targetPath}`);
+                  addOAuthLog('info', `📊 Report server URL: ${returnView.serverUrl}`);
                   
                   // Add info to navigation state
                   navigationState = {
@@ -187,6 +188,8 @@ const OAuthCallback: React.FC = () => {
                     fromOAuthReturn: true,
                     serverUrl: returnView.serverUrl
                   };
+                  
+                  addOAuthLog('info', `📝 Navigation state: ${JSON.stringify(navigationState)}`);
                 }
                 
                 // Don't clear the return view here - let App.tsx handle it after navigation
@@ -197,6 +200,7 @@ const OAuthCallback: React.FC = () => {
             }
             
             // Redirect to the appropriate path
+            addOAuthLog('info', `🚀 Final navigation: path="${targetPath}", state=${JSON.stringify(navigationState)}`);
             navigate(targetPath, { state: navigationState });
           } else {
             addOAuthLog('error', `❌ Step 3/3 FAILED: Token exchange failed with status ${tokenResponse.status}`);
