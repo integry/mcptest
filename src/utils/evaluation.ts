@@ -28,16 +28,12 @@ async function proxiedFetch(url: string, token: string, options: RequestInit = {
   return fetch(target, { ...options, headers });
 }
 
-export async function evaluateServer(serverUrl: string, token: string, onProgress: (message: string) => void): Promise<EvaluationReport> {
+export async function evaluateServer(serverUrl: string, token: string, onProgress: (message: string) => void, oauthAccessToken?: string | null): Promise<EvaluationReport> {
   // Check if we need OAuth authentication for this server
-  let accessToken: string | null = null;
-  const serverHost = new URL(serverUrl).host;
+  let accessToken: string | null = oauthAccessToken || null;
   
-  // First check if we have a stored OAuth access token for this server
-  const storedAccessToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
-  if (storedAccessToken) {
-    onProgress('Using stored OAuth access token for server authentication');
-    accessToken = storedAccessToken;
+  if (accessToken) {
+    onProgress('Using OAuth access token for server authentication');
   }
   // Ensure serverUrl has protocol
   if (!serverUrl.startsWith('http://') && !serverUrl.startsWith('https://')) {

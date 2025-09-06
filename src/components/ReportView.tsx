@@ -231,7 +231,15 @@ const ReportView: React.FC = () => {
       }
     };
 
-    worker.postMessage({ serverUrl: urlToTest, token: await currentUser.getIdToken() });
+    // Get OAuth access token from sessionStorage if available
+    const serverHost = new URL(urlToTest.startsWith('http') ? urlToTest : `https://${urlToTest}`).host;
+    const oauthAccessToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
+
+    worker.postMessage({ 
+      serverUrl: urlToTest, 
+      token: await currentUser.getIdToken(),
+      oauthAccessToken: oauthAccessToken 
+    });
   };
 
   return (
