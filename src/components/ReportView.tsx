@@ -9,6 +9,7 @@ const ReportView: React.FC = () => {
   const workerRef = useRef<Worker | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const [activeAccordionItem, setActiveAccordionItem] = useState<string | null>(null);
 
   useEffect(() => {
     // Initialize the web worker
@@ -21,7 +22,6 @@ const ReportView: React.FC = () => {
       } else if (type === 'complete') {
         setReport(report);
         setIsEvaluating(false);
-        setProgress(prev => [...prev, 'Evaluation complete.']);
       }
     };
 
@@ -59,6 +59,10 @@ const ReportView: React.FC = () => {
     }
   };
 
+  const toggleAccordion = (id: string) => {
+    setActiveAccordionItem(activeAccordionItem === id ? null : id);
+  };
+
   return (
     <div>
       <h1>MCP Server Report Card</h1>
@@ -91,7 +95,7 @@ const ReportView: React.FC = () => {
         </div>
       )}
 
-      {progress.length > 0 && (
+      {isEvaluating && progress.length > 0 && (
         <div className="mt-3">
           <h2>Evaluation Progress</h2>
           <ul className="list-group">
@@ -102,21 +106,45 @@ const ReportView: React.FC = () => {
         </div>
       )}
 
-      {report && (
+      {report && !isEvaluating && (
         <div className="mt-4">
           <h2>Report for {serverUrl}</h2>
           <div className="card">
             <div className="card-header">
               Overall Score: {report.score}
             </div>
-            <ul className="list-group list-group-flush">
+            <div className="accordion" id="reportAccordion">
               {report.results.map((result: any, index: number) => (
-                <li key={index} className="list-group-item d-flex justify-content-between align-items-center">
-                  {result.category}
-                  <span className="badge bg-primary rounded-pill">{result.score}</span>
-                </li>
+                <div className="accordion-item" key={index}>
+                  <h2 className="accordion-header" id={`heading-${index}`}>
+                    <button
+                      className={`accordion-button ${activeAccordionItem !== `collapse-${index}` ? 'collapsed' : ''}`}
+                      type="button"
+                      onClick={() => toggleAccordion(`collapse-${index}`)}
+                    >
+                      <span className="me-auto">{result.category}</span>
+                      <span className="badge bg-primary rounded-pill">{result.score}</span>
+                    </button>
+                  </h2>
+                  <div
+                    id={`collapse-${index}`}
+                    className={`accordion-collapse collapse ${activeAccordionItem === `collapse-${index}` ? 'show' : ''}`}
+                  >
+                    <div className="accordion-body">
+                      <ul className="list-group">
+                        {result.details.map((detail: any, detailIndex: number) => (
+                          <li key={detailIndex} className="list-group-item">
+                            <i className={`bi ${detail.status === 'passed' ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}`}></i>
+                            <span className="ms-2">{detail.description}</span>
+                            {detail.comment && <p className="text-muted small mb-0 mt-1">{detail.comment}</p>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </div>
       )}
