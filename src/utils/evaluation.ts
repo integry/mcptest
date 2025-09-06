@@ -76,6 +76,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
   let mcpClient: Client | null = null;
   let connectionUrl = '';
   let usedProxy = false;
+  let transportType: 'streamable-http' | 'legacy-sse' | null = null;
 
   // First, try to establish a connection using the shared connection logic
   onProgress('Establishing MCP connection to server...');
@@ -91,6 +92,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       const connectionResult = await attemptParallelConnections(serverUrl, abortController.signal, authTokenToUse);
       mcpClient = connectionResult.client;
       connectionUrl = connectionResult.url;
+      transportType = connectionResult.transportType;
       const authType = accessToken ? 'with OAuth' : 'without auth';
       onProgress(`Connected successfully using ${connectionResult.transportType} transport (direct ${authType})`);
     } catch (directError: any) {
@@ -104,6 +106,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         const connectionResult = await attemptParallelConnections(proxyUrl, abortController.signal, proxyAuthToken);
         mcpClient = connectionResult.client;
         connectionUrl = connectionResult.url;
+        transportType = connectionResult.transportType;
         usedProxy = true;
         const authType = accessToken ? 'with OAuth' : 'with Firebase token';
         onProgress(`Connected successfully using ${connectionResult.transportType} transport (proxy ${authType})`);
@@ -285,7 +288,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     if (mcpClient) {
       try {
         // List available tools
-        const toolsResponse = await mcpClient.request({ method: 'tools/list' }, { });
+        const toolsResponse = await mcpClient.listTools();
         if (toolsResponse?.tools && Array.isArray(toolsResponse.tools)) {
           if (toolsResponse.tools.length > 0) {
             capabilitiesSection.score += 3;
@@ -355,7 +358,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
 
       try {
         // List available resources  
-        const resourcesResponse = await mcpClient.request({ method: 'resources/list' }, { });
+        const resourcesResponse = await mcpClient.listResources();
         if (resourcesResponse?.resources && Array.isArray(resourcesResponse.resources)) {
           if (resourcesResponse.resources.length > 0) {
             capabilitiesSection.score += 3;
@@ -426,7 +429,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
 
       try {
         // List available prompts
-        const promptsResponse = await mcpClient.request({ method: 'prompts/list' }, { });
+        const promptsResponse = await mcpClient.listPrompts();
         if (promptsResponse?.prompts && Array.isArray(promptsResponse.prompts)) {
           if (promptsResponse.prompts.length > 0) {
             capabilitiesSection.score += 2;
@@ -498,7 +501,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       // Try to check if the server accepts logging messages
       try {
         // Send a test log message
-        await mcpClient.request({ method: 'logging/setLevel' }, { level: 'info' });
+        await mcpClient.setLoggingLevel({ level: 'info' });
         capabilitiesSection.score += 2;
         capabilitiesSection.details.push({
           text: '✓ Server supports logging capability',
@@ -627,12 +630,8 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
   };
 
   // If we connected with the MCP client, we know the transport worked
-  if (mcpClient && connectionUrl) {
-    // Determine transport type from URL
-    const isSSE = connectionUrl.includes('/sse');
-    const isHTTP = connectionUrl.includes('/mcp');
-    
-    if (isHTTP) {
+  if (mcpClient && transportType) {
+    if (transportType === 'streamable-http') {
       transportSection.score += 10;
       transportSection.details.push({
         text: '✓ Server supports HTTP streaming (modern standard)',
@@ -643,11 +642,16 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
           capabilities: 'bidirectional streaming'
         }
       });
-    } else if (isSSE) {
+    } else if (transportType === 'legacy-sse') {
       // SSE gets no points but no penalty
       transportSection.details.push({
         text: '⚠ Server supports SSE (legacy standard - no points awarded)',
-        context: 'Server-Sent Events (SSE) is an older unidirectional streaming method. Modern MCP servers should use NDJSON streaming instead.'
+        context: 'Server-Sent Events (SSE) is an older unidirectional streaming method. Modern MCP servers should use NDJSON streaming instead.',
+        metadata: {
+          transportType: 'SSE',
+          endpoint: connectionUrl,
+          capabilities: 'unidirectional streaming'
+        }
       });
     }
     
