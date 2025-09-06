@@ -153,14 +153,24 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     protocolSection.score += 10;
     protocolSection.details.push({
       text: '✓ Server responds to MCP initialize request',
-      context: 'The server correctly implements the MCP initialize endpoint, allowing clients to establish protocol version and capabilities.'
+      context: 'The server correctly implements the MCP initialize endpoint, allowing clients to establish protocol version and capabilities.',
+      metadata: {
+        endpoint: '/mcp/v1/initialize',
+        transport: usedProxy ? 'proxy' : 'direct',
+        connectionUrl: connectionUrl,
+        serverInfo: initData || {}
+      }
     });
     
     // Since we connected successfully, we know it returns JSON
     protocolSection.score += 5;
     protocolSection.details.push({
       text: '✓ Server returns proper JSON content type',
-      context: 'MCP requires JSON-RPC 2.0 format. The server correctly sets Content-Type: application/json header.'
+      context: 'MCP requires JSON-RPC 2.0 format. The server correctly sets Content-Type: application/json header.',
+      metadata: {
+        contentType: 'application/json',
+        method: 'inferred from successful connection'
+      }
     });
     
     // Get server info from the client
@@ -186,7 +196,17 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         protocolSection.score += 10;
         protocolSection.details.push({
           text: '✓ Server responds to MCP initialize request',
-          context: 'The server correctly implements the MCP initialize endpoint, allowing clients to establish protocol version and capabilities.'
+          context: 'The server correctly implements the MCP initialize endpoint, allowing clients to establish protocol version and capabilities.',
+          metadata: {
+            endpoint: `${serverUrl}/mcp/v1/initialize`,
+            method: 'POST',
+            requestBody: {
+              protocolVersion: '2024-11-05',
+              capabilities: {}
+            },
+            responseStatus: response.status,
+            responseData: initData || null
+          }
         });
         
         // Clone response before reading body
@@ -210,7 +230,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         protocolSection.score += 5;
         protocolSection.details.push({
           text: '✓ Server returns proper JSON content type',
-          context: 'MCP requires JSON-RPC 2.0 format. The server correctly sets Content-Type: application/json header.'
+          context: 'MCP requires JSON-RPC 2.0 format. The server correctly sets Content-Type: application/json header.',
+          metadata: {
+            contentType: contentType,
+            headers: Object.fromEntries(response.headers.entries())
+          }
         });
       } else {
         protocolSection.details.push({
@@ -251,7 +275,14 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
           capabilitiesSection.details.push({
             text: '✓ Server supports tools capability',
             context: `Tools allow servers to expose executable functions. Found ${toolsResponse.tools.length} tools.`,
-            metadata: { toolCount: toolsResponse.tools.length }
+            metadata: {
+              toolCount: toolsResponse.tools.length,
+              tools: toolsResponse.tools.map((tool: any) => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema
+              }))
+            }
           });
         } else {
           capabilitiesSection.details.push({
@@ -275,7 +306,15 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
           capabilitiesSection.details.push({
             text: '✓ Server supports resources capability',
             context: `Resources allow servers to expose data. Found ${resourcesResponse.resources.length} resources.`,
-            metadata: { resourceCount: resourcesResponse.resources.length }
+            metadata: {
+              resourceCount: resourcesResponse.resources.length,
+              resources: resourcesResponse.resources.map((resource: any) => ({
+                uri: resource.uri,
+                name: resource.name,
+                description: resource.description,
+                mimeType: resource.mimeType
+              }))
+            }
           });
         } else {
           capabilitiesSection.details.push({
@@ -299,7 +338,14 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
           capabilitiesSection.details.push({
             text: '✓ Server supports prompts capability',
             context: `Prompts allow servers to define reusable prompt templates. Found ${promptsResponse.prompts.length} prompts.`,
-            metadata: { promptCount: promptsResponse.prompts.length }
+            metadata: {
+              promptCount: promptsResponse.prompts.length,
+              prompts: promptsResponse.prompts.map((prompt: any) => ({
+                name: prompt.name,
+                description: prompt.description,
+                arguments: prompt.arguments
+              }))
+            }
           });
         } else {
           capabilitiesSection.details.push({
@@ -420,7 +466,12 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       transportSection.score += 10;
       transportSection.details.push({
         text: '✓ Server supports HTTP streaming (modern standard)',
-        context: 'HTTP streaming (NDJSON) enables real-time bidirectional communication, essential for long-running MCP operations.'
+        context: 'HTTP streaming (NDJSON) enables real-time bidirectional communication, essential for long-running MCP operations.',
+        metadata: {
+          transportType: 'HTTP/NDJSON',
+          endpoint: connectionUrl,
+          capabilities: 'bidirectional streaming'
+        }
       });
     } else if (isSSE) {
       // SSE gets no points but no penalty
@@ -524,7 +575,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       securitySection.score += 20;
       securitySection.details.push({
         text: '✓ OAuth 2.1 discovery endpoint available',
-        context: 'OAuth 2.1 discovery allows automatic configuration of authentication endpoints, improving security and user experience.'
+        context: 'OAuth 2.1 discovery allows automatic configuration of authentication endpoints, improving security and user experience.',
+        metadata: {
+          discoveryEndpoint: `${serverUrl}/.well-known/oauth-authorization-server`,
+          discoveryData: discoveryData
+        }
       });
       
       const discoveryData = await oauthDiscoveryResponse.json();
@@ -532,7 +587,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         securitySection.score += 10;
         securitySection.details.push({
           text: '✓ Token endpoint properly configured',
-          context: 'Token endpoint enables secure exchange of authorization codes for access tokens.'
+          context: 'Token endpoint enables secure exchange of authorization codes for access tokens.',
+          metadata: {
+            tokenEndpoint: discoveryData.token_endpoint,
+            supportedGrantTypes: discoveryData.grant_types_supported || []
+          }
         });
       } else {
         securitySection.details.push({
@@ -545,7 +604,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         securitySection.score += 10;
         securitySection.details.push({
           text: '✓ PKCE support enabled',
-          context: 'Proof Key for Code Exchange (PKCE) provides additional security for public clients, preventing authorization code interception attacks.'
+          context: 'Proof Key for Code Exchange (PKCE) provides additional security for public clients, preventing authorization code interception attacks.',
+          metadata: {
+            supportedMethods: discoveryData.code_challenge_methods_supported,
+            requiredMethod: 'S256'
+          }
         });
       } else {
         securitySection.details.push({
@@ -594,7 +657,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       corsSection.score += 5;
       corsSection.details.push({
         text: '✓ CORS origin properly configured',
-        context: `Server allows cross-origin requests from ${allowOrigin}. This enables browser-based MCP clients to connect.`
+        context: `Server allows cross-origin requests from ${allowOrigin}. This enables browser-based MCP clients to connect.`,
+        metadata: {
+          'Access-Control-Allow-Origin': allowOrigin,
+          testedOrigin: 'https://mcp.dev'
+        }
       });
     } else {
       corsSection.details.push({
@@ -607,7 +674,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       corsSection.score += 5;
       corsSection.details.push({
         text: '✓ CORS methods properly configured',
-        context: 'Server allows required HTTP methods (POST) for MCP operations from browser clients.'
+        context: 'Server allows required HTTP methods (POST) for MCP operations from browser clients.',
+        metadata: {
+          'Access-Control-Allow-Methods': allowMethods,
+          requiredMethods: ['POST', 'OPTIONS']
+        }
       });
     } else {
       corsSection.details.push({
@@ -620,7 +691,11 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       corsSection.score += 5;
       corsSection.details.push({
         text: '✓ CORS headers properly configured',
-        context: 'Authorization header is allowed, enabling secure API token transmission from browser clients.'
+        context: 'Authorization header is allowed, enabling secure API token transmission from browser clients.',
+        metadata: {
+          'Access-Control-Allow-Headers': allowHeaders,
+          requiredHeaders: ['content-type', 'authorization']
+        }
       });
     } else {
       corsSection.details.push({
@@ -664,25 +739,49 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       performanceSection.score = 15;
       performanceSection.details.push({
         text: `✓ Excellent response time: ${responseTime}ms`,
-        context: 'Sub-200ms response time ensures smooth real-time interactions for MCP clients.'
+        context: 'Sub-200ms response time ensures smooth real-time interactions for MCP clients.',
+        metadata: {
+          responseTime: `${responseTime}ms`,
+          endpoint: `${serverUrl}/mcp/v1/initialize`,
+          performanceCategory: 'excellent',
+          threshold: '<200ms'
+        }
       });
     } else if (responseTime < 500) {
       performanceSection.score = 12;
       performanceSection.details.push({
         text: `✓ Good response time: ${responseTime}ms`,
-        context: 'Response time under 500ms provides acceptable user experience for most MCP operations.'
+        context: 'Response time under 500ms provides acceptable user experience for most MCP operations.',
+        metadata: {
+          responseTime: `${responseTime}ms`,
+          endpoint: `${serverUrl}/mcp/v1/initialize`,
+          performanceCategory: 'good',
+          threshold: '200-500ms'
+        }
       });
     } else if (responseTime < 1000) {
       performanceSection.score = 8;
       performanceSection.details.push({
         text: `⚠ Fair response time: ${responseTime}ms`,
-        context: 'Response time between 500ms-1s may cause noticeable delays in interactive MCP sessions.'
+        context: 'Response time between 500ms-1s may cause noticeable delays in interactive MCP sessions.',
+        metadata: {
+          responseTime: `${responseTime}ms`,
+          endpoint: `${serverUrl}/mcp/v1/initialize`,
+          performanceCategory: 'fair',
+          threshold: '500-1000ms'
+        }
       });
     } else {
       performanceSection.score = 4;
       performanceSection.details.push({
         text: `✗ Poor response time: ${responseTime}ms`,
-        context: 'Response time over 1s significantly impacts user experience. Consider optimizing server performance or infrastructure.'
+        context: 'Response time over 1s significantly impacts user experience. Consider optimizing server performance or infrastructure.',
+        metadata: {
+          responseTime: `${responseTime}ms`,
+          endpoint: `${serverUrl}/mcp/v1/initialize`,
+          performanceCategory: 'poor',
+          threshold: '>1000ms'
+        }
       });
     }
   } catch (error) {

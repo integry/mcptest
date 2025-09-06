@@ -28,6 +28,7 @@ const ReportView: React.FC = () => {
   const [report, setReport] = useState<any>(null);
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -146,6 +147,18 @@ const ReportView: React.FC = () => {
       }
     }
   }, [location.state, urlParam, currentUser]);
+
+  const toggleItemExpanded = (itemKey: string) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemKey)) {
+        newSet.delete(itemKey);
+      } else {
+        newSet.add(itemKey);
+      }
+      return newSet;
+    });
+  };
 
   const checkOAuthAuthentication = async (serverUrl: string): Promise<boolean> => {
     try {
@@ -502,20 +515,59 @@ const ReportView: React.FC = () => {
                           {section.details.map((detail: any, i: number) => {
                             const detailText = typeof detail === 'string' ? detail : detail.text;
                             const detailContext = typeof detail === 'object' ? detail.context : null;
+                            const detailMetadata = typeof detail === 'object' ? detail.metadata : null;
                             const isSuccess = detailText.startsWith('✓');
                             const isError = detailText.startsWith('✗');
                             const isWarning = detailText.startsWith('⚠');
+                            const itemKey = `${key}-${i}`;
+                            const isExpanded = expandedItems.has(itemKey);
+                            const hasMoreInfo = detailContext || detailMetadata;
                             
                             return (
                               <div key={i} className="mb-3">
                                 <div className={`d-flex align-items-start ${isSuccess ? 'text-success' : isError ? 'text-danger' : 'text-warning'}`}>
                                   <span style={{ marginRight: '10px', marginTop: '2px' }}>{isSuccess ? '✓' : isError ? '✗' : '⚠'}</span>
                                   <div className="flex-grow-1">
-                                    <div>{detailText.substring(2)}</div>
-                                    {detailContext && (
-                                      <small className="text-muted d-block mt-1" style={{ marginLeft: '20px' }}>
-                                        {detailContext}
-                                      </small>
+                                    <div 
+                                      className="d-flex align-items-center"
+                                      style={{ 
+                                        cursor: hasMoreInfo ? 'pointer' : 'default',
+                                        transition: 'background-color 0.2s ease',
+                                        borderRadius: '4px',
+                                        padding: '2px 4px',
+                                        margin: '-2px -4px'
+                                      }}
+                                      onMouseEnter={(e) => hasMoreInfo && (e.currentTarget.style.backgroundColor = '#f8f9fa')}
+                                      onMouseLeave={(e) => hasMoreInfo && (e.currentTarget.style.backgroundColor = 'transparent')}
+                                      onClick={() => hasMoreInfo && toggleItemExpanded(itemKey)}
+                                    >
+                                      <div className="flex-grow-1">{detailText.substring(2)}</div>
+                                      {hasMoreInfo && (
+                                        <span 
+                                          className="text-muted ms-2" 
+                                          style={{ fontSize: '0.875rem' }}
+                                          title="Click to see more details"
+                                        >
+                                          {isExpanded ? '▼' : '▶'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {isExpanded && (
+                                      <div className="mt-2" style={{ marginLeft: '20px' }}>
+                                        {detailContext && (
+                                          <div className="text-muted mb-2" style={{ fontSize: '0.875rem' }}>
+                                            {detailContext}
+                                          </div>
+                                        )}
+                                        {detailMetadata && (
+                                          <div className="bg-light rounded p-2" style={{ fontSize: '0.813rem' }}>
+                                            <strong className="text-muted">Request Details:</strong>
+                                            <pre className="mb-0 mt-1" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                              {JSON.stringify(detailMetadata, null, 2)}
+                                            </pre>
+                                          </div>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 </div>
