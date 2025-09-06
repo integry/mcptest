@@ -39,7 +39,7 @@ export interface ProgressUpdate {
 
 // --- Helper Functions ---
 
-const TOTAL_STEPS = 5; // 4 checks + 1 finalization step
+const TOTAL_STEPS = 4; // Combined connection/core check, security, cors, performance
 
 const proxiedFetch = async (targetUrl: string, options: RequestInit = {}): Promise<Response> => {
   const proxyUrl = import.meta.env.VITE_PROXY_URL;
@@ -58,8 +58,13 @@ const proxiedFetch = async (targetUrl: string, options: RequestInit = {}): Promi
 
 // --- Evaluation Category Checks ---
 
-const checkConnectionAndCapabilities = async (serverUrl: string): Promise<{ transportCategory: ReportCategory, coreCategory: ReportCategory }> => {
+const checkConnectionAndCapabilities = async (
+    serverUrl: string,
+    progressCallback: (update: ProgressUpdate) => void
+): Promise<{ transportCategory: ReportCategory, coreCategory: ReportCategory, authIsRequired: boolean }> => {
     let client: Client | null = null;
+    let authIsRequired = false;
+
     const transportCategory: ReportCategory = {
         name: 'II. Transport Layer Modernity', score: 0, maxPoints: 15,
         description: 'Uses the latest Streamable HTTP transport.', findings: [],
@@ -70,6 +75,7 @@ const checkConnectionAndCapabilities = async (serverUrl: string): Promise<{ tran
     };
 
     try {
+        progressCallback({ stage: '1. Connection & Capabilities', details: 'Attempting unauthenticated connection...', step: 1, totalSteps: TOTAL_STEPS });
         const { client: connectedClient, transportType } = await attemptParallelConnections(serverUrl);
         client = connectedClient;
 
@@ -81,13 +87,14 @@ const checkConnectionAndCapabilities = async (serverUrl: string): Promise<{ tran
             transportCategory.findings.push('[FAIL] Server uses the deprecated HTTP+SSE transport.');
         }
 
+        progressCallback({ stage: '1. Connection & Capabilities', details: 'Fetching server capabilities...', step: 1, totalSteps: TOTAL_STEPS });
         const capabilities = await client.getCapabilities();
-        coreCategory.findings.push('[PASS] Successfully retrieved capabilities from the server.');
+        coreCategory.findings.push('[PASS] Server is open and provides capabilities without authentication.');
         coreCategory.score += 5;
 
         const { tools, resources } = capabilities;
         if (tools?.length || resources?.length) {
-            coreCategory.findings.push('[PASS] Server advertises at least one tool or resource.');
+            coreCategory.findings.push(`[PASS] Server advertises ${tools?.length || 0} tools and ${resources?.length || 0} resources.`);
             coreCategory.score += 5;
         } else {
             coreCategory.findings.push('[WARN] Server advertises no tools or resources.');
@@ -101,28 +108,49 @@ const checkConnectionAndCapabilities = async (serverUrl: string): Promise<{ tran
         }
 
     } catch (e: any) {
-        transportCategory.findings.push(`[FAIL] Connection failed: ${e.message}`);
-        coreCategory.findings.push(`[FAIL] Could not retrieve capabilities: ${e.message}`);
+        const errorMessage = e.message.toLowerCase();
+        if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('unauthorized') || errorMessage.includes('invalid_token')) {
+            authIsRequired = true;
+            transportCategory.findings.push('[INFO] Server requires authentication, transport check deferred.');
+            coreCategory.findings.push('[INFO] Server requires authentication. Capability checks were skipped.');
+            // Give partial credit if it correctly requires auth, as this is better than being broken.
+            transportCategory.score = 5;
+            coreCategory.score = 5;
+        } else {
+            transportCategory.findings.push(`[FAIL] Connection failed: ${e.message}`);
+            coreCategory.findings.push(`[FAIL] Could not retrieve capabilities: ${e.message}`);
+        }
     } finally {
         await client?.close();
     }
 
-    return { transportCategory, coreCategory };
+    return { transportCategory, coreCategory, authIsRequired };
 };
 
 
-const checkSecurityPosture = async (serverUrl: string): Promise<ReportCategory> => {
+const checkSecurityPosture = async (serverUrl: string, authIsRequired: boolean): Promise<ReportCategory> => {
     const category: ReportCategory = {
         name: 'III. Security Posture (OAuth 2.1)', score: 0, maxPoints: 40,
         description: 'Implements modern, secure authentication.', findings: [],
     };
 
+    if (!authIsRequired) {
+        category.findings.push('[INFO] Server does not require authentication. OAuth checks are not applicable.');
+        category.score = 40; // Max points if auth is not needed
+        return category;
+    }
+
     try {
         const oauthConfig = await getOAuthConfig(serverUrl);
         if (!oauthConfig) throw new Error('OAuth configuration could not be determined.');
 
-        category.findings.push('[PASS] Server provides a valid OAuth 2.1 configuration (via discovery or default).');
-        category.score += 10;
+        if (oauthConfig.authorizationEndpoint.includes(serverUrl)) {
+             category.findings.push('[PASS] Provides an OAuth 2.1 configuration (via discovery or default).');
+             category.score += 10;
+        } else {
+             category.findings.push('[FAIL] OAuth discovery failed or returned non-standard endpoints.');
+             category.score -= 10; // Penalty for bad discovery
+        }
 
         if (oauthConfig.supportsPKCE) {
             category.findings.push('[PASS] Server configuration indicates support for PKCE (REQUIRED).');
@@ -161,7 +189,7 @@ const checkWebClientAccessibility = async (serverUrl: string): Promise<ReportCat
     try {
         const response = await fetch(`${serverUrl}/mcp`, {
             method: 'OPTIONS',
-            headers: { 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' },
+            headers: { 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type, authorization' },
         });
 
         if (response.ok) {
@@ -198,7 +226,6 @@ const checkPerformanceBaseline = async (serverUrl: string): Promise<ReportCatego
 
     try {
         const start = performance.now();
-        // Use proxiedFetch to a non-protocol endpoint to measure baseline network/server overhead
         const response = await proxiedFetch(`${new URL(serverUrl).origin}/health`, { method: 'GET' });
         const ttfb = performance.now() - start;
         await response.text();
@@ -228,11 +255,10 @@ export const runEvaluation = async (
   progressCallback: (update: ProgressUpdate) => void
 ): Promise<Report> => {
 
-  progressCallback({ stage: '1. Connection & Capabilities', details: 'Detecting transport and fetching capabilities...', step: 1, totalSteps: TOTAL_STEPS });
-  const { transportCategory, coreCategory } = await checkConnectionAndCapabilities(serverUrl);
+  const { transportCategory, coreCategory, authIsRequired } = await checkConnectionAndCapabilities(serverUrl, progressCallback);
 
   progressCallback({ stage: '2. Security Posture', details: 'Analyzing OAuth 2.1 implementation...', step: 2, totalSteps: TOTAL_STEPS });
-  const securityResult = await checkSecurityPosture(serverUrl);
+  const securityResult = await checkSecurityPosture(serverUrl, authIsRequired);
 
   progressCallback({ stage: '3. Web Client Accessibility', details: 'Reviewing CORS configuration...', step: 3, totalSteps: TOTAL_STEPS });
   const corsResult = await checkWebClientAccessibility(serverUrl);
@@ -240,10 +266,8 @@ export const runEvaluation = async (
   progressCallback({ stage: '4. Performance Baseline', details: 'Measuring connection and request latency...', step: 4, totalSteps: TOTAL_STEPS });
   const performanceResult = await checkPerformanceBaseline(serverUrl);
 
-  progressCallback({ stage: '5. Finalizing Report', details: 'Compiling scores and findings...', step: 5, totalSteps: TOTAL_STEPS });
-
   const categories = [coreCategory, transportCategory, securityResult, corsResult, performanceResult];
-  const finalScore = categories.reduce((sum, cat) => sum + cat.score, 0);
+  const finalScore = categories.reduce((sum, cat) => Math.max(0, sum + cat.score), 0);
 
   const getGrade = (score: number): string => {
     if (score >= 90) return 'A';
@@ -255,10 +279,10 @@ export const runEvaluation = async (
 
   const getStrengths = (cats: ReportCategory[]): string[] => {
       const strengths: string[] = [];
-      if (cats[0].score > 12) strengths.push("Strong core protocol adherence.");
+      if (cats[0].score >= 15) strengths.push("Excellent core protocol adherence.");
       if (cats[1].score === 15) strengths.push("Uses modern Streamable HTTP transport.");
-      if (cats[2].score > 35) strengths.push("Excellent security posture with advanced features.");
-      if (cats[2].score > 25 && cats[2].score <= 35) strengths.push("Implements mandatory OAuth 2.1 + PKCE.");
+      if (cats[2].score >= 40) strengths.push("Excellent security posture.");
+      if (cats[2].score > 25 && cats[2].score < 40) strengths.push("Implements mandatory OAuth 2.1 + PKCE.");
       if (cats[3].score > 12) strengths.push("Secure and specific CORS policy.");
       if (cats[4].score === 15) strengths.push("Excellent baseline performance.");
       return strengths.length > 0 ? strengths : ["No significant strengths identified."];
@@ -267,9 +291,9 @@ export const runEvaluation = async (
   const getWeaknesses = (cats: ReportCategory[]): string[] => {
       const weaknesses: string[] = [];
       if (cats[0].score < 10) weaknesses.push("Poor core protocol adherence.");
-      if (cats[1].score < 15) weaknesses.push("Uses deprecated or non-standard transport.");
-      if (cats[2].score === 0) weaknesses.push("Critical security failure: OAuth 2.1 / PKCE not implemented correctly.");
-      else if (cats[2].score < 25) weaknesses.push("Significant gaps in security implementation.");
+      if (cats[1].score < 10) weaknesses.push("Uses deprecated or non-standard transport.");
+      if (authIsRequired && cats[2].score === 0) weaknesses.push("Critical security failure: OAuth 2.1 / PKCE not implemented correctly.");
+      else if (authIsRequired && cats[2].score < 25) weaknesses.push("Significant gaps in security implementation.");
       if (cats[3].score < 10) weaknesses.push("Poor CORS configuration hinders web client access.");
       if (cats[4].score < 5) weaknesses.push("Poor baseline performance.");
       return weaknesses.length > 0 ? weaknesses : ["No significant weaknesses identified."];
