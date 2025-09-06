@@ -150,7 +150,7 @@ const checkPerformanceBaseline = async (serverUrl: string): Promise<ReportCatego
     const category: ReportCategory & { ttfb: number, totalTime: number, tier: string } = { name: 'V. Performance Baseline (Latency)', score: 0, maxPoints: 15, description: 'Responsiveness for interactive applications.', findings: [], ttfb: -1, totalTime: -1, tier: 'N/A' };
     try {
         const start = performance.now();
-        const response = await fetch(`${new URL(serverUrl).origin}/health`);
+        const response = await proxiedFetch(`${new URL(serverUrl).origin}/health`, { method: 'GET' });
         const ttfb = performance.now() - start;
         await response.text();
         const totalTime = performance.now() - start;
