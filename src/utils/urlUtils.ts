@@ -116,3 +116,16 @@ export const parseResultShareUrl = (pathname: string, search?: string): {
     ...(params && { params })
   };
 };
+
+// Helper function to detect and add protocol if missing
+export const addProtocolIfMissing = (url: string): string => {
+  if (!url) return url;
+
+  // If URL already has a protocol, return as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  // Default to HTTPS for URLs without protocol
+  return `https://${url}`;
+};

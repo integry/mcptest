@@ -16,39 +16,43 @@ const ReportView: React.FC = () => {
     workerRef.current = new Worker(new URL('../workers/reportWorker.ts', import.meta.url), { type: 'module' });
 
     workerRef.current.onmessage = (event) => {
+      console.log('[ReportView] Message from worker:', event.data);
       const { type, message, report } = event.data;
       if (type === 'progress') {
         setProgress(prev => [...prev, message]);
       } else if (type === 'complete') {
         setReport(report);
         setIsEvaluating(false);
+      } else if (type === 'error') {
+        console.error('[ReportView] Evaluation error:', message);
+        setIsEvaluating(false);
       }
     };
 
-    return () => {
-      workerRef.current?.terminate();
-    };
-  }, []);
-
-  useEffect(() => {
-    // Check for a server URL in the path
+    // Check for a server URL in the path when the component mounts
     const pathParts = location.pathname.split('/report/');
     if (pathParts.length > 1) {
       const urlFromPath = decodeURIComponent(pathParts[1]);
       if (urlFromPath) {
         setServerUrl(urlFromPath);
-        startEvaluation(urlFromPath);
+        startEvaluation(urlFromPath, false); // Don't navigate again
       }
     }
-  }, [location.pathname]);
 
-  const startEvaluation = (url: string) => {
-    if (workerRef.current) {
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []); // Run only once on mount
+
+  const startEvaluation = (url: string, shouldNavigate = true) => {
+    if (workerRef.current && !isEvaluating) {
       setReport(null);
       setProgress(['Starting evaluation...']);
       setIsEvaluating(true);
       workerRef.current.postMessage(url);
-      navigate(`/report/${encodeURIComponent(url)}`);
+      if (shouldNavigate) {
+        navigate(`/report/${encodeURIComponent(url)}`);
+      }
     }
   };
 
@@ -62,6 +66,8 @@ const ReportView: React.FC = () => {
   const toggleAccordion = (id: string) => {
     setActiveAccordionItem(activeAccordionItem === id ? null : id);
   };
+
+  console.log('[ReportView] Rendering with state:', { isEvaluating, report });
 
   return (
     <div>

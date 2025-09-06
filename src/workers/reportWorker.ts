@@ -11,6 +11,7 @@ self.onmessage = async (event) => {
     const report = await evaluateServer(serverUrl, onProgress);
     self.postMessage({ type: 'complete', report });
   } catch (error) {
+    console.error('[Worker] Evaluation error:', error);
     self.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'An unknown error occurred.' });
   }
 };
