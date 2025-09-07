@@ -6,7 +6,7 @@
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
     "prebuild": "node scripts/generate-version.js",
-    "build": "vite build",
+    "build": "./node_modules/.bin/vite build",
     "deploy-worker": "wrangler deploy",
     "deploy-oauth-worker": "cd oauth-worker && npm install && ./deploy.sh"
   },
