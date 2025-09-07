@@ -86,6 +86,9 @@ const ReportView: React.FC = () => {
           console.log('[ReportView] Re-running report after OAuth return (from location state)');
           setProgress(['OAuth authentication successful! Restarting report...']);
           
+          // Ensure the URL is set in the input field
+          setServerUrl(decodedUrl);
+          
           if (currentUser && !isRunning && !isRunningRef.current) {
             console.log('[ReportView] Starting delayed report run after OAuth');
             setTimeout(() => {
@@ -103,7 +106,7 @@ const ReportView: React.FC = () => {
         console.error('Failed to parse OAuth return data:', e);
       }
     }
-  }, [location.state, urlParam, currentUser]);
+  }, [location.state, urlParam, currentUser, handleRunReport]);
 
   useEffect(() => {
     try {
@@ -273,7 +276,7 @@ const ReportView: React.FC = () => {
     }
   };
 
-  const handleRunReport = async (urlToTest: string) => {
+  const handleRunReport = useCallback(async (urlToTest: string) => {
     if (!currentUser) {
       alert('Please login to run a report.');
       return;
@@ -335,7 +338,7 @@ const ReportView: React.FC = () => {
       setIsRunning(false);
       isRunningRef.current = false;
     }
-  };
+  }, [currentUser, isRunning, navigate]);
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
