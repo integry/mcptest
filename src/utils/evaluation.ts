@@ -186,7 +186,8 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       context: 'MCP requires JSON-RPC 2.0 format. The server correctly sets Content-Type: application/json header.',
       metadata: {
         contentType: 'application/json',
-        method: 'inferred from successful connection'
+        method: 'verified from successful connection',
+        headers: 'application/json (from successful MCP client connection)'
       }
     });
     
@@ -650,7 +651,8 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         metadata: {
           transportType: 'SSE',
           endpoint: connectionUrl,
-          capabilities: 'unidirectional streaming'
+          capabilities: 'unidirectional streaming',
+          supported: true
         }
       });
     }
@@ -678,13 +680,17 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     }, accessToken);
 
     if (streamResponse.ok && 
-        (streamResponse.headers.get('content-type')?.includes('application/x-ndjson') || 
-         streamResponse.headers.get('content-type')?.includes('text/event-stream'))) {
+        streamResponse.headers.get('content-type')?.includes('application/x-ndjson')) {
       transportSection.score += 10;
       transportSection.details.push({
         text: '✓ Server supports HTTP streaming (modern standard)',
-        context: 'HTTP streaming (NDJSON or SSE) enables real-time bidirectional communication, essential for long-running MCP operations.',
-        metadata: { contentType: streamResponse.headers.get('content-type') }
+        context: 'HTTP streaming (NDJSON) enables real-time bidirectional communication, essential for long-running MCP operations.',
+        metadata: { 
+          transportType: 'HTTP/NDJSON',
+          endpoint: `${serverUrl}/mcp/v1/stream`,
+          capabilities: 'bidirectional streaming',
+          contentType: streamResponse.headers.get('content-type') 
+        }
       });
     } else {
       transportSection.details.push({
@@ -692,23 +698,50 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         context: `Streaming is required for efficient real-time MCP communication. Request returned: ${streamResponse.status} ${streamResponse.statusText}`,
         metadata: { status: streamResponse.status, statusText: streamResponse.statusText }
       });
-      
-      // Check for SSE support (legacy, no penalty but no points)
-      try {
-        const sseResponse = await proxiedFetch(`${serverUrl}/sse`, token, {
-          method: 'GET',
-          headers: { 'Accept': 'text/event-stream' }
-        }, accessToken);
+    }
+    
+    // Always check for SSE support (legacy)
+    try {
+      const sseResponse = await proxiedFetch(`${serverUrl}/sse`, token, {
+        method: 'GET',
+        headers: { 'Accept': 'text/event-stream' }
+      }, accessToken);
 
-        if (sseResponse.ok && sseResponse.headers.get('content-type')?.includes('text/event-stream')) {
-          transportSection.details.push({
-            text: '⚠ Server supports SSE (legacy standard - no points awarded)',
-            context: 'Server-Sent Events (SSE) is an older unidirectional streaming method. Modern MCP servers should use NDJSON streaming instead.'
-          });
-        }
-      } catch (e) {
-        // SSE check failed, continue
+      if (sseResponse.ok && sseResponse.headers.get('content-type')?.includes('text/event-stream')) {
+        transportSection.details.push({
+          text: '⚠ Server supports SSE (legacy standard - no points awarded)',
+          context: 'Server-Sent Events (SSE) is an older unidirectional streaming method. Modern MCP servers should use NDJSON streaming instead.',
+          metadata: {
+            transportType: 'SSE',
+            endpoint: `${serverUrl}/sse`,
+            capabilities: 'unidirectional streaming',
+            contentType: sseResponse.headers.get('content-type'),
+            supported: true
+          }
+        });
+      } else {
+        transportSection.details.push({
+          text: '✗ Server does not support SSE',
+          context: 'SSE endpoint not available or returned error.',
+          metadata: {
+            transportType: 'SSE',
+            endpoint: `${serverUrl}/sse`,
+            status: sseResponse.status,
+            supported: false
+          }
+        });
       }
+    } catch (e: any) {
+      transportSection.details.push({
+        text: '✗ Server does not support SSE',
+        context: `SSE check failed: ${e.message}`,
+        metadata: {
+          transportType: 'SSE',
+          endpoint: `${serverUrl}/sse`,
+          error: e.message,
+          supported: false
+        }
+      });
     }
 
     // Check for HTTP/2 support (placeholder - would need more complex check)
@@ -819,28 +852,51 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
   };
 
   try {
+    // Use the actual site URL for CORS testing
+    const siteUrl = window.location.origin;
+    
     // CORS preflight check
     const corsResponse = await proxiedFetch(`${serverUrl}/mcp/v1/initialize`, token, {
       method: 'OPTIONS',
       headers: {
-        'Origin': 'https://mcp.dev',
+        'Origin': siteUrl,
         'Access-Control-Request-Method': 'POST',
         'Access-Control-Request-Headers': 'content-type,authorization'
       }
     }, accessToken);
 
+    // Collect all CORS headers from the response
+    const corsHeaders: Record<string, string> = {};
+    const corsHeaderNames = [
+      'access-control-allow-origin',
+      'access-control-allow-methods',
+      'access-control-allow-headers',
+      'access-control-allow-credentials',
+      'access-control-max-age',
+      'access-control-expose-headers'
+    ];
+    
+    corsHeaderNames.forEach(headerName => {
+      const value = corsResponse.headers.get(headerName);
+      if (value) {
+        corsHeaders[headerName] = value;
+      }
+    });
+
     const allowOrigin = corsResponse.headers.get('access-control-allow-origin');
     const allowMethods = corsResponse.headers.get('access-control-allow-methods');
     const allowHeaders = corsResponse.headers.get('access-control-allow-headers');
 
-    if (allowOrigin && (allowOrigin === '*' || allowOrigin === 'https://mcp.dev')) {
+    if (allowOrigin && (allowOrigin === '*' || allowOrigin === siteUrl)) {
       corsSection.score += 5;
       corsSection.details.push({
         text: '✓ CORS origin properly configured',
         context: `Server allows cross-origin requests from ${allowOrigin}. This enables browser-based MCP clients to connect.`,
         metadata: {
           'Access-Control-Allow-Origin': allowOrigin,
-          testedOrigin: 'https://mcp.dev'
+          testedOrigin: siteUrl,
+          responseStatus: corsResponse.status,
+          allCorsHeaders: corsHeaders
         }
       });
     } else {
@@ -849,8 +905,10 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         context: 'Browser clients cannot connect without proper CORS headers. Add Access-Control-Allow-Origin header to enable web access.',
         metadata: {
           'Access-Control-Allow-Origin': allowOrigin || 'not present',
-          testedOrigin: 'https://mcp.dev',
-          responseStatus: corsResponse.status
+          testedOrigin: siteUrl,
+          responseStatus: corsResponse.status,
+          allCorsHeaders: corsHeaders,
+          hint: `Expected origin to be '*' or '${siteUrl}'`
         }
       });
     }
@@ -862,7 +920,8 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         context: 'Server allows required HTTP methods (POST) for MCP operations from browser clients.',
         metadata: {
           'Access-Control-Allow-Methods': allowMethods,
-          requiredMethods: ['POST', 'OPTIONS']
+          requiredMethods: ['POST', 'OPTIONS'],
+          allCorsHeaders: corsHeaders
         }
       });
     } else {
@@ -871,7 +930,9 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         context: 'POST method must be allowed for MCP requests. Add POST to Access-Control-Allow-Methods header.',
         metadata: {
           'Access-Control-Allow-Methods': allowMethods || 'not present',
-          requiredMethods: ['POST', 'OPTIONS']
+          requiredMethods: ['POST', 'OPTIONS'],
+          allCorsHeaders: corsHeaders,
+          hint: 'Ensure the header includes at least: POST, OPTIONS'
         }
       });
     }
@@ -883,7 +944,8 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         context: 'Authorization header is allowed, enabling secure API token transmission from browser clients.',
         metadata: {
           'Access-Control-Allow-Headers': allowHeaders,
-          requiredHeaders: ['content-type', 'authorization']
+          requiredHeaders: ['content-type', 'authorization'],
+          allCorsHeaders: corsHeaders
         }
       });
     } else {
@@ -892,7 +954,9 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         context: 'Authorization header must be allowed for API authentication. Add to Access-Control-Allow-Headers.',
         metadata: {
           'Access-Control-Allow-Headers': allowHeaders || 'not present',
-          requiredHeaders: ['content-type', 'authorization']
+          requiredHeaders: ['content-type', 'authorization'],
+          allCorsHeaders: corsHeaders,
+          hint: 'Ensure the header includes at least: content-type, authorization'
         }
       });
     }
@@ -904,7 +968,9 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
         error: 'cors_check_failed',
         errorMessage: error.message,
         endpoint: `${serverUrl}/mcp/v1/initialize`,
-        method: 'OPTIONS'
+        method: 'OPTIONS',
+        testedOrigin: window.location.origin,
+        hint: 'Ensure your server responds to OPTIONS preflight requests with appropriate CORS headers'
       }
     });
   }
