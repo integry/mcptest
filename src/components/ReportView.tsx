@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getOAuthConfig, discoverOAuthEndpoints } from '../utils/oauthDiscovery';
@@ -20,6 +20,12 @@ const getScoreGrade = (score: number): string => {
   return 'F';
 };
 
+interface TestedServer {
+  url: string;
+  score: number;
+  timestamp: number;
+}
+
 const ReportView: React.FC = () => {
   const { serverUrl: urlParam } = useParams<{ serverUrl: string }>();
   const navigate = useNavigate();
@@ -30,6 +36,7 @@ const ReportView: React.FC = () => {
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [testedServers, setTestedServers] = useState<TestedServer[]>([]);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -149,6 +156,17 @@ const ReportView: React.FC = () => {
     }
   }, [location.state, urlParam, currentUser]);
 
+  useEffect(() => {
+    try {
+      const savedServers = localStorage.getItem('mcpTestedServers');
+      if (savedServers) {
+        setTestedServers(JSON.parse(savedServers));
+      }
+    } catch (e) {
+      console.error("Failed to load servers from localStorage", e);
+    }
+  }, []);
+
   const toggleItemExpanded = (itemKey: string) => {
     setExpandedItems(prev => {
       const newSet = new Set(prev);
@@ -160,6 +178,19 @@ const ReportView: React.FC = () => {
       return newSet;
     });
   };
+
+  const addOrUpdateServer = (url: string, score: number) => {
+    const newServer = { url, score, timestamp: Date.now() };
+    const updatedServers = [newServer, ...testedServers.filter(s => s.url !== url)];
+    setTestedServers(updatedServers);
+    localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
+  };
+
+  const removeServer = useCallback((urlToRemove: string) => {
+    const updatedServers = testedServers.filter(s => s.url !== urlToRemove);
+    setTestedServers(updatedServers);
+    localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
+  }, [testedServers]);
 
   const checkOAuthAuthentication = async (serverUrl: string): Promise<boolean> => {
     try {
@@ -338,6 +369,11 @@ const ReportView: React.FC = () => {
       const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
       setReport(reportData);
       
+      // If report completed successfully, save to history
+      if (reportData && reportData.finalScore !== undefined && !reportData.fatalError) {
+        addOrUpdateServer(urlToTest, reportData.finalScore);
+      }
+      
       // If authentication is required, show a button to authenticate
       if (reportData && reportData.sections && reportData.sections.auth) {
         setProgress(prev => [...prev, 'Authentication required. Please authenticate with the server and run the report again.']);
@@ -368,6 +404,45 @@ const ReportView: React.FC = () => {
           {isRunning ? 'Running...' : 'Run Report'}
         </button>
       </div>
+
+      {testedServers.length > 0 && (
+        <div className="card mb-3">
+          <div className="card-header">
+            <h5 className="mb-0">Previously Tested Servers</h5>
+          </div>
+          <div className="card-body">
+            <div className="list-group">
+              {testedServers.map((server) => (
+                <div
+                  key={server.url}
+                  className="list-group-item d-flex justify-content-between align-items-center"
+                >
+                  <div
+                    className="flex-grow-1"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setServerUrl(server.url)}
+                  >
+                    <div className="fw-bold">{server.url}</div>
+                    <small className="text-muted">
+                      Score: {server.score}% • Tested {new Date(server.timestamp).toLocaleString()}
+                    </small>
+                  </div>
+                  <button
+                    className="btn btn-sm btn-outline-danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeServer(server.url);
+                    }}
+                    title={`Remove ${server.url} from history`}
+                  >
+                    <span aria-hidden="true">&times;</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {isRunning && (
         <div className="progress mb-3">
