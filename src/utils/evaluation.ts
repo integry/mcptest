@@ -643,6 +643,31 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
           capabilities: 'bidirectional streaming'
         }
       });
+      
+      // Also check for SSE support even when using HTTP streaming
+      try {
+        const sseCheckUrl = connectionUrl.replace(/\/mcp\/?$/, '/sse');
+        const sseResponse = await proxiedFetch(sseCheckUrl, token, {
+          method: 'GET',
+          headers: { 'Accept': 'text/event-stream' }
+        }, accessToken);
+        
+        if (sseResponse.ok && sseResponse.headers.get('content-type')?.includes('text/event-stream')) {
+          transportSection.details.push({
+            text: '✓ Server also supports SSE (Server-Sent Events)',
+            context: 'Server-Sent Events (SSE) provides unidirectional streaming from server to client as an alternative transport option.',
+            metadata: {
+              transportType: 'SSE',
+              endpoint: sseCheckUrl,
+              capabilities: 'unidirectional streaming',
+              contentType: sseResponse.headers.get('content-type'),
+              supported: true
+            }
+          });
+        }
+      } catch (e) {
+        // SSE check failed, but that's okay since we have HTTP streaming
+      }
     } else if (transportType === 'legacy-sse') {
       // SSE gets no points but no penalty
       transportSection.details.push({
@@ -656,6 +681,38 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
           contentType: 'text/event-stream'
         }
       });
+      
+      // Also check if HTTP streaming is supported
+      try {
+        const httpCheckUrl = connectionUrl.replace(/\/sse\/?$/, '/mcp');
+        const httpResponse = await proxiedFetch(httpCheckUrl, token, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/x-ndjson'
+          },
+          body: JSON.stringify({
+            protocolVersion: '2024-11-05',
+            capabilities: {}
+          })
+        }, accessToken);
+        
+        if (httpResponse.ok && httpResponse.headers.get('content-type')?.includes('application/x-ndjson')) {
+          transportSection.details.push({
+            text: '✓ Server also supports HTTP streaming (modern standard)',
+            context: 'HTTP streaming (NDJSON) enables real-time bidirectional communication as a more modern alternative.',
+            metadata: {
+              transportType: 'HTTP/NDJSON',
+              endpoint: httpCheckUrl,
+              capabilities: 'bidirectional streaming',
+              contentType: httpResponse.headers.get('content-type'),
+              supported: true
+            }
+          });
+        }
+      } catch (e) {
+        // HTTP streaming check failed, but that's okay since we have SSE
+      }
     }
     
     // Give points for modern HTTP protocols since connection succeeded
