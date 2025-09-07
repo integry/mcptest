@@ -6,7 +6,7 @@ import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs';
+  activeView: 'playground' | 'dashboards' | 'docs' | 'report';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -250,6 +250,15 @@ const SideNav: React.FC<SideNavProps> = ({
         onClick={handlePlaygroundClick}
       >
         <i className="bi bi-search me-2"></i> Playground
+      </Link>
+
+      {/* Report Link */}
+      <Link
+        to="/report"
+        className={`nav-link ${activeView === 'report' ? 'active fw-bold' : ''}`}
+        onClick={() => document.body.classList.remove('menu-open')}
+      >
+        <i className="bi bi-clipboard2-data me-2"></i> Report
       </Link>
 
       {/* Dashboards Header */}
