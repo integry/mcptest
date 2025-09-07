@@ -114,3 +114,10 @@ export interface ConnectionTab {
   oauthCallbackLogs?: LogEntry[]; // Logs from OAuth callback to be displayed
   // Note: The client instance will be managed in a separate, non-serializable state
 }
+
+// --- Report View Types ---
+export interface TestedServer {
+  url: string;
+  score: number;
+  timestamp: number;
+}

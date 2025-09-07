@@ -1,0 +1,11 @@
+
+> mcp-sse-tester@1.0.0 predev
+> node scripts/generate-version.js
+
+Version information generated successfully:
+  Commit Hash: b766ca9eec68492db20b28c901503e7739554f3b
+  Short Hash: b766ca9
+  Commit Date: 2025-09-07T16:28:39Z
+
+> mcp-sse-tester@1.0.0 dev
+> vite

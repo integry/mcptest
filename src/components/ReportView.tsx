@@ -3,6 +3,8 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getOAuthConfig, discoverOAuthEndpoints } from '../utils/oauthDiscovery';
 import { evaluateServer } from '../utils/evaluation';
+import { TestedServer } from '../types';
+import { RecentReportsPanel } from './RecentReportsPanel';
 
 // Helper functions for score display
 const getScoreColor = (score: number): string => {
@@ -30,10 +32,59 @@ const ReportView: React.FC = () => {
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [testedServers, setTestedServers] = useState<TestedServer[]>([]);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
   const isRunningRef = useRef(false);
+
+  // Load tested servers from localStorage on initial render
+  useEffect(() => {
+    try {
+      const storedServers = localStorage.getItem('mcp_tested_servers');
+      if (storedServers) {
+        setTestedServers(JSON.parse(storedServers));
+      }
+    } catch (error) {
+      console.error('Failed to load tested servers from localStorage', error);
+    }
+  }, []);
+
+  // Update localStorage when testedServers state changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('mcp_tested_servers', JSON.stringify(testedServers));
+    } catch (error) {
+      console.error('Failed to save tested servers to localStorage', error);
+    }
+  }, [testedServers]);
+
+  // Add/update tested server when a report is completed
+  useEffect(() => {
+    if (report && report.serverUrl && report.finalScore !== undefined) {
+      const newServer: TestedServer = {
+        url: report.serverUrl,
+        score: report.finalScore,
+        timestamp: Date.now(),
+      };
+
+      setTestedServers(prevServers => {
+        const existingServerIndex = prevServers.findIndex(s => s.url === newServer.url);
+        let updatedServers = [...prevServers];
+
+        if (existingServerIndex > -1) {
+          // Update existing server
+          updatedServers[existingServerIndex] = newServer;
+        } else {
+          // Add new server
+          updatedServers.push(newServer);
+        }
+
+        // Sort by timestamp descending (most recent first)
+        return updatedServers.sort((a, b) => b.timestamp - a.timestamp);
+      });
+    }
+  }, [report]);
   
   useEffect(() => {
     if (!urlParam || hasInitialized) return;
@@ -352,6 +403,14 @@ const ReportView: React.FC = () => {
     }
   };
 
+  const handleSelectServer = (url: string) => {
+    setServerUrl(url);
+  };
+
+  const handleRemoveServer = (url: string) => {
+    setTestedServers(prev => prev.filter(s => s.url !== url));
+  };
+
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
       <h2 className="mb-3">MCP Server Report Card</h2>
@@ -368,6 +427,13 @@ const ReportView: React.FC = () => {
           {isRunning ? 'Running...' : 'Run Report'}
         </button>
       </div>
+
+      <RecentReportsPanel
+        testedServers={testedServers}
+        onSelectServer={handleSelectServer}
+        onRemoveServer={handleRemoveServer}
+        isRunning={isRunning}
+      />
 
       {isRunning && (
         <div className="progress mb-3">
