@@ -144,7 +144,7 @@ const ReportView: React.FC = () => {
     localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
   }, [testedServers]);
 
-  const checkOAuthAuthentication = async (serverUrl: string): Promise<boolean> => {
+  const checkOAuthAuthentication = useCallback(async (serverUrl: string): Promise<boolean> => {
     try {
       // Check if we already have an OAuth token for this server
       const serverHost = new URL(serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`).host;
@@ -274,7 +274,7 @@ const ReportView: React.FC = () => {
       console.error('Error checking OAuth:', error);
       return true; // Continue without OAuth on error
     }
-  };
+  }, []);
 
   const handleRunReport = useCallback(async (urlToTest: string) => {
     if (!currentUser) {
@@ -338,7 +338,7 @@ const ReportView: React.FC = () => {
       setIsRunning(false);
       isRunningRef.current = false;
     }
-  }, [currentUser, isRunning, navigate]);
+  }, [currentUser, isRunning, navigate, urlParam, checkOAuthAuthentication, addOrUpdateServer]);
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
