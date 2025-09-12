@@ -60,6 +60,7 @@ const ReportView: React.FC = () => {
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
   const isRunningRef = useRef(false);
+  const hasProcessedOAuthReturn = useRef(false);
   
   // Store handleRunReport in a ref to avoid dependency issues
   const handleRunReportRef = useRef<(urlToTest: string) => Promise<void>>();
@@ -103,6 +104,12 @@ const ReportView: React.FC = () => {
     const state = location.state as any;
     if (!state.fromOAuthReturn) return;
     
+    // Check if we've already processed this OAuth return
+    if (hasProcessedOAuthReturn.current) {
+      console.log('[ReportView] OAuth return already processed, skipping');
+      return;
+    }
+    
     const decodedUrl = decodeURIComponent(urlParam);
     const returnView = sessionStorage.getItem('oauth_return_view');
     
@@ -118,6 +125,9 @@ const ReportView: React.FC = () => {
       try {
         const returnData = JSON.parse(returnView);
         if (returnData.activeView === 'report' && returnData.serverUrl === decodedUrl) {
+          // Mark that we've processed this OAuth return
+          hasProcessedOAuthReturn.current = true;
+          
           // Clear the return view
           sessionStorage.removeItem('oauth_return_view');
           sessionStorage.removeItem('oauth_completed_time');
@@ -130,17 +140,29 @@ const ReportView: React.FC = () => {
           console.log('[ReportView] Setting serverUrl after OAuth return:', decodedUrl);
           setServerUrl(decodedUrl);
           
-          if (currentUser && !isRunning && !isRunningRef.current && handleRunReportRef.current) {
+          if (currentUser && !isRunning && !isRunningRef.current) {
             console.log('[ReportView] Starting delayed report run after OAuth');
+            // Use a longer delay to ensure handleRunReportRef is set
             setTimeout(() => {
-              handleRunReportRef.current?.(decodedUrl);
+              if (handleRunReportRef.current && !isRunningRef.current) {
+                handleRunReportRef.current(decodedUrl);
+              } else if (!handleRunReportRef.current) {
+                // If handleRunReportRef is still not available, try again
+                console.log('[ReportView] handleRunReportRef not ready, retrying...');
+                setTimeout(() => {
+                  if (handleRunReportRef.current && !isRunningRef.current) {
+                    handleRunReportRef.current(decodedUrl);
+                  } else {
+                    console.error('[ReportView] Failed to get handleRunReportRef after retries or report already running');
+                  }
+                }, 1000);
+              }
             }, 500);
           } else {
             console.log('[ReportView] Cannot run report:', { 
               hasUser: !!currentUser, 
               isRunning,
-              isRunningRef: isRunningRef.current,
-              hasHandleRunReport: !!handleRunReportRef.current
+              isRunningRef: isRunningRef.current
             });
           }
         }
