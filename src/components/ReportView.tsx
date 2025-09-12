@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getOAuthConfig, discoverOAuthEndpoints } from '../utils/oauthDiscovery';
 import { evaluateServer } from '../utils/evaluation';
@@ -27,11 +27,30 @@ interface TestedServer {
 }
 
 const ReportView: React.FC = () => {
-  const { serverUrl: urlParam } = useParams<{ serverUrl: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser } = useAuth();
-  const [serverUrl, setServerUrl] = useState('');
+  
+  // Parse the server URL from the pathname since we're not using React Router's Route params
+  const urlParam = location.pathname.startsWith('/report/') 
+    ? location.pathname.substring('/report/'.length) 
+    : undefined;
+    
+  console.log('[ReportView] Component mounted with:', { 
+    pathname: location.pathname, 
+    urlParam,
+    state: location.state 
+  });
+  
+  const [serverUrl, setServerUrl] = useState(() => {
+    // Initialize with the URL from the path if available
+    if (urlParam) {
+      const decoded = decodeURIComponent(urlParam);
+      console.log('[ReportView] Initial state - setting serverUrl from URL param:', decoded);
+      return decoded;
+    }
+    return '';
+  });
   const [report, setReport] = useState<any>(null);
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -45,11 +64,29 @@ const ReportView: React.FC = () => {
   // Store handleRunReport in a ref to avoid dependency issues
   const handleRunReportRef = useRef<(urlToTest: string) => Promise<void>>();
   
+  // Log component mount/unmount
+  useEffect(() => {
+    console.log('[ReportView] Component mounted');
+    return () => {
+      console.log('[ReportView] Component unmounted');
+    };
+  }, []);
+  
   useEffect(() => {
     // If there's a server URL in the path, update the input field
     if (urlParam) {
       const decodedUrl = decodeURIComponent(urlParam);
-      setServerUrl(decodedUrl);
+      console.log('[ReportView] URL param effect triggered:', { 
+        urlParam, 
+        decodedUrl, 
+        currentServerUrl: serverUrl,
+        needsUpdate: serverUrl !== decodedUrl 
+      });
+      
+      // Always update the serverUrl if it's different
+      if (serverUrl !== decodedUrl) {
+        setServerUrl(decodedUrl);
+      }
 
       // Automatically run the report if the user is logged in and we haven't run it yet for this session
       if (currentUser && !hasInitialized && handleRunReportRef.current) {
@@ -57,7 +94,7 @@ const ReportView: React.FC = () => {
         setHasInitialized(true);
       }
     }
-  }, [urlParam, currentUser, hasInitialized]);
+  }, [urlParam, currentUser, hasInitialized, serverUrl]);
   
   // Separate effect to handle OAuth returns
   useEffect(() => {
@@ -90,6 +127,7 @@ const ReportView: React.FC = () => {
           setProgress(['OAuth authentication successful! Restarting report...']);
           
           // Ensure the URL is set in the input field
+          console.log('[ReportView] Setting serverUrl after OAuth return:', decodedUrl);
           setServerUrl(decodedUrl);
           
           if (currentUser && !isRunning && !isRunningRef.current && handleRunReportRef.current) {
@@ -101,7 +139,8 @@ const ReportView: React.FC = () => {
             console.log('[ReportView] Cannot run report:', { 
               hasUser: !!currentUser, 
               isRunning,
-              isRunningRef: isRunningRef.current 
+              isRunningRef: isRunningRef.current,
+              hasHandleRunReport: !!handleRunReportRef.current
             });
           }
         }
