@@ -42,6 +42,9 @@ const ReportView: React.FC = () => {
   const [hasInitialized, setHasInitialized] = useState(false);
   const isRunningRef = useRef(false);
   
+  // Store handleRunReport in a ref to avoid dependency issues
+  const handleRunReportRef = useRef<(urlToTest: string) => Promise<void>>();
+  
   useEffect(() => {
     // If there's a server URL in the path, update the input field
     if (urlParam) {
@@ -49,8 +52,8 @@ const ReportView: React.FC = () => {
       setServerUrl(decodedUrl);
 
       // Automatically run the report if the user is logged in and we haven't run it yet for this session
-      if (currentUser && !hasInitialized) {
-        handleRunReport(decodedUrl);
+      if (currentUser && !hasInitialized && handleRunReportRef.current) {
+        handleRunReportRef.current(decodedUrl);
         setHasInitialized(true);
       }
     }
@@ -89,10 +92,10 @@ const ReportView: React.FC = () => {
           // Ensure the URL is set in the input field
           setServerUrl(decodedUrl);
           
-          if (currentUser && !isRunning && !isRunningRef.current) {
+          if (currentUser && !isRunning && !isRunningRef.current && handleRunReportRef.current) {
             console.log('[ReportView] Starting delayed report run after OAuth');
             setTimeout(() => {
-              handleRunReport(decodedUrl);
+              handleRunReportRef.current?.(decodedUrl);
             }, 500);
           } else {
             console.log('[ReportView] Cannot run report:', { 
@@ -106,7 +109,7 @@ const ReportView: React.FC = () => {
         console.error('Failed to parse OAuth return data:', e);
       }
     }
-  }, [location.state, urlParam, currentUser, handleRunReport]);
+  }, [location.state, urlParam, currentUser, isRunning]);
 
   useEffect(() => {
     try {
@@ -339,6 +342,11 @@ const ReportView: React.FC = () => {
       isRunningRef.current = false;
     }
   }, [currentUser, isRunning, navigate, urlParam, checkOAuthAuthentication, addOrUpdateServer]);
+
+  // Assign handleRunReport to ref after it's defined
+  useEffect(() => {
+    handleRunReportRef.current = handleRunReport;
+  }, [handleRunReport]);
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
