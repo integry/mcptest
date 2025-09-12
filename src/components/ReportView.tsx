@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getOAuthConfig, discoverOAuthEndpoints } from '../utils/oauthDiscovery';
 import { evaluateServer } from '../utils/evaluation';
@@ -27,11 +27,30 @@ interface TestedServer {
 }
 
 const ReportView: React.FC = () => {
-  const { serverUrl: urlParam } = useParams<{ serverUrl: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser } = useAuth();
-  const [serverUrl, setServerUrl] = useState('');
+  
+  // Parse the server URL from the pathname since we're not using React Router's Route params
+  const urlParam = location.pathname.startsWith('/report/') 
+    ? location.pathname.substring('/report/'.length) 
+    : undefined;
+    
+  console.log('[ReportView] Component mounted with:', { 
+    pathname: location.pathname, 
+    urlParam,
+    state: location.state 
+  });
+  
+  const [serverUrl, setServerUrl] = useState(() => {
+    // Initialize with the URL from the path if available
+    if (urlParam) {
+      const decoded = decodeURIComponent(urlParam);
+      console.log('[ReportView] Initial state - setting serverUrl from URL param:', decoded);
+      return decoded;
+    }
+    return '';
+  });
   const [report, setReport] = useState<any>(null);
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -41,71 +60,42 @@ const ReportView: React.FC = () => {
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
   const isRunningRef = useRef(false);
+  const hasProcessedOAuthReturn = useRef(false);
+  
+  // Store handleRunReport in a ref to avoid dependency issues
+  const handleRunReportRef = useRef<(urlToTest: string) => Promise<void>>();
+  
+  // Log component mount/unmount
+  useEffect(() => {
+    console.log('[ReportView] Component mounted');
+    return () => {
+      console.log('[ReportView] Component unmounted');
+    };
+  }, []);
   
   useEffect(() => {
-    if (!urlParam || hasInitialized) return;
-    
-    const decodedUrl = decodeURIComponent(urlParam);
-    setServerUrl(decodedUrl);
-    setHasInitialized(true);
-    
-    // Check if we're returning from OAuth
-    const state = location.state as any;
-    const returnView = sessionStorage.getItem('oauth_return_view');
-    
-    // Also check for OAuth completion timestamp as a fallback
-    const oauthCompletedTime = sessionStorage.getItem('oauth_completed_time');
-    const isRecentOAuthCompletion = oauthCompletedTime && 
-      (Date.now() - parseInt(oauthCompletedTime)) < 10000; // Within last 10 seconds
-    
-    console.log('[ReportView] Initial load check:', {
-      state,
-      fromOAuthReturn: state?.fromOAuthReturn,
-      isRecentOAuthCompletion,
-      oauthCompletedTime,
-      returnView,
-      decodedUrl
-    });
-    
-    // If we're returning from OAuth, let the other effect handle it
-    if (state?.fromOAuthReturn) {
-      console.log('[ReportView] Skipping initial report run - OAuth return detected');
-      return;
-    }
-    
-    if (isRecentOAuthCompletion && returnView) {
-      try {
-        const returnData = JSON.parse(returnView);
-        console.log('[ReportView] OAuth return data (timestamp fallback):', returnData);
-        
-        if (returnData.activeView === 'report' && returnData.serverUrl === decodedUrl) {
-          // Clear the return view and OAuth completion time
-          sessionStorage.removeItem('oauth_return_view');
-          sessionStorage.removeItem('oauth_completed_time');
-          
-          // Automatically re-run the report after successful OAuth
-          console.log('[ReportView] Re-running report after OAuth success (timestamp fallback)');
-          setProgress(['OAuth authentication successful! Restarting report...']);
-          
-          // Small delay to ensure UI updates and then run report
-          setTimeout(() => {
-            if (currentUser) {
-              handleRunReport(decodedUrl);
-            }
-          }, 500);
-          return;
-        }
-      } catch (e) {
-        console.error('Failed to parse OAuth return data:', e);
+    // If there's a server URL in the path, update the input field
+    if (urlParam) {
+      const decodedUrl = decodeURIComponent(urlParam);
+      console.log('[ReportView] URL param effect triggered:', { 
+        urlParam, 
+        decodedUrl, 
+        currentServerUrl: serverUrl,
+        needsUpdate: serverUrl !== decodedUrl 
+      });
+      
+      // Always update the serverUrl if it's different
+      if (serverUrl !== decodedUrl) {
+        setServerUrl(decodedUrl);
+      }
+
+      // Automatically run the report if the user is logged in and we haven't run it yet for this session
+      if (currentUser && !hasInitialized && handleRunReportRef.current) {
+        handleRunReportRef.current(decodedUrl);
+        setHasInitialized(true);
       }
     }
-    
-    // Normal flow - run report immediately if user is logged in
-    if (currentUser) {
-      console.log('[ReportView] Running report normally');
-      handleRunReport(decodedUrl);
-    }
-  }, [urlParam]); // Only depend on urlParam to avoid re-runs
+  }, [urlParam, currentUser, hasInitialized, serverUrl]);
   
   // Separate effect to handle OAuth returns
   useEffect(() => {
@@ -113,6 +103,12 @@ const ReportView: React.FC = () => {
     
     const state = location.state as any;
     if (!state.fromOAuthReturn) return;
+    
+    // Check if we've already processed this OAuth return
+    if (hasProcessedOAuthReturn.current) {
+      console.log('[ReportView] OAuth return already processed, skipping');
+      return;
+    }
     
     const decodedUrl = decodeURIComponent(urlParam);
     const returnView = sessionStorage.getItem('oauth_return_view');
@@ -129,6 +125,9 @@ const ReportView: React.FC = () => {
       try {
         const returnData = JSON.parse(returnView);
         if (returnData.activeView === 'report' && returnData.serverUrl === decodedUrl) {
+          // Mark that we've processed this OAuth return
+          hasProcessedOAuthReturn.current = true;
+          
           // Clear the return view
           sessionStorage.removeItem('oauth_return_view');
           sessionStorage.removeItem('oauth_completed_time');
@@ -137,16 +136,33 @@ const ReportView: React.FC = () => {
           console.log('[ReportView] Re-running report after OAuth return (from location state)');
           setProgress(['OAuth authentication successful! Restarting report...']);
           
+          // Ensure the URL is set in the input field
+          console.log('[ReportView] Setting serverUrl after OAuth return:', decodedUrl);
+          setServerUrl(decodedUrl);
+          
           if (currentUser && !isRunning && !isRunningRef.current) {
             console.log('[ReportView] Starting delayed report run after OAuth');
+            // Use a longer delay to ensure handleRunReportRef is set
             setTimeout(() => {
-              handleRunReport(decodedUrl);
+              if (handleRunReportRef.current && !isRunningRef.current) {
+                handleRunReportRef.current(decodedUrl);
+              } else if (!handleRunReportRef.current) {
+                // If handleRunReportRef is still not available, try again
+                console.log('[ReportView] handleRunReportRef not ready, retrying...');
+                setTimeout(() => {
+                  if (handleRunReportRef.current && !isRunningRef.current) {
+                    handleRunReportRef.current(decodedUrl);
+                  } else {
+                    console.error('[ReportView] Failed to get handleRunReportRef after retries or report already running');
+                  }
+                }, 1000);
+              }
             }, 500);
           } else {
             console.log('[ReportView] Cannot run report:', { 
               hasUser: !!currentUser, 
               isRunning,
-              isRunningRef: isRunningRef.current 
+              isRunningRef: isRunningRef.current
             });
           }
         }
@@ -154,7 +170,7 @@ const ReportView: React.FC = () => {
         console.error('Failed to parse OAuth return data:', e);
       }
     }
-  }, [location.state, urlParam, currentUser]);
+  }, [location.state, urlParam, currentUser, isRunning]);
 
   useEffect(() => {
     try {
@@ -192,7 +208,7 @@ const ReportView: React.FC = () => {
     localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
   }, [testedServers]);
 
-  const checkOAuthAuthentication = async (serverUrl: string): Promise<boolean> => {
+  const checkOAuthAuthentication = useCallback(async (serverUrl: string): Promise<boolean> => {
     try {
       // Check if we already have an OAuth token for this server
       const serverHost = new URL(serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`).host;
@@ -322,9 +338,9 @@ const ReportView: React.FC = () => {
       console.error('Error checking OAuth:', error);
       return true; // Continue without OAuth on error
     }
-  };
+  }, []);
 
-  const handleRunReport = async (urlToTest: string) => {
+  const handleRunReport = useCallback(async (urlToTest: string) => {
     if (!currentUser) {
       alert('Please login to run a report.');
       return;
@@ -386,7 +402,12 @@ const ReportView: React.FC = () => {
       setIsRunning(false);
       isRunningRef.current = false;
     }
-  };
+  }, [currentUser, isRunning, navigate, urlParam, checkOAuthAuthentication, addOrUpdateServer]);
+
+  // Assign handleRunReport to ref after it's defined
+  useEffect(() => {
+    handleRunReportRef.current = handleRunReport;
+  }, [handleRunReport]);
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
