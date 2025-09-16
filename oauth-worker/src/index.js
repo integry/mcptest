@@ -28,8 +28,10 @@ const defaultHandler = {
     let url = new URL(request.url);
 
     // Add CORS headers for all responses
+    // Note: In production, you should restrict Access-Control-Allow-Origin to specific domains
+    // For MCP compatibility, we allow all origins to support dynamic client registration from any domain
     const corsHeaders = {
-      'Access-Control-Allow-Origin': '*', // Allow any origin for dynamic client registration
+      'Access-Control-Allow-Origin': '*', // Required for MCP dynamic client registration from any domain
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, MCP-Protocol-Version',
       'Access-Control-Max-Age': '86400',
@@ -71,146 +73,9 @@ const defaultHandler = {
       });
     }
 
-    // Handle client setup/check endpoint
-    if (url.pathname == "/oauth/check-client") {
-      try {
-        const urlParams = new URLSearchParams(url.search);
-        const clientId = urlParams.get('client_id');
-        const redirectUri = urlParams.get('redirect_uri');
-        
-        if (clientId === "mcptest-client" && redirectUri) {
-          // Check if the redirect URI is valid for mcptest.io domain
-          const redirectUrl = new URL(redirectUri);
-          const isValidRedirect = redirectUrl.hostname === 'mcptest.io' || 
-                                  redirectUrl.hostname.endsWith('.mcptest.io');
-          
-          if (!isValidRedirect || redirectUrl.pathname !== '/oauth/callback') {
-            return new Response(JSON.stringify({ 
-              error: 'invalid_redirect_uri',
-              error_description: 'Invalid redirect URI - must be https://*.mcptest.io/oauth/callback'
-            }), {
-              status: 400,
-              headers: { 
-                "Content-Type": "application/json",
-                ...corsHeaders
-              }
-            });
-          }
-          
-          // Check if client exists
-          try {
-            const clientInfo = await env.OAUTH_PROVIDER.lookupClient(clientId);
-            // Check if this redirect URI needs to be added
-            if (!clientInfo.redirectUris.includes(redirectUri)) {
-              clientInfo.redirectUris.push(redirectUri);
-              await env.OAUTH_PROVIDER.updateClient(clientId, clientInfo);
-            }
-            return new Response(JSON.stringify({ 
-              success: true,
-              client_exists: true,
-              message: 'Client exists and redirect URI is registered'
-            }), {
-              status: 200,
-              headers: { 
-                "Content-Type": "application/json",
-                ...corsHeaders
-              }
-            });
-          } catch (error) {
-            // Client doesn't exist, create it
-            console.log('[OAuth Worker] Creating mcptest-client for:', redirectUri);
-            await env.OAUTH_PROVIDER.createClient({
-              clientId: "mcptest-client",
-              clientName: "MCP SSE Tester",
-              redirectUris: [redirectUri],
-              publicClient: true,
-              grantTypes: ["authorization_code"],
-              responseTypes: ["code"],
-              scope: "openid profile email"
-            });
-            return new Response(JSON.stringify({ 
-              success: true,
-              client_exists: true,
-              message: 'Client created successfully'
-            }), {
-              status: 200,
-              headers: { 
-                "Content-Type": "application/json",
-                ...corsHeaders
-              }
-            });
-          }
-        }
-        
-        return new Response(JSON.stringify({ 
-          error: 'invalid_request',
-          error_description: 'Invalid client_id or missing redirect_uri'
-        }), {
-          status: 400,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      } catch (error) {
-        console.error('[OAuth Worker] Check client error:', error);
-        return new Response(JSON.stringify({ 
-          error: 'server_error',
-          error_description: error.message 
-        }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      }
-    }
-
-    // Special endpoint to get or create mcptest client
-    if (url.pathname == "/oauth/ensure-client") {
-      try {
-        // Use the existing client ID that we know works
-        // This was created via dynamic registration and has the correct redirect URIs
-        const clientId = "5iA4IxGmFOIEau2p";
-        
-        // Verify the client exists
-        try {
-          const client = await env.OAUTH_PROVIDER.lookupClient(clientId);
-          
-          return new Response(JSON.stringify({
-            clientId: clientId,
-            clientName: client.clientName || "MCP SSE Tester",
-            redirectUris: client.redirectUris || [
-              "https://mcptest.io/oauth/callback",
-              "https://app.mcptest.io/oauth/callback",
-              "https://staging.mcptest.io/oauth/callback"
-            ]
-          }), {
-            status: 200,
-            headers: { 
-              "Content-Type": "application/json",
-              ...corsHeaders
-            }
-          });
-        } catch (lookupError) {
-          // If client doesn't exist, return error
-          throw new Error(`Client ${clientId} not found. Please use the dynamic registration endpoint.`);
-        }
-      } catch (error) {
-        console.error('[OAuth Worker] Ensure client error:', error);
-        return new Response(JSON.stringify({ 
-          error: 'server_error',
-          error_description: error.message 
-        }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      }
-    }
+    // Note: Non-standard endpoints /oauth/check-client and /oauth/ensure-client
+    // have been removed to ensure OAuth 2.1 compliance.
+    // Clients should use the standard /oauth/register endpoint for dynamic client registration.
 
     // Handle the authorization UI
     if (url.pathname == "/oauth/authorize") {
@@ -371,154 +236,8 @@ const defaultHandler = {
     }
 
 
-
-    // Debug endpoint to test PKCE
-    if (url.pathname == "/debug/pkce-test") {
-      try {
-        const testVerifier = url.searchParams.get('verifier');
-        const testChallenge = url.searchParams.get('challenge');
-        
-        if (!testVerifier || !testChallenge) {
-          return new Response(JSON.stringify({
-            error: 'Missing parameters',
-            usage: 'Add ?verifier=XXX&challenge=YYY to test PKCE'
-          }), {
-            status: 400,
-            headers: { 
-              "Content-Type": "application/json",
-              ...corsHeaders
-            }
-          });
-        }
-        
-        // Test PKCE verification
-        const encoder = new TextEncoder();
-        const data = encoder.encode(testVerifier);
-        const digest = await crypto.subtle.digest('SHA-256', data);
-        const computedChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=/g, '');
-        
-        const matches = computedChallenge === testChallenge;
-        
-        return new Response(JSON.stringify({
-          verifier: testVerifier,
-          providedChallenge: testChallenge,
-          computedChallenge: computedChallenge,
-          matches: matches,
-          verifierLength: testVerifier.length,
-          challengeLength: testChallenge.length
-        }, null, 2), {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      } catch (error) {
-        return new Response(JSON.stringify({ 
-          error: 'pkce_test_error',
-          message: error.message 
-        }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      }
-    }
-
-    // Debug endpoint to check OAuth provider state
-    if (url.pathname == "/debug/oauth-state") {
-      try {
-        // Try to list all clients (this might not work depending on the library)
-        const debugInfo = {
-          timestamp: new Date().toISOString(),
-          kvNamespace: env.OAUTH_KV ? 'Connected' : 'Not connected',
-          oauthProvider: env.OAUTH_PROVIDER ? 'Initialized' : 'Not initialized',
-          kvKeys: []
-        };
-        
-        // List all KV keys to see what's stored
-        try {
-          const list = await env.OAUTH_KV.list();
-          debugInfo.kvKeys = list.keys.map(k => ({ 
-            name: k.name, 
-            metadata: k.metadata 
-          }));
-          
-          // Get the actual data for each client
-          debugInfo.kvClients = {};
-          for (const key of list.keys) {
-            if (key.name.startsWith('client:')) {
-              try {
-                const data = await env.OAUTH_KV.get(key.name);
-                debugInfo.kvClients[key.name] = JSON.parse(data);
-              } catch (e) {
-                debugInfo.kvClients[key.name] = { error: e.message };
-              }
-            }
-          }
-        } catch (e) {
-          debugInfo.kvListError = e.message;
-        }
-        
-        // Try to look up mcptest-client
-        try {
-          const client = await env.OAUTH_PROVIDER.lookupClient('mcptest-client');
-          debugInfo.mcptestClient = {
-            exists: true,
-            client: client,
-            redirectUris: client?.redirectUris || []
-          };
-        } catch (e) {
-          debugInfo.mcptestClient = {
-            exists: false,
-            error: e.message
-          };
-          
-          // Try direct KV lookup
-          try {
-            const kvData = await env.OAUTH_KV.get('client:mcptest-client');
-            if (kvData) {
-              debugInfo.kvDirectLookup = {
-                found: true,
-                data: JSON.parse(kvData)
-              };
-            } else {
-              debugInfo.kvDirectLookup = {
-                found: false
-              };
-            }
-          } catch (kvError) {
-            debugInfo.kvDirectLookup = {
-              error: kvError.message
-            };
-          }
-        }
-        
-        return new Response(JSON.stringify(debugInfo, null, 2), {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      } catch (error) {
-        return new Response(JSON.stringify({ 
-          error: 'debug_error',
-          message: error.message 
-        }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        });
-      }
-    }
+    // Note: Debug endpoints have been removed for production deployment.
+    // This ensures OAuth 2.1 compliance and security best practices.
 
     
     return new Response("Not found", { status: 404 });
@@ -569,38 +288,6 @@ export default new OAuthProvider({
   }
 });
 
-// Helper function to create the initial client (can be called separately)
-export async function setupClient(env) {
-  // Create the MCP test client if it doesn't exist
-  const clientId = "mcptest-client";
-  
-  try {
-    // Check if client already exists
-    const existingClient = await env.OAUTH_PROVIDER.lookupClient(clientId);
-    if (existingClient) {
-      console.log('Client already exists:', clientId);
-      return;
-    }
-  } catch (error) {
-    // Client doesn't exist, create it
-  }
-  
-  // Create the client
-  await env.OAUTH_PROVIDER.createClient({
-    clientId: clientId,
-    clientName: "MCP SSE Tester",
-    redirectUris: [
-      "https://mcptest.io/oauth/callback"
-    ],
-    // Public client (no secret) for SPA
-    publicClient: true,
-    grantTypes: ["authorization_code"],
-    responseTypes: ["code"],
-    scope: "openid profile email",
-    logoUri: "https://mcptest.pages.dev/logo.png",
-    policyUri: "https://mcptest.pages.dev/privacy",
-    tosUri: "https://mcptest.pages.dev/terms"
-  });
-  
-  console.log('Client created:', clientId);
-}
+// Note: The setupClient helper function has been removed.
+// Clients should use the standard /oauth/register endpoint for dynamic client registration
+// as specified in RFC7591 and the MCP specification.

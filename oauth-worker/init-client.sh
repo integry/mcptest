@@ -1,16 +1,20 @@
 #!/bin/bash
 
-# Initialize the mcptest-client in the OAuth worker
-# Run this once after deploying the OAuth worker
+# This script has been deprecated.
+# The OAuth worker now fully supports RFC7591 Dynamic Client Registration.
+# Clients should use the standard /oauth/register endpoint to register themselves.
+#
+# Example:
+# curl -X POST https://oauth-worker.livecart.workers.dev/oauth/register \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "client_name": "MCP SSE Tester",
+#     "redirect_uris": ["https://mcptest.io/oauth/callback"],
+#     "grant_types": ["authorization_code"],
+#     "response_types": ["code"],
+#     "scope": "openid profile email",
+#     "token_endpoint_auth_method": "none"
+#   }'
 
-echo "Initializing mcptest-client..."
-
-response=$(curl -X POST https://oauth-worker.livecart.workers.dev/init-client \
-  -H "Content-Type: application/json" \
-  -s)
-
-echo "Response: $response"
-
-# Also check the debug endpoint
-echo -e "\nChecking OAuth state..."
-curl -s https://oauth-worker.livecart.workers.dev/debug/oauth-state | jq .
+echo "This script is deprecated. Use the standard /oauth/register endpoint for dynamic client registration."
+echo "See RFC7591 and the MCP specification for details."
