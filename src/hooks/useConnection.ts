@@ -11,6 +11,8 @@ import { useAuth } from '../context/AuthContext';
 import { generatePKCE } from '../utils/pkce';
 import { oauthConfig, getOAuthServerType } from '../config/oauth';
 import { getOAuthConfig, isOAuthService, getOAuthServiceName, getOrRegisterOAuthClient } from '../utils/oauthDiscovery';
+import { retryWithBackoff, isRetryableError } from '../utils/retryWithBackoff';
+import { generatePortFallbackUrls, isPortRelatedError } from '../utils/portFallback';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -871,10 +873,25 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     };
 
     try {
-        // Always try direct connection first
+        // Always try direct connection first with retry logic
         try {
           const result = await Promise.race([
-            connectDirectly(),
+            retryWithBackoff(
+              connectDirectly,
+              {
+                maxAttempts: 3,
+                initialDelayMs: 1000,
+                maxDelayMs: 5000,
+                shouldRetry: isRetryableError,
+                abortSignal: abortControllerRef.current?.signal,
+                onRetry: (attempt, error, nextDelayMs) => {
+                  addLogEntry({ 
+                    type: 'info', 
+                    data: `Connection attempt ${attempt} failed: ${error.message}. Retrying in ${nextDelayMs}ms...` 
+                  });
+                }
+              }
+            ),
             timeoutPromise
           ]);
           
@@ -884,30 +901,116 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           connectionSuccess = true;
           addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType} at ${result.url}` });
         } catch (error: any) {
+          lastError = error;
+          
           // Check if it's a CORS error and if automatic proxy fallback is enabled
           const isCorsError = error.message?.toLowerCase().includes('cors') || 
                             (error.message?.toLowerCase().includes('failed to fetch') && 
                              !error.message?.toLowerCase().includes('network'));
           
-          // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
-          const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
+          // Check if it's a network error (not CORS) and we should try HTTP fallback
+          const isNetworkError = (error.message?.toLowerCase().includes('failed to fetch') && 
+                                 error.message?.toLowerCase().includes('network')) ||
+                                error.message?.toLowerCase().includes('network request failed') ||
+                                error.message?.toLowerCase().includes('connection refused') ||
+                                error.message?.toLowerCase().includes('err_connection_refused');
           
-          if (isCorsError && shouldUseProxy && currentUser) {
-            // Attempt proxy connection as fallback only if user is logged in
-            const result = await Promise.race([
-              connectViaProxy(),
-              timeoutPromise
-            ]);
-            finalClient = result.client;
-            finalTransportType = result.transportType;
-            finalUrl = result.url;
-            connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} at ${result.url}` });
-          } else {
-            if (isCorsError && shouldUseProxy && !currentUser) {
-              addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+          // Try HTTP fallback if HTTPS failed with network error
+          if (isNetworkError && targetUrl.startsWith('https://')) {
+            const httpUrl = getHttpVersion(targetUrl);
+            addLogEntry({ type: 'info', data: `HTTPS connection failed with network error. Attempting HTTP fallback to ${httpUrl}...` });
+            
+            try {
+              const httpResult = await Promise.race([
+                retryWithBackoff(
+                  () => attemptParallelConnections(httpUrl, abortControllerRef.current?.signal, latestAccessToken || undefined),
+                  {
+                    maxAttempts: 2, // Fewer attempts for HTTP fallback
+                    initialDelayMs: 500,
+                    maxDelayMs: 2000,
+                    shouldRetry: isRetryableError,
+                    abortSignal: abortControllerRef.current?.signal,
+                    onRetry: (attempt, error, nextDelayMs) => {
+                      addLogEntry({ 
+                        type: 'info', 
+                        data: `HTTP fallback attempt ${attempt} failed: ${error.message}. Retrying in ${nextDelayMs}ms...` 
+                      });
+                    }
+                  }
+                ),
+                timeoutPromise
+              ]);
+              
+              finalClient = httpResult.client;
+              finalTransportType = httpResult.transportType;
+              finalUrl = httpResult.url;
+              connectionSuccess = true;
+              setIsProxied(false);
+              addLogEntry({ type: 'info', data: `HTTP fallback successful using ${httpResult.transportType} at ${httpResult.url}` });
+            } catch (httpError: any) {
+              // HTTP also failed, continue to proxy fallback if applicable
+              lastError = httpError;
             }
-            throw error; // Re-throw if not a CORS error, proxy is disabled, or user not logged in
+          }
+          
+          // Try port fallback if it's a port-related error
+          if (!connectionSuccess && isPortRelatedError(lastError || error)) {
+            const portFallbackUrls = generatePortFallbackUrls(targetUrl);
+            if (portFallbackUrls.length > 0) {
+              addLogEntry({ type: 'info', data: `Connection refused. Attempting to connect on common MCP server ports...` });
+              
+              for (const fallbackUrl of portFallbackUrls) {
+                try {
+                  addLogEntry({ type: 'info', data: `Trying port ${new URL(fallbackUrl).port || 'default'}...` });
+                  
+                  const portResult = await Promise.race([
+                    attemptParallelConnections(fallbackUrl, abortControllerRef.current?.signal, latestAccessToken || undefined),
+                    new Promise<never>((_, reject) => 
+                      setTimeout(() => reject(new Error('Port attempt timeout')), 5000)
+                    )
+                  ]);
+                  
+                  finalClient = portResult.client;
+                  finalTransportType = portResult.transportType;
+                  finalUrl = portResult.url;
+                  connectionSuccess = true;
+                  setIsProxied(false);
+                  addLogEntry({ type: 'info', data: `Port fallback successful using ${portResult.transportType} at ${portResult.url}` });
+                  break; // Stop trying other ports
+                } catch (portError: any) {
+                  // Continue to next port
+                  console.log(`Port ${new URL(fallbackUrl).port} failed:`, portError.message);
+                }
+              }
+              
+              if (!connectionSuccess) {
+                addLogEntry({ type: 'warning', data: 'All common MCP server ports failed' });
+              }
+            }
+          }
+          
+          // If still not connected, try proxy fallback if it's a CORS error
+          if (!connectionSuccess) {
+            // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
+            const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
+            
+            if (isCorsError && shouldUseProxy && currentUser) {
+              // Attempt proxy connection as fallback only if user is logged in
+              const result = await Promise.race([
+                connectViaProxy(),
+                timeoutPromise
+              ]);
+              finalClient = result.client;
+              finalTransportType = result.transportType;
+              finalUrl = result.url;
+              connectionSuccess = true;
+              addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} at ${result.url}` });
+            } else {
+              if (isCorsError && shouldUseProxy && !currentUser) {
+                addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+              }
+              throw lastError || error; // Re-throw if not a CORS error, proxy is disabled, or user not logged in
+            }
           }
         }
 
