@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { oauthConfig } from '../config/oauth';
 
 const OAuthCallback: React.FC = () => {
   const location = useLocation();
@@ -75,7 +74,7 @@ const OAuthCallback: React.FC = () => {
           // Get saved OAuth endpoints from discovery (per server)
           const serverHost = serverUrl ? new URL(serverUrl).host : '';
           const savedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
-          let tokenUrl = oauthConfig.tokenEndpoint; // Default fallback
+          let tokenUrl = '/oauth/token'; // Default fallback
           let supportsPKCE = true;
           let customHeaders: Record<string, string> = {};
           
@@ -91,12 +90,14 @@ const OAuthCallback: React.FC = () => {
             }
           }
           
-          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
+          const redirectUri = `${window.location.origin}/oauth/callback`;
+          
+          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${clientId}\n  - Redirect URI: ${redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
           
           const requestBody: any = {
             grant_type: 'authorization_code',
             code,
-            redirect_uri: oauthConfig.redirectUri,
+            redirect_uri: redirectUri,
             client_id: clientId,
           };
           
