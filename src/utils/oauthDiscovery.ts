@@ -152,10 +152,10 @@ export async function getOAuthConfig(serverUrl: string): Promise<{
     
     // Use MCP default endpoints as fallback
     return {
-      authorizationEndpoint: `${authorizationBaseUrl}/authorize`,
-      tokenEndpoint: `${authorizationBaseUrl}/token`,
-      registrationEndpoint: `${authorizationBaseUrl}/register`,
-      userinfo_endpoint: `${authorizationBaseUrl}/userinfo`, // Standard OpenID Connect endpoint
+      authorizationEndpoint: `${authorizationBaseUrl}/oauth/authorize`,
+      tokenEndpoint: `${authorizationBaseUrl}/oauth/token`,
+      registrationEndpoint: `${authorizationBaseUrl}/oauth/register`,
+      userinfo_endpoint: `${authorizationBaseUrl}/oauth/userinfo`, // Standard OpenID Connect endpoint
       scope: 'openid profile email',
       supportsPKCE: true,
       requiresClientRegistration: true,
