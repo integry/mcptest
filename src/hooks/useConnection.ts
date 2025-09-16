@@ -9,7 +9,7 @@ import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import { generatePKCE } from '../utils/pkce';
-import { oauthConfig, getOAuthServerType } from '../config/oauth';
+import { oauthConfig } from '../config/oauth';
 import { getOAuthConfig, isOAuthService, getOAuthServiceName, getOrRegisterOAuthClient } from '../utils/oauthDiscovery';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';

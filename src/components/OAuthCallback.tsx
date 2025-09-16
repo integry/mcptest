@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { oauthConfig, getOAuthServerType } from '../config/oauth';
+import { oauthConfig } from '../config/oauth';
 
 const OAuthCallback: React.FC = () => {
   const location = useLocation();
@@ -91,7 +91,7 @@ const OAuthCallback: React.FC = () => {
             }
           }
           
-          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Server Type: ${getOAuthServerType()}\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
+          addOAuthLog('info', `🔑 Step 1/3: Preparing token exchange request:\n  - Token endpoint: ${tokenUrl}\n  - Grant type: authorization_code\n  - Client ID: ${clientId}\n  - Redirect URI: ${oauthConfig.redirectUri}\n  - Code verifier length: ${codeVerifier.length} chars`);
           
           const requestBody: any = {
             grant_type: 'authorization_code',

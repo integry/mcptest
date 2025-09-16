@@ -43,32 +43,14 @@ The application supports optional Firebase authentication for Google sign-in. To
 
 ### OAuth 2.1 Support
 
-The application includes OAuth 2.1 authorization code flow with PKCE for secure authentication with MCP servers, using a Cloudflare Worker for OAuth endpoints.
-
-#### OAuth Configuration
-
-1. Deploy the OAuth worker:
-   ```bash
-   cd oauth-worker
-   npm install
-   ./deploy.sh
-   ```
-
-2. Update your `.env` file with your worker URL:
-   ```
-   VITE_OAUTH_WORKER_URL=https://your-oauth-worker.workers.dev
-   ```
-
-3. Follow the setup instructions in [oauth-worker/README.md](oauth-worker/README.md) to create the KV namespace and initialize the client
+The application includes OAuth 2.1 authorization code flow with PKCE for secure authentication with MCP servers.
 
 #### OAuth Features
 
 - OAuth 2.1 compliant authorization code flow
 - PKCE (Proof Key for Code Exchange) for enhanced security
 - Automatic token management
-- Cloudflare Worker-based OAuth server using @cloudflare/workers-oauth-provider
-
-For detailed OAuth worker setup instructions, see [oauth-worker/README.md](oauth-worker/README.md).
+- Local OAuth server configuration
 
 ## HTTP Stream Transport Protocol
 
@@ -154,7 +136,6 @@ To modify the tester:
 
 1. Edit `index.html` for UI changes
 2. Edit `script.js` for client-side logic
-3. Edit OAuth worker in `oauth-worker/src/index.js` for OAuth customization
 4. Edit `styles.css` for styling
 
 ## License

@@ -8,7 +8,6 @@
     "prebuild": "node scripts/generate-version.js",
     "build": "vite build",
     "deploy-worker": "wrangler deploy",
-    "deploy-oauth-worker": "cd oauth-worker && npm install && ./deploy.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",
