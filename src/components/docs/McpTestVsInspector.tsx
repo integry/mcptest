@@ -34,81 +34,101 @@ const McpTestVsInspector: React.FC = () => {
             <li>View a history of requests and responses.</li>
           </ul>
 
-          <h2>Key Differences at a Glance</h2>
+          <h2>Feature Comparison Summary</h2>
           <div className="table-responsive mb-4">
             <table className="table table-bordered table-hover">
               <thead className="table-light">
                 <tr>
                   <th scope="col">Feature</th>
-                  <th scope="col" className="text-center">MCP Test (This App)</th>
                   <th scope="col" className="text-center">MCP Inspector</th>
+                  <th scope="col" className="text-center">mcptest.io</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <th scope="row">Primary Use Case</th>
-                  <td>Rapid testing, monitoring, and creating shareable live views of server capabilities without local setup.</td>
-                  <td>Deep debugging & spec-compliant development with full control over local and remote servers.</td>
+                  <td>Deep debugging & spec-compliant development</td>
+                  <td>Rapid testing & traffic inspection</td>
                 </tr>
                 <tr>
                   <th scope="row">Target Audience</th>
+                  <td>MCP Server Developers</td>
                   <td>MCP Server/Client Developers, QA, Product Managers</td>
-                  <td>MCP Server Developers focused on implementation and debugging</td>
                 </tr>
                 <tr>
                   <th scope="row">Deployment</th>
-                  <td>Hosted Web Platform (zero installation)</td>
                   <td>Local (npx), Docker, Self-hosted</td>
+                  <td>Hosted Web Platform</td>
                 </tr>
                 <tr>
                   <th scope="row">Local Server (stdio) Support</th>
-                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i><br/>No support for local stdio servers</td>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Core feature - can launch and manage local server processes</td>
-                </tr>
-                <tr>
-                  <th scope="row">OAuth 2.1 Support</th>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Basic token support for authentication</td>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Comprehensive OAuth 2.1 debugger with guided flow</td>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Yes (Core Feature)</td>
+                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i><br/>No</td>
                 </tr>
                 <tr>
                   <th scope="row">CLI for Automation</th>
-                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i><br/>No CLI available</td>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Full-fledged CLI for scripted tests and CI/CD</td>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Yes (Full-fledged)</td>
+                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i><br/>No</td>
                 </tr>
                 <tr>
-                  <th scope="row">Configuration Export</th>
-                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i></td>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Can export to mcp.json for use with Claude/Cursor</td>
-                </tr>
-                <tr>
-                  <th scope="row">Multi-Client Support</th>
-                  <td className="text-center">Single client connections</td>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Proxy supports multiple simultaneous clients</td>
-                </tr>
-                <tr>
-                  <th scope="row">Monitoring</th>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Designed for creating monitoring dashboards</td>
-                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i><br/>Not designed for persistent monitoring</td>
-                </tr>
-                <tr>
-                  <th scope="row">Sharing & Collaboration</th>
-                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Share dashboards and results via URLs</td>
-                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i><br/>No built-in sharing functionality</td>
-                </tr>
-                <tr>
-                  <th scope="row">User Interface</th>
-                  <td>No-code/low-code web interface optimized for ease of use</td>
-                  <td>Developer-focused interface exposing protocol details</td>
-                </tr>
-                <tr>
-                  <th scope="row">Setup Required</th>
-                  <td>None (Web browser only)</td>
-                  <td>Node.js / Docker installation required</td>
+                  <th scope="row">OAuth 2.1 Debugger</th>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Yes (Comprehensive & Guided)</td>
+                  <td>Likely basic token support</td>
                 </tr>
                 <tr>
                   <th scope="row">Spec Compliance</th>
-                  <td>Supports standard MCP features</td>
-                  <td>High (Official reference tool) with advanced features</td>
+                  <td>High (Official reference tool)</td>
+                  <td>Varies (User-defined mocks)</td>
+                </tr>
+                <tr>
+                  <th scope="row">Setup Required</th>
+                  <td>Node.js / Docker</td>
+                  <td>None (Web browser)</td>
+                </tr>
+                <tr>
+                  <th scope="row">Configuration Export</th>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Can export to mcp.json</td>
+                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i></td>
+                </tr>
+                <tr>
+                  <th scope="row">Multi-Client Support</th>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Proxy supports multiple simultaneous clients</td>
+                  <td>Single client connections</td>
+                </tr>
+                <tr>
+                  <th scope="row">Security Features</th>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Proxy authentication tokens</td>
+                  <td>Basic security measures</td>
+                </tr>
+                <tr>
+                  <th scope="row">Advanced Spec Features</th>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Elicitation, Structured Output, Resource Subscriptions</td>
+                  <td>Standard MCP features</td>
+                </tr>
+                <tr>
+                  <th scope="row">Community & Development</th>
+                  <td>Open Source, Community-driven</td>
+                  <td>Hosted service</td>
+                </tr>
+                <tr>
+                  <th scope="row">Resource Usage</th>
+                  <td>Uses local resources</td>
+                  <td>No local resource consumption</td>
+                </tr>
+                <tr>
+                  <th scope="row">Platform Compatibility</th>
+                  <td>May have platform-specific issues</td>
+                  <td>Cross-platform by default (web)</td>
+                </tr>
+                <tr>
+                  <th scope="row">Collaboration Features</th>
+                  <td className="text-center"><i className="bi bi-x-circle-fill text-danger"></i><br/>No built-in sharing</td>
+                  <td className="text-center"><i className="bi bi-check-circle-fill text-success"></i><br/>Share via URLs</td>
+                </tr>
+                <tr>
+                  <th scope="row">Onboarding Speed</th>
+                  <td>Requires setup and installation</td>
+                  <td>Instant (no setup required)</td>
                 </tr>
               </tbody>
             </table>
