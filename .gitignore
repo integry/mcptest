@@ -1,5 +1,22 @@
-node_modules
-dist
-issues.sh
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Environment files
 .env
-.dev.vars
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
