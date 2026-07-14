@@ -20,6 +20,7 @@ const DEFAULT_CATALOG_FILTERS = {
 };
 const SEARCH_ANALYTICS_DEBOUNCE_MS = 500;
 const SEARCH_PARAM_SYNC_DEBOUNCE_MS = 300;
+const CATALOG_PARAM_KEYS = ['q', 'auth', 'category'];
 
 const getOAuthFilterFromParams = (params: URLSearchParams): OAuthFilter => {
   const authParam = params.get('auth');
@@ -74,18 +75,14 @@ const isCatalogRoute = (pathname: string) => {
   return pathname === '/catalog';
 };
 
-const getCanonicalParamsString = (params: URLSearchParams) => {
-  return Array.from(params.entries())
-    .sort(([keyA, valueA], [keyB, valueB]) => {
-      const keyComparison = keyA.localeCompare(keyB);
-      return keyComparison === 0 ? valueA.localeCompare(valueB) : keyComparison;
-    })
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join('&');
-};
-
 const catalogParamsMatch = (currentParams: URLSearchParams, nextParams: URLSearchParams) => {
-  return getCanonicalParamsString(currentParams) === getCanonicalParamsString(nextParams);
+  const currentKeys = Array.from(currentParams.keys());
+  const nextKeys = Array.from(nextParams.keys());
+
+  return (
+    currentKeys.length === nextKeys.length &&
+    CATALOG_PARAM_KEYS.every((key) => currentParams.get(key) === nextParams.get(key))
+  );
 };
 
 export const useCatalog = () => {
@@ -101,9 +98,14 @@ export const useCatalog = () => {
   const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
   const [category, setCategoryState] = useState(initialFilters.category);
-  const lastLoggedSearchQueryRef = useRef(initialFilters.searchQuery);
+  const lastLoggedSearchQueryRef = useRef(normalizeSearchQuery(initialFilters.searchQuery));
+  const searchAnalyticsTimeoutRef = useRef<number | null>(null);
   const searchParamSyncTimeoutRef = useRef<number | null>(null);
   const onCatalogRoute = isCatalogRoute(location.pathname);
+  const normalizedSearchQuery = useMemo(
+    () => normalizeSearchQuery(searchQuery),
+    [searchQuery]
+  );
 
   const clearPendingSearchParamSync = useCallback(() => {
     if (searchParamSyncTimeoutRef.current === null) {
@@ -112,6 +114,15 @@ export const useCatalog = () => {
 
     window.clearTimeout(searchParamSyncTimeoutRef.current);
     searchParamSyncTimeoutRef.current = null;
+  }, []);
+
+  const clearPendingSearchAnalytics = useCallback(() => {
+    if (searchAnalyticsTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(searchAnalyticsTimeoutRef.current);
+    searchAnalyticsTimeoutRef.current = null;
   }, []);
 
   const syncCatalogParams = useCallback(
@@ -167,8 +178,28 @@ export const useCatalog = () => {
       setSearchQueryState((current) =>
         current === nextSearchQuery ? current : nextSearchQuery
       );
+
+      const normalizedNextQuery = normalizeSearchQuery(nextSearchQuery);
+      clearPendingSearchAnalytics();
+
+      if (normalizedNextQuery === lastLoggedSearchQueryRef.current) {
+        return;
+      }
+
+      if (!normalizedNextQuery) {
+        lastLoggedSearchQueryRef.current = '';
+        return;
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        searchAnalyticsTimeoutRef.current = null;
+        lastLoggedSearchQueryRef.current = normalizedNextQuery;
+        logEvent('catalog_search', { query_length: normalizedNextQuery.length });
+      }, SEARCH_ANALYTICS_DEBOUNCE_MS);
+
+      searchAnalyticsTimeoutRef.current = timeoutId;
     },
-    []
+    [clearPendingSearchAnalytics]
   );
 
   useEffect(() => {
@@ -180,7 +211,7 @@ export const useCatalog = () => {
 
     const timeoutId = window.setTimeout(() => {
       searchParamSyncTimeoutRef.current = null;
-      syncCatalogParams(searchQuery, oauthFilter, category);
+      syncCatalogParams(normalizedSearchQuery, oauthFilter, category);
     }, SEARCH_PARAM_SYNC_DEBOUNCE_MS);
 
     searchParamSyncTimeoutRef.current = timeoutId;
@@ -193,26 +224,17 @@ export const useCatalog = () => {
   }, [
     category,
     clearPendingSearchParamSync,
+    normalizedSearchQuery,
     oauthFilter,
     onCatalogRoute,
-    searchQuery,
     syncCatalogParams,
   ]);
 
   useEffect(() => {
-    const normalizedQuery = normalizeSearchQuery(searchQuery);
-
-    if (normalizedQuery === lastLoggedSearchQueryRef.current) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      lastLoggedSearchQueryRef.current = normalizedQuery;
-      logEvent('catalog_search', { query_length: normalizedQuery.length });
-    }, SEARCH_ANALYTICS_DEBOUNCE_MS);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [searchQuery]);
+    return () => {
+      clearPendingSearchAnalytics();
+    };
+  }, [clearPendingSearchAnalytics]);
 
   const setOauthFilter = useCallback(
     (nextOauthFilter: OAuthFilter) => {
@@ -220,12 +242,10 @@ export const useCatalog = () => {
         return;
       }
 
-      clearPendingSearchParamSync();
       setOauthFilterState(nextOauthFilter);
-      syncCatalogParams(searchQuery, nextOauthFilter, category);
       logEvent('catalog_filter_oauth', { filter: nextOauthFilter });
     },
-    [category, clearPendingSearchParamSync, oauthFilter, searchQuery, syncCatalogParams]
+    [oauthFilter]
   );
 
   const setCategory = useCallback(
@@ -234,21 +254,19 @@ export const useCatalog = () => {
         return;
       }
 
-      clearPendingSearchParamSync();
       setCategoryState(nextCategory);
-      syncCatalogParams(searchQuery, oauthFilter, nextCategory);
       logEvent('catalog_filter_category', { category: nextCategory });
     },
-    [category, clearPendingSearchParamSync, oauthFilter, searchQuery, syncCatalogParams]
+    [category]
   );
 
   const filteredServers = useMemo(() => {
     return filterCatalogServers(allServers, {
-      query: normalizeSearchQuery(searchQuery),
+      query: normalizedSearchQuery,
       category,
       oauthFilter,
     });
-  }, [allServers, searchQuery, category, oauthFilter]);
+  }, [allServers, normalizedSearchQuery, category, oauthFilter]);
 
   return {
     allServers,
