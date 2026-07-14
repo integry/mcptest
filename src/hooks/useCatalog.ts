@@ -12,29 +12,31 @@ const isOAuthFilter = (value: string | null): value is OAuthFilter => {
   return value === 'all' || value === 'oauth' || value === 'no-auth';
 };
 
+const normalizeSearchQuery = (searchQuery: string) => searchQuery.trim();
+
 const getOAuthFilterFromParams = (params: URLSearchParams): OAuthFilter => {
   const authParam = params.get('auth');
   return isOAuthFilter(authParam) ? authParam : 'all';
 };
 
-const getCatalogFiltersFromParams = (params: URLSearchParams) => {
+export const getCatalogFiltersFromParams = (params: URLSearchParams) => {
   return {
-    searchQuery: params.get('q') ?? '',
+    searchQuery: normalizeSearchQuery(params.get('q') ?? ''),
     oauthFilter: getOAuthFilterFromParams(params),
     category: params.get('category') ?? CATALOG_CATEGORY_ALL,
   };
 };
 
-const buildCatalogSearchParams = (
+export const buildCatalogSearchParams = (
   searchQuery: string,
   oauthFilter: OAuthFilter,
   category: string
 ) => {
   const params = new URLSearchParams();
-  const trimmedQuery = searchQuery.trim();
+  const normalizedQuery = normalizeSearchQuery(searchQuery);
 
-  if (trimmedQuery) {
-    params.set('q', trimmedQuery);
+  if (normalizedQuery) {
+    params.set('q', normalizedQuery);
   }
 
   if (oauthFilter !== 'all') {
@@ -49,13 +51,27 @@ const buildCatalogSearchParams = (
 };
 
 const isCatalogRoute = (pathname: string) => {
-  return pathname === '/catalog' || pathname.startsWith('/catalog/');
+  return pathname === '/catalog';
+};
+
+const getCanonicalParamsString = (params: URLSearchParams) => {
+  return Array.from(params.entries())
+    .sort(([keyA, valueA], [keyB, valueB]) => {
+      const keyComparison = keyA.localeCompare(keyB);
+      return keyComparison === 0 ? valueA.localeCompare(valueB) : keyComparison;
+    })
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+};
+
+const catalogParamsMatch = (currentParams: URLSearchParams, nextParams: URLSearchParams) => {
+  return getCanonicalParamsString(currentParams) === getCanonicalParamsString(nextParams);
 };
 
 export const useCatalog = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialFilters = getCatalogFiltersFromParams(searchParams);
+  const [initialFilters] = useState(() => getCatalogFiltersFromParams(searchParams));
   const [allServers] = useState(() => getCatalogServers());
   const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
@@ -78,7 +94,7 @@ export const useCatalog = () => {
         nextCategory
       );
 
-      if (nextParams.toString() !== searchParams.toString()) {
+      if (!catalogParamsMatch(searchParams, nextParams)) {
         setSearchParams(nextParams, { replace: true });
       }
     },
@@ -108,31 +124,45 @@ export const useCatalog = () => {
       nextFilters.category
     );
 
-    if (normalizedParams.toString() !== searchParams.toString()) {
+    if (!catalogParamsMatch(searchParams, normalizedParams)) {
       setSearchParams(normalizedParams, { replace: true });
     }
   }, [onCatalogRoute, searchParams, setSearchParams]);
 
   const setSearchQuery = useCallback(
     (nextSearchQuery: string) => {
-      setSearchQueryState(nextSearchQuery);
-      syncCatalogParams(nextSearchQuery, oauthFilter, category);
-      logEvent('catalog_search', { query_length: nextSearchQuery.length });
+      const normalizedQuery = normalizeSearchQuery(nextSearchQuery);
+
+      if (normalizedQuery === searchQuery) {
+        return;
+      }
+
+      setSearchQueryState(normalizedQuery);
+      syncCatalogParams(normalizedQuery, oauthFilter, category);
+      logEvent('catalog_search', { query_length: normalizedQuery.length });
     },
-    [category, oauthFilter, syncCatalogParams]
+    [category, oauthFilter, searchQuery, syncCatalogParams]
   );
 
   const setOauthFilter = useCallback(
     (nextOauthFilter: OAuthFilter) => {
+      if (nextOauthFilter === oauthFilter) {
+        return;
+      }
+
       setOauthFilterState(nextOauthFilter);
       syncCatalogParams(searchQuery, nextOauthFilter, category);
       logEvent('catalog_filter_oauth', { filter: nextOauthFilter });
     },
-    [category, searchQuery, syncCatalogParams]
+    [category, oauthFilter, searchQuery, syncCatalogParams]
   );
 
   const setCategory = useCallback(
     (nextCategory: string) => {
+      if (nextCategory === category) {
+        return;
+      }
+
       setCategoryState(nextCategory);
       syncCatalogParams(searchQuery, oauthFilter, nextCategory);
       logEvent('catalog_filter_category', { category: nextCategory });
