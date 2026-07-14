@@ -10,6 +10,12 @@ export const CATALOG_CATEGORY_ALL = 'all' as const;
 export type CatalogTransport = 'streamable-http' | 'legacy-sse';
 
 /**
+ * Transport result values produced by catalog validation. Validation can prove
+ * support for both transports, or fail to prove either one.
+ */
+export type CatalogValidationTransport = CatalogTransport | 'both' | 'unknown';
+
+/**
  * Reachability state for a catalog server after validation. The unknown state
  * is intentional because browser CORS restrictions can prevent proving whether
  * a server is actually down.
@@ -59,8 +65,10 @@ export interface CatalogValidationResult {
   serverId: string;
   /** Best-known reachability state from the validation run. */
   status: CatalogServerStatus;
-  /** Transport that succeeded or was last attempted during validation. */
-  transport?: CatalogTransport;
+  /** Transport support detected during validation. */
+  transport: CatalogValidationTransport;
+  /** Whether validation detected OAuth or the curated seed already required it. */
+  requiresOAuth: boolean;
   /** ISO timestamp for when validation completed. */
   checkedAt: string;
   /** Optional machine-readable failure code for diagnostics. */
