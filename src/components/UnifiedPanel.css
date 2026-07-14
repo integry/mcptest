@@ -1,0 +1,146 @@
+/* --- Unified Panel Styles --- */
+.unified-panel {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* Allow scrolling if content overflows */
+  height: 100%; /* Ensure it takes available height */
+  transition: opacity 0.3s ease;
+  /* Card styles already applied by .card class */
+}
+
+
+.unified-panel-deactivated {
+  opacity: 0.6;
+  cursor: not-allowed; /* Indicate non-interactive state */
+}
+
+.unified-panel-deactivated > * {
+    pointer-events: none; /* Prevent interaction with children */
+}
+
+
+.filter-input {
+  padding: 0.75rem;
+  margin: 1rem 1.25rem;
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius);
+  width: calc(100% - 2.5rem); /* Account for padding and margin */
+  box-sizing: border-box;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  transition: all 0.2s ease;
+}
+
+.filter-input:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+  outline: none;
+}
+
+.unified-panel-deactivated .filter-input {
+   background-color: var(--card-bg-secondary); /* Indicate disabled state */
+   color: var(--text-muted);
+}
+
+.tree-view {
+    padding: 0 1.25rem 1.25rem 1.25rem;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+
+.tree-view details {
+  margin-bottom: 5px;
+}
+
+.tree-view summary {
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+  font-weight: 600;
+  list-style: none; /* Remove default marker */
+  display: flex;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.tree-view summary:hover {
+    background-color: var(--card-bg-secondary);
+}
+
+
+.tree-view summary::-webkit-details-marker {
+  display: none; /* Hide default marker for Webkit */
+}
+
+.category-toggle {
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+  font-size: 0.8em;
+  width: 10px; /* Ensure consistent spacing */
+}
+
+.category-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+
+.tree-view ul {
+  list-style: none;
+  padding-left: 25px; /* Indent items under category */
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+.tree-item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  margin-bottom: 0.25rem;
+  transition: all 0.2s ease;
+  border: 1px solid transparent; /* Placeholder for selected border */
+}
+
+.tree-item:hover {
+  background-color: var(--card-bg-secondary);
+}
+
+.tree-item.selected {
+  background-color: rgba(34, 197, 94, 0.15);
+  border: none;
+  box-shadow: var(--box-shadow);
+  font-weight: 500;
+  color: var(--primary-color);
+}
+
+.item-name {
+  font-size: 0.95em;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-uri {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-view li small {
+    color: var(--text-muted);
+    font-style: italic;
+    display: block;
+    padding: 5px 0;
+}
+.refresh-button {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  height: 22px;
+  margin: 0;
+}

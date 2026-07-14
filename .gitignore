@@ -1,22 +1,5 @@
-# Dependencies
-node_modules/
-vendor/
-
-# Build outputs
-dist/
-build/
-*.log
-
-# Environment files
+node_modules
+dist
+issues.sh
 .env
-.env.local
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
+.dev.vars

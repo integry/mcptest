@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "cloudflare": {
+      "type": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "mcpjam": {
+      "type": "http",
+      "url": "https://gitmcp.io/MCPJam/inspector"
+    },
+    "mcp-inspector": {
+      "type": "http",
+      "url": "https://github.com/modelcontextprotocol/inspector"
+    }
+  }
+}

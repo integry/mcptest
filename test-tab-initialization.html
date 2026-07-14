@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Tab Initialization</title>
+</head>
+<body>
+    <h1>Test Tab Initialization Fix</h1>
+    <p>This page helps test the tab initialization fix for issue #90.</p>
+    
+    <h2>Test Scenarios:</h2>
+    <ol>
+        <li>
+            <strong>Empty localStorage:</strong>
+            <button onclick="clearAndReload()">Clear localStorage and Reload</button>
+        </li>
+        <li>
+            <strong>Empty tabs array in localStorage:</strong>
+            <button onclick="setEmptyTabsAndReload()">Set empty tabs array and Reload</button>
+        </li>
+        <li>
+            <strong>View current localStorage:</strong>
+            <button onclick="viewLocalStorage()">View localStorage</button>
+        </li>
+    </ol>
+    
+    <h2>Current localStorage:</h2>
+    <pre id="localStorageView"></pre>
+    
+    <script>
+        const TABS_KEY = 'mcpConnectionTabs';
+        
+        function clearAndReload() {
+            localStorage.removeItem(TABS_KEY);
+            alert('localStorage cleared. The app should now create a new tab and make it active.');
+            window.location.href = '/';
+        }
+        
+        function setEmptyTabsAndReload() {
+            localStorage.setItem(TABS_KEY, JSON.stringify([]));
+            alert('Empty tabs array set in localStorage. The app should now create a new tab and make it active.');
+            window.location.href = '/';
+        }
+        
+        function viewLocalStorage() {
+            const tabs = localStorage.getItem(TABS_KEY);
+            const view = document.getElementById('localStorageView');
+            view.textContent = `${TABS_KEY}: ${tabs || 'null'}`;
+        }
+        
+        // View on load
+        viewLocalStorage();
+    </script>
+</body>
+</html>
