@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { CatalogServer, CatalogServerStatus, CatalogValidationTransport } from '../types/catalog';
+import { checkServerLiveness, type LivenessResult } from '../utils/catalogLiveness';
 
 export interface CatalogServerCardProps {
   server: CatalogServer;
@@ -66,9 +67,36 @@ const getTransportBadges = (transport: CatalogValidationTransport) => {
 };
 
 export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, onTest }) => {
-  const statusDetails = getStatusDetails(server.status, server.checkedAt);
+  const [isCheckingLiveness, setIsCheckingLiveness] = useState(false);
+  const [liveResult, setLiveResult] = useState<LivenessResult | null>(null);
+  const effectiveStatus = liveResult?.status ?? server.status;
+  const statusDetails = liveResult
+    ? {
+        ...getStatusDetails(liveResult.status),
+        tooltip: liveResult.authChallenge
+          ? `${liveResult.detail} Auth challenge detected.`
+          : liveResult.detail,
+      }
+    : getStatusDetails(server.status, server.checkedAt);
   const transportBadges = getTransportBadges(server.transport);
-  const isOffline = server.status === 'offline';
+  const isOffline = effectiveStatus === 'offline';
+
+  const handleLivenessCheck = async () => {
+    setIsCheckingLiveness(true);
+
+    try {
+      setLiveResult(await checkServerLiveness(server.url));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unexpected liveness check failure';
+      setLiveResult({
+        status: 'unknown',
+        authChallenge: false,
+        detail: `Live browser probe failed unexpectedly: ${message}.`,
+      });
+    } finally {
+      setIsCheckingLiveness(false);
+    }
+  };
 
   return (
     <div className="card h-100">
@@ -85,14 +113,31 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
           <div className="flex-grow-1" style={{ minWidth: 0 }}>
             <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
               <h5 className="mb-0 text-truncate flex-grow-1">{server.name}</h5>
-              <span
-                className={`rounded-circle flex-shrink-0 ${statusDetails.className}`}
-                style={{ width: '12px', height: '12px' }}
-                title={statusDetails.tooltip}
-                aria-label={statusDetails.tooltip}
-              >
-                <span className="visually-hidden">{statusDetails.label}</span>
-              </span>
+              <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                <span
+                  className={`rounded-circle flex-shrink-0 ${statusDetails.className}`}
+                  style={{ width: '12px', height: '12px' }}
+                  title={statusDetails.tooltip}
+                  aria-label={statusDetails.tooltip}
+                >
+                  <span className="visually-hidden">{statusDetails.label}</span>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center justify-content-center p-0"
+                  style={{ width: '28px', height: '28px' }}
+                  onClick={handleLivenessCheck}
+                  disabled={isCheckingLiveness}
+                  title="Check server status now"
+                  aria-label={`Check live status for ${server.name}`}
+                >
+                  {isCheckingLiveness ? (
+                    <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  ) : (
+                    <i className="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                  )}
+                </button>
+              </div>
             </div>
             <div className="text-muted small text-truncate" title={server.url}>
               {server.url}
