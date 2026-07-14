@@ -242,7 +242,7 @@ const SideNav: React.FC<SideNavProps> = ({
   };
 
   return (
-    <nav className="nav flex-column d-flex flex-grow-1">
+    <nav className="app-sidenav nav flex-column d-flex flex-grow-1">
       {/* Playground Link */}
       <Link
         to="/"
@@ -263,7 +263,7 @@ const SideNav: React.FC<SideNavProps> = ({
 
       {/* Dashboards Header */}
       <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
-        <h6 className="nav-link text-muted mb-0">Dashboards</h6>
+        <h6 className="sidenav-section-label mb-0">Dashboards</h6>
         <button
           className="btn btn-sm btn-outline-secondary"
           onClick={performAllDashboardsHealthCheck}
@@ -384,7 +384,7 @@ const SideNav: React.FC<SideNavProps> = ({
 
       {/* Documentation Section */}
       <div className="mt-4">
-        <h6 className="nav-link text-muted mb-1">Documentation</h6>
+        <h6 className="sidenav-section-label mb-1">Documentation</h6>
         <ul className="nav flex-column ms-3">
           <li className="nav-item">
             <Link
