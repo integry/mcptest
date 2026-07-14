@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { CATALOG_CATEGORY_ALL, type OAuthFilter } from '../types/catalog';
 import {
@@ -13,17 +13,36 @@ const isOAuthFilter = (value: string | null): value is OAuthFilter => {
 };
 
 const normalizeSearchQuery = (searchQuery: string) => searchQuery.trim();
+const DEFAULT_CATALOG_FILTERS = {
+  searchQuery: '',
+  oauthFilter: 'all' as OAuthFilter,
+  category: CATALOG_CATEGORY_ALL,
+};
+const SEARCH_ANALYTICS_DEBOUNCE_MS = 500;
 
 const getOAuthFilterFromParams = (params: URLSearchParams): OAuthFilter => {
   const authParam = params.get('auth');
   return isOAuthFilter(authParam) ? authParam : 'all';
 };
 
-export const getCatalogFiltersFromParams = (params: URLSearchParams) => {
+const getCategoryFromParams = (params: URLSearchParams, categories: string[]) => {
+  const categoryParam = params.get('category');
+
+  if (!categoryParam || categoryParam === CATALOG_CATEGORY_ALL) {
+    return CATALOG_CATEGORY_ALL;
+  }
+
+  return categories.includes(categoryParam) ? categoryParam : CATALOG_CATEGORY_ALL;
+};
+
+export const getCatalogFiltersFromParams = (
+  params: URLSearchParams,
+  categories: string[] = []
+) => {
   return {
     searchQuery: normalizeSearchQuery(params.get('q') ?? ''),
     oauthFilter: getOAuthFilterFromParams(params),
-    category: params.get('category') ?? CATALOG_CATEGORY_ALL,
+    category: getCategoryFromParams(params, categories),
   };
 };
 
@@ -71,11 +90,17 @@ const catalogParamsMatch = (currentParams: URLSearchParams, nextParams: URLSearc
 export const useCatalog = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [initialFilters] = useState(() => getCatalogFiltersFromParams(searchParams));
   const [allServers] = useState(() => getCatalogServers());
+  const [initialCategories] = useState(() => getCatalogCategories(allServers));
+  const [initialFilters] = useState(() =>
+    isCatalogRoute(location.pathname)
+      ? getCatalogFiltersFromParams(searchParams, initialCategories)
+      : DEFAULT_CATALOG_FILTERS
+  );
   const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
   const [category, setCategoryState] = useState(initialFilters.category);
+  const lastLoggedSearchQueryRef = useRef(initialFilters.searchQuery);
   const onCatalogRoute = isCatalogRoute(location.pathname);
 
   const categories = useMemo(() => {
@@ -106,7 +131,7 @@ export const useCatalog = () => {
       return;
     }
 
-    const nextFilters = getCatalogFiltersFromParams(searchParams);
+    const nextFilters = getCatalogFiltersFromParams(searchParams, categories);
 
     setSearchQueryState((current) =>
       current === nextFilters.searchQuery ? current : nextFilters.searchQuery
@@ -127,22 +152,34 @@ export const useCatalog = () => {
     if (!catalogParamsMatch(searchParams, normalizedParams)) {
       setSearchParams(normalizedParams, { replace: true });
     }
-  }, [onCatalogRoute, searchParams, setSearchParams]);
+  }, [categories, onCatalogRoute, searchParams, setSearchParams]);
 
   const setSearchQuery = useCallback(
     (nextSearchQuery: string) => {
-      const normalizedQuery = normalizeSearchQuery(nextSearchQuery);
-
-      if (normalizedQuery === searchQuery) {
+      if (nextSearchQuery === searchQuery) {
         return;
       }
 
-      setSearchQueryState(normalizedQuery);
-      syncCatalogParams(normalizedQuery, oauthFilter, category);
-      logEvent('catalog_search', { query_length: normalizedQuery.length });
+      setSearchQueryState(nextSearchQuery);
+      syncCatalogParams(nextSearchQuery, oauthFilter, category);
     },
     [category, oauthFilter, searchQuery, syncCatalogParams]
   );
+
+  useEffect(() => {
+    const normalizedQuery = normalizeSearchQuery(searchQuery);
+
+    if (normalizedQuery === lastLoggedSearchQueryRef.current) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      lastLoggedSearchQueryRef.current = normalizedQuery;
+      logEvent('catalog_search', { query_length: normalizedQuery.length });
+    }, SEARCH_ANALYTICS_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const setOauthFilter = useCallback(
     (nextOauthFilter: OAuthFilter) => {
@@ -172,7 +209,7 @@ export const useCatalog = () => {
 
   const filteredServers = useMemo(() => {
     return filterCatalogServers(allServers, {
-      query: searchQuery,
+      query: normalizeSearchQuery(searchQuery),
       category,
       oauthFilter,
     });
