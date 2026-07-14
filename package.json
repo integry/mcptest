@@ -5,6 +5,7 @@
   "scripts": {
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
+    "test": "vitest run",
     "validate-catalog": "node scripts/validate-catalog.js",
     "prebuild": "node scripts/generate-version.js",
     "build": "vite build",
@@ -27,8 +28,10 @@
     "@types/react": "^19.1.1",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^26.1.0",
     "typescript": "^5.8.3",
     "vite": "^6.2.6",
+    "vitest": "^3.2.7",
     "wrangler": "^3.0.0"
   }
 }
