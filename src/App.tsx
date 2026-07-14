@@ -12,6 +12,7 @@ import NotificationPopup from './components/NotificationPopup';
 import SideNav from './components/SideNav'; // New
 import DashboardsView from './components/DashboardsView'; // New
 import ReportView from './components/ReportView'; // New
+import CatalogView from './components/CatalogView';
 import Tabs from './components/Tabs'; // New
 // Documentation components
 import WhatIsMcp from './components/docs/WhatIsMcp';
@@ -37,6 +38,7 @@ import {
   AccessResourceResultSchema, // Import the result schema
   ConnectionTab
 } from './types';
+import type { CatalogServer } from './types/catalog';
 
 // Import Utils
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, parseServerUrl, parseResultShareUrl } from './utils/urlUtils';
@@ -67,7 +69,7 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
@@ -77,6 +79,9 @@ const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' => {
   }
   if (path.startsWith('/report')) {
     return 'report';
+  }
+  if (path.startsWith('/catalog')) {
+    return 'catalog';
   }
   return 'playground';
 };
@@ -197,6 +202,11 @@ function App() {
     if (path.startsWith('/report')) {
       return { activeView: 'report' as const, activeDocPage: null };
     }
+
+    // Check for catalog routes
+    if (path.startsWith('/catalog')) {
+      return { activeView: 'catalog' as const, activeDocPage: null };
+    }
     
     // Check for dashboard routes
     const slug = extractSlugFromPath(path);
@@ -289,6 +299,13 @@ function App() {
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
       pageTitle = `Docs: ${docPage.replace(/-/g, ' ')}`;
+      logPageView(path, pageTitle);
+      return;
+    }
+
+    // Check for catalog route
+    if (path.startsWith('/catalog')) {
+      pageTitle = 'Server Catalog';
       logPageView(path, pageTitle);
       return;
     }
@@ -437,6 +454,31 @@ function App() {
     setTabs([...tabs, newTab]);
     setActiveTabId(newTab.id);
   };
+
+  const handleCatalogTestServer = useCallback((server: CatalogServer) => {
+    logEvent('catalog_test_server', {
+      serverId: server.id,
+      serverName: server.name,
+      serverUrl: server.url,
+    });
+
+    const newTab: ConnectionTab = {
+      id: uuidv4(),
+      title: server.name,
+      serverUrl: server.url,
+      connectionStatus: 'Disconnected',
+      useProxy: true,
+      useOAuth: server.requiresOAuth,
+      transportType:
+        server.transport === 'streamable-http' || server.transport === 'legacy-sse'
+          ? server.transport
+          : null,
+    };
+
+    setTabs(prevTabs => [...prevTabs, newTab]);
+    setActiveTabId(newTab.id);
+    navigate('/');
+  }, [navigate]);
 
   const handleSelectTab = (id: string) => {
     logEvent('select_tab');
@@ -1689,6 +1731,11 @@ function App() {
           {/* Report View */}
           <div className={`view-panel ${activeView === 'report' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             <ReportView />
+          </div>
+
+          {/* Catalog View */}
+          <div className={`view-panel ${activeView === 'catalog' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            <CatalogView onTestServer={handleCatalogTestServer} />
           </div>
 
           {/* Playground View */}
