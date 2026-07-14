@@ -1,4 +1,7 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
+
+import { getCatalogServers } from '../utils/catalogUtils';
 
 interface SuggestedServersPanelProps {
   setServerUrl: (url: string) => void;
@@ -7,39 +10,9 @@ interface SuggestedServersPanelProps {
   isConnecting: boolean;
 }
 
-interface SuggestedServer {
-  name: string;
-  url: string;
-  description: string;
-  logo: string;
-}
-
-const SUGGESTED_SERVERS: SuggestedServer[] = [
-  {
-    name: 'Context7',
-    url: 'https://mcp.context7.com/',
-    description: 'LLMs rely on outdated or generic information about the libraries you use. Context7 pulls up-to-date, version-specific documentation and code examples directly from the source.',
-    logo: '/context7-logo.png'
-  },
-  {
-    name: 'DeepWiki',
-    url: 'https://mcp.deepwiki.com',
-    description: 'DeepWiki provides up-to-date documentation you can talk to, for every repo in the world. Think Deep Research for GitHub.',
-    logo: '/deepwiki-logo.png'
-  },
-  {
-    name: 'CoinGecko',
-    url: 'https://mcp.api.coingecko.com',
-    description: 'MCP Server for Crypto Price & Market Data. Access real-time market data, onchain analytics, and rich metadata for over 15k+ coins.',
-    logo: '/coingecko-logo.png'
-  },
-  {
-    name: 'Semgrep',
-    url: 'https://mcp.semgrep.ai',
-    description: 'A fast, open-source, static analysis tool for finding bugs and enforcing code standards.',
-    logo: '/semgrep-logo.svg'
-  }
-];
+const suggestedCatalogServers = getCatalogServers()
+  .filter((server) => server.tags.includes('suggested') && server.status !== 'offline')
+  .slice(0, 4);
 
 export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
   setServerUrl,
@@ -61,7 +34,7 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
       <div className="card-body p-3">
         <small className="text-muted d-block mb-3">Not sure where to begin? Check our curated list of remote MCP servers.</small>
         <ul className="list-group">
-        {SUGGESTED_SERVERS.map((server) => (
+        {suggestedCatalogServers.map((server) => (
           <li key={server.url} className="list-group-item suggested-server-row p-3">
             <div
               style={{
@@ -72,16 +45,18 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
               }}
               onClick={() => handleServerClick(server.url)}
             >
-              <img
-                src={server.logo}
-                alt={`${server.name} logo`}
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  objectFit: 'contain',
-                  flexShrink: 0,
-                }}
-              />
+              {server.logoUrl && (
+                <img
+                  src={server.logoUrl}
+                  alt={`${server.name} logo`}
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    objectFit: 'contain',
+                    flexShrink: 0,
+                  }}
+                />
+              )}
               <div style={{ flexGrow: 1, overflow: 'hidden' }}>
                 <div
                   style={{
@@ -118,6 +93,11 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
           </li>
         ))}
         </ul>
+      </div>
+      <div className="card-footer text-center p-2">
+        <Link to="/catalog" className="btn btn-sm btn-link p-0" style={{ textDecoration: 'none' }}>
+          Browse the full server catalog &rarr;
+        </Link>
       </div>
     </div>
   );
