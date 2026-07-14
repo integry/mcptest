@@ -42,6 +42,8 @@ export interface CatalogServerSeed {
   transport: CatalogTransport;
   /** Whether the server requires an OAuth flow before testing. */
   requiresOAuth: boolean;
+  /** Optional logo path or URL for catalog and suggested-server surfaces. */
+  logoUrl?: string;
   /** Optional project, product, or documentation homepage. */
   homepageUrl?: string;
   /** Optional source repository or package URL for the server. */
