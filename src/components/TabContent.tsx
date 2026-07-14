@@ -175,16 +175,23 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       hasInitialized.current = true;
     }
     
-    // Auto-connect if this tab has resultShareData (result share URL) and we haven't already
+    const shouldAutoConnect = tab.resultShareData || tab.autoConnect;
+
+    // Auto-connect if this tab requested it and we haven't already
     if (
-      tab.resultShareData && 
+      shouldAutoConnect &&
       tab.serverUrl && 
       connectionStatus === 'Disconnected' && 
       !hasAutoConnected.current
     ) {
-      console.log(`[Auto-Connect] Initiating connection for result share URL to: ${tab.serverUrl}`);
-      addLogEntry({ type: 'info', data: `Auto-connecting to ${tab.serverUrl} for result share...` });
+      const reason = tab.resultShareData ? 'result share' : 'catalog test';
+      console.log(`[Auto-Connect] Initiating connection for ${reason} to: ${tab.serverUrl}`);
+      addLogEntry({ type: 'info', data: `Auto-connecting to ${tab.serverUrl}...` });
       hasAutoConnected.current = true;
+
+      if (tab.autoConnect) {
+        onUpdateTab(tab.id, { autoConnect: undefined });
+      }
       
       // Use a small timeout to ensure state is properly initialized
       setTimeout(() => {
@@ -199,10 +206,14 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     }
   }, [
     tab.resultShareData, 
+    tab.autoConnect,
     tab.serverUrl, 
+    tab.useProxy,
+    tab.id,
     connectionStatus, 
     addLogEntry, 
     handleConnect,
+    onUpdateTab,
     setTools,
     setResources,
     setResponses

@@ -457,9 +457,8 @@ function App() {
 
   const handleCatalogTestServer = useCallback((server: CatalogServer) => {
     logEvent('catalog_test_server', {
-      serverId: server.id,
-      serverName: server.name,
-      serverUrl: server.url,
+      server_id: server.id,
+      requires_oauth: server.requiresOAuth,
     });
 
     const newTab: ConnectionTab = {
@@ -469,10 +468,7 @@ function App() {
       connectionStatus: 'Disconnected',
       useProxy: true,
       useOAuth: server.requiresOAuth,
-      transportType:
-        server.transport === 'streamable-http' || server.transport === 'legacy-sse'
-          ? server.transport
-          : null,
+      autoConnect: true,
     };
 
     setTabs(prevTabs => [...prevTabs, newTab]);
