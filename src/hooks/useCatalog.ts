@@ -19,6 +19,7 @@ const DEFAULT_CATALOG_FILTERS = {
   category: CATALOG_CATEGORY_ALL,
 };
 const SEARCH_ANALYTICS_DEBOUNCE_MS = 500;
+const SEARCH_PARAM_SYNC_DEBOUNCE_MS = 300;
 
 const getOAuthFilterFromParams = (params: URLSearchParams): OAuthFilter => {
   const authParam = params.get('auth');
@@ -91,21 +92,27 @@ export const useCatalog = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [allServers] = useState(() => getCatalogServers());
-  const [initialCategories] = useState(() => getCatalogCategories(allServers));
+  const [categories] = useState(() => getCatalogCategories(allServers));
   const [initialFilters] = useState(() =>
     isCatalogRoute(location.pathname)
-      ? getCatalogFiltersFromParams(searchParams, initialCategories)
+      ? getCatalogFiltersFromParams(searchParams, categories)
       : DEFAULT_CATALOG_FILTERS
   );
   const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
   const [category, setCategoryState] = useState(initialFilters.category);
   const lastLoggedSearchQueryRef = useRef(initialFilters.searchQuery);
+  const searchParamSyncTimeoutRef = useRef<number | null>(null);
   const onCatalogRoute = isCatalogRoute(location.pathname);
 
-  const categories = useMemo(() => {
-    return getCatalogCategories(allServers);
-  }, [allServers]);
+  const clearPendingSearchParamSync = useCallback(() => {
+    if (searchParamSyncTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(searchParamSyncTimeoutRef.current);
+    searchParamSyncTimeoutRef.current = null;
+  }, []);
 
   const syncCatalogParams = useCallback(
     (nextSearchQuery: string, nextOauthFilter: OAuthFilter, nextCategory: string) => {
@@ -133,9 +140,10 @@ export const useCatalog = () => {
 
     const nextFilters = getCatalogFiltersFromParams(searchParams, categories);
 
-    setSearchQueryState((current) =>
-      current === nextFilters.searchQuery ? current : nextFilters.searchQuery
-    );
+    setSearchQueryState((current) => {
+      const currentNormalized = normalizeSearchQuery(current);
+      return currentNormalized === nextFilters.searchQuery ? current : nextFilters.searchQuery;
+    });
     setOauthFilterState((current) =>
       current === nextFilters.oauthFilter ? current : nextFilters.oauthFilter
     );
@@ -156,15 +164,40 @@ export const useCatalog = () => {
 
   const setSearchQuery = useCallback(
     (nextSearchQuery: string) => {
-      if (nextSearchQuery === searchQuery) {
-        return;
-      }
-
-      setSearchQueryState(nextSearchQuery);
-      syncCatalogParams(nextSearchQuery, oauthFilter, category);
+      setSearchQueryState((current) =>
+        current === nextSearchQuery ? current : nextSearchQuery
+      );
     },
-    [category, oauthFilter, searchQuery, syncCatalogParams]
+    []
   );
+
+  useEffect(() => {
+    if (!onCatalogRoute) {
+      return;
+    }
+
+    clearPendingSearchParamSync();
+
+    const timeoutId = window.setTimeout(() => {
+      searchParamSyncTimeoutRef.current = null;
+      syncCatalogParams(searchQuery, oauthFilter, category);
+    }, SEARCH_PARAM_SYNC_DEBOUNCE_MS);
+
+    searchParamSyncTimeoutRef.current = timeoutId;
+
+    return () => {
+      if (searchParamSyncTimeoutRef.current === timeoutId) {
+        clearPendingSearchParamSync();
+      }
+    };
+  }, [
+    category,
+    clearPendingSearchParamSync,
+    oauthFilter,
+    onCatalogRoute,
+    searchQuery,
+    syncCatalogParams,
+  ]);
 
   useEffect(() => {
     const normalizedQuery = normalizeSearchQuery(searchQuery);
@@ -187,11 +220,12 @@ export const useCatalog = () => {
         return;
       }
 
+      clearPendingSearchParamSync();
       setOauthFilterState(nextOauthFilter);
       syncCatalogParams(searchQuery, nextOauthFilter, category);
       logEvent('catalog_filter_oauth', { filter: nextOauthFilter });
     },
-    [category, oauthFilter, searchQuery, syncCatalogParams]
+    [category, clearPendingSearchParamSync, oauthFilter, searchQuery, syncCatalogParams]
   );
 
   const setCategory = useCallback(
@@ -200,11 +234,12 @@ export const useCatalog = () => {
         return;
       }
 
+      clearPendingSearchParamSync();
       setCategoryState(nextCategory);
       syncCatalogParams(searchQuery, oauthFilter, nextCategory);
       logEvent('catalog_filter_category', { category: nextCategory });
     },
-    [oauthFilter, searchQuery, syncCatalogParams]
+    [category, clearPendingSearchParamSync, oauthFilter, searchQuery, syncCatalogParams]
   );
 
   const filteredServers = useMemo(() => {
