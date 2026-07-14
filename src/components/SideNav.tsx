@@ -6,7 +6,7 @@ import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs' | 'report';
+  activeView: 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -55,6 +55,12 @@ const SideNav: React.FC<SideNavProps> = ({
 
   const handlePlaygroundClick = () => {
     navigate('/');
+    // Close mobile menu if open
+    document.body.classList.remove('menu-open');
+  };
+
+  const handleCatalogClick = () => {
+    navigate('/catalog');
     // Close mobile menu if open
     document.body.classList.remove('menu-open');
   };
@@ -250,6 +256,15 @@ const SideNav: React.FC<SideNavProps> = ({
         onClick={handlePlaygroundClick}
       >
         <i className="bi bi-search me-2"></i> Playground
+      </Link>
+
+      {/* Server Catalog Link */}
+      <Link
+        to="/catalog"
+        className={`nav-link ${activeView === 'catalog' ? 'active fw-bold' : ''}`}
+        onClick={handleCatalogClick}
+      >
+        <i className="bi bi-grid me-2"></i> Server Catalog
       </Link>
 
       {/* Report Link */}
