@@ -81,7 +81,9 @@ export interface CatalogValidationResult {
  * UI-facing catalog server after seed data has been combined with validation
  * output and any derived display metadata.
  */
-export interface CatalogServer extends CatalogServerSeed {
+export interface CatalogServer extends Omit<CatalogServerSeed, 'transport'> {
+  /** Transport support from validation, or unknown when validation is missing. */
+  transport: CatalogValidationTransport;
   /** Current catalog reachability state. */
   status: CatalogServerStatus;
   /** ISO timestamp for the latest validation result, when available. */
