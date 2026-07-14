@@ -1,55 +1,64 @@
 /* Import Modern Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* --- Color Palette & Variables --- */
 /* Default Light Theme Variables */
 :root {
   --font-family-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
   --font-family-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Monaco', 'Inconsolata', 'Source Code Pro', monospace;
-  --body-bg: #f8f9fa; /* Lighter grey background as suggested */
-  --card-bg: #ffffff; /* White cards for better contrast */
-  --card-bg-secondary: #e9ecef; /* Slightly darker for better contrast */
-  --text-color: #1a1a1a; /* Dark text */
-  --text-muted: #6b7280; /* Muted grey text */
-  --primary-color: #22c55e; /* Green accent */
-  --primary-hover: #16a34a;
+  --body-bg: #f5f7f6;
+  --card-bg: #ffffff;
+  --card-bg-secondary: #eef3f0;
+  --text-color: #111827;
+  --text-muted: #667085;
+  --primary-color: #16a34a;
+  --primary-hover: #15803d;
   --primary-light: #86efac;
-  --secondary-color: #6b7280; /* Cool grey */
-  --secondary-hover: #4b5563;
-  --success-color: #22c55e; /* Green */
-  --info-color: #22c55e; /* Green */
-  --danger-color: #ef4444; /* Red */
-  --warning-color: #f59e0b; /* Amber */
-  --border-color: #e5e7eb; /* Light grey border */
+  --secondary-color: #64748b;
+  --secondary-hover: #475569;
+  --success-color: #16a34a;
+  --info-color: #0891b2;
+  --danger-color: #dc2626;
+  --warning-color: #d97706;
+  --border-color: #dbe4df;
   --input-bg: #ffffff;
-  --input-border: #d1d5db;
+  --input-border: #cfd9d3;
   --input-focus-border: var(--primary-color);
   --link-color: var(--primary-color);
-  --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --box-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  --box-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  --border-radius: 0.5rem; /* Slightly larger radius for modern feel */
-  --accent-gradient: linear-gradient(135deg, #22c55e, #16a34a);
+  --focus-ring: 0 0 0 4px rgba(22, 163, 74, 0.18);
+  --box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 6px 16px -8px rgba(16, 24, 40, 0.16);
+  --box-shadow-lg: 0 2px 6px rgba(16, 24, 40, 0.07), 0 14px 32px -12px rgba(16, 24, 40, 0.22);
+  --box-shadow-xl: 0 4px 10px rgba(16, 24, 40, 0.08), 0 24px 56px -16px rgba(16, 24, 40, 0.28);
+  --border-radius: 0.75rem;
+  --accent-gradient: linear-gradient(135deg, #22c55e, #15803d);
 }
 
 /* Dark Theme CSS Variables */
 :root[data-theme='dark'] {
-  --body-bg: #121212;
-  --card-bg: #1e1e1e; /* Darker cards for better contrast */
-  --card-bg-secondary: #2a2a2a; /* Darker than card for contrast */
-  --text-color: #c0c0c0; /* Toned down from #e0e0e0 */
-  --text-muted: #888888;
-  --primary-color: #22c55e;
-  --primary-hover: #16a34a;
-  --primary-light: #86efac;
-  --border-color: #3a3a3a; /* Lightened from #2a2a2a */
-  --input-bg: #2a2a2a;
-  --input-border: #3a3a3a; /* Darker border, was #444444 */
+  --body-bg: #0b1120;
+  --card-bg: #111827;
+  --card-bg-secondary: #1f2937;
+  --text-color: #e5edf7;
+  --text-muted: #98a6ba;
+  --primary-color: #4ade80;
+  --primary-hover: #22c55e;
+  --primary-light: #bbf7d0;
+  --secondary-color: #94a3b8;
+  --secondary-hover: #cbd5e1;
+  --success-color: #4ade80;
+  --info-color: #38bdf8;
+  --danger-color: #f87171;
+  --warning-color: #fbbf24;
+  --border-color: #2a3446;
+  --input-bg: #172033;
+  --input-border: #344054;
   --input-focus-border: var(--primary-color);
   --link-color: var(--primary-light);
-  --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --box-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
-  --box-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+  --focus-ring: 0 0 0 4px rgba(74, 222, 128, 0.24);
+  --box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 8px 20px -10px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(148, 163, 184, 0.06);
+  --box-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.32), 0 18px 40px -16px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(148, 163, 184, 0.08);
+  --box-shadow-xl: 0 4px 12px rgba(0, 0, 0, 0.36), 0 28px 64px -18px rgba(0, 0, 0, 0.82), 0 0 0 1px rgba(148, 163, 184, 0.1);
+  --accent-gradient: linear-gradient(135deg, #4ade80, #16a34a);
 }
 
 /* --- Global Styles --- */
@@ -58,7 +67,7 @@ body {
   background-color: var(--body-bg);
   color: var(--text-color);
   line-height: 1.6;
-  font-size: 14px;
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
@@ -71,9 +80,9 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
+  font-weight: 800;
   color: var(--text-color);
-  letter-spacing: -0.03em;
+  letter-spacing: -0.025em;
   line-height: 1.2;
 }
 
@@ -182,7 +191,7 @@ a:hover {
   font-family: var(--font-family-sans-serif);
 }
 .btn:focus, .btn.focus {
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2); /* Green glow for consistency */
+  box-shadow: var(--focus-ring);
   outline: none;
 }
 .btn:disabled, .btn.disabled {
@@ -314,7 +323,7 @@ a:hover {
 }
 .form-control:focus, .form-select:focus {
   border-color: var(--input-focus-border) !important;
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2) !important; /* Green glow for consistency */
+  box-shadow: var(--focus-ring) !important;
   background-color: var(--card-bg) !important;
   color: var(--text-color) !important;
   outline: none;
