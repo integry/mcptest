@@ -5,6 +5,7 @@
   "scripts": {
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
+    "validate-catalog": "node scripts/validate-catalog.js",
     "prebuild": "node scripts/generate-version.js",
     "build": "vite build",
     "deploy-worker": "wrangler deploy"
