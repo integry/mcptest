@@ -89,6 +89,7 @@ export interface ConnectionTab {
   transportType?: TransportType | null;
   useProxy?: boolean; // Whether to use proxy for this connection
   useOAuth?: boolean; // Whether to use OAuth authentication for this connection
+  autoConnect?: boolean; // Whether this tab should connect automatically once initialized
   // Capabilities for this specific connection
   tools?: Tool[];
   resources?: Resource[];
