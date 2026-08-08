@@ -46,4 +46,17 @@ describe('generated server report Playground links', () => {
       transportMethod: 'sse',
     });
   });
+
+  it('uses the validated transport when it differs from the declaration', () => {
+    const server = catalogServer('https://example.com/endpoint', 'streamable-http');
+    server.transport = 'legacy-sse';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('href="/server/https://example.com/endpoint/sse"');
+    expect(parseServerUrl('/server/https://example.com/endpoint/sse')).toEqual({
+      serverUrl: 'https://example.com/endpoint',
+      transportMethod: 'sse',
+    });
+  });
 });

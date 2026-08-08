@@ -97,7 +97,10 @@ function detectedAuthenticationLabel(server) {
 }
 
 function playgroundPath(server) {
-  const transportMethod = server.declaredTransport === 'legacy-sse' ? 'sse' : 'mcp';
+  const transport = server.transport === 'unknown'
+    ? server.declaredTransport
+    : server.transport;
+  const transportMethod = transport === 'legacy-sse' ? 'sse' : 'mcp';
   return `/server/${server.url}/${transportMethod}`;
 }
 
