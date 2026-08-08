@@ -88,6 +88,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setServerUrl,
     connectionStatus,
     transportType,
+    protocolEra,
+    protocolVersion,
     isConnecting,
     connectionStartTime,
     connectionError,
@@ -771,6 +773,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             setServerUrl={setServerUrl}
             connectionStatus={connectionStatus}
             transportType={transportType}
+            protocolEra={protocolEra}
+            protocolVersion={protocolVersion}
             isConnecting={isConnecting}
             isConnected={isConnected}
             isDisconnected={isDisconnected}

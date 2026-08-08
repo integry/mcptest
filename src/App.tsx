@@ -43,12 +43,12 @@ import type { CatalogServer } from './types/catalog';
 
 // Import Utils
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, parseServerUrl, parseResultShareUrl } from './utils/urlUtils';
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
 import { CorsAwareSSETransport } from './utils/corsAwareSseTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
+import { createLegacyMcpClient, createNegotiatingMcpClient } from './utils/mcpClient';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -1275,14 +1275,14 @@ function App() {
             throw new Error(`Invalid Server URL format in card: ${card.serverUrl}`);
         }
 
-        tempClient = new Client({ name: `mcp-card-executor-${cardId}-${attempt}`, version: "1.0.0" });
-        
         // Use SSE transport for SSE endpoints, HTTP transport for others
         let transport;
         if (connectUrl.pathname.endsWith('/sse')) {
+          tempClient = createLegacyMcpClient(`mcp-card-executor-${cardId}-${attempt}`);
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using SSE transport for ${connectUrl.toString()}`);
           transport = new CorsAwareSSETransport(connectUrl, transportOptions);
         } else {
+          tempClient = createNegotiatingMcpClient(`mcp-card-executor-${cardId}-${attempt}`);
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using HTTP transport for ${connectUrl.toString()}`);
           transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
         }

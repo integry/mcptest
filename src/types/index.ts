@@ -1,11 +1,5 @@
-import { z } from 'zod'; // Assuming Zod is available or used by the SDK
-import {
-  // Attempt to import potential schemas. Adjust names if needed.
-  ToolSchema,
-  ResourceSchema,
-  ResourceTemplateSchema,
-  PromptSchema
-} from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
 
 // Define interfaces for state clarity
 export interface LogEntry {

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { LogEntry, Resource, ResourceTemplate, SelectedTool, Prompt, SelectedPrompt } from '../types'; // Added Resource
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import SDK Client type
-import { ListPromptsResultSchema, GetPromptResultSchema } from '@modelcontextprotocol/sdk/types.js'; // Corrected schema import
+import { LogEntry, Resource, ResourceTemplate, SelectedTool, Prompt, SelectedPrompt } from '../types';
+import { ListPromptsResultSchema, GetPromptResultSchema } from "@modelcontextprotocol/core";
+import { Client } from "@modelcontextprotocol/client";
 import { formatErrorForDisplay } from '../utils/errorHandling';
 import { logEvent } from '../utils/analytics';
 

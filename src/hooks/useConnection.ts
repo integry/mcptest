@@ -1,11 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LogEntry, ResourceTemplate, TransportType } from '../types'; // Keep ResourceTemplate for handleConnect signature
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"; // Use correct import path
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { LogEntry, ResourceTemplate, TransportType } from '../types';
+import { Client, type ProtocolEra } from '@modelcontextprotocol/client';
 import { formatErrorForDisplay } from '../utils/errorHandling';
-import { detectTransport, attemptParallelConnections } from '../utils/transportDetection';
-import { CorsAwareStreamableHTTPTransport } from '../utils/corsAwareTransport';
+import { attemptParallelConnections } from '../utils/transportDetection';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import { generatePKCE } from '../utils/pkce';
@@ -68,6 +65,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [transportType, setTransportType] = useState<TransportType | null>(null);
+  const [protocolEra, setProtocolEra] = useState<ProtocolEra | null>(null);
+  const [protocolVersion, setProtocolVersion] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
   const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
@@ -224,6 +223,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     }
     setConnectionStatus('Disconnected');
     setTransportType(null);
+    setProtocolEra(null);
+    setProtocolVersion(null);
     setIsConnecting(false);
     setConnectionStartTime(null);
     setIsProxied(false);
@@ -797,6 +798,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
     setTransportType(null);
+    setProtocolEra(null);
+    setProtocolVersion(null);
     setConnectionStartTime(new Date());
     setResponses([]); // Clear logs for new connection attempt
     
@@ -824,6 +827,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     let connectionSuccess = false;
     let finalClient: Client | null = null;
     let finalTransportType: TransportType | null = null;
+    let finalProtocolEra: ProtocolEra | null = null;
+    let finalProtocolVersion: string | null = null;
     let finalUrl: string | null = null;
     let lastError: any = null;
     const timeoutPromise = new Promise<never>((_, reject) => 
@@ -879,9 +884,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           
           finalClient = result.client;
           finalTransportType = result.transportType;
+          finalProtocolEra = result.protocolEra;
+          finalProtocolVersion = result.protocolVersion ?? null;
           finalUrl = result.url;
           connectionSuccess = true;
-          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType} at ${result.url}` });
+          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}` });
         } catch (error: any) {
           // Check if it's a CORS error and if automatic proxy fallback is enabled
           const isCorsError = error.message?.toLowerCase().includes('cors') || 
@@ -899,9 +906,11 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
             ]);
             finalClient = result.client;
             finalTransportType = result.transportType;
+            finalProtocolEra = result.protocolEra;
+            finalProtocolVersion = result.protocolVersion ?? null;
             finalUrl = result.url;
             connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} at ${result.url}` });
+            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}` });
           } else {
             if (isCorsError && shouldUseProxy && !currentUser) {
               addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
@@ -914,6 +923,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         if (connectionSuccess && finalClient && finalTransportType && finalUrl) {
             clientRef.current = finalClient;
             setTransportType(finalTransportType);
+            setProtocolEra(finalProtocolEra);
+            setProtocolVersion(finalProtocolVersion);
             
             // Extract the actual URL that was connected to (with correct endpoint)
             let displayUrl = targetUrl; // Default to original target
@@ -1045,6 +1056,8 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
     setServerUrl,
     connectionStatus,
     transportType,
+    protocolEra,
+    protocolVersion,
     isConnecting,
     connectionStartTime,
     connectionError,
