@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { CatalogServer, CatalogServerStatus, CatalogValidationTransport } from '../types/catalog';
 import { checkServerLiveness, type LivenessResult } from '../utils/catalogLiveness';
+import { getCatalogServerPath, getEffectiveCatalogTransport } from '../utils/catalogSeo';
 
 export interface CatalogServerCardProps {
   server: CatalogServer;
@@ -78,7 +80,8 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
           : liveResult.detail,
       }
     : getStatusDetails(server.status, server.checkedAt);
-  const transportBadges = getTransportBadges(server.transport);
+  const transportIsDeclaredOnly = server.transport === 'unknown';
+  const transportBadges = getTransportBadges(getEffectiveCatalogTransport(server));
   const isOffline = effectiveStatus === 'offline';
 
   const handleLivenessCheck = async () => {
@@ -112,7 +115,11 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
           )}
           <div className="flex-grow-1" style={{ minWidth: 0 }}>
             <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
-              <h5 className="mb-0 text-truncate flex-grow-1">{server.name}</h5>
+              <h5 className="mb-0 text-truncate flex-grow-1">
+                <Link className="catalog-server-title" to={getCatalogServerPath(server.id)}>
+                  {server.name}
+                </Link>
+              </h5>
               <div className="d-flex align-items-center gap-2 flex-shrink-0">
                 <span
                   className={`rounded-circle flex-shrink-0 ${statusDetails.className}`}
@@ -156,20 +163,29 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
             </span>
           )}
           {transportBadges.map((badge) => (
-            <span key={badge.label} className={`badge ${badge.className}`}>
-              {badge.label}
+            <span
+              key={badge.label}
+              className={`badge ${transportIsDeclaredOnly ? 'bg-secondary' : badge.className}`}
+              title={transportIsDeclaredOnly ? 'Catalog-declared transport; live validation pending' : undefined}
+            >
+              {badge.label}{transportIsDeclaredOnly ? ' listed' : ''}
             </span>
           ))}
         </div>
 
-        <button
-          type="button"
-          className="btn btn-primary mt-auto"
-          onClick={() => onTest(server)}
-          disabled={isOffline}
-        >
-          Test in Playground
-        </button>
+        <div className="d-flex gap-2 mt-auto">
+          <Link className="btn btn-outline-secondary flex-grow-1" to={getCatalogServerPath(server.id)}>
+            View report
+          </Link>
+          <button
+            type="button"
+            className="btn btn-primary flex-grow-1"
+            onClick={() => onTest(server)}
+            disabled={isOffline}
+          >
+            Test server
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -82,6 +82,8 @@ export interface CatalogValidationResult {
  * output and any derived display metadata.
  */
 export interface CatalogServer extends Omit<CatalogServerSeed, 'transport'> {
+  /** Transport declared by the catalog source, even when a live probe is unavailable. */
+  declaredTransport: CatalogTransport;
   /** Transport support from validation, or unknown when validation is missing. */
   transport: CatalogValidationTransport;
   /** Current catalog reachability state. */

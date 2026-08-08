@@ -13,6 +13,7 @@ import SideNav from './components/SideNav'; // New
 import DashboardsView from './components/DashboardsView'; // New
 import ReportView from './components/ReportView'; // New
 import CatalogView from './components/CatalogView';
+import ServerProfileView from './components/ServerProfileView';
 import Tabs from './components/Tabs'; // New
 // Documentation components
 import WhatIsMcp from './components/docs/WhatIsMcp';
@@ -46,6 +47,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
 import { CorsAwareSSETransport } from './utils/corsAwareSseTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
+import { getCatalogServerById } from './utils/catalogUtils';
+import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -69,7 +72,7 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog' | 'server-profile' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
@@ -79,6 +82,9 @@ const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' | 'ca
   }
   if (path.startsWith('/report')) {
     return 'report';
+  }
+  if (getCatalogServerIdFromPath(path)) {
+    return 'server-profile';
   }
   if (path.startsWith('/catalog')) {
     return 'catalog';
@@ -203,6 +209,10 @@ function App() {
       return { activeView: 'report' as const, activeDocPage: null };
     }
 
+    if (getCatalogServerIdFromPath(path)) {
+      return { activeView: 'server-profile' as const, activeDocPage: null };
+    }
+
     // Check for catalog routes
     if (path.startsWith('/catalog')) {
       return { activeView: 'catalog' as const, activeDocPage: null };
@@ -299,6 +309,14 @@ function App() {
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
       pageTitle = `Docs: ${docPage.replace(/-/g, ' ')}`;
+      logPageView(path, pageTitle);
+      return;
+    }
+
+    const catalogServerId = getCatalogServerIdFromPath(path);
+    if (catalogServerId) {
+      const catalogServer = getCatalogServerById(catalogServerId);
+      pageTitle = catalogServer ? `${catalogServer.name} MCP Server Report` : 'MCP Server Not Found';
       logPageView(path, pageTitle);
       return;
     }
@@ -1586,6 +1604,10 @@ function App() {
 
  // --- Render Logic ---
   const selectedSpace = spaces.find(s => s.id === selectedSpaceId);
+  const selectedCatalogServerId = getCatalogServerIdFromPath(location.pathname);
+  const selectedCatalogServer = selectedCatalogServerId
+    ? getCatalogServerById(selectedCatalogServerId)
+    : undefined;
 
   // Check if we're on the OAuth callback page
   if (location.pathname === '/oauth/callback') {
@@ -1732,6 +1754,11 @@ function App() {
           {/* Catalog View */}
           <div className={`view-panel ${activeView === 'catalog' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             <CatalogView onTestServer={handleCatalogTestServer} />
+          </div>
+
+          {/* Server Profile View */}
+          <div className={`view-panel ${activeView === 'server-profile' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            <ServerProfileView server={selectedCatalogServer} onTestServer={handleCatalogTestServer} />
           </div>
 
           {/* Playground View */}
