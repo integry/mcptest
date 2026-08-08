@@ -96,6 +96,11 @@ function detectedAuthenticationLabel(server) {
   return server.requiresOAuth ? 'OAuth 2.1 detected or required' : 'No OAuth requirement detected';
 }
 
+function playgroundPath(server) {
+  const transportMethod = server.declaredTransport === 'legacy-sse' ? 'sse' : 'mcp';
+  return `/server/${server.url}/${transportMethod}`;
+}
+
 function truncate(value, maxLength = 158) {
   return value.length <= maxLength
     ? value
@@ -157,7 +162,7 @@ function renderServerFallback(server) {
     `      <div><dt>Category</dt><dd>${escapeHtml(server.category)}</dd></div>`,
     '    </dl>',
     `    <p>${references}</p>`,
-    `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(`/server/${server.url}`)}">Test this endpoint in the MCP Playground</a></p>`,
+    `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Latest validation evidence</h2>',
