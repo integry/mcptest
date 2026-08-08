@@ -1,10 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
-import {
-  formatCatalogTransport,
-  getEffectiveCatalogTransport,
-} from '../utils/catalogSeo';
+import { formatCatalogTransport } from '../utils/catalogSeo';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -23,7 +20,20 @@ const formatCheckedAt = (checkedAt?: string) => {
 const statusLabel = (server: CatalogServer) => {
   if (server.status === 'online') return 'Online when last tested';
   if (server.status === 'offline') return 'Offline when last tested';
-  return 'Live status not yet verified';
+  if (server.checkedAt) return 'Latest validation was inconclusive';
+  return 'Validation pending — live status not yet verified';
+};
+
+const validationTransportNote = (server: CatalogServer) => {
+  if (!server.checkedAt) return 'No validation result has been recorded';
+  if (server.transport === 'unknown') return 'Latest validation did not verify a transport';
+  return 'Observed by the latest catalog validation';
+};
+
+const validationDetail = (server: CatalogServer) => {
+  if (server.validationMessage) return server.validationMessage;
+  if (server.checkedAt) return 'The latest automated probe completed without additional validation detail.';
+  return 'No automated probe result is stored yet. Use the Playground to run a fresh browser-side connection test.';
 };
 
 const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer }) => {
@@ -44,8 +54,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
     );
   }
 
-  const effectiveTransport = getEffectiveCatalogTransport(server);
-  const transportWasValidated = server.transport !== 'unknown';
   const statusClass = server.status === 'online'
     ? 'server-status-online'
     : server.status === 'offline'
@@ -98,14 +106,21 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <small>{formatCheckedAt(server.checkedAt)}</small>
         </div>
         <div className="server-signal-card">
-          <span className="server-signal-label">Transport</span>
-          <strong>{formatCatalogTransport(effectiveTransport)}</strong>
-          <small>{transportWasValidated ? 'Observed by the catalog probe' : 'Declared by the catalog; validation pending'}</small>
+          <span className="server-signal-label">Declared transport</span>
+          <strong>{formatCatalogTransport(server.declaredTransport)}</strong>
+          <small>Declared by the catalog source</small>
+        </div>
+        <div className="server-signal-card">
+          <span className="server-signal-label">Live-validated transport</span>
+          <strong>{formatCatalogTransport(server.transport)}</strong>
+          <small>{validationTransportNote(server)}</small>
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Authentication</span>
           <strong>{server.requiresOAuth ? 'OAuth 2.1' : 'No auth declared'}</strong>
-          <small>{server.requiresOAuth ? 'Interactive authorization required' : 'Connect without credentials based on current listing'}</small>
+          <small>{server.checkedAt
+            ? (server.requiresOAuth ? 'OAuth detected or required by latest evidence' : 'No OAuth requirement detected by latest validation')
+            : (server.requiresOAuth ? 'Interactive authorization declared' : 'No credentials declared by the current listing')}</small>
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Category</span>
@@ -131,8 +146,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
                 <dd><code>{server.url}</code></dd>
               </div>
               <div>
-                <dt>MCP transport</dt>
-                <dd>{formatCatalogTransport(effectiveTransport)}</dd>
+                <dt>Declared MCP transport</dt>
+                <dd>{formatCatalogTransport(server.declaredTransport)}</dd>
+              </div>
+              <div>
+                <dt>Live-validated MCP transport</dt>
+                <dd>{formatCatalogTransport(server.transport)}</dd>
               </div>
               <div>
                 <dt>Credential flow</dt>
@@ -178,7 +197,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               </div>
             </div>
             <p className="text-muted small mb-3">
-              {server.validationMessage || 'No automated probe result is stored yet. Use the Playground to run a fresh browser-side connection test.'}
+              {validationDetail(server)}
             </p>
             <button className="btn btn-outline-primary w-100" type="button" onClick={() => onTestServer(server)}>
               Run a compatibility test

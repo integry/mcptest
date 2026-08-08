@@ -8,6 +8,7 @@ const projectRoot = path.join(__dirname, '..');
 const distRoot = path.join(projectRoot, 'dist');
 const indexPath = path.join(distRoot, 'index.html');
 const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
+const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.json');
 
 function escapeHtml(value) {
   return String(value)
@@ -28,7 +29,71 @@ function serverPath(serverId) {
 function transportLabel(transport) {
   if (transport === 'streamable-http') return 'Streamable HTTP';
   if (transport === 'legacy-sse') return 'Legacy HTTP+SSE';
-  return 'MCP';
+  if (transport === 'both') return 'Streamable HTTP and legacy SSE';
+  return 'Not yet verified';
+}
+
+function isValidationTransport(transport) {
+  return (
+    transport === 'streamable-http' ||
+    transport === 'legacy-sse' ||
+    transport === 'both' ||
+    transport === 'unknown'
+  );
+}
+
+function mergeCatalogServers(seeds, validationResults) {
+  const validationByServerId = new Map(
+    validationResults.map((result) => [result.serverId, result])
+  );
+
+  return seeds.map((seed) => {
+    const validation = validationByServerId.get(seed.id);
+
+    return {
+      ...seed,
+      declaredTransport: seed.transport,
+      declaredRequiresOAuth: seed.requiresOAuth,
+      status: validation?.status ?? 'unknown',
+      transport: isValidationTransport(validation?.transport)
+        ? validation.transport
+        : 'unknown',
+      requiresOAuth:
+        typeof validation?.requiresOAuth === 'boolean'
+          ? validation.requiresOAuth
+          : seed.requiresOAuth,
+      checkedAt: validation?.checkedAt,
+      validationMessage: validation?.message,
+    };
+  });
+}
+
+function validationStatusLabel(server) {
+  if (server.status === 'online') return 'Online when last tested';
+  if (server.status === 'offline') return 'Offline when last tested';
+  if (server.checkedAt) return 'Latest validation was inconclusive';
+  return 'Validation pending — live status not yet verified';
+}
+
+function validationTransportNote(server) {
+  if (!server.checkedAt) return 'Validation pending — no validation result has been recorded';
+  if (server.transport === 'unknown') return 'Latest validation did not verify a transport';
+  return 'Observed by the latest catalog validation';
+}
+
+function validationDetail(server) {
+  if (server.validationMessage) return server.validationMessage;
+  if (server.checkedAt) return 'The latest automated probe completed without additional validation detail.';
+  return 'Validation pending — no automated probe result is stored yet.';
+}
+
+function authenticationLabel(requiresOAuth) {
+  return requiresOAuth ? 'OAuth 2.1' : 'None';
+}
+
+function detectedAuthenticationLabel(server) {
+  if (!server.checkedAt) return 'Validation pending — not yet checked';
+  return server.requiresOAuth ? 'OAuth 2.1 detected or required' : 'No OAuth requirement detected';
 }
 
 function truncate(value, maxLength = 158) {
@@ -85,22 +150,42 @@ function renderServerFallback(server) {
     '    <h2>Connection specification</h2>',
     '    <dl class="server-spec-list">',
     `      <div><dt>Remote endpoint</dt><dd><code>${escapeHtml(server.url)}</code></dd></div>`,
-    `      <div><dt>MCP transport</dt><dd>${escapeHtml(transportLabel(server.transport))}</dd></div>`,
-    `      <div><dt>Authentication</dt><dd>${server.requiresOAuth ? 'OAuth 2.1 authorization code flow with PKCE' : 'No authentication declared'}</dd></div>`,
+    `      <div><dt>Declared MCP transport</dt><dd>${escapeHtml(transportLabel(server.declaredTransport))}</dd></div>`,
+    `      <div><dt>Live-validated MCP transport</dt><dd>${escapeHtml(transportLabel(server.transport))} — ${escapeHtml(validationTransportNote(server))}</dd></div>`,
+    `      <div><dt>Declared authentication</dt><dd>${escapeHtml(authenticationLabel(server.declaredRequiresOAuth))}</dd></div>`,
+    `      <div><dt>Detected authentication</dt><dd>${escapeHtml(detectedAuthenticationLabel(server))}</dd></div>`,
     `      <div><dt>Category</dt><dd>${escapeHtml(server.category)}</dd></div>`,
     '    </dl>',
     `    <p>${references}</p>`,
     `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(`/server/${server.url}`)}">Test this endpoint in the MCP Playground</a></p>`,
+    '  </div></section>',
+    '  <section class="card server-profile-section"><div class="card-body">',
+    '    <h2>Latest validation evidence</h2>',
+    '    <dl class="server-spec-list">',
+    `      <div><dt>Validation status</dt><dd>${escapeHtml(validationStatusLabel(server))}</dd></div>`,
+    `      <div><dt>Validation checked at</dt><dd>${escapeHtml(server.checkedAt || 'Not yet validated')}</dd></div>`,
+    `      <div><dt>Validation detail</dt><dd>${escapeHtml(validationDetail(server))}</dd></div>`,
+    '    </dl>',
     '  </div></section>',
     '</article>',
   ].join('\n');
 }
 
 function renderServerHtml(indexHtml, server) {
+  server = server.declaredTransport
+    ? {
+        ...server,
+        declaredRequiresOAuth:
+          typeof server.declaredRequiresOAuth === 'boolean'
+            ? server.declaredRequiresOAuth
+            : server.requiresOAuth,
+      }
+    : mergeCatalogServers([server], [])[0];
+
   const canonicalUrl = `${SITE_URL}${serverPath(server.id)}`;
   const title = `${server.name} MCP Server Report | mcptest.io`;
   const description = truncate(
-    `${server.name} MCP server connection report: ${transportLabel(server.transport)}, ${server.requiresOAuth ? 'OAuth 2.1' : 'no authentication declared'}, endpoint details, live-test status, and playground compatibility.`
+    `${server.name} MCP server connection report: ${transportLabel(server.declaredTransport)} declared, ${server.declaredRequiresOAuth ? 'OAuth 2.1' : 'no authentication declared'}, endpoint details, live-test status, and playground compatibility.`
   );
   const imageUrl = server.logoUrl
     ? (server.logoUrl.startsWith('http') ? server.logoUrl : `${SITE_URL}${server.logoUrl}`)
@@ -116,8 +201,13 @@ function renderServerHtml(indexHtml, server) {
     keywords: server.tags.join(', '),
     documentation: server.homepageUrl || canonicalUrl,
     additionalProperty: [
-      { '@type': 'PropertyValue', name: 'MCP transport', value: transportLabel(server.transport) },
-      { '@type': 'PropertyValue', name: 'Authentication', value: server.requiresOAuth ? 'OAuth 2.1' : 'None declared' },
+      { '@type': 'PropertyValue', name: 'Declared MCP transport', value: transportLabel(server.declaredTransport) },
+      { '@type': 'PropertyValue', name: 'Live-validated MCP transport', value: transportLabel(server.transport) },
+      { '@type': 'PropertyValue', name: 'Declared authentication', value: authenticationLabel(server.declaredRequiresOAuth) },
+      { '@type': 'PropertyValue', name: 'Detected authentication', value: detectedAuthenticationLabel(server) },
+      { '@type': 'PropertyValue', name: 'Validation status', value: validationStatusLabel(server) },
+      { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },
+      { '@type': 'PropertyValue', name: 'Validation detail', value: validationDetail(server) },
     ],
   };
 
@@ -217,8 +307,10 @@ function main() {
     throw new Error('dist/index.html is missing; run Vite before generating SEO pages.');
   }
 
-  const servers = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
-  validateInputs(servers);
+  const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+  const validationResults = JSON.parse(fs.readFileSync(validationPath, 'utf8'));
+  validateInputs(seeds);
+  const servers = mergeCatalogServers(seeds, validationResults);
   const indexHtml = fs.readFileSync(indexPath, 'utf8');
 
   writeServerPages(indexHtml, servers);
@@ -231,4 +323,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { renderServerHtml, serverPath, transportLabel };
+module.exports = { mergeCatalogServers, renderServerHtml, serverPath, transportLabel };
