@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { LogEntry } from '../types'; // Import the full LogEntry type
 
@@ -136,7 +137,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
 
   const renderedMarkdown = markdownContent !== null ? (
     <div className="event-data markdown-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} skipHtml>
         {markdownContent}
       </ReactMarkdown>
     </div>
