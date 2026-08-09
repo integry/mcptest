@@ -115,11 +115,12 @@ function detectedAuthenticationLabel(server) {
 }
 
 function playgroundPath(server) {
+  const endpoint = server.browserUrl || server.validatedUrl || server.url;
   const transport = server.transport === 'unknown'
     ? server.declaredTransport
     : server.transport;
-  const transportMethod = transport === 'legacy-sse' ? 'sse' : 'mcp';
-  return `/server/${server.validatedUrl || server.url}/${transportMethod}`;
+  const transportMethod = /\/sse\/?$/.test(endpoint) || transport === 'legacy-sse' ? 'sse' : 'mcp';
+  return `/server/${endpoint}/${transportMethod}`;
 }
 
 function truncate(value, maxLength = 158) {
@@ -188,6 +189,10 @@ function renderServerFallback(server) {
     ...(server.validatedUrl && server.validatedUrl !== server.url
       ? [`      <div><dt>Live-validated endpoint</dt><dd><code>${escapeHtml(server.validatedUrl)}</code></dd></div>`]
       : []),
+    ...(server.browserUrl && server.browserUrl !== server.validatedUrl
+      ? [`      <div><dt>Browser-verified endpoint</dt><dd><code>${escapeHtml(server.browserUrl)}</code></dd></div>`]
+      : []),
+    `      <div><dt>Browser access</dt><dd>${escapeHtml(server.browserAccess === 'direct' ? 'Direct browser connection verified' : server.browserAccess === 'proxy-required' ? 'Authenticated proxy required' : 'Not yet measured')}</dd></div>`,
     `      <div><dt>Declared MCP transport</dt><dd>${escapeHtml(transportLabel(server.declaredTransport))}</dd></div>`,
     `      <div><dt>Live-validated MCP transport</dt><dd>${escapeHtml(transportLabel(server.transport))} — ${escapeHtml(validationTransportNote(server))}</dd></div>`,
     `      <div><dt>Declared authentication</dt><dd>${escapeHtml(authenticationLabel(server.declaredAuthType))}</dd></div>`,

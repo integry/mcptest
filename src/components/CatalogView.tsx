@@ -43,7 +43,6 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
     <div className="catalog-view">
       <div className="catalog-command-bar">
         <div className="catalog-command-copy">
-          <span className="interface-eyebrow">Live endpoint index</span>
           <h2 className="mb-1">Remote MCP server catalog</h2>
           <p className="text-muted mb-0">
             Inspect transport, protocol era, and authentication before you connect.

@@ -148,11 +148,11 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   // Return JSX directly without outer parentheses
   return (
     <>
-      <div className={`card mb-3 connection-console ${isConnected ? 'border-success' : ''}`}>
+      <div className={`card connection-console ${isConnected ? 'connection-console--connected' : ''}`}>
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
-        <div>
-          <span className="interface-eyebrow">Transport console</span>
-          <h5 className="mb-0">Connect a remote endpoint</h5>
+        <div className="connection-heading">
+          <h5 className="mb-0">{isConnected ? 'MCP connection ready' : 'Connect a remote endpoint'}</h5>
+          {isConnected && <code className="connection-endpoint" title={serverUrl}>{serverUrl}</code>}
         </div>
         {isConnected && (
           <div className="connection-details d-flex align-items-center gap-2" aria-label="Negotiated connection details">
@@ -217,9 +217,18 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 </div>
               )}
             </div>
+            <button
+              id="disconnectBtn"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={handleDisconnect}
+              disabled={isConnecting}
+            >
+              Disconnect
+            </button>
           </div>
         )}
       </div>
+      {!isConnected && (
       <div className="card-body">
         <div className="mb-3">
           <div className="connection-field-heading">
@@ -391,6 +400,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           />
         )}
       </div>
+      )}
     </div>
 
     {/* OAuth User Info Modal */}

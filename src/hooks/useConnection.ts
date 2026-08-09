@@ -324,7 +324,8 @@ export const useConnection = (
     setResources: React.Dispatch<React.SetStateAction<Resource[]>>,
     setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
     urlToConnect?: string, // Optional URL parameter
-    forceUseProxy?: boolean // Optional proxy override
+    forceUseProxy?: boolean, // Optional proxy override
+    protocolEraHint?: 'stateful' | 'legacy'
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
@@ -449,7 +450,8 @@ export const useConnection = (
         abortControllerRef.current?.signal,
         latestAccessToken || undefined,
         requestHeaders,
-        false
+        false,
+        protocolEraHint
       );
     };
 
@@ -483,7 +485,8 @@ export const useConnection = (
         abortControllerRef.current?.signal,
         authToken,
         targetHeaders,
-        true
+        true,
+        protocolEraHint
       );
     };
 

@@ -159,7 +159,8 @@ describe('connection URL finalization', () => {
       expect.anything(),
       'sdk-token',
       undefined,
-      false
+      false,
+      undefined
     );
     expect(view.connection.connectionStatus).toBe('Connected');
     view.unmount();
