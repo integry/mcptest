@@ -13,6 +13,16 @@ export interface TransportCandidate {
   transportType: TransportType;
 }
 
+export class TransportConnectionError extends Error {
+  constructor(readonly errors: readonly unknown[]) {
+    super(`All connections failed: ${errors.map((error) => (
+      (error instanceof Error ? error.message : String(error))
+        .replace(/^All connections failed: /, '')
+    )).join(', ')}`);
+    this.name = 'TransportConnectionError';
+  }
+}
+
 export const CANDIDATE_GROUP_TIMEOUT_MS = 5_000;
 
 const slashVariants = (value: URL): URL[] => {
@@ -79,14 +89,21 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
 };
 
 /**
- * Builds connection candidates while preserving exact custom endpoints. For
- * proxy URLs, only the encoded target is varied; the proxy URL itself remains
- * untouched.
+ * Builds connection candidates while preserving exact custom endpoints. A URL
+ * is interpreted using the proxy `target` convention only when its caller has
+ * explicitly selected the configured proxy route.
  */
-export const getTransportCandidates = (serverUrl: string): TransportCandidate[] => {
+export const getTransportCandidates = (
+  serverUrl: string,
+  usesProxy = false
+): TransportCandidate[] => {
   const outerUrl = new URL(serverUrl);
+  if (!usesProxy) return directCandidates(outerUrl);
+
   const targetValue = outerUrl.searchParams.get('target');
-  if (!targetValue) return directCandidates(outerUrl);
+  if (!targetValue) {
+    throw new Error('Proxy connection URL is missing its target endpoint.');
+  }
 
   const targetUrl = new URL(targetValue);
   return directCandidates(targetUrl).map((candidate) => {
@@ -97,13 +114,13 @@ export const getTransportCandidates = (serverUrl: string): TransportCandidate[] 
 };
 
 export const getRequestHeadersForCandidate = (
-  candidateUrl: string,
-  requestHeaders?: HeadersInit
+  _candidateUrl: string,
+  requestHeaders?: HeadersInit,
+  usesProxy = false
 ): Headers => {
   const headers = new Headers(requestHeaders);
-  const candidate = new URL(candidateUrl);
 
-  if (candidate.searchParams.has('target') && headers.has('Authorization')) {
+  if (usesProxy && headers.has('Authorization')) {
     headers.set('X-MCP-Authorization', headers.get('Authorization') || '');
     headers.delete('Authorization');
   }
@@ -120,26 +137,27 @@ type ConnectedCandidate = {
 
 const firstSuccessful = <T,>(promises: Promise<T>[]): Promise<T> => {
   return new Promise((resolve, reject) => {
-    const errors: Error[] = [];
+    const errors: unknown[] = [];
     let remaining = promises.length;
 
     for (const promise of promises) {
       promise.then(resolve).catch((error) => {
-        errors.push(error instanceof Error ? error : new Error(String(error)));
+        errors.push(error);
         remaining -= 1;
         if (remaining === 0) {
-          reject(new Error(
-            `All connections failed: ${errors.map(({ message }) => message).join(', ')}`
-          ));
+          reject(new TransportConnectionError(errors));
         }
       });
     }
   });
 };
 
-const candidateGroupKey = (candidate: TransportCandidate): string => {
+const candidateGroupKey = (
+  candidate: TransportCandidate,
+  usesProxy: boolean
+): string => {
   const outerUrl = new URL(candidate.url);
-  const targetValue = outerUrl.searchParams.get('target');
+  const targetValue = usesProxy ? outerUrl.searchParams.get('target') : null;
   const endpoint = targetValue ? new URL(targetValue) : outerUrl;
   endpoint.pathname = endpoint.pathname.replace(/\/+$/, '') || '/';
 
@@ -147,7 +165,8 @@ const candidateGroupKey = (candidate: TransportCandidate): string => {
 };
 
 const groupCandidatesByPriority = (
-  candidates: TransportCandidate[]
+  candidates: TransportCandidate[],
+  usesProxy: boolean
 ): TransportCandidate[][] => {
   const groups: TransportCandidate[][] = [];
 
@@ -155,7 +174,7 @@ const groupCandidatesByPriority = (
     const currentGroup = groups[groups.length - 1];
     if (
       !currentGroup
-      || candidateGroupKey(currentGroup[0]) !== candidateGroupKey(candidate)
+      || candidateGroupKey(currentGroup[0], usesProxy) !== candidateGroupKey(candidate, usesProxy)
     ) {
       groups.push([candidate]);
     } else {
@@ -170,12 +189,13 @@ export async function attemptParallelConnections(
   serverUrl: string,
   abortSignal?: AbortSignal,
   authToken?: string,
-  requestHeaders?: HeadersInit
+  requestHeaders?: HeadersInit,
+  usesProxy = false
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
-  const candidates = getTransportCandidates(serverUrl);
+  const candidates = getTransportCandidates(serverUrl, usesProxy);
   const clients: Client[] = [];
   const transportOptionsFor = (candidateUrl: string) => {
-    const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders);
+    const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders, usesProxy);
 
     return {
       ...(authToken ? { authProvider: { token: async () => authToken } } : {}),
@@ -217,7 +237,7 @@ export async function attemptParallelConnections(
   try {
     const failures: Error[] = [];
 
-    for (const candidateGroup of groupCandidatesByPriority(candidates)) {
+    for (const candidateGroup of groupCandidatesByPriority(candidates, usesProxy)) {
       if (abortSignal?.aborted) {
         throw new Error('Connection aborted by user');
       }
@@ -266,11 +286,7 @@ export async function attemptParallelConnections(
       };
     }
 
-    throw new Error(
-      `All connections failed: ${failures.map(({ message }) => (
-        message.replace(/^All connections failed: /, '')
-      )).join(', ')}`
-    );
+    throw new TransportConnectionError(failures);
   } catch (error) {
     await Promise.allSettled(clients.map((client) => client.close()));
     throw error;

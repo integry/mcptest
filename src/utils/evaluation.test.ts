@@ -17,7 +17,10 @@ import {
   getEvaluationTargetUrl,
   getEvaluationTransportProbeUrl,
 } from './evaluation';
-import { getRequestHeadersForCandidate } from './transportDetection';
+import {
+  TransportConnectionError,
+  getRequestHeadersForCandidate,
+} from './transportDetection';
 
 const createClient = () => ({
   listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -79,7 +82,8 @@ describe('dual-era server evaluation', () => {
   it('rewrites only a terminal conventional path for comparison probes', () => {
     const probeUrl = getEvaluationTransportProbeUrl(
       'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
-      'sse'
+      'sse',
+      true
     );
 
     expect(new URL(probeUrl).searchParams.get('target')).toBe('https://mcp.example/sse');
@@ -110,7 +114,8 @@ describe('dual-era server evaluation', () => {
     expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
     const [proxyUrl, , proxyAuthToken, targetHeaders] = connectionMocks.attempt.mock.calls[1];
     expect(proxyAuthToken).toBe('firebase-jwt');
-    const outgoingTargetHeaders = getRequestHeadersForCandidate(proxyUrl, targetHeaders);
+    expect(connectionMocks.attempt.mock.calls[1][4]).toBe(true);
+    const outgoingTargetHeaders = getRequestHeadersForCandidate(proxyUrl, targetHeaders, true);
     expect(outgoingTargetHeaders.get('authorization')).toBeNull();
     expect(outgoingTargetHeaders.get('x-mcp-authorization')).toBe('Bearer oauth-access-token');
     expect(report.sections.protocol.details[0].metadata).toMatchObject({
@@ -122,6 +127,47 @@ describe('dual-era server evaluation', () => {
     expect(report.sections.cors.score).toBe(0);
     expect(report.sections.cors.details[0].text).toContain('proxy was required');
     expect(client.close).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['URL-valued', 'https://tenant.example/account'],
+    ['ordinary', 'production'],
+  ])('preserves a direct custom endpoint with a %s target parameter', async (_, target) => {
+    const client = createClient();
+    const endpoint = new URL('https://mcp.example/custom/endpoint');
+    endpoint.searchParams.set('target', target);
+    endpoint.searchParams.set('tenant', 'acme');
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: endpoint.toString(),
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer(endpoint.toString(), 'firebase-jwt', vi.fn());
+
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint.toString());
+    expect(connectionMocks.attempt.mock.calls[0][4]).toBe(false);
+    expect(report.sections.protocol.details[0].metadata).toMatchObject({
+      endpoint: endpoint.toString(),
+      route: 'direct',
+    });
+    expect(getEvaluationTargetUrl(endpoint.toString(), false)).toBe(endpoint.toString());
+  });
+
+  it('unwraps target only for an explicitly confirmed configured-proxy URL', () => {
+    const configuredProxy = (
+      'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fcustom%3Ftenant%3Dacme'
+    );
+    const otherProxy = (
+      'https://other-proxy.example/?target=https%3A%2F%2Fmcp.example%2Fcustom'
+    );
+
+    expect(getEvaluationTargetUrl(configuredProxy, true)).toBe(
+      'https://mcp.example/custom?tenant=acme'
+    );
+    expect(getEvaluationTargetUrl(configuredProxy, false)).toBe(configuredProxy);
+    expect(getEvaluationTargetUrl(otherProxy, true)).toBe(otherProxy);
   });
 
   it('reports a stateful legacy-SSE connection without inventing pre-standard endpoints', async () => {
@@ -169,16 +215,37 @@ describe('dual-era server evaluation', () => {
     ]);
   });
 
-  it('surfaces authentication failures without probing /mcp/v1 routes', async () => {
+  it('preserves a direct target authentication response when the proxy also fails', async () => {
+    const targetAuthError = Object.assign(new Error('Direct target returned HTTP 401'), {
+      status: 401,
+    });
     connectionMocks.attempt
-      .mockRejectedValueOnce(new Error('HTTP 401 Unauthorized'))
-      .mockRejectedValueOnce(new Error('HTTP 401 Unauthorized'));
+      .mockRejectedValueOnce(new TransportConnectionError([targetAuthError]))
+      .mockRejectedValueOnce(new Error('Proxy network failure'));
 
     const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
 
     expect(report.sections.auth).toBeDefined();
+    expect(report.sections.auth.details[0].context).toContain('Direct target returned HTTP 401');
+    expect(report.sections.auth.details[0].metadata).toEqual({ route: 'direct', status: 401 });
     expect(report.sections.protocol.score).toBe(0);
+    expect(report.sections.protocol.details[0].text).toContain('Direct target:');
+    expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
     expect(JSON.stringify(report)).not.toContain('/mcp/v1/');
+  });
+
+  it('does not mistake a proxy-hop authentication failure for target OAuth', async () => {
+    const proxyAuthError = Object.assign(new Error('Proxy returned HTTP 401'), {
+      status: 401,
+    });
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockRejectedValueOnce(new TransportConnectionError([proxyAuthError]));
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.auth).toBeUndefined();
+    expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
   });
 
   it('normalizes report scores from the sections included in that run', () => {

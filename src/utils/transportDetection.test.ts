@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CANDIDATE_GROUP_TIMEOUT_MS,
+  TransportConnectionError,
   attemptParallelConnections,
   getRequestHeadersForCandidate,
   getTransportCandidates,
@@ -78,7 +79,8 @@ describe('transport candidate generation', () => {
 
   it('varies the target rather than the proxy endpoint', () => {
     const candidates = getTransportCandidates(
-      'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom%2Fendpoint'
+      'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom%2Fendpoint',
+      true
     );
 
     expect(candidates).toHaveLength(4);
@@ -86,6 +88,22 @@ describe('transport candidate generation', () => {
     expect(candidates.every(({ url }) => (
       new URL(url).searchParams.get('target')?.startsWith('https://example.com/custom/endpoint')
     ))).toBe(true);
+  });
+
+  it.each([
+    ['URL-valued', 'https://tenant.example/account'],
+    ['ordinary', 'production'],
+  ])('preserves a direct custom endpoint with a %s target parameter', (_, target) => {
+    const endpoint = new URL('https://mcp.example/custom/endpoint');
+    endpoint.searchParams.set('target', target);
+    endpoint.searchParams.set('tenant', 'acme');
+
+    const candidates = getTransportCandidates(endpoint.toString(), false);
+
+    expect(candidates[0].url).toBe(endpoint.toString());
+    expect(candidates.every(({ url }) => new URL(url).origin === endpoint.origin)).toBe(true);
+    expect(candidates.every(({ url }) => new URL(url).searchParams.get('target') === target)).toBe(true);
+    expect(candidates.every(({ url }) => new URL(url).searchParams.get('tenant') === 'acme')).toBe(true);
   });
 
   it('prefers a declared terminal SSE endpoint before its HTTP sibling', () => {
@@ -158,16 +176,44 @@ describe('transport candidate generation', () => {
   it('keeps target Authorization separate from proxy authentication', () => {
     const proxyHeaders = getRequestHeadersForCandidate(
       'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
-      { Authorization: 'Bearer target-secret', 'x-api-key': 'api-secret' }
+      { Authorization: 'Bearer target-secret', 'x-api-key': 'api-secret' },
+      true
     );
     const directHeaders = getRequestHeadersForCandidate(
-      'https://example.com/mcp',
-      { Authorization: 'Bearer target-secret' }
+      'https://example.com/custom?target=https%3A%2F%2Ftenant.example',
+      { Authorization: 'Bearer target-secret' },
+      false
     );
 
     expect(proxyHeaders.get('authorization')).toBeNull();
     expect(proxyHeaders.get('x-mcp-authorization')).toBe('Bearer target-secret');
     expect(proxyHeaders.get('x-api-key')).toBe('api-secret');
     expect(directHeaders.get('authorization')).toBe('Bearer target-secret');
+  });
+
+  it('retains structured HTTP failures from candidate attempts', async () => {
+    const targetAuthError = Object.assign(new Error('Target requires authentication'), {
+      status: 401,
+    });
+    connectionMocks.connect = async () => {
+      throw targetAuthError;
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections('https://example.com/custom');
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(connectionError).toBeInstanceOf(TransportConnectionError);
+    const containsTargetError = (error: unknown): boolean => (
+      error === targetAuthError
+      || (
+        error instanceof TransportConnectionError
+        && error.errors.some(containsTargetError)
+      )
+    );
+    expect(containsTargetError(connectionError)).toBe(true);
   });
 });

@@ -18,9 +18,17 @@ const normalizeServerUrl = (value: string): string => {
   return new URL(withProtocol).toString();
 };
 
-export const getEvaluationTargetUrl = (connectionUrl: string): string => {
+export const getEvaluationTargetUrl = (
+  connectionUrl: string,
+  usesProxy = false
+): string => {
   const outerUrl = new URL(connectionUrl);
-  return outerUrl.searchParams.get('target') || outerUrl.toString();
+  const proxyUrl = getProxyUrl();
+  if (!usesProxy || !proxyUrl || !isConfiguredProxyTarget(connectionUrl, proxyUrl)) {
+    return outerUrl.toString();
+  }
+
+  return new URL(outerUrl.searchParams.get('target') as string).toString();
 };
 
 /**
@@ -30,13 +38,15 @@ export const getEvaluationTargetUrl = (connectionUrl: string): string => {
  */
 export function getEvaluationTransportProbeUrl(
   connectionUrl: string,
-  targetTransport: 'mcp' | 'sse'
+  targetTransport: 'mcp' | 'sse',
+  usesProxy = false
 ): string {
   const outerUrl = new URL(connectionUrl);
   const proxyUrl = getProxyUrl();
   const proxyTarget = outerUrl.searchParams.get('target');
   const isProxied = Boolean(
-    proxyUrl
+    usesProxy
+    && proxyUrl
     && proxyTarget
     && isConfiguredProxyTarget(connectionUrl, proxyUrl)
   );
@@ -104,10 +114,11 @@ export async function fetchForEvaluation(
   url: string,
   firebaseToken: string,
   options: RequestInit = {},
-  oauthToken?: string | null
+  oauthToken?: string | null,
+  usesProxy = false
 ): Promise<Response> {
   const proxyUrl = getProxyUrl();
-  if (proxyUrl && isConfiguredProxyTarget(url, proxyUrl)) {
+  if (usesProxy && proxyUrl && isConfiguredProxyTarget(url, proxyUrl)) {
     return fetch(url, {
       ...options,
       headers: getEvaluationProxyHeaders(options.headers, firebaseToken, oauthToken),
@@ -154,6 +165,42 @@ const errorMessage = (error: unknown): string => (
   error instanceof Error ? error.message : String(error)
 );
 
+const getAuthenticationHttpStatus = (
+  error: unknown,
+  seen = new Set<object>()
+): 401 | 403 | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  const value = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    code?: unknown;
+    data?: { status?: unknown };
+    response?: { status?: unknown };
+    cause?: unknown;
+    errors?: readonly unknown[];
+  };
+  const directStatuses = [
+    value.status,
+    value.statusCode,
+    value.code,
+    value.data?.status,
+    value.response?.status,
+  ];
+  const directStatus = directStatuses.find((status) => status === 401 || status === 403);
+  if (directStatus === 401 || directStatus === 403) return directStatus;
+
+  if (Array.isArray(value.errors)) {
+    for (const nestedError of value.errors) {
+      const nestedStatus = getAuthenticationHttpStatus(nestedError, seen);
+      if (nestedStatus !== undefined) return nestedStatus;
+    }
+  }
+
+  return getAuthenticationHttpStatus(value.cause, seen);
+};
+
 const isMethodNotFound = (error: unknown): boolean => {
   const value = error as { code?: number; message?: string };
   return value?.code === -32601 || /method not found/i.test(value?.message || '');
@@ -182,6 +229,32 @@ interface ConnectedEvaluation {
   directError?: string;
 }
 
+interface EvaluationRouteFailure {
+  route: 'direct' | 'proxy';
+  error: unknown;
+  message: string;
+  httpStatus?: number;
+}
+
+const makeRouteFailure = (
+  route: EvaluationRouteFailure['route'],
+  error: unknown
+): EvaluationRouteFailure => ({
+  route,
+  error,
+  message: errorMessage(error),
+  httpStatus: getAuthenticationHttpStatus(error),
+});
+
+class EvaluationConnectionError extends Error {
+  constructor(readonly failures: readonly EvaluationRouteFailure[]) {
+    super(failures.map((failure) => (
+      `${failure.route === 'direct' ? 'Direct target' : 'Authenticated proxy'}: ${failure.message}`
+    )).join('; '));
+    this.name = 'EvaluationConnectionError';
+  }
+}
+
 const connectForEvaluation = async (
   serverUrl: string,
   firebaseToken: string,
@@ -195,26 +268,37 @@ const connectForEvaluation = async (
     const direct = await attemptParallelConnections(
       serverUrl,
       abortController.signal,
-      oauthToken || undefined
+      oauthToken || undefined,
+      undefined,
+      false
     );
     return { ...direct, usedProxy: false };
   } catch (directError) {
+    const directFailure = makeRouteFailure('direct', directError);
     const proxyUrl = getProxyUrl();
-    if (!proxyUrl) throw directError;
+    if (!proxyUrl) throw new EvaluationConnectionError([directFailure]);
 
-    onProgress('Direct negotiation failed; retrying through the authenticated CORS proxy...');
-    const proxyConnectionUrl = new URL(proxyUrl);
-    proxyConnectionUrl.searchParams.set('target', serverUrl);
-    const targetHeaders = oauthToken
-      ? { Authorization: `Bearer ${oauthToken}` }
-      : undefined;
-    const proxied = await attemptParallelConnections(
-      proxyConnectionUrl.toString(),
-      abortController.signal,
-      firebaseToken,
-      targetHeaders
-    );
-    return { ...proxied, usedProxy: true, directError: errorMessage(directError) };
+    try {
+      onProgress('Direct negotiation failed; retrying through the authenticated CORS proxy...');
+      const proxyConnectionUrl = new URL(proxyUrl);
+      proxyConnectionUrl.searchParams.set('target', serverUrl);
+      const targetHeaders = oauthToken
+        ? { Authorization: `Bearer ${oauthToken}` }
+        : undefined;
+      const proxied = await attemptParallelConnections(
+        proxyConnectionUrl.toString(),
+        abortController.signal,
+        firebaseToken,
+        targetHeaders,
+        true
+      );
+      return { ...proxied, usedProxy: true, directError: directFailure.message };
+    } catch (proxyError) {
+      throw new EvaluationConnectionError([
+        directFailure,
+        makeRouteFailure('proxy', proxyError),
+      ]);
+    }
   }
 };
 
@@ -286,7 +370,7 @@ const evaluateBrowserAccessibility = (
   connection: ConnectedEvaluation,
   authenticated: boolean
 ): EvaluationSection => {
-  const endpointUrl = getEvaluationTargetUrl(connection.url);
+  const endpointUrl = getEvaluationTargetUrl(connection.url, connection.usedProxy);
   const requiredHeaders = getEvaluationCorsHeaders(connection.protocolEra, authenticated);
   const section: EvaluationSection = {
     name: 'Web Client Accessibility',
@@ -373,6 +457,11 @@ export async function evaluateServer(
     );
   } catch (error) {
     const message = errorMessage(error);
+    const failures = error instanceof EvaluationConnectionError ? error.failures : [];
+    const targetAuthFailure = failures.find((failure) => (
+      failure.route === 'direct'
+      && (failure.httpStatus === 401 || failure.httpStatus === 403)
+    ));
     report.sections.protocol = makeSkippedSection(
       'Core Protocol Adherence',
       'Validates MCP lifecycle and JSON-RPC negotiation',
@@ -403,7 +492,7 @@ export async function evaluateServer(
       15,
       'Performance was not scored because negotiation failed.'
     );
-    if (/\b(?:401|403|unauthori[sz]ed|forbidden|authentication)\b/i.test(message)) {
+    if (targetAuthFailure) {
       report.sections.auth = {
         name: 'Authentication Required',
         description: 'The MCP endpoint rejected unauthenticated negotiation',
@@ -411,7 +500,11 @@ export async function evaluateServer(
         maxScore: 1,
         details: [{
           text: '⚠ Authenticate with the server and run the report again.',
-          context: message,
+          context: targetAuthFailure.message,
+          metadata: {
+            route: 'direct',
+            status: targetAuthFailure.httpStatus,
+          },
         }],
       };
     }
@@ -438,7 +531,7 @@ export async function evaluateServer(
         metadata: {
           protocolEra: connection.protocolEra,
           protocolVersion: connection.protocolVersion,
-          endpoint: getEvaluationTargetUrl(connection.url),
+          endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
           route: connection.usedProxy ? 'authenticated proxy' : 'direct',
         },
       },
@@ -468,7 +561,7 @@ export async function evaluateServer(
         : 'The two-endpoint HTTP+SSE transport remains compatible but is deprecated in MCP 2026.',
       metadata: {
         transportType: connection.transportType,
-        endpoint: getEvaluationTargetUrl(connection.url),
+        endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
         protocolEra: connection.protocolEra,
       },
     }],

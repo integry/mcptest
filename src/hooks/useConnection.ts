@@ -855,7 +855,8 @@ export const useConnection = (
         targetUrl,
         abortControllerRef.current?.signal,
         latestAccessToken || undefined,
-        requestHeaders
+        requestHeaders,
+        false
       );
     };
 
@@ -888,7 +889,8 @@ export const useConnection = (
         connectionUrl,
         abortControllerRef.current?.signal,
         authToken,
-        targetHeaders
+        targetHeaders,
+        true
       );
     };
 

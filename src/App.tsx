@@ -1263,7 +1263,8 @@ function App() {
           connectionPlan.connectionUrl,
           undefined,
           connectionPlan.authToken,
-          connectionPlan.targetHeaders
+          connectionPlan.targetHeaders,
+          connectionPlan.usesProxy
         );
         tempClient = connection.client;
         console.log(
