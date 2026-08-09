@@ -1,5 +1,45 @@
-import { describe, expect, it } from 'vitest';
-import { getRequestHeadersForCandidate, getTransportCandidates } from './transportDetection';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  attemptParallelConnections,
+  getRequestHeadersForCandidate,
+  getTransportCandidates,
+} from './transportDetection';
+
+const connectionMocks = vi.hoisted(() => ({
+  connect: async (_transport: { endpoint: URL }) => {},
+}));
+
+vi.mock('./mcpClient', () => {
+  const createClient = () => {
+    const client = {
+      connect: vi.fn((transport: { endpoint: URL }) => connectionMocks.connect(transport)),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    return client;
+  };
+
+  return {
+    createLegacyMcpClient: vi.fn(createClient),
+    createNegotiatingMcpClient: vi.fn(createClient),
+    getProtocolDetails: vi.fn(() => ({ era: 'stateful', version: '2025-11-25' })),
+  };
+});
+
+vi.mock('./corsAwareTransport', () => ({
+  CorsAwareStreamableHTTPTransport: class {
+    constructor(readonly endpoint: URL) {}
+  },
+}));
+
+vi.mock('./corsAwareSseTransport', () => ({
+  CorsAwareSSETransport: class {
+    constructor(readonly endpoint: URL) {}
+  },
+}));
+
+beforeEach(() => {
+  connectionMocks.connect = async () => {};
+});
 
 describe('transport candidate generation', () => {
   it('does not append paths to a custom publisher endpoint', () => {
@@ -48,6 +88,26 @@ describe('transport candidate generation', () => {
       url: 'https://example.com/sse',
       transportType: 'legacy-sse',
     });
+  });
+
+  it('does not let a faster fallback replace a successful exact endpoint', async () => {
+    const attemptedUrls: string[] = [];
+    connectionMocks.connect = async ({ endpoint }) => {
+      attemptedUrls.push(endpoint.toString());
+      const delay = endpoint.pathname.startsWith('/mcp') ? 20 : 1;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    };
+
+    const connection = await attemptParallelConnections('https://example.com/mcp');
+
+    expect(connection).toMatchObject({
+      url: 'https://example.com/mcp',
+      transportType: 'streamable-http',
+    });
+    expect(attemptedUrls).toEqual([
+      'https://example.com/mcp',
+      'https://example.com/mcp/',
+    ]);
   });
 
   it('keeps target Authorization separate from proxy authentication', () => {

@@ -135,6 +135,35 @@ const firstSuccessful = <T,>(promises: Promise<T>[]): Promise<T> => {
   });
 };
 
+const candidateGroupKey = (candidate: TransportCandidate): string => {
+  const outerUrl = new URL(candidate.url);
+  const targetValue = outerUrl.searchParams.get('target');
+  const endpoint = targetValue ? new URL(targetValue) : outerUrl;
+  endpoint.pathname = endpoint.pathname.replace(/\/+$/, '') || '/';
+
+  return `${candidate.transportType}:${endpoint.toString()}`;
+};
+
+const groupCandidatesByPriority = (
+  candidates: TransportCandidate[]
+): TransportCandidate[][] => {
+  const groups: TransportCandidate[][] = [];
+
+  for (const candidate of candidates) {
+    const currentGroup = groups[groups.length - 1];
+    if (
+      !currentGroup
+      || candidateGroupKey(currentGroup[0]) !== candidateGroupKey(candidate)
+    ) {
+      groups.push([candidate]);
+    } else {
+      currentGroup.push(candidate);
+    }
+  }
+
+  return groups;
+};
+
 export async function attemptParallelConnections(
   serverUrl: string,
   abortSignal?: AbortSignal,
@@ -158,7 +187,9 @@ export async function attemptParallelConnections(
 
   console.log('[Parallel Connection] Trying publisher endpoint candidates:', candidates);
 
-  const attempts = candidates.map(async (candidate): Promise<ConnectedCandidate> => {
+  const attemptConnection = async (
+    candidate: TransportCandidate
+  ): Promise<ConnectedCandidate> => {
     const client = candidate.transportType === 'legacy-sse'
       ? createLegacyMcpClient('mcptest-web')
       : createNegotiatingMcpClient('mcptest-web');
@@ -171,7 +202,7 @@ export async function attemptParallelConnections(
 
     await client.connect(transport);
     return { ...candidate, client, transport };
-  });
+  };
 
   let removeAbortListener = () => {};
   const abortPromise = new Promise<never>((_, reject) => {
@@ -182,23 +213,47 @@ export async function attemptParallelConnections(
   });
 
   try {
-    const successful = await Promise.race([
-      firstSuccessful(attempts),
-      abortPromise,
-    ]);
-    await Promise.allSettled(
-      clients.filter((client) => client !== successful.client).map((client) => client.close())
-    );
-    const protocol = getProtocolDetails(successful.client);
+    const failures: Error[] = [];
 
-    console.log(
-      `[Parallel Connection] ${successful.transportType} connected to ${successful.url}`
+    for (const candidateGroup of groupCandidatesByPriority(candidates)) {
+      if (abortSignal?.aborted) {
+        throw new Error('Connection aborted by user');
+      }
+
+      let successful: ConnectedCandidate;
+      try {
+        successful = await Promise.race([
+          firstSuccessful(candidateGroup.map(attemptConnection)),
+          abortPromise,
+        ]);
+      } catch (error) {
+        if (abortSignal?.aborted) {
+          throw new Error('Connection aborted by user');
+        }
+        failures.push(error instanceof Error ? error : new Error(String(error)));
+        continue;
+      }
+
+      await Promise.allSettled(
+        clients.filter((client) => client !== successful.client).map((client) => client.close())
+      );
+      const protocol = getProtocolDetails(successful.client);
+
+      console.log(
+        `[Parallel Connection] ${successful.transportType} connected to ${successful.url}`
+      );
+      return {
+        ...successful,
+        protocolEra: protocol.era,
+        protocolVersion: protocol.version,
+      };
+    }
+
+    throw new Error(
+      `All connections failed: ${failures.map(({ message }) => (
+        message.replace(/^All connections failed: /, '')
+      )).join(', ')}`
     );
-    return {
-      ...successful,
-      protocolEra: protocol.era,
-      protocolVersion: protocol.version,
-    };
   } catch (error) {
     await Promise.allSettled(clients.map((client) => client.close()));
     throw error;
