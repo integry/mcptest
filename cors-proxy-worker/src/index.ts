@@ -221,7 +221,7 @@ function getCorsHeaders(source: ProxyResponseSource = 'proxy'): Record<string, s
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Headers': 'Accept, Authorization, Content-Type, Last-Event-ID, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Session-Id, X-MCP-Authorization, x-api-key',
     [PROXY_RESPONSE_SOURCE_HEADER]: source,
   };
 }
