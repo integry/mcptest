@@ -37,7 +37,6 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
     <div className="card mb-3 suggested-servers-panel">
       <div className="card-header">
         <div>
-          <span className="interface-eyebrow">Quick start matrix</span>
           <h6 className="mb-0">Suggested servers</h6>
         </div>
       </div>

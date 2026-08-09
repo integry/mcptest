@@ -144,7 +144,6 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
       <div className={`card connection-console ${isConnected ? 'connection-console--connected' : ''}`}>
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
         <div className="connection-heading">
-          <span className="interface-eyebrow">{isConnected ? 'Active session' : 'Transport console'}</span>
           <h5 className="mb-0">{isConnected ? 'MCP connection ready' : 'Connect a remote endpoint'}</h5>
           {isConnected && <code className="connection-endpoint" title={serverUrl}>{serverUrl}</code>}
         </div>

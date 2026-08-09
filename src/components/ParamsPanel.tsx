@@ -329,7 +329,6 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     // Add conditional class for deactivated state
     <div className={`card request-panel ${!isConnected ? 'panel-deactivated' : ''}`}>
       <div className="card-header">
-        <span className="interface-eyebrow">Request builder</span>
         <h5 className="mb-0 text-truncate">
           {selectedTool?.name
            || selectedPrompt?.name

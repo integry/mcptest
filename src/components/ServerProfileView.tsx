@@ -98,7 +98,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             )}
           </div>
           <div>
-            <div className="server-profile-eyebrow">MCP server report</div>
             <h1>{server.name}</h1>
             <p>{server.description}</p>
           </div>
@@ -161,7 +160,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-section-heading">
               <span className="server-section-icon"><i className="bi bi-diagram-3" aria-hidden="true"></i></span>
               <div>
-                <div className="server-profile-eyebrow">Connection specification</div>
                 <h2>How to connect</h2>
               </div>
             </div>
@@ -227,7 +225,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-section-heading">
               <span className="server-section-icon"><i className="bi bi-activity" aria-hidden="true"></i></span>
               <div>
-                <div className="server-profile-eyebrow">Compatibility report</div>
                 <h2>Latest evidence</h2>
               </div>
             </div>
@@ -253,7 +250,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <div className="server-section-heading">
             <span className="server-section-icon"><i className="bi bi-braces-asterisk" aria-hidden="true"></i></span>
             <div>
-              <div className="server-profile-eyebrow">Capabilities and references</div>
               <h2>Server context</h2>
             </div>
           </div>

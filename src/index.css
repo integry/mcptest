@@ -218,15 +218,6 @@ a:hover {
   object-fit: contain;
 }
 
-.server-profile-eyebrow {
-  margin-bottom: 0.35rem;
-  color: var(--primary-color);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 .server-profile-hero h1 {
   margin-bottom: 0.6rem;
   font-size: clamp(2rem, 5vw, 3.5rem);
@@ -274,7 +265,6 @@ a:hover {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .server-signal-card strong {
@@ -390,7 +380,6 @@ a:hover {
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .server-endpoint-box code {
@@ -1020,7 +1009,6 @@ input, textarea, select {
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .app-sidenav .nav-link {
@@ -2403,17 +2391,6 @@ span.health-indicator.health-indicator-gray {
   align-items: end;
 }
 
-.app-brand-eyebrow {
-  grid-column: 1 / -1;
-  color: var(--text-muted);
-  font-family: var(--font-family-mono);
-  font-size: 0.57rem;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
 .app-brand-title {
   margin-top: 0.15rem;
   font-size: 1.55rem;
@@ -2437,18 +2414,11 @@ span.health-indicator.health-indicator-gray {
   background: color-mix(in srgb, var(--card-bg-secondary) 72%, transparent);
 }
 
-.protocol-matrix-label,
 .protocol-chip {
   font-family: var(--font-family-mono);
   font-size: 0.64rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.protocol-matrix-label {
-  padding: 0 0.4rem;
-  color: var(--text-muted);
 }
 
 .protocol-chip {
@@ -2525,18 +2495,6 @@ span.health-indicator.health-indicator-gray {
   box-shadow: 0 0 0 0.6rem color-mix(in srgb, var(--primary-color) 6%, transparent), 0 0 0 1.2rem color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 
-.sidenav-protocol-heading {
-  display: flex;
-  align-items: center;
-  gap: 0.48rem;
-  color: var(--text-muted);
-  font-family: var(--font-family-mono);
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .sidenav-protocol-card strong {
   margin-top: 0.18rem;
   font-family: var(--font-family-mono);
@@ -2611,17 +2569,6 @@ span.health-indicator.health-indicator-gray {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.interface-eyebrow {
-  display: block;
-  margin-bottom: 0.32rem;
-  color: var(--text-accent);
-  font-family: var(--font-family-mono);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-}
-
 .card {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--primary-color) 10%, var(--border-color));
@@ -2663,7 +2610,6 @@ span.health-indicator.health-indicator-gray {
   font-family: var(--font-family-mono);
   font-size: 0.68rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .connection-console .input-group {
@@ -2711,7 +2657,6 @@ span.health-indicator.health-indicator-gray {
   font-family: var(--font-family-mono);
   font-size: 0.61rem;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .connection-help span:last-child {
@@ -2909,7 +2854,6 @@ span.health-indicator.health-indicator-gray {
   color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: 0.64rem;
-  text-transform: uppercase;
 }
 
 .catalog-counts strong {
@@ -2928,7 +2872,6 @@ span.health-indicator.health-indicator-gray {
   font-family: var(--font-family-mono);
   font-size: 0.62rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .catalog-filters .form-control,
@@ -3052,7 +2995,6 @@ pre.bg-light code {
 }
 
 @media (max-width: 991.98px) {
-  .protocol-matrix-label,
   .protocol-chip:not(.protocol-chip-modern) {
     display: none;
   }
@@ -3077,10 +3019,6 @@ pre.bg-light code {
 
   .app-brand-copy {
     display: block;
-  }
-
-  .app-brand-eyebrow {
-    display: none;
   }
 
   .mobile-sidebar {
@@ -3188,10 +3126,6 @@ pre.bg-light code {
   min-width: 0;
 }
 
-.connection-console--connected .interface-eyebrow {
-  margin-bottom: 0.1rem;
-}
-
 .connection-console--connected h5 {
   font-size: 0.84rem;
   letter-spacing: -0.01em;
@@ -3248,11 +3182,6 @@ pre.bg-light code {
 
 .workbench-pane .card-header h5 {
   font-size: 0.88rem;
-}
-
-.workbench-pane .interface-eyebrow {
-  margin-bottom: 0.12rem;
-  font-size: 0.56rem;
 }
 
 .workbench-capabilities .unified-panel {
