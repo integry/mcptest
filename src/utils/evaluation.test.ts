@@ -123,7 +123,7 @@ describe('evaluation proxy authentication', () => {
     expect(client.close).toHaveBeenCalledOnce();
   });
 
-  it('does not nest an already-proxied connection probe without OAuth', async () => {
+  it('does not nest an already-proxied HTTP probe without OAuth', async () => {
     const client = {
       listTools: vi.fn().mockResolvedValue({ tools: [] }),
       listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -135,14 +135,14 @@ describe('evaluation proxy authentication', () => {
       .mockRejectedValueOnce(new Error('Direct CORS failure'))
       .mockResolvedValueOnce({
         client,
-        url: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
-        transportType: 'streamable-http',
+        url: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fsse',
+        transportType: 'legacy-sse',
       });
 
-    await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+    await evaluateServer('https://mcp.example/sse', 'firebase-jwt', vi.fn());
 
     const proxyFetch = vi.mocked(fetch).mock.calls.find(([input]) => (
-      new URL(String(input)).searchParams.get('target') === 'https://mcp.example/sse'
+      new URL(String(input)).searchParams.get('target') === 'https://mcp.example/mcp'
     ));
     expect(proxyFetch).toBeDefined();
     expect(
