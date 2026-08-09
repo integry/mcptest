@@ -20,7 +20,7 @@ const WhatIsMcp: React.FC = () => {
             Foundation project. It defines three roles: the <strong>host</strong> is the AI application
             a person uses, a <strong>client</strong> speaks MCP on the host&apos;s behalf, and a{' '}
             <strong>server</strong> provides capabilities backed by a database, SaaS API, local system,
-            or business process. All three exchange <a href="https://www.jsonrpc.org/specification" target="_blank" rel="noopener noreferrer">JSON-RPC 2.0</a>{' '}
+            or business process. Clients and servers exchange <a href="https://www.jsonrpc.org/specification" target="_blank" rel="noopener noreferrer">JSON-RPC 2.0</a>{' '}
             messages over a transport such as local stdio or remote Streamable HTTP.
           </p>
 
