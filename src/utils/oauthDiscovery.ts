@@ -293,7 +293,7 @@ export async function getOrRegisterOAuthClient(
     
     // Prepare registration request
     const registrationRequest: DynamicClientRegistrationRequest = {
-      client_name: 'MCP SSE Tester',
+      client_name: 'mcptest.io',
       redirect_uris: [`${window.location.origin}/oauth/callback`],
       grant_types: ['authorization_code'],
       response_types: ['code'],

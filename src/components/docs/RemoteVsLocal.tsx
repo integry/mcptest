@@ -9,231 +9,186 @@ const RemoteVsLocal: React.FC = () => {
           <h1 className="mb-4">Remote vs. Local MCP Servers</h1>
 
           <p className="lead">
-            MCP defines two standard transports: stdio, where the client launches the server as a local
-            subprocess, and Streamable HTTP, where the server runs as an independent web service. Which
-            one you implement shapes everything downstream — deployment, session handling, authentication,
-            and security. This page explains both, with an emphasis on what it takes to build a correct
-            remote server.
+            MCP&apos;s standard transports are stdio for a server launched on the user&apos;s machine and
+            Streamable HTTP for an independently deployed service. Remote MCP now spans two lifecycle
+            eras: sessionless requests in <code>2026-07-28</code> and the stateful handshake used by
+            every earlier stable revision. A compatible client and a production server need to be
+            explicit about which behavior they are using.
           </p>
 
           <h2 className="mt-5">Local servers: stdio</h2>
           <p>
-            With the stdio transport, the client starts the server process itself and writes JSON-RPC
-            messages to the server's standard input; the server replies on standard output. Messages are
-            newline-delimited, must not contain embedded newlines, and nothing that is not a valid MCP
-            message may be written to stdout — a stray <code>console.log</code> corrupts the stream,
-            which is the single most common stdio bug. Logging belongs on stderr, which the client may
-            capture or ignore.
+            With stdio, the client launches the server as a subprocess and exchanges newline-delimited
+            JSON-RPC through standard input and output. Nothing except valid MCP messages may be written
+            to stdout; diagnostic logging belongs on stderr. This transport is a strong fit for local
+            files, developer tools, or anything that should have no network-facing endpoint.
           </p>
           <p>
-            Stdio is the right choice when the server needs access to the user's machine (files, local
-            tooling, dev environments) or when you want zero network surface. It requires no
-            authentication — the process inherits the user's permissions — and has minimal latency. Its
-            limits are structural: one client per process, the user must have the runtime installed,
-            and there is nothing to share between users or devices. Credentials, when needed, come from
-            the environment rather than from an OAuth flow.
+            Process lifetime supplies a natural isolation boundary. Credentials usually arrive through
+            the environment, and each client gets its own process. The trade-offs are installation and
+            runtime requirements on the user&apos;s machine, one process per client, and no shared hosted
+            endpoint. Stdio can carry either protocol era when the SDK supports it; “local” does not by
+            itself mean “legacy.”
           </p>
 
           <h2 className="mt-5">Remote servers: Streamable HTTP</h2>
           <p>
-            A remote server exposes a single HTTP endpoint — the <strong>MCP endpoint</strong>, for
-            example <code>https://example.com/mcp</code> — that supports both POST and GET. One server
-            process serves many concurrent clients, which is what enables hosted, multi-tenant MCP
-            services that work from any client, including browser-based ones like this playground.
-            Streamable HTTP was introduced in protocol version <code>2025-03-26</code>, replacing the
-            original HTTP+SSE transport (see the compatibility note below).
+            A remote server exposes one exact MCP endpoint, such as{' '}
+            <code>https://example.com/mcp</code>. The endpoint accepts JSON-RPC requests over HTTP POST
+            and can answer with <code>application/json</code> or a per-request{' '}
+            <code>text/event-stream</code> response. One deployment can serve many clients and can sit
+            behind standard gateways, authentication services, and load balancers.
           </p>
 
-          <h3 className="mt-4">Request flow</h3>
+          <h3 className="mt-4">2026 stateless flow</h3>
           <p>
-            Every JSON-RPC message from the client is a new HTTP POST to the MCP endpoint, and the
-            client must send an <code>Accept</code> header listing
-            both <code>application/json</code> and <code>text/event-stream</code>. How the server
-            answers depends on the message:
+            In <code>2026-07-28</code>, every request stands alone. There is no{' '}
+            <code>initialize</code> / <code>notifications/initialized</code> handshake and no{' '}
+            <code>Mcp-Session-Id</code>. A server must implement <code>server/discover</code>, while a
+            client may call it to learn the supported versions and capabilities before normal work.
+            The official SDK&apos;s automatic mode uses that call as an era probe.
           </p>
           <p>
-            For a JSON-RPC <em>request</em>, the server chooses between two response modes. It can
-            return <code>Content-Type: application/json</code> with the single JSON-RPC response — the
-            simple case — or it can return <code>Content-Type: text/event-stream</code> and open an SSE
-            stream. The streaming mode is what allows a server to send progress notifications, log
-            messages, or even its own requests back to the client while a long tool call runs, before
-            finally delivering the JSON-RPC response on the same stream. Clients must support both
-            modes; servers should close the stream once the response has been sent.
+            Every request includes its protocol version and client capabilities in{' '}
+            <code>params._meta</code>. Streamable HTTP also requires{' '}
+            <code>MCP-Protocol-Version</code> and <code>Mcp-Method</code> headers; named operations such
+            as <code>tools/call</code>, <code>resources/read</code>, and <code>prompts/get</code> also
+            require <code>Mcp-Name</code>. The header version must match the body metadata. This design
+            lets a gateway route, authorize, and meter a call before parsing the JSON body, and lets any
+            healthy server instance handle any request.
           </p>
           <p>
-            For a JSON-RPC <em>notification</em> or <em>response</em> (such
-            as <code>notifications/initialized</code>), the server returns <code>202 Accepted</code>{' '}
-            with no body.
-          </p>
-          <p>
-            Separately, the client may issue a GET to the MCP endpoint to open a long-lived SSE stream
-            for unsolicited server-to-client messages — resource change notifications, server-initiated
-            requests, and so on. Supporting this GET stream is optional: a server that does not offer
-            one must respond <code>405 Method Not Allowed</code>, and clients must tolerate that.
+            A POST request may still receive an SSE response while work runs. For continuing change
+            notifications, 2026 uses the <code>subscriptions/listen</code> request instead of the old
+            standalone GET stream. Closing a per-request SSE response cancels that request. Interactive
+            tool flows use multi-round-trip <code>input_required</code> results and retries instead of
+            server-initiated requests on a permanently open connection.
           </p>
 
-          <h3 className="mt-4">Sessions</h3>
+          <h3 className="mt-4">2025 stateful flow</h3>
           <p>
-            HTTP is stateless, so the transport defines an explicit session mechanism. A server that
-            wants stateful sessions returns an <code>Mcp-Session-Id</code> header on the response to
-            the <code>initialize</code> request. From then on the client must include that header on
-            every request. The rest of the contract is precise, and worth testing directly:
+            Revisions through <code>2025-11-25</code> start with an <code>initialize</code> POST. The
+            server returns the selected protocol version, capabilities, and server identity; the client
+            acknowledges with <code>notifications/initialized</code>. A server that wants transport
+            state also returns <code>Mcp-Session-Id</code>. The client must then include that opaque ID
+            and the negotiated <code>MCP-Protocol-Version</code> on later requests.
           </p>
           <ul>
-            <li>Requests missing a required session ID (other than initialization) get <code>400 Bad Request</code>.</li>
-            <li>The server may expire a session at any time; requests with a stale ID get <code>404 Not Found</code>, and the client must react by starting a fresh session with a new <code>initialize</code> request.</li>
-            <li>A client that is done with a session should send HTTP DELETE to the MCP endpoint with the session header; servers may refuse with <code>405</code> if they don't support explicit termination.</li>
+            <li>A missing required session ID normally produces <code>400 Bad Request</code>.</li>
+            <li>An expired or unknown session ID produces <code>404 Not Found</code>; the client creates a fresh connection rather than retrying the stale session.</li>
+            <li>A client may send DELETE with the session header to terminate it; a server that does not support explicit termination may answer <code>405 Method Not Allowed</code>.</li>
+            <li>A separate GET may open a server-to-client SSE stream. Returning <code>405</code> is valid when that optional stream is unsupported.</li>
           </ul>
           <p>
-            Session IDs must be cryptographically secure and unguessable (a UUID from a secure random
-            generator, for instance), and must contain only visible ASCII characters. Do not use
-            sequential or predictable IDs — the session ID is a bearer credential for the session.
+            Session IDs must be secure, unpredictable, and kept out of URLs and logs. Stateful servers
+            deployed across instances need shared session storage or correct affinity; otherwise users
+            see intermittent 404 responses as calls land on different instances.
           </p>
 
-          <h3 className="mt-4">The protocol version header</h3>
+          <h3 className="mt-4">Streaming and compatibility</h3>
           <p>
-            After initialization, the client must include <code>MCP-Protocol-Version:
-            &lt;negotiated-version&gt;</code> (for example <code>2025-11-25</code>) on every HTTP
-            request. If the header is missing, servers should assume <code>2025-03-26</code> for
-            backwards compatibility; if it names an invalid or unsupported version, the server must
-            respond <code>400 Bad Request</code>.
+            For 2025 Streamable HTTP, clients send an <code>Accept</code> header offering both{' '}
+            <code>application/json</code> and <code>text/event-stream</code>. A JSON-RPC request can
+            receive one JSON response or an SSE stream that eventually contains it. Notifications and
+            client responses normally receive <code>202 Accepted</code> with no body. SSE event IDs and
+            <code>Last-Event-ID</code> support resumption where the server offers it.
           </p>
-
-          <h3 className="mt-4">Resumability</h3>
           <p>
-            SSE connections drop — networks fail, proxies time out, and since protocol
-            version <code>2025-11-25</code> servers may deliberately close a connection to avoid holding
-            it open. To avoid losing messages, servers can attach an <code>id</code> to each SSE event.
-            A client that reconnects sends the standard <code>Last-Event-ID</code> header on a GET, and
-            the server replays the messages that were sent after that event on the disconnected stream.
-            Disconnection is explicitly <em>not</em> cancellation: a client that wants to abort a
-            request sends a <code>notifications/cancelled</code> message rather than just hanging up.
-          </p>
-
-          <h3 className="mt-4">Backwards compatibility: the deprecated HTTP+SSE transport</h3>
-          <p>
-            Protocol version <code>2024-11-05</code> used a two-endpoint design: the client opened an
-            SSE stream via GET, received an <code>endpoint</code> event naming a separate POST URL, and
-            sent all messages there. You will still encounter servers built this way. Clients detect
-            the old transport by first POSTing an <code>initialize</code> request to the URL: if it
-            fails with 4xx, they fall back to a GET expecting the <code>endpoint</code> event. This
-            playground performs the same fallback automatically, so both generations of servers can be
-            tested.
+            The original <code>2024-11-05</code> HTTP+SSE transport uses two endpoints: a client opens
+            a GET stream, receives an <code>endpoint</code> event, and sends messages to the advertised
+            POST URL. It is deprecated, but mcptest.io keeps it as a final fallback for deployed servers.
+            An explicit URL is always tested before conventional path guesses such as <code>/mcp</code>
+            or <code>/sse</code>.
           </p>
 
           <h2 className="mt-5">Authorization</h2>
           <p>
-            Authorization is optional in MCP, but any remote server exposing non-public data needs it.
-            The specification standardizes on OAuth 2.1: the MCP server acts as
-            a <strong>resource server</strong> that accepts Bearer tokens, and an authorization server —
-            which may be the same deployment or a third-party identity provider — issues them. The flow
-            a compliant client walks through is fully discoverable, with no manual configuration:
-          </p>
-          <ol>
-            <li>The client makes an unauthenticated request and receives <code>401 Unauthorized</code>. The <code>WWW-Authenticate</code> header can point at the server's <strong>protected resource metadata</strong> (RFC 9728); otherwise the client falls back to the well-known URI, e.g. <code>/.well-known/oauth-protected-resource</code>.</li>
-            <li>That metadata names one or more authorization servers. The client fetches the authorization server's own metadata via OAuth 2.0 Authorization Server Metadata (RFC 8414) or OpenID Connect Discovery.</li>
-            <li>The client identifies itself — via a pre-registered client ID, an OAuth Client ID Metadata Document (an HTTPS URL serving the client's metadata, new in <code>2025-11-25</code>), or Dynamic Client Registration (RFC 7591).</li>
-            <li>The client runs the authorization code flow with PKCE (the <code>S256</code> method is mandatory), including the RFC 8707 <code>resource</code> parameter that binds the requested token to this specific MCP server's canonical URI.</li>
-            <li>Every subsequent request carries <code>Authorization: Bearer &lt;token&gt;</code> — on every request, never in the query string.</li>
-          </ol>
-          <p>
-            On the server side, the non-negotiable rules are: serve protected resource metadata; validate
-            that each token was issued <em>for you</em> (audience validation), not merely that it is
-            valid; return <code>401</code> for missing or invalid tokens and <code>403</code> with
-            an <code>insufficient_scope</code> challenge when a token lacks the scopes an operation
-            needs; and never pass a token you received from a client through to an upstream API. Token
-            passthrough is explicitly forbidden by the specification because it creates confused-deputy
-            vulnerabilities.
+            Remote MCP authorization uses the OAuth 2.1 resource-server model. A protected MCP endpoint
+            returns <code>401 Unauthorized</code> and points the client to protected-resource metadata.
+            That metadata names the authorization server; the client discovers its metadata, identifies
+            itself, and runs authorization code with PKCE and an RFC 8707 <code>resource</code> value
+            bound to the MCP server.
           </p>
           <p>
-            This playground implements the full client side of this flow — discovery, registration,
-            PKCE, token refresh — which makes it a practical way to verify your authorization
-            implementation end to end. See the <Link to="/docs/testing-guide">testing guide</Link> for
-            the workflow.
+            Servers must validate issuer, audience, expiry, and scopes rather than accepting any token
+            that happens to be structurally valid. The 2026 revision requires authorization-response
+            issuer validation when an <code>iss</code> value is returned, binds client credentials to
+            their issuer, and deprecates Dynamic Client Registration in favor of Client ID Metadata
+            Documents. Bearer tokens belong in the <code>Authorization</code> header, never a query
+            string, and an MCP server must not pass a client token through to an unrelated upstream API.
+          </p>
+          <p>
+            mcptest.io supports discovered OAuth with PKCE as well as explicit bearer tokens and API
+            keys for servers that use provider-specific authentication. When its optional CORS proxy is
+            enabled, Firebase authenticates the proxy hop and the target credential is carried through
+            a separate internal header; the two trust boundaries are not conflated.
           </p>
 
-          <h2 className="mt-5">Security requirements</h2>
+          <h2 className="mt-5">CORS and origin security</h2>
           <p>
-            The transport specification imposes hard requirements on remote servers beyond
-            authorization. Servers <strong>must</strong> validate the <code>Origin</code> header on all
-            incoming connections and answer <code>403 Forbidden</code> when it is present and invalid;
-            this is the defense against DNS-rebinding attacks, where a malicious web page tricks a
-            browser into speaking to a server it shouldn't reach. Servers intended to run locally
-            should bind to <code>127.0.0.1</code> rather than <code>0.0.0.0</code>. Production
-            deployments must use HTTPS everywhere, keep tokens and session IDs out of logs and URLs,
-            and apply rate limiting — an MCP endpoint that executes tools is a more attractive target
-            than a typical JSON API.
+            A browser client needs the server to allow <code>Content-Type</code>, <code>Accept</code>,{' '}
+            <code>Authorization</code>, <code>x-api-key</code>, <code>MCP-Protocol-Version</code>,{' '}
+            <code>Mcp-Method</code>, and <code>Mcp-Name</code>. A 2025 stateful endpoint must additionally
+            allow <code>Mcp-Session-Id</code> and <code>Last-Event-ID</code>, and expose{' '}
+            <code>Mcp-Session-Id</code> so browser code can read it. Only allow the headers and origins
+            your deployment actually uses.
           </p>
           <p>
-            One practical consequence of MCP's browser reachability: if you want browser-based clients
-            (including this one) to connect directly, your server must also send CORS headers, and it
-            must expose the <code>Mcp-Session-Id</code> header to scripts
-            via <code>Access-Control-Expose-Headers</code>. CORS is not part of the MCP specification —
-            it is a browser requirement — but omitting it is one of the most common reasons a remote
-            server "works in curl but not in the browser". The{' '}
-            <Link to="/docs/troubleshooting">troubleshooting guide</Link> covers this in detail.
+            CORS is a browser control, not MCP authorization. Remote servers must still validate the
+            incoming <code>Origin</code> and reject disallowed origins. Local HTTP servers should bind to
+            loopback rather than all interfaces. Production endpoints need HTTPS, rate limits, careful
+            credential redaction, request-size limits, and tool-level authorization.
           </p>
 
-          <h2 className="mt-5">Choosing a transport</h2>
-          <p>
-            The decision usually makes itself. If the server's job is to act on the user's own machine,
-            use stdio. If the server fronts a shared service, an API, or data that lives on the
-            network — or if you want users to connect without installing anything — build a remote
-            server on Streamable HTTP. Many production systems do both: a thin stdio server for local
-            development and a hosted Streamable HTTP deployment for everyone else, sharing the same tool
-            implementations behind the transport layer.
-          </p>
+          <h2 className="mt-5">Choosing and testing a deployment</h2>
           <div className="table-responsive">
             <table className="table">
               <thead>
                 <tr>
                   <th>Aspect</th>
-                  <th>stdio (local)</th>
-                  <th>Streamable HTTP (remote)</th>
+                  <th>stdio</th>
+                  <th>HTTP 2026</th>
+                  <th>HTTP 2025</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td>Process model</td>
-                  <td>Subprocess per client</td>
-                  <td>One service, many clients</td>
+                  <td>Usually one subprocess per client</td>
+                  <td>Shared service; any request can reach any instance</td>
+                  <td>Shared service; sessions may require storage or affinity</td>
                 </tr>
                 <tr>
-                  <td>Message framing</td>
-                  <td>Newline-delimited JSON-RPC on stdin/stdout</td>
-                  <td>JSON-RPC over HTTP POST, responses as JSON or SSE</td>
+                  <td>Lifecycle</td>
+                  <td>Depends on negotiated era</td>
+                  <td>Self-describing requests; optional discovery</td>
+                  <td>Initialize once; retain negotiated state</td>
                 </tr>
                 <tr>
-                  <td>Sessions</td>
-                  <td>Implicit in the process lifetime</td>
-                  <td><code>Mcp-Session-Id</code> header, explicit lifecycle</td>
+                  <td>Credentials</td>
+                  <td>Usually environment or host-managed</td>
+                  <td colSpan={2}>OAuth bearer token, API key, or public endpoint</td>
                 </tr>
                 <tr>
-                  <td>Authentication</td>
-                  <td>Environment credentials</td>
-                  <td>OAuth 2.1 Bearer tokens</td>
-                </tr>
-                <tr>
-                  <td>Server-initiated messages</td>
-                  <td>Written to stdout at any time</td>
-                  <td>SSE streams (per-request or via GET)</td>
-                </tr>
-                <tr>
-                  <td>Main security concerns</td>
-                  <td>Runs with the user's full permissions</td>
-                  <td>Origin validation, token audience, CORS, rate limiting</td>
+                  <td>Best fit</td>
+                  <td>Local files and developer tooling</td>
+                  <td>New scalable hosted services</td>
+                  <td>Compatibility with deployed clients and servers</td>
                 </tr>
               </tbody>
             </table>
           </div>
-
           <p className="mt-4">
-            For the normative details, see the specification's{' '}
-            <a href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports" target="_blank" rel="noopener noreferrer">transports</a>{' '}
-            and{' '}
-            <a href="https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization" target="_blank" rel="noopener noreferrer">authorization</a>{' '}
-            chapters. To validate a server against everything described here, continue to the{' '}
-            <Link to="/docs/testing-guide">testing guide</Link>.
+            New hosted servers should implement the stateless 2026 lifecycle. Supporting the stateful
+            era as well broadens compatibility, but its session contract must remain isolated from the
+            2026 path. Continue with the <Link to="/docs/testing-guide">testing guide</Link> to test
+            both, or use <Link to="/docs/troubleshooting">troubleshooting</Link> when negotiation fails.
+          </p>
+          <p>
+            Normative references: the{' '}
+            <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http" target="_blank" rel="noopener noreferrer">2026 Streamable HTTP transport</a>,{' '}
+            <a href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports" target="_blank" rel="noopener noreferrer">2025 transport</a>, and{' '}
+            <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization" target="_blank" rel="noopener noreferrer">current authorization specification</a>.
           </p>
         </div>
       </div>

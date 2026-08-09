@@ -1,142 +1,99 @@
-# MCP HTTP Stream Transport Tester
+# mcptest.io
 
-A web-based testing tool for Model Context Protocol (MCP) servers using the HTTP Stream Transport protocol.
+`mcptest.io` is a browser-based inspector, playground, evaluator, and public catalog for remote Model Context Protocol (MCP) servers. It speaks the current stateless MCP protocol and remains compatible with stateful and legacy servers already in production.
 
-## Features
+## What it supports
 
-- Connect to MCP servers using the HTTP Stream Transport protocol
-- Session management with Mcp-Session-Id header
-- Stream resumability with Last-Event-ID tracking
-- List available tools on the server
-- Execute tools with dynamic parameter forms
-- View real-time responses in both batch and streaming modes
-- Proper JSON-RPC 2.0 message formatting
+- **MCP 2026-07-28 (stateless):** probes with `server/discover`, sends self-describing requests, and adds the required `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` routing headers.
+- **MCP 2025 and earlier (stateful):** automatically falls back to `initialize` / `notifications/initialized`, retains `Mcp-Session-Id`, and supports JSON or SSE responses over Streamable HTTP.
+- **Legacy HTTP+SSE:** detects the original two-endpoint transport as a final compatibility fallback.
+- **Capabilities:** discovers and exercises tools, resources, and prompts with raw JSON-RPC logs and schema-driven tool forms.
+- **Authentication:** supports OAuth 2.1 with PKCE, bearer tokens, and API keys. Target credentials remain separate from Firebase credentials when the optional CORS proxy is used.
+- **Server catalog:** ships a validated catalog of public remote servers, authentication and protocol badges, and indexable server report pages included in the sitemap.
+- **Evaluation:** creates shareable server reports and reusable tool-call dashboards.
 
-## Installation
+The exact URL entered by a user or supplied by the catalog is tried first. Conventional `/mcp` and `/sse` paths are compatibility fallbacks; they do not replace an explicit custom endpoint.
 
-1. Clone this repository
-2. Install dependencies with `npm install`
-3. Configure environment variables (see Configuration section below)
-4. Start the development server with `npm run dev`
-5. Open your browser to `http://localhost:5173`
+## Protocol negotiation
 
-## Configuration
+The client uses automatic version negotiation from the official TypeScript SDK:
 
-### Firebase Authentication (Optional)
+1. It sends a bounded `server/discover` probe.
+2. A 2026 server returns its supported versions and capabilities. The connection remains stateless: there is no initialization handshake or transport session ID.
+3. A 2025-only server triggers a transparent fallback to the stateful `initialize` handshake.
+4. If Streamable HTTP is unavailable, the client can try the deprecated HTTP+SSE transport.
 
-The application supports optional Firebase authentication for Google sign-in. To enable it:
+An authentication response is not treated as evidence that a server is legacy. The UI surfaces the auth requirement so the user can provide OAuth, bearer-token, or API-key credentials and retry the same endpoint.
 
-1. Create a `.env` file in the root directory (copy from `.env.example`)
-2. Set `VITE_FIREBASE_AUTH_ENABLED=true`
-3. Add your Firebase configuration values:
-   ```
-   VITE_FIREBASE_API_KEY=your-api-key
-   VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-   VITE_FIREBASE_PROJECT_ID=your-project-id
-   VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-   VITE_FIREBASE_APP_ID=your-app-id
-   VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
-   ```
+See the in-app guides for the complete wire behavior:
 
-**Note**: If Firebase authentication is enabled but not properly configured, you will see authentication errors. Make sure to use valid Firebase project credentials from your Firebase console.
+- `/docs/what-is-mcp`
+- `/docs/remote-vs-local`
+- `/docs/testing-guide`
+- `/docs/troubleshooting`
 
-### OAuth 2.1 Support
+## Local development
 
-The application includes OAuth 2.1 authorization code flow with PKCE for secure authentication with MCP servers.
+Requirements: Node.js 22 or newer and npm.
 
-#### OAuth Features
+```bash
+git clone https://github.com/integry/mcptest.git
+cd mcptest
+cp .env.example .env
+npm ci
+npm run dev
+```
 
-- OAuth 2.1 compliant authorization code flow
-- PKCE (Proof Key for Code Exchange) for enhanced security
-- Automatic token management
-- Local OAuth server configuration
+Vite serves the app at `http://localhost:5173` by default.
 
-## HTTP Stream Transport Protocol
+### Environment variables
 
-The HTTP Stream Transport is the recommended transport mechanism for web-based MCP applications, implementing the Streamable HTTP transport protocol from the MCP specification.
+The app works without Firebase when `VITE_FIREBASE_AUTH_ENABLED=false`. To enable sign-in and persisted user data, configure the documented `VITE_FIREBASE_*` values in `.env`.
 
-### Key Features
+Set `VITE_CLOUDFLARE_WORKER_URL` for persisted dashboards and reports. Set `VITE_PROXY_URL` to an approved deployment of `cors-proxy-worker` when browser CORS prevents a direct connection. The proxy requires Firebase authentication and forwards MCP target credentials through its isolated target-auth channel.
 
-- **Single Endpoint**: Uses a single HTTP endpoint (`/mcp`) for all MCP communication
-- **Multiple Response Modes**: Support for both batch (JSON) and streaming (SSE) responses
-- **Session Management**: Built-in session tracking and management via the `Mcp-Session-Id` header
-- **Resumability**: Support for resuming broken SSE connections using the `Last-Event-ID` header
-- **Authentication**: Comprehensive authentication support
-- **CORS**: Flexible CORS configuration for web applications
+Do not commit `.env` or real server credentials.
 
-### HTTP Methods
+## Verification
 
-- **POST**: For sending client requests, notifications, and responses
-- **GET**: For establishing SSE streams for receiving server messages
-- **DELETE**: For terminating sessions
+```bash
+npm test
+npx tsc --noEmit
+npm run validate-catalog
+npm run build
+npm audit --audit-level=low
+```
 
-## Usage
+`npm run build` creates the Vite production bundle, generates one static HTML report document per catalog server, and refreshes `sitemap.xml` and `robots.txt`.
 
-1. Enter the base URL of your MCP server (e.g., `http://localhost:8080`)
-2. Click "Connect" to initialize a session with the `/mcp` endpoint
-3. Click "List Available Tools" to retrieve the tools from the server
-4. Select a tool from the list to view its parameters
-5. Fill in the required parameters
-6. Click "Execute Tool" to run the selected tool
-7. View the responses in the right panel
+The two Worker package trees are checked separately:
 
-## MCP API Endpoints
+```bash
+cd cors-proxy-worker
+npm ci
+npx tsc --noEmit
+npx wrangler deploy --dry-run
 
-The MCP Tester implements the Model Context Protocol specification with HTTP Stream Transport and expects the following endpoint on the MCP server:
+cd ../cloudflare-worker
+npm ci
+npx wrangler deploy --dry-run
+```
 
-- `/mcp` - Single endpoint for all MCP communication (initialization, tool listing, tool execution, and SSE)
+## Catalog maintenance
 
-## JSON-RPC Methods
+Catalog entries live in `src/data/mcpServers.ts`. Run `npm run validate-catalog` after changing one. Validation uses actual MCP negotiation and records the observed endpoint, transport, protocol era, version, reachability, and authentication requirement in `src/data/catalogValidation.json`.
 
-The tester uses the following JSON-RPC 2.0 methods:
+A protected endpoint that returns a valid authentication challenge can be catalog-valid and reachable without being transport-verified anonymously. Keep that distinction explicit in catalog metadata and UI copy.
 
-- `initialize` - Initialize a session with the server
-- `list_tools` - Retrieve available tools from the server
-- `execute_tool` - Execute a tool with parameters
+## Core JSON-RPC methods
 
-## Event Types
+- `server/discover` — advertises versions and capabilities for the stateless 2026 era.
+- `tools/list` and `tools/call` — discover and invoke tools.
+- `resources/list` and `resources/read` — discover and read resources.
+- `prompts/list` and `prompts/get` — discover and render prompts.
+- `initialize` and `notifications/initialized` — stateful compatibility handshake for 2025-era servers.
 
-The tester listens for the following SSE event types:
-
-- `message` (default) - General messages
-- `tool_response` - Tool execution responses
-- `tool_error` - Tool execution errors
-- `tool_list` - Tool discovery responses
-
-## Session Management
-
-The tester implements session management using the `Mcp-Session-Id` header:
-
-1. The server generates a session ID during initialization
-2. The tester includes this session ID in all subsequent requests
-3. The tester can terminate the session with a DELETE request
-
-## Stream Resumability
-
-The tester supports resuming broken SSE connections:
-
-1. Each SSE event includes a unique ID
-2. The tester tracks the last received event ID
-3. When reconnecting, the tester includes the `Last-Event-ID` header
-4. The server can replay missed messages since that event ID
-
-## Error Handling
-
-The tester handles various error scenarios:
-
-- Connection errors with automatic reconnection
-- HTTP errors with appropriate error messages
-- JSON-RPC errors with detailed information
-- Streaming errors with graceful fallback
-
-## Development
-
-To modify the tester:
-
-1. Edit `index.html` for UI changes
-2. Edit `script.js` for client-side logic
-4. Edit `styles.css` for styling
+The authoritative references are the [MCP 2026-07-28 release](https://blog.modelcontextprotocol.io/posts/2026-07-28/), the [current specification](https://modelcontextprotocol.io/specification/2026-07-28), and the official TypeScript SDK's [protocol-version guide](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/protocol-versions.md).
 
 ## License
 
