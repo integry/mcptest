@@ -141,9 +141,12 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   // Return JSX directly without outer parentheses
   return (
     <>
-      <div className={`card mb-3 ${isConnected ? 'border-success' : ''}`} style={{ marginTop: '0', minHeight: '200px' }}>
+      <div className={`card mb-3 connection-console ${isConnected ? 'border-success' : ''}`}>
       <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
-        <h5 className="mb-0">Server Connection</h5>
+        <div>
+          <span className="interface-eyebrow">Transport console</span>
+          <h5 className="mb-0">Connect a remote endpoint</h5>
+        </div>
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
           {protocolEra && (
@@ -214,7 +217,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
       </div>
       <div className="card-body">
         <div className="mb-3">
-          <label htmlFor="serverUrl" className="form-label">MCP Server URL</label>
+          <label htmlFor="serverUrl" className="form-label">MCP endpoint URL</label>
           <div className="input-group">
             <input
               type="text"
@@ -260,7 +263,12 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   <option key={url} value={url} />
                 ))}
               </datalist>
-              <div className="form-text">For example, https://{placeholder}/ or http://localhost:3001</div>
+              <div className="form-text connection-help">
+                <span>Exact endpoint first</span>
+                <span>2026 discovery</span>
+                <span>2025 fallback</span>
+                <span>For example, https://{placeholder}/ or http://localhost:3001</span>
+              </div>
             </>
           )}
           {isConnecting && (

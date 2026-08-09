@@ -111,15 +111,14 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
   };
 
   return (
-    <div className="card h-100">
+    <div className="card h-100 catalog-server-card">
       <div className="card-body d-flex flex-column">
         <div className="d-flex align-items-start gap-3 mb-3">
           {server.logoUrl && (
             <img
               src={server.logoUrl}
               alt={`${server.name} logo`}
-              className="rounded flex-shrink-0"
-              style={{ width: '48px', height: '48px', objectFit: 'contain' }}
+              className="catalog-server-logo flex-shrink-0"
             />
           )}
           <div className="flex-grow-1" style={{ minWidth: 0 }}>
@@ -131,8 +130,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
               </h5>
               <div className="d-flex align-items-center gap-2 flex-shrink-0">
                 <span
-                  className={`rounded-circle flex-shrink-0 ${statusDetails.className}`}
-                  style={{ width: '12px', height: '12px' }}
+                  className={`catalog-status-dot rounded-circle flex-shrink-0 ${statusDetails.className}`}
                   title={statusDetails.tooltip}
                   aria-label={statusDetails.tooltip}
                 >
@@ -140,8 +138,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
                 </span>
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center justify-content-center p-0"
-                  style={{ width: '28px', height: '28px' }}
+                  className="catalog-refresh btn btn-sm btn-outline-secondary d-inline-flex align-items-center justify-content-center p-0"
                   onClick={handleLivenessCheck}
                   disabled={isCheckingLiveness}
                   title="Check server status now"
@@ -161,7 +158,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
           </div>
         </div>
 
-        <p className="card-text text-muted flex-grow-1">{server.description}</p>
+        <p className="card-text catalog-server-description text-muted flex-grow-1">{server.description}</p>
 
         <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
           <span className="badge bg-secondary">{server.category}</span>

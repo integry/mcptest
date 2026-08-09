@@ -1663,7 +1663,7 @@ function App() {
   }
 
   return (
-    <div className="container-fluid vh-100 d-flex flex-column p-0">
+    <div className="app-shell container-fluid vh-100 d-flex flex-column p-0">
 
       {/* Mobile Sidebar Overlay */}
       <div 
@@ -1697,12 +1697,11 @@ function App() {
         />
       </div>
 
-      {/* UPDATE Header props */}
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-grow-1 d-flex overflow-hidden" role="main"> {/* Main content area */}
+      <main className="app-workspace flex-grow-1 d-flex overflow-hidden" role="main">
         {/* Desktop Side Navigation */}
-        <div className="desktop-sidebar col-auto bg-light border-end p-2 d-flex flex-column" style={{ width: '250px', height: '100%' }}>
+        <div className="desktop-sidebar col-auto p-2 d-flex flex-column">
           <SideNav
             activeView={activeView}
             spaces={spaces}

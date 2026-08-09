@@ -29,67 +29,38 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
   return (
     <div className="card mb-3 suggested-servers-panel">
       <div className="card-header">
-        <h6 className="mb-0">Suggested Servers</h6>
+        <div>
+          <span className="interface-eyebrow">Quick start matrix</span>
+          <h6 className="mb-0">Suggested servers</h6>
+        </div>
       </div>
       <div className="card-body p-3">
-        <small className="text-muted d-block mb-3">Not sure where to begin? Check our curated list of remote MCP servers.</small>
-        <ul className="list-group">
+        <small className="text-muted d-block mb-3">Connect to a curated public endpoint and inspect the negotiated protocol.</small>
+        <ul className="suggested-server-grid">
         {suggestedCatalogServers.map((server) => (
-          <li key={server.url} className="list-group-item suggested-server-row p-3">
-            <div
-              style={{
-                cursor: isConnected || isConnecting ? 'default' : 'pointer',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '12px',
-              }}
+          <li key={server.url} className="suggested-server-row">
+            <button
+              type="button"
+              className="suggested-server-action"
               onClick={() => handleServerClick(server.url)}
+              disabled={isConnected || isConnecting}
             >
               {server.logoUrl && (
                 <img
                   src={server.logoUrl}
                   alt={`${server.name} logo`}
-                  style={{
-                    width: '48px',
-                    height: '48px',
-                    objectFit: 'contain',
-                    flexShrink: 0,
-                  }}
+                  className="suggested-server-logo"
                 />
               )}
-              <div style={{ flexGrow: 1, overflow: 'hidden' }}>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    fontSize: '16px',
-                    color: isConnected || isConnecting ? 'grey' : 'var(--primary-color)',
-                    textDecoration: isConnected || isConnecting ? 'none' : 'underline',
-                    marginBottom: '4px',
-                  }}
-                >
-                  {server.name}
+              <div className="suggested-server-copy">
+                <div className="suggested-server-title-row">
+                  <strong>{server.name}</strong>
+                  <span aria-hidden="true">↗</span>
                 </div>
-                <div
-                  style={{
-                    fontSize: '14px',
-                    color: '#666',
-                    marginBottom: '8px',
-                    lineHeight: '1.4',
-                  }}
-                >
-                  {server.description}
-                </div>
-                <small
-                  style={{
-                    color: '#999',
-                    fontSize: '12px',
-                  }}
-                  title={server.url}
-                >
-                  {server.url}
-                </small>
+                <p>{server.description}</p>
+                <small title={server.url}>{server.url}</small>
               </div>
-            </div>
+            </button>
           </li>
         ))}
         </ul>

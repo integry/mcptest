@@ -840,7 +840,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                   />
                 </div>
               )}
-              <div className="col-md-6">
+              <div className={recentServers.length > 0 ? 'col-md-6' : 'col-12'}>
                 <SuggestedServersPanel
                   setServerUrl={setServerUrl}
                   handleConnect={handleConnectWrapper}
