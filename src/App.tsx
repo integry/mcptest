@@ -30,25 +30,23 @@ import OAuthConfig from './components/OAuthConfig';
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
 import { useMetaTags } from './hooks/useMetaTags';
+import { useAuth } from './context/AuthContext';
 
 import { v4 as uuidv4 } from 'uuid';
 
 // Import Types
 import {
-  Space, SpaceCard,
-  AccessResourceResultSchema, // Import the result schema
-  ConnectionTab
+  Space, SpaceCard, ConnectionTab
 } from './types';
 import type { CatalogServer } from './types/catalog';
 
 // Import Utils
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, parseServerUrl, parseResultShareUrl } from './utils/urlUtils';
-import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
-import { CorsAwareSSETransport } from './utils/corsAwareSseTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
-import { createLegacyMcpClient, createNegotiatingMcpClient } from './utils/mcpClient';
+import { attemptParallelConnections } from './utils/transportDetection';
+import { getSavedCardConnectionPlan } from './utils/savedCardConnection';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -144,6 +142,7 @@ declare global {
 }
 
 function App() {
+  const { currentUser } = useAuth();
   // --- State ---
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [spaces, setSpaces] = useState<Space[]>(() => {
@@ -1235,65 +1234,41 @@ function App() {
         lastError = null; // Clear last error on new attempt
 
         // --- Connection and Request Logic ---
-        let connectUrl: URL;
-        let serverUrl = card.serverUrl;
-        
         // Check for OAuth token first - use the original card.serverUrl for OAuth token lookup
         const originalServerHost = new URL(card.serverUrl).host;
         const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
-        const transportOptions: any = {};
-        
-        if (oauthToken) {
-          console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
-          // Use consistent Bearer token format for all services
-          transportOptions.headers = {
-            'Authorization': `Bearer ${oauthToken}`
-          };
-        }
-        
-        // Determine if proxy should be used
-        shouldUseProxy = false; // Reset for each attempt
-        
-        // If card.useProxy is explicitly set, respect that
-        if (card.useProxy !== undefined) {
-          shouldUseProxy = card.useProxy;
-        } else if (!oauthToken && import.meta.env.VITE_PROXY_URL) {
-          // If no OAuth token and proxy is available, use proxy by default
-          shouldUseProxy = true;
-        }
-        
-        // Apply proxy to the server URL if needed
-        if (shouldUseProxy && import.meta.env.VITE_PROXY_URL) {
-          const proxyUrl = import.meta.env.VITE_PROXY_URL;
-          serverUrl = `${proxyUrl}?target=${encodeURIComponent(card.serverUrl)}`;
-          console.log(`[Execute Card ${cardId}] Using proxy: ${proxyUrl}`);
-        }
-        
-        try {
-            connectUrl = new URL(serverUrl);
-            // Don't append /mcp if the URL already ends with /sse or /mcp
-            if (!connectUrl.pathname.endsWith('/mcp') && !connectUrl.pathname.endsWith('/sse')) {
-                connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
-            }
-        } catch (e) {
-            throw new Error(`Invalid Server URL format in card: ${card.serverUrl}`);
+        const proxyUrl = import.meta.env.VITE_PROXY_URL;
+        const proxySelected = Boolean(
+          proxyUrl && (card.useProxy !== undefined ? card.useProxy : !oauthToken)
+        );
+        const proxyAuthToken = proxySelected && currentUser
+          ? await currentUser.getIdToken()
+          : undefined;
+        const connectionPlan = getSavedCardConnectionPlan({
+          serverUrl: card.serverUrl,
+          useProxy: card.useProxy,
+          oauthToken,
+          proxyUrl,
+          proxyAuthToken,
+        });
+        shouldUseProxy = connectionPlan.usesProxy;
+
+        if (connectionPlan.usesProxy) {
+          console.log(`[Execute Card ${cardId}] Using authenticated proxy: ${proxyUrl}`);
+        } else if (oauthToken) {
+          console.log(`[Execute Card ${cardId}] Using OAuth target authentication`);
         }
 
-        // Use SSE transport for SSE endpoints, HTTP transport for others
-        let transport;
-        if (connectUrl.pathname.endsWith('/sse')) {
-          tempClient = createLegacyMcpClient(`mcp-card-executor-${cardId}-${attempt}`);
-          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using SSE transport for ${connectUrl.toString()}`);
-          transport = new CorsAwareSSETransport(connectUrl, transportOptions);
-        } else {
-          tempClient = createNegotiatingMcpClient(`mcp-card-executor-${cardId}-${attempt}`);
-          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using HTTP transport for ${connectUrl.toString()}`);
-          transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
-        }
-
-        console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
-        await tempClient.connect(transport);
-        console.log(`[Execute Card ${cardId} Attempt ${attempt}] Temporary client connected.`);
+        const connection = await attemptParallelConnections(
+          connectionPlan.connectionUrl,
+          undefined,
+          connectionPlan.authToken,
+          connectionPlan.targetHeaders
+        );
+        tempClient = connection.client;
+        console.log(
+          `[Execute Card ${cardId} Attempt ${attempt}] Connected with ${connection.transportType} (${connection.protocolEra}${connection.protocolVersion ? `, ${connection.protocolVersion}` : ''}) at ${connection.url}`
+        );
 
         let result: any;
         if (card.type === 'tool') {
@@ -1303,12 +1278,9 @@ function App() {
             setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null }));
         } else if (card.type === 'resource') {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${card.name}`);
-            result = await tempClient.request({
-                method: 'resources/access',
-                params: { uri: card.name, arguments: card.params }
-            }, AccessResourceResultSchema);
+            result = await tempClient.readResource({ uri: card.name });
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result', error: null }));
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.contents, responseType: 'resource_result', error: null }));
         }
         // --- Success: Break the retry loop ---
         break;

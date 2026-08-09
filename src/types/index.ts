@@ -58,20 +58,6 @@ export interface Space {
   columns?: number; // Number of columns for card layout (1-4), default to 2
 }
 
-// --- Zod Schemas for SDK Interaction ---
-
-// Basic content part schema (adjust if needed based on actual content types)
-export const ContentPartSchema = z.object({
-  type: z.string(),
-}).passthrough(); // Allow other properties
-
-// Schema for the result of resources/access (assuming similar structure to tools/call)
-export const AccessResourceResultSchema = z.object({
-  content: z.array(ContentPartSchema),
-});
-
-export type AccessResourceResult = z.infer<typeof AccessResourceResultSchema>;
-
 // --- Transport Types ---
 export type TransportType = 'streamable-http' | 'legacy-sse';
 
