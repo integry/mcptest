@@ -12,13 +12,15 @@ const connectionMocks = vi.hoisted(() => ({
   connect: async (_transport: {
     endpoint: URL;
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-  }) => {},
+  }, _options?: { prior?: { kind: string } }) => {},
 }));
 
 vi.mock('./mcpClient', () => {
   const createClient = () => {
     const client = {
-      connect: vi.fn((transport: { endpoint: URL }) => connectionMocks.connect(transport)),
+      connect: vi.fn((transport: { endpoint: URL }, options?: { prior?: { kind: string } }) => (
+        connectionMocks.connect(transport, options)
+      )),
       close: vi.fn().mockResolvedValue(undefined),
     };
     return client;
@@ -140,10 +142,44 @@ describe('transport candidate generation', () => {
       url: 'https://example.com/mcp',
       transportType: 'streamable-http',
     });
+    expect(attemptedUrls).toEqual(['https://example.com/mcp']);
+  });
+
+  it('tries a slash variant only after the exact endpoint fails', async () => {
+    const attemptedUrls: string[] = [];
+    connectionMocks.connect = async ({ endpoint }) => {
+      attemptedUrls.push(endpoint.toString());
+      if (endpoint.pathname === '/mcp') throw new Error('exact endpoint failed');
+    };
+
+    const connection = await attemptParallelConnections('https://example.com/mcp');
+
+    expect(connection).toMatchObject({
+      url: 'https://example.com/mcp/',
+      transportType: 'streamable-http',
+    });
     expect(attemptedUrls).toEqual([
       'https://example.com/mcp',
       'https://example.com/mcp/',
     ]);
+  });
+
+  it('skips modern discovery when a catalog entry is known to be stateful', async () => {
+    let connectOptions: { prior?: { kind: string } } | undefined;
+    connectionMocks.connect = async (_transport, options) => {
+      connectOptions = options;
+    };
+
+    await attemptParallelConnections(
+      'https://example.com/mcp',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      'stateful'
+    );
+
+    expect(connectOptions).toEqual({ prior: { kind: 'legacy' } });
   });
 
   it('moves from a hanging root group to a succeeding endpoint fallback', async () => {
@@ -166,7 +202,6 @@ describe('transport candidate generation', () => {
     expect(attemptedUrls).toEqual([
       'https://example.com/',
       'https://example.com/mcp',
-      'https://example.com/mcp/',
     ]);
   });
 

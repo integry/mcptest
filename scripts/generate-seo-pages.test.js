@@ -62,4 +62,17 @@ describe('generated server report Playground links', () => {
       transportMethod: 'sse',
     });
   });
+
+  it('uses the browser-verified endpoint ahead of a server-only validation endpoint', () => {
+    const server = catalogServer('https://example.com', 'streamable-http');
+    server.validatedUrl = 'https://example.com/mcp';
+    server.browserUrl = 'https://example.com/sse';
+    server.browserAccess = 'direct';
+    server.transport = 'both';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('Browser-verified endpoint');
+    expect(html).toContain('href="/server/https://example.com/sse/sse"');
+  });
 });

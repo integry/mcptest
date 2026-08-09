@@ -31,7 +31,6 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           <img src="/logo.png" alt="MCP Logo" width="40" height="40" />
         </Link>
         <Link to="/" className="app-brand-copy" aria-label="mcptest.io home">
-          <span className="app-brand-eyebrow">Model Context Protocol</span>
           <h1 className="app-brand-title">mcptest.io</h1>
           <p className="app-brand-subtitle d-none d-md-block">
             Remote protocol workbench
@@ -41,7 +40,6 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
 
       <div className="app-header-actions d-none d-md-flex">
         <div className="protocol-matrix" aria-label="Supported MCP protocol eras">
-          <span className="protocol-matrix-label">Negotiation</span>
           <span className="protocol-chip protocol-chip-modern">
             <span className="protocol-chip-dot" aria-hidden="true"></span>
             2026 stateless

@@ -3,16 +3,14 @@
     "serverId": "context7",
     "status": "online",
     "transport": "streamable-http",
-    "authType": "oauth",
-    "requiresOAuth": true,
+    "authType": "none",
+    "requiresOAuth": false,
     "protocolEra": "stateless",
     "checkedAt": "2026-08-09T20:55:10.513Z",
-    "message": "Negotiated stateless MCP 2026-07-28 at https://mcp.context7.com/mcp; detected transport streamable-http; authentication oauth",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://mcp.context7.com/mcp; an unauthenticated browser tool call also completed successfully",
     "validatedUrl": "https://mcp.context7.com/mcp",
     "protocolVersion": "2026-07-28",
-    "authorizationServers": [
-      "https://context7.com"
-    ]
+    "authorizationServers": []
   },
   {
     "serverId": "deepwiki",

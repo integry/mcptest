@@ -76,7 +76,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   };
   
   return (
-    <div className="card mt-3 flex-grow-1">
+    <div className="card output-panel">
       <div className="card-header d-flex justify-content-between align-items-center" style={{ paddingBottom: 0 }}>
         <ul className="nav nav-tabs flex-grow-0" id="outputTabs" role="tablist" style={{ marginBottom: '-1px' }}>
           <li className="nav-item" role="presentation">
@@ -191,7 +191,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
           </div>
         )}
       </div>
-      <div className="card-body p-0 d-flex flex-column" style={{ height: 'calc(100vh - 250px)' }}>
+      <div className="card-body output-panel-body p-0 d-flex flex-column">
         <div className="tab-content flex-grow-1 overflow-hidden" id="outputTabsContent">
           <div className={`tab-pane fade ${activeTab === 'result' ? 'show active' : ''} h-100`} id="result-panel" role="tabpanel" aria-labelledby="result-tab">
             <ResultPanel {...props} />

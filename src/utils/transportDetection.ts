@@ -215,7 +215,6 @@ const candidateGroupKey = (
   const outerUrl = new URL(candidate.url);
   const targetValue = usesProxy ? outerUrl.searchParams.get('target') : null;
   const endpoint = targetValue ? new URL(targetValue) : outerUrl;
-  endpoint.pathname = endpoint.pathname.replace(/\/+$/, '') || '/';
 
   return `${candidate.transportType}:${endpoint.toString()}`;
 };
@@ -246,7 +245,8 @@ export async function attemptParallelConnections(
   abortSignal?: AbortSignal,
   authToken?: string,
   requestHeaders?: HeadersInit,
-  usesProxy = false
+  usesProxy = false,
+  protocolEraHint?: 'stateful' | 'legacy'
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
   const candidates = getTransportCandidates(serverUrl, usesProxy);
   const clients: Client[] = [];
@@ -286,7 +286,10 @@ export async function attemptParallelConnections(
       : new CorsAwareStreamableHTTPTransport(endpoint, transportOpts);
 
     try {
-      await client.connect(transport);
+      await client.connect(
+        transport,
+        protocolEraHint ? { prior: { kind: 'legacy' } } : undefined
+      );
     } catch (error) {
       if (authenticationChallenge) {
         throw new ProxiedAuthenticationError(

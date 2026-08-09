@@ -48,6 +48,12 @@ const authEvidenceNote = (server: CatalogServer) => {
   return 'Declared by the current catalog listing';
 };
 
+const browserAccessLabel = (server: CatalogServer) => {
+  if (server.browserAccess === 'direct') return 'Direct browser connection verified';
+  if (server.browserAccess === 'proxy-required') return 'Authenticated proxy required';
+  return 'Browser access not yet measured';
+};
+
 const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer }) => {
   if (!server) {
     return (
@@ -92,7 +98,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             )}
           </div>
           <div>
-            <div className="server-profile-eyebrow">MCP server report</div>
             <h1>{server.name}</h1>
             <p>{server.description}</p>
           </div>
@@ -138,6 +143,11 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <small>{server.protocolEra === 'unknown' ? 'No lifecycle negotiation recorded' : 'Negotiated by the catalog validator'}</small>
         </div>
         <div className="server-signal-card">
+          <span className="server-signal-label">Browser access</span>
+          <strong>{browserAccessLabel(server)}</strong>
+          <small>{server.browserUrl || 'Server-side validation is reported separately'}</small>
+        </div>
+        <div className="server-signal-card">
           <span className="server-signal-label">Category</span>
           <strong>{server.category}</strong>
           <small>{server.tags.filter((tag) => tag !== 'suggested').slice(0, 3).join(' · ')}</small>
@@ -150,7 +160,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-section-heading">
               <span className="server-section-icon"><i className="bi bi-diagram-3" aria-hidden="true"></i></span>
               <div>
-                <div className="server-profile-eyebrow">Connection specification</div>
                 <h2>How to connect</h2>
               </div>
             </div>
@@ -164,6 +173,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
                 <div>
                   <dt>Live-validated endpoint</dt>
                   <dd><code>{server.validatedUrl}</code></dd>
+                </div>
+              )}
+              {server.browserUrl && server.browserUrl !== server.validatedUrl && (
+                <div>
+                  <dt>Browser-verified endpoint</dt>
+                  <dd><code>{server.browserUrl}</code></dd>
                 </div>
               )}
               <div>
@@ -184,19 +199,19 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               </div>
               <div>
                 <dt>Client environment</dt>
-                <dd>Remote MCP clients with HTTP transport support</dd>
+                <dd>{browserAccessLabel(server)}</dd>
               </div>
             </dl>
 
             <div className="server-endpoint-box">
               <div>
                 <span>Endpoint</span>
-                <code>{server.validatedUrl || server.url}</code>
+                <code>{server.browserUrl || server.validatedUrl || server.url}</code>
               </div>
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary"
-                onClick={() => navigator.clipboard?.writeText(server.validatedUrl || server.url)}
+                onClick={() => navigator.clipboard?.writeText(server.browserUrl || server.validatedUrl || server.url)}
                 aria-label={`Copy ${server.name} MCP endpoint`}
               >
                 <i className="bi bi-copy" aria-hidden="true"></i>
@@ -210,7 +225,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-section-heading">
               <span className="server-section-icon"><i className="bi bi-activity" aria-hidden="true"></i></span>
               <div>
-                <div className="server-profile-eyebrow">Compatibility report</div>
                 <h2>Latest evidence</h2>
               </div>
             </div>
@@ -236,7 +250,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <div className="server-section-heading">
             <span className="server-section-icon"><i className="bi bi-braces-asterisk" aria-hidden="true"></i></span>
             <div>
-              <div className="server-profile-eyebrow">Capabilities and references</div>
               <h2>Server context</h2>
             </div>
           </div>

@@ -185,6 +185,16 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
               {badge.label}{transportIsDeclaredOnly ? ' listed' : ''}
             </span>
           ))}
+          {server.browserAccess === 'direct' && (
+            <span className="badge text-bg-success" title="Verified with an in-browser MCP connection and call">
+              Browser ready
+            </span>
+          )}
+          {server.browserAccess === 'proxy-required' && (
+            <span className="badge text-bg-warning" title="The server is online but does not permit a direct browser connection">
+              Proxy required
+            </span>
+          )}
         </div>
 
         <div className="d-flex gap-2 mt-auto">

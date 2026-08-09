@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ConnectionTab, LogEntry } from '../types';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ConnectionTab, LogEntry, type Resource } from '../types';
 import { logEvent } from '../utils/analytics';
 
 // Import Components
@@ -143,6 +143,27 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     requestHeaders
   );
 
+  const catalogProtocolEndpointRef = useRef(
+    tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+      ? tab.serverUrl
+      : undefined
+  );
+
+  const getCatalogProtocolEraHint = useCallback((urlToConnect: string) => {
+    if (urlToConnect !== catalogProtocolEndpointRef.current) return undefined;
+    return tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+      ? tab.catalogProtocolEra
+      : undefined;
+  }, [tab.catalogProtocolEra]);
+
+  const handleServerUrlChange = useCallback((nextServerUrl: string) => {
+    setServerUrl(nextServerUrl);
+    if (catalogProtocolEndpointRef.current && nextServerUrl !== catalogProtocolEndpointRef.current) {
+      catalogProtocolEndpointRef.current = undefined;
+      onUpdateTab(tab.id, { catalogProtocolEra: undefined });
+    }
+  }, [onUpdateTab, setServerUrl, tab.id]);
+
   const {
     tools,
     setTools,
@@ -185,6 +206,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     originalHandleSelectResourceTemplate(template);
     setLastResult(null);
   };
+  const handleSelectResource = (resource: Resource) => {
+    handleSelectResourceTemplate({
+      ...resource,
+      uriTemplate: resource.uri,
+    });
+  };
   const handleSelectPrompt = (prompt: any) => {
     originalHandleSelectPrompt(prompt);
     setLastResult(null);
@@ -225,7 +252,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResources,
           setResponses,
           tab.serverUrl,
-          tab.useProxy // Pass the current tab's useProxy value
+          tab.useProxy, // Pass the current tab's useProxy value
+          getCatalogProtocolEraHint(tab.serverUrl)
         );
       }, 100);
     }
@@ -238,6 +266,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     connectionStatus, 
     addLogEntry, 
     handleConnect,
+    getCatalogProtocolEraHint,
     onUpdateTab,
     setTools,
     setResources,
@@ -581,11 +610,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResources,
           setResponses,
           tab.serverUrl,
-          tab.useProxy
+          tab.useProxy,
+          getCatalogProtocolEraHint(tab.serverUrl)
         );
       }, 500); // 500ms delay to ensure token is available
     }
-  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, setTools, setResources, setResponses, onUpdateTab]);
+  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, getCatalogProtocolEraHint, setTools, setResources, setResponses, onUpdateTab]);
   
   // Effect to handle OAuth callback logs
   useEffect(() => {
@@ -640,13 +670,17 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   };
 
   // Wrapper function to handle connect
-  const handleConnectWrapper = (urlToConnect?: string) => {
+  const handleConnectWrapper = (urlToConnect?: string, protocolEraHint?: string) => {
+    const requestedUrl = urlToConnect || serverUrl;
     handleConnect(
       setTools,
       setResources,
       setResponses,
       urlToConnect,
-      tab.useProxy // Pass the current tab's useProxy value
+      tab.useProxy, // Pass the current tab's useProxy value
+      protocolEraHint === 'stateful' || protocolEraHint === 'legacy'
+        ? protocolEraHint
+        : getCatalogProtocolEraHint(requestedUrl)
     );
   };
 
@@ -793,7 +827,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     >
       <ConnectionPanel
             serverUrl={serverUrl}
-            setServerUrl={setServerUrl}
+            setServerUrl={handleServerUrlChange}
             connectionStatus={connectionStatus}
             transportType={transportType}
             protocolEra={protocolEra}
@@ -823,16 +857,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             setCredentialValue={setCatalogCredential}
             credentialInputId={`${tab.id}-catalog-credential`}
           />
-      <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
-        {/* Left Panel */}
-        <div className={isConnected ? "col-md-4" : "col-md-12"}>
-          {!isConnected && (
+      <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
+        {!isConnected && (
+          <div className="w-100">
             <div className="row g-3">
               {recentServers.length > 0 && (
                 <div className="col-md-6">
                   <RecentServersPanel
                     recentServers={recentServers}
-                    setServerUrl={setServerUrl}
+                    setServerUrl={handleServerUrlChange}
                     handleConnect={handleConnectWrapper}
                     removeRecentServer={removeRecentServer}
                     isConnected={isConnected}
@@ -842,15 +875,18 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               )}
               <div className={recentServers.length > 0 ? 'col-md-6' : 'col-12'}>
                 <SuggestedServersPanel
-                  setServerUrl={setServerUrl}
+                  setServerUrl={handleServerUrlChange}
                   handleConnect={handleConnectWrapper}
                   isConnected={isConnected}
                   isConnecting={isConnecting}
                 />
               </div>
             </div>
-          )}
-          {isConnected && (
+          </div>
+        )}
+        {isConnected && (
+          <>
+            <section className="workbench-pane workbench-capabilities" aria-label="Server capabilities">
             <UnifiedPanel
               tools={tools}
               resources={resources}
@@ -860,20 +896,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               selectedResourceTemplate={selectedResourceTemplate}
               selectedPrompt={selectedPrompt}
               handleSelectTool={handleSelectTool}
+              handleSelectResource={handleSelectResource}
               handleSelectResourceTemplate={handleSelectResourceTemplate}
               handleSelectPrompt={handleSelectPrompt}
               connectionStatus={connectionStatus}
               onRefreshLists={handleRefreshAllLists}
               isConnecting={isConnecting}
             />
-          )}
-        </div>
-
-        {/* Right Panel */}
-        <div className={isConnected ? "col-12 col-md-8 d-flex flex-column" : "col-12 col-md-8"}>
-          {isConnected && (
-            <>
-              {/* Action Panel */}
+            </section>
+            <section className="workbench-pane workbench-request" aria-label="Request builder">
               <ParamsPanel
                 selectedTool={selectedTool}
                 selectedResourceTemplate={selectedResourceTemplate}
@@ -896,7 +927,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 isExecuting={isExecuting}
                 executionStartTime={executionStartTime}
               />
-              {/* Output Panel */}
+            </section>
+            <section className="workbench-pane workbench-response" aria-label="Server response">
               <OutputPanel
                 lastResult={lastResult}
                 responses={responses}
@@ -914,9 +946,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 onRunAgain={handleRunAgain}
                 useProxy={isProxied}
               />
-            </>
-          )}
-        </div>
+            </section>
+          </>
+        )}
       </div>
       
       {/* OAuth Configuration Dialog */}

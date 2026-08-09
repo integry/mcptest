@@ -28,6 +28,9 @@ export type CatalogAuthType = 'none' | 'oauth' | 'bearer-token' | 'api-key' | 'u
  */
 export type CatalogServerStatus = 'online' | 'offline' | 'unknown';
 
+/** Whether a hosted endpoint was verified from a browser, not just from Node. */
+export type CatalogBrowserAccess = 'direct' | 'proxy-required' | 'unknown';
+
 /**
  * Authentication-method filter used by the searchable catalog UI.
  */
@@ -55,6 +58,10 @@ export interface CatalogServerSeed {
   name: string;
   /** Base URL users can connect to from the playground. */
   url: string;
+  /** Exact endpoint verified to work from the browser playground. */
+  browserUrl?: string;
+  /** Browser reachability observed separately from server-side validation. */
+  browserAccess?: CatalogBrowserAccess;
   /** Short summary of what the server provides. */
   description: string;
   /** Primary grouping used by the category filter. */

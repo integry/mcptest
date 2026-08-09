@@ -563,13 +563,14 @@ function App() {
     const newTab: ConnectionTab = {
       id: uuidv4(),
       title: server.name,
-      serverUrl: server.validatedUrl || server.url,
+      serverUrl: server.browserUrl || server.validatedUrl || server.url,
       connectionStatus: 'Disconnected',
-      useProxy: true,
+      useProxy: server.browserAccess !== 'direct',
       useOAuth: server.requiresOAuth,
       autoConnect: server.authType === 'none' || server.authType === 'oauth',
       catalogAuthType: server.authType,
       catalogRequiredHeaders: server.requiredHeaders,
+      catalogProtocolEra: server.protocolEra,
     };
 
     setTabs(prevTabs => [...prevTabs, newTab]);

@@ -4,6 +4,7 @@ import { ListPromptsResultSchema, GetPromptResultSchema } from "@modelcontextpro
 import { Client } from "@modelcontextprotocol/client";
 import { formatErrorForDisplay } from '../utils/errorHandling';
 import { logEvent } from '../utils/analytics';
+import { normalizeCapabilityParams } from '../utils/capabilityParams';
 
 export const useToolsAndResources = (
   client: Client | null,
@@ -66,7 +67,7 @@ export const useToolsAndResources = (
       setResourceTemplates(templatesArray);
       addLogEntry({ type: 'info', data: `Fetched ${templatesArray.length} resource templates.` });
     } catch (error: any) {
-      console.error("[DEBUG] Error listing resource templates via SDK:", error);
+      console.warn("[DEBUG] Server did not return usable resource templates:", error);
       const errorDetails = formatErrorForDisplay(error, {
         serverUrl,
         operation: 'list resource templates'
@@ -112,13 +113,27 @@ export const useToolsAndResources = (
     }
 
     logEvent('execute_tool');
-    console.log(`[DEBUG] Executing tool "${selectedTool.name}" via SDK client with params:`, toolParams);
+    let normalizedParams: Record<string, unknown>;
+    try {
+      normalizedParams = normalizeCapabilityParams(selectedTool, toolParams);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const errorLogEntry: LogEntry = {
+        type: 'error',
+        data: `Cannot run ${selectedTool.name}: ${message}`,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      addLogEntry(errorLogEntry);
+      return errorLogEntry;
+    }
+
+    console.log(`[DEBUG] Executing tool "${selectedTool.name}" via SDK client with params:`, normalizedParams);
     addLogEntry({ type: 'info', data: `Executing tool: ${selectedTool.name}...` });
 
     try {
       const result = await client.callTool({
         name: selectedTool.name,
-        arguments: toolParams,
+        arguments: normalizedParams,
       });
       console.log(`[DEBUG] SDK Client: Tool "${selectedTool.name}" execution result:`, result);
 
@@ -132,7 +147,7 @@ export const useToolsAndResources = (
               serverUrl: serverUrl,
               type: 'tool',
               name: selectedTool.name,
-              params: toolParams
+              params: normalizedParams
             }
         };
         addLogEntry(resultLogEntry);
