@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogServer } from '../types/catalog';
 import {
+  formatCatalogAuth,
   formatCatalogTransport,
+  formatProtocolEra,
   getCatalogServerIdFromPath,
   getCatalogServerPath,
   getCatalogServerSeo,
@@ -17,6 +19,9 @@ const server: CatalogServer = {
   declaredTransport: 'streamable-http',
   transport: 'unknown',
   requiresOAuth: true,
+  declaredAuthType: 'oauth',
+  authType: 'oauth',
+  protocolEra: 'unknown',
   status: 'unknown',
 };
 
@@ -32,6 +37,8 @@ describe('catalog SEO helpers', () => {
     const seo = getCatalogServerSeo(server);
 
     expect(formatCatalogTransport(server.declaredTransport)).toBe('Streamable HTTP');
+    expect(formatCatalogAuth(server.authType)).toBe('OAuth 2.1');
+    expect(formatProtocolEra(server.protocolEra)).toBe('Not yet negotiated');
     expect(seo.description).toContain('Streamable HTTP');
     expect(seo.description).toContain('OAuth 2.1');
     expect(seo.canonicalUrl).toBe('https://mcptest.io/servers/example-server/');

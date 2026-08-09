@@ -1,4 +1,10 @@
-import type { CatalogServer, CatalogTransport, CatalogValidationTransport } from '../types/catalog';
+import type {
+  CatalogAuthType,
+  CatalogProtocolEra,
+  CatalogServer,
+  CatalogTransport,
+  CatalogValidationTransport,
+} from '../types/catalog';
 
 export const SITE_URL = 'https://mcptest.io';
 
@@ -38,6 +44,36 @@ export const getEffectiveCatalogTransport = (server: CatalogServer) => {
   return server.transport === 'unknown' ? server.declaredTransport : server.transport;
 };
 
+export const formatCatalogAuth = (authType: CatalogAuthType): string => {
+  switch (authType) {
+    case 'none':
+      return 'No authentication';
+    case 'oauth':
+      return 'OAuth 2.1';
+    case 'bearer-token':
+      return 'Bearer token';
+    case 'api-key':
+      return 'API key';
+    default:
+      return 'Not yet verified';
+  }
+};
+
+export const formatProtocolEra = (era: CatalogProtocolEra, version?: string): string => {
+  const revision = version ? ` · ${version}` : '';
+
+  switch (era) {
+    case 'stateless':
+      return `Stateless MCP${revision}`;
+    case 'stateful':
+      return `Stateful MCP${revision}`;
+    case 'legacy':
+      return `Legacy SSE MCP${revision}`;
+    default:
+      return 'Not yet negotiated';
+  }
+};
+
 const truncateDescription = (value: string, maxLength = 158): string => {
   if (value.length <= maxLength) {
     return value;
@@ -48,10 +84,11 @@ const truncateDescription = (value: string, maxLength = 158): string => {
 
 export const getCatalogServerSeo = (server: CatalogServer) => {
   const transport = formatCatalogTransport(getEffectiveCatalogTransport(server));
-  const auth = server.requiresOAuth ? 'OAuth 2.1' : 'no authentication declared';
+  const auth = formatCatalogAuth(server.authType);
+  const protocol = formatProtocolEra(server.protocolEra, server.protocolVersion);
   const canonicalUrl = `${SITE_URL}${getCatalogServerPath(server.id)}`;
   const description = truncateDescription(
-    `${server.name} MCP server connection report: ${transport}, ${auth}, endpoint details, live-test status, and playground compatibility.`
+    `${server.name} MCP server connection report: ${transport}, ${protocol}, ${auth}, endpoint details, and live-test status.`
   );
 
   return {
@@ -80,7 +117,12 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
         {
           '@type': 'PropertyValue',
           name: 'Authentication',
-          value: server.requiresOAuth ? 'OAuth 2.1' : 'None declared',
+          value: formatCatalogAuth(server.authType),
+        },
+        {
+          '@type': 'PropertyValue',
+          name: 'MCP protocol lifecycle',
+          value: protocol,
         },
         {
           '@type': 'PropertyValue',

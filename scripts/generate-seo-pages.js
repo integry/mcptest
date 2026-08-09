@@ -42,6 +42,22 @@ function isValidationTransport(transport) {
   );
 }
 
+function authenticationLabel(authType) {
+  if (authType === 'oauth') return 'OAuth 2.1';
+  if (authType === 'bearer-token') return 'Bearer token';
+  if (authType === 'api-key') return 'API key';
+  if (authType === 'none') return 'No authentication';
+  return 'Not yet verified';
+}
+
+function protocolLabel(era, version) {
+  const revision = version ? ` · ${version}` : '';
+  if (era === 'stateless') return `Stateless MCP${revision}`;
+  if (era === 'stateful') return `Stateful MCP${revision}`;
+  if (era === 'legacy') return `Legacy SSE MCP${revision}`;
+  return 'Not yet negotiated';
+}
+
 function mergeCatalogServers(seeds, validationResults) {
   const validationByServerId = new Map(
     validationResults.map((result) => [result.serverId, result])
@@ -49,19 +65,25 @@ function mergeCatalogServers(seeds, validationResults) {
 
   return seeds.map((seed) => {
     const validation = validationByServerId.get(seed.id);
+    const declaredAuthType = seed.authType || (seed.requiresOAuth ? 'oauth' : 'none');
+    const authType = declaredAuthType === 'api-key' || declaredAuthType === 'bearer-token'
+      ? declaredAuthType
+      : validation?.authType || declaredAuthType;
 
     return {
       ...seed,
       declaredTransport: seed.transport,
-      declaredRequiresOAuth: seed.requiresOAuth,
+      declaredAuthType,
       status: validation?.status ?? 'unknown',
       transport: isValidationTransport(validation?.transport)
         ? validation.transport
         : 'unknown',
-      requiresOAuth:
-        typeof validation?.requiresOAuth === 'boolean'
-          ? validation.requiresOAuth
-          : seed.requiresOAuth,
+      authType,
+      requiresOAuth: authType === 'oauth',
+      protocolEra: validation?.protocolEra || 'unknown',
+      protocolVersion: validation?.protocolVersion,
+      validatedUrl: validation?.validatedUrl,
+      authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
     };
@@ -87,13 +109,9 @@ function validationDetail(server) {
   return 'Validation pending — no automated probe result is stored yet.';
 }
 
-function authenticationLabel(requiresOAuth) {
-  return requiresOAuth ? 'OAuth 2.1' : 'None';
-}
-
 function detectedAuthenticationLabel(server) {
   if (!server.checkedAt) return 'Validation pending — not yet checked';
-  return server.requiresOAuth ? 'OAuth 2.1 detected or required' : 'No OAuth requirement detected';
+  return `${authenticationLabel(server.authType)} detected or retained from publisher evidence`;
 }
 
 function playgroundPath(server) {
@@ -101,7 +119,7 @@ function playgroundPath(server) {
     ? server.declaredTransport
     : server.transport;
   const transportMethod = transport === 'legacy-sse' ? 'sse' : 'mcp';
-  return `/server/${server.url}/${transportMethod}`;
+  return `/server/${server.validatedUrl || server.url}/${transportMethod}`;
 }
 
 function truncate(value, maxLength = 158) {
@@ -142,7 +160,16 @@ function renderServerFallback(server) {
   const sourceLink = server.sourceUrl
     ? `<a href="${escapeHtml(server.sourceUrl)}">Source repository</a>`
     : '';
-  const references = [homepageLink, sourceLink].filter(Boolean).join(' · ');
+  const registryLink = server.registryUrl
+    ? `<a href="${escapeHtml(server.registryUrl)}">Official MCP Registry record</a>`
+    : '';
+  const references = [homepageLink, sourceLink, registryLink].filter(Boolean).join(' · ');
+  const requiredHeaders = (server.requiredHeaders || []).map((header) => (
+    `      <div><dt>Required header</dt><dd><code>${escapeHtml(header.name)}</code>${header.description ? ` — ${escapeHtml(header.description)}` : ''}</dd></div>`
+  ));
+  const authorizationServers = (server.authorizationServers || []).map((issuer) => (
+    `      <div><dt>Authorization server</dt><dd><code>${escapeHtml(issuer)}</code></dd></div>`
+  ));
 
   return [
     `<article class="server-profile seo-server-fallback" data-server-id="${escapeHtml(server.id)}">`,
@@ -158,10 +185,16 @@ function renderServerFallback(server) {
     '    <h2>Connection specification</h2>',
     '    <dl class="server-spec-list">',
     `      <div><dt>Remote endpoint</dt><dd><code>${escapeHtml(server.url)}</code></dd></div>`,
+    ...(server.validatedUrl && server.validatedUrl !== server.url
+      ? [`      <div><dt>Live-validated endpoint</dt><dd><code>${escapeHtml(server.validatedUrl)}</code></dd></div>`]
+      : []),
     `      <div><dt>Declared MCP transport</dt><dd>${escapeHtml(transportLabel(server.declaredTransport))}</dd></div>`,
     `      <div><dt>Live-validated MCP transport</dt><dd>${escapeHtml(transportLabel(server.transport))} — ${escapeHtml(validationTransportNote(server))}</dd></div>`,
-    `      <div><dt>Declared authentication</dt><dd>${escapeHtml(authenticationLabel(server.declaredRequiresOAuth))}</dd></div>`,
+    `      <div><dt>Declared authentication</dt><dd>${escapeHtml(authenticationLabel(server.declaredAuthType))}</dd></div>`,
     `      <div><dt>Detected authentication</dt><dd>${escapeHtml(detectedAuthenticationLabel(server))}</dd></div>`,
+    `      <div><dt>Protocol lifecycle</dt><dd>${escapeHtml(protocolLabel(server.protocolEra, server.protocolVersion))}</dd></div>`,
+    ...requiredHeaders,
+    ...authorizationServers,
     `      <div><dt>Category</dt><dd>${escapeHtml(server.category)}</dd></div>`,
     '    </dl>',
     `    <p>${references}</p>`,
@@ -183,17 +216,17 @@ function renderServerHtml(indexHtml, server) {
   server = server.declaredTransport
     ? {
         ...server,
-        declaredRequiresOAuth:
-          typeof server.declaredRequiresOAuth === 'boolean'
-            ? server.declaredRequiresOAuth
-            : server.requiresOAuth,
+        declaredAuthType:
+          server.declaredAuthType || server.authType || (server.requiresOAuth ? 'oauth' : 'none'),
+        authType: server.authType || (server.requiresOAuth ? 'oauth' : 'none'),
+        protocolEra: server.protocolEra || 'unknown',
       }
     : mergeCatalogServers([server], [])[0];
 
   const canonicalUrl = `${SITE_URL}${serverPath(server.id)}`;
   const title = `${server.name} MCP Server Report | mcptest.io`;
   const description = truncate(
-    `${server.name} MCP server connection report: ${transportLabel(server.declaredTransport)} declared, ${server.declaredRequiresOAuth ? 'OAuth 2.1' : 'no authentication declared'}, endpoint details, live-test status, and playground compatibility.`
+    `${server.name} MCP server connection report: ${transportLabel(server.declaredTransport)}, ${protocolLabel(server.protocolEra, server.protocolVersion)}, ${authenticationLabel(server.authType)}, endpoint details, and live-test status.`
   );
   const imageUrl = server.logoUrl
     ? (server.logoUrl.startsWith('http') ? server.logoUrl : `${SITE_URL}${server.logoUrl}`)
@@ -211,8 +244,9 @@ function renderServerHtml(indexHtml, server) {
     additionalProperty: [
       { '@type': 'PropertyValue', name: 'Declared MCP transport', value: transportLabel(server.declaredTransport) },
       { '@type': 'PropertyValue', name: 'Live-validated MCP transport', value: transportLabel(server.transport) },
-      { '@type': 'PropertyValue', name: 'Declared authentication', value: authenticationLabel(server.declaredRequiresOAuth) },
+      { '@type': 'PropertyValue', name: 'Declared authentication', value: authenticationLabel(server.declaredAuthType) },
       { '@type': 'PropertyValue', name: 'Detected authentication', value: detectedAuthenticationLabel(server) },
+      { '@type': 'PropertyValue', name: 'MCP protocol lifecycle', value: protocolLabel(server.protocolEra, server.protocolVersion) },
       { '@type': 'PropertyValue', name: 'Validation status', value: validationStatusLabel(server) },
       { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },
       { '@type': 'PropertyValue', name: 'Validation detail', value: validationDetail(server) },

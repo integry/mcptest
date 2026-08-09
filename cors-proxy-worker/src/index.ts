@@ -5,6 +5,75 @@ interface Env {
   FIREBASE_PROJECT_ID: string;
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_TARGET_REDIRECTS = 20;
+
+export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
+  const headers = new Headers(requestHeaders);
+  const targetAuthorization = headers.get('X-MCP-Authorization');
+
+  headers.delete('Authorization');
+  headers.delete('X-MCP-Authorization');
+  if (targetAuthorization) {
+    headers.set('Authorization', targetAuthorization);
+  }
+  headers.delete('CF-Connecting-IP');
+  headers.delete('CF-IPCountry');
+  headers.delete('CF-RAY');
+  headers.delete('CF-Visitor');
+
+  return headers;
+}
+
+export async function fetchTargetRequest(
+  request: Request,
+  fetchImpl: (request: Request) => Promise<Response> = fetch
+): Promise<Response> {
+  let currentRequest = request;
+
+  for (let redirectCount = 0; redirectCount <= MAX_TARGET_REDIRECTS; redirectCount += 1) {
+    const response = await fetchImpl(currentRequest.clone());
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+
+    const location = response.headers.get('Location');
+    if (!location) return response;
+    if (redirectCount === MAX_TARGET_REDIRECTS) {
+      throw new Error('Target exceeded the maximum redirect count');
+    }
+
+    const redirectUrl = new URL(location, response.url || currentRequest.url);
+    const currentUrl = new URL(currentRequest.url);
+    if (redirectUrl.origin !== currentUrl.origin) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error('Cross-origin target redirects are not allowed');
+    }
+
+    const switchToGet = response.status === 303
+      ? currentRequest.method !== 'HEAD'
+      : (response.status === 301 || response.status === 302) && currentRequest.method === 'POST';
+
+    if (switchToGet) {
+      const headers = new Headers(currentRequest.headers);
+      headers.delete('Content-Encoding');
+      headers.delete('Content-Language');
+      headers.delete('Content-Length');
+      headers.delete('Content-Location');
+      headers.delete('Content-Type');
+      currentRequest = new Request(redirectUrl, {
+        method: 'GET',
+        headers,
+        redirect: 'manual',
+      });
+    } else {
+      currentRequest = new Request(redirectUrl, currentRequest);
+    }
+
+    await response.body?.cancel().catch(() => {});
+  }
+
+  throw new Error('Target exceeded the maximum redirect count');
+}
+
 // Firebase public keys URL
 const FIREBASE_PUBLIC_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 
@@ -88,24 +157,17 @@ export default {
       }
 
       // Create a new request to the target URL
-      const headers = new Headers(request.headers);
-      // Remove the Authorization header to avoid forwarding it to the target
-      headers.delete('Authorization');
-      // Remove CF-specific headers
-      headers.delete('CF-Connecting-IP');
-      headers.delete('CF-IPCountry');
-      headers.delete('CF-RAY');
-      headers.delete('CF-Visitor');
+      const headers = getTargetRequestHeaders(request.headers);
 
       const newRequest = new Request(target.toString(), {
         method: request.method,
         headers: headers,
         body: request.body,
-        redirect: 'follow',
+        redirect: 'manual',
       });
 
       // Make the actual request to the target server
-      const response = await fetch(newRequest);
+      const response = await fetchTargetRequest(newRequest);
 
       // Create a mutable copy of the response with CORS headers
       const mutableResponse = new Response(response.body, response);
@@ -254,17 +316,26 @@ async function getFirebasePublicKeys(): Promise<Record<string, string>> {
     throw new Error('Failed to fetch Firebase public keys');
   }
   
-  const keys = await response.json();
+  const keys: unknown = await response.json();
+  if (
+    !keys ||
+    typeof keys !== 'object' ||
+    Array.isArray(keys) ||
+    !Object.values(keys).every((value) => typeof value === 'string')
+  ) {
+    throw new Error('Firebase public-key response had an invalid shape');
+  }
+  const publicKeys = keys as Record<string, string>;
   
   // Cache the keys with expiry from cache-control header
   const cacheControl = response.headers.get('cache-control');
   const maxAgeMatch = cacheControl?.match(/max-age=(\d+)/);
   const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1]) : 3600; // Default 1 hour
   
-  publicKeysCache = keys;
+  publicKeysCache = publicKeys;
   publicKeysCacheExpiry = now + (maxAge * 1000);
   
-  return keys;
+  return publicKeys;
 }
 
 /**

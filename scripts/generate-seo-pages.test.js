@@ -16,6 +16,9 @@ function catalogServer(url, declaredTransport) {
     declaredTransport,
     transport: declaredTransport,
     requiresOAuth: false,
+    declaredAuthType: 'none',
+    authType: 'none',
+    protocolEra: 'unknown',
     status: 'online',
   };
 }

@@ -1,1 +1,351 @@
-[]
+[
+  {
+    "serverId": "context7",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-08-09T10:56:10.020Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://mcp.context7.com/mcp; detected transport streamable-http; authentication oauth",
+    "validatedUrl": "https://mcp.context7.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://context7.com"
+    ]
+  },
+  {
+    "serverId": "deepwiki",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-08-09T10:56:23.365Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.deepwiki.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp.deepwiki.com/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "coingecko",
+    "status": "online",
+    "transport": "both",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-08-09T10:56:11.540Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.api.coingecko.com/mcp; detected transport both; authentication none",
+    "validatedUrl": "https://mcp.api.coingecko.com/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "semgrep",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:11.908Z",
+    "message": "Authentication challenge at https://mcp.semgrep.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.semgrep.ai/mcp",
+    "authorizationServers": [
+      "https://login.semgrep.dev/"
+    ]
+  },
+  {
+    "serverId": "github",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:11.411Z",
+    "message": "Authentication challenge at https://api.githubcopilot.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.githubcopilot.com/mcp",
+    "authorizationServers": [
+      "https://github.com/login/oauth"
+    ]
+  },
+  {
+    "serverId": "linear",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:12.451Z",
+    "message": "Authentication challenge at https://mcp.linear.app/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.linear.app/mcp",
+    "authorizationServers": [
+      "https://mcp.linear.app"
+    ]
+  },
+  {
+    "serverId": "notion",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:11.966Z",
+    "message": "Authentication challenge at https://mcp.notion.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.notion.com/mcp",
+    "authorizationServers": [
+      "https://mcp.notion.com"
+    ]
+  },
+  {
+    "serverId": "sentry",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:12.796Z",
+    "message": "Authentication challenge at https://mcp.sentry.dev/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.sentry.dev/mcp",
+    "authorizationServers": [
+      "https://mcp.sentry.dev"
+    ]
+  },
+  {
+    "serverId": "atlassian",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:12.833Z",
+    "message": "Authentication challenge at https://mcp.atlassian.com/v1/mcp/authv2 returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.atlassian.com/v1/mcp/authv2",
+    "authorizationServers": [
+      "https://auth.atlassian.com/VCeDsk8ZHncYF1g234fKtc4lNipbBhu3"
+    ]
+  },
+  {
+    "serverId": "paypal",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:12.981Z",
+    "message": "Authentication challenge at https://mcp.paypal.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.paypal.com/mcp",
+    "authorizationServers": [
+      "https://mcp.paypal.com"
+    ]
+  },
+  {
+    "serverId": "stripe",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:14.122Z",
+    "message": "Authentication challenge at https://mcp.stripe.com/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.stripe.com/",
+    "authorizationServers": [
+      "https://access.stripe.com/mcp"
+    ]
+  },
+  {
+    "serverId": "slack",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:15.532Z",
+    "message": "Authentication challenge at https://mcp.slack.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.slack.com/mcp",
+    "authorizationServers": [
+      "https://mcp.slack.com"
+    ]
+  },
+  {
+    "serverId": "cloudflare",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:13.516Z",
+    "message": "Authentication challenge at https://mcp.cloudflare.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.cloudflare.com/mcp",
+    "authorizationServers": [
+      "https://mcp.cloudflare.com"
+    ]
+  },
+  {
+    "serverId": "figma",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:14.904Z",
+    "message": "Authentication challenge at https://mcp.figma.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.figma.com/mcp",
+    "authorizationServers": [
+      "https://api.figma.com"
+    ]
+  },
+  {
+    "serverId": "supabase",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:15.118Z",
+    "message": "Authentication challenge at https://mcp.supabase.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.supabase.com/mcp",
+    "authorizationServers": [
+      "https://api.supabase.com"
+    ]
+  },
+  {
+    "serverId": "neon",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:16.212Z",
+    "message": "Authentication challenge at https://mcp.neon.tech/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.neon.tech/mcp",
+    "authorizationServers": [
+      "https://mcp.neon.tech"
+    ]
+  },
+  {
+    "serverId": "mdn",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-08-09T10:56:16.395Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.mdn.mozilla.net/; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp.mdn.mozilla.net/",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "yahoo-finance",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-08-09T10:56:16.764Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://gateway.mcpservers.org/yahoo-finance/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://gateway.mcpservers.org/yahoo-finance/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "vercel",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:17.373Z",
+    "message": "Authentication challenge at https://mcp.vercel.com/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.vercel.com/",
+    "authorizationServers": [
+      "https://vercel.com"
+    ]
+  },
+  {
+    "serverId": "mcp-registry",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-08-09T10:56:18.476Z",
+    "message": "Negotiated stateful MCP 2025-06-18 at https://registry.run.mcp.com.ai/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://registry.run.mcp.com.ai/mcp",
+    "protocolVersion": "2025-06-18"
+  },
+  {
+    "serverId": "inference-sh",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-08-09T10:56:18.120Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://api.inference.sh/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.inference.sh/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://api.inference.sh"
+    ]
+  },
+  {
+    "serverId": "tandem-docs",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-08-09T10:56:18.897Z",
+    "message": "Negotiated stateful MCP 2025-06-18 at https://tandem.ac/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://tandem.ac/mcp",
+    "protocolVersion": "2025-06-18"
+  },
+  {
+    "serverId": "agentdm",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:19.594Z",
+    "message": "Authentication challenge at https://api.agentdm.ai/mcp/v1/grid returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.agentdm.ai/mcp/v1/grid",
+    "authorizationServers": [
+      "https://app.agentdm.ai"
+    ]
+  },
+  {
+    "serverId": "adadvisor",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "bearer-token",
+    "requiresOAuth": false,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:20.487Z",
+    "message": "Authentication challenge at https://api.adadvisor.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication bearer-token",
+    "validatedUrl": "https://api.adadvisor.ai/mcp",
+    "authorizationServers": [
+      "https://tmvjgbjbuxnirnwjgfhc.supabase.co/auth/v1"
+    ]
+  },
+  {
+    "serverId": "inferventis",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "api-key",
+    "requiresOAuth": false,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-08-09T10:56:20.345Z",
+    "message": "Authentication challenge at https://mcp-server-295985738387.europe-west1.run.app/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication api-key",
+    "validatedUrl": "https://mcp-server-295985738387.europe-west1.run.app/mcp"
+  },
+  {
+    "serverId": "agentra",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-08-09T10:56:23.474Z",
+    "message": "Negotiated stateful MCP 2025-03-26 at https://api.agentrapay.ai/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.agentrapay.ai/mcp",
+    "protocolVersion": "2025-03-26"
+  }
+]

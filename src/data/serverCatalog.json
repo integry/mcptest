@@ -8,6 +8,7 @@
     "tags": ["suggested", "docs", "developer-tools", "libraries", "code"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "logoUrl": "/context7-logo.png",
     "homepageUrl": "https://context7.com"
   },
@@ -20,6 +21,7 @@
     "tags": ["suggested", "docs", "github", "repositories", "no-auth"],
     "transport": "streamable-http",
     "requiresOAuth": false,
+    "authType": "none",
     "logoUrl": "/deepwiki-logo.png",
     "homepageUrl": "https://deepwiki.com"
   },
@@ -32,6 +34,7 @@
     "tags": ["suggested", "crypto", "market-data", "prices", "no-auth"],
     "transport": "streamable-http",
     "requiresOAuth": false,
+    "authType": "none",
     "logoUrl": "/coingecko-logo.png",
     "homepageUrl": "https://www.coingecko.com"
   },
@@ -41,9 +44,10 @@
     "url": "https://mcp.semgrep.ai",
     "description": "A fast, open-source, static analysis tool for finding bugs and enforcing code standards.",
     "category": "Security",
-    "tags": ["suggested", "security", "static-analysis", "code-quality", "no-auth"],
+    "tags": ["suggested", "security", "static-analysis", "code-quality", "oauth"],
     "transport": "streamable-http",
-    "requiresOAuth": false,
+    "requiresOAuth": true,
+    "authType": "oauth",
     "logoUrl": "/semgrep-logo.svg",
     "homepageUrl": "https://semgrep.dev",
     "sourceUrl": "https://github.com/semgrep/mcp"
@@ -57,6 +61,7 @@
     "tags": ["official", "github", "repositories", "issues", "pull-requests", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://github.com",
     "sourceUrl": "https://github.com/github/github-mcp-server"
   },
@@ -69,6 +74,7 @@
     "tags": ["official", "linear", "issues", "projects", "planning", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://linear.app"
   },
   {
@@ -80,6 +86,7 @@
     "tags": ["official", "notion", "docs", "databases", "workspace", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://www.notion.com",
     "sourceUrl": "https://github.com/makenotion/notion-mcp-server"
   },
@@ -92,6 +99,7 @@
     "tags": ["official", "sentry", "errors", "debugging", "observability", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://sentry.io"
   },
   {
@@ -103,6 +111,7 @@
     "tags": ["official", "atlassian", "jira", "confluence", "compass", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://www.atlassian.com"
   },
   {
@@ -114,6 +123,7 @@
     "tags": ["official", "paypal", "payments", "transactions", "commerce", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://developer.paypal.com"
   },
   {
@@ -125,6 +135,7 @@
     "tags": ["official", "stripe", "payments", "billing", "customers", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://stripe.com"
   },
   {
@@ -136,6 +147,7 @@
     "tags": ["official", "slack", "messages", "channels", "collaboration", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://slack.com"
   },
   {
@@ -147,6 +159,7 @@
     "tags": ["official", "cloudflare", "workers", "dns", "infrastructure", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://www.cloudflare.com"
   },
   {
@@ -158,6 +171,7 @@
     "tags": ["official", "figma", "design", "dev-mode", "prototyping", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://www.figma.com"
   },
   {
@@ -169,6 +183,7 @@
     "tags": ["official", "supabase", "postgres", "database", "backend", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://supabase.com"
   },
   {
@@ -180,6 +195,7 @@
     "tags": ["official", "neon", "postgres", "database", "branches", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
+    "authType": "oauth",
     "homepageUrl": "https://neon.com"
   },
   {
@@ -191,6 +207,7 @@
     "tags": ["official", "mdn", "web", "javascript", "browser-compatibility", "no-auth"],
     "transport": "streamable-http",
     "requiresOAuth": false,
+    "authType": "none",
     "homepageUrl": "https://developer.mozilla.org"
   },
   {
@@ -202,6 +219,155 @@
     "tags": ["finance", "stocks", "market-data", "news", "no-auth"],
     "transport": "streamable-http",
     "requiresOAuth": false,
+    "authType": "none",
     "homepageUrl": "https://finance.yahoo.com"
+  },
+  {
+    "id": "vercel",
+    "name": "Vercel",
+    "url": "https://mcp.vercel.com",
+    "description": "Vercel's remote MCP server for inspecting and managing projects, deployments, logs, and platform resources.",
+    "category": "Cloud",
+    "tags": ["official-registry", "vercel", "deployments", "hosting", "oauth"],
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "homepageUrl": "https://vercel.com/docs/mcp/vercel-mcp",
+    "sourceUrl": "https://github.com/vercel/vercel-mcp-overview",
+    "registryName": "com.vercel/vercel-mcp",
+    "registryVersion": "0.0.3",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.vercel%2Fvercel-mcp/versions/0.0.3"
+  },
+  {
+    "id": "mcp-registry",
+    "name": "MCP Registry Server",
+    "url": "https://registry.run.mcp.com.ai/mcp",
+    "description": "MCP interface for searching and publishing servers through the official Model Context Protocol Registry backend.",
+    "category": "Developer Tools",
+    "tags": ["official-registry", "mcp", "registry", "discovery", "openapi", "no-auth"],
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "homepageUrl": "https://run.mcp.com.ai",
+    "sourceUrl": "https://github.com/modelcontextprotocol/registry",
+    "registryName": "ai.com.mcp/registry",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ai.com.mcp%2Fregistry/versions/1.0.0"
+  },
+  {
+    "id": "inference-sh",
+    "name": "inference.sh",
+    "url": "https://api.inference.sh/mcp",
+    "description": "Remote MCP server for running AI models, composing agents, connecting tools, and paying per inference run.",
+    "category": "AI Infrastructure",
+    "tags": ["official-registry", "inference", "models", "agents", "ai", "no-auth"],
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "homepageUrl": "https://inference.sh",
+    "registryName": "ac.inference.sh/mcp",
+    "registryVersion": "2.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ac.inference.sh%2Fmcp/versions/2.0.1"
+  },
+  {
+    "id": "tandem-docs",
+    "name": "Tandem Docs",
+    "url": "https://tandem.ac/mcp",
+    "description": "Remote MCP access to Tandem documentation, installation guides, SDKs, workflows, and agent setup help.",
+    "category": "Documentation",
+    "tags": ["official-registry", "tandem", "docs", "sdk", "agents", "no-auth"],
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "homepageUrl": "https://tandem.ac/docs-mcp",
+    "sourceUrl": "https://github.com/frumu-ai/tandem",
+    "registryName": "ac.tandem/docs-mcp",
+    "registryVersion": "0.3.2",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ac.tandem%2Fdocs-mcp/versions/0.3.2"
+  },
+  {
+    "id": "agentdm",
+    "name": "AgentDM",
+    "url": "https://api.agentdm.ai/mcp/v1/grid",
+    "description": "Agent-to-agent communication over MCP with messages, channels, and discoverable skills.",
+    "category": "Communication",
+    "tags": ["official-registry", "agents", "messages", "channels", "oauth"],
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional bearer API key alternative to OAuth discovery",
+        "required": false,
+        "secret": true
+      }
+    ],
+    "homepageUrl": "https://agentdm.ai",
+    "sourceUrl": "https://github.com/agentdmai/agentdm",
+    "registryName": "ai.agentdm/agentdm",
+    "registryVersion": "2.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ai.agentdm%2Fagentdm/versions/2.0.0"
+  },
+  {
+    "id": "adadvisor",
+    "name": "AdAdvisor",
+    "url": "https://api.adadvisor.ai/mcp",
+    "description": "Remote MCP server for querying Meta Ads accounts, campaigns, ad sets, ads, metrics, and settings.",
+    "category": "Marketing",
+    "tags": ["official-registry", "meta-ads", "campaigns", "analytics", "bearer-token"],
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "bearer-token",
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Bearer token using an AdAdvisor adv_sk_ API key",
+        "required": true,
+        "secret": true
+      }
+    ],
+    "homepageUrl": "https://www.adadvisor.ai/docs/user-guide/getting-started-with-mcp",
+    "registryName": "ai.adadvisor/mcp-server",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ai.adadvisor%2Fmcp-server/versions/1.0.1"
+  },
+  {
+    "id": "inferventis",
+    "name": "Inferventis",
+    "url": "https://mcp-server-295985738387.europe-west1.run.app/mcp",
+    "description": "Remote MCP server for loan and mortgage calculations, compound interest, ROI, crypto prices, and currency conversion.",
+    "category": "Finance",
+    "tags": ["official-registry", "mortgages", "calculators", "crypto", "foreign-exchange", "api-key"],
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "api-key",
+    "requiredHeaders": [
+      {
+        "name": "x-api-key",
+        "description": "Inferventis API key obtained from the publisher",
+        "required": true,
+        "secret": true
+      }
+    ],
+    "homepageUrl": "https://inferventis.ai",
+    "sourceUrl": "https://github.com/Bankee-ai/inferventis",
+    "registryName": "ai.bankee/inferventis-mcp",
+    "registryVersion": "1.0.2",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ai.bankee%2Finferventis-mcp/versions/1.0.2"
+  },
+  {
+    "id": "agentra",
+    "name": "Agentra",
+    "url": "https://api.agentrapay.ai/mcp",
+    "description": "Legacy SSE MCP endpoint for autonomous-agent identity, know-your-agent checks, and trust scoring.",
+    "category": "Identity",
+    "tags": ["official-registry", "agents", "identity", "trust", "legacy-sse"],
+    "transport": "legacy-sse",
+    "requiresOAuth": false,
+    "authType": "none",
+    "registryName": "ai.agentrapay/agentra",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ai.agentrapay%2Fagentra/versions/1.0.0"
   }
 ]

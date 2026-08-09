@@ -1,109 +1,58 @@
+import type { ProtocolEra } from '@modelcontextprotocol/client';
+import type { TransportType } from '../types';
 import type { CatalogServerStatus } from '../types/catalog';
+import { attemptParallelConnections } from './transportDetection';
 
 export type LivenessResult = {
   status: CatalogServerStatus;
   authChallenge: boolean;
   detail: string;
+  transportType?: TransportType;
+  protocolEra?: ProtocolEra;
+  protocolVersion?: string;
 };
 
 const PROBE_TIMEOUT_MS = 10_000;
-const PROTOCOL_VERSION = '2025-06-18';
 
-const getMcpEndpointUrl = (serverUrl: string): string => {
-  const baseUrl = new URL(serverUrl);
-
-  if (baseUrl.searchParams.has('target')) {
-    const targetUrl = baseUrl.searchParams.get('target');
-    if (!targetUrl) {
-      throw new Error('Proxy URL missing target parameter');
-    }
-
-    const targetBaseUrl = new URL(targetUrl);
-    const targetBasePath = targetBaseUrl.pathname.replace(/\/(mcp|sse)\/?$/, '').replace(/\/$/, '');
-    targetBaseUrl.pathname = `${targetBasePath}/mcp`;
-
-    const probeUrl = new URL(baseUrl);
-    probeUrl.searchParams.set('target', targetBaseUrl.toString());
-    return probeUrl.toString();
-  }
-
-  const basePath = baseUrl.pathname.replace(/\/(mcp|sse)\/?$/, '').replace(/\/$/, '');
-  baseUrl.pathname = `${basePath}/mcp`;
-  return baseUrl.toString();
+export const isAuthenticationFailure = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b(401|403)\b|unauthori[sz]ed|forbidden|authentication required/i.test(message);
 };
 
-const createInitializeBody = () =>
-  JSON.stringify({
-    jsonrpc: '2.0',
-    id: 1,
-    method: 'initialize',
-    params: {
-      protocolVersion: PROTOCOL_VERSION,
-      capabilities: {},
-      clientInfo: {
-        name: 'mcp-sse-tester-catalog-liveness',
-        version: '1.0.0',
-      },
-    },
-  });
-
 export const checkServerLiveness = async (serverUrl: string): Promise<LivenessResult> => {
-  let endpointUrl: string;
-
-  try {
-    endpointUrl = getMcpEndpointUrl(serverUrl);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid server URL';
-    return {
-      status: 'unknown',
-      authChallenge: false,
-      detail: `Unable to build MCP probe URL: ${message}.`,
-    };
-  }
-
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
 
   try {
-    const response = await fetch(endpointUrl, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json, text/event-stream',
-        'Content-Type': 'application/json',
-      },
-      body: createInitializeBody(),
-      signal: controller.signal,
-    });
+    const connection = await attemptParallelConnections(serverUrl, controller.signal);
+    await connection.client.close().catch(() => {});
+    const lifecycle = connection.protocolEra === 'modern' ? 'stateless' : 'stateful';
 
-    if (response.ok) {
-      return {
-        status: 'online',
-        authChallenge: false,
-        detail: `Live browser probe succeeded at ${endpointUrl} with HTTP ${response.status}.`,
-      };
-    }
-
-    if (response.status === 401 || response.status === 403) {
+    return {
+      status: 'online',
+      authChallenge: false,
+      transportType: connection.transportType,
+      protocolEra: connection.protocolEra,
+      protocolVersion: connection.protocolVersion,
+      detail: `Live browser probe negotiated ${lifecycle} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''} over ${connection.transportType} at ${connection.url}.`,
+    };
+  } catch (error) {
+    if (isAuthenticationFailure(error)) {
       return {
         status: 'online',
         authChallenge: true,
-        detail: `Live browser probe reached ${endpointUrl} and received HTTP ${response.status}; authentication is required.`,
+        detail: 'The endpoint returned an authentication challenge before MCP negotiation, confirming that the protected server is reachable.',
       };
     }
 
+    const message = error instanceof Error ? error.message : String(error);
+    const timedOut = controller.signal.aborted || /abort|timeout/i.test(message);
     return {
       status: 'unknown',
       authChallenge: false,
-      detail: `Live browser probe reached ${endpointUrl} but received HTTP ${response.status}. Server liveness is unknown.`,
-    };
-  } catch (error) {
-    const isAbort = error instanceof DOMException && error.name === 'AbortError';
-    return {
-      status: 'unknown',
-      authChallenge: false,
-      detail: isAbort
-        ? `Live browser probe timed out after ${PROBE_TIMEOUT_MS / 1000} seconds. The server may be slow, unreachable, or may block CORS.`
-        : 'Live browser probe failed from this browser. The server may block CORS, be unreachable, or the request may have been blocked by the browser.',
+      detail: timedOut
+        ? `Live browser negotiation timed out after ${PROBE_TIMEOUT_MS / 1000} seconds. The server may be slow, unreachable, or may block CORS.`
+        : `Live browser negotiation failed. The server may block CORS, be unreachable, or have rejected every MCP transport candidate. ${message}`,
     };
   } finally {
     window.clearTimeout(timeoutId);
