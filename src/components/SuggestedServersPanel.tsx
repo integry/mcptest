@@ -2,16 +2,23 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 import { getCatalogServers } from '../utils/catalogUtils';
+import type { CatalogProtocolEra } from '../types/catalog';
 
 interface SuggestedServersPanelProps {
   setServerUrl: (url: string) => void;
-  handleConnect: (urlToConnect?: string) => void;
+  handleConnect: (urlToConnect?: string, protocolEraHint?: CatalogProtocolEra) => void;
   isConnected: boolean;
   isConnecting: boolean;
 }
 
 const suggestedCatalogServers = getCatalogServers()
-  .filter((server) => server.tags.includes('suggested') && server.status !== 'offline')
+  .filter((server) => (
+    server.tags.includes('suggested')
+    && server.status !== 'offline'
+    && server.authType === 'none'
+    && server.browserAccess === 'direct'
+    && server.browserUrl
+  ))
   .slice(0, 4);
 
 export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
@@ -20,10 +27,10 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
   isConnected,
   isConnecting,
 }) => {
-  const handleServerClick = (url: string) => {
+  const handleServerClick = (url: string, protocolEra: CatalogProtocolEra) => {
     if (isConnecting) return;
     setServerUrl(url);
-    handleConnect(url);
+    handleConnect(url, protocolEra);
   };
 
   return (
@@ -37,12 +44,14 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
       <div className="card-body p-3">
         <small className="text-muted d-block mb-3">Connect to a curated public endpoint and inspect the negotiated protocol.</small>
         <ul className="suggested-server-grid">
-        {suggestedCatalogServers.map((server) => (
-          <li key={server.url} className="suggested-server-row">
+        {suggestedCatalogServers.map((server) => {
+          const connectUrl = server.browserUrl || server.validatedUrl || server.url;
+          return (
+          <li key={server.id} className="suggested-server-row">
             <button
               type="button"
               className="suggested-server-action"
-              onClick={() => handleServerClick(server.url)}
+              onClick={() => handleServerClick(connectUrl, server.protocolEra)}
               disabled={isConnected || isConnecting}
             >
               {server.logoUrl && (
@@ -58,11 +67,12 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
                   <span aria-hidden="true">↗</span>
                 </div>
                 <p>{server.description}</p>
-                <small title={server.url}>{server.url}</small>
+                <small title={connectUrl}>{connectUrl}</small>
               </div>
             </button>
           </li>
-        ))}
+          );
+        })}
         </ul>
       </div>
       <div className="card-footer text-center p-2">

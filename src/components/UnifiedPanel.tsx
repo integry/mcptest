@@ -11,6 +11,7 @@ interface UnifiedPanelProps {
   selectedResourceTemplate: ResourceTemplate | null;
   selectedPrompt: SelectedPrompt | null;
   handleSelectTool: (tool: Tool) => void;
+  handleSelectResource: (resource: Resource) => void;
   handleSelectResourceTemplate: (template: ResourceTemplate) => void;
   handleSelectPrompt: (prompt: Prompt) => void;
   connectionStatus: string;
@@ -34,6 +35,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   selectedResourceTemplate,
   selectedPrompt,
   handleSelectTool,
+  handleSelectResource,
   handleSelectResourceTemplate,
   handleSelectPrompt,
   connectionStatus,
@@ -117,6 +119,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
       if (index !== undefined && items[index]) {
         const item = items[index];
         if (category === 'tools') handleSelectTool(item);
+        if (category === 'resources') handleSelectResource(item);
         if (category === 'resourceTemplates') handleSelectResourceTemplate(item);
         if (category === 'prompts') handleSelectPrompt(item);
       }
@@ -127,13 +130,12 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   // Use original arrays (not filtered) to determine if a capability is supported
   const allCapabilities = [
     { key: 'tools', items: filteredTools, originalItems: tools, label: 'Tools', handler: handleSelectTool },
-    { key: 'resources', items: filteredResources, originalItems: resources, label: 'Resources', handler: null },
+    { key: 'resources', items: filteredResources, originalItems: resources, label: 'Resources', handler: handleSelectResource },
     { key: 'resourceTemplates', items: filteredResourceTemplates, originalItems: resourceTemplates, label: 'Resource Templates', handler: handleSelectResourceTemplate },
     { key: 'prompts', items: filteredPrompts, originalItems: prompts, label: 'Prompts', handler: handleSelectPrompt }
   ];
 
   const supportedCapabilities = allCapabilities.filter(cap => cap.originalItems.length > 0);
-  const unsupportedCapabilities = allCapabilities.filter(cap => cap.originalItems.length === 0 && isConnected);
 
   const toggleCategory = (category: keyof typeof expandedCategories) => {
     setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
@@ -143,14 +145,18 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     <div className={`card unified-panel ${!isConnected ? 'unified-panel-deactivated' : ''}`}>
       {/* Panel Header with Title and Refresh Button */}
       <div className="card-header d-flex justify-content-between align-items-center">
-        <h5 className="mb-0">Capabilities</h5>
+        <div>
+          <span className="interface-eyebrow">Discover</span>
+          <h5 className="mb-0">Capabilities</h5>
+        </div>
         <button
           className="btn btn-sm btn-outline-secondary refresh-button"
           onClick={onRefreshLists}
           disabled={!isConnected || isConnecting} // Disable if not connected or connecting
           title="Refresh Tools, Resources, and Prompts"
         >
-          Refresh
+          <i className="bi bi-arrow-clockwise" aria-hidden="true"></i>
+          <span className="visually-hidden">Refresh capabilities</span>
         </button>
       </div>
       <input
@@ -179,6 +185,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
                   {items.map((item: any, index: number) => {
                     const isSelected =
                       (key === 'tools' && selectedTool?.name === item.name) ||
+                      (key === 'resources' && selectedResourceTemplate?.uriTemplate === item.uri) ||
                       (key === 'resourceTemplates' && selectedResourceTemplate?.uriTemplate === item.uriTemplate) ||
                       (key === 'prompts' && selectedPrompt?.name === item.name);
 
@@ -208,7 +215,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         {/* Show message if no supported capabilities when connected */}
         {isConnected && supportedCapabilities.length === 0 && (
           <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            This server has no tools to display.
+            This server did not advertise any capabilities.
           </div>
         )}
 
@@ -219,21 +226,6 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
           </div>
         )}
 
-        {/* Unsupported Methods Section */}
-        {unsupportedCapabilities.length > 0 && (
-          <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-            <h4 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>
-              Unsupported Methods
-            </h4>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', paddingLeft: '0.5rem' }}>
-              {unsupportedCapabilities.map((cap, index) => (
-                <span key={cap.key}>
-                  {cap.label}{index < unsupportedCapabilities.length - 1 ? ', ' : ''}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </nav>
     </div>
   );

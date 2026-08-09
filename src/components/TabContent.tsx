@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ConnectionTab, LogEntry } from '../types';
+import { ConnectionTab, LogEntry, type Resource } from '../types';
 import { logEvent } from '../utils/analytics';
 
 // Import Components
@@ -185,6 +185,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     originalHandleSelectResourceTemplate(template);
     setLastResult(null);
   };
+  const handleSelectResource = (resource: Resource) => {
+    handleSelectResourceTemplate({
+      ...resource,
+      uriTemplate: resource.uri,
+    });
+  };
   const handleSelectPrompt = (prompt: any) => {
     originalHandleSelectPrompt(prompt);
     setLastResult(null);
@@ -225,7 +231,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResources,
           setResponses,
           tab.serverUrl,
-          tab.useProxy // Pass the current tab's useProxy value
+          tab.useProxy, // Pass the current tab's useProxy value
+          tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+            ? tab.catalogProtocolEra
+            : undefined
         );
       }, 100);
     }
@@ -581,7 +590,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResources,
           setResponses,
           tab.serverUrl,
-          tab.useProxy
+          tab.useProxy,
+          tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+            ? tab.catalogProtocolEra
+            : undefined
         );
       }, 500); // 500ms delay to ensure token is available
     }
@@ -640,13 +652,18 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   };
 
   // Wrapper function to handle connect
-  const handleConnectWrapper = (urlToConnect?: string) => {
+  const handleConnectWrapper = (urlToConnect?: string, protocolEraHint?: string) => {
     handleConnect(
       setTools,
       setResources,
       setResponses,
       urlToConnect,
-      tab.useProxy // Pass the current tab's useProxy value
+      tab.useProxy, // Pass the current tab's useProxy value
+      protocolEraHint === 'stateful' || protocolEraHint === 'legacy'
+        ? protocolEraHint
+        : tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+          ? tab.catalogProtocolEra
+          : undefined
     );
   };
 
@@ -823,10 +840,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             setCredentialValue={setCatalogCredential}
             credentialInputId={`${tab.id}-catalog-credential`}
           />
-      <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
-        {/* Left Panel */}
-        <div className={isConnected ? "col-md-4" : "col-md-12"}>
-          {!isConnected && (
+      <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
+        {!isConnected && (
+          <div className="w-100">
             <div className="row g-3">
               {recentServers.length > 0 && (
                 <div className="col-md-6">
@@ -849,8 +865,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 />
               </div>
             </div>
-          )}
-          {isConnected && (
+          </div>
+        )}
+        {isConnected && (
+          <>
+            <section className="workbench-pane workbench-capabilities" aria-label="Server capabilities">
             <UnifiedPanel
               tools={tools}
               resources={resources}
@@ -860,20 +879,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               selectedResourceTemplate={selectedResourceTemplate}
               selectedPrompt={selectedPrompt}
               handleSelectTool={handleSelectTool}
+              handleSelectResource={handleSelectResource}
               handleSelectResourceTemplate={handleSelectResourceTemplate}
               handleSelectPrompt={handleSelectPrompt}
               connectionStatus={connectionStatus}
               onRefreshLists={handleRefreshAllLists}
               isConnecting={isConnecting}
             />
-          )}
-        </div>
-
-        {/* Right Panel */}
-        <div className={isConnected ? "col-12 col-md-8 d-flex flex-column" : "col-12 col-md-8"}>
-          {isConnected && (
-            <>
-              {/* Action Panel */}
+            </section>
+            <section className="workbench-pane workbench-request" aria-label="Request builder">
               <ParamsPanel
                 selectedTool={selectedTool}
                 selectedResourceTemplate={selectedResourceTemplate}
@@ -896,7 +910,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 isExecuting={isExecuting}
                 executionStartTime={executionStartTime}
               />
-              {/* Output Panel */}
+            </section>
+            <section className="workbench-pane workbench-response" aria-label="Server response">
               <OutputPanel
                 lastResult={lastResult}
                 responses={responses}
@@ -914,9 +929,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 onRunAgain={handleRunAgain}
                 useProxy={isProxied}
               />
-            </>
-          )}
-        </div>
+            </section>
+          </>
+        )}
       </div>
       
       {/* OAuth Configuration Dialog */}

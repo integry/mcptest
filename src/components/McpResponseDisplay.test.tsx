@@ -1,7 +1,27 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import McpResponseDisplay from './McpResponseDisplay';
+import McpResponseDisplay, { getPrimaryResultData } from './McpResponseDisplay';
+
+describe('MCP result display extraction', () => {
+  it('extracts tool text content', () => {
+    expect(getPrimaryResultData('tool_result', [{ type: 'text', text: '# Result' }]))
+      .toBe('# Result');
+  });
+
+  it('extracts resource text so JSON can be rendered instead of escaped', () => {
+    expect(getPrimaryResultData('resource_result', [{
+      uri: 'file:///openapi.json',
+      mimeType: 'application/json',
+      text: '{"openapi":"3.1.0"}',
+    }])).toBe('{"openapi":"3.1.0"}');
+  });
+
+  it('preserves multiple content blocks without dropping data', () => {
+    const content = [{ type: 'text', text: 'one' }, { type: 'text', text: 'two' }];
+    expect(getPrimaryResultData('tool_result', content)).toBe(content);
+  });
+});
 
 describe('McpResponseDisplay markdown security', () => {
   it('renders Markdown while dropping untrusted HTML and unsafe links', () => {

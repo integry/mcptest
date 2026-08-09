@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
 import type { CatalogAuthType, CatalogRequiredHeader } from './catalog';
+import type { CatalogProtocolEra } from './catalog';
 
 // Define interfaces for state clarity
 export interface LogEntry {
@@ -74,6 +75,8 @@ export interface ConnectionTab {
   /** Catalog credential metadata only. Secret values stay in TabContent memory. */
   catalogAuthType?: CatalogAuthType;
   catalogRequiredHeaders?: CatalogRequiredHeader[];
+  /** Validated catalog hint used to skip a known-stateful server/discover probe. */
+  catalogProtocolEra?: CatalogProtocolEra;
   // Capabilities for this specific connection
   tools?: Tool[];
   resources?: Resource[];

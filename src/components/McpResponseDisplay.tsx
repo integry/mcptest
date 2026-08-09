@@ -19,6 +19,20 @@ interface McpResponseDisplayProps {
   forceExpanded?: boolean; // Force expanded state from parent
 }
 
+export const getPrimaryResultData = (itemType: string, data: unknown): unknown => {
+  if (!Array.isArray(data) || data.length !== 1) return data;
+
+  const firstPart = data[0];
+  if (!firstPart || typeof firstPart !== 'object') return data;
+  if ('text' in firstPart && typeof firstPart.text === 'string') {
+    if (itemType === 'resource_result' || ('type' in firstPart && firstPart.type === 'text')) {
+      return firstPart.text;
+    }
+  }
+
+  return data;
+};
+
 const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   logEntry,
   className = '',
@@ -48,16 +62,9 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   let title = logEntry.type || 'Unknown Entry';
   const itemType = logEntry.type?.toLowerCase() ?? '';
   const isResultType = itemType === 'tool_result' || itemType === 'resource_result';
-  let dataForDisplay = logEntry.data; // Start with the original data
-
-  // --- Extract primary text content if applicable ---
-  if (isResultType && Array.isArray(logEntry.data) && logEntry.data.length > 0) {
-      const firstPart = logEntry.data[0];
-      if (firstPart && firstPart.type === 'text' && typeof firstPart.text === 'string') {
-          dataForDisplay = firstPart.text; // Use only the text content for display
-      }
-      // Add checks for other types like 'image' if needed later
-  }
+  const dataForDisplay = isResultType
+    ? getPrimaryResultData(itemType, logEntry.data)
+    : logEntry.data;
 
   // Stringify data *after* potential extraction, handle null/undefined
   const dataString = typeof dataForDisplay === 'string' ? dataForDisplay : JSON.stringify(dataForDisplay ?? '', null, 2);

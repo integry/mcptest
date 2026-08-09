@@ -1,21 +1,15 @@
 import React from 'react';
+import {
+  getCapabilityInputSpec,
+  getMissingRequiredParams,
+  hasParameterValue,
+  type CapabilityInputDefinition,
+} from '../utils/capabilityParams';
 
 // Use 'any' for now until correct SDK types are confirmed/exported
 type SelectedTool = any;
 type ResourceTemplate = any;
 type Prompt = any; // Add Prompt type (using any for now)
-
-interface InputParameterSchema { // Renamed for reusability
-    type?: string;
-    description?: string;
-    default?: any;
-    enum?: string[];
-    format?: string;
-    title?: string;
-    // Added properties from the 'arguments' array format
-    name?: string;
-    required?: boolean;
-}
 
 interface ParamsPanelProps {
   selectedTool: SelectedTool | null;
@@ -82,15 +76,32 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     }
   }, [isExecuting, executionStartTime]);
 
+  const selectedInputItem = selectedTool || selectedPrompt;
+  const activeInputParams = selectedTool ? toolParams : promptParams;
+  const missingRequiredParams = selectedInputItem
+    ? getMissingRequiredParams(selectedInputItem, activeInputParams)
+    : selectedResourceTemplate
+      ? parseUriTemplateArgs(selectedResourceTemplate.uriTemplate)
+        .filter((name) => !hasParameterValue(resourceArgs[name]))
+      : [];
+  const canRun = isConnected && !isConnecting && !isExecuting && missingRequiredParams.length === 0;
+  const actionLabel = selectedTool
+    ? 'Run tool'
+    : selectedPrompt
+      ? 'Get prompt'
+      : 'Read resource';
+
   // Handler for Enter key press
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    const isTextarea = (e.target as HTMLElement).tagName === 'TEXTAREA';
+    if (e.key === 'Enter' && (!isTextarea || e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      if (selectedTool && isConnected && !isConnecting) {
+      if (!canRun) return;
+      if (selectedTool) {
         handleExecuteTool();
-      } else if (selectedPrompt && isConnected && !isConnecting) {
+      } else if (selectedPrompt) {
         handleExecutePrompt();
-      } else if (selectedResourceTemplate && isConnected && !isConnecting) {
+      } else if (selectedResourceTemplate) {
         handleAccessResource();
       }
     }
@@ -105,36 +116,23 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     if (!item) { return null; }
     const idPrefix = paramType === 'tool' ? 'param' : 'prompt-param';
 
-    let parameterDefinitions: InputParameterSchema[] = [];
-    let requiredParams: string[] = [];
-
-    // Check for inputSchema.properties format
-    const inputSchema = item.inputSchema || item.input_schema;
-    if (inputSchema?.properties) {
-      parameterDefinitions = Object.entries(inputSchema.properties).map(([name, schema]) => ({ name, ...(schema as object) } as InputParameterSchema));
-      requiredParams = inputSchema.required || [];
-    }
-    // Check for arguments array format
-    else if (Array.isArray(item.arguments) && item.arguments.length > 0) {
-      parameterDefinitions = item.arguments;
-      // Extract required from the arguments array itself
-      requiredParams = item.arguments.filter((arg: any) => arg.required).map((arg: any) => arg.name);
-    }
+    const { definitions: parameterDefinitions, required: requiredParams } = getCapabilityInputSpec(item);
 
     if (parameterDefinitions.length === 0) {
       return <p className="text-muted">This {paramType} has no parameters.</p>;
     }
 
     // Helper function to render a single input based on schema/arg definition
-    const renderSingleInput = (definition: InputParameterSchema) => {
-        const name = definition.name!; // Name should always exist here
+    const renderSingleInput = (definition: CapabilityInputDefinition) => {
+        const name = definition.name;
         const isRequired = requiredParams.includes(name);
         const inputType = definition.type || 'text'; // Default to text if type is missing
+        const isMissing = isRequired && !hasParameterValue(params[name]);
 
         return (
             <div key={`${idPrefix}-${name}`} className="param-form mb-3">
             <label htmlFor={`${idPrefix}-${name}`} className="form-label">
-                {name} {isRequired ? '*' : ''} {definition.type && <span className="text-muted ms-2">({definition.type})</span>}
+                {name} {isRequired && <span className="required-mark" aria-label="required">*</span>} {definition.type && <span className="param-type">{definition.type}</span>}
             </label>
             {definition.description && <p className="param-description">{definition.description}</p>}
 
@@ -148,6 +146,8 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                     checked={!!params[name]}
                     onChange={(e) => handleParamChange(name, e.target.checked)}
                     onKeyDown={handleKeyDown}
+                    required={isRequired}
+                    aria-required={isRequired}
                 />
                 <label className="form-check-label" htmlFor={`${idPrefix}-${name}`}>
                     {definition.title || name}
@@ -162,6 +162,9 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 onChange={(e) => handleParamChange(name, e.target.value === '' ? undefined : Number(e.target.value))}
                 onKeyDown={handleKeyDown}
                 placeholder={definition.default !== undefined ? `Default: ${definition.default}` : ''}
+                required={isRequired}
+                aria-required={isRequired}
+                aria-invalid={isMissing}
                 />
             ) : inputType === 'string' && definition.enum ? (
                 <select
@@ -170,10 +173,31 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
                 onKeyDown={handleKeyDown}
+                required={isRequired}
+                aria-required={isRequired}
+                aria-invalid={isMissing}
                 >
                 <option value="" disabled>{definition.description || `Select ${name}`}</option>
                 {definition.enum.map((option: string) => (<option key={option} value={option}>{option}</option>))}
                 </select>
+            ) : inputType === 'object' || inputType === 'array' ? (
+                <textarea
+                className="form-control font-monospace"
+                id={`${idPrefix}-${name}`}
+                rows={5}
+                value={params[name] == null
+                  ? ''
+                  : typeof params[name] === 'string'
+                    ? params[name]
+                    : JSON.stringify(params[name], null, 2)}
+                onChange={(e) => handleParamChange(name, e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={inputType === 'array' ? '[ ]' : '{ }'}
+                required={isRequired}
+                aria-required={isRequired}
+                aria-invalid={isMissing}
+                spellCheck={false}
+                />
             ) : inputType === 'string' && (definition.format === 'text' || definition.format === 'textarea') ? (
                 <textarea
                 className="form-control"
@@ -182,7 +206,10 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={definition.description || ''}
+                placeholder={definition.default !== undefined ? String(definition.default) : ''}
+                required={isRequired}
+                aria-required={isRequired}
+                aria-invalid={isMissing}
                 />
             ) : ( // Default to text input
                 <input
@@ -192,7 +219,10 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={definition.default !== undefined ? `Default: ${definition.default}` : (definition.description || `Enter ${name}`)}
+                placeholder={definition.default !== undefined ? `Default: ${definition.default}` : `Enter ${name}`}
+                required={isRequired}
+                aria-required={isRequired}
+                aria-invalid={isMissing}
                 />
             )}
             </div>
@@ -202,7 +232,12 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
 
     return (
       <>
-        {item.description && <p className="tool-description">{item.description}</p>}
+        {item.description && (
+          <details className="capability-description">
+            <summary>About this {paramType}</summary>
+            <p>{item.description}</p>
+          </details>
+        )}
         {parameterDefinitions.map((definition) => renderSingleInput(definition))}
       </>
     );
@@ -218,7 +253,12 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
 
     return (
       <>
-        {selectedResourceTemplate.description && <p className="tool-description">{selectedResourceTemplate.description}</p>}
+        {selectedResourceTemplate.description && (
+          <details className="capability-description">
+            <summary>About this resource</summary>
+            <p>{selectedResourceTemplate.description}</p>
+          </details>
+        )}
         {args.map((argName) => (
           <div key={argName} className="param-form mb-3">
             <label htmlFor={`res-arg-${argName}`} className="form-label">{argName}</label>
@@ -230,6 +270,9 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
               onChange={(e) => handleResourceArgChange(argName, e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={`Enter value for {${argName}}`}
+              required
+              aria-required="true"
+              aria-invalid={!hasParameterValue(resourceArgs[argName])}
             />
           </div>
         ))}
@@ -274,16 +317,18 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   // --- Main Component Return ---
   return (
     // Add conditional class for deactivated state
-    <div className={`card mb-3 ${!isConnected ? 'panel-deactivated' : ''}`}>
+    <div className={`card request-panel ${!isConnected ? 'panel-deactivated' : ''}`}>
       <div className="card-header">
-        <h5>
-          {selectedTool ? `Tool Parameters (${selectedTool.name})`
-           : selectedPrompt ? `Prompt Parameters (${selectedPrompt.name})`
-           : selectedResourceTemplate ? `Resource Arguments (${selectedResourceTemplate.name || selectedResourceTemplate.uriTemplate})`
-           : 'Parameters / Arguments'}
+        <span className="interface-eyebrow">Request builder</span>
+        <h5 className="mb-0 text-truncate">
+          {selectedTool?.name
+           || selectedPrompt?.name
+           || selectedResourceTemplate?.name
+           || selectedResourceTemplate?.uriTemplate
+           || 'Select a capability'}
         </h5>
       </div>
-      <div className="card-body" style={{ maxHeight: 'calc(100vh - 250px)', overflowY: 'auto' }}>
+      <div className="card-body request-panel-body">
         {!isConnected ? (
           <p className="text-muted p-2">Please connect to an MCP server to begin.</p>
         ) : !selectedTool && !selectedResourceTemplate && !selectedPrompt ? (
@@ -313,21 +358,28 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
 
         {/* Buttons */}
         {(selectedTool || selectedPrompt || selectedResourceTemplate) && (
-           <button
-             id="executeBtn"
-             className="btn btn-success w-100 mt-3"
-             onClick={selectedTool ? handleExecuteTool : selectedPrompt ? handleExecutePrompt : handleAccessResource}
-             disabled={!isConnected || isConnecting || isExecuting}
-           >
+          <div className="request-actions">
+            {missingRequiredParams.length > 0 && (
+              <p className="request-validation" role="status">
+                Complete {missingRequiredParams.map((name) => `“${name}”`).join(', ')} to continue.
+              </p>
+            )}
+            <button
+              id="executeBtn"
+              className="btn btn-success w-100"
+              onClick={selectedTool ? handleExecuteTool : selectedPrompt ? handleExecutePrompt : handleAccessResource}
+              disabled={!canRun}
+            >
              {isExecuting ? (
                <>
                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                  <span className="ms-2">Running... {elapsedTime}</span>
                </>
              ) : (
-               'Execute'
+               actionLabel
              )}
-           </button>
+            </button>
+          </div>
         )}
       </div>
     </div>
