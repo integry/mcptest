@@ -3058,6 +3058,10 @@ pre.bg-light code {
     display: none;
   }
 
+  .suggested-server-grid {
+    grid-template-columns: 1fr;
+  }
+
   .catalog-filters {
     grid-template-columns: 1fr 1fr;
   }
@@ -3150,10 +3154,6 @@ pre.bg-light code {
   .catalog-filters .btn-group {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-  }
-
-  .suggested-server-grid {
-    grid-template-columns: 1fr;
   }
 
   .view-panel .container-fluid.py-4 > .row > .col {
