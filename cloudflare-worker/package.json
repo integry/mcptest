@@ -7,10 +7,16 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
-  "keywords": ["cloudflare-worker", "durable-objects"],
+  "keywords": [
+    "cloudflare-worker",
+    "durable-objects"
+  ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.120.0"
   }
 }
