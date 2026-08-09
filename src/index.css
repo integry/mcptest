@@ -3042,7 +3042,7 @@ pre.bg-light code {
   background: #f7fffc;
 }
 
-@media (max-width: 1199.98px) {
+@media (max-width: 1319.98px) {
   .catalog-command-bar {
     grid-template-columns: 1fr;
   }
