@@ -7,6 +7,9 @@ interface Env {
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_TARGET_REDIRECTS = 20;
+export const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+
+type ProxyResponseSource = 'proxy' | 'target';
 
 export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   const headers = new Headers(requestHeaders);
@@ -72,6 +75,21 @@ export async function fetchTargetRequest(
   }
 
   throw new Error('Target exceeded the maximum redirect count');
+}
+
+export function withCorsResponseHeaders(
+  response: Response,
+  source: ProxyResponseSource
+): Response {
+  const mutableResponse = new Response(response.body, response);
+  const corsHeaders = getCorsHeaders(source);
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    mutableResponse.headers.set(key, value);
+  }
+
+  const exposedHeaders = Array.from(mutableResponse.headers.keys()).join(', ');
+  mutableResponse.headers.set('Access-Control-Expose-Headers', exposedHeaders);
+  return mutableResponse;
 }
 
 // Firebase public keys URL
@@ -169,20 +187,7 @@ export default {
       // Make the actual request to the target server
       const response = await fetchTargetRequest(newRequest);
 
-      // Create a mutable copy of the response with CORS headers
-      const mutableResponse = new Response(response.body, response);
-      
-      // Set CORS headers
-      const corsHeaders = getCorsHeaders();
-      for (const [key, value] of Object.entries(corsHeaders)) {
-        mutableResponse.headers.set(key, value);
-      }
-
-      // Allow the client to access any headers from the proxied response
-      const exposedHeaders = Array.from(mutableResponse.headers.keys()).join(', ');
-      mutableResponse.headers.set('Access-Control-Expose-Headers', exposedHeaders);
-      
-      return mutableResponse;
+      return withCorsResponseHeaders(response, 'target');
 
     } catch (error) {
       console.error('Proxy error:', error);
@@ -212,11 +217,12 @@ function handleOptions(request: Request): Response {
 /**
  * Returns standard CORS headers
  */
-function getCorsHeaders(): Record<string, string> {
+function getCorsHeaders(source: ProxyResponseSource = 'proxy'): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': '*',
+    [PROXY_RESPONSE_SOURCE_HEADER]: source,
   };
 }
 

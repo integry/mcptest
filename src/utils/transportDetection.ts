@@ -1,4 +1,4 @@
-import type { Client, ProtocolEra } from '@modelcontextprotocol/client';
+import type { Client, FetchLike, ProtocolEra } from '@modelcontextprotocol/client';
 import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
@@ -22,6 +22,41 @@ export class TransportConnectionError extends Error {
     this.name = 'TransportConnectionError';
   }
 }
+
+export type ProxyAuthenticationSource = 'proxy' | 'target';
+
+export class ProxiedAuthenticationError extends Error {
+  readonly cause: unknown;
+
+  constructor(
+    readonly status: 401 | 403,
+    readonly responseSource: ProxyAuthenticationSource,
+    cause: unknown
+  ) {
+    super(
+      responseSource === 'target'
+        ? `MCP target returned HTTP ${status} through the authenticated proxy`
+        : `Authenticated proxy returned HTTP ${status}`
+    );
+    this.name = 'ProxiedAuthenticationError';
+    this.cause = cause;
+  }
+}
+
+const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+
+const observeProxyAuthenticationResponses = (
+  onChallenge: (status: 401 | 403, source: ProxyAuthenticationSource) => void
+): FetchLike => async (input, init) => {
+  const response = await fetch(input, init);
+  if (response.status === 401 || response.status === 403) {
+    const responseSource = response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
+      ? 'target'
+      : 'proxy';
+    onChallenge(response.status, responseSource);
+  }
+  return response;
+};
 
 export const CANDIDATE_GROUP_TIMEOUT_MS = 5_000;
 
@@ -194,12 +229,16 @@ export async function attemptParallelConnections(
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
   const candidates = getTransportCandidates(serverUrl, usesProxy);
   const clients: Client[] = [];
-  const transportOptionsFor = (candidateUrl: string) => {
+  const transportOptionsFor = (
+    candidateUrl: string,
+    onProxyAuthChallenge: (status: 401 | 403, source: ProxyAuthenticationSource) => void
+  ) => {
     const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders, usesProxy);
 
     return {
       ...(authToken ? { authProvider: { token: async () => authToken } } : {}),
       ...(Array.from(headers.keys()).length > 0 ? { headers } : {}),
+      ...(usesProxy ? { fetch: observeProxyAuthenticationResponses(onProxyAuthChallenge) } : {}),
     };
   };
 
@@ -217,12 +256,29 @@ export async function attemptParallelConnections(
       : createNegotiatingMcpClient('mcptest-web');
     clients.push(client);
     const endpoint = new URL(candidate.url);
-    const transportOpts = transportOptionsFor(candidate.url);
+    let proxyAuthChallenge: {
+      status: 401 | 403;
+      source: ProxyAuthenticationSource;
+    } | undefined;
+    const transportOpts = transportOptionsFor(candidate.url, (status, source) => {
+      proxyAuthChallenge = { status, source };
+    });
     const transport = candidate.transportType === 'legacy-sse'
       ? new CorsAwareSSETransport(endpoint, transportOpts)
       : new CorsAwareStreamableHTTPTransport(endpoint, transportOpts);
 
-    await client.connect(transport);
+    try {
+      await client.connect(transport);
+    } catch (error) {
+      if (proxyAuthChallenge) {
+        throw new ProxiedAuthenticationError(
+          proxyAuthChallenge.status,
+          proxyAuthChallenge.source,
+          error
+        );
+      }
+      throw error;
+    }
     return { ...candidate, client, transport };
   };
 

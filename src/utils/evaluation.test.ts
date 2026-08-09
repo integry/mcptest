@@ -18,6 +18,7 @@ import {
   getEvaluationTransportProbeUrl,
 } from './evaluation';
 import {
+  ProxiedAuthenticationError,
   TransportConnectionError,
   getRequestHeadersForCandidate,
 } from './transportDetection';
@@ -235,9 +236,11 @@ describe('dual-era server evaluation', () => {
   });
 
   it('does not mistake a proxy-hop authentication failure for target OAuth', async () => {
-    const proxyAuthError = Object.assign(new Error('Proxy returned HTTP 401'), {
-      status: 401,
-    });
+    const proxyAuthError = new ProxiedAuthenticationError(
+      401,
+      'proxy',
+      new Error('Firebase token was rejected')
+    );
     connectionMocks.attempt
       .mockRejectedValueOnce(new Error('Direct CORS failure'))
       .mockRejectedValueOnce(new TransportConnectionError([proxyAuthError]));
@@ -246,6 +249,23 @@ describe('dual-era server evaluation', () => {
 
     expect(report.sections.auth).toBeUndefined();
     expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
+  });
+
+  it('offers target OAuth for a verified upstream challenge observed through the proxy', async () => {
+    const targetAuthError = new ProxiedAuthenticationError(
+      403,
+      'target',
+      Object.assign(new Error('Upstream MCP target returned forbidden'), { status: 403 })
+    );
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockRejectedValueOnce(new TransportConnectionError([targetAuthError]));
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.auth).toBeDefined();
+    expect(report.sections.auth.details[0].context).toContain('MCP target returned HTTP 403');
+    expect(report.sections.auth.details[0].metadata).toEqual({ route: 'proxy', status: 403 });
   });
 
   it('normalizes report scores from the sections included in that run', () => {

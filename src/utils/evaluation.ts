@@ -1,5 +1,9 @@
 import type { Client, ProtocolEra } from '@modelcontextprotocol/client';
-import { attemptParallelConnections } from './transportDetection';
+import {
+  ProxiedAuthenticationError,
+  attemptParallelConnections,
+  type ProxyAuthenticationSource,
+} from './transportDetection';
 import type { TransportType } from '../types';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
@@ -201,6 +205,37 @@ const getAuthenticationHttpStatus = (
   return getAuthenticationHttpStatus(value.cause, seen);
 };
 
+interface ProxyAuthenticationChallenge {
+  status: 401 | 403;
+  source: ProxyAuthenticationSource;
+}
+
+const getProxyAuthenticationChallenge = (
+  error: unknown,
+  seen = new Set<object>()
+): ProxyAuthenticationChallenge | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  if (error instanceof ProxiedAuthenticationError) {
+    return { status: error.status, source: error.responseSource };
+  }
+
+  const value = error as { cause?: unknown; errors?: readonly unknown[] };
+  let proxyChallenge: ProxyAuthenticationChallenge | undefined;
+  if (Array.isArray(value.errors)) {
+    for (const nestedError of value.errors) {
+      const nestedChallenge = getProxyAuthenticationChallenge(nestedError, seen);
+      if (nestedChallenge?.source === 'target') return nestedChallenge;
+      if (nestedChallenge?.source === 'proxy') proxyChallenge = nestedChallenge;
+    }
+  }
+
+  const causeChallenge = getProxyAuthenticationChallenge(value.cause, seen);
+  if (causeChallenge?.source === 'target') return causeChallenge;
+  return causeChallenge || proxyChallenge;
+};
+
 const isMethodNotFound = (error: unknown): boolean => {
   const value = error as { code?: number; message?: string };
   return value?.code === -32601 || /method not found/i.test(value?.message || '');
@@ -234,17 +269,27 @@ interface EvaluationRouteFailure {
   error: unknown;
   message: string;
   httpStatus?: number;
+  authenticationSource?: ProxyAuthenticationSource;
 }
 
 const makeRouteFailure = (
   route: EvaluationRouteFailure['route'],
   error: unknown
-): EvaluationRouteFailure => ({
-  route,
-  error,
-  message: errorMessage(error),
-  httpStatus: getAuthenticationHttpStatus(error),
-});
+): EvaluationRouteFailure => {
+  const proxyAuthChallenge = route === 'proxy'
+    ? getProxyAuthenticationChallenge(error)
+    : undefined;
+  const httpStatus = proxyAuthChallenge?.status || getAuthenticationHttpStatus(error);
+  return {
+    route,
+    error,
+    message: errorMessage(error),
+    httpStatus,
+    authenticationSource: route === 'direct' && httpStatus
+      ? 'target'
+      : proxyAuthChallenge?.source,
+  };
+};
 
 class EvaluationConnectionError extends Error {
   constructor(readonly failures: readonly EvaluationRouteFailure[]) {
@@ -459,8 +504,8 @@ export async function evaluateServer(
     const message = errorMessage(error);
     const failures = error instanceof EvaluationConnectionError ? error.failures : [];
     const targetAuthFailure = failures.find((failure) => (
-      failure.route === 'direct'
-      && (failure.httpStatus === 401 || failure.httpStatus === 403)
+      (failure.httpStatus === 401 || failure.httpStatus === 403)
+      && failure.authenticationSource === 'target'
     ));
     report.sections.protocol = makeSkippedSection(
       'Core Protocol Adherence',
@@ -502,7 +547,7 @@ export async function evaluateServer(
           text: '⚠ Authenticate with the server and run the report again.',
           context: targetAuthFailure.message,
           metadata: {
-            route: 'direct',
+            route: targetAuthFailure.route,
             status: targetAuthFailure.httpStatus,
           },
         }],

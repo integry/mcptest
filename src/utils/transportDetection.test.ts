@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CANDIDATE_GROUP_TIMEOUT_MS,
+  ProxiedAuthenticationError,
   TransportConnectionError,
   attemptParallelConnections,
   getRequestHeadersForCandidate,
@@ -8,7 +9,10 @@ import {
 } from './transportDetection';
 
 const connectionMocks = vi.hoisted(() => ({
-  connect: async (_transport: { endpoint: URL }) => {},
+  connect: async (_transport: {
+    endpoint: URL;
+    fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  }) => {},
 }));
 
 vi.mock('./mcpClient', () => {
@@ -29,13 +33,21 @@ vi.mock('./mcpClient', () => {
 
 vi.mock('./corsAwareTransport', () => ({
   CorsAwareStreamableHTTPTransport: class {
-    constructor(readonly endpoint: URL) {}
+    readonly fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+    constructor(readonly endpoint: URL, options?: { fetch?: typeof fetch }) {
+      this.fetch = options?.fetch;
+    }
   },
 }));
 
 vi.mock('./corsAwareSseTransport', () => ({
   CorsAwareSSETransport: class {
-    constructor(readonly endpoint: URL) {}
+    readonly fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+    constructor(readonly endpoint: URL, options?: { fetch?: typeof fetch }) {
+      this.fetch = options?.fetch;
+    }
   },
 }));
 
@@ -45,6 +57,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('transport candidate generation', () => {
@@ -215,5 +228,46 @@ describe('transport candidate generation', () => {
       )
     );
     expect(containsTargetError(connectionError)).toBe(true);
+  });
+
+  it('preserves a target authentication challenge observed through the proxy', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
+      status: 403,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch?.(endpoint);
+      throw Object.assign(new Error('Connection rejected'), { status: response?.status });
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
+        undefined,
+        'firebase-jwt',
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    const findProxiedAuthenticationError = (
+      error: unknown
+    ): ProxiedAuthenticationError | undefined => {
+      if (error instanceof ProxiedAuthenticationError) return error;
+      if (error instanceof TransportConnectionError) {
+        for (const nestedError of error.errors) {
+          const match = findProxiedAuthenticationError(nestedError);
+          if (match) return match;
+        }
+      }
+      return undefined;
+    };
+    expect(findProxiedAuthenticationError(connectionError)).toMatchObject({
+      status: 403,
+      responseSource: 'target',
+    });
   });
 });
