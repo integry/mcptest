@@ -1,7 +1,7 @@
 {
   "name": "mcp-sse-tester",
   "version": "1.0.0",
-  "description": "Web-based MCP SSE server testing tool",
+  "description": "Browser-based tester and catalog for remote MCP servers",
   "engines": {
     "node": ">=22.0.0"
   },

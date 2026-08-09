@@ -9,104 +9,122 @@ const TestingGuide: React.FC = () => {
           <h1 className="mb-4">Testing Remote MCP Servers</h1>
 
           <p className="lead">
-            A remote MCP server is only correct if a real client can walk the full protocol against it:
-            negotiate a session, discover capabilities, execute tools, and fail cleanly when given bad
-            input. This guide describes that verification process — first interactively with the
-            playground on this site, then from the command line for scripting and CI.
+            A useful MCP test proves more than reachability. It identifies the protocol era, validates
+            HTTP and JSON-RPC behavior, exercises every advertised capability, checks authentication,
+            and confirms failures are safe and actionable. This guide covers stateless 2026 servers and
+            the stateful 2025 servers still widely deployed.
           </p>
 
-          <h2 className="mt-5">What you are actually verifying</h2>
+          <h2 className="mt-5">Start with the exact endpoint</h2>
           <p>
-            Testing an MCP server is not just "does it respond". A server that answers requests can
-            still break clients by mishandling sessions, advertising capabilities it doesn't implement,
-            returning malformed tool results, or omitting the HTTP behaviors the transport specification
-            requires. A useful test pass covers four layers: the <strong>transport contract</strong>{' '}
-            (HTTP methods, headers, status codes, streaming), the <strong>protocol lifecycle</strong>{' '}
-            (initialization, version negotiation, session management), the <strong>capabilities</strong>{' '}
-            themselves (tools, resources, prompts and their schemas), and <strong>failure behavior</strong>{' '}
-            (invalid input, expired sessions, missing auth). The sections below work through each.
+            Use the complete published MCP URL, including its path, for example{' '}
+            <code>https://your-server.example.com/custom/mcp</code>. mcptest.io tries that exact URL
+            first, then conventional path fallbacks only when needed. A valid auth challenge means the
+            service is reachable but does not, by itself, prove that anonymous MCP negotiation passed.
           </p>
 
-          <h2 className="mt-5">Interactive testing with the playground</h2>
+          <h2 className="mt-5">Interactive testing in the playground</h2>
           <p>
-            Enter your server's MCP endpoint URL (for
-            example <code>https://your-server.example.com/mcp</code>) in the playground and connect.
-            The playground is a spec-compliant Streamable HTTP client running in your browser: it sends
-            the <code>initialize</code> request with the proper <code>Accept</code> headers, completes
-            the handshake with <code>notifications/initialized</code>, captures
-            the <code>Mcp-Session-Id</code> header if your server issues one, and attaches the
-            negotiated <code>MCP-Protocol-Version</code> to every subsequent request. If the endpoint
-            turns out to be a legacy HTTP+SSE server (protocol <code>2024-11-05</code>), it falls back
-            to that transport automatically. Every request and response is shown in the message log, so
-            you can inspect the exact JSON-RPC traffic rather than guessing at what happened.
+            Enter the endpoint and connect. The playground first probes with{' '}
+            <code>server/discover</code>. If the server offers <code>2026-07-28</code>, the client uses
+            stateless, self-describing requests. If the endpoint is 2025-only, it falls back to{' '}
+            <code>initialize</code>, sends <code>notifications/initialized</code>, and preserves a
+            server-issued <code>Mcp-Session-Id</code>. The deprecated HTTP+SSE transport is the last
+            fallback. Authentication responses are surfaced instead of being misclassified as an old
+            protocol.
           </p>
           <p>
-            The first thing to check after connecting is the initialization result: does the server
-            report the protocol version you expect, and does its advertised capability set match what
-            it actually implements? Capability mismatches — advertising <code>resources</code> but
-            returning "method not found" for <code>resources/list</code> — are among the most common
-            interoperability bugs, because most SDK quickstarts enable capabilities wholesale.
+            Check the connection log before testing features. For a stateless server, confirm the
+            negotiated version and that discovery capabilities match reality. For a stateful server,
+            confirm the initialization result, selected version, capabilities, and any session header.
+            The same client API then lists and invokes capabilities in either era.
           </p>
+
+          <h3 className="mt-4">Capabilities</h3>
+          <ul>
+            <li><strong>Tools:</strong> inspect every input schema, call each tool with representative valid input, and compare structured output with its declared schema.</li>
+            <li><strong>Negative tool calls:</strong> try missing required fields, wrong types, bounds, unexpected properties, unusual Unicode, and large inputs. Recoverable tool failures should normally return a tool result with <code>isError: true</code>, not crash the transport.</li>
+            <li><strong>Resources:</strong> list and read several URIs; verify MIME types, text versus base64 content, templates, pagination, and authorization boundaries.</li>
+            <li><strong>Prompts:</strong> list templates, exercise required and optional arguments, and verify the returned messages and roles.</li>
+            <li><strong>2026 caches:</strong> where list results provide <code>ttlMs</code> and <code>cacheScope</code>, verify they reflect the data&apos;s real freshness and privacy boundary.</li>
+            <li><strong>2026 multi-round trips:</strong> exercise calls that return <code>input_required</code>, then verify the retried request carries the expected <code>inputResponses</code> and request state.</li>
+          </ul>
+
+          <h3 className="mt-4">Authentication</h3>
           <p>
-            <strong>Tools.</strong> List the server's tools and review each declared input schema —
-            names, types, required fields, descriptions. The playground renders a form from the schema,
-            which is itself a useful test: if the form looks wrong, an LLM will misuse the tool the same
-            way. Call each tool with representative valid input and confirm the result content is
-            well-formed; if the tool declares an output schema, check the structured result validates
-            against it. Then deliberately send wrong input — missing required fields, wrong types,
-            out-of-range values. Since spec <code>2025-06-18</code> era guidance, input validation
-            failures should come back as <em>tool execution errors</em> (a result
-            with <code>isError: true</code> and a message the model can read and correct from), not as
-            JSON-RPC protocol errors, and definitely not as unhandled exceptions that kill the session.
-          </p>
-          <p>
-            <strong>Resources and prompts.</strong> List resources and read a few, verifying URIs, MIME
-            types, and content encoding (text vs. base64 blobs). If the server exposes resource
-            templates, expand them with edge-case parameters — special characters, very long values.
-            For prompts, fetch each with valid and missing arguments and confirm the returned messages
-            are coherent. If the server declares subscription support, subscribe to a resource and
-            verify a change actually produces a notification; this exercises the server's GET-based SSE
-            stream, which otherwise goes untested.
-          </p>
-          <p>
-            <strong>Streaming.</strong> If your server streams responses (SSE mode) for long-running
-            tools, watch the message log during a slow call: progress notifications should arrive while
-            the call runs, and the final JSON-RPC response should terminate the stream. Test what
-            happens when you cancel mid-call and when the connection drops — a resumable server replays
-            missed events when the client reconnects with <code>Last-Event-ID</code>.
-          </p>
-          <p>
-            <strong>Authorization.</strong> Connecting to a protected server exercises the entire OAuth
-            2.1 flow described in{' '}
-            <Link to="/docs/remote-vs-local">Remote vs. Local MCP Servers</Link>: the playground reacts
-            to your <code>401</code>, discovers the protected resource metadata and authorization
-            server, registers or identifies itself, and runs the authorization code flow with PKCE in a
-            popup. This end-to-end path is hard to test any other way short of writing a client, and it
-            fails loudly at whichever step your server gets wrong — missing metadata, bad issuer URLs,
-            PKCE not supported, or tokens rejected after issuance. Also verify the negative cases: the
-            server must reject requests with no token and with a token issued for a different resource.
-          </p>
-          <p>
-            Once a server checks out, you can save tool calls to a dashboard to re-run them later as a
-            regression check, and share links to specific results with your team.
+            For OAuth servers, start without credentials. A correct <code>401</code> should lead to
+            protected-resource metadata, authorization-server metadata, client identification, and an
+            authorization-code flow with PKCE. After sign-in, verify that the token is accepted only by
+            its intended MCP resource and that insufficient scopes produce a useful{' '}
+            <code>403</code> challenge. For provider-specific servers, select bearer token or API key
+            and verify both valid and invalid credentials.
           </p>
 
           <div className="alert alert-info mt-4" role="alert">
-            <strong>Browser clients need CORS.</strong> Because the playground runs in your browser,
-            your server must send CORS headers: allow the origin, allow
-            the <code>Content-Type</code>, <code>Accept</code>, <code>Authorization</code>,{' '}
-            <code>Mcp-Session-Id</code> and <code>MCP-Protocol-Version</code> request headers, and
-            expose <code>Mcp-Session-Id</code> via <code>Access-Control-Expose-Headers</code> —
-            otherwise the client cannot read the session ID and every request after initialization
-            fails. See <Link to="/docs/troubleshooting">troubleshooting</Link> for a working
-            configuration.
+            <strong>Browser clients need CORS.</strong> Allow <code>Content-Type</code>,{' '}
+            <code>Accept</code>, <code>Authorization</code>, <code>x-api-key</code>,{' '}
+            <code>MCP-Protocol-Version</code>, <code>Mcp-Method</code>, and <code>Mcp-Name</code>. For
+            stateful 2025 support, also allow <code>Mcp-Session-Id</code> and{' '}
+            <code>Last-Event-ID</code>, and expose <code>Mcp-Session-Id</code> in responses.
           </div>
 
-          <h2 className="mt-5">Testing from the command line</h2>
+          <h2 className="mt-5">Command-line check: stateless 2026</h2>
           <p>
-            For scripted checks and CI, curl against the MCP endpoint directly. Initialization is a
-            plain POST — note the dual <code>Accept</code> header the transport requires, and
-            the <code>-i</code> flag so you can see whether the server issues a session ID:
+            A 2026 server must implement <code>server/discover</code>. The client call is optional, but
+            it is the clearest compatibility probe. Include the version and method headers plus the
+            required per-request metadata:
+          </p>
+          <pre className="bg-light p-3 rounded"><code>{`curl -i https://your-server.example.com/mcp \\
+  -H "Content-Type: application/json" \\
+  -H "Accept: application/json, text/event-stream" \\
+  -H "MCP-Protocol-Version: 2026-07-28" \\
+  -H "Mcp-Method: server/discover" \\
+  -d '{
+    "jsonrpc": "2.0",
+    "id": "discover-1",
+    "method": "server/discover",
+    "params": {
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "curl-check",
+          "version": "1.0.0"
+        },
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
+    }
+  }'`}</code></pre>
+          <p>
+            A successful result advertises supported versions and capabilities. There is no initialized
+            notification and no session header to retain. Test an ordinary request independently:
+          </p>
+          <pre className="bg-light p-3 rounded"><code>{`curl -i https://your-server.example.com/mcp \\
+  -H "Content-Type: application/json" \\
+  -H "Accept: application/json, text/event-stream" \\
+  -H "MCP-Protocol-Version: 2026-07-28" \\
+  -H "Mcp-Method: tools/list" \\
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
+    }
+  }'`}</code></pre>
+          <p>
+            For <code>tools/call</code>, add <code>Mcp-Name: &lt;tool-name&gt;</code>. Do the same with the
+            resource URI for <code>resources/read</code> and prompt name for <code>prompts/get</code>.
+            Confirm a missing method header, a missing required name header, or a mismatch between the
+            header and body metadata is rejected rather than silently routed.
+          </p>
+
+          <h2 className="mt-5">Command-line check: stateful 2025</h2>
+          <p>
+            A 2025-only server begins with initialization. Keep <code>-i</code> so the response headers
+            reveal whether it issued a session ID:
           </p>
           <pre className="bg-light p-3 rounded"><code>{`curl -i https://your-server.example.com/mcp \\
   -H "Content-Type: application/json" \\
@@ -118,62 +136,50 @@ const TestingGuide: React.FC = () => {
     "params": {
       "protocolVersion": "2025-11-25",
       "capabilities": {},
-      "clientInfo": { "name": "curl", "version": "1.0" }
+      "clientInfo": { "name": "curl-check", "version": "1.0.0" }
     }
   }'`}</code></pre>
           <p>
-            A compliant server answers with the <code>InitializeResult</code> — either as
-            plain JSON or as an SSE stream containing it — and, if stateful,
-            an <code>Mcp-Session-Id</code> response header. Complete the handshake and then exercise
-            the API, carrying the session ID and protocol version on every request:
+            Complete the handshake and carry the negotiated version and session ID on later requests:
           </p>
-          <pre className="bg-light p-3 rounded"><code>{`# The initialized notification must return 202 Accepted
+          <pre className="bg-light p-3 rounded"><code>{`# Use the Mcp-Session-Id returned above when the server issued one.
 curl -i https://your-server.example.com/mcp \\
   -H "Content-Type: application/json" \\
   -H "Accept: application/json, text/event-stream" \\
-  -H "Mcp-Session-Id: $SESSION_ID" \\
   -H "MCP-Protocol-Version: 2025-11-25" \\
+  -H "Mcp-Session-Id: $SESSION_ID" \\
   -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
 
-# List and call tools
-curl https://your-server.example.com/mcp \\
+curl -i https://your-server.example.com/mcp \\
   -H "Content-Type: application/json" \\
   -H "Accept: application/json, text/event-stream" \\
-  -H "Mcp-Session-Id: $SESSION_ID" \\
   -H "MCP-Protocol-Version: 2025-11-25" \\
+  -H "Mcp-Session-Id: $SESSION_ID" \\
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'`}</code></pre>
           <p>
-            From here, a conformance pass is a handful of assertions you can script:
+            Omit the session header entirely when the server did not issue one; do not send a literal
+            empty value. On a stateful implementation, verify missing IDs return 400, unknown or expired
+            IDs return 404, optional GET and DELETE return either their documented behavior or 405, and
+            concurrent sessions never leak data into one another.
           </p>
+
+          <h2 className="mt-5">Failure and production checks</h2>
           <ul>
-            <li>A request without the session ID (when one was issued) returns <code>400</code>; an unknown or expired session ID returns <code>404</code>.</li>
-            <li>A GET to the endpoint either opens an SSE stream or returns exactly <code>405</code>.</li>
-            <li>An unsupported <code>MCP-Protocol-Version</code> header value returns <code>400</code>.</li>
-            <li>A request with an invalid <code>Origin</code> header returns <code>403</code>.</li>
-            <li>On a protected server, a request without a token returns <code>401</code>, and the protected resource metadata is reachable (via the <code>WWW-Authenticate</code> header or <code>/.well-known/oauth-protected-resource</code>).</li>
-            <li>Malformed JSON and unknown methods produce proper JSON-RPC error responses (<code>-32700</code> parse error, <code>-32601</code> method not found) rather than empty bodies or 500s.</li>
+            <li>Malformed JSON returns JSON-RPC <code>-32700</code>; an unknown method returns <code>-32601</code> instead of an empty body or generic 500.</li>
+            <li>An unsupported version produces a protocol-specific error; 2026 header/body mismatches produce <code>400</code>.</li>
+            <li>An invalid <code>Origin</code> is rejected, while approved browser origins pass preflight with the exact headers they need.</li>
+            <li>Tokens are audience- and scope-checked, secrets are absent from logs and URLs, and rate limits apply at both endpoint and tool level.</li>
+            <li>Concurrent calls, cancellation, proxy timeouts, SSE buffering, deploys, and instance scaling do not corrupt state or duplicate side effects.</li>
+            <li>List ordering and cache hints remain deterministic; schema changes trigger the appropriate refresh behavior.</li>
           </ul>
 
-          <h2 className="mt-5">Beyond correctness</h2>
-          <p>
-            Once the protocol behavior is right, test the things that only show up under real
-            conditions. Run concurrent sessions and confirm state does not leak between them — session
-            isolation bugs are invisible in single-client testing. Feed tools adversarial input (path
-            traversal attempts, injection payloads, megabyte-sized strings, unusual Unicode) and verify
-            they refuse rather than crash. Measure time-to-first-byte on streamed responses, since
-            agents block on it. And check behavior at the edges of infrastructure: many streaming bugs
-            are caused not by the server but by a reverse proxy buffering SSE — worth testing through
-            your production ingress, not just against localhost.
-          </p>
-
           <p className="mt-4">
-            Useful companions to this playground:{' '}
-            <a href="https://github.com/modelcontextprotocol/inspector" target="_blank" rel="noopener noreferrer">MCP Inspector</a>{' '}
-            (the official local debugging UI, which also covers stdio servers), the{' '}
-            <a href="https://modelcontextprotocol.io/legacy/tools/debugging" target="_blank" rel="noopener noreferrer">official debugging guide</a>, and the{' '}
-            <a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener noreferrer">reference server implementations</a>{' '}
-            to compare behavior against. When a test fails and the cause isn't obvious, the{' '}
-            <Link to="/docs/troubleshooting">troubleshooting guide</Link> maps symptoms to causes.
+            The official <a href="https://github.com/modelcontextprotocol/inspector" target="_blank" rel="noopener noreferrer">MCP Inspector</a>{' '}
+            is a useful second client, especially for stdio. For wire-level expectations use the{' '}
+            <a href="https://modelcontextprotocol.io/specification/2026-07-28" target="_blank" rel="noopener noreferrer">current specification</a>{' '}
+            and the TypeScript SDK&apos;s{' '}
+            <a href="https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/protocol-versions.md" target="_blank" rel="noopener noreferrer">protocol-version guide</a>.
+            When a check fails, continue to <Link to="/docs/troubleshooting">troubleshooting</Link>.
           </p>
         </div>
       </div>

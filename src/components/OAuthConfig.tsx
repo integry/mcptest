@@ -45,7 +45,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
       
       1. Register your application with the OAuth provider
       2. Configure the following settings:
-         - Application Name: MCP SSE Tester (or your preferred name)
+         - Application Name: mcptest.io (or your preferred name)
          - Application Type: Public (SPA/Native)
          - Redirect URI: ${window.location.origin}/oauth/callback
          - Grant Type: Authorization Code with PKCE
