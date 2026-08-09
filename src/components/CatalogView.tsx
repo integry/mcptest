@@ -40,17 +40,22 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
   };
 
   return (
-    <div>
-      <div className="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3 pb-2 border-bottom">
-        <div>
-          <h2 className="mb-1">Server Catalog</h2>
+    <div className="catalog-view">
+      <div className="catalog-command-bar">
+        <div className="catalog-command-copy">
+          <span className="interface-eyebrow">Live endpoint index</span>
+          <h2 className="mb-1">Remote MCP server catalog</h2>
           <p className="text-muted mb-0">
-            Showing {filteredServers.length} of {allServers.length} servers
+            Inspect transport, protocol era, and authentication before you connect.
           </p>
+          <div className="catalog-counts" aria-live="polite">
+            <span><strong>{allServers.length}</strong> endpoints indexed</span>
+            <span><strong>{filteredServers.length}</strong> in current view</span>
+          </div>
         </div>
 
-        <div className="d-flex flex-column flex-md-row align-items-stretch align-items-md-end gap-2">
-          <div>
+        <div className="catalog-filters">
+          <div className="catalog-search-field">
             <label className="form-label" htmlFor={`${idPrefix}-catalog-search`}>
               Search servers
             </label>
@@ -64,7 +69,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             />
           </div>
 
-          <div>
+          <div className="catalog-auth-field">
             <label className="form-label d-block" htmlFor={`${idPrefix}-oauth-all`}>
               Authentication
             </label>
@@ -91,7 +96,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             </div>
           </div>
 
-          <div>
+          <div className="catalog-category-field">
             <label className="form-label" htmlFor={`${idPrefix}-catalog-category`}>
               Category
             </label>

@@ -249,6 +249,15 @@ const SideNav: React.FC<SideNavProps> = ({
 
   return (
     <nav className="app-sidenav nav flex-column d-flex flex-grow-1">
+      <div className="sidenav-protocol-card" aria-label="Protocol negotiation status">
+        <div className="sidenav-protocol-heading">
+          <span className="protocol-chip-dot" aria-hidden="true"></span>
+          Auto negotiation
+        </div>
+        <strong>2026 ↔ 2025</strong>
+        <small>Stateless first · stateful fallback</small>
+      </div>
+
       {/* Playground Link */}
       <Link
         to="/"

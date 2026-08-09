@@ -28,7 +28,6 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           <span className="hamburger"></span>
         </button>
 
-        {/* MCP/AI Logo */}
         <span
           className="app-logo"
           onClick={handleHomeClick}
@@ -36,14 +35,23 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           <img src="/logo.png" alt="MCP Logo" width="40" height="40" />
         </span>
         <div className="app-brand-copy" onClick={handleHomeClick}>
+          <span className="app-brand-eyebrow">Model Context Protocol</span>
           <h1 className="app-brand-title">mcptest.io</h1>
           <p className="app-brand-subtitle d-none d-md-block">
-            Test remote MCP servers
+            Remote protocol workbench
           </p>
         </div>
       </div>
 
       <div className="app-header-actions d-none d-md-flex">
+        <div className="protocol-matrix" aria-label="Supported MCP protocol eras">
+          <span className="protocol-matrix-label">Negotiation</span>
+          <span className="protocol-chip protocol-chip-modern">
+            <span className="protocol-chip-dot" aria-hidden="true"></span>
+            2026 stateless
+          </span>
+          <span className="protocol-chip">2025 compatible</span>
+        </div>
         <button
           onClick={onToggleTheme}
           className="btn btn-outline-secondary app-theme-toggle"

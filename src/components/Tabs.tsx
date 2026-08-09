@@ -1,30 +1,6 @@
 import React from 'react';
 import { ConnectionTab } from '../types';
 
-// Add CSS for active tab border override
-const tabStyles = `
-  .active-tab-override::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background-color: var(--body-bg);
-    z-index: 1;
-  }
-`;
-
-// Inject styles
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.textContent = tabStyles;
-  if (!document.head.querySelector('style[data-tab-styles]')) {
-    styleSheet.setAttribute('data-tab-styles', 'true');
-    document.head.appendChild(styleSheet);
-  }
-}
-
 interface TabsProps {
   tabs: ConnectionTab[];
   activeTabId: string;
@@ -55,16 +31,12 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
     >
       {tabs.map(tab => (
         <div key={tab.id} className="nav-item">
-          <a
+          <button
+            type="button"
             className={`nav-link ${activeTabId === tab.id ? 'active active-tab-override' : ''}`}
             onClick={() => onSelectTab(tab.id)}
-            href="#"
             role="tab"
-            style={{
-              borderRadius: '0.375rem 0.375rem 0 0',
-              position: 'relative',
-              zIndex: activeTabId === tab.id ? 2 : 0
-            }}
+            aria-selected={activeTabId === tab.id}
           >
             <span 
               className="me-2"
@@ -91,11 +63,11 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
                 aria-label="Close"
               ></button>
             )}
-          </a>
+          </button>
         </div>
       ))}
       <div className="nav-item">
-        <a className="nav-link" onClick={onNewTab} href="#">+ New</a>
+        <button type="button" className="nav-link" onClick={onNewTab}>+ New</button>
       </div>
     </div>
   );
