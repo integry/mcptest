@@ -54,8 +54,10 @@ const TestingGuide: React.FC = () => {
           <p>
             For OAuth servers, start without credentials. A correct <code>401</code> should lead to
             protected-resource metadata, authorization-server metadata, client identification, and an
-            authorization-code flow with PKCE. After sign-in, verify that the token is accepted only by
-            its intended MCP resource and that insufficient scopes produce a useful{' '}
+            authorization-code flow with PKCE. Verify the client selection order: a pre-registered
+            client first, a Client ID Metadata Document when the server advertises support, and Dynamic
+            Client Registration only as a legacy fallback. After sign-in, verify that the token is
+            accepted only by its intended MCP resource and that insufficient scopes produce a useful{' '}
             <code>403</code> challenge. For provider-specific servers, select bearer token or API key
             and verify both valid and invalid credentials.
           </p>

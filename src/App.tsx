@@ -56,6 +56,12 @@ import {
   getSavedResourceUri,
   SavedResourceCardMigrationError,
 } from './utils/savedCardConnection';
+import {
+  beginOAuthFlow,
+  clearOAuthTokens,
+  isOAuthClientConfigurationRequired,
+  loadOAuthAuthorization,
+} from './utils/oauthFlow';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -1323,9 +1329,8 @@ function App() {
           : undefined;
 
         // --- Connection and Request Logic ---
-        // Check for OAuth token first - use the original card.serverUrl for OAuth token lookup
-        const originalServerHost = new URL(card.serverUrl).host;
-        const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
+        // Use only the exact resource's issuer-bound SDK token.
+        const oauthToken = loadOAuthAuthorization(card.serverUrl)?.accessToken;
         const proxyUrl = import.meta.env.VITE_PROXY_URL;
         const proxySelected = Boolean(
           proxyUrl && (card.useProxy !== undefined ? card.useProxy : !oauthToken)
@@ -1463,142 +1468,38 @@ function App() {
 
   // --- OAuth Re-authorization Function ---
   const handleReauthorizeCard = async (spaceId: string, cardId: string, serverUrl: string) => {
-    console.log(`[Reauthorize] Starting OAuth reauth for card ${cardId} on ${serverUrl}`);
-    
-    // Clear the existing invalid token for this server
-    if (!serverUrl) {
-      console.error('[Reauthorize] No serverUrl provided');
-      return;
-    }
-    const serverHost = new URL(serverUrl).host;
-    sessionStorage.removeItem(`oauth_access_token_${serverHost}`);
-    sessionStorage.removeItem(`oauth_refresh_token_${serverHost}`);
-    
-    // Store the server URL for OAuth callback
-    sessionStorage.setItem('oauth_server_url', serverUrl);
-    
-    // Store cards to refresh after OAuth
-    const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
-    sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
-    
-    // Store all active tabs before OAuth redirect so we can restore them
+    if (!serverUrl) return;
+
+    clearOAuthTokens(serverUrl);
+    sessionStorage.setItem('oauth_cards_to_refresh', JSON.stringify([{ spaceId, cardId }]));
     const activeTabs = localStorage.getItem(TABS_KEY);
-    if (activeTabs) {
-      sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
-      console.log('[OAuth] Stored active tabs before redirect for card reauth');
-    }
-    
-    // Store the current view state to restore after OAuth
-    const currentSpace = spaces.find(s => s.id === spaceId);
+    if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+
+    const currentSpace = spaces.find(space => space.id === spaceId);
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
-      activeView: 'dashboards', // Dashboard view
+      activeView: 'dashboards',
       selectedSpaceId: spaceId,
       selectedSpaceName: currentSpace?.name || '',
       timestamp: Date.now()
     }));
-    console.log('[OAuth] Stored return view state for dashboard:', spaceId, currentSpace?.name);
-    
-    // Start OAuth flow - similar to connection logic
+
     try {
-      const { getOAuthConfig } = await import('./utils/oauthDiscovery');
-      const oauthConfig = await getOAuthConfig(serverUrl);
-      
-      if (oauthConfig) {
-        // Set up OAuth flow
-        const { generatePKCE } = await import('./utils/pkce');
-        const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
-        
-        sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-        sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
-        
-        // First check for server-specific stored client registration
-        let clientId: string | null = null;
-        let clientSecret: string | null = null;
-        
-        const serverClientKey = `oauth_client_${serverHost}`;
-        const storedServerClient = sessionStorage.getItem(serverClientKey);
-        if (storedServerClient) {
-          try {
-            const clientData = JSON.parse(storedServerClient);
-            clientId = clientData.clientId;
-            clientSecret = clientData.clientSecret;
-            console.log('[Reauthorize] Using stored server-specific client registration:', clientId);
-          } catch (e) {
-            console.error('[Reauthorize] Failed to parse stored client data:', e);
-          }
-        }
-        
-        // If no server-specific client found, attempt dynamic registration
-        if (!clientId && oauthConfig.registrationEndpoint) {
-          console.log('[Reauthorize] Attempting dynamic client registration...');
-          
-          try {
-            const { getOrRegisterOAuthClient } = await import('./utils/oauthDiscovery');
-            const clientRegistration = await getOrRegisterOAuthClient(serverUrl, oauthConfig.registrationEndpoint);
-            
-            if (clientRegistration) {
-              clientId = clientRegistration.clientId;
-              clientSecret = clientRegistration.clientSecret || null;
-              console.log('[Reauthorize] Dynamic client registration successful:', clientId);
-              
-              // Note: The client registration is already stored by getOrRegisterOAuthClient
-              // with the server-specific key, so we don't need to store it again
-            }
-          } catch (error) {
-            console.error('[Reauthorize] Dynamic client registration failed:', error);
-          }
-        }
-        
-        // If still no client ID, show config modal
-        if (!clientId) {
-          // Store the server URL and space/card info to continue after OAuth config
-          sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
-            spaceId,
-            cardId,
-            serverUrl
-          }));
-          
-          // Show OAuth configuration modal
-          setNeedsOAuthConfig(true);
-          setOAuthConfigServerUrl(serverUrl);
-          console.log('[Reauthorize] No OAuth client configured and dynamic registration unavailable, showing config modal');
-          return;
-        }
-        
-        // Build authorization URL
-        if (!oauthConfig.authorizationEndpoint) {
-          throw new Error('OAuth authorization endpoint is missing');
-        }
-        
-        let authUrl: URL;
-        try {
-          authUrl = new URL(oauthConfig.authorizationEndpoint);
-        } catch (error) {
-          throw new Error(`Invalid OAuth authorization endpoint URL: ${oauthConfig.authorizationEndpoint}`);
-        }
-        
-        authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('client_id', clientId);
-        authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
-        authUrl.searchParams.set('code_challenge', codeChallenge);
-        authUrl.searchParams.set('code_challenge_method', 'S256');
-        // Use the scope from OAuth configuration, or default to 'read write' for backward compatibility
-        const scope = oauthConfig.scope || 'read write';
-        
-        authUrl.searchParams.set('scope', scope);
-        
-        console.log(`[Reauthorize] Redirecting to OAuth authorization URL: ${authUrl.toString()}`);
-        
-        window.location.href = authUrl.toString();
-      } else {
-        throw new Error('OAuth configuration not available for this server');
-      }
+      const result = await beginOAuthFlow(serverUrl, { forceReauthorization: true });
+      if (result === 'AUTHORIZED') await handleExecuteCard(spaceId, cardId);
     } catch (error) {
-      console.error('[Reauthorize] Failed to start OAuth flow:', error);
-      setNotification({ 
-        message: `Failed to start OAuth reauthorization: ${error instanceof Error ? error.message : 'Unknown error'}`, 
-        show: true 
-      });
+      if (isOAuthClientConfigurationRequired(error)) {
+        sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
+          spaceId,
+          cardId,
+          serverUrl
+        }));
+        setNeedsOAuthConfig(true);
+        setOAuthConfigServerUrl(serverUrl);
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : 'Unknown OAuth error';
+      setNotification({ message: `Failed to start OAuth reauthorization: ${message}`, show: true });
       setTimeout(() => setNotification({ message: '', show: false }), 5000);
     }
   };
@@ -1616,9 +1517,8 @@ function App() {
           
           // Log OAuth token status for debugging
           for (const card of cardsNeedingRefresh) {
-            const serverHost = new URL(card.serverUrl).host;
-            const hasToken = !!sessionStorage.getItem(`oauth_access_token_${serverHost}`);
-            console.log(`[OAuth Refresh Effect] Card ${card.id} - Server: ${serverHost}, Has OAuth token: ${hasToken}`);
+            const hasToken = !!loadOAuthAuthorization(card.serverUrl);
+            console.log(`[OAuth Refresh Effect] Card ${card.id} - Server: ${card.serverUrl}, Has OAuth token: ${hasToken}`);
           }
           
           for (const card of cardsNeedingRefresh) {
@@ -1921,93 +1821,21 @@ function App() {
           onConfigured={async () => {
             setNeedsOAuthConfig(false);
             setOAuthConfigServerUrl(null);
-            
-            // Check if we have pending reauth
+
             const pendingReauth = sessionStorage.getItem('oauth_pending_reauth');
-            if (pendingReauth) {
-              try {
-                const { spaceId, cardId, serverUrl } = JSON.parse(pendingReauth);
-                sessionStorage.removeItem('oauth_pending_reauth');
-                console.log('[OAuth Config] Continuing with reauth after config');
-                
-                // Instead of calling handleReauthorizeCard again which could cause a cycle,
-                // continue with the OAuth flow directly since we now have credentials
-                const { getOAuthConfig } = await import('./utils/oauthDiscovery');
-                const oauthConfig = await getOAuthConfig(serverUrl);
-                
-                if (oauthConfig) {
-                  const { generatePKCE } = await import('./utils/pkce');
-                  const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
-                  const serverHost = new URL(serverUrl).host;
-                  
-                  // Debug logging for PKCE parameters
-                  console.log('[OAuth Config] Generated PKCE parameters:', {
-                    codeVerifier: codeVerifier.substring(0, 10) + '...',
-                    codeChallenge: codeChallenge.substring(0, 10) + '...'
-                  });
-                  
-                  sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-                  sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
-                  
-                  // Store cards to refresh after OAuth
-                  const cardsToRefresh = JSON.stringify([{ spaceId, cardId }]);
-                  sessionStorage.setItem('oauth_cards_to_refresh', cardsToRefresh);
-                  sessionStorage.setItem('oauth_server_url', serverUrl);
-                  
-                  // Store all active tabs before OAuth redirect so we can restore them
-                  const activeTabs = localStorage.getItem(TABS_KEY);
-                  if (activeTabs) {
-                    sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
-                    console.log('[OAuth] Stored active tabs before redirect from OAuthConfig callback');
-                  }
-                  
-                  // Store the current view state to restore after OAuth
-                  const currentSpace = spaces.find(s => s.id === spaceId);
-                  sessionStorage.setItem('oauth_return_view', JSON.stringify({
-                    activeView: 'dashboards', // Dashboard view
-                    selectedSpaceId: spaceId,
-                    selectedSpaceName: currentSpace?.name || '',
-                    timestamp: Date.now()
-                  }));
-                  console.log('[OAuth] Stored return view state for dashboard from config modal:', spaceId, currentSpace?.name);
-                  
-                  // Check for server-specific client first, then fall back to global
-                  let clientId = null;
-                  const serverClientKey = `oauth_client_${serverHost}`;
-                  const storedServerClient = sessionStorage.getItem(serverClientKey);
-                  if (storedServerClient) {
-                    try {
-                      const clientData = JSON.parse(storedServerClient);
-                      clientId = clientData.clientId;
-                      console.log('[OAuth Config] Using server-specific client ID:', clientId);
-                    } catch (e) {
-                      console.error('[OAuth Config] Failed to parse stored client data:', e);
-                    }
-                  }
-                  
-                  // Only proceed if we have a server-specific client ID
-                  if (clientId && oauthConfig.authorizationEndpoint) {
-                    // Build authorization URL
-                    const authUrl = new URL(oauthConfig.authorizationEndpoint);
-                    authUrl.searchParams.set('response_type', 'code');
-                    authUrl.searchParams.set('client_id', clientId);
-                    authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
-                    authUrl.searchParams.set('code_challenge', codeChallenge);
-                    authUrl.searchParams.set('code_challenge_method', 'S256');
-                    // Use the scope from OAuth configuration
-                    const scope = oauthConfig.scope || 'openid profile email';
-                    authUrl.searchParams.set('scope', scope);
-                    authUrl.searchParams.set('state', uuidv4());
-                    
-                    console.log('[OAuth Config] Authorization URL:', authUrl.toString());
-                    console.log('[OAuth Config] Redirecting to authorization URL');
-                    window.location.href = authUrl.toString();
-                  }
-                }
-              } catch (error) {
-                console.error('[OAuth Config] Failed to continue reauth:', error);
-                showNotification('Failed to continue OAuth authorization. Please try again.');
-              }
+            if (!pendingReauth) return;
+
+            try {
+              const { spaceId, cardId, serverUrl } = JSON.parse(pendingReauth);
+              sessionStorage.removeItem('oauth_pending_reauth');
+              await handleReauthorizeCard(spaceId, cardId, serverUrl);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Unknown OAuth error';
+              setNotification({
+                message: `Failed to continue OAuth authorization: ${message}`,
+                show: true
+              });
+              setTimeout(() => setNotification({ message: '', show: false }), 5000);
             }
           }}
           onCancel={() => {

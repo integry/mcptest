@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getOAuthServiceName } from '../utils/oauthDiscovery';
+import { loadManualOAuthClient, saveManualOAuthClient } from '../utils/oauthFlow';
 
 interface OAuthConfigProps {
   serverUrl: string;
@@ -11,27 +11,18 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [showSecret, setShowSecret] = useState(false);
-  const [serviceName, setServiceName] = useState<string | null>(null);
   const [serviceGuide, setServiceGuide] = useState<string>('');
+  const [configurationError, setConfigurationError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load existing server-specific credentials if any
-    const serverHost = new URL(serverUrl).host;
-    const dynamicClientKey = `oauth_client_${serverHost}`;
-    const storedClient = sessionStorage.getItem(dynamicClientKey);
-    
+    setClientId('');
+    setClientSecret('');
+
+    // Only load credentials bound to the authorization server discovered for this resource.
+    const storedClient = loadManualOAuthClient(serverUrl);
     if (storedClient) {
-      try {
-        const clientData = JSON.parse(storedClient);
-        if (clientData.clientId) {
-          setClientId(clientData.clientId);
-        }
-        if (clientData.clientSecret) {
-          setClientSecret(clientData.clientSecret);
-        }
-      } catch (e) {
-        console.error('[OAuth Config] Failed to parse stored client data:', e);
-      }
+      setClientId(storedClient.clientId);
+      setClientSecret(storedClient.clientSecret || '');
     }
     
     // Always use generic guide for OAuth service
@@ -41,7 +32,8 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
     setServiceGuide(`
       OAuth 2.1 Authentication Required for ${serviceDomain}:
       
-      This MCP server requires OAuth 2.1 authentication with PKCE.
+      Automatic Client ID Metadata and Dynamic Client Registration are unavailable for this server.
+      Register mcptest.io as an OAuth 2.1 public client with PKCE.
       
       1. Register your application with the OAuth provider
       2. Configure the following settings:
@@ -55,7 +47,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
          - Client Secret (optional for public clients)
       4. Enter the credentials below to continue
       
-      Note: This implementation follows OAuth 2.1 best practices with mandatory PKCE.
+      The client registration will be bound to the authorization-server issuer discovered for this MCP resource.
     `);
   }, [serverUrl]);
 
@@ -65,21 +57,15 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
       return;
     }
     
-    // Save credentials to session storage per server
-    const serverHost = new URL(serverUrl).host;
-    const dynamicClientKey = `oauth_client_${serverHost}`;
-    
-    const clientData = {
-      clientId,
-      clientSecret: clientSecret || undefined,
-      registeredAt: new Date().toISOString(),
-      registeredManually: true
-    };
-    
-    sessionStorage.setItem(dynamicClientKey, JSON.stringify(clientData));
-    console.log(`[OAuth Config] Saved server-specific credentials for ${serverHost}`);
-    
-    onConfigured();
+    try {
+      saveManualOAuthClient(serverUrl, clientId, clientSecret || undefined);
+      setConfigurationError(null);
+      onConfigured();
+    } catch (error) {
+      setConfigurationError(
+        error instanceof Error ? error.message : 'Could not save the OAuth client configuration.'
+      );
+    }
   };
 
   return (
@@ -98,6 +84,10 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
               <p className="mb-2">Please provide your OAuth client credentials to connect to {new URL(serverUrl).host}.</p>
               <p className="mb-0">These credentials will be stored specifically for this server. Each server requires its own OAuth client credentials.</p>
             </div>
+
+            {configurationError && (
+              <div className="alert alert-danger" role="alert">{configurationError}</div>
+            )}
             
             <div className="alert alert-info">
               <h6 className="alert-heading">Setup Instructions</h6>

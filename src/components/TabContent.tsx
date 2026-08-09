@@ -925,79 +925,26 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           serverUrl={oauthConfigServerUrl}
           onConfigured={async () => {
             clearOAuthConfigNeed();
-            // After OAuth configuration, continue with the authorization flow
-            // instead of retrying the entire connection which could cause cycling
             try {
-              const { getOAuthConfig } = await import('../utils/oauthDiscovery');
-              const { generatePKCE } = await import('../utils/pkce');
-              const { v4: uuidv4 } = await import('uuid');
-              
-              const oauthConfig = await getOAuthConfig(oauthConfigServerUrl);
-              
-              if (oauthConfig) {
-                const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
-                const serverHost = new URL(oauthConfigServerUrl).host;
-                
-                sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-                sessionStorage.setItem('oauth_server_url', oauthConfigServerUrl);
-                sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
-                
-                // Store all active tabs before OAuth redirect so we can restore them
-                const activeTabs = localStorage.getItem('mcpConnectionTabs');
-                if (activeTabs) {
-                  sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
-                  console.log('[OAuth] Stored active tabs before redirect from TabContent');
-                }
-                
-                // Store return to playground view
-                sessionStorage.setItem('oauth_return_view', JSON.stringify({
-                  activeView: 'playground',
-                  activeTabId: tab.id,
-                  timestamp: Date.now()
-                }));
-                
-                // Get server-specific client credentials
-                const dynamicClientKey = `oauth_client_${serverHost}`;
-                const storedClientData = sessionStorage.getItem(dynamicClientKey);
-                let clientId: string | null = null;
-                
-                if (storedClientData) {
-                  try {
-                    const clientData = JSON.parse(storedClientData);
-                    clientId = clientData.clientId;
-                  } catch (e) {
-                    console.error('[OAuth] Failed to parse stored client data:', e);
-                  }
-                }
-                
-                if (clientId && oauthConfig.authorizationEndpoint) {
-                  // Build authorization URL
-                  const authUrl = new URL(oauthConfig.authorizationEndpoint);
-                  authUrl.searchParams.set('response_type', 'code');
-                  authUrl.searchParams.set('client_id', clientId);
-                  authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
-                  authUrl.searchParams.set('code_challenge', codeChallenge);
-                  authUrl.searchParams.set('code_challenge_method', 'S256');
-                  authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
-                  authUrl.searchParams.set('state', uuidv4());
-                  
-                  console.log('[OAuth Config] Redirecting to authorization URL');
-                  addLogEntry({ 
-                    type: 'info', 
-                    data: '🔐 OAuth credentials configured. Redirecting to authorization...' 
-                  });
-                  window.location.href = authUrl.toString();
-                  return;
-                }
-              }
-              
-              // If something went wrong, fallback to retry connection
-              handleConnectWrapper(undefined, tab.useProxy);
+              const activeTabs = localStorage.getItem('mcpConnectionTabs');
+              if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+              sessionStorage.setItem('oauth_tab_id', tab.id);
+              sessionStorage.setItem('oauth_return_view', JSON.stringify({
+                activeView: 'playground',
+                activeTabId: tab.id,
+                timestamp: Date.now()
+              }));
+
+              addLogEntry({
+                type: 'info',
+                data: '🔐 OAuth client configured. Continuing secure authorization...'
+              });
+              handleConnectWrapper();
             } catch (error) {
               console.error('[OAuth Config] Failed to continue auth flow:', error);
-              addLogEntry({ 
-                type: 'error', 
-                data: 'Failed to continue OAuth authorization. Please try connecting again.' 
+              addLogEntry({
+                type: 'error',
+                data: `Failed to continue OAuth authorization: ${error instanceof Error ? error.message : 'Unknown error'}`
               });
             }
           }}

@@ -169,7 +169,9 @@ app.use(cors({
             If login succeeds but the MCP endpoint rejects the token, compare issuer, audience,
             resource URI, expiry, and scopes. The 2026 authorization flow also validates the returned
             authorization issuer and must not reuse client credentials across issuers. Prefer Client ID
-            Metadata Documents for new clients; Dynamic Client Registration is deprecated in 2026.
+            Metadata Documents for new clients; Dynamic Client Registration is deprecated in 2026 and
+            should remain only as a compatibility fallback. mcptest.io asks for a manually
+            pre-registered client only when neither standardized automatic option succeeds.
           </p>
 
           <h2 className="mt-5">JSON-RPC and capability errors</h2>

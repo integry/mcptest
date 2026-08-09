@@ -3,6 +3,7 @@ import { Space, SpaceCard } from '../types';
 import McpResponseDisplay from './McpResponseDisplay'; // Import the new display component
 import { getResultShareUrl } from '../utils/urlUtils';
 import { useShare } from '../hooks/useShare';
+import { loadOAuthAuthorization } from '../utils/oauthFlow';
 
 // --- OAuth Status Indicator Component ---
 interface OAuthStatusIndicatorProps {
@@ -15,24 +16,18 @@ const OAuthStatusIndicator: React.FC<OAuthStatusIndicatorProps> = ({ serverUrl }
   const [hasOAuthToken, setHasOAuthToken] = useState(false);
 
   useEffect(() => {
-    // Check if we have an OAuth token for this server
-    const serverHost = new URL(serverUrl).host;
-    const token = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
-    setHasOAuthToken(!!token);
+    const authorization = loadOAuthAuthorization(serverUrl);
+    setHasOAuthToken(!!authorization);
 
     // If we have a token, try to fetch user info
-    if (token) {
+    if (authorization) {
       const fetchUserInfo = async () => {
         try {
-          const storedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
-          if (!storedEndpoints) return;
+          if (!authorization.userInfoEndpoint) return;
 
-          const oauthEndpoints = JSON.parse(storedEndpoints);
-          if (!oauthEndpoints.userinfo_endpoint) return;
-
-          const response = await fetch(oauthEndpoints.userinfo_endpoint, {
+          const response = await fetch(authorization.userInfoEndpoint, {
             headers: {
-              'Authorization': `Bearer ${token}`,
+              'Authorization': `Bearer ${authorization.accessToken}`,
               'Accept': 'application/json'
             }
           });

@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const connectionMocks = vi.hoisted(() => ({ attempt: vi.fn() }));
+const oauthMocks = vi.hoisted(() => ({ begin: vi.fn() }));
 
 vi.mock('../utils/transportDetection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/transportDetection')>();
@@ -15,14 +16,13 @@ vi.mock('../context/AuthContext', () => ({
 
 vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
 
-vi.mock('../utils/oauthDiscovery', () => ({
-  getOAuthConfig: vi.fn(),
-  getOAuthServiceName: vi.fn(),
-  getOrRegisterOAuthClient: vi.fn(),
-  isOAuthService: vi.fn(() => false),
-}));
+vi.mock('../utils/oauthFlow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/oauthFlow')>();
+  return { ...actual, beginOAuthFlow: oauthMocks.begin };
+});
 
 import { useConnection } from './useConnection';
+import { BrowserOAuthProvider } from '../utils/oauthFlow';
 
 beforeAll(() => {
   (
@@ -30,14 +30,14 @@ beforeAll(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
-const renderConnectionHook = () => {
+const renderConnectionHook = (useOAuth = false) => {
   let connection: ReturnType<typeof useConnection> | undefined;
   const container = document.createElement('div');
   const root: Root = createRoot(container);
   const addLogEntry = vi.fn();
 
   const Probe = () => {
-    connection = useConnection(addLogEntry, false, false);
+    connection = useConnection(addLogEntry, false, useOAuth);
     return null;
   };
 
@@ -62,6 +62,7 @@ describe('connection URL finalization', () => {
     localStorage.clear();
     sessionStorage.clear();
     connectionMocks.attempt.mockReset();
+    oauthMocks.begin.mockReset();
   });
 
   afterEach(() => {
@@ -101,6 +102,66 @@ describe('connection URL finalization', () => {
     expect(JSON.parse(localStorage.getItem('mcpRecentServers') || '[]')).toContainEqual({
       url: endpoint.toString(),
     });
+    view.unmount();
+  });
+
+  it('authorizes through the SDK and uses the token for the requested endpoint', async () => {
+    const endpoint = 'https://secure.example/custom/mcp';
+    oauthMocks.begin.mockImplementationOnce(async () => {
+      const issuer = 'https://auth-secure.example/';
+      const provider = new BrowserOAuthProvider(endpoint);
+      provider.saveDiscoveryState({
+        authorizationServerUrl: issuer,
+        authorizationServerMetadata: {
+          issuer,
+          authorization_endpoint: `${issuer}authorize`,
+          token_endpoint: `${issuer}token`,
+          response_types_supported: ['code'],
+        },
+      });
+      provider.saveTokens(
+        { access_token: 'sdk-token', token_type: 'Bearer', issuer },
+        { issuer }
+      );
+
+      const otherIssuer = 'https://auth-other.example/';
+      const otherProvider = new BrowserOAuthProvider('https://secure.example/other/mcp');
+      otherProvider.saveDiscoveryState({
+        authorizationServerUrl: otherIssuer,
+        authorizationServerMetadata: {
+          issuer: otherIssuer,
+          authorization_endpoint: `${otherIssuer}authorize`,
+          token_endpoint: `${otherIssuer}token`,
+          response_types_supported: ['code'],
+        },
+      });
+      otherProvider.saveTokens(
+        { access_token: 'other-resource-token', token_type: 'Bearer', issuer: otherIssuer },
+        { issuer: otherIssuer }
+      );
+      return 'AUTHORIZED';
+    });
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client: { close: vi.fn().mockResolvedValue(undefined) },
+      url: endpoint,
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+    const view = renderConnectionHook(true);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint);
+    expect(connectionMocks.attempt).toHaveBeenCalledWith(
+      endpoint,
+      expect.anything(),
+      'sdk-token',
+      undefined,
+      false
+    );
+    expect(view.connection.connectionStatus).toBe('Connected');
     view.unmount();
   });
 });
