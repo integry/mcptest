@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Web-based MCP SSE server testing tool",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "predev": "node scripts/generate-version.js",

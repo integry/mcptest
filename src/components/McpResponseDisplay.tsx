@@ -4,6 +4,8 @@ import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { LogEntry } from '../types'; // Import the full LogEntry type
 
+const markdownRemarkPlugins = [remarkGfm, remarkBreaks];
+
 interface McpResponseDisplayProps {
   logEntry: Partial<LogEntry>; // Accept partial LogEntry, as cards won't have all fields
   className?: string; // Optional additional class names
@@ -137,7 +139,7 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
 
   const renderedMarkdown = markdownContent !== null ? (
     <div className="event-data markdown-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} skipHtml>
+      <ReactMarkdown remarkPlugins={markdownRemarkPlugins} skipHtml>
         {markdownContent}
       </ReactMarkdown>
     </div>

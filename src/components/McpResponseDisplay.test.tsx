@@ -35,34 +35,22 @@ describe('McpResponseDisplay markdown security', () => {
     expect(markup).not.toContain('vbscript:');
   });
 
-  it('preserves single newlines in plain-text MCP results', () => {
+  it('preserves each single newline in multiline plain-text MCP results', () => {
     const markup = renderToStaticMarkup(
       <McpResponseDisplay
         logEntry={{
           type: 'resource_result',
-          data: [{ type: 'text', text: 'first line\nsecond line' }],
-        }}
-        showTimestamp={false}
-      />
-    );
-
-    expect(markup).toContain('first line<br/>\nsecond line');
-  });
-
-  it('preserves single line breaks in plain-text results', () => {
-    const markup = renderToStaticMarkup(
-      <McpResponseDisplay
-        logEntry={{
-          type: 'tool_result',
           data: [{
             type: 'text',
-            text: 'First line\nSecond line',
+            text: 'first line\nsecond line\nthird line',
           }],
         }}
         showTimestamp={false}
       />
     );
 
-    expect(markup).toContain('<p>First line<br/>\nSecond line</p>');
+    expect(markup).toContain(
+      '<p>first line<br/>\nsecond line<br/>\nthird line</p>'
+    );
   });
 });
