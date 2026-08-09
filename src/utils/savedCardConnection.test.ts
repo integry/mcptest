@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getSavedCardConnectionPlan } from './savedCardConnection';
+import {
+  getSavedCardConnectionPlan,
+  getSavedResourceUri,
+} from './savedCardConnection';
 
 describe('saved dashboard card connections', () => {
   it('preserves an exact custom endpoint for direct OAuth connections', () => {
@@ -49,5 +52,28 @@ describe('saved dashboard card connections', () => {
       useProxy: true,
       proxyUrl: 'https://proxy.mcptest.test/',
     })).toThrow('Sign in is required');
+  });
+
+  it('expands a parameterized saved resource card into a resources/read URI', () => {
+    const uri = getSavedResourceUri(
+      'mcp://documents/{tenant}/{documentId}{?format,locale}',
+      {
+        tenant: 'Acme Corp',
+        documentId: 'policies/2026',
+        format: 'application/json',
+        locale: 'en-US',
+      }
+    );
+
+    expect(uri).toBe(
+      'mcp://documents/Acme%20Corp/policies%2F2026?format=application%2Fjson&locale=en-US'
+    );
+  });
+
+  it('surfaces a migration error when legacy resource parameters have no URI template', () => {
+    expect(() => getSavedResourceUri(
+      'mcp://documents/policies/2026',
+      { tenant: 'Acme Corp' }
+    )).toThrow(/saved resource card migration required.*not a URI template/i);
   });
 });

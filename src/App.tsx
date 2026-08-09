@@ -46,7 +46,11 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { attemptParallelConnections } from './utils/transportDetection';
-import { getSavedCardConnectionPlan } from './utils/savedCardConnection';
+import {
+  getSavedCardConnectionPlan,
+  getSavedResourceUri,
+  SavedResourceCardMigrationError,
+} from './utils/savedCardConnection';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -1232,6 +1236,9 @@ function App() {
       try {
         console.log(`[Execute Card ${cardId} Attempt ${attempt}/${MAX_RETRIES}] Starting execution. Card URL: ${card.serverUrl}`);
         lastError = null; // Clear last error on new attempt
+        const resourceUri = card.type === 'resource'
+          ? getSavedResourceUri(card.name, card.params)
+          : undefined;
 
         // --- Connection and Request Logic ---
         // Check for OAuth token first - use the original card.serverUrl for OAuth token lookup
@@ -1278,8 +1285,8 @@ function App() {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Tool result received.`);
             setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null }));
         } else if (card.type === 'resource') {
-            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${card.name}`);
-            result = await tempClient.readResource({ uri: card.name });
+            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${resourceUri}`);
+            result = await tempClient.readResource({ uri: resourceUri as string });
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
             setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.contents, responseType: 'resource_result', error: null }));
         }
@@ -1321,12 +1328,14 @@ function App() {
           });
           
           // Mark error with auth information for UI handling
-          const errorWithAuthInfo = {
-            ...errorDetails,
-            isAuthError: is401Error,
-            serverUrl: card.serverUrl,
-            isProxied: shouldUseProxy
-          };
+          const errorWithAuthInfo = err instanceof SavedResourceCardMigrationError
+            ? errorDetails
+            : {
+                ...errorDetails,
+                isAuthError: is401Error,
+                serverUrl: card.serverUrl,
+                isProxied: shouldUseProxy
+              };
           
           setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
           break; // Exit the loop

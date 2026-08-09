@@ -96,4 +96,29 @@ describe('proxy target credential forwarding', () => {
     expect(proxyResponse.status).toBe(400);
     expect(proxyResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
   });
+
+  it('allows caller-provided custom target headers during preflight', async () => {
+    const response = await proxyWorker.fetch(
+      new Request('https://proxy.mcptest.test/', {
+        method: 'OPTIONS',
+        headers: {
+          'Access-Control-Request-Headers': 'content-type, x-tenant-id, x-vendor-auth',
+        },
+      }),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+    const allowedHeaders = response.headers
+      .get('access-control-allow-headers')
+      ?.toLowerCase()
+      .split(', ');
+
+    expect(response.status).toBe(200);
+    expect(allowedHeaders).toEqual(expect.arrayContaining([
+      'authorization',
+      'mcp-protocol-version',
+      'x-mcp-authorization',
+      'x-tenant-id',
+      'x-vendor-auth',
+    ]));
+  });
 });
