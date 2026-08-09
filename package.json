@@ -8,7 +8,8 @@
     "test": "vitest run",
     "validate-catalog": "node scripts/validate-catalog.js",
     "prebuild": "node scripts/generate-version.js",
-    "build": "vite build",
+    "build": "vite build && npm run generate-seo",
+    "generate-seo": "node scripts/generate-seo-pages.js",
     "deploy-worker": "wrangler deploy"
   },
   "dependencies": {

@@ -6,7 +6,7 @@ import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog';
+  activeView: 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog' | 'server-profile';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -261,7 +261,7 @@ const SideNav: React.FC<SideNavProps> = ({
       {/* Server Catalog Link */}
       <Link
         to="/catalog"
-        className={`nav-link ${activeView === 'catalog' ? 'active fw-bold' : ''}`}
+        className={`nav-link ${activeView === 'catalog' || activeView === 'server-profile' ? 'active fw-bold' : ''}`}
         onClick={handleCatalogClick}
       >
         <i className="bi bi-grid me-2"></i> Server Catalog

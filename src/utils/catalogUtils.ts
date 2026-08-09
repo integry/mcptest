@@ -49,6 +49,7 @@ export const getCatalogServers = (): CatalogServer[] => {
 
     return {
       ...seed,
+      declaredTransport: seed.transport,
       status: validation?.status ?? 'unknown',
       transport: isValidationTransport(validation?.transport)
         ? validation.transport
@@ -61,6 +62,10 @@ export const getCatalogServers = (): CatalogServer[] => {
       validationMessage: validation?.message,
     };
   });
+};
+
+export const getCatalogServerById = (serverId: string): CatalogServer | undefined => {
+  return getCatalogServers().find((server) => server.id === serverId);
 };
 
 export const filterCatalogServers = (
