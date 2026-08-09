@@ -788,104 +788,106 @@ export async function evaluateServer(
     return report;
   }
 
-  const durationMs = Date.now() - connectionStartedAt;
-  const protocolLabel = connection.protocolEra === 'modern'
-    ? 'stateless server/discover lifecycle'
-    : 'stateful initialize lifecycle';
-  report.sections.protocol = {
-    name: 'Core Protocol Adherence',
-    description: 'Validates MCP lifecycle and JSON-RPC negotiation',
-    score: 15,
-    maxScore: 15,
-    details: [
-      {
-        text: `✓ Negotiated the ${protocolLabel}`,
-        context: connection.protocolEra === 'modern'
-          ? 'The server accepted MCP 2026 self-describing requests without a transport session.'
-          : 'The server completed the 2025-compatible initialize and initialized exchange.',
-        metadata: {
-          protocolEra: connection.protocolEra,
-          protocolVersion: connection.protocolVersion,
-          endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
-          route: connection.usedProxy ? 'authenticated proxy' : 'direct',
-        },
-      },
-      {
-        text: '✓ JSON-RPC messages passed official SDK validation',
-        context: 'Successful SDK negotiation verifies the JSON-RPC envelope and lifecycle response schemas.',
-      },
-    ],
-  };
-  onProgress(`Negotiated ${connection.protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''}.`);
-
-  onProgress('Exercising tools, resources, and prompts discovery...');
-  const capabilityEvaluation = await evaluateCapabilities(connection);
-  report.sections.capabilities = capabilityEvaluation.section;
-  if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
-    report.authenticationUrl = capabilityEvaluation.targetAuthenticationFailures[0].candidateUrl
-      || getEvaluationTargetUrl(connection.url, connection.usedProxy);
-    report.sections.auth = {
-      name: 'Authentication Required',
-      description: 'The MCP endpoint rejected standardized capability requests',
-      score: 0,
-      maxScore: 1,
-      details: capabilityEvaluation.targetAuthenticationFailures.map((failure) => ({
-        text: `⚠ Authenticate with the server and retry ${failure.method}.`,
-        context: failure.message,
-        metadata: {
-          method: failure.method,
-          route: failure.route,
-          status: failure.httpStatus,
-          authenticationSource: failure.authenticationSource,
-          endpoint: failure.candidateUrl || report.authenticationUrl,
-        },
-      })),
-    };
-  }
-
-  const modernTransport = connection.transportType === 'streamable-http';
-  report.sections.transport = {
-    name: 'Transport Layer Modernity',
-    description: 'Identifies Streamable HTTP or deprecated HTTP+SSE',
-    score: modernTransport ? 15 : 6,
-    maxScore: 15,
-    details: [{
-      text: modernTransport
-        ? '✓ Streamable HTTP negotiated successfully'
-        : '⚠ Deprecated HTTP+SSE negotiated successfully',
-      context: modernTransport
-        ? 'Streamable HTTP uses POST with JSON or per-request SSE responses and supports both MCP lifecycle eras.'
-        : 'The two-endpoint HTTP+SSE transport remains compatible but is deprecated in MCP 2026.',
-      metadata: {
-        transportType: connection.transportType,
-        endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
-        protocolEra: connection.protocolEra,
-      },
-    }],
-  };
-
-  onProgress('Checking OAuth security metadata...');
-  const securitySection = await evaluateSecurityPosture(connection, firebaseToken);
-  if (securitySection) {
-    report.sections.security = securitySection;
-  } else {
-    onProgress('OAuth security metadata is unavailable; excluding it from scoring.');
-  }
-
-  onProgress('Confirming direct-browser MCP accessibility at the negotiated endpoint...');
-  report.sections.cors = evaluateBrowserAccessibility(connection, Boolean(oauthToken));
-
-  report.sections.performance = performanceSection(durationMs);
-  report.finalScore = Object.entries(report.sections)
-    .filter(([key]) => key !== 'auth')
-    .reduce((total, [, section]) => total + section.score, 0);
-
   try {
-    await connection.client.close();
-  } catch (error) {
-    console.error('[Evaluation] Failed to close MCP client:', error);
-  }
+    const durationMs = Date.now() - connectionStartedAt;
+    const protocolLabel = connection.protocolEra === 'modern'
+      ? 'stateless server/discover lifecycle'
+      : 'stateful initialize lifecycle';
+    report.sections.protocol = {
+      name: 'Core Protocol Adherence',
+      description: 'Validates MCP lifecycle and JSON-RPC negotiation',
+      score: 15,
+      maxScore: 15,
+      details: [
+        {
+          text: `✓ Negotiated the ${protocolLabel}`,
+          context: connection.protocolEra === 'modern'
+            ? 'The server accepted MCP 2026 self-describing requests without a transport session.'
+            : 'The server completed the 2025-compatible initialize and initialized exchange.',
+          metadata: {
+            protocolEra: connection.protocolEra,
+            protocolVersion: connection.protocolVersion,
+            endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
+            route: connection.usedProxy ? 'authenticated proxy' : 'direct',
+          },
+        },
+        {
+          text: '✓ JSON-RPC messages passed official SDK validation',
+          context: 'Successful SDK negotiation verifies the JSON-RPC envelope and lifecycle response schemas.',
+        },
+      ],
+    };
+    onProgress(`Negotiated ${connection.protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''}.`);
 
-  onProgress('Evaluation complete.');
-  return report;
+    onProgress('Exercising tools, resources, and prompts discovery...');
+    const capabilityEvaluation = await evaluateCapabilities(connection);
+    report.sections.capabilities = capabilityEvaluation.section;
+    if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
+      report.authenticationUrl = capabilityEvaluation.targetAuthenticationFailures[0].candidateUrl
+        || getEvaluationTargetUrl(connection.url, connection.usedProxy);
+      report.sections.auth = {
+        name: 'Authentication Required',
+        description: 'The MCP endpoint rejected standardized capability requests',
+        score: 0,
+        maxScore: 1,
+        details: capabilityEvaluation.targetAuthenticationFailures.map((failure) => ({
+          text: `⚠ Authenticate with the server and retry ${failure.method}.`,
+          context: failure.message,
+          metadata: {
+            method: failure.method,
+            route: failure.route,
+            status: failure.httpStatus,
+            authenticationSource: failure.authenticationSource,
+            endpoint: failure.candidateUrl || report.authenticationUrl,
+          },
+        })),
+      };
+    }
+
+    const modernTransport = connection.transportType === 'streamable-http';
+    report.sections.transport = {
+      name: 'Transport Layer Modernity',
+      description: 'Identifies Streamable HTTP or deprecated HTTP+SSE',
+      score: modernTransport ? 15 : 6,
+      maxScore: 15,
+      details: [{
+        text: modernTransport
+          ? '✓ Streamable HTTP negotiated successfully'
+          : '⚠ Deprecated HTTP+SSE negotiated successfully',
+        context: modernTransport
+          ? 'Streamable HTTP uses POST with JSON or per-request SSE responses and supports both MCP lifecycle eras.'
+          : 'The two-endpoint HTTP+SSE transport remains compatible but is deprecated in MCP 2026.',
+        metadata: {
+          transportType: connection.transportType,
+          endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
+          protocolEra: connection.protocolEra,
+        },
+      }],
+    };
+
+    onProgress('Checking OAuth security metadata...');
+    const securitySection = await evaluateSecurityPosture(connection, firebaseToken);
+    if (securitySection) {
+      report.sections.security = securitySection;
+    } else {
+      onProgress('OAuth security metadata is unavailable; excluding it from scoring.');
+    }
+
+    onProgress('Confirming direct-browser MCP accessibility at the negotiated endpoint...');
+    report.sections.cors = evaluateBrowserAccessibility(connection, Boolean(oauthToken));
+
+    report.sections.performance = performanceSection(durationMs);
+    report.finalScore = Object.entries(report.sections)
+      .filter(([key]) => key !== 'auth')
+      .reduce((total, [, section]) => total + section.score, 0);
+
+    onProgress('Evaluation complete.');
+    return report;
+  } finally {
+    try {
+      await connection.client.close();
+    } catch (error) {
+      console.error('[Evaluation] Failed to close MCP client:', error);
+    }
+  }
 }

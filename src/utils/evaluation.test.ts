@@ -132,6 +132,27 @@ describe('dual-era server evaluation', () => {
     expect(client.close).toHaveBeenCalledOnce();
   });
 
+  it('closes the connected client when a later evaluation step throws', async () => {
+    const client = createClient();
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/custom/endpoint',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+      takeAuthenticationChallenge: vi.fn(() => {
+        throw new Error('Observer failed');
+      }),
+    });
+
+    await expect(evaluateServer(
+      'https://mcp.example/custom/endpoint',
+      'firebase-jwt',
+      vi.fn()
+    )).rejects.toThrow('Observer failed');
+    expect(client.close).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ['URL-valued', 'https://tenant.example/account'],
     ['ordinary', 'production'],

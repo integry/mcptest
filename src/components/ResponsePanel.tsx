@@ -49,7 +49,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
   const AddToSpaceControl: React.FC<{ logEntry: LogEntry }> = ({ logEntry }) => {
     const contextType = logEntry.type.toLowerCase() === 'tool_result' ? 'tool' : 'resource';
     // Use callContext if available, otherwise fallback to current selection
-    const contextName = logEntry.callContext?.name ?? (contextType === 'tool' ? selectedTool?.name : selectedResourceTemplate?.uri);
+    const contextName = logEntry.callContext?.name ?? (contextType === 'tool' ? selectedTool?.name : selectedResourceTemplate?.uriTemplate);
     const contextParams = logEntry.callContext?.params ?? (contextType === 'tool' ? toolParams : resourceArgs);
     const contextServerUrl = logEntry.callContext?.serverUrl ?? serverUrl;
 

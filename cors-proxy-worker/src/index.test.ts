@@ -121,4 +121,21 @@ describe('proxy target credential forwarding', () => {
       'x-vendor-auth',
     ]));
   });
+
+  it.each([
+    ['too many names', Array.from({ length: 65 }, (_, index) => `x-header-${index}`).join(',')],
+    ['an oversized name', `x-${'a'.repeat(127)}`],
+    ['an oversized value', `x-${'a'.repeat(2048)}`],
+  ])('rejects %s in reflected preflight headers', async (_, requestedHeaders) => {
+    const response = await proxyWorker.fetch(
+      new Request('https://proxy.mcptest.test/', {
+        method: 'OPTIONS',
+        headers: { 'Access-Control-Request-Headers': requestedHeaders },
+      }),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('vary')).toBe('Access-Control-Request-Headers');
+  });
 });

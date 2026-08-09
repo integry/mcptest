@@ -302,16 +302,8 @@ export const useToolsAndResources = (
     setSelectedResourceTemplate(null); // Deselect resource
     setToolParams({}); // Clear tool params
     setResourceArgs({}); // Clear resource args
-    const initialParams: Record<string, any> = {};
-    // Assuming prompt schema structure is similar to tool schema
-    if (prompt.inputSchema?.properties) {
-      Object.entries(prompt.inputSchema.properties).forEach(([name, schema]) => {
-        if ((schema as any)?.default !== undefined) {
-          initialParams[name] = (schema as any).default;
-        }
-      });
-    }
-    setPromptParams(initialParams);
+    // MCP prompt arguments declare names and requiredness, not JSON Schema defaults.
+    setPromptParams({});
     console.log("Selected prompt:", prompt);
     addLogEntry({ type: 'info', data: `Selected prompt: ${prompt.name}` });
   };

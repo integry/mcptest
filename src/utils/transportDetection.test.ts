@@ -349,7 +349,10 @@ describe('transport candidate generation', () => {
     })));
 
     const connection = await attemptParallelConnections('https://example.com/custom');
-    await connection.transport.fetch?.(connection.url);
+    const mockTransport = connection.transport as typeof connection.transport & {
+      fetch?: typeof fetch;
+    };
+    await mockTransport.fetch?.(connection.url);
 
     expect(connection.takeAuthenticationChallenge()).toEqual({
       status: 403,
@@ -371,7 +374,10 @@ describe('transport candidate generation', () => {
       undefined,
       true
     );
-    await connection.transport.fetch?.(connection.url);
+    const mockTransport = connection.transport as typeof connection.transport & {
+      fetch?: typeof fetch;
+    };
+    await mockTransport.fetch?.(connection.url);
 
     expect(connection.takeAuthenticationChallenge()).toEqual({
       status: 401,
