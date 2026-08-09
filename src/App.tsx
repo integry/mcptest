@@ -45,7 +45,12 @@ import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, p
 import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
-import { attemptParallelConnections } from './utils/transportDetection';
+import {
+  ProxiedAuthenticationError,
+  TransportConnectionError,
+  attemptParallelConnections,
+  type ObservedAuthenticationChallenge,
+} from './utils/transportDetection';
 import {
   getSavedCardConnectionPlan,
   getSavedResourceUri,
@@ -55,6 +60,91 @@ import {
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
 const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
+
+const getProxiedAuthenticationChallenge = (
+  error: unknown,
+  seen = new Set<object>()
+): ObservedAuthenticationChallenge | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  if (error instanceof ProxiedAuthenticationError) {
+    return { status: error.status, source: error.responseSource };
+  }
+
+  let proxyChallenge: ObservedAuthenticationChallenge | undefined;
+  if (error instanceof TransportConnectionError) {
+    for (const nestedError of error.errors) {
+      const challenge = getProxiedAuthenticationChallenge(nestedError, seen);
+      if (challenge?.source === 'target') return challenge;
+      if (challenge?.source === 'proxy') proxyChallenge = challenge;
+    }
+  }
+
+  const causeChallenge = getProxiedAuthenticationChallenge(
+    (error as { cause?: unknown }).cause,
+    seen
+  );
+  if (causeChallenge?.source === 'target') return causeChallenge;
+  return causeChallenge || proxyChallenge;
+};
+
+const getAuthenticationHttpStatus = (
+  error: unknown,
+  seen = new Set<object>()
+): 401 | 403 | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  const value = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    data?: { status?: unknown };
+    response?: { status?: unknown };
+    cause?: unknown;
+    message?: unknown;
+  };
+  const status = [
+    value.status,
+    value.statusCode,
+    value.data?.status,
+    value.response?.status,
+  ].find(candidate => candidate === 401 || candidate === 403);
+  if (status === 401 || status === 403) return status;
+
+  if (error instanceof TransportConnectionError) {
+    for (const nestedError of error.errors) {
+      const nestedStatus = getAuthenticationHttpStatus(nestedError, seen);
+      if (nestedStatus) return nestedStatus;
+    }
+  }
+
+  const causeStatus = getAuthenticationHttpStatus(value.cause, seen);
+  if (causeStatus) return causeStatus;
+
+  const message = typeof value.message === 'string' ? value.message : '';
+  if (/\b403\b|forbidden/i.test(message)) return 403;
+  if (/\b401\b|unauthorized|invalid_token|missing or invalid access token/i.test(message)) {
+    return 401;
+  }
+  return undefined;
+};
+
+const classifySavedCardAuthenticationFailure = (
+  error: unknown,
+  usesProxy: boolean,
+  observedChallenge?: ObservedAuthenticationChallenge
+): ObservedAuthenticationChallenge | undefined => {
+  const proxiedChallenge = observedChallenge || getProxiedAuthenticationChallenge(error);
+  if (proxiedChallenge) return proxiedChallenge;
+
+  // A generic proxied 401/403 has ambiguous provenance. Never turn it into a
+  // target OAuth prompt unless the proxy transport identified the responder.
+  if (usesProxy) return undefined;
+
+  const status = getAuthenticationHttpStatus(error);
+  return status ? { status, source: 'target' } : undefined;
+};
 
 // Helper function to get the initial theme
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -1229,6 +1319,7 @@ function App() {
     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: true, error: null, responseData: null, responseType: null }));
 
     let tempClient: any = null;
+    let activeConnection: Awaited<ReturnType<typeof attemptParallelConnections>> | null = null;
     let lastError: any = null;
     let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
 
@@ -1248,6 +1339,7 @@ function App() {
         const proxySelected = Boolean(
           proxyUrl && (card.useProxy !== undefined ? card.useProxy : !oauthToken)
         );
+        shouldUseProxy = proxySelected;
         const proxyAuthToken = proxySelected && currentUser
           ? await currentUser.getIdToken()
           : undefined;
@@ -1266,16 +1358,16 @@ function App() {
           console.log(`[Execute Card ${cardId}] Using OAuth target authentication`);
         }
 
-        const connection = await attemptParallelConnections(
+        activeConnection = await attemptParallelConnections(
           connectionPlan.connectionUrl,
           undefined,
           connectionPlan.authToken,
           connectionPlan.targetHeaders,
           connectionPlan.usesProxy
         );
-        tempClient = connection.client;
+        tempClient = activeConnection.client;
         console.log(
-          `[Execute Card ${cardId} Attempt ${attempt}] Connected with ${connection.transportType} (${connection.protocolEra}${connection.protocolVersion ? `, ${connection.protocolVersion}` : ''}) at ${connection.url}`
+          `[Execute Card ${cardId} Attempt ${attempt}] Connected with ${activeConnection.transportType} (${activeConnection.protocolEra}${activeConnection.protocolVersion ? `, ${activeConnection.protocolVersion}` : ''}) at ${activeConnection.url}`
         );
 
         let result: any;
@@ -1299,14 +1391,6 @@ function App() {
 
         // --- Check for different error types ---
         const isConflict = err.message?.includes('Conflict') || err.message?.includes('409') || err.status === 409;
-        const is401Error = err.message && (
-          err.message.includes('401') || 
-          err.message.toLowerCase().includes('unauthorized') ||
-          err.message.includes('invalid_token') ||
-          err.message.includes('Missing or invalid access token') ||
-          err.statusCode === 401 ||
-          err.status === 401
-        );
 
         if (isConflict && attempt < MAX_RETRIES) {
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Conflict detected, retrying after ${RETRY_DELAY_MS}ms...`);
@@ -1320,6 +1404,14 @@ function App() {
         } else {
           // --- Non-retryable error or max retries reached: Set final error state and break ---
           console.error(`[Execute Card ${cardId}] Unrecoverable error or max retries reached.`);
+
+          const authenticationChallenge = classifySavedCardAuthenticationFailure(
+            err,
+            shouldUseProxy,
+            activeConnection?.takeAuthenticationChallenge()
+          );
+          const isTargetAuthError = authenticationChallenge?.source === 'target';
+          const isProxyAuthError = authenticationChallenge?.source === 'proxy';
           
           // Use enhanced error formatting for better debugging information
           const errorDetails = formatErrorForDisplay(err, {
@@ -1330,9 +1422,25 @@ function App() {
           // Mark error with auth information for UI handling
           const errorWithAuthInfo = err instanceof SavedResourceCardMigrationError
             ? errorDetails
+            : isProxyAuthError
+            ? {
+                message: `Proxy sign-in/session error: ${errorDetails}`,
+                isAuthError: false,
+                isProxyAuthError: true,
+                authenticationSource: 'proxy',
+                status: authenticationChallenge.status,
+                serverUrl: card.serverUrl,
+                isProxied: true
+              }
             : {
                 ...errorDetails,
-                isAuthError: is401Error,
+                isAuthError: isTargetAuthError,
+                ...(authenticationChallenge
+                  ? {
+                      authenticationSource: authenticationChallenge.source,
+                      status: authenticationChallenge.status
+                    }
+                  : {}),
                 serverUrl: card.serverUrl,
                 isProxied: shouldUseProxy
               };
@@ -1357,6 +1465,7 @@ function App() {
               }
               tempClient = null; // Nullify ref after closing attempt
           }
+          activeConnection = null;
       }
     } // End of retry loop
   };
