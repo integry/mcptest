@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import { LogEntry, ResourceTemplate } from '../types';
-import { parseUriTemplateArgs } from '../utils/uriUtils';
 import { Client } from "@modelcontextprotocol/client";
 import { formatErrorForDisplay } from '../utils/errorHandling';
+import { getSavedResourceUri } from '../utils/savedCardConnection';
 
 export const useResourceAccess = (
   client: Client | null,
@@ -22,36 +22,13 @@ export const useResourceAccess = (
     }
 
     let finalUri = selectedResourceTemplate.uriTemplate;
-    const templateArgs = parseUriTemplateArgs(finalUri);
-    let queryParamsStarted = false;
-
-    templateArgs.forEach(arg => {
-      const value = resourceArgs[arg];
-      if (value !== undefined && value !== null && value !== '') {
-        const pathRegex = new RegExp(`\\{${arg}\\}`, 'g');
-        if (finalUri.match(pathRegex)) {
-          finalUri = finalUri.replace(pathRegex, encodeURIComponent(String(value)));
-        } else {
-          finalUri += (queryParamsStarted ? '&' : '?') + `${encodeURIComponent(arg)}=${encodeURIComponent(String(value))}`;
-          queryParamsStarted = true;
-        }
-      } else {
-        // Remove optional template parts if arg is missing
-        finalUri = finalUri.replace(new RegExp(`{&${arg}}`, 'g'), '');
-        finalUri = finalUri.replace(new RegExp(`{\\?${arg},?`, 'g'), '?');
-        finalUri = finalUri.replace(new RegExp(`,${arg}`, 'g'), '');
-      }
-    });
-
-    // Clean up remaining template placeholders and trailing characters
-    finalUri = finalUri.replace(/\{\??[^}]+\}/g, '');
-    finalUri = finalUri.replace(/\?&/, '?').replace(/(\?|&)$/, '');
-
-    console.log("[DEBUG] Accessing resource:", finalUri);
-    addLogEntry({ type: 'info', data: `Accessing resource: ${finalUri}` });
 
     // Using the SDK client method for resource access
     try {
+      finalUri = getSavedResourceUri(selectedResourceTemplate.uriTemplate, resourceArgs);
+      console.log("[DEBUG] Accessing resource:", finalUri);
+      addLogEntry({ type: 'info', data: `Accessing resource: ${finalUri}` });
+
       addLogEntry({
         type: 'request', // Log the intent
         method: 'resources/read', // SDK uses 'read'
@@ -70,7 +47,9 @@ export const useResourceAccess = (
         callContext: {
           serverUrl: serverUrl,
           type: 'resource',
-          name: finalUri,
+          // Persist the template for future executions; legacy cards that
+          // already contain finalUri remain supported by getSavedResourceUri.
+          name: selectedResourceTemplate.uriTemplate,
           params: resourceArgs // Pass the original args used
         }
       };

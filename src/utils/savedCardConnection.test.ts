@@ -70,10 +70,24 @@ describe('saved dashboard card connections', () => {
     );
   });
 
-  it('surfaces a migration error when legacy resource parameters have no URI template', () => {
-    expect(() => getSavedResourceUri(
+  it('keeps legacy cards whose saved URI was already expanded', () => {
+    expect(getSavedResourceUri(
       'mcp://documents/policies/2026',
       { tenant: 'Acme Corp' }
-    )).toThrow(/saved resource card migration required.*not a URI template/i);
+    )).toBe('mcp://documents/policies/2026');
+  });
+
+  it('surfaces a migration error for parameters absent from a saved URI template', () => {
+    expect(() => getSavedResourceUri(
+      'mcp://documents/{documentId}',
+      { documentId: 'policies/2026', tenant: 'Acme Corp' }
+    )).toThrow(/saved resource card migration required.*"tenant".*not present/i);
+  });
+
+  it('uses the SDK URI-template implementation for list values', () => {
+    expect(getSavedResourceUri(
+      'mcp://search{?tags}',
+      { tags: ['stateful', 'stateless'] }
+    )).toBe('mcp://search?tags=stateful,stateless');
   });
 });
