@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getOAuthConfig } from '../utils/oauthDiscovery';
+import OAuthConfig from './OAuthConfig';
+import {
+  beginOAuthFlow,
+  isOAuthClientConfigurationRequired,
+} from '../utils/oauthFlow';
 import {
   evaluateServer,
   getEvaluationMaxScore,
@@ -61,6 +65,7 @@ const ReportView: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [testedServers, setTestedServers] = useState<TestedServer[]>([]);
+  const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -68,7 +73,7 @@ const ReportView: React.FC = () => {
   const hasProcessedOAuthReturn = useRef(false);
   
   // Store handleRunReport in a ref to avoid dependency issues
-  const handleRunReportRef = useRef<(urlToTest: string) => Promise<void>>();
+  const handleRunReportRef = useRef<((urlToTest: string) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
   useEffect(() => {
@@ -272,6 +277,28 @@ const ReportView: React.FC = () => {
     handleRunReportRef.current = handleRunReport;
   }, [handleRunReport]);
 
+  const startOAuth = useCallback(async (authenticationUrl: string) => {
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'report',
+      serverUrl: authenticationUrl,
+      timestamp: Date.now()
+    }));
+
+    try {
+      const result = await beginOAuthFlow(authenticationUrl);
+      if (result === 'AUTHORIZED') {
+        await handleRunReportRef.current?.(authenticationUrl);
+      }
+    } catch (error) {
+      if (isOAuthClientConfigurationRequired(error)) {
+        setOAuthConfigServerUrl(authenticationUrl);
+        return;
+      }
+      const message = error instanceof Error ? error.message : 'Unknown OAuth error';
+      setProgress(prev => [...prev, `OAuth authorization failed: ${message}`]);
+    }
+  }, []);
+
   const scoredSections = report
     ? Object.entries(report.sections).filter(([key]) => key !== 'auth')
     : [];
@@ -381,92 +408,7 @@ const ReportView: React.FC = () => {
                 <p>This server requires OAuth authentication before it can be evaluated.</p>
                 <button 
                   className="btn btn-primary"
-                  onClick={async () => {
-                    const authenticationUrl = report.authenticationUrl || report.serverUrl;
-                    // Store the current state so we can return after OAuth
-                    sessionStorage.setItem('oauth_return_view', JSON.stringify({
-                      activeView: 'report',
-                      serverUrl: authenticationUrl,
-                      timestamp: Date.now()
-                    }));
-                    
-                    // Start OAuth flow directly
-                    try {
-                      const { generatePKCE } = await import('../utils/pkce');
-                      const { v4: uuidv4 } = await import('uuid');
-                      
-                      const oauthConfig = await getOAuthConfig(authenticationUrl);
-                      if (!oauthConfig) {
-                        alert('Failed to get OAuth configuration');
-                        return;
-                      }
-                      
-                      const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
-                      sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-                      sessionStorage.setItem('oauth_server_url', authenticationUrl);
-                      
-                      const serverHost = new URL(authenticationUrl.startsWith('http') ? authenticationUrl : `https://${authenticationUrl}`).hostname;
-                      sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
-                      
-                      let clientId: string | null = null;
-                      const serverClientKey = `oauth_client_${serverHost}`;
-                      const storedServerClient = sessionStorage.getItem(serverClientKey);
-                      
-                      if (storedServerClient) {
-                        try {
-                          const clientData = JSON.parse(storedServerClient);
-                          clientId = clientData.clientId;
-                        } catch (e) {
-                          console.error('[OAuth] Failed to parse stored client data:', e);
-                        }
-                      }
-                      
-                      if (!clientId && oauthConfig.registrationEndpoint) {
-                        const registrationData = {
-                          client_name: 'MCP Test Client',
-                          redirect_uris: [`${window.location.origin}/oauth/callback`],
-                          grant_types: ['authorization_code'],
-                          response_types: ['code'],
-                          application_type: 'web',
-                          token_endpoint_auth_method: 'none'
-                        };
-                        
-                        const registrationResponse = await fetch(oauthConfig.registrationEndpoint, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(registrationData)
-                        });
-                        
-                        if (registrationResponse.ok) {
-                          const clientData = await registrationResponse.json();
-                          clientId = clientData.client_id;
-                          
-                          sessionStorage.setItem(serverClientKey, JSON.stringify({
-                            clientId: clientData.client_id,
-                            clientSecret: clientData.client_secret
-                          }));
-                        }
-                      }
-                      
-                      if (clientId && oauthConfig.authorizationEndpoint) {
-                        const authUrl = new URL(oauthConfig.authorizationEndpoint);
-                        authUrl.searchParams.set('response_type', 'code');
-                        authUrl.searchParams.set('client_id', clientId);
-                        authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
-                        authUrl.searchParams.set('code_challenge', codeChallenge);
-                        authUrl.searchParams.set('code_challenge_method', 'S256');
-                        authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
-                        authUrl.searchParams.set('state', uuidv4());
-                        
-                        window.location.href = authUrl.toString();
-                      } else {
-                        alert('Failed to configure OAuth client');
-                      }
-                    } catch (error) {
-                      console.error('[OAuth] Error starting authentication:', error);
-                      alert('Failed to start OAuth authentication');
-                    }
-                  }}
+                  onClick={() => startOAuth(report.authenticationUrl || report.serverUrl)}
                 >
                   Authenticate with Server
                 </button>
@@ -566,6 +508,17 @@ const ReportView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {oauthConfigServerUrl && (
+        <OAuthConfig
+          serverUrl={oauthConfigServerUrl}
+          onConfigured={async () => {
+            const configuredServerUrl = oauthConfigServerUrl;
+            setOAuthConfigServerUrl(null);
+            await startOAuth(configuredServerUrl);
+          }}
+          onCancel={() => setOAuthConfigServerUrl(null)}
+        />
       )}
     </div>
   );
