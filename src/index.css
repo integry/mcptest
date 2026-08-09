@@ -2427,57 +2427,6 @@ span.health-indicator.health-indicator-gray {
   letter-spacing: -0.02em;
 }
 
-.protocol-matrix {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem;
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--card-bg-secondary) 72%, transparent);
-}
-
-.protocol-matrix-label,
-.protocol-chip {
-  font-family: var(--font-family-mono);
-  font-size: 0.64rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.protocol-matrix-label {
-  padding: 0 0.4rem;
-  color: var(--text-muted);
-}
-
-.protocol-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 1.85rem;
-  padding: 0.25rem 0.68rem;
-  color: var(--text-muted);
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  background: var(--card-bg);
-}
-
-.protocol-chip-modern {
-  color: var(--text-accent);
-  border-color: color-mix(in srgb, var(--primary-color) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
-}
-
-.protocol-chip-dot {
-  display: inline-block;
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 50%;
-  background: var(--primary-color);
-  box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--primary-color) 14%, transparent), 0 0 1rem color-mix(in srgb, var(--primary-color) 65%, transparent);
-}
-
 .app-theme-toggle {
   border: 1px solid var(--border-color);
   border-radius: 50%;
@@ -2498,63 +2447,29 @@ span.health-indicator.health-indicator-gray {
   gap: 0.2rem;
 }
 
-.sidenav-protocol-card {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
-  margin: 0.15rem 0.2rem 0.85rem;
-  padding: 0.9rem;
-  border: 1px solid color-mix(in srgb, var(--accent-cyan) 25%, var(--border-color));
-  border-radius: 0.85rem;
-  background:
-    radial-gradient(circle at 110% -20%, color-mix(in srgb, var(--accent-cyan) 17%, transparent), transparent 55%),
-    color-mix(in srgb, var(--card-bg-secondary) 72%, transparent);
-}
-
-.sidenav-protocol-card::after {
-  position: absolute;
-  right: -1rem;
-  bottom: -1.4rem;
-  width: 4.5rem;
-  height: 4.5rem;
-  content: '';
-  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
-  border-radius: 50%;
-  box-shadow: 0 0 0 0.6rem color-mix(in srgb, var(--primary-color) 6%, transparent), 0 0 0 1.2rem color-mix(in srgb, var(--accent-cyan) 4%, transparent);
-}
-
-.sidenav-protocol-heading {
-  display: flex;
-  align-items: center;
-  gap: 0.48rem;
-  color: var(--text-muted);
-  font-family: var(--font-family-mono);
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.sidenav-protocol-card strong {
-  margin-top: 0.18rem;
-  font-family: var(--font-family-mono);
-  font-size: 1rem;
-  letter-spacing: -0.04em;
-}
-
-.sidenav-protocol-card small {
-  color: var(--text-muted);
-  font-size: 0.66rem;
-}
-
 .app-sidenav .nav-link {
   min-height: 2.55rem;
   padding: 0.58rem 0.82rem;
   border: 1px solid transparent;
   border-radius: 0.7rem;
   font-weight: 500;
+}
+
+.dashboard-name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-card-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 0.55rem;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
 }
 
 .app-sidenav .nav-link:hover,
@@ -2666,6 +2581,14 @@ span.health-indicator.health-indicator-gray {
   text-transform: uppercase;
 }
 
+.connection-field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
 .connection-console .input-group {
   padding: 0.22rem;
   border: 1px solid var(--input-border);
@@ -2694,28 +2617,92 @@ span.health-indicator.health-indicator-gray {
 }
 
 .connection-help {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.25rem 0.65rem;
   margin-top: 0.65rem;
 }
 
-.connection-help span:not(:last-child) {
-  display: inline-flex;
-  padding: 0.18rem 0.48rem;
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  background: var(--card-bg-secondary);
+.connection-help-label {
   color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: 0.61rem;
+  font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
-.connection-help span:last-child {
-  flex-basis: 100%;
+.connection-route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.64rem;
+  list-style: none;
+}
+
+.connection-route li:not(:last-child)::after {
+  margin: 0 0.42rem;
+  color: var(--primary-color);
+  content: '→';
+}
+
+.connection-example {
+  grid-column: 2;
+}
+
+.proxy-setting {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--card-bg-secondary) 62%, transparent);
+}
+
+.proxy-setting-locked {
+  opacity: 0.72;
+}
+
+.proxy-setting-locked .form-check-input {
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.recent-server-item {
+  gap: 0.65rem;
+}
+
+.recent-server-link {
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.35rem 0.25rem;
+  color: var(--primary-color);
+  border: 0;
+  background: transparent;
+  text-align: left;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-server-link:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  text-decoration: none;
+}
+
+.recent-server-remove {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  line-height: 1;
 }
 
 .btn-primary {
@@ -3052,11 +3039,6 @@ pre.bg-light code {
 }
 
 @media (max-width: 991.98px) {
-  .protocol-matrix-label,
-  .protocol-chip:not(.protocol-chip-modern) {
-    display: none;
-  }
-
   .suggested-server-grid {
     grid-template-columns: 1fr;
   }
@@ -3103,9 +3085,9 @@ pre.bg-light code {
     gap: 0.75rem;
   }
 
-  .connection-console .card-header > div:last-child {
+  .connection-console .connection-details {
     flex-wrap: wrap;
-    justify-content: flex-end;
+    justify-content: flex-start;
   }
 
   .connection-console .input-group {
@@ -3128,7 +3110,12 @@ pre.bg-light code {
     max-width: 100%;
   }
 
-  .connection-help span:last-child {
+  .connection-help {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-example {
+    grid-column: 1;
     overflow-wrap: anywhere;
   }
 

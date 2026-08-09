@@ -40,14 +40,6 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
       </div>
 
       <div className="app-header-actions d-none d-md-flex">
-        <div className="protocol-matrix" aria-label="Supported MCP protocol eras">
-          <span className="protocol-matrix-label">Negotiation</span>
-          <span className="protocol-chip protocol-chip-modern">
-            <span className="protocol-chip-dot" aria-hidden="true"></span>
-            2026 stateless
-          </span>
-          <span className="protocol-chip">2025 compatible</span>
-        </div>
         <button
           onClick={onToggleTheme}
           className="btn btn-outline-secondary app-theme-toggle"

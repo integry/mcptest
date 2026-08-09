@@ -249,15 +249,6 @@ const SideNav: React.FC<SideNavProps> = ({
 
   return (
     <nav className="app-sidenav nav flex-column d-flex flex-grow-1">
-      <div className="sidenav-protocol-card" aria-label="Protocol negotiation status">
-        <div className="sidenav-protocol-heading">
-          <span className="protocol-chip-dot" aria-hidden="true"></span>
-          Auto negotiation
-        </div>
-        <strong>2026 ↔ 2025</strong>
-        <small>Stateless first · stateful fallback</small>
-      </div>
-
       {/* Playground Link */}
       <Link
         to="/"
@@ -338,7 +329,14 @@ const SideNav: React.FC<SideNavProps> = ({
                   }}
                 >
                   {renderHealthIndicator(space.id)}
-                  {space.name} ({space.cards.length})
+                  <span className="dashboard-name">{space.name}</span>
+                  <span
+                    className="dashboard-card-count"
+                    title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                    aria-label={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                  >
+                    {space.cards.length} {space.cards.length === 1 ? 'card' : 'cards'}
+                  </span>
                 </Link>
             </li>
           ))}
