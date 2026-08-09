@@ -230,11 +230,37 @@ describe('dual-era server evaluation', () => {
 
     expect(report.sections.auth).toBeDefined();
     expect(report.sections.auth.details[0].context).toContain('Direct target returned HTTP 401');
-    expect(report.sections.auth.details[0].metadata).toEqual({ route: 'direct', status: 401 });
+    expect(report.sections.auth.details[0].metadata).toEqual({
+      route: 'direct',
+      status: 401,
+      endpoint: 'https://mcp.example/mcp',
+    });
     expect(report.sections.protocol.score).toBe(0);
     expect(report.sections.protocol.details[0].text).toContain('Direct target:');
     expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
     expect(JSON.stringify(report)).not.toContain('/mcp/v1/');
+  });
+
+  it('uses the challenged fallback endpoint for authentication', async () => {
+    const targetAuthError = Object.assign(new Error('Fallback returned HTTP 401'), {
+      status: 401,
+    });
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError(
+        [targetAuthError],
+        [{ candidateUrl: 'https://mcp.example/mcp', error: targetAuthError }]
+      ))
+      .mockRejectedValueOnce(new Error('Proxy network failure'));
+
+    const report = await evaluateServer('https://mcp.example', 'firebase-jwt', vi.fn());
+
+    expect(report.serverUrl).toBe('https://mcp.example/');
+    expect(report.authenticationUrl).toBe('https://mcp.example/mcp');
+    expect(report.sections.auth.details[0].metadata).toEqual({
+      route: 'direct',
+      status: 401,
+      endpoint: 'https://mcp.example/mcp',
+    });
   });
 
   it('does not mistake a proxy-hop authentication failure for target OAuth', async () => {
@@ -267,7 +293,11 @@ describe('dual-era server evaluation', () => {
 
     expect(report.sections.auth).toBeDefined();
     expect(report.sections.auth.details[0].context).toContain('MCP target returned HTTP 403');
-    expect(report.sections.auth.details[0].metadata).toEqual({ route: 'proxy', status: 403 });
+    expect(report.sections.auth.details[0].metadata).toEqual({
+      route: 'proxy',
+      status: 403,
+      endpoint: 'https://mcp.example/mcp',
+    });
   });
 
   it('offers target authentication when a post-connect capability request returns 401', async () => {

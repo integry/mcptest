@@ -186,6 +186,43 @@ describe('transport candidate generation', () => {
     });
   });
 
+  it('preserves a settled authentication error when its slash sibling times out', async () => {
+    vi.useFakeTimers();
+    const targetAuthError = Object.assign(new Error('Target requires authentication'), {
+      status: 401,
+    });
+    connectionMocks.connect = async ({ endpoint }) => {
+      if (endpoint.pathname === '/mcp') throw targetAuthError;
+      if (endpoint.pathname === '/mcp/') await new Promise(() => {});
+      throw new Error('Fallback endpoint failed');
+    };
+
+    const connectionPromise = attemptParallelConnections('https://example.com/mcp');
+    const connectionOutcome = connectionPromise.catch((error) => error);
+    await vi.advanceTimersByTimeAsync(CANDIDATE_GROUP_TIMEOUT_MS);
+
+    const connectionError: unknown = await connectionOutcome;
+
+    const findAuthenticationCandidate = (error: unknown): { candidateUrl: string } | undefined => {
+      if (!(error instanceof TransportConnectionError)) return undefined;
+      const match = error.candidateFailures.find(({ error: candidateError }) => (
+        (candidateError as { status?: number }).status === 401
+      ));
+      if (match) return match;
+      for (const nestedError of error.errors) {
+        const nestedMatch = findAuthenticationCandidate(nestedError);
+        if (nestedMatch) return nestedMatch;
+      }
+      return undefined;
+    };
+
+    expect(connectionError).toBeInstanceOf(TransportConnectionError);
+    expect(findAuthenticationCandidate(connectionError)).toMatchObject({
+      candidateUrl: 'https://example.com/mcp',
+      error: targetAuthError,
+    });
+  });
+
   it('keeps target Authorization separate from proxy authentication', () => {
     const proxyHeaders = getRequestHeadersForCandidate(
       'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',

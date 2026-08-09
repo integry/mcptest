@@ -13,8 +13,16 @@ export interface TransportCandidate {
   transportType: TransportType;
 }
 
+export interface TransportCandidateFailure {
+  candidateUrl: string;
+  error: unknown;
+}
+
 export class TransportConnectionError extends Error {
-  constructor(readonly errors: readonly unknown[]) {
+  constructor(
+    readonly errors: readonly unknown[],
+    readonly candidateFailures: readonly TransportCandidateFailure[] = []
+  ) {
     super(`All connections failed: ${errors.map((error) => (
       (error instanceof Error ? error.message : String(error))
         .replace(/^All connections failed: /, '')
@@ -176,17 +184,21 @@ type ConnectedCandidate = {
   takeAuthenticationChallenge: () => ObservedAuthenticationChallenge | undefined;
 };
 
-const firstSuccessful = <T,>(promises: Promise<T>[]): Promise<T> => {
+const firstSuccessful = <T,>(
+  attempts: Array<{ promise: Promise<T>; candidateUrl: string }>,
+  candidateFailures: TransportCandidateFailure[]
+): Promise<T> => {
   return new Promise((resolve, reject) => {
     const errors: unknown[] = [];
-    let remaining = promises.length;
+    let remaining = attempts.length;
 
-    for (const promise of promises) {
+    for (const { promise, candidateUrl } of attempts) {
       promise.then(resolve).catch((error) => {
         errors.push(error);
+        candidateFailures.push({ candidateUrl, error });
         remaining -= 1;
         if (remaining === 0) {
-          reject(new TransportConnectionError(errors));
+          reject(new TransportConnectionError(errors, [...candidateFailures]));
         }
       });
     }
@@ -313,17 +325,28 @@ export async function attemptParallelConnections(
 
       let successful: ConnectedCandidate;
       const firstGroupClientIndex = clients.length;
+      const candidateFailures: TransportCandidateFailure[] = [];
       let groupTimeoutId: ReturnType<typeof setTimeout> | undefined;
       const groupTimeout = new Promise<never>((_, reject) => {
         groupTimeoutId = setTimeout(() => {
-          reject(new Error(
+          const timeoutError = new Error(
             `Connection candidates timed out after ${CANDIDATE_GROUP_TIMEOUT_MS / 1000} seconds`
+          );
+          reject(new TransportConnectionError(
+            [...candidateFailures.map(({ error }) => error), timeoutError],
+            [...candidateFailures]
           ));
         }, CANDIDATE_GROUP_TIMEOUT_MS);
       });
       try {
         successful = await Promise.race([
-          firstSuccessful(candidateGroup.map(attemptConnection)),
+          firstSuccessful(
+            candidateGroup.map((candidate) => ({
+              promise: attemptConnection(candidate),
+              candidateUrl: candidate.url,
+            })),
+            candidateFailures
+          ),
           abortPromise,
           groupTimeout,
         ]);

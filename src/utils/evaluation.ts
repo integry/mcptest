@@ -11,6 +11,7 @@ import {
   attemptParallelConnections,
   type ObservedAuthenticationChallenge,
   type ProxyAuthenticationSource,
+  type TransportCandidateFailure,
 } from './transportDetection';
 import type { TransportType } from '../types';
 
@@ -87,6 +88,7 @@ interface EvaluationSection {
 
 export interface EvaluationReport {
   serverUrl: string;
+  authenticationUrl?: string;
   finalScore: number;
   sections: Record<string, EvaluationSection>;
 }
@@ -277,25 +279,74 @@ interface EvaluationRouteFailure {
   message: string;
   httpStatus?: number;
   authenticationSource?: ProxyAuthenticationSource;
+  candidateUrl?: string;
 }
+
+const getAuthenticationCandidateUrl = (
+  error: unknown,
+  authenticationSource: ProxyAuthenticationSource,
+  seen = new Set<object>()
+): string | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  const value = error as {
+    candidateFailures?: readonly TransportCandidateFailure[];
+    cause?: unknown;
+    errors?: readonly unknown[];
+  };
+  if (Array.isArray(value.candidateFailures)) {
+    for (const failure of value.candidateFailures) {
+      const challenge = getProxyAuthenticationChallenge(failure.error);
+      const status = challenge?.status || getAuthenticationHttpStatus(failure.error);
+      const source = challenge?.source || 'target';
+      if ((status === 401 || status === 403) && source === authenticationSource) {
+        return failure.candidateUrl;
+      }
+    }
+  }
+
+  if (Array.isArray(value.errors)) {
+    for (const nestedError of value.errors) {
+      const candidateUrl = getAuthenticationCandidateUrl(
+        nestedError,
+        authenticationSource,
+        seen
+      );
+      if (candidateUrl) return candidateUrl;
+    }
+  }
+
+  return getAuthenticationCandidateUrl(value.cause, authenticationSource, seen);
+};
 
 const makeRouteFailure = (
   route: EvaluationRouteFailure['route'],
   error: unknown,
-  observedChallenge?: ObservedAuthenticationChallenge
+  observedChallenge?: ObservedAuthenticationChallenge,
+  connectedCandidateUrl?: string
 ): EvaluationRouteFailure => {
   const proxyAuthChallenge = route === 'proxy'
     ? observedChallenge || getProxyAuthenticationChallenge(error)
     : undefined;
   const httpStatus = proxyAuthChallenge?.status || getAuthenticationHttpStatus(error);
+  const authenticationSource = route === 'direct' && httpStatus
+    ? 'target'
+    : proxyAuthChallenge?.source;
+  const failedCandidateUrl = connectedCandidateUrl || (
+    authenticationSource
+      ? getAuthenticationCandidateUrl(error, authenticationSource)
+      : undefined
+  );
   return {
     route,
     error,
     message: errorMessage(error),
     httpStatus,
-    authenticationSource: route === 'direct' && httpStatus
-      ? 'target'
-      : proxyAuthChallenge?.source,
+    authenticationSource,
+    candidateUrl: failedCandidateUrl
+      ? getEvaluationTargetUrl(failedCandidateUrl, route === 'proxy')
+      : undefined,
   };
 };
 
@@ -420,7 +471,8 @@ const evaluateCapabilities = async (
       const failure = makeRouteFailure(
         connection.usedProxy ? 'proxy' : 'direct',
         error,
-        connection.takeAuthenticationChallenge?.()
+        connection.takeAuthenticationChallenge?.(),
+        connection.url
       );
       if (
         (failure.httpStatus === 401 || failure.httpStatus === 403)
@@ -718,6 +770,7 @@ export async function evaluateServer(
       'Performance was not scored because negotiation failed.'
     );
     if (targetAuthFailure) {
+      report.authenticationUrl = targetAuthFailure.candidateUrl || serverUrl;
       report.sections.auth = {
         name: 'Authentication Required',
         description: 'The MCP endpoint rejected unauthenticated negotiation',
@@ -729,6 +782,7 @@ export async function evaluateServer(
           metadata: {
             route: targetAuthFailure.route,
             status: targetAuthFailure.httpStatus,
+            endpoint: report.authenticationUrl,
           },
         }],
       };
@@ -772,6 +826,8 @@ export async function evaluateServer(
   const capabilityEvaluation = await evaluateCapabilities(connection);
   report.sections.capabilities = capabilityEvaluation.section;
   if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
+    report.authenticationUrl = capabilityEvaluation.targetAuthenticationFailures[0].candidateUrl
+      || getEvaluationTargetUrl(connection.url, connection.usedProxy);
     report.sections.auth = {
       name: 'Authentication Required',
       description: 'The MCP endpoint rejected standardized capability requests',
@@ -785,6 +841,7 @@ export async function evaluateServer(
           route: failure.route,
           status: failure.httpStatus,
           authenticationSource: failure.authenticationSource,
+          endpoint: failure.candidateUrl || report.authenticationUrl,
         },
       })),
     };

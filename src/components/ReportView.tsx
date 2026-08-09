@@ -384,10 +384,11 @@ const ReportView: React.FC = () => {
                 <button 
                   className="btn btn-primary"
                   onClick={async () => {
+                    const authenticationUrl = report.authenticationUrl || report.serverUrl;
                     // Store the current state so we can return after OAuth
                     sessionStorage.setItem('oauth_return_view', JSON.stringify({
                       activeView: 'report',
-                      serverUrl: report.serverUrl,
+                      serverUrl: authenticationUrl,
                       timestamp: Date.now()
                     }));
                     
@@ -396,7 +397,7 @@ const ReportView: React.FC = () => {
                       const { generatePKCE } = await import('../utils/pkce');
                       const { v4: uuidv4 } = await import('uuid');
                       
-                      const oauthConfig = await getOAuthConfig(report.serverUrl);
+                      const oauthConfig = await getOAuthConfig(authenticationUrl);
                       if (!oauthConfig) {
                         alert('Failed to get OAuth configuration');
                         return;
@@ -404,9 +405,9 @@ const ReportView: React.FC = () => {
                       
                       const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
                       sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-                      sessionStorage.setItem('oauth_server_url', report.serverUrl);
+                      sessionStorage.setItem('oauth_server_url', authenticationUrl);
                       
-                      const serverHost = new URL(report.serverUrl.startsWith('http') ? report.serverUrl : `https://${report.serverUrl}`).hostname;
+                      const serverHost = new URL(authenticationUrl.startsWith('http') ? authenticationUrl : `https://${authenticationUrl}`).hostname;
                       sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
                       
                       let clientId: string | null = null;
