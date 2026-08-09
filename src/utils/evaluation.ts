@@ -189,7 +189,6 @@ const getAuthenticationHttpStatus = (
   const value = error as {
     status?: unknown;
     statusCode?: unknown;
-    data?: { status?: unknown };
     response?: { status?: unknown };
     cause?: unknown;
     errors?: readonly unknown[];
@@ -197,7 +196,6 @@ const getAuthenticationHttpStatus = (
   const directStatuses = [
     value.status,
     value.statusCode,
-    value.data?.status,
     value.response?.status,
   ];
   const directStatus = directStatuses.find((status) => status === 401 || status === 403);

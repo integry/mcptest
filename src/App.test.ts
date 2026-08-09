@@ -12,6 +12,14 @@ describe('saved card authentication failures', () => {
     expect(classifySavedCardAuthenticationFailure(error, false)).toBeUndefined();
   });
 
+  it('does not treat application-defined JSON-RPC data as an HTTP challenge', () => {
+    const error = Object.assign(new Error('MCP application error'), {
+      data: { status: 403 },
+    });
+
+    expect(classifySavedCardAuthenticationFailure(error, false)).toBeUndefined();
+  });
+
   it('classifies a structured direct HTTP authentication status as target OAuth', () => {
     const error = Object.assign(new Error('Request failed'), { status: 401 });
 

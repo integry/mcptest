@@ -99,14 +99,12 @@ const getAuthenticationHttpStatus = (
   const value = error as {
     status?: unknown;
     statusCode?: unknown;
-    data?: { status?: unknown };
     response?: { status?: unknown };
     cause?: unknown;
   };
   const status = [
     value.status,
     value.statusCode,
-    value.data?.status,
     value.response?.status,
   ].find(candidate => candidate === 401 || candidate === 403);
   if (status === 401 || status === 403) return status;
