@@ -127,6 +127,8 @@ describe('dual-era server evaluation', () => {
     expect(report.sections.transport.details[0].text).toContain('Streamable HTTP');
     expect(report.sections.cors.score).toBe(0);
     expect(report.sections.cors.details[0].text).toContain('proxy was required');
+    expect(report.sections.security).toBeUndefined();
+    expect(getEvaluationMaxScore(report)).toBe(70);
     expect(client.close).toHaveBeenCalledOnce();
   });
 
@@ -266,6 +268,182 @@ describe('dual-era server evaluation', () => {
     expect(report.sections.auth).toBeDefined();
     expect(report.sections.auth.details[0].context).toContain('MCP target returned HTTP 403');
     expect(report.sections.auth.details[0].metadata).toEqual({ route: 'proxy', status: 403 });
+  });
+
+  it('offers target authentication when a post-connect capability request returns 401', async () => {
+    const client = createClient();
+    client.listTools.mockRejectedValueOnce(Object.assign(
+      new Error('tools/list returned HTTP 401'),
+      { status: 401 }
+    ));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.auth).toBeDefined();
+    expect(report.sections.auth.details[0]).toMatchObject({
+      context: 'tools/list returned HTTP 401',
+      metadata: {
+        method: 'tools/list',
+        route: 'direct',
+        status: 401,
+        authenticationSource: 'target',
+      },
+    });
+    expect(report.sections.capabilities.score).toBe(6);
+    expect(client.listResources).toHaveBeenCalledOnce();
+    expect(client.listPrompts).toHaveBeenCalledOnce();
+  });
+
+  it('does not offer target OAuth for a post-connect proxy-hop challenge', async () => {
+    const client = createClient();
+    let observedChallenge: { status: 401 | 403; source: 'proxy' | 'target' } | undefined;
+    client.listTools.mockImplementationOnce(async () => {
+      observedChallenge = { status: 403, source: 'proxy' };
+      throw Object.assign(new Error('Proxy rejected the Firebase token'), { status: 403 });
+    });
+    const takeAuthenticationChallenge = vi.fn(() => {
+      const challenge = observedChallenge;
+      observedChallenge = undefined;
+      return challenge;
+    });
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockResolvedValueOnce({
+        client,
+        url: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        takeAuthenticationChallenge,
+      });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.auth).toBeUndefined();
+    expect(report.sections.capabilities.details[0].metadata).toMatchObject({
+      method: 'tools/list',
+      status: 403,
+      authenticationSource: 'proxy',
+      route: 'proxy',
+    });
+  });
+
+  it('offers target OAuth for a post-connect upstream challenge through the proxy', async () => {
+    const client = createClient();
+    let observedChallenge: { status: 401 | 403; source: 'proxy' | 'target' } | undefined;
+    client.listResources.mockImplementationOnce(async () => {
+      observedChallenge = { status: 403, source: 'target' };
+      throw Object.assign(new Error('Upstream target rejected resources/list'), { status: 403 });
+    });
+    const takeAuthenticationChallenge = () => {
+      const challenge = observedChallenge;
+      observedChallenge = undefined;
+      return challenge;
+    };
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockResolvedValueOnce({
+        client,
+        url: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        takeAuthenticationChallenge,
+      });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.auth.details[0].metadata).toMatchObject({
+      method: 'resources/list',
+      route: 'proxy',
+      status: 403,
+      authenticationSource: 'target',
+    });
+    expect(report.sections.capabilities.score).toBe(7);
+  });
+
+  it('includes OAuth security posture when protected-resource metadata is supported', async () => {
+    const client = createClient();
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname.includes('/.well-known/oauth-protected-resource')) {
+        return Response.json({
+          resource: 'https://mcp.example/mcp',
+          authorization_servers: ['https://auth.example'],
+        });
+      }
+      if (url.hostname === 'auth.example') {
+        return Response.json({
+          issuer: 'https://auth.example',
+          authorization_endpoint: 'https://auth.example/authorize',
+          token_endpoint: 'https://auth.example/token',
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    }));
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.security).toMatchObject({
+      name: 'Security Posture',
+      score: 40,
+      maxScore: 40,
+    });
+    expect(report.sections.security.details.map(({ text }) => text)).toEqual(
+      expect.arrayContaining([
+        '✓ OAuth protected-resource metadata available',
+        '✓ OAuth authorization-server metadata available',
+        '✓ Token endpoint properly configured',
+        '✓ PKCE support enabled',
+      ])
+    );
+    expect(getEvaluationMaxScore(report)).toBe(110);
+    expect(report.finalScore).toBe(110);
+  });
+
+  it('retains the OAuth assessment for legacy authorization-server metadata', async () => {
+    const client = createClient();
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'legacy',
+      protocolVersion: '2025-11-25',
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname === '/.well-known/oauth-authorization-server') {
+        return Response.json({
+          issuer: 'https://mcp.example',
+          authorization_endpoint: 'https://mcp.example/authorize',
+          token_endpoint: 'https://mcp.example/token',
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    }));
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.security).toMatchObject({ score: 40, maxScore: 40 });
+    expect(report.sections.security.details[0].text).toBe(
+      '⚠ OAuth protected-resource metadata not available'
+    );
+    expect(getEvaluationMaxScore(report)).toBe(110);
   });
 
   it('normalizes report scores from the sections included in that run', () => {

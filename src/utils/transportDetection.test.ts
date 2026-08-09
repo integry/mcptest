@@ -270,4 +270,26 @@ describe('transport candidate generation', () => {
       responseSource: 'target',
     });
   });
+
+  it('retains proxy response provenance for requests made after connection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', {
+      status: 401,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+    })));
+
+    const connection = await attemptParallelConnections(
+      'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
+      undefined,
+      'firebase-jwt',
+      undefined,
+      true
+    );
+    await connection.transport.fetch?.(connection.url);
+
+    expect(connection.takeAuthenticationChallenge()).toEqual({
+      status: 401,
+      source: 'target',
+    });
+    expect(connection.takeAuthenticationChallenge()).toBeUndefined();
+  });
 });

@@ -1,7 +1,15 @@
-import type { Client, ProtocolEra } from '@modelcontextprotocol/client';
+import {
+  discoverAuthorizationServerMetadata,
+  discoverOAuthProtectedResourceMetadata,
+  type Client,
+  type FetchLike,
+  type OAuthProtectedResourceMetadata,
+  type ProtocolEra,
+} from '@modelcontextprotocol/client';
 import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
+  type ObservedAuthenticationChallenge,
   type ProxyAuthenticationSource,
 } from './transportDetection';
 import type { TransportType } from '../types';
@@ -262,6 +270,7 @@ interface ConnectedEvaluation {
   protocolVersion?: string;
   usedProxy: boolean;
   directError?: string;
+  takeAuthenticationChallenge?: () => ObservedAuthenticationChallenge | undefined;
 }
 
 interface EvaluationRouteFailure {
@@ -274,10 +283,11 @@ interface EvaluationRouteFailure {
 
 const makeRouteFailure = (
   route: EvaluationRouteFailure['route'],
-  error: unknown
+  error: unknown,
+  observedChallenge?: ObservedAuthenticationChallenge
 ): EvaluationRouteFailure => {
   const proxyAuthChallenge = route === 'proxy'
-    ? getProxyAuthenticationChallenge(error)
+    ? observedChallenge || getProxyAuthenticationChallenge(error)
     : undefined;
   const httpStatus = proxyAuthChallenge?.status || getAuthenticationHttpStatus(error);
   return {
@@ -347,7 +357,14 @@ const connectForEvaluation = async (
   }
 };
 
-const evaluateCapabilities = async (client: Client): Promise<EvaluationSection> => {
+interface CapabilityEvaluation {
+  section: EvaluationSection;
+  targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
+}
+
+const evaluateCapabilities = async (
+  connection: ConnectedEvaluation
+): Promise<CapabilityEvaluation> => {
   const section: EvaluationSection = {
     name: 'MCP Capabilities',
     description: 'Exercises standardized tools, resources, and prompts discovery methods',
@@ -355,6 +372,7 @@ const evaluateCapabilities = async (client: Client): Promise<EvaluationSection> 
     maxScore: 10,
     details: [],
   };
+  const targetAuthenticationFailures: CapabilityEvaluation['targetAuthenticationFailures'] = [];
   const checks: Array<{
     name: string;
     method: string;
@@ -366,26 +384,28 @@ const evaluateCapabilities = async (client: Client): Promise<EvaluationSection> 
       name: 'tools',
       method: 'tools/list',
       points: 4,
-      run: () => client.listTools(),
+      run: () => connection.client.listTools(),
       count: (result) => Array.isArray(result?.tools) ? result.tools.length : 0,
     },
     {
       name: 'resources',
       method: 'resources/list',
       points: 3,
-      run: () => client.listResources(),
+      run: () => connection.client.listResources(),
       count: (result) => Array.isArray(result?.resources) ? result.resources.length : 0,
     },
     {
       name: 'prompts',
       method: 'prompts/list',
       points: 3,
-      run: () => client.listPrompts(),
+      run: () => connection.client.listPrompts(),
       count: (result) => Array.isArray(result?.prompts) ? result.prompts.length : 0,
     },
   ];
 
   for (const check of checks) {
+    // Discard any challenge already handled while negotiating the connection.
+    connection.takeAuthenticationChallenge?.();
     try {
       const startedAt = Date.now();
       const result = await check.run();
@@ -397,15 +417,177 @@ const evaluateCapabilities = async (client: Client): Promise<EvaluationSection> 
         context: `The server implements the standard ${check.name} discovery method, including valid empty lists.`,
         metadata: { method: check.method, itemCount, durationMs },
       });
+      connection.takeAuthenticationChallenge?.();
     } catch (error) {
+      const failure = makeRouteFailure(
+        connection.usedProxy ? 'proxy' : 'direct',
+        error,
+        connection.takeAuthenticationChallenge?.()
+      );
+      if (
+        (failure.httpStatus === 401 || failure.httpStatus === 403)
+        && failure.authenticationSource === 'target'
+      ) {
+        targetAuthenticationFailures.push({ ...failure, method: check.method });
+      }
+      const methodNotFound = isMethodNotFound(error);
       section.details.push({
-        text: `${isMethodNotFound(error) ? '⚠' : '✗'} ${check.method} ${isMethodNotFound(error) ? 'is not supported' : 'failed'}`,
-        context: isMethodNotFound(error)
+        text: `${methodNotFound ? '⚠' : '✗'} ${check.method} ${methodNotFound ? 'is not supported' : 'failed'}`,
+        context: methodNotFound
           ? `${check.name} are optional; the server correctly returned method-not-found.`
-          : errorMessage(error),
-        metadata: { method: check.method, error: errorMessage(error) },
+          : failure.message,
+        metadata: {
+          method: check.method,
+          error: failure.message,
+          ...(failure.httpStatus ? { status: failure.httpStatus } : {}),
+          ...(failure.authenticationSource
+            ? { authenticationSource: failure.authenticationSource, route: failure.route }
+            : {}),
+        },
       });
     }
+  }
+
+  return { section, targetAuthenticationFailures };
+};
+
+type AuthorizationServerMetadata = NonNullable<
+  Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
+>;
+
+const metadataFetchForEvaluation = (firebaseToken: string): FetchLike => (
+  input,
+  init
+) => {
+  const request = input instanceof Request ? input : new Request(input, init);
+  return fetchForEvaluation(request.url, firebaseToken, {
+    method: request.method,
+    headers: request.headers,
+    signal: request.signal,
+  });
+};
+
+const evaluateSecurityPosture = async (
+  connection: ConnectedEvaluation,
+  firebaseToken: string
+): Promise<EvaluationSection | undefined> => {
+  const endpoint = getEvaluationTargetUrl(connection.url, connection.usedProxy);
+  const metadataFetch = metadataFetchForEvaluation(firebaseToken);
+  let resourceMetadata: OAuthProtectedResourceMetadata | undefined;
+
+  try {
+    resourceMetadata = await discoverOAuthProtectedResourceMetadata(
+      endpoint,
+      { protocolVersion: connection.protocolVersion },
+      metadataFetch
+    );
+  } catch {
+    // Protected-resource metadata is optional for older OAuth-enabled servers.
+  }
+
+  const endpointUrl = new URL(endpoint);
+  const authorizationServers = resourceMetadata?.authorization_servers?.length
+    ? resourceMetadata.authorization_servers
+    : [endpointUrl.origin];
+  let authorizationServer: string | undefined;
+  let authorizationMetadata: AuthorizationServerMetadata | undefined;
+
+  for (const candidate of authorizationServers) {
+    try {
+      const metadata = await discoverAuthorizationServerMetadata(candidate, {
+        fetchFn: metadataFetch,
+        protocolVersion: connection.protocolVersion,
+      });
+      if (metadata) {
+        authorizationServer = candidate;
+        authorizationMetadata = metadata;
+        break;
+      }
+    } catch {
+      // Continue when one advertised authorization server has unavailable metadata.
+    }
+  }
+
+  if (!resourceMetadata && !authorizationMetadata) return undefined;
+
+  const section: EvaluationSection = {
+    name: 'Security Posture',
+    description: 'Evaluates OAuth protected-resource and authorization-server metadata',
+    score: 0,
+    maxScore: 40,
+    details: [],
+  };
+
+  if (resourceMetadata) {
+    section.details.push({
+      text: '✓ OAuth protected-resource metadata available',
+      context: 'The MCP endpoint publishes standardized metadata identifying its authorization servers and protected resource.',
+      metadata: {
+        endpoint,
+        resource: resourceMetadata.resource,
+        authorizationServers: resourceMetadata.authorization_servers || [],
+        scopesSupported: resourceMetadata.scopes_supported || [],
+      },
+    });
+  } else {
+    section.details.push({
+      text: '⚠ OAuth protected-resource metadata not available',
+      context: 'Authorization-server metadata was discovered through the legacy origin fallback.',
+      metadata: { endpoint },
+    });
+  }
+
+  if (authorizationMetadata) {
+    section.score += 20;
+    section.details.push({
+      text: '✓ OAuth authorization-server metadata available',
+      context: 'Standard metadata allows clients to configure authorization endpoints without hard-coded assumptions.',
+      metadata: {
+        authorizationServer,
+        issuer: authorizationMetadata.issuer,
+        authorizationEndpoint: authorizationMetadata.authorization_endpoint,
+      },
+    });
+  } else {
+    section.details.push({
+      text: '✗ Authorization-server metadata not available',
+      context: 'The protected resource advertises OAuth, but none of its authorization servers returned valid standardized metadata.',
+      metadata: { authorizationServers },
+    });
+  }
+
+  if (authorizationMetadata?.token_endpoint) {
+    section.score += 10;
+    section.details.push({
+      text: '✓ Token endpoint properly configured',
+      context: 'A published token endpoint enables the secure exchange of authorization grants for access tokens.',
+      metadata: {
+        tokenEndpoint: authorizationMetadata.token_endpoint,
+        supportedGrantTypes: authorizationMetadata.grant_types_supported || [],
+      },
+    });
+  } else {
+    section.details.push({
+      text: '✗ Token endpoint not configured',
+      context: 'The authorization-server metadata does not publish a token endpoint.',
+    });
+  }
+
+  if (authorizationMetadata?.code_challenge_methods_supported?.includes('S256')) {
+    section.score += 10;
+    section.details.push({
+      text: '✓ PKCE support enabled',
+      context: 'S256 PKCE protects authorization codes used by public clients.',
+      metadata: {
+        supportedMethods: authorizationMetadata.code_challenge_methods_supported,
+        requiredMethod: 'S256',
+      },
+    });
+  } else {
+    section.details.push({
+      text: '✗ PKCE S256 support not advertised',
+      context: 'OAuth public clients require S256 PKCE support for authorization-code protection.',
+    });
   }
 
   return section;
@@ -589,7 +771,26 @@ export async function evaluateServer(
   onProgress(`Negotiated ${connection.protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''}.`);
 
   onProgress('Exercising tools, resources, and prompts discovery...');
-  report.sections.capabilities = await evaluateCapabilities(connection.client);
+  const capabilityEvaluation = await evaluateCapabilities(connection);
+  report.sections.capabilities = capabilityEvaluation.section;
+  if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
+    report.sections.auth = {
+      name: 'Authentication Required',
+      description: 'The MCP endpoint rejected standardized capability requests',
+      score: 0,
+      maxScore: 1,
+      details: capabilityEvaluation.targetAuthenticationFailures.map((failure) => ({
+        text: `⚠ Authenticate with the server and retry ${failure.method}.`,
+        context: failure.message,
+        metadata: {
+          method: failure.method,
+          route: failure.route,
+          status: failure.httpStatus,
+          authenticationSource: failure.authenticationSource,
+        },
+      })),
+    };
+  }
 
   const modernTransport = connection.transportType === 'streamable-http';
   report.sections.transport = {
@@ -611,6 +812,14 @@ export async function evaluateServer(
       },
     }],
   };
+
+  onProgress('Checking OAuth security metadata...');
+  const securitySection = await evaluateSecurityPosture(connection, firebaseToken);
+  if (securitySection) {
+    report.sections.security = securitySection;
+  } else {
+    onProgress('OAuth security metadata is unavailable; excluding it from scoring.');
+  }
 
   onProgress('Confirming direct-browser MCP accessibility at the negotiated endpoint...');
   report.sections.cors = evaluateBrowserAccessibility(connection, Boolean(oauthToken));

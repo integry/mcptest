@@ -25,6 +25,11 @@ export class TransportConnectionError extends Error {
 
 export type ProxyAuthenticationSource = 'proxy' | 'target';
 
+export interface ObservedAuthenticationChallenge {
+  status: 401 | 403;
+  source: ProxyAuthenticationSource;
+}
+
 export class ProxiedAuthenticationError extends Error {
   readonly cause: unknown;
 
@@ -168,6 +173,7 @@ type ConnectedCandidate = {
   transportType: TransportType;
   client: Client;
   url: string;
+  takeAuthenticationChallenge: () => ObservedAuthenticationChallenge | undefined;
 };
 
 const firstSuccessful = <T,>(promises: Promise<T>[]): Promise<T> => {
@@ -256,10 +262,7 @@ export async function attemptParallelConnections(
       : createNegotiatingMcpClient('mcptest-web');
     clients.push(client);
     const endpoint = new URL(candidate.url);
-    let proxyAuthChallenge: {
-      status: 401 | 403;
-      source: ProxyAuthenticationSource;
-    } | undefined;
+    let proxyAuthChallenge: ObservedAuthenticationChallenge | undefined;
     const transportOpts = transportOptionsFor(candidate.url, (status, source) => {
       proxyAuthChallenge = { status, source };
     });
@@ -279,7 +282,17 @@ export async function attemptParallelConnections(
       }
       throw error;
     }
-    return { ...candidate, client, transport };
+    proxyAuthChallenge = undefined;
+    return {
+      ...candidate,
+      client,
+      transport,
+      takeAuthenticationChallenge: () => {
+        const challenge = proxyAuthChallenge;
+        proxyAuthChallenge = undefined;
+        return challenge;
+      },
+    };
   };
 
   let removeAbortListener = () => {};
