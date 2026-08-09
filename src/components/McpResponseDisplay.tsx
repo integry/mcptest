@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useState } from 'react';
-import showdown from 'showdown';
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { LogEntry } from '../types'; // Import the full LogEntry type
 
 interface McpResponseDisplayProps {
@@ -27,8 +28,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   hideControls = false,
   forceExpanded = false,
 }) => {
-  const converter = useRef<showdown.Converter | null>(null);
-
   // Function to create excerpt from content (first 100 chars + last 100 chars)
   const createExcerpt = (content: string): string => {
     if (content.length <= 200) {
@@ -39,23 +38,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
     return `${firstPart}...${lastPart}`;
   };
 
-  useEffect(() => {
-    if (!converter.current) {
-      converter.current = new showdown.Converter();
-      converter.current.setFlavor('github');
-      converter.current.setOption('ghCompatibleHeaderId', true);
-      converter.current.setOption('simpleLineBreaks', true);
-      converter.current.setOption('ghCodeBlocks', true);
-      converter.current.setOption('tables', true);
-      converter.current.setOption('strikethrough', true);
-      converter.current.setOption('tasklists', true);
-    }
-  }, []);
-
-  // No need for force re-render - React will re-render when props change
-
   let textContent = ''; // Holds the plain text representation IF HTML fails or isn't used
-  let htmlContent: string | null = null; // Holds Showdown output
+  let markdownContent: string | null = null;
   let isJson = false; // Flag to check if content is JSON
   let entryClassName = `response-entry ${className}`;
   let title = logEntry.type || 'Unknown Entry';
@@ -134,21 +118,11 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
     }
 
     if (!isJson) {
-        // --- Attempt Showdown Conversion (using extracted/prepared dataString) ---
-        if (isResultType && converter.current) {
-            try {
-                // Pass the potentially extracted text content to Showdown
-                // No prefix or code fences needed here if we just want the text rendered as markdown
-                htmlContent = converter.current.makeHtml(dataString);
-            } catch (e) {
-                console.error("Error converting markdown to HTML:", e);
-                htmlContent = null; // Ensure fallback to textContent
-                entryClassName += ' error-message'; // Mark as error if conversion fails
-                textContent = `[Render Error] Failed to convert markdown for [${logEntry.type?.toUpperCase()}]:\n${dataString}`;
-            }
+        if (isResultType) {
+            markdownContent = dataString;
         } else if (itemType === 'error') {
             // Ensure errors are displayed plainly, not converted
-            htmlContent = null;
+            markdownContent = null;
         }
     }
     }
@@ -157,8 +131,16 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
       console.error("Error processing log entry data:", e);
       textContent = "[Render Error]";
       entryClassName += ' error-message';
-      htmlContent = null;
+      markdownContent = null;
   }
+
+  const renderedMarkdown = markdownContent !== null ? (
+    <div className="event-data markdown-content">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+        {markdownContent}
+      </ReactMarkdown>
+    </div>
+  ) : null;
 
   // Determine badge class based on type
   let badgeClass = 'bg-secondary';
@@ -194,8 +176,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           >
             {isJson ? (
                 <pre><code className="language-json">{textContent}</code></pre>
-            ) : htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+            ) : renderedMarkdown !== null ? (
+              renderedMarkdown
             ) : (
               <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
             )}
@@ -291,8 +273,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
           >
             {isJson ? (
                 <pre><code className="language-json">{textContent}</code></pre>
-            ) : htmlContent !== null ? (
-              <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+            ) : renderedMarkdown !== null ? (
+              renderedMarkdown
             ) : (
               <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
             )}
@@ -303,8 +285,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
         <div className="event-data-wrapper">
           {isJson ? (
               <pre><code className="language-json">{textContent}</code></pre>
-          ) : htmlContent !== null ? (
-            <span className="event-data" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+          ) : renderedMarkdown !== null ? (
+            renderedMarkdown
           ) : (
             <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
           )}
@@ -327,8 +309,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                 {isJson ? (
                     <pre><code className="language-json">{textContent}</code></pre>
-                ) : htmlContent !== null ? (
-                  <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+                ) : renderedMarkdown !== null ? (
+                  renderedMarkdown
                 ) : (
                   <pre style={{ whiteSpace: 'pre-wrap' }}>{textContent}</pre>
                 )}

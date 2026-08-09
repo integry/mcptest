@@ -18,26 +18,25 @@
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
     "@modelcontextprotocol/core": "^2.0.0",
-    "@types/showdown": "^2.0.6",
-    "@types/uuid": "^10.0.0",
-    "firebase": "^10.12.2",
-    "pkce-challenge": "^5.0.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router-dom": "^7.6.2",
-    "showdown": "^2.1.0",
-    "use-debounce": "^10.0.5",
-    "uuid": "^11.1.0",
+    "firebase": "^12.17.1",
+    "pkce-challenge": "^5.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.18.2",
+    "remark-gfm": "^4.0.1",
+    "use-debounce": "^10.1.1",
+    "uuid": "^11.1.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/react": "^19.1.1",
-    "@types/react-dom": "^19.1.2",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^4.7.0",
     "jsdom": "^26.1.0",
-    "typescript": "^5.8.3",
-    "vite": "^6.2.6",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
     "vitest": "^3.2.7",
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.120.0"
   }
 }
