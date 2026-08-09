@@ -48,4 +48,21 @@ describe('McpResponseDisplay markdown security', () => {
 
     expect(markup).toContain('first line<br/>\nsecond line');
   });
+
+  it('preserves single line breaks in plain-text results', () => {
+    const markup = renderToStaticMarkup(
+      <McpResponseDisplay
+        logEntry={{
+          type: 'tool_result',
+          data: [{
+            type: 'text',
+            text: 'First line\nSecond line',
+          }],
+        }}
+        showTimestamp={false}
+      />
+    );
+
+    expect(markup).toContain('<p>First line<br/>\nSecond line</p>');
+  });
 });
