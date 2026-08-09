@@ -185,7 +185,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
                     return (
                       <li
                         key={item.name || item.uriTemplate || item.uri}
-                        ref={el => listRefs.current[key][index] = el}
+                        ref={(el) => { listRefs.current[key][index] = el; }}
                         className={`tree-item ${isSelected ? 'selected' : ''}`}
                         onClick={() => isConnected && handler && handler(item)}
                         title={item.description}

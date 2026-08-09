@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LogEntry, ResourceTemplate, TransportType } from '../types';
+import { LogEntry, Resource, TransportType } from '../types';
 import { Client, type ProtocolEra } from '@modelcontextprotocol/client';
 import { formatErrorForDisplay } from '../utils/errorHandling';
 import { attemptParallelConnections } from '../utils/transportDetection';
@@ -321,7 +321,7 @@ export const useConnection = (
   const handleConnect = useCallback(async (
     // Keep setters for potential future use or different connect flows
     setTools: React.Dispatch<React.SetStateAction<any[]>>,
-    setResources: React.Dispatch<React.SetStateAction<ResourceTemplate[]>>,
+    setResources: React.Dispatch<React.SetStateAction<Resource[]>>,
     setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
     urlToConnect?: string, // Optional URL parameter
     forceUseProxy?: boolean // Optional proxy override

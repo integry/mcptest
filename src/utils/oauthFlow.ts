@@ -218,7 +218,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   saveClientInformation(
-    clientInformation: StoredOAuthClientInformation,
+    clientInformation: PersistedOAuthClientInformation,
     ctx?: OAuthClientInformationContext
   ): void {
     const issuer = ctx?.issuer || clientInformation.issuer;

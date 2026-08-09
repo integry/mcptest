@@ -160,7 +160,6 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
   const toolName = propToolName || logEntry.callContext?.name || 'Unknown Tool';
   const serverUrl = logEntry.callContext?.serverUrl || 'Unknown Server';
   const params = logEntry.callContext?.params || {};
-  const executionTime = logEntry.callContext?.executionTime || 'Unknown';
   
   // Spaces mode: simplified display with only content and controls
   if (spacesMode && isResultType) {
@@ -222,11 +221,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
       {isResultType && isDetailsExpanded && (
         <div className="details-section mb-2 p-2 bg-light border rounded small">
           <div className="row g-2">
-            <div className="col-12 col-md-6">
+            <div className="col-12">
               <strong>Server:</strong> <span className="text-muted">{serverUrl}</span>
-            </div>
-            <div className="col-12 col-md-6">
-              <strong>Execution Time:</strong> <span className="text-muted">{executionTime}</span>
             </div>
             {Object.keys(params).length > 0 && (
               <div className="col-12">

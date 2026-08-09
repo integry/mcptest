@@ -182,35 +182,24 @@ const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' | 'ca
 };
 
 // Helper to load dashboards from localStorage
-const loadData = <T extends {}>(key: string, defaultValue: T): T => {
+const loadSpaces = (defaultValue: Space[]): Space[] => {
   try {
-    const stored = localStorage.getItem(key);
+    const stored = localStorage.getItem(SPACES_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-
-      // For SPACES_KEY, we expect an array.
-      if (key === SPACES_KEY) {
-        if (Array.isArray(parsed)) {
-          const spaces = (parsed as Space[]).map(space => ({
-            ...space,
-            cards: (space.cards || []).map(card => { // Ensure cards is an array
-              const { loading, error, responseData, responseType, ...restOfCard } = card;
-              return restOfCard;
-            })
-          }));
-          return spaces as T;
-        }
-        // If not an array, it's invalid, fall through to return default.
-      } 
-      // For other keys, use the original less-strict check
-      else if (typeof parsed === typeof defaultValue && parsed !== null) {
-        return parsed as T;
+      if (Array.isArray(parsed)) {
+        return (parsed as Space[]).map(space => ({
+          ...space,
+          cards: (space.cards || []).map(card => {
+            const { loading, error, responseData, responseType, ...persistedCard } = card;
+            return persistedCard;
+          })
+        }));
       }
     }
   } catch (e) {
-    console.error(`Failed to load or parse data from localStorage key "${key}":`, e);
+    console.error(`Failed to load or parse data from localStorage key "${SPACES_KEY}":`, e);
   }
-  // Return default if stored value is missing, invalid, or doesn't match expected type
   return defaultValue;
 };
 
@@ -237,7 +226,7 @@ function App() {
   // --- State ---
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [spaces, setSpaces] = useState<Space[]>(() => {
-    const loaded = loadData<Space[]>(SPACES_KEY, [{ id: 'default', name: 'Default Dashboard', cards: [] }]);
+    const loaded = loadSpaces([{ id: 'default', name: 'Default Dashboard', cards: [] }]);
     console.log('[DEBUG] Initial dashboards loaded from localStorage:', loaded.map(s => ({
       id: s.id,
       name: s.name,
@@ -1045,7 +1034,7 @@ function App() {
 
   const handleReorderDashboards = (reorderedDashboards: Space[]) => {
     logEvent('reorder_dashboards');
-    setSpaces(reorderedSpaces);
+    setSpaces(reorderedDashboards);
   };
 
   // --- Dashboard Health Check Functions ---

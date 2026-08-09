@@ -246,15 +246,32 @@ function handleOptions(request: Request): Response {
   });
 }
 
+const MAX_CORS_REQUEST_HEADER_VALUE_LENGTH = 2048;
+const MAX_CORS_REQUEST_HEADER_COUNT = 64;
+const MAX_CORS_REQUEST_HEADER_NAME_LENGTH = 128;
+
 function getAllowedRequestHeaders(requestedHeaders: string | null): string {
   const allowedHeaders = new Map(
     REQUIRED_CORS_REQUEST_HEADERS.map(header => [header.toLowerCase(), header])
   );
 
   if (requestedHeaders) {
-    for (const requestedHeader of requestedHeaders.split(',')) {
+    if (requestedHeaders.length > MAX_CORS_REQUEST_HEADER_VALUE_LENGTH) {
+      throw new Error('Error: Access-Control-Request-Headers value is too large.');
+    }
+
+    const requestedHeaderList = requestedHeaders.split(',');
+    if (requestedHeaderList.length > MAX_CORS_REQUEST_HEADER_COUNT) {
+      throw new Error('Error: Too many Access-Control-Request-Headers values.');
+    }
+
+    for (const requestedHeader of requestedHeaderList) {
       const header = requestedHeader.trim();
-      if (!header || !HTTP_HEADER_NAME_PATTERN.test(header)) {
+      if (
+        !header
+        || header.length > MAX_CORS_REQUEST_HEADER_NAME_LENGTH
+        || !HTTP_HEADER_NAME_PATTERN.test(header)
+      ) {
         throw new Error('Error: Invalid Access-Control-Request-Headers value.');
       }
       allowedHeaders.set(header.toLowerCase(), header);

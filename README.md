@@ -58,30 +58,27 @@ Do not commit `.env` or real server credentials.
 
 ```bash
 npm test
-npx tsc --noEmit
+npm run typecheck
 npm run validate-catalog
 npm run build
+npm run build:workers
 npm audit --audit-level=low
 ```
 
 `npm run build` creates the Vite production bundle, generates one static HTML report document per catalog server, and refreshes `sitemap.xml` and `robots.txt`.
+`npm run build:workers` type-checks the TypeScript proxy and creates dry-run Cloudflare bundles for both Workers.
 
-The two Worker package trees are checked separately:
+Install the two Worker package trees separately before running their combined build:
 
 ```bash
-cd cors-proxy-worker
-npm ci
-npx tsc --noEmit
-npx wrangler deploy --dry-run
-
-cd ../cloudflare-worker
-npm ci
-npx wrangler deploy --dry-run
+npm --prefix cors-proxy-worker ci
+npm --prefix cloudflare-worker ci
+npm run build:workers
 ```
 
 ## Catalog maintenance
 
-Catalog entries live in `src/data/mcpServers.ts`. Run `npm run validate-catalog` after changing one. Validation uses actual MCP negotiation and records the observed endpoint, transport, protocol era, version, reachability, and authentication requirement in `src/data/catalogValidation.json`.
+Catalog seeds live in `src/data/serverCatalog.json`; `src/data/serverCatalog.ts` combines them with the latest validation snapshot. Run `npm run validate-catalog` after changing a seed. Validation uses actual MCP negotiation and records the observed endpoint, transport, protocol era, version, reachability, and authentication requirement in `src/data/catalogValidation.json`.
 
 A protected endpoint that returns a valid authentication challenge can be catalog-valid and reachable without being transport-verified anonymously. Keep that distinction explicit in catalog metadata and UI copy.
 
