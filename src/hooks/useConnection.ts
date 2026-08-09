@@ -11,6 +11,20 @@ import { getOAuthConfig, isOAuthService, getOAuthServiceName, getOrRegisterOAuth
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
 
+const getConnectedServerUrl = (
+  finalUrl: string,
+  targetUrl: string,
+  usedProxy: boolean
+): string => {
+  if (!usedProxy) return finalUrl;
+
+  try {
+    return new URL(finalUrl).searchParams.get('target') || targetUrl;
+  } catch {
+    return targetUrl;
+  }
+};
+
 // Helper to load recent servers from localStorage
 const loadRecentServers = (): string[] => {
   try {
@@ -836,6 +850,7 @@ export const useConnection = (
     let finalProtocolEra: ProtocolEra | null = null;
     let finalProtocolVersion: string | null = null;
     let finalUrl: string | null = null;
+    let finalUsedProxy = false;
     let lastError: any = null;
     const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
@@ -855,7 +870,8 @@ export const useConnection = (
         targetUrl,
         abortControllerRef.current?.signal,
         latestAccessToken || undefined,
-        requestHeaders
+        requestHeaders,
+        false
       );
     };
 
@@ -888,7 +904,8 @@ export const useConnection = (
         connectionUrl,
         abortControllerRef.current?.signal,
         authToken,
-        targetHeaders
+        targetHeaders,
+        true
       );
     };
 
@@ -905,6 +922,7 @@ export const useConnection = (
           finalProtocolEra = result.protocolEra;
           finalProtocolVersion = result.protocolVersion ?? null;
           finalUrl = result.url;
+          finalUsedProxy = false;
           connectionSuccess = true;
           addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}` });
         } catch (error: any) {
@@ -927,6 +945,7 @@ export const useConnection = (
             finalProtocolEra = result.protocolEra;
             finalProtocolVersion = result.protocolVersion ?? null;
             finalUrl = result.url;
+            finalUsedProxy = true;
             connectionSuccess = true;
             addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}` });
           } else {
@@ -944,24 +963,10 @@ export const useConnection = (
             setProtocolEra(finalProtocolEra);
             setProtocolVersion(finalProtocolVersion);
             
-            // Extract the actual URL that was connected to (with correct endpoint)
-            let displayUrl = targetUrl; // Default to original target
-            try {
-                const finalUrlObj = new URL(finalUrl);
-                
-                // For proxy URLs, extract the target parameter
-                if (finalUrlObj.searchParams.has('target')) {
-                    displayUrl = finalUrlObj.searchParams.get('target') || targetUrl;
-                } else {
-                    // For direct URLs, use the final URL which includes the correct endpoint
-                    displayUrl = finalUrl;
-                }
-                
-                console.log(`[DEBUG] Setting display URL: ${displayUrl} (from finalUrl: ${finalUrl})`);
-            } catch (error) {
-                console.error('[DEBUG] Error parsing final URL:', error);
-                // Fall back to original target URL
-            }
+            const displayUrl = getConnectedServerUrl(finalUrl, targetUrl, finalUsedProxy);
+            console.log(
+              `[DEBUG] Setting display URL: ${displayUrl} (from finalUrl: ${finalUrl}, proxy: ${finalUsedProxy})`
+            );
             
             setServerUrl(displayUrl); // Set UI URL to the actual connected URL with endpoint
             setConnectionStatus('Connected');
@@ -969,7 +974,7 @@ export const useConnection = (
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
             logEvent('connect_success', { 
               transport_type: finalTransportType,
-              is_proxied: isProxied,
+              is_proxied: finalUsedProxy,
             });
             setTools([]);
             setResources([]);
@@ -1061,7 +1066,7 @@ export const useConnection = (
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied, useOAuth, accessToken, getLatestAccessToken, requestHeaders]);
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, useOAuth, accessToken, getLatestAccessToken, requestHeaders]);
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {

@@ -1,4 +1,4 @@
-import type { Client, ProtocolEra } from '@modelcontextprotocol/client';
+import type { Client, FetchLike, ProtocolEra } from '@modelcontextprotocol/client';
 import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
@@ -12,6 +12,67 @@ export interface TransportCandidate {
   url: string;
   transportType: TransportType;
 }
+
+export interface TransportCandidateFailure {
+  candidateUrl: string;
+  error: unknown;
+}
+
+export class TransportConnectionError extends Error {
+  constructor(
+    readonly errors: readonly unknown[],
+    readonly candidateFailures: readonly TransportCandidateFailure[] = []
+  ) {
+    super(`All connections failed: ${errors.map((error) => (
+      (error instanceof Error ? error.message : String(error))
+        .replace(/^All connections failed: /, '')
+    )).join(', ')}`);
+    this.name = 'TransportConnectionError';
+  }
+}
+
+export type ProxyAuthenticationSource = 'proxy' | 'target';
+
+export interface ObservedAuthenticationChallenge {
+  status: 401 | 403;
+  source: ProxyAuthenticationSource;
+}
+
+export class ProxiedAuthenticationError extends Error {
+  readonly cause: unknown;
+
+  constructor(
+    readonly status: 401 | 403,
+    readonly responseSource: ProxyAuthenticationSource,
+    cause: unknown
+  ) {
+    super(
+      responseSource === 'target'
+        ? `MCP target returned HTTP ${status}`
+        : `Authenticated proxy returned HTTP ${status}`
+    );
+    this.name = 'ProxiedAuthenticationError';
+    this.cause = cause;
+  }
+}
+
+const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+
+const observeAuthenticationResponses = (
+  usesProxy: boolean,
+  onChallenge: (status: 401 | 403, source: ProxyAuthenticationSource) => void
+): FetchLike => async (input, init) => {
+  const response = await fetch(input, init);
+  if (response.status === 401 || response.status === 403) {
+    const responseSource = !usesProxy
+      ? 'target'
+      : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
+        ? 'target'
+        : 'proxy';
+    onChallenge(response.status, responseSource);
+  }
+  return response;
+};
 
 export const CANDIDATE_GROUP_TIMEOUT_MS = 5_000;
 
@@ -79,14 +140,21 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
 };
 
 /**
- * Builds connection candidates while preserving exact custom endpoints. For
- * proxy URLs, only the encoded target is varied; the proxy URL itself remains
- * untouched.
+ * Builds connection candidates while preserving exact custom endpoints. A URL
+ * is interpreted using the proxy `target` convention only when its caller has
+ * explicitly selected the configured proxy route.
  */
-export const getTransportCandidates = (serverUrl: string): TransportCandidate[] => {
+export const getTransportCandidates = (
+  serverUrl: string,
+  usesProxy = false
+): TransportCandidate[] => {
   const outerUrl = new URL(serverUrl);
+  if (!usesProxy) return directCandidates(outerUrl);
+
   const targetValue = outerUrl.searchParams.get('target');
-  if (!targetValue) return directCandidates(outerUrl);
+  if (!targetValue) {
+    throw new Error('Proxy connection URL is missing its target endpoint.');
+  }
 
   const targetUrl = new URL(targetValue);
   return directCandidates(targetUrl).map((candidate) => {
@@ -97,13 +165,13 @@ export const getTransportCandidates = (serverUrl: string): TransportCandidate[] 
 };
 
 export const getRequestHeadersForCandidate = (
-  candidateUrl: string,
-  requestHeaders?: HeadersInit
+  _candidateUrl: string,
+  requestHeaders?: HeadersInit,
+  usesProxy = false
 ): Headers => {
   const headers = new Headers(requestHeaders);
-  const candidate = new URL(candidateUrl);
 
-  if (candidate.searchParams.has('target') && headers.has('Authorization')) {
+  if (usesProxy && headers.has('Authorization')) {
     headers.set('X-MCP-Authorization', headers.get('Authorization') || '');
     headers.delete('Authorization');
   }
@@ -116,30 +184,36 @@ type ConnectedCandidate = {
   transportType: TransportType;
   client: Client;
   url: string;
+  takeAuthenticationChallenge: () => ObservedAuthenticationChallenge | undefined;
 };
 
-const firstSuccessful = <T,>(promises: Promise<T>[]): Promise<T> => {
+const firstSuccessful = <T,>(
+  attempts: Array<{ promise: Promise<T>; candidateUrl: string }>,
+  candidateFailures: TransportCandidateFailure[]
+): Promise<T> => {
   return new Promise((resolve, reject) => {
-    const errors: Error[] = [];
-    let remaining = promises.length;
+    const errors: unknown[] = [];
+    let remaining = attempts.length;
 
-    for (const promise of promises) {
+    for (const { promise, candidateUrl } of attempts) {
       promise.then(resolve).catch((error) => {
-        errors.push(error instanceof Error ? error : new Error(String(error)));
+        errors.push(error);
+        candidateFailures.push({ candidateUrl, error });
         remaining -= 1;
         if (remaining === 0) {
-          reject(new Error(
-            `All connections failed: ${errors.map(({ message }) => message).join(', ')}`
-          ));
+          reject(new TransportConnectionError(errors, [...candidateFailures]));
         }
       });
     }
   });
 };
 
-const candidateGroupKey = (candidate: TransportCandidate): string => {
+const candidateGroupKey = (
+  candidate: TransportCandidate,
+  usesProxy: boolean
+): string => {
   const outerUrl = new URL(candidate.url);
-  const targetValue = outerUrl.searchParams.get('target');
+  const targetValue = usesProxy ? outerUrl.searchParams.get('target') : null;
   const endpoint = targetValue ? new URL(targetValue) : outerUrl;
   endpoint.pathname = endpoint.pathname.replace(/\/+$/, '') || '/';
 
@@ -147,7 +221,8 @@ const candidateGroupKey = (candidate: TransportCandidate): string => {
 };
 
 const groupCandidatesByPriority = (
-  candidates: TransportCandidate[]
+  candidates: TransportCandidate[],
+  usesProxy: boolean
 ): TransportCandidate[][] => {
   const groups: TransportCandidate[][] = [];
 
@@ -155,7 +230,7 @@ const groupCandidatesByPriority = (
     const currentGroup = groups[groups.length - 1];
     if (
       !currentGroup
-      || candidateGroupKey(currentGroup[0]) !== candidateGroupKey(candidate)
+      || candidateGroupKey(currentGroup[0], usesProxy) !== candidateGroupKey(candidate, usesProxy)
     ) {
       groups.push([candidate]);
     } else {
@@ -170,16 +245,21 @@ export async function attemptParallelConnections(
   serverUrl: string,
   abortSignal?: AbortSignal,
   authToken?: string,
-  requestHeaders?: HeadersInit
+  requestHeaders?: HeadersInit,
+  usesProxy = false
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
-  const candidates = getTransportCandidates(serverUrl);
+  const candidates = getTransportCandidates(serverUrl, usesProxy);
   const clients: Client[] = [];
-  const transportOptionsFor = (candidateUrl: string) => {
-    const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders);
+  const transportOptionsFor = (
+    candidateUrl: string,
+    onAuthenticationChallenge: (status: 401 | 403, source: ProxyAuthenticationSource) => void
+  ) => {
+    const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders, usesProxy);
 
     return {
       ...(authToken ? { authProvider: { token: async () => authToken } } : {}),
       ...(Array.from(headers.keys()).length > 0 ? { headers } : {}),
+      fetch: observeAuthenticationResponses(usesProxy, onAuthenticationChallenge),
     };
   };
 
@@ -197,13 +277,37 @@ export async function attemptParallelConnections(
       : createNegotiatingMcpClient('mcptest-web');
     clients.push(client);
     const endpoint = new URL(candidate.url);
-    const transportOpts = transportOptionsFor(candidate.url);
+    let authenticationChallenge: ObservedAuthenticationChallenge | undefined;
+    const transportOpts = transportOptionsFor(candidate.url, (status, source) => {
+      authenticationChallenge = { status, source };
+    });
     const transport = candidate.transportType === 'legacy-sse'
       ? new CorsAwareSSETransport(endpoint, transportOpts)
       : new CorsAwareStreamableHTTPTransport(endpoint, transportOpts);
 
-    await client.connect(transport);
-    return { ...candidate, client, transport };
+    try {
+      await client.connect(transport);
+    } catch (error) {
+      if (authenticationChallenge) {
+        throw new ProxiedAuthenticationError(
+          authenticationChallenge.status,
+          authenticationChallenge.source,
+          error
+        );
+      }
+      throw error;
+    }
+    authenticationChallenge = undefined;
+    return {
+      ...candidate,
+      client,
+      transport,
+      takeAuthenticationChallenge: () => {
+        const challenge = authenticationChallenge;
+        authenticationChallenge = undefined;
+        return challenge;
+      },
+    };
   };
 
   let removeAbortListener = () => {};
@@ -217,24 +321,35 @@ export async function attemptParallelConnections(
   try {
     const failures: Error[] = [];
 
-    for (const candidateGroup of groupCandidatesByPriority(candidates)) {
+    for (const candidateGroup of groupCandidatesByPriority(candidates, usesProxy)) {
       if (abortSignal?.aborted) {
         throw new Error('Connection aborted by user');
       }
 
       let successful: ConnectedCandidate;
       const firstGroupClientIndex = clients.length;
+      const candidateFailures: TransportCandidateFailure[] = [];
       let groupTimeoutId: ReturnType<typeof setTimeout> | undefined;
       const groupTimeout = new Promise<never>((_, reject) => {
         groupTimeoutId = setTimeout(() => {
-          reject(new Error(
+          const timeoutError = new Error(
             `Connection candidates timed out after ${CANDIDATE_GROUP_TIMEOUT_MS / 1000} seconds`
+          );
+          reject(new TransportConnectionError(
+            [...candidateFailures.map(({ error }) => error), timeoutError],
+            [...candidateFailures]
           ));
         }, CANDIDATE_GROUP_TIMEOUT_MS);
       });
       try {
         successful = await Promise.race([
-          firstSuccessful(candidateGroup.map(attemptConnection)),
+          firstSuccessful(
+            candidateGroup.map((candidate) => ({
+              promise: attemptConnection(candidate),
+              candidateUrl: candidate.url,
+            })),
+            candidateFailures
+          ),
           abortPromise,
           groupTimeout,
         ]);
@@ -266,11 +381,7 @@ export async function attemptParallelConnections(
       };
     }
 
-    throw new Error(
-      `All connections failed: ${failures.map(({ message }) => (
-        message.replace(/^All connections failed: /, '')
-      )).join(', ')}`
-    );
+    throw new TransportConnectionError(failures);
   } catch (error) {
     await Promise.allSettled(clients.map((client) => client.close()));
     throw error;

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { fetchTargetRequest, getTargetRequestHeaders } from './index';
+import proxyWorker, {
+  PROXY_RESPONSE_SOURCE_HEADER,
+  fetchTargetRequest,
+  getTargetRequestHeaders,
+  withCorsResponseHeaders,
+} from './index';
 
 describe('proxy target credential forwarding', () => {
   it('replaces proxy authorization with the isolated target credential', () => {
@@ -72,5 +77,48 @@ describe('proxy target credential forwarding', () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0].url).toBe('https://example.com/mcp');
+  });
+
+  it('marks upstream responses separately from proxy-owned responses', async () => {
+    const targetResponse = withCorsResponseHeaders(
+      new Response('Target authentication required', { status: 401 }),
+      'target'
+    );
+    const proxyResponse = await proxyWorker.fetch(
+      new Request('https://proxy.mcptest.test/'),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+
+    expect(targetResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(targetResponse.headers.get('access-control-expose-headers')).toContain(
+      PROXY_RESPONSE_SOURCE_HEADER.toLowerCase()
+    );
+    expect(proxyResponse.status).toBe(400);
+    expect(proxyResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+  });
+
+  it('allows caller-provided custom target headers during preflight', async () => {
+    const response = await proxyWorker.fetch(
+      new Request('https://proxy.mcptest.test/', {
+        method: 'OPTIONS',
+        headers: {
+          'Access-Control-Request-Headers': 'content-type, x-tenant-id, x-vendor-auth',
+        },
+      }),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+    const allowedHeaders = response.headers
+      .get('access-control-allow-headers')
+      ?.toLowerCase()
+      .split(', ');
+
+    expect(response.status).toBe(200);
+    expect(allowedHeaders).toEqual(expect.arrayContaining([
+      'authorization',
+      'mcp-protocol-version',
+      'x-mcp-authorization',
+      'x-tenant-id',
+      'x-vendor-auth',
+    ]));
   });
 });

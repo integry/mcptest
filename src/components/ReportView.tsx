@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getOAuthConfig, discoverOAuthEndpoints } from '../utils/oauthDiscovery';
-import { evaluateServer } from '../utils/evaluation';
+import { getOAuthConfig } from '../utils/oauthDiscovery';
+import {
+  evaluateServer,
+  getEvaluationMaxScore,
+  getEvaluationPercentage,
+  type EvaluationReport,
+} from '../utils/evaluation';
 
 // Helper functions for score display
 const getScoreColor = (score: number): string => {
@@ -51,7 +56,7 @@ const ReportView: React.FC = () => {
     }
     return '';
   });
-  const [report, setReport] = useState<any>(null);
+  const [report, setReport] = useState<EvaluationReport | null>(null);
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -208,138 +213,6 @@ const ReportView: React.FC = () => {
     localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
   }, [testedServers]);
 
-  const checkOAuthAuthentication = useCallback(async (serverUrl: string): Promise<boolean> => {
-    try {
-      // Check if we already have an OAuth token for this server
-      const serverHost = new URL(serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`).host;
-      const existingToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
-      
-      if (existingToken) {
-        setProgress(prev => [...prev, 'Found existing OAuth token for server']);
-        return true;
-      }
-
-      // Check if server has OAuth endpoints
-      setProgress(prev => [...prev, 'Checking if server requires OAuth authentication...']);
-      const discovered = await discoverOAuthEndpoints(serverUrl);
-      
-      if (discovered) {
-        setProgress(prev => [...prev, 'Server requires OAuth authentication']);
-        
-        // Store the current state so we can return after OAuth
-        sessionStorage.setItem('oauth_return_view', JSON.stringify({
-          activeView: 'report',
-          serverUrl: serverUrl,
-          timestamp: Date.now()
-        }));
-        
-        // Ask user for OAuth authentication
-        const confirmAuth = confirm('This server requires OAuth authentication. Would you like to authenticate now?');
-        if (confirmAuth) {
-          // Start OAuth flow directly instead of navigating away
-          setProgress(prev => [...prev, 'Starting OAuth authentication...']);
-          
-          try {
-            // Import necessary OAuth utilities
-            const { getOAuthConfig } = await import('../utils/oauthDiscovery');
-            const { generatePKCE } = await import('../utils/pkce');
-            const { v4: uuidv4 } = await import('uuid');
-            
-            // Get OAuth configuration
-            const oauthConfig = await getOAuthConfig(serverUrl);
-            if (!oauthConfig) {
-              setProgress(prev => [...prev, 'Failed to get OAuth configuration']);
-              return false;
-            }
-            
-            // Generate PKCE parameters
-            const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
-            sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-            sessionStorage.setItem('oauth_server_url', serverUrl);
-            
-            // Extract server host
-            const serverHost = new URL(serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`).hostname;
-            sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
-            
-            // Check for stored client registration
-            let clientId: string | null = null;
-            const serverClientKey = `oauth_client_${serverHost}`;
-            const storedServerClient = sessionStorage.getItem(serverClientKey);
-            
-            if (storedServerClient) {
-              try {
-                const clientData = JSON.parse(storedServerClient);
-                clientId = clientData.clientId;
-              } catch (e) {
-                console.error('[OAuth] Failed to parse stored client data:', e);
-              }
-            }
-            
-            // If no client ID, try dynamic registration
-            if (!clientId && oauthConfig.registrationEndpoint) {
-              const registrationData = {
-                client_name: 'MCP Test Client',
-                redirect_uris: [`${window.location.origin}/oauth/callback`],
-                grant_types: ['authorization_code'],
-                response_types: ['code'],
-                application_type: 'web',
-                token_endpoint_auth_method: 'none'
-              };
-              
-              const registrationResponse = await fetch(oauthConfig.registrationEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(registrationData)
-              });
-              
-              if (registrationResponse.ok) {
-                const clientData = await registrationResponse.json();
-                clientId = clientData.client_id;
-                
-                // Store the client registration
-                sessionStorage.setItem(serverClientKey, JSON.stringify({
-                  clientId: clientData.client_id,
-                  clientSecret: clientData.client_secret
-                }));
-              }
-            }
-            
-            if (clientId && oauthConfig.authorizationEndpoint) {
-              // Build authorization URL
-              const authUrl = new URL(oauthConfig.authorizationEndpoint);
-              authUrl.searchParams.set('response_type', 'code');
-              authUrl.searchParams.set('client_id', clientId);
-              authUrl.searchParams.set('redirect_uri', `${window.location.origin}/oauth/callback`);
-              authUrl.searchParams.set('code_challenge', codeChallenge);
-              authUrl.searchParams.set('code_challenge_method', 'S256');
-              authUrl.searchParams.set('scope', oauthConfig.scope || 'openid profile email');
-              authUrl.searchParams.set('state', uuidv4());
-              
-              // Redirect to OAuth provider
-              window.location.href = authUrl.toString();
-              return false; // Prevent further execution as we're redirecting
-            } else {
-              setProgress(prev => [...prev, 'Failed to configure OAuth client']);
-              return false;
-            }
-          } catch (error) {
-            console.error('[OAuth] Error starting authentication:', error);
-            setProgress(prev => [...prev, 'OAuth authentication failed']);
-            return false;
-          }
-        } else {
-          setProgress(prev => [...prev, 'OAuth authentication cancelled by user']);
-          return false;
-        }
-      }
-      
-      return true; // No OAuth required or already authenticated
-    } catch (error) {
-      console.error('Error checking OAuth:', error);
-      return true; // Continue without OAuth on error
-    }
-  }, []);
-
   const handleRunReport = useCallback(async (urlToTest: string) => {
     if (!currentUser) {
       alert('Please login to run a report.');
@@ -361,14 +234,6 @@ const ReportView: React.FC = () => {
       navigate(`/report/${encodeURIComponent(urlToTest)}`);
     }
 
-    // Check if OAuth authentication is needed
-    const canProceed = await checkOAuthAuthentication(urlToTest);
-    if (!canProceed) {
-      setIsRunning(false);
-      isRunningRef.current = false;
-      return;
-    }
-
     // Get OAuth access token from sessionStorage if available
     const serverHost = new URL(urlToTest.startsWith('http') ? urlToTest : `https://${urlToTest}`).host;
     const oauthAccessToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
@@ -385,10 +250,8 @@ const ReportView: React.FC = () => {
       const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
       setReport(reportData);
       
-      // If report completed successfully, save to history
-      if (reportData && reportData.finalScore !== undefined && !reportData.fatalError) {
-        addOrUpdateServer(urlToTest, reportData.finalScore);
-      }
+      // A resolved evaluation always has a typed score; failures reject instead.
+      addOrUpdateServer(urlToTest, Math.round(getEvaluationPercentage(reportData)));
       
       // If authentication is required, show a button to authenticate
       if (reportData && reportData.sections && reportData.sections.auth) {
@@ -402,12 +265,18 @@ const ReportView: React.FC = () => {
       setIsRunning(false);
       isRunningRef.current = false;
     }
-  }, [currentUser, isRunning, navigate, urlParam, checkOAuthAuthentication, addOrUpdateServer]);
+  }, [currentUser, isRunning, navigate, urlParam, addOrUpdateServer]);
 
   // Assign handleRunReport to ref after it's defined
   useEffect(() => {
     handleRunReportRef.current = handleRunReport;
   }, [handleRunReport]);
+
+  const scoredSections = report
+    ? Object.entries(report.sections).filter(([key]) => key !== 'auth')
+    : [];
+  const reportMaxScore = report ? getEvaluationMaxScore(report) : 0;
+  const reportPercentage = report ? getEvaluationPercentage(report) : 0;
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
@@ -416,6 +285,7 @@ const ReportView: React.FC = () => {
         <input
           type="text"
           className="form-control"
+          aria-label="MCP server URL"
           placeholder="Enter server URL (e.g., mcp.paypal.com)"
           value={serverUrl}
           onChange={(e) => setServerUrl(e.target.value)}
@@ -438,16 +308,18 @@ const ReportView: React.FC = () => {
                   key={server.url}
                   className="list-group-item d-flex justify-content-between align-items-center"
                 >
-                  <div
+                  <button
+                    type="button"
                     className="flex-grow-1"
-                    style={{ cursor: 'pointer' }}
+                    style={{ border: 0, background: 'transparent', padding: 0, textAlign: 'left' }}
                     onClick={() => setServerUrl(server.url)}
+                    aria-label={`Use ${server.url}`}
                   >
                     <div className="fw-bold">{server.url}</div>
                     <small className="text-muted">
                       Score: {server.score}% • Tested {new Date(server.timestamp).toLocaleString()}
                     </small>
-                  </div>
+                  </button>
                   <button
                     className="btn btn-sm btn-outline-danger"
                     onClick={(e) => {
@@ -455,6 +327,7 @@ const ReportView: React.FC = () => {
                       removeServer(server.url);
                     }}
                     title={`Remove ${server.url} from history`}
+                    aria-label={`Remove ${server.url} from history`}
                   >
                     <span aria-hidden="true">&times;</span>
                   </button>
@@ -467,7 +340,15 @@ const ReportView: React.FC = () => {
 
       {isRunning && (
         <div className="progress mb-3">
-          <div className="progress-bar progress-bar-striped progress-bar-animated" style={{ width: `${(progress.length / 10) * 100}%` }}></div>
+          <div
+            className="progress-bar progress-bar-striped progress-bar-animated"
+            role="progressbar"
+            aria-label="Report progress"
+            aria-valuenow={Math.min(progress.length * 10, 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            style={{ width: `${Math.min(progress.length * 10, 100)}%` }}
+          />
         </div>
       )}
 
@@ -484,11 +365,13 @@ const ReportView: React.FC = () => {
         <div className="card mb-4">
           <div className="card-header">
             <h4>Report for: {report.serverUrl}</h4>
-            <h3 className={`text-${getScoreColor(!report.sections.security ? (report.finalScore / 70) * 100 : (report.finalScore / 110) * 100)}`}>
-              Final Score: {report.finalScore} / {!report.sections.security ? 70 : 110} ({getScoreGrade(!report.sections.security ? (report.finalScore / 70) * 100 : (report.finalScore / 110) * 100)})
+            <h3 className={`text-${getScoreColor(reportPercentage)}`}>
+              Final Score: {report.finalScore} / {reportMaxScore} ({Math.round(reportPercentage)}% · {getScoreGrade(reportPercentage)})
             </h3>
             {!report.sections.security && (
-              <small className="text-muted">Note: OAuth not supported - score calculated out of 70 points</small>
+              <small className="text-muted">
+                OAuth security metadata was not included in this run; the base report is scored out of {reportMaxScore} points.
+              </small>
             )}
           </div>
           <div className="card-body">
@@ -499,10 +382,11 @@ const ReportView: React.FC = () => {
                 <button 
                   className="btn btn-primary"
                   onClick={async () => {
+                    const authenticationUrl = report.authenticationUrl || report.serverUrl;
                     // Store the current state so we can return after OAuth
                     sessionStorage.setItem('oauth_return_view', JSON.stringify({
                       activeView: 'report',
-                      serverUrl: report.serverUrl,
+                      serverUrl: authenticationUrl,
                       timestamp: Date.now()
                     }));
                     
@@ -511,7 +395,7 @@ const ReportView: React.FC = () => {
                       const { generatePKCE } = await import('../utils/pkce');
                       const { v4: uuidv4 } = await import('uuid');
                       
-                      const oauthConfig = await getOAuthConfig(report.serverUrl);
+                      const oauthConfig = await getOAuthConfig(authenticationUrl);
                       if (!oauthConfig) {
                         alert('Failed to get OAuth configuration');
                         return;
@@ -519,9 +403,9 @@ const ReportView: React.FC = () => {
                       
                       const { code_verifier: codeVerifier, code_challenge: codeChallenge } = await generatePKCE();
                       sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-                      sessionStorage.setItem('oauth_server_url', report.serverUrl);
+                      sessionStorage.setItem('oauth_server_url', authenticationUrl);
                       
-                      const serverHost = new URL(report.serverUrl.startsWith('http') ? report.serverUrl : `https://${report.serverUrl}`).hostname;
+                      const serverHost = new URL(authenticationUrl.startsWith('http') ? authenticationUrl : `https://${authenticationUrl}`).hostname;
                       sessionStorage.setItem(`oauth_endpoints_${serverHost}`, JSON.stringify(oauthConfig));
                       
                       let clientId: string | null = null;
@@ -589,18 +473,23 @@ const ReportView: React.FC = () => {
               </div>
             )}
             <div className="row g-3">
-              {Object.entries(report.sections as Record<string, any>).map(([key, section]) => (
+              {scoredSections.map(([key, section]) => {
+                const sectionPercentage = section.maxScore > 0
+                  ? section.score / section.maxScore * 100
+                  : 0;
+
+                return (
                 <div key={key} className="col-12">
                   <div className="card h-100 shadow-sm">
                     <div className="card-header">
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <h5 className="mb-0">{section.name}</h5>
                         <div className="d-flex align-items-center gap-2">
-                          <span className={`text-${getScoreColor(section.score / section.maxScore * 100)} fw-bold`}>
+                          <span className={`text-${getScoreColor(sectionPercentage)} fw-bold`}>
                             {section.score} / {section.maxScore} points
                           </span>
-                          <span className={`badge bg-${getScoreColor(section.score / section.maxScore * 100)}`}>
-                            {Math.round(section.score / section.maxScore * 100)}%
+                          <span className={`badge bg-${getScoreColor(sectionPercentage)}`}>
+                            {Math.round(sectionPercentage)}%
                           </span>
                         </div>
                       </div>
@@ -625,32 +514,28 @@ const ReportView: React.FC = () => {
                                 <div className={`d-flex align-items-start ${isSuccess ? 'text-success' : isError ? 'text-danger' : 'text-warning'}`}>
                                   <span style={{ marginRight: '10px', marginTop: '2px' }}>{isSuccess ? '✓' : isError ? '✗' : '⚠'}</span>
                                   <div className="flex-grow-1">
-                                    <div 
-                                      className="d-flex align-items-center"
-                                      style={{ 
-                                        cursor: hasMoreInfo ? 'pointer' : 'default',
-                                        transition: 'background-color 0.2s ease',
-                                        borderRadius: '4px',
-                                        padding: '2px 4px',
-                                        margin: '-2px -4px'
-                                      }}
-                                      onMouseEnter={(e) => hasMoreInfo && (e.currentTarget.style.backgroundColor = '#f8f9fa')}
-                                      onMouseLeave={(e) => hasMoreInfo && (e.currentTarget.style.backgroundColor = 'transparent')}
-                                      onClick={() => hasMoreInfo && toggleItemExpanded(itemKey)}
-                                    >
-                                      <div className="flex-grow-1">{detailText.substring(2)}</div>
-                                      {hasMoreInfo && (
+                                    {hasMoreInfo ? (
+                                      <button
+                                        type="button"
+                                        className="d-flex align-items-center w-100 text-start border-0 bg-transparent rounded px-1"
+                                        onClick={() => toggleItemExpanded(itemKey)}
+                                        aria-expanded={isExpanded}
+                                        aria-controls={`${itemKey}-details`}
+                                      >
+                                        <span className="flex-grow-1">{detailText.substring(2)}</span>
                                         <span 
                                           className="text-muted ms-2" 
                                           style={{ fontSize: '0.875rem' }}
-                                          title="Click to see more details"
+                                          aria-hidden="true"
                                         >
                                           {isExpanded ? '▼' : '▶'}
                                         </span>
-                                      )}
-                                    </div>
+                                      </button>
+                                    ) : (
+                                      <div className="px-1">{detailText.substring(2)}</div>
+                                    )}
                                     {isExpanded && (
-                                      <div className="mt-2" style={{ marginLeft: '20px' }}>
+                                      <div id={`${itemKey}-details`} className="mt-2" style={{ marginLeft: '20px' }}>
                                         {detailContext && (
                                           <div className="text-muted mb-2" style={{ fontSize: '0.875rem' }}>
                                             {detailContext}
@@ -676,7 +561,8 @@ const ReportView: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

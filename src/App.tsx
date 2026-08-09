@@ -30,29 +30,112 @@ import OAuthConfig from './components/OAuthConfig';
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
 import { useMetaTags } from './hooks/useMetaTags';
+import { useAuth } from './context/AuthContext';
 
 import { v4 as uuidv4 } from 'uuid';
 
 // Import Types
 import {
-  Space, SpaceCard,
-  AccessResourceResultSchema, // Import the result schema
-  ConnectionTab
+  Space, SpaceCard, ConnectionTab
 } from './types';
 import type { CatalogServer } from './types/catalog';
 
 // Import Utils
 import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, parseServerUrl, parseResultShareUrl } from './utils/urlUtils';
-import { CorsAwareStreamableHTTPTransport } from './utils/corsAwareTransport';
-import { CorsAwareSSETransport } from './utils/corsAwareSseTransport';
 import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
-import { createLegacyMcpClient, createNegotiatingMcpClient } from './utils/mcpClient';
+import {
+  ProxiedAuthenticationError,
+  TransportConnectionError,
+  attemptParallelConnections,
+  type ObservedAuthenticationChallenge,
+} from './utils/transportDetection';
+import {
+  getSavedCardConnectionPlan,
+  getSavedResourceUri,
+  SavedResourceCardMigrationError,
+} from './utils/savedCardConnection';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
 const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
+
+const getProxiedAuthenticationChallenge = (
+  error: unknown,
+  seen = new Set<object>()
+): ObservedAuthenticationChallenge | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  if (error instanceof ProxiedAuthenticationError) {
+    return { status: error.status, source: error.responseSource };
+  }
+
+  let proxyChallenge: ObservedAuthenticationChallenge | undefined;
+  if (error instanceof TransportConnectionError) {
+    for (const nestedError of error.errors) {
+      const challenge = getProxiedAuthenticationChallenge(nestedError, seen);
+      if (challenge?.source === 'target') return challenge;
+      if (challenge?.source === 'proxy') proxyChallenge = challenge;
+    }
+  }
+
+  const causeChallenge = getProxiedAuthenticationChallenge(
+    (error as { cause?: unknown }).cause,
+    seen
+  );
+  if (causeChallenge?.source === 'target') return causeChallenge;
+  return causeChallenge || proxyChallenge;
+};
+
+const getAuthenticationHttpStatus = (
+  error: unknown,
+  seen = new Set<object>()
+): 401 | 403 | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  const value = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown };
+    cause?: unknown;
+  };
+  const status = [
+    value.status,
+    value.statusCode,
+    value.response?.status,
+  ].find(candidate => candidate === 401 || candidate === 403);
+  if (status === 401 || status === 403) return status;
+
+  if (error instanceof TransportConnectionError) {
+    for (const nestedError of error.errors) {
+      const nestedStatus = getAuthenticationHttpStatus(nestedError, seen);
+      if (nestedStatus) return nestedStatus;
+    }
+  }
+
+  const causeStatus = getAuthenticationHttpStatus(value.cause, seen);
+  if (causeStatus) return causeStatus;
+  return undefined;
+};
+
+export const classifySavedCardAuthenticationFailure = (
+  error: unknown,
+  usesProxy: boolean,
+  observedChallenge?: ObservedAuthenticationChallenge
+): ObservedAuthenticationChallenge | undefined => {
+  const proxiedChallenge = observedChallenge || getProxiedAuthenticationChallenge(error);
+  if (proxiedChallenge) return proxiedChallenge;
+
+  // A generic proxied 401/403 has ambiguous provenance. Never turn it into a
+  // target OAuth prompt unless the proxy transport identified the responder.
+  if (usesProxy) return undefined;
+
+  const status = getAuthenticationHttpStatus(error);
+  return status ? { status, source: 'target' } : undefined;
+};
 
 // Helper function to get the initial theme
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -144,6 +227,7 @@ declare global {
 }
 
 function App() {
+  const { currentUser } = useAuth();
   // --- State ---
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [spaces, setSpaces] = useState<Space[]>(() => {
@@ -1226,6 +1310,7 @@ function App() {
     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: true, error: null, responseData: null, responseType: null }));
 
     let tempClient: any = null;
+    let activeConnection: Awaited<ReturnType<typeof attemptParallelConnections>> | null = null;
     let lastError: any = null;
     let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
 
@@ -1233,67 +1318,48 @@ function App() {
       try {
         console.log(`[Execute Card ${cardId} Attempt ${attempt}/${MAX_RETRIES}] Starting execution. Card URL: ${card.serverUrl}`);
         lastError = null; // Clear last error on new attempt
+        const resourceUri = card.type === 'resource'
+          ? getSavedResourceUri(card.name, card.params)
+          : undefined;
 
         // --- Connection and Request Logic ---
-        let connectUrl: URL;
-        let serverUrl = card.serverUrl;
-        
         // Check for OAuth token first - use the original card.serverUrl for OAuth token lookup
         const originalServerHost = new URL(card.serverUrl).host;
         const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
-        const transportOptions: any = {};
-        
-        if (oauthToken) {
-          console.log(`[Execute Card ${cardId}] Using OAuth token for authentication`);
-          // Use consistent Bearer token format for all services
-          transportOptions.headers = {
-            'Authorization': `Bearer ${oauthToken}`
-          };
-        }
-        
-        // Determine if proxy should be used
-        shouldUseProxy = false; // Reset for each attempt
-        
-        // If card.useProxy is explicitly set, respect that
-        if (card.useProxy !== undefined) {
-          shouldUseProxy = card.useProxy;
-        } else if (!oauthToken && import.meta.env.VITE_PROXY_URL) {
-          // If no OAuth token and proxy is available, use proxy by default
-          shouldUseProxy = true;
-        }
-        
-        // Apply proxy to the server URL if needed
-        if (shouldUseProxy && import.meta.env.VITE_PROXY_URL) {
-          const proxyUrl = import.meta.env.VITE_PROXY_URL;
-          serverUrl = `${proxyUrl}?target=${encodeURIComponent(card.serverUrl)}`;
-          console.log(`[Execute Card ${cardId}] Using proxy: ${proxyUrl}`);
-        }
-        
-        try {
-            connectUrl = new URL(serverUrl);
-            // Don't append /mcp if the URL already ends with /sse or /mcp
-            if (!connectUrl.pathname.endsWith('/mcp') && !connectUrl.pathname.endsWith('/sse')) {
-                connectUrl.pathname = (connectUrl.pathname.endsWith('/') ? connectUrl.pathname : connectUrl.pathname + '/') + 'mcp';
-            }
-        } catch (e) {
-            throw new Error(`Invalid Server URL format in card: ${card.serverUrl}`);
+        const proxyUrl = import.meta.env.VITE_PROXY_URL;
+        const proxySelected = Boolean(
+          proxyUrl && (card.useProxy !== undefined ? card.useProxy : !oauthToken)
+        );
+        shouldUseProxy = proxySelected;
+        const proxyAuthToken = proxySelected && currentUser
+          ? await currentUser.getIdToken()
+          : undefined;
+        const connectionPlan = getSavedCardConnectionPlan({
+          serverUrl: card.serverUrl,
+          useProxy: card.useProxy,
+          oauthToken,
+          proxyUrl,
+          proxyAuthToken,
+        });
+        shouldUseProxy = connectionPlan.usesProxy;
+
+        if (connectionPlan.usesProxy) {
+          console.log(`[Execute Card ${cardId}] Using authenticated proxy: ${proxyUrl}`);
+        } else if (oauthToken) {
+          console.log(`[Execute Card ${cardId}] Using OAuth target authentication`);
         }
 
-        // Use SSE transport for SSE endpoints, HTTP transport for others
-        let transport;
-        if (connectUrl.pathname.endsWith('/sse')) {
-          tempClient = createLegacyMcpClient(`mcp-card-executor-${cardId}-${attempt}`);
-          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using SSE transport for ${connectUrl.toString()}`);
-          transport = new CorsAwareSSETransport(connectUrl, transportOptions);
-        } else {
-          tempClient = createNegotiatingMcpClient(`mcp-card-executor-${cardId}-${attempt}`);
-          console.log(`[Execute Card ${cardId} Attempt ${attempt}] Using HTTP transport for ${connectUrl.toString()}`);
-          transport = new CorsAwareStreamableHTTPTransport(connectUrl, transportOptions);
-        }
-
-        console.log(`[Execute Card ${cardId} Attempt ${attempt}] Connecting temporary client...`);
-        await tempClient.connect(transport);
-        console.log(`[Execute Card ${cardId} Attempt ${attempt}] Temporary client connected.`);
+        activeConnection = await attemptParallelConnections(
+          connectionPlan.connectionUrl,
+          undefined,
+          connectionPlan.authToken,
+          connectionPlan.targetHeaders,
+          connectionPlan.usesProxy
+        );
+        tempClient = activeConnection.client;
+        console.log(
+          `[Execute Card ${cardId} Attempt ${attempt}] Connected with ${activeConnection.transportType} (${activeConnection.protocolEra}${activeConnection.protocolVersion ? `, ${activeConnection.protocolVersion}` : ''}) at ${activeConnection.url}`
+        );
 
         let result: any;
         if (card.type === 'tool') {
@@ -1302,13 +1368,10 @@ function App() {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Tool result received.`);
             setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'tool_result', error: null }));
         } else if (card.type === 'resource') {
-            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${card.name}`);
-            result = await tempClient.request({
-                method: 'resources/access',
-                params: { uri: card.name, arguments: card.params }
-            }, AccessResourceResultSchema);
+            console.log(`[Execute Card ${cardId} Attempt ${attempt}] Accessing resource: ${resourceUri}`);
+            result = await tempClient.readResource({ uri: resourceUri as string });
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
-            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.content, responseType: 'resource_result', error: null }));
+            setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.contents, responseType: 'resource_result', error: null }));
         }
         // --- Success: Break the retry loop ---
         break;
@@ -1319,14 +1382,6 @@ function App() {
 
         // --- Check for different error types ---
         const isConflict = err.message?.includes('Conflict') || err.message?.includes('409') || err.status === 409;
-        const is401Error = err.message && (
-          err.message.includes('401') || 
-          err.message.toLowerCase().includes('unauthorized') ||
-          err.message.includes('invalid_token') ||
-          err.message.includes('Missing or invalid access token') ||
-          err.statusCode === 401 ||
-          err.status === 401
-        );
 
         if (isConflict && attempt < MAX_RETRIES) {
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Conflict detected, retrying after ${RETRY_DELAY_MS}ms...`);
@@ -1340,6 +1395,14 @@ function App() {
         } else {
           // --- Non-retryable error or max retries reached: Set final error state and break ---
           console.error(`[Execute Card ${cardId}] Unrecoverable error or max retries reached.`);
+
+          const authenticationChallenge = classifySavedCardAuthenticationFailure(
+            err,
+            shouldUseProxy,
+            activeConnection?.takeAuthenticationChallenge()
+          );
+          const isTargetAuthError = authenticationChallenge?.source === 'target';
+          const isProxyAuthError = authenticationChallenge?.source === 'proxy';
           
           // Use enhanced error formatting for better debugging information
           const errorDetails = formatErrorForDisplay(err, {
@@ -1348,12 +1411,30 @@ function App() {
           });
           
           // Mark error with auth information for UI handling
-          const errorWithAuthInfo = {
-            ...errorDetails,
-            isAuthError: is401Error,
-            serverUrl: card.serverUrl,
-            isProxied: shouldUseProxy
-          };
+          const errorWithAuthInfo = err instanceof SavedResourceCardMigrationError
+            ? errorDetails
+            : isProxyAuthError
+            ? {
+                message: `Proxy sign-in/session error: ${errorDetails}`,
+                isAuthError: false,
+                isProxyAuthError: true,
+                authenticationSource: 'proxy',
+                status: authenticationChallenge.status,
+                serverUrl: card.serverUrl,
+                isProxied: true
+              }
+            : {
+                message: errorDetails,
+                isAuthError: isTargetAuthError,
+                ...(authenticationChallenge
+                  ? {
+                      authenticationSource: authenticationChallenge.source,
+                      status: authenticationChallenge.status
+                    }
+                  : {}),
+                serverUrl: card.serverUrl,
+                isProxied: shouldUseProxy
+              };
           
           setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
           break; // Exit the loop
@@ -1375,6 +1456,7 @@ function App() {
               }
               tempClient = null; // Nullify ref after closing attempt
           }
+          activeConnection = null;
       }
     } // End of retry loop
   };

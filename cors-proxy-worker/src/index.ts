@@ -7,6 +7,22 @@ interface Env {
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_TARGET_REDIRECTS = 20;
+export const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+const REQUIRED_CORS_REQUEST_HEADERS = [
+  'Accept',
+  'Authorization',
+  'Content-Type',
+  'Last-Event-ID',
+  'MCP-Protocol-Version',
+  'Mcp-Method',
+  'Mcp-Name',
+  'Mcp-Session-Id',
+  'X-MCP-Authorization',
+  'x-api-key',
+];
+const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+type ProxyResponseSource = 'proxy' | 'target';
 
 export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   const headers = new Headers(requestHeaders);
@@ -72,6 +88,21 @@ export async function fetchTargetRequest(
   }
 
   throw new Error('Target exceeded the maximum redirect count');
+}
+
+export function withCorsResponseHeaders(
+  response: Response,
+  source: ProxyResponseSource
+): Response {
+  const mutableResponse = new Response(response.body, response);
+  const corsHeaders = getCorsHeaders(source);
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    mutableResponse.headers.set(key, value);
+  }
+
+  const exposedHeaders = Array.from(mutableResponse.headers.keys()).join(', ');
+  mutableResponse.headers.set('Access-Control-Expose-Headers', exposedHeaders);
+  return mutableResponse;
 }
 
 // Firebase public keys URL
@@ -169,20 +200,7 @@ export default {
       // Make the actual request to the target server
       const response = await fetchTargetRequest(newRequest);
 
-      // Create a mutable copy of the response with CORS headers
-      const mutableResponse = new Response(response.body, response);
-      
-      // Set CORS headers
-      const corsHeaders = getCorsHeaders();
-      for (const [key, value] of Object.entries(corsHeaders)) {
-        mutableResponse.headers.set(key, value);
-      }
-
-      // Allow the client to access any headers from the proxied response
-      const exposedHeaders = Array.from(mutableResponse.headers.keys()).join(', ');
-      mutableResponse.headers.set('Access-Control-Expose-Headers', exposedHeaders);
-      
-      return mutableResponse;
+      return withCorsResponseHeaders(response, 'target');
 
     } catch (error) {
       console.error('Proxy error:', error);
@@ -201,22 +219,63 @@ export default {
  * Handles CORS preflight (OPTIONS) requests
  */
 function handleOptions(request: Request): Response {
+  let allowedHeaders: string;
+  try {
+    allowedHeaders = getAllowedRequestHeaders(
+      request.headers.get('Access-Control-Request-Headers')
+    );
+  } catch (error) {
+    return new Response(
+      error instanceof Error ? error.message : 'Invalid CORS request headers.',
+      {
+        status: 400,
+        headers: {
+          ...getCorsHeaders(),
+          'Vary': 'Access-Control-Request-Headers',
+        },
+      }
+    );
+  }
+
   return new Response(null, { 
     headers: {
-      ...getCorsHeaders(),
+      ...getCorsHeaders('proxy', allowedHeaders),
       'Access-Control-Max-Age': '86400', // Cache preflight for 24 hours
+      'Vary': 'Access-Control-Request-Headers',
     }
   });
+}
+
+function getAllowedRequestHeaders(requestedHeaders: string | null): string {
+  const allowedHeaders = new Map(
+    REQUIRED_CORS_REQUEST_HEADERS.map(header => [header.toLowerCase(), header])
+  );
+
+  if (requestedHeaders) {
+    for (const requestedHeader of requestedHeaders.split(',')) {
+      const header = requestedHeader.trim();
+      if (!header || !HTTP_HEADER_NAME_PATTERN.test(header)) {
+        throw new Error('Error: Invalid Access-Control-Request-Headers value.');
+      }
+      allowedHeaders.set(header.toLowerCase(), header);
+    }
+  }
+
+  return Array.from(allowedHeaders.values()).join(', ');
 }
 
 /**
  * Returns standard CORS headers
  */
-function getCorsHeaders(): Record<string, string> {
+function getCorsHeaders(
+  source: ProxyResponseSource = 'proxy',
+  allowedHeaders = REQUIRED_CORS_REQUEST_HEADERS.join(', ')
+): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Headers': allowedHeaders,
+    [PROXY_RESPONSE_SOURCE_HEADER]: source,
   };
 }
 

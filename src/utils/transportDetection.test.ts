@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CANDIDATE_GROUP_TIMEOUT_MS,
+  ProxiedAuthenticationError,
+  TransportConnectionError,
   attemptParallelConnections,
   getRequestHeadersForCandidate,
   getTransportCandidates,
 } from './transportDetection';
 
 const connectionMocks = vi.hoisted(() => ({
-  connect: async (_transport: { endpoint: URL }) => {},
+  connect: async (_transport: {
+    endpoint: URL;
+    fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  }) => {},
 }));
 
 vi.mock('./mcpClient', () => {
@@ -28,13 +33,21 @@ vi.mock('./mcpClient', () => {
 
 vi.mock('./corsAwareTransport', () => ({
   CorsAwareStreamableHTTPTransport: class {
-    constructor(readonly endpoint: URL) {}
+    readonly fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+    constructor(readonly endpoint: URL, options?: { fetch?: typeof fetch }) {
+      this.fetch = options?.fetch;
+    }
   },
 }));
 
 vi.mock('./corsAwareSseTransport', () => ({
   CorsAwareSSETransport: class {
-    constructor(readonly endpoint: URL) {}
+    readonly fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+    constructor(readonly endpoint: URL, options?: { fetch?: typeof fetch }) {
+      this.fetch = options?.fetch;
+    }
   },
 }));
 
@@ -44,6 +57,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('transport candidate generation', () => {
@@ -78,7 +92,8 @@ describe('transport candidate generation', () => {
 
   it('varies the target rather than the proxy endpoint', () => {
     const candidates = getTransportCandidates(
-      'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom%2Fendpoint'
+      'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom%2Fendpoint',
+      true
     );
 
     expect(candidates).toHaveLength(4);
@@ -86,6 +101,22 @@ describe('transport candidate generation', () => {
     expect(candidates.every(({ url }) => (
       new URL(url).searchParams.get('target')?.startsWith('https://example.com/custom/endpoint')
     ))).toBe(true);
+  });
+
+  it.each([
+    ['URL-valued', 'https://tenant.example/account'],
+    ['ordinary', 'production'],
+  ])('preserves a direct custom endpoint with a %s target parameter', (_, target) => {
+    const endpoint = new URL('https://mcp.example/custom/endpoint');
+    endpoint.searchParams.set('target', target);
+    endpoint.searchParams.set('tenant', 'acme');
+
+    const candidates = getTransportCandidates(endpoint.toString(), false);
+
+    expect(candidates[0].url).toBe(endpoint.toString());
+    expect(candidates.every(({ url }) => new URL(url).origin === endpoint.origin)).toBe(true);
+    expect(candidates.every(({ url }) => new URL(url).searchParams.get('target') === target)).toBe(true);
+    expect(candidates.every(({ url }) => new URL(url).searchParams.get('tenant') === 'acme')).toBe(true);
   });
 
   it('prefers a declared terminal SSE endpoint before its HTTP sibling', () => {
@@ -155,19 +186,197 @@ describe('transport candidate generation', () => {
     });
   });
 
+  it('preserves a settled authentication error when its slash sibling times out', async () => {
+    vi.useFakeTimers();
+    const targetAuthError = Object.assign(new Error('Target requires authentication'), {
+      status: 401,
+    });
+    connectionMocks.connect = async ({ endpoint }) => {
+      if (endpoint.pathname === '/mcp') throw targetAuthError;
+      if (endpoint.pathname === '/mcp/') await new Promise(() => {});
+      throw new Error('Fallback endpoint failed');
+    };
+
+    const connectionPromise = attemptParallelConnections('https://example.com/mcp');
+    const connectionOutcome = connectionPromise.catch((error) => error);
+    await vi.advanceTimersByTimeAsync(CANDIDATE_GROUP_TIMEOUT_MS);
+
+    const connectionError: unknown = await connectionOutcome;
+
+    const findAuthenticationCandidate = (error: unknown): { candidateUrl: string } | undefined => {
+      if (!(error instanceof TransportConnectionError)) return undefined;
+      const match = error.candidateFailures.find(({ error: candidateError }) => (
+        (candidateError as { status?: number }).status === 401
+      ));
+      if (match) return match;
+      for (const nestedError of error.errors) {
+        const nestedMatch = findAuthenticationCandidate(nestedError);
+        if (nestedMatch) return nestedMatch;
+      }
+      return undefined;
+    };
+
+    expect(connectionError).toBeInstanceOf(TransportConnectionError);
+    expect(findAuthenticationCandidate(connectionError)).toMatchObject({
+      candidateUrl: 'https://example.com/mcp',
+      error: targetAuthError,
+    });
+  });
+
   it('keeps target Authorization separate from proxy authentication', () => {
     const proxyHeaders = getRequestHeadersForCandidate(
       'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
-      { Authorization: 'Bearer target-secret', 'x-api-key': 'api-secret' }
+      { Authorization: 'Bearer target-secret', 'x-api-key': 'api-secret' },
+      true
     );
     const directHeaders = getRequestHeadersForCandidate(
-      'https://example.com/mcp',
-      { Authorization: 'Bearer target-secret' }
+      'https://example.com/custom?target=https%3A%2F%2Ftenant.example',
+      { Authorization: 'Bearer target-secret' },
+      false
     );
 
     expect(proxyHeaders.get('authorization')).toBeNull();
     expect(proxyHeaders.get('x-mcp-authorization')).toBe('Bearer target-secret');
     expect(proxyHeaders.get('x-api-key')).toBe('api-secret');
     expect(directHeaders.get('authorization')).toBe('Bearer target-secret');
+  });
+
+  it('retains structured HTTP failures from candidate attempts', async () => {
+    const targetAuthError = Object.assign(new Error('Target requires authentication'), {
+      status: 401,
+    });
+    connectionMocks.connect = async () => {
+      throw targetAuthError;
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections('https://example.com/custom');
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(connectionError).toBeInstanceOf(TransportConnectionError);
+    const containsTargetError = (error: unknown): boolean => (
+      error === targetAuthError
+      || (
+        error instanceof TransportConnectionError
+        && error.errors.some(containsTargetError)
+      )
+    );
+    expect(containsTargetError(connectionError)).toBe(true);
+  });
+
+  it('preserves a target authentication challenge observed through the proxy', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
+      status: 403,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch?.(endpoint);
+      throw Object.assign(new Error('Connection rejected'), { status: response?.status });
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
+        undefined,
+        'firebase-jwt',
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    const findProxiedAuthenticationError = (
+      error: unknown
+    ): ProxiedAuthenticationError | undefined => {
+      if (error instanceof ProxiedAuthenticationError) return error;
+      if (error instanceof TransportConnectionError) {
+        for (const nestedError of error.errors) {
+          const match = findProxiedAuthenticationError(nestedError);
+          if (match) return match;
+        }
+      }
+      return undefined;
+    };
+    expect(findProxiedAuthenticationError(connectionError)).toMatchObject({
+      status: 403,
+      responseSource: 'target',
+    });
+  });
+
+  it('preserves a direct authentication challenge from the HTTP response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', {
+      status: 401,
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      await fetch?.(endpoint);
+      throw new Error('Connection rejected');
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections('https://example.com/custom');
+    } catch (error) {
+      connectionError = error;
+    }
+
+    const findAuthenticationError = (
+      error: unknown
+    ): ProxiedAuthenticationError | undefined => {
+      if (error instanceof ProxiedAuthenticationError) return error;
+      if (error instanceof TransportConnectionError) {
+        for (const nestedError of error.errors) {
+          const match = findAuthenticationError(nestedError);
+          if (match) return match;
+        }
+      }
+      return undefined;
+    };
+
+    expect(findAuthenticationError(connectionError)).toMatchObject({
+      status: 401,
+      responseSource: 'target',
+    });
+  });
+
+  it('retains direct target provenance for requests made after connection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
+      status: 403,
+    })));
+
+    const connection = await attemptParallelConnections('https://example.com/custom');
+    await connection.transport.fetch?.(connection.url);
+
+    expect(connection.takeAuthenticationChallenge()).toEqual({
+      status: 403,
+      source: 'target',
+    });
+    expect(connection.takeAuthenticationChallenge()).toBeUndefined();
+  });
+
+  it('retains proxy response provenance for requests made after connection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', {
+      status: 401,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+    })));
+
+    const connection = await attemptParallelConnections(
+      'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
+      undefined,
+      'firebase-jwt',
+      undefined,
+      true
+    );
+    await connection.transport.fetch?.(connection.url);
+
+    expect(connection.takeAuthenticationChallenge()).toEqual({
+      status: 401,
+      source: 'target',
+    });
+    expect(connection.takeAuthenticationChallenge()).toBeUndefined();
   });
 });
