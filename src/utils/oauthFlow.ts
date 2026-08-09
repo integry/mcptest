@@ -21,7 +21,7 @@ const OAUTH_STORE_PREFIX = 'mcp_oauth_v2:';
 type OAuthStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 interface PersistedOAuthState {
-  clients?: Record<string, StoredOAuthClientInformation>;
+  clients?: Record<string, PersistedOAuthClientInformation>;
   tokens?: Record<string, StoredOAuthTokens>;
   latestIssuer?: string;
   codeVerifier?: string;
@@ -34,6 +34,16 @@ interface LegacyOAuthClient {
   clientSecret?: string;
   issuer?: string;
   registeredManually?: boolean;
+}
+
+type PersistedOAuthClientInformation = StoredOAuthClientInformation & {
+  registeredManually?: boolean;
+};
+
+export interface ManualOAuthClient {
+  clientId: string;
+  clientSecret?: string;
+  issuer: string;
 }
 
 export interface BrowserOAuthProviderOptions {
@@ -174,17 +184,26 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   clientInformation(
     ctx?: OAuthClientInformationContext
   ): StoredOAuthClientInformation | undefined {
-    const legacyClient = this.readLegacyManualClient(ctx?.issuer);
-    if (legacyClient?.clientId) {
+    if (!ctx?.issuer) return undefined;
+
+    const manualClient = this.readManualClient(ctx.issuer);
+    if (manualClient) {
       return {
-        client_id: legacyClient.clientId,
-        ...(legacyClient.clientSecret ? { client_secret: legacyClient.clientSecret } : {}),
-        issuer: legacyClient.issuer,
+        client_id: manualClient.clientId,
+        ...(manualClient.clientSecret ? { client_secret: manualClient.clientSecret } : {}),
+        issuer: manualClient.issuer,
       };
     }
 
-    if (!ctx?.issuer) return undefined;
-    return this.readState().clients?.[ctx.issuer];
+    const storedClient = this.readState().clients?.[ctx.issuer];
+    return storedClient?.registeredManually ? undefined : storedClient;
+  }
+
+  manualClientInformation(): ManualOAuthClient | undefined {
+    const discovery = this.discoveryState();
+    const issuer = discovery?.authorizationServerMetadata?.issuer
+      || discovery?.authorizationServerUrl;
+    return issuer ? this.readManualClient(issuer) : undefined;
   }
 
   saveClientInformation(
@@ -297,6 +316,29 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     return value?.registeredManually && issuer && value.issuer === issuer ? value : undefined;
   }
 
+  private readManualClient(issuer: string): ManualOAuthClient | undefined {
+    const storedClient = this.readState().clients?.[issuer];
+    if (
+      storedClient?.registeredManually
+      && storedClient.issuer === issuer
+      && storedClient.client_id
+    ) {
+      return {
+        clientId: storedClient.client_id,
+        ...(storedClient.client_secret ? { clientSecret: storedClient.client_secret } : {}),
+        issuer,
+      };
+    }
+
+    const legacyClient = this.readLegacyManualClient(issuer);
+    if (!legacyClient?.clientId || legacyClient.issuer !== issuer) return undefined;
+    return {
+      clientId: legacyClient.clientId,
+      ...(legacyClient.clientSecret ? { clientSecret: legacyClient.clientSecret } : {}),
+      issuer,
+    };
+  }
+
   private writeLegacyTokens(tokens: StoredOAuthTokens): void {
     const host = legacyHostForServer(this.serverUrl);
     this.storage.setItem(`oauth_access_token_${host}`, tokens.access_token);
@@ -392,14 +434,20 @@ export const saveManualOAuthClient = (
     throw new Error('Authorization-server discovery is missing. Restart OAuth before configuring a client.');
   }
 
-  storage.setItem(`oauth_client_${legacyHostForServer(serverUrl)}`, JSON.stringify({
-    clientId,
-    ...(clientSecret ? { clientSecret } : {}),
+  provider.saveClientInformation({
+    client_id: clientId,
+    ...(clientSecret ? { client_secret: clientSecret } : {}),
     issuer,
-    registeredAt: new Date().toISOString(),
     registeredManually: true,
-  }));
+  }, { issuer });
 };
+
+export const loadManualOAuthClient = (
+  serverUrl: string,
+  storage: OAuthStorage = getSessionStorage()
+): ManualOAuthClient | undefined => (
+  new BrowserOAuthProvider(serverUrl, { storage }).manualClientInformation()
+);
 
 export const isOAuthClientConfigurationRequired = (error: unknown): boolean => (
   error instanceof RegistrationRejectedError

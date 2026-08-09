@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { saveManualOAuthClient } from '../utils/oauthFlow';
+import { loadManualOAuthClient, saveManualOAuthClient } from '../utils/oauthFlow';
 
 interface OAuthConfigProps {
   serverUrl: string;
@@ -15,23 +15,14 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
   const [configurationError, setConfigurationError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load existing server-specific credentials if any
-    const serverHost = new URL(serverUrl).host;
-    const dynamicClientKey = `oauth_client_${serverHost}`;
-    const storedClient = sessionStorage.getItem(dynamicClientKey);
-    
+    setClientId('');
+    setClientSecret('');
+
+    // Only load credentials bound to the authorization server discovered for this resource.
+    const storedClient = loadManualOAuthClient(serverUrl);
     if (storedClient) {
-      try {
-        const clientData = JSON.parse(storedClient);
-        if (clientData.clientId) {
-          setClientId(clientData.clientId);
-        }
-        if (clientData.clientSecret) {
-          setClientSecret(clientData.clientSecret);
-        }
-      } catch (e) {
-        console.error('[OAuth Config] Failed to parse stored client data:', e);
-      }
+      setClientId(storedClient.clientId);
+      setClientSecret(storedClient.clientSecret || '');
     }
     
     // Always use generic guide for OAuth service
