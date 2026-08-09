@@ -250,10 +250,8 @@ const ReportView: React.FC = () => {
       const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
       setReport(reportData);
       
-      // If report completed successfully, save to history
-      if (reportData && reportData.finalScore !== undefined && !reportData.fatalError) {
-        addOrUpdateServer(urlToTest, Math.round(getEvaluationPercentage(reportData)));
-      }
+      // A resolved evaluation always has a typed score; failures reject instead.
+      addOrUpdateServer(urlToTest, Math.round(getEvaluationPercentage(reportData)));
       
       // If authentication is required, show a button to authenticate
       if (reportData && reportData.sections && reportData.sections.auth) {
