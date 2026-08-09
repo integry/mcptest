@@ -172,7 +172,10 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
             {formatCatalogAuth(server.authType)}
           </span>
           {server.protocolEra !== 'unknown' && (
-            <span className="badge text-bg-info" title={server.protocolVersion || undefined}>
+            <span
+              className={`badge ${server.protocolEra === 'stateful' ? 'text-bg-primary' : 'text-bg-info'}`}
+              title={server.protocolVersion || undefined}
+            >
               {formatProtocolEra(server.protocolEra)}
             </span>
           )}
