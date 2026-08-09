@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { ProtocolEra } from '@modelcontextprotocol/client';
 import ConnectionErrorCard from './ConnectionErrorCard';
 import { TransportType } from '../types';
 import { getServerUrl } from '../utils/urlUtils';
@@ -17,6 +18,8 @@ interface ConnectionPanelProps {
   setServerUrl: (url: string) => void;
   connectionStatus: string;
   transportType: TransportType | null;
+  protocolEra: ProtocolEra | null;
+  protocolVersion: string | null;
   isConnecting: boolean;
   isConnected: boolean;
   isDisconnected: boolean;
@@ -43,6 +46,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   setServerUrl,
   connectionStatus,
   transportType,
+  protocolEra,
+  protocolVersion,
   isConnecting,
   isConnected,
   isDisconnected,
@@ -129,6 +134,14 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         <h5 className="mb-0">Server Connection</h5>
         <div className="d-flex align-items-center gap-2">
           {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
+          {protocolEra && (
+            <span
+              className={`badge ${protocolEra === 'modern' ? 'bg-dark' : 'bg-secondary'}`}
+              title={protocolVersion ? `MCP ${protocolVersion}` : `MCP ${protocolEra} protocol`}
+            >
+              {protocolEra === 'modern' ? 'Stateless' : 'Stateful'}
+            </span>
+          )}
           {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
           {isConnected && isOAuthConnection && (
             <div className="d-flex align-items-center gap-1">

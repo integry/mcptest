@@ -1,15 +1,20 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import type { Client, ProtocolEra } from '@modelcontextprotocol/client';
 import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
+import {
+  createLegacyMcpClient,
+  createNegotiatingMcpClient,
+  getProtocolDetails,
+} from './mcpClient';
 
 export async function attemptParallelConnections(serverUrl: string, abortSignal?: AbortSignal, authToken?: string): Promise<{
   transport: any;
   transportType: TransportType;
   client: Client;
   url: string;
+  protocolEra: ProtocolEra;
+  protocolVersion?: string;
 }> {
   const baseUrl = new URL(serverUrl);
   
@@ -82,16 +87,16 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
   console.log(`[Parallel Connection] Trying SSE URLs: ${sseUrlWithSlash.toString()}, ${sseUrlWithoutSlash.toString()}`);
   
   // Create clients for all attempts
-  const httpClientWithSlash = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
-  const httpClientWithoutSlash = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
-  const sseClientWithSlash = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
-  const sseClientWithoutSlash = new Client({ name: "mcp-sse-tester-react", version: "1.1.0" });
+  const httpClientWithSlash = createNegotiatingMcpClient('mcptest-web');
+  const httpClientWithoutSlash = createNegotiatingMcpClient('mcptest-web');
+  const sseClientWithSlash = createLegacyMcpClient('mcptest-web');
+  const sseClientWithoutSlash = createLegacyMcpClient('mcptest-web');
   
   // Create transport options with auth headers if token provided
   const transportOpts = authToken ? {
-    headers: {
-      'Authorization': `Bearer ${authToken}`
-    }
+    authProvider: {
+      token: async () => authToken,
+    },
   } : undefined;
   
   // Create transports for all combinations
@@ -219,11 +224,14 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
                 console.log('[Parallel Connection] Error closing unused connections:', error);
               }
               
+              const protocol = getProtocolDetails(successfulResult.client);
               return {
                 transport: successfulResult.transport,
                 transportType: successfulResult.transportType,
                 client: successfulResult.client,
-                url: successfulResult.url
+                url: successfulResult.url,
+                protocolEra: protocol.era,
+                protocolVersion: protocol.version,
               };
             }
           }
@@ -289,11 +297,14 @@ export async function attemptParallelConnections(serverUrl: string, abortSignal?
           console.log('[Parallel Connection] Error closing unused connections:', error);
         }
         
+        const protocol = getProtocolDetails(successfulResult.client);
         return {
           transport: successfulResult.transport,
           transportType: successfulResult.transportType,
           client: successfulResult.client,
-          url: successfulResult.url
+          url: successfulResult.url,
+          protocolEra: protocol.era,
+          protocolVersion: protocol.version,
         };
       } else {
         // All connections failed

@@ -1,7 +1,6 @@
 // src/utils/evaluation.ts
+import { Client } from "@modelcontextprotocol/client";
 import { attemptParallelConnections } from './transportDetection';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-
 const PROXY_URL = import.meta.env.VITE_PROXY_URL;
 
 interface DetailItem {

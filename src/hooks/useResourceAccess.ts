@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { LogEntry, ResourceTemplate } from '../types';
 import { parseUriTemplateArgs } from '../utils/uriUtils';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'; // Import Client type
+import { Client } from "@modelcontextprotocol/client";
 import { formatErrorForDisplay } from '../utils/errorHandling';
 
 export const useResourceAccess = (
