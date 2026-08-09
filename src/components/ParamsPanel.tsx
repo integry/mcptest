@@ -78,6 +78,22 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
 
   const selectedInputItem = selectedTool || selectedPrompt;
   const activeInputParams = selectedTool ? toolParams : promptParams;
+
+  React.useEffect(() => {
+    if (!selectedInputItem) return;
+
+    const { definitions, required } = getCapabilityInputSpec(selectedInputItem);
+    definitions.forEach((definition) => {
+      if (
+        definition.type === 'boolean'
+        && required.includes(definition.name)
+        && !hasParameterValue(activeInputParams[definition.name])
+      ) {
+        handleParamChange(definition.name, false);
+      }
+    });
+  }, [selectedInputItem, activeInputParams, handleParamChange]);
+
   const missingRequiredParams = selectedInputItem
     ? getMissingRequiredParams(selectedInputItem, activeInputParams)
     : [];
