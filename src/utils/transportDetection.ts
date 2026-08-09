@@ -13,6 +13,8 @@ export interface TransportCandidate {
   transportType: TransportType;
 }
 
+export const CANDIDATE_GROUP_TIMEOUT_MS = 5_000;
+
 const slashVariants = (value: URL): URL[] => {
   const withoutSlash = new URL(value);
   withoutSlash.pathname = withoutSlash.pathname.replace(/\/+$/, '') || '/';
@@ -221,17 +223,32 @@ export async function attemptParallelConnections(
       }
 
       let successful: ConnectedCandidate;
+      const firstGroupClientIndex = clients.length;
+      let groupTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      const groupTimeout = new Promise<never>((_, reject) => {
+        groupTimeoutId = setTimeout(() => {
+          reject(new Error(
+            `Connection candidates timed out after ${CANDIDATE_GROUP_TIMEOUT_MS / 1000} seconds`
+          ));
+        }, CANDIDATE_GROUP_TIMEOUT_MS);
+      });
       try {
         successful = await Promise.race([
           firstSuccessful(candidateGroup.map(attemptConnection)),
           abortPromise,
+          groupTimeout,
         ]);
       } catch (error) {
         if (abortSignal?.aborted) {
           throw new Error('Connection aborted by user');
         }
         failures.push(error instanceof Error ? error : new Error(String(error)));
+        await Promise.allSettled(
+          clients.slice(firstGroupClientIndex).map((client) => client.close())
+        );
         continue;
+      } finally {
+        if (groupTimeoutId) clearTimeout(groupTimeoutId);
       }
 
       await Promise.allSettled(

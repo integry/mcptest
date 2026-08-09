@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CANDIDATE_GROUP_TIMEOUT_MS,
   attemptParallelConnections,
   getRequestHeadersForCandidate,
   getTransportCandidates,
@@ -39,6 +40,10 @@ vi.mock('./corsAwareSseTransport', () => ({
 
 beforeEach(() => {
   connectionMocks.connect = async () => {};
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('transport candidate generation', () => {
@@ -107,6 +112,31 @@ describe('transport candidate generation', () => {
     expect(attemptedUrls).toEqual([
       'https://example.com/mcp',
       'https://example.com/mcp/',
+    ]);
+  });
+
+  it('moves to a fallback group when the preferred endpoint hangs', async () => {
+    vi.useFakeTimers();
+    const attemptedUrls: string[] = [];
+    connectionMocks.connect = async ({ endpoint }) => {
+      attemptedUrls.push(endpoint.toString());
+      if (endpoint.pathname.startsWith('/mcp')) {
+        await new Promise(() => {});
+      }
+    };
+
+    const connectionPromise = attemptParallelConnections('https://example.com/mcp');
+    await vi.advanceTimersByTimeAsync(CANDIDATE_GROUP_TIMEOUT_MS);
+
+    await expect(connectionPromise).resolves.toMatchObject({
+      url: 'https://example.com/sse',
+      transportType: 'legacy-sse',
+    });
+    expect(attemptedUrls).toEqual([
+      'https://example.com/mcp',
+      'https://example.com/mcp/',
+      'https://example.com/sse',
+      'https://example.com/sse/',
     ]);
   });
 
