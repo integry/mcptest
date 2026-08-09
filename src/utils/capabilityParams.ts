@@ -56,11 +56,16 @@ export const normalizeCapabilityParams = (
   params: Record<string, unknown>
 ): Record<string, unknown> => {
   const normalized = { ...params };
-  const { definitions } = getCapabilityInputSpec(item);
+  const { definitions, required } = getCapabilityInputSpec(item);
 
   for (const definition of definitions) {
     const value = normalized[definition.name];
     if (typeof value !== 'string' || (definition.type !== 'object' && definition.type !== 'array')) {
+      continue;
+    }
+
+    if (!value.trim() && !required.includes(definition.name)) {
+      delete normalized[definition.name];
       continue;
     }
 

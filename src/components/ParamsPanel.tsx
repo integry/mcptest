@@ -80,10 +80,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   const activeInputParams = selectedTool ? toolParams : promptParams;
   const missingRequiredParams = selectedInputItem
     ? getMissingRequiredParams(selectedInputItem, activeInputParams)
-    : selectedResourceTemplate
-      ? parseUriTemplateArgs(selectedResourceTemplate.uriTemplate)
-        .filter((name) => !hasParameterValue(resourceArgs[name]))
-      : [];
+    : [];
   const canRun = isConnected && !isConnecting && !isExecuting && missingRequiredParams.length === 0;
   const actionLabel = selectedTool
     ? 'Run tool'
@@ -270,9 +267,6 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
               onChange={(e) => handleResourceArgChange(argName, e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={`Enter value for {${argName}}`}
-              required
-              aria-required="true"
-              aria-invalid={!hasParameterValue(resourceArgs[argName])}
             />
           </div>
         ))}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
 import { logEvent } from '../utils/analytics';
 
@@ -143,6 +143,27 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     requestHeaders
   );
 
+  const catalogProtocolEndpointRef = useRef(
+    tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+      ? tab.serverUrl
+      : undefined
+  );
+
+  const getCatalogProtocolEraHint = useCallback((urlToConnect: string) => {
+    if (urlToConnect !== catalogProtocolEndpointRef.current) return undefined;
+    return tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+      ? tab.catalogProtocolEra
+      : undefined;
+  }, [tab.catalogProtocolEra]);
+
+  const handleServerUrlChange = useCallback((nextServerUrl: string) => {
+    setServerUrl(nextServerUrl);
+    if (catalogProtocolEndpointRef.current && nextServerUrl !== catalogProtocolEndpointRef.current) {
+      catalogProtocolEndpointRef.current = undefined;
+      onUpdateTab(tab.id, { catalogProtocolEra: undefined });
+    }
+  }, [onUpdateTab, setServerUrl, tab.id]);
+
   const {
     tools,
     setTools,
@@ -232,9 +253,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResponses,
           tab.serverUrl,
           tab.useProxy, // Pass the current tab's useProxy value
-          tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
-            ? tab.catalogProtocolEra
-            : undefined
+          getCatalogProtocolEraHint(tab.serverUrl)
         );
       }, 100);
     }
@@ -247,6 +266,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     connectionStatus, 
     addLogEntry, 
     handleConnect,
+    getCatalogProtocolEraHint,
     onUpdateTab,
     setTools,
     setResources,
@@ -591,13 +611,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResponses,
           tab.serverUrl,
           tab.useProxy,
-          tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
-            ? tab.catalogProtocolEra
-            : undefined
+          getCatalogProtocolEraHint(tab.serverUrl)
         );
       }, 500); // 500ms delay to ensure token is available
     }
-  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, setTools, setResources, setResponses, onUpdateTab]);
+  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, getCatalogProtocolEraHint, setTools, setResources, setResponses, onUpdateTab]);
   
   // Effect to handle OAuth callback logs
   useEffect(() => {
@@ -653,6 +671,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   // Wrapper function to handle connect
   const handleConnectWrapper = (urlToConnect?: string, protocolEraHint?: string) => {
+    const requestedUrl = urlToConnect || serverUrl;
     handleConnect(
       setTools,
       setResources,
@@ -661,9 +680,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       tab.useProxy, // Pass the current tab's useProxy value
       protocolEraHint === 'stateful' || protocolEraHint === 'legacy'
         ? protocolEraHint
-        : tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
-          ? tab.catalogProtocolEra
-          : undefined
+        : getCatalogProtocolEraHint(requestedUrl)
     );
   };
 
@@ -810,7 +827,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     >
       <ConnectionPanel
             serverUrl={serverUrl}
-            setServerUrl={setServerUrl}
+            setServerUrl={handleServerUrlChange}
             connectionStatus={connectionStatus}
             transportType={transportType}
             protocolEra={protocolEra}
@@ -848,7 +865,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 <div className="col-md-6">
                   <RecentServersPanel
                     recentServers={recentServers}
-                    setServerUrl={setServerUrl}
+                    setServerUrl={handleServerUrlChange}
                     handleConnect={handleConnectWrapper}
                     removeRecentServer={removeRecentServer}
                     isConnected={isConnected}
@@ -858,7 +875,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               )}
               <div className={recentServers.length > 0 ? 'col-md-6' : 'col-12'}>
                 <SuggestedServersPanel
-                  setServerUrl={setServerUrl}
+                  setServerUrl={handleServerUrlChange}
                   handleConnect={handleConnectWrapper}
                   isConnected={isConnected}
                   isConnecting={isConnecting}
