@@ -300,6 +300,29 @@ describe('dual-era server evaluation', () => {
     expect(client.listPrompts).toHaveBeenCalledOnce();
   });
 
+  it('does not treat a JSON-RPC error code as an HTTP authentication status', async () => {
+    const client = createClient();
+    client.listTools.mockRejectedValueOnce(Object.assign(
+      new Error('tools/list returned a JSON-RPC application error'),
+      { code: 401 }
+    ));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.sections.auth).toBeUndefined();
+    expect(report.sections.capabilities.details[0].metadata).toEqual({
+      method: 'tools/list',
+      error: 'tools/list returned a JSON-RPC application error',
+    });
+    expect(report.sections.capabilities.score).toBe(6);
+  });
+
   it('does not offer target OAuth for a post-connect proxy-hop challenge', async () => {
     const client = createClient();
     let observedChallenge: { status: 401 | 403; source: 'proxy' | 'target' } | undefined;
