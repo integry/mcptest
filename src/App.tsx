@@ -102,7 +102,6 @@ const getAuthenticationHttpStatus = (
     data?: { status?: unknown };
     response?: { status?: unknown };
     cause?: unknown;
-    message?: unknown;
   };
   const status = [
     value.status,
@@ -121,16 +120,10 @@ const getAuthenticationHttpStatus = (
 
   const causeStatus = getAuthenticationHttpStatus(value.cause, seen);
   if (causeStatus) return causeStatus;
-
-  const message = typeof value.message === 'string' ? value.message : '';
-  if (/\b403\b|forbidden/i.test(message)) return 403;
-  if (/\b401\b|unauthorized|invalid_token|missing or invalid access token/i.test(message)) {
-    return 401;
-  }
   return undefined;
 };
 
-const classifySavedCardAuthenticationFailure = (
+export const classifySavedCardAuthenticationFailure = (
   error: unknown,
   usesProxy: boolean,
   observedChallenge?: ObservedAuthenticationChallenge
