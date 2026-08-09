@@ -4,6 +4,38 @@ import { attemptParallelConnections } from './transportDetection';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
+const isConfiguredProxyTarget = (value: string, proxyUrl: string): boolean => {
+  const candidate = new URL(value);
+  const configuredProxy = new URL(proxyUrl);
+
+  return candidate.origin === configuredProxy.origin
+    && candidate.pathname === configuredProxy.pathname
+    && candidate.searchParams.has('target');
+};
+
+export function getEvaluationTransportProbeUrl(
+  connectionUrl: string,
+  targetTransport: 'mcp' | 'sse'
+): string {
+  const outerUrl = new URL(connectionUrl);
+  const proxyUrl = getProxyUrl();
+  const proxyTarget = outerUrl.searchParams.get('target');
+  const isProxied = Boolean(
+    proxyUrl
+    && proxyTarget
+    && isConfiguredProxyTarget(connectionUrl, proxyUrl)
+  );
+  const targetUrl = isProxied
+    ? new URL(proxyTarget as string)
+    : outerUrl;
+
+  targetUrl.pathname = targetUrl.pathname.replace(/\/(?:mcp|sse)\/?$/, `/${targetTransport}`);
+
+  if (!isProxied) return targetUrl.toString();
+  outerUrl.searchParams.set('target', targetUrl.toString());
+  return outerUrl.toString();
+}
+
 interface DetailItem {
   text: string;
   context?: string;
@@ -45,8 +77,16 @@ export async function fetchForEvaluation(
   options: RequestInit = {},
   oauthToken?: string | null
 ): Promise<Response> {
+  const proxyUrl = getProxyUrl();
+  if (proxyUrl && isConfiguredProxyTarget(url, proxyUrl)) {
+    return fetch(url, {
+      ...options,
+      headers: getEvaluationProxyHeaders(options.headers, firebaseToken, oauthToken),
+    });
+  }
+
   const headers = new Headers(options.headers);
-  
+
   // Try direct fetch first if we have an OAuth token
   if (oauthToken) {
     headers.set('Authorization', `Bearer ${oauthToken}`);
@@ -56,9 +96,8 @@ export async function fetchForEvaluation(
       console.log('[Evaluation] Direct fetch failed, falling back to proxy');
     }
   }
-  
+
   // Fallback to proxy if direct fetch fails or no OAuth token
-  const proxyUrl = getProxyUrl();
   if (!proxyUrl) {
     throw new Error('Direct connection failed and no proxy configured');
   }
@@ -671,7 +710,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       
       // Also check for SSE support even when using HTTP streaming
       try {
-        const sseCheckUrl = connectionUrl.replace(/\/mcp\/?$/, '/sse');
+        const sseCheckUrl = getEvaluationTransportProbeUrl(connectionUrl, 'sse');
         const sseResponse = await fetchForEvaluation(sseCheckUrl, token, {
           method: 'GET',
           headers: { 'Accept': 'text/event-stream' }
@@ -709,7 +748,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       
       // Also check if HTTP streaming is supported
       try {
-        const httpCheckUrl = connectionUrl.replace(/\/sse\/?$/, '/mcp');
+        const httpCheckUrl = getEvaluationTransportProbeUrl(connectionUrl, 'mcp');
         const httpResponse = await fetchForEvaluation(httpCheckUrl, token, {
           method: 'POST',
           headers: { 
