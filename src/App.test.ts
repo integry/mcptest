@@ -1,10 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import { classifySavedCardAuthenticationFailure } from './App';
+import {
+  ProxiedAuthenticationError,
+  TransportConnectionError,
+} from './utils/transportDetection';
 
 describe('saved card authentication failures', () => {
   it('does not request OAuth for a direct JSON-RPC Forbidden application error', () => {
     const error = new Error('MCP error -32000: Forbidden operation');
 
     expect(classifySavedCardAuthenticationFailure(error, false)).toBeUndefined();
+  });
+
+  it('classifies a structured direct HTTP authentication status as target OAuth', () => {
+    const error = Object.assign(new Error('Request failed'), { status: 401 });
+
+    expect(classifySavedCardAuthenticationFailure(error, false)).toEqual({
+      status: 401,
+      source: 'target',
+    });
+  });
+
+  it('preserves target provenance through nested proxy connection failures', () => {
+    const targetError = new ProxiedAuthenticationError(
+      403,
+      'target',
+      new Error('Upstream denied the request')
+    );
+
+    expect(classifySavedCardAuthenticationFailure(
+      new TransportConnectionError([targetError]),
+      true
+    )).toEqual({ status: 403, source: 'target' });
+  });
+
+  it('keeps proxy-owned authentication failures out of target OAuth', () => {
+    const proxyError = new ProxiedAuthenticationError(
+      401,
+      'proxy',
+      new Error('Proxy session expired')
+    );
+
+    expect(classifySavedCardAuthenticationFailure(proxyError, true)).toEqual({
+      status: 401,
+      source: 'proxy',
+    });
+  });
+
+  it('does not guess the source of an unproven proxied HTTP status', () => {
+    const ambiguousError = Object.assign(new Error('Request failed'), { status: 401 });
+
+    expect(classifySavedCardAuthenticationFailure(ambiguousError, true)).toBeUndefined();
   });
 });

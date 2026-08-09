@@ -1426,7 +1426,7 @@ function App() {
                 isProxied: true
               }
             : {
-                ...errorDetails,
+                message: errorDetails,
                 isAuthError: isTargetAuthError,
                 ...(authenticationChallenge
                   ? {
