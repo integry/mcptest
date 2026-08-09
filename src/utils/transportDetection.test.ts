@@ -115,14 +115,35 @@ describe('transport candidate generation', () => {
     ]);
   });
 
-  it('moves to a fallback group when the preferred endpoint hangs', async () => {
+  it('moves from a hanging root group to a succeeding endpoint fallback', async () => {
     vi.useFakeTimers();
     const attemptedUrls: string[] = [];
     connectionMocks.connect = async ({ endpoint }) => {
       attemptedUrls.push(endpoint.toString());
-      if (endpoint.pathname.startsWith('/mcp')) {
+      if (endpoint.pathname === '/') {
         await new Promise(() => {});
       }
+    };
+
+    const connectionPromise = attemptParallelConnections('https://example.com');
+    await vi.advanceTimersByTimeAsync(CANDIDATE_GROUP_TIMEOUT_MS);
+
+    await expect(connectionPromise).resolves.toMatchObject({
+      url: 'https://example.com/mcp',
+      transportType: 'streamable-http',
+    });
+    expect(attemptedUrls).toEqual([
+      'https://example.com/',
+      'https://example.com/mcp',
+      'https://example.com/mcp/',
+    ]);
+  });
+
+  it('times out a group when one slash variant hangs after its peer fails', async () => {
+    vi.useFakeTimers();
+    connectionMocks.connect = async ({ endpoint }) => {
+      if (endpoint.pathname === '/mcp') throw new Error('exact endpoint failed');
+      if (endpoint.pathname === '/mcp/') await new Promise(() => {});
     };
 
     const connectionPromise = attemptParallelConnections('https://example.com/mcp');
@@ -132,12 +153,6 @@ describe('transport candidate generation', () => {
       url: 'https://example.com/sse',
       transportType: 'legacy-sse',
     });
-    expect(attemptedUrls).toEqual([
-      'https://example.com/mcp',
-      'https://example.com/mcp/',
-      'https://example.com/sse',
-      'https://example.com/sse/',
-    ]);
   });
 
   it('keeps target Authorization separate from proxy authentication', () => {

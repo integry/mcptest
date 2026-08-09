@@ -5,6 +5,9 @@ interface Env {
   FIREBASE_PROJECT_ID: string;
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_TARGET_REDIRECTS = 20;
+
 export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   const headers = new Headers(requestHeaders);
   const targetAuthorization = headers.get('X-MCP-Authorization');
@@ -20,6 +23,55 @@ export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   headers.delete('CF-Visitor');
 
   return headers;
+}
+
+export async function fetchTargetRequest(
+  request: Request,
+  fetchImpl: (request: Request) => Promise<Response> = fetch
+): Promise<Response> {
+  let currentRequest = request;
+
+  for (let redirectCount = 0; redirectCount <= MAX_TARGET_REDIRECTS; redirectCount += 1) {
+    const response = await fetchImpl(currentRequest.clone());
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+
+    const location = response.headers.get('Location');
+    if (!location) return response;
+    if (redirectCount === MAX_TARGET_REDIRECTS) {
+      throw new Error('Target exceeded the maximum redirect count');
+    }
+
+    const redirectUrl = new URL(location, response.url || currentRequest.url);
+    const currentUrl = new URL(currentRequest.url);
+    if (redirectUrl.origin !== currentUrl.origin) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error('Cross-origin target redirects are not allowed');
+    }
+
+    const switchToGet = response.status === 303
+      ? currentRequest.method !== 'HEAD'
+      : (response.status === 301 || response.status === 302) && currentRequest.method === 'POST';
+
+    if (switchToGet) {
+      const headers = new Headers(currentRequest.headers);
+      headers.delete('Content-Encoding');
+      headers.delete('Content-Language');
+      headers.delete('Content-Length');
+      headers.delete('Content-Location');
+      headers.delete('Content-Type');
+      currentRequest = new Request(redirectUrl, {
+        method: 'GET',
+        headers,
+        redirect: 'manual',
+      });
+    } else {
+      currentRequest = new Request(redirectUrl, currentRequest);
+    }
+
+    await response.body?.cancel().catch(() => {});
+  }
+
+  throw new Error('Target exceeded the maximum redirect count');
 }
 
 // Firebase public keys URL
@@ -111,11 +163,11 @@ export default {
         method: request.method,
         headers: headers,
         body: request.body,
-        redirect: 'follow',
+        redirect: 'manual',
       });
 
       // Make the actual request to the target server
-      const response = await fetch(newRequest);
+      const response = await fetchTargetRequest(newRequest);
 
       // Create a mutable copy of the response with CORS headers
       const mutableResponse = new Response(response.body, response);

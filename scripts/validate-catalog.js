@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   Client,
+  SSEClientTransport,
   StreamableHTTPClientTransport,
   discoverOAuthProtectedResourceMetadata,
   extractWWWAuthenticateParams,
@@ -189,7 +190,7 @@ async function probeStreamableEndpoint(
       return {
         ...endpoint,
         reachable: true,
-        alive: true,
+        alive: false,
         authChallenge: true,
         protocolEra: 'unknown',
         statusCode: authResponse.status,
@@ -217,48 +218,90 @@ async function probeSseEndpoint(
   endpoint,
   { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
 ) {
-  const result = await fetchWithTimeout(
-    endpoint.url,
-    { method: 'GET', headers: { Accept: 'text/event-stream' } },
-    fetchImpl,
-    timeoutMs
-  );
+  const responses = [];
+  let resourceMetadataUrl;
+  const observingFetch = async (input, init) => {
+    const result = await fetchWithTimeout(input, init, fetchImpl, timeoutMs);
+    if (!result.ok) {
+      const error = new Error(result.message);
+      error.code = result.errorCode === 'timeout' ? 'REQUEST_TIMEOUT' : result.errorCode;
+      throw error;
+    }
 
-  if (!result.ok) {
+    const { response } = result;
+    responses.push({
+      status: response.status,
+      contentType: response.headers.get('content-type') || '',
+    });
+    if (isAuthStatus(response.status)) {
+      resourceMetadataUrl = extractWWWAuthenticateParams(response).resourceMetadataUrl?.toString();
+    }
+    return response;
+  };
+  const client = new Client(
+    { name: CLIENT_NAME, version: '2.0.0' },
+    { versionNegotiation: { mode: 'legacy' } }
+  );
+  const transport = new SSEClientTransport(new URL(endpoint.url), {
+    fetch: observingFetch,
+    eventSourceInit: { fetch: observingFetch },
+  });
+  let connectionTimeout;
+
+  try {
+    await Promise.race([
+      client.connect(transport, { timeout: timeoutMs }),
+      new Promise((_, reject) => {
+        connectionTimeout = setTimeout(() => {
+          const error = new Error(`Legacy SSE connection timed out after ${timeoutMs}ms`);
+          error.code = 'REQUEST_TIMEOUT';
+          reject(error);
+        }, timeoutMs);
+      }),
+    ]);
+
+    const protocolVersion = client.getNegotiatedProtocolVersion();
     return {
       ...endpoint,
-      reachable: false,
+      reachable: true,
+      alive: true,
+      authChallenge: false,
+      protocolEra: 'legacy',
+      protocolVersion,
+      statusCode: responses.find(({ status }) => status >= 200 && status < 300)?.status,
+      message: `Negotiated legacy MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
+    };
+  } catch (error) {
+    const authResponse = responses.find(({ status }) => isAuthStatus(status));
+    const lastResponse = responses.at(-1);
+
+    if (authResponse) {
+      return {
+        ...endpoint,
+        reachable: true,
+        alive: false,
+        authChallenge: true,
+        protocolEra: 'unknown',
+        statusCode: authResponse.status,
+        resourceMetadataUrl,
+        message: `Authentication challenge at ${endpoint.url} returned HTTP ${authResponse.status}`,
+      };
+    }
+
+    return {
+      ...endpoint,
+      reachable: Boolean(lastResponse),
       alive: false,
       authChallenge: false,
       protocolEra: 'unknown',
-      errorCode: result.errorCode,
-      message: result.message,
+      statusCode: lastResponse?.status,
+      errorCode: lastResponse ? 'protocol_error' : abortErrorCode(error),
+      message: error && error.message ? error.message : String(error),
     };
+  } finally {
+    if (connectionTimeout) clearTimeout(connectionTimeout);
+    await client.close().catch(() => {});
   }
-
-  const { response } = result;
-  const resourceMetadataUrl = isAuthStatus(response.status)
-    ? extractWWWAuthenticateParams(response).resourceMetadataUrl?.toString()
-    : undefined;
-  const isEventStream = (response.headers.get('content-type') || '')
-    .toLowerCase()
-    .includes('text/event-stream');
-  const authChallenge = isAuthStatus(response.status);
-  await response.body?.cancel().catch(() => {});
-
-  return {
-    ...endpoint,
-    reachable: true,
-    alive: authChallenge || (response.ok && isEventStream),
-    authChallenge,
-    protocolEra: response.ok && isEventStream ? 'legacy' : 'unknown',
-    statusCode: response.status,
-    resourceMetadataUrl,
-    errorCode: authChallenge || (response.ok && isEventStream) ? undefined : 'protocol_error',
-    message: authChallenge
-      ? `Authentication challenge at ${endpoint.url} returned HTTP ${response.status}`
-      : `SSE probe at ${endpoint.url} returned HTTP ${response.status} (${response.headers.get('content-type') || 'no content type'})`,
-  };
 }
 
 async function probeEndpoint(endpoint, options) {
@@ -315,7 +358,7 @@ function detectedTransport(probes) {
 }
 
 function detectedStatus(probes) {
-  if (probes.some((probe) => probe.alive)) return 'online';
+  if (probes.some((probe) => probe.alive || probe.authChallenge)) return 'online';
   if (probes.some((probe) => probe.reachable)) return 'unknown';
   return 'offline';
 }
@@ -343,9 +386,14 @@ function selectProtocolProbe(probes) {
 }
 
 function resultMessage(status, transport, probes, authType) {
-  const successfulProbe = probes.find((probe) => probe.alive);
+  const successfulProbe = probes.find((probe) => probe.alive && !probe.authChallenge);
   if (successfulProbe) {
     return `${successfulProbe.message}; detected transport ${transport}; authentication ${authType}`;
+  }
+
+  const challengeProbe = probes.find((probe) => probe.authChallenge);
+  if (challengeProbe) {
+    return `${challengeProbe.message}; endpoint was reachable but did not complete an MCP probe; authentication ${authType}`;
   }
 
   const reachableProbe = probes.find((probe) => probe.reachable);
@@ -376,16 +424,17 @@ async function validateSeed(
     if (validatedTransports.has(endpoint.transport)) continue;
     const probe = await probeEndpoint(endpoint, { fetchImpl, timeoutMs });
     probes.push(probe);
-    if (probe.alive) validatedTransports.add(endpoint.transport);
+    if (probe.alive && !probe.authChallenge) validatedTransports.add(endpoint.transport);
   }
 
   const status = detectedStatus(probes);
   const transport = detectedTransport(probes);
   const protocolProbe = selectProtocolProbe(probes);
-  const successfulProbe = probes.find((probe) => probe.alive);
+  const successfulProbe = probes.find((probe) => probe.alive && !probe.authChallenge);
+  const challengeProbe = probes.find((probe) => probe.authChallenge);
   const authProbe = probes.find((probe) => probe.resourceMetadataUrl);
   const authorizationEvidence = await discoverAuthorizationEvidence(
-    successfulProbe?.url || seed.url,
+    successfulProbe?.url || challengeProbe?.url || seed.url,
     {
       protocolVersion: protocolProbe?.protocolVersion,
       resourceMetadataUrl: authProbe?.resourceMetadataUrl,
@@ -406,7 +455,9 @@ async function validateSeed(
     message: resultMessage(status, transport, probes, authType),
   };
 
-  if (successfulProbe?.url) result.validatedUrl = successfulProbe.url;
+  if (successfulProbe?.url || challengeProbe?.url) {
+    result.validatedUrl = successfulProbe?.url || challengeProbe.url;
+  }
   if (protocolProbe?.protocolVersion) result.protocolVersion = protocolProbe.protocolVersion;
   if (authorizationEvidence.authorizationServers.length > 0) {
     result.authorizationServers = authorizationEvidence.authorizationServers;
