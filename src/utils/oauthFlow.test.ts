@@ -6,8 +6,10 @@ import {
   OAUTH_CLIENT_METADATA_URL,
   OAuthStateMismatchError,
   beginOAuthFlow,
+  clearOAuthTokens,
   completeOAuthFlow,
   isOAuthClientConfigurationRequired,
+  loadOAuthAuthorization,
   saveManualOAuthClient,
 } from './oauthFlow';
 
@@ -96,6 +98,75 @@ describe('BrowserOAuthProvider', () => {
     expect(sessionStorage.getItem('oauth_access_token_mcp.example')).toBe('token-b');
   });
 
+  it('loads and clears tokens by exact resource and discovered issuer', () => {
+    const serverA = 'https://mcp.example/resource-a';
+    const serverB = 'https://mcp.example/resource-b';
+    const providerA = new BrowserOAuthProvider(serverA, { redirect: vi.fn() });
+    const providerB = new BrowserOAuthProvider(serverB, { redirect: vi.fn() });
+
+    providerA.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        userinfo_endpoint: `${ISSUER_A}userinfo`,
+        response_types_supported: ['code'],
+      },
+    });
+    providerB.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_B,
+      authorizationServerMetadata: {
+        issuer: ISSUER_B,
+        authorization_endpoint: `${ISSUER_B}authorize`,
+        token_endpoint: `${ISSUER_B}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    providerA.saveTokens(
+      {
+        access_token: 'token-a',
+        refresh_token: 'refresh-a',
+        token_type: 'Bearer',
+        issuer: ISSUER_A,
+      },
+      { issuer: ISSUER_A }
+    );
+    providerB.saveTokens(
+      {
+        access_token: 'token-b',
+        refresh_token: 'refresh-b',
+        token_type: 'Bearer',
+        issuer: ISSUER_B,
+      },
+      { issuer: ISSUER_B }
+    );
+
+    expect(loadOAuthAuthorization(serverA)).toEqual({
+      accessToken: 'token-a',
+      issuer: ISSUER_A,
+      userInfoEndpoint: `${ISSUER_A}userinfo`,
+    });
+    expect(loadOAuthAuthorization(serverB)).toEqual({
+      accessToken: 'token-b',
+      issuer: ISSUER_B,
+    });
+    expect(sessionStorage.getItem('oauth_access_token_mcp.example')).toBe('token-b');
+
+    clearOAuthTokens(serverA);
+
+    expect(loadOAuthAuthorization(serverA)).toBeUndefined();
+    expect(loadOAuthAuthorization(serverB)?.accessToken).toBe('token-b');
+    expect(sessionStorage.getItem('oauth_access_token_mcp.example')).toBe('token-b');
+    expect(sessionStorage.getItem('oauth_refresh_token_mcp.example')).toBe('refresh-b');
+  });
+
+  it('does not treat a host-only compatibility token as network authorization', () => {
+    sessionStorage.setItem('oauth_access_token_mcp.example', 'host-token');
+
+    expect(loadOAuthAuthorization(SERVER_URL)).toBeUndefined();
+  });
+
   it('prioritizes manually pre-registered client credentials', () => {
     const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
     provider.saveClientInformation(
@@ -141,6 +212,15 @@ describe('BrowserOAuthProvider', () => {
 
   it('rehydrates the UI token bridge when the SDK already has authorization', async () => {
     const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
     provider.saveTokens(
       { access_token: 'persisted-token', token_type: 'Bearer', issuer: ISSUER_A },
       { issuer: ISSUER_A }

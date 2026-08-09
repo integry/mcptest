@@ -64,6 +64,12 @@ export interface CompletedOAuthFlow {
   issuer?: string;
 }
 
+export interface OAuthAuthorization {
+  accessToken: string;
+  issuer: string;
+  userInfoEndpoint?: string;
+}
+
 export class OAuthStateMismatchError extends Error {
   constructor() {
     super('OAuth state validation failed. Start authentication again from mcptest.io.');
@@ -99,6 +105,11 @@ const storageKeyForServer = (serverUrl: string): string => (
 
 const legacyHostForServer = (serverUrl: string): string => (
   new URL(normalizeOAuthServerUrl(serverUrl)).host
+);
+
+const issuerForDiscovery = (discovery?: OAuthDiscoveryState): string | undefined => (
+  discovery?.authorizationServerMetadata?.issuer
+  || discovery?.authorizationServerUrl
 );
 
 const parseJson = <T,>(value: string | null): T | undefined => {
@@ -244,7 +255,8 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   syncLegacyTokens(): StoredOAuthTokens | undefined {
-    const tokens = this.tokens();
+    const issuer = issuerForDiscovery(this.discoveryState());
+    const tokens = issuer ? this.tokens({ issuer }) : undefined;
     if (tokens) this.writeLegacyTokens(tokens);
     return tokens;
   }
@@ -273,8 +285,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
   invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): void {
     if (scope === 'all') {
+      const tokens = this.readState().tokens;
       this.storage.removeItem(this.storeKey);
-      this.clearLegacyTokens();
+      this.clearLegacyTokens(tokens);
       this.storage.removeItem(`oauth_client_${legacyHostForServer(this.serverUrl)}`);
       return;
     }
@@ -285,9 +298,10 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
       this.storage.removeItem(`oauth_client_${legacyHostForServer(this.serverUrl)}`);
     }
     if (scope === 'tokens') {
+      const tokens = state.tokens;
       delete state.tokens;
       delete state.latestIssuer;
-      this.clearLegacyTokens();
+      this.clearLegacyTokens(tokens);
     }
     if (scope === 'verifier') {
       delete state.codeVerifier;
@@ -349,12 +363,53 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     }
   }
 
-  private clearLegacyTokens(): void {
+  private clearLegacyTokens(tokens?: Record<string, StoredOAuthTokens>): void {
     const host = legacyHostForServer(this.serverUrl);
-    this.storage.removeItem(`oauth_access_token_${host}`);
-    this.storage.removeItem(`oauth_refresh_token_${host}`);
+    const storedTokens = Object.values(tokens || {});
+    const accessTokenKey = `oauth_access_token_${host}`;
+    const refreshTokenKey = `oauth_refresh_token_${host}`;
+    const legacyAccessToken = this.storage.getItem(accessTokenKey);
+    const legacyRefreshToken = this.storage.getItem(refreshTokenKey);
+
+    if (storedTokens.some((token) => token.access_token === legacyAccessToken)) {
+      this.storage.removeItem(accessTokenKey);
+    }
+    if (storedTokens.some((token) => token.refresh_token === legacyRefreshToken)) {
+      this.storage.removeItem(refreshTokenKey);
+    }
   }
 }
+
+/**
+ * Loads authorization only from the SDK state for this exact MCP resource and
+ * its discovered authorization-server issuer. Host-only keys are intentionally
+ * excluded because multiple resources and issuers can share a host.
+ */
+export const loadOAuthAuthorization = (
+  serverUrl: string,
+  storage: OAuthStorage = getSessionStorage()
+): OAuthAuthorization | undefined => {
+  const provider = new BrowserOAuthProvider(serverUrl, { storage });
+  const discovery = provider.discoveryState();
+  const issuer = issuerForDiscovery(discovery);
+  if (!issuer) return undefined;
+
+  const tokens = provider.tokens({ issuer });
+  if (!tokens || (tokens.issuer && tokens.issuer !== issuer)) return undefined;
+
+  const metadata = discovery?.authorizationServerMetadata as
+    | (OAuthDiscoveryState['authorizationServerMetadata'] & { userinfo_endpoint?: unknown })
+    | undefined;
+  const userInfoEndpoint = typeof metadata?.userinfo_endpoint === 'string'
+    ? metadata.userinfo_endpoint
+    : undefined;
+
+  return {
+    accessToken: tokens.access_token,
+    issuer,
+    ...(userInfoEndpoint ? { userInfoEndpoint } : {}),
+  };
+};
 
 export const beginOAuthFlow = async (
   serverUrl: string,

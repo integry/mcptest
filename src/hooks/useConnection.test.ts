@@ -22,6 +22,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
 });
 
 import { useConnection } from './useConnection';
+import { BrowserOAuthProvider } from '../utils/oauthFlow';
 
 beforeAll(() => {
   (
@@ -107,7 +108,37 @@ describe('connection URL finalization', () => {
   it('authorizes through the SDK and uses the token for the requested endpoint', async () => {
     const endpoint = 'https://secure.example/custom/mcp';
     oauthMocks.begin.mockImplementationOnce(async () => {
-      sessionStorage.setItem('oauth_access_token_secure.example', 'sdk-token');
+      const issuer = 'https://auth-secure.example/';
+      const provider = new BrowserOAuthProvider(endpoint);
+      provider.saveDiscoveryState({
+        authorizationServerUrl: issuer,
+        authorizationServerMetadata: {
+          issuer,
+          authorization_endpoint: `${issuer}authorize`,
+          token_endpoint: `${issuer}token`,
+          response_types_supported: ['code'],
+        },
+      });
+      provider.saveTokens(
+        { access_token: 'sdk-token', token_type: 'Bearer', issuer },
+        { issuer }
+      );
+
+      const otherIssuer = 'https://auth-other.example/';
+      const otherProvider = new BrowserOAuthProvider('https://secure.example/other/mcp');
+      otherProvider.saveDiscoveryState({
+        authorizationServerUrl: otherIssuer,
+        authorizationServerMetadata: {
+          issuer: otherIssuer,
+          authorization_endpoint: `${otherIssuer}authorize`,
+          token_endpoint: `${otherIssuer}token`,
+          response_types_supported: ['code'],
+        },
+      });
+      otherProvider.saveTokens(
+        { access_token: 'other-resource-token', token_type: 'Bearer', issuer: otherIssuer },
+        { issuer: otherIssuer }
+      );
       return 'AUTHORIZED';
     });
     connectionMocks.attempt.mockResolvedValueOnce({

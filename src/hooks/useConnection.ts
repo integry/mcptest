@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   beginOAuthFlow,
   isOAuthClientConfigurationRequired,
+  loadOAuthAuthorization,
 } from '../utils/oauthFlow';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
@@ -116,44 +117,47 @@ export const useConnection = (
   useEffect(() => {
     if (!serverUrl) return; // Skip if no serverUrl
     try {
-      const storedToken = sessionStorage.getItem(`oauth_access_token_${new URL(addProtocolIfMissing(serverUrl)).host}`)
+      const storedToken = loadOAuthAuthorization(serverUrl)?.accessToken;
       if (storedToken) {
         setAccessToken(storedToken);
         console.log('[OAuth] Access token found in sessionStorage');
+      } else {
+        setAccessToken(null);
       }
     } catch (error) {
       console.warn('[OAuth] Invalid serverUrl for token lookup:', serverUrl, error);
+      setAccessToken(null);
     }
-  }, [connectionStatus]); // Re-check when connection status changes
+  }, [connectionStatus, serverUrl]); // Re-check when connection status changes
 
   // Always check sessionStorage for the latest token before connecting
   const getLatestAccessToken = useCallback((tokenServerUrl: string = serverUrl) => {
     if (!tokenServerUrl) {
       console.log('[OAuth] No serverUrl provided for token lookup');
-      return accessToken; // Return existing token if no serverUrl
+      return undefined;
     }
     try {
       const normalizedUrl = addProtocolIfMissing(tokenServerUrl);
-      const host = new URL(normalizedUrl).host;
-      const storedToken = sessionStorage.getItem(`oauth_access_token_${host}`);
+      const authorization = loadOAuthAuthorization(normalizedUrl);
+      const storedToken = authorization?.accessToken;
       
       console.log('[OAuth] Token lookup:', {
         serverUrl: tokenServerUrl,
-        host,
-        tokenKey: `oauth_access_token_${host}`,
+        issuer: authorization?.issuer,
         hasStoredToken: !!storedToken,
         hasCurrentToken: !!accessToken,
         tokensMatch: storedToken === accessToken
       });
       
-      if (storedToken && storedToken !== accessToken) {
-        console.log('[OAuth] Found updated access token in sessionStorage');
-        setAccessToken(storedToken);
+      if ((storedToken || null) !== accessToken) {
+        console.log('[OAuth] Updated access token state from issuer-bound SDK storage');
+        setAccessToken(storedToken || null);
       }
-      return storedToken || accessToken;
+      return storedToken;
     } catch (error) {
       console.warn('[OAuth] Invalid serverUrl for token lookup:', tokenServerUrl, error);
-      return accessToken;
+      setAccessToken(null);
+      return undefined;
     }
   }, [accessToken, serverUrl])
 
@@ -170,20 +174,17 @@ export const useConnection = (
       }
 
       try {
-        // Get OAuth endpoints from session storage (per server)
         if (!serverUrl) {
           console.log('[OAuth] No serverUrl available for user info fetch');
           return;
         }
-        const serverHost = new URL(addProtocolIfMissing(serverUrl)).host;
-        const storedEndpoints = sessionStorage.getItem(`oauth_endpoints_${serverHost}`);
-        if (!storedEndpoints) {
-          console.log('[OAuth] No OAuth endpoints found, skipping user info fetch');
+        const authorization = loadOAuthAuthorization(serverUrl);
+        if (!authorization || authorization.accessToken !== accessToken) {
+          console.log('[OAuth] No issuer-bound authorization found, skipping user info fetch');
           return;
         }
 
-        const oauthEndpoints = JSON.parse(storedEndpoints);
-        if (!oauthEndpoints.userinfo_endpoint) {
+        if (!authorization.userInfoEndpoint) {
           console.log('[OAuth] No userinfo endpoint in OAuth configuration');
           // Set a default user info if userinfo endpoint is not available
           setOauthUserInfo({
@@ -194,11 +195,11 @@ export const useConnection = (
           return;
         }
 
-        console.log('[OAuth] Fetching user info from:', oauthEndpoints.userinfo_endpoint);
+        console.log('[OAuth] Fetching user info from:', authorization.userInfoEndpoint);
         
-        const response = await fetch(oauthEndpoints.userinfo_endpoint, {
+        const response = await fetch(authorization.userInfoEndpoint, {
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            'Authorization': `Bearer ${authorization.accessToken}`,
             'Accept': 'application/json'
           }
         });
@@ -222,7 +223,7 @@ export const useConnection = (
     };
 
     fetchUserInfo();
-  }, [accessToken, connectionStatus, isOAuthConnection, addLogEntry]);
+  }, [accessToken, connectionStatus, isOAuthConnection, addLogEntry, serverUrl]);
 
   // --- SDK Client Based Logic ---
 
@@ -257,16 +258,15 @@ export const useConnection = (
     setOauthUserInfo(null);
     setIsOAuthConnection(false);
     
-    // Clear server-specific OAuth tokens and endpoints on disconnect
+    // Clear the legacy endpoint hint on disconnect. Issuer-bound SDK tokens
+    // remain available for later authenticated connections.
     if (serverUrl) {
       try {
         const serverHost = new URL(addProtocolIfMissing(serverUrl)).host;
-        sessionStorage.removeItem(`oauth_access_token_${serverHost}`);
-        sessionStorage.removeItem(`oauth_refresh_token_${serverHost}`);
         sessionStorage.removeItem(`oauth_endpoints_${serverHost}`);
-        console.log(`[OAuth] Cleared tokens and endpoints for server: ${serverHost}`);
+        console.log(`[OAuth] Cleared legacy endpoint hint for server: ${serverHost}`);
       } catch (error) {
-        console.error('[OAuth] Error clearing server-specific tokens:', error);
+        console.error('[OAuth] Error clearing legacy OAuth endpoint hint:', error);
       }
     }
     

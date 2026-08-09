@@ -5,6 +5,7 @@ import OAuthConfig from './OAuthConfig';
 import {
   beginOAuthFlow,
   isOAuthClientConfigurationRequired,
+  loadOAuthAuthorization,
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
@@ -239,9 +240,8 @@ const ReportView: React.FC = () => {
       navigate(`/report/${encodeURIComponent(urlToTest)}`);
     }
 
-    // Get OAuth access token from sessionStorage if available
-    const serverHost = new URL(urlToTest.startsWith('http') ? urlToTest : `https://${urlToTest}`).host;
-    const oauthAccessToken = sessionStorage.getItem(`oauth_access_token_${serverHost}`);
+    // Get the exact resource's issuer-bound OAuth access token if available.
+    const oauthAccessToken = loadOAuthAuthorization(urlToTest)?.accessToken;
     
     // Get Firebase auth token
     const token = await currentUser.getIdToken();

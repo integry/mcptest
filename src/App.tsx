@@ -60,6 +60,7 @@ import {
   beginOAuthFlow,
   clearOAuthTokens,
   isOAuthClientConfigurationRequired,
+  loadOAuthAuthorization,
 } from './utils/oauthFlow';
 
 // Constants for localStorage keys
@@ -1328,9 +1329,8 @@ function App() {
           : undefined;
 
         // --- Connection and Request Logic ---
-        // Check for OAuth token first - use the original card.serverUrl for OAuth token lookup
-        const originalServerHost = new URL(card.serverUrl).host;
-        const oauthToken = sessionStorage.getItem(`oauth_access_token_${originalServerHost}`);
+        // Use only the exact resource's issuer-bound SDK token.
+        const oauthToken = loadOAuthAuthorization(card.serverUrl)?.accessToken;
         const proxyUrl = import.meta.env.VITE_PROXY_URL;
         const proxySelected = Boolean(
           proxyUrl && (card.useProxy !== undefined ? card.useProxy : !oauthToken)
@@ -1517,9 +1517,8 @@ function App() {
           
           // Log OAuth token status for debugging
           for (const card of cardsNeedingRefresh) {
-            const serverHost = new URL(card.serverUrl).host;
-            const hasToken = !!sessionStorage.getItem(`oauth_access_token_${serverHost}`);
-            console.log(`[OAuth Refresh Effect] Card ${card.id} - Server: ${serverHost}, Has OAuth token: ${hasToken}`);
+            const hasToken = !!loadOAuthAuthorization(card.serverUrl);
+            console.log(`[OAuth Refresh Effect] Card ${card.id} - Server: ${card.serverUrl}, Has OAuth token: ${hasToken}`);
           }
           
           for (const card of cardsNeedingRefresh) {
