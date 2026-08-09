@@ -1,7 +1,8 @@
 // src/utils/evaluation.ts
 import { Client } from "@modelcontextprotocol/client";
 import { attemptParallelConnections } from './transportDetection';
-const PROXY_URL = import.meta.env.VITE_PROXY_URL;
+
+const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
 interface DetailItem {
   text: string;
@@ -23,7 +24,27 @@ interface EvaluationReport {
   sections: Record<string, EvaluationSection>;
 }
 
-async function proxiedFetch(url: string, token: string, options: RequestInit = {}, oauthToken?: string | null): Promise<Response> {
+export function getEvaluationProxyHeaders(
+  requestHeaders: HeadersInit | undefined,
+  firebaseToken: string,
+  oauthToken?: string | null
+): Headers {
+  const headers = new Headers(requestHeaders);
+  headers.set('Authorization', `Bearer ${firebaseToken}`);
+
+  if (oauthToken) {
+    headers.set('X-MCP-Authorization', `Bearer ${oauthToken}`);
+  }
+
+  return headers;
+}
+
+export async function fetchForEvaluation(
+  url: string,
+  firebaseToken: string,
+  options: RequestInit = {},
+  oauthToken?: string | null
+): Promise<Response> {
   const headers = new Headers(options.headers);
   
   // Try direct fetch first if we have an OAuth token
@@ -37,18 +58,14 @@ async function proxiedFetch(url: string, token: string, options: RequestInit = {
   }
   
   // Fallback to proxy if direct fetch fails or no OAuth token
-  if (!PROXY_URL) {
+  const proxyUrl = getProxyUrl();
+  if (!proxyUrl) {
     throw new Error('Direct connection failed and no proxy configured');
   }
   
-  const target = `${PROXY_URL}?target=${encodeURIComponent(url)}`;
-  const proxyHeaders = new Headers(options.headers);
-  proxyHeaders.set('Authorization', `Bearer ${token}`);
-  
-  // If we have an OAuth token for the server, add it to the request
-  if (oauthToken) {
-    proxyHeaders.set('X-OAuth-Token', oauthToken);
-  }
+  const target = new URL(proxyUrl);
+  target.searchParams.set('target', url);
+  const proxyHeaders = getEvaluationProxyHeaders(options.headers, firebaseToken, oauthToken);
   
   return fetch(target, { ...options, headers: proxyHeaders });
 }
@@ -96,18 +113,27 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       onProgress(`Connected successfully using ${connectionResult.transportType} transport (direct ${authType})`);
     } catch (directError: any) {
       // Direct connection failed, only try proxy if configured
-      if (PROXY_URL) {
+      const proxyUrl = getProxyUrl();
+      if (proxyUrl) {
         onProgress('Direct connection failed, attempting proxy connection...');
-        const proxyUrl = `${PROXY_URL}?target=${encodeURIComponent(serverUrl)}`;
-        
-        // Use OAuth token if available, otherwise use Firebase token for proxy auth
-        const proxyAuthToken = accessToken || token;
-        const connectionResult = await attemptParallelConnections(proxyUrl, abortController.signal, proxyAuthToken);
+        const proxyConnectionUrl = new URL(proxyUrl);
+        proxyConnectionUrl.searchParams.set('target', serverUrl);
+        const targetHeaders = accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : undefined;
+        const connectionResult = await attemptParallelConnections(
+          proxyConnectionUrl.toString(),
+          abortController.signal,
+          token,
+          targetHeaders
+        );
         mcpClient = connectionResult.client;
         connectionUrl = connectionResult.url;
         transportType = connectionResult.transportType;
         usedProxy = true;
-        const authType = accessToken ? 'with OAuth' : 'with Firebase token';
+        const authType = accessToken
+          ? 'with Firebase proxy auth and OAuth target auth'
+          : 'with Firebase proxy auth';
         onProgress(`Connected successfully using ${connectionResult.transportType} transport (proxy ${authType})`);
       } else {
         throw directError;
@@ -120,7 +146,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     if (!accessToken) {
       onProgress('Checking if server requires OAuth authentication...');
       try {
-        const testResponse = await proxiedFetch(`${serverUrl}/mcp/v1/initialize`, token, {
+        const testResponse = await fetchForEvaluation(`${serverUrl}/mcp/v1/initialize`, token, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -196,7 +222,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     // Fallback to direct HTTP check if client connection failed
     try {
       // Check if server responds to basic MCP request
-      response = await proxiedFetch(`${serverUrl}/mcp/v1/initialize`, token, {
+      response = await fetchForEvaluation(`${serverUrl}/mcp/v1/initialize`, token, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -646,7 +672,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       // Also check for SSE support even when using HTTP streaming
       try {
         const sseCheckUrl = connectionUrl.replace(/\/mcp\/?$/, '/sse');
-        const sseResponse = await proxiedFetch(sseCheckUrl, token, {
+        const sseResponse = await fetchForEvaluation(sseCheckUrl, token, {
           method: 'GET',
           headers: { 'Accept': 'text/event-stream' }
         }, accessToken);
@@ -684,7 +710,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
       // Also check if HTTP streaming is supported
       try {
         const httpCheckUrl = connectionUrl.replace(/\/sse\/?$/, '/mcp');
-        const httpResponse = await proxiedFetch(httpCheckUrl, token, {
+        const httpResponse = await fetchForEvaluation(httpCheckUrl, token, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -729,7 +755,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     // Fallback to manual transport checks if no MCP client
     try {
       // Check for HTTP streaming support (preferred over SSE)
-    const streamResponse = await proxiedFetch(`${serverUrl}/mcp/v1/stream`, token, {
+    const streamResponse = await fetchForEvaluation(`${serverUrl}/mcp/v1/stream`, token, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -764,7 +790,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     
     // Always check for SSE support (legacy)
     try {
-      const sseResponse = await proxiedFetch(`${serverUrl}/sse`, token, {
+      const sseResponse = await fetchForEvaluation(`${serverUrl}/sse`, token, {
         method: 'GET',
         headers: { 'Accept': 'text/event-stream' }
       }, accessToken);
@@ -849,7 +875,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
   
   try {
     // Check for OAuth discovery endpoint
-    const oauthDiscoveryResponse = await proxiedFetch(`${serverUrl}/.well-known/oauth-authorization-server`, token, {}, accessToken);
+    const oauthDiscoveryResponse = await fetchForEvaluation(`${serverUrl}/.well-known/oauth-authorization-server`, token, {}, accessToken);
     
     if (oauthDiscoveryResponse.ok) {
       // OAuth is supported, include security section
@@ -934,7 +960,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
     const siteUrl = window.location.origin;
     
     // CORS preflight check
-    const corsResponse = await proxiedFetch(`${serverUrl}/mcp/v1/initialize`, token, {
+    const corsResponse = await fetchForEvaluation(`${serverUrl}/mcp/v1/initialize`, token, {
       method: 'OPTIONS',
       headers: {
         'Origin': siteUrl,
@@ -1082,7 +1108,7 @@ export async function evaluateServer(serverUrl: string, token: string, onProgres
 
   try {
     const startTime = Date.now();
-    const perfResponse = await proxiedFetch(`${serverUrl}/mcp/v1/initialize`, token, {
+    const perfResponse = await fetchForEvaluation(`${serverUrl}/mcp/v1/initialize`, token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
