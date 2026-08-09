@@ -324,13 +324,11 @@ const makeRouteFailure = (
   observedChallenge?: ObservedAuthenticationChallenge,
   connectedCandidateUrl?: string
 ): EvaluationRouteFailure => {
-  const proxyAuthChallenge = route === 'proxy'
-    ? observedChallenge || getProxyAuthenticationChallenge(error)
-    : undefined;
-  const httpStatus = proxyAuthChallenge?.status || getAuthenticationHttpStatus(error);
-  const authenticationSource = route === 'direct' && httpStatus
-    ? 'target'
-    : proxyAuthChallenge?.source;
+  const authenticationChallenge = observedChallenge || getProxyAuthenticationChallenge(error);
+  const httpStatus = authenticationChallenge?.status || getAuthenticationHttpStatus(error);
+  const authenticationSource = authenticationChallenge?.source || (
+    route === 'direct' && httpStatus ? 'target' : undefined
+  );
   const failedCandidateUrl = connectedCandidateUrl || (
     authenticationSource
       ? getAuthenticationCandidateUrl(error, authenticationSource)

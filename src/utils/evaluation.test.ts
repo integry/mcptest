@@ -302,15 +302,22 @@ describe('dual-era server evaluation', () => {
 
   it('offers target authentication when a post-connect capability request returns 401', async () => {
     const client = createClient();
-    client.listTools.mockRejectedValueOnce(Object.assign(
-      new Error('tools/list returned HTTP 401'),
-      { status: 401 }
-    ));
+    let observedChallenge: { status: 401 | 403; source: 'proxy' | 'target' } | undefined;
+    client.listTools.mockImplementationOnce(async () => {
+      observedChallenge = { status: 401, source: 'target' };
+      throw new Error('tools/list returned HTTP 401');
+    });
+    const takeAuthenticationChallenge = vi.fn(() => {
+      const challenge = observedChallenge;
+      observedChallenge = undefined;
+      return challenge;
+    });
     connectionMocks.attempt.mockResolvedValueOnce({
       client,
       url: 'https://mcp.example/mcp',
       transportType: 'streamable-http',
       protocolEra: 'modern',
+      takeAuthenticationChallenge,
     });
 
     const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());

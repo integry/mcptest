@@ -29,6 +29,14 @@ describe('saved card authentication failures', () => {
     });
   });
 
+  it('uses an observed direct response challenge for saved-card OAuth', () => {
+    expect(classifySavedCardAuthenticationFailure(
+      new Error('Transport rejected the request'),
+      false,
+      { status: 403, source: 'target' }
+    )).toEqual({ status: 403, source: 'target' });
+  });
+
   it('preserves target provenance through nested proxy connection failures', () => {
     const targetError = new ProxiedAuthenticationError(
       403,

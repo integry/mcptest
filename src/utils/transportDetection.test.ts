@@ -308,6 +308,56 @@ describe('transport candidate generation', () => {
     });
   });
 
+  it('preserves a direct authentication challenge from the HTTP response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', {
+      status: 401,
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      await fetch?.(endpoint);
+      throw new Error('Connection rejected');
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections('https://example.com/custom');
+    } catch (error) {
+      connectionError = error;
+    }
+
+    const findAuthenticationError = (
+      error: unknown
+    ): ProxiedAuthenticationError | undefined => {
+      if (error instanceof ProxiedAuthenticationError) return error;
+      if (error instanceof TransportConnectionError) {
+        for (const nestedError of error.errors) {
+          const match = findAuthenticationError(nestedError);
+          if (match) return match;
+        }
+      }
+      return undefined;
+    };
+
+    expect(findAuthenticationError(connectionError)).toMatchObject({
+      status: 401,
+      responseSource: 'target',
+    });
+  });
+
+  it('retains direct target provenance for requests made after connection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
+      status: 403,
+    })));
+
+    const connection = await attemptParallelConnections('https://example.com/custom');
+    await connection.transport.fetch?.(connection.url);
+
+    expect(connection.takeAuthenticationChallenge()).toEqual({
+      status: 403,
+      source: 'target',
+    });
+    expect(connection.takeAuthenticationChallenge()).toBeUndefined();
+  });
+
   it('retains proxy response provenance for requests made after connection', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', {
       status: 401,
