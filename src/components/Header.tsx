@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
@@ -8,13 +8,8 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
-  const navigate = useNavigate();
   const { currentUser, loginWithGoogle, logout } = useAuth();
   const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
-
-  const handleHomeClick = () => {
-    navigate('/');
-  };
 
   return (
     <header className="app-header">
@@ -28,19 +23,20 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           <span className="hamburger"></span>
         </button>
 
-        <span
+        <Link
+          to="/"
           className="app-logo"
-          onClick={handleHomeClick}
+          aria-label="mcptest.io home"
         >
           <img src="/logo.png" alt="MCP Logo" width="40" height="40" />
-        </span>
-        <div className="app-brand-copy" onClick={handleHomeClick}>
+        </Link>
+        <Link to="/" className="app-brand-copy" aria-label="mcptest.io home">
           <span className="app-brand-eyebrow">Model Context Protocol</span>
           <h1 className="app-brand-title">mcptest.io</h1>
           <p className="app-brand-subtitle d-none d-md-block">
             Remote protocol workbench
           </p>
-        </div>
+        </Link>
       </div>
 
       <div className="app-header-actions d-none d-md-flex">

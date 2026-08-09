@@ -30,10 +30,10 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
       role="tablist"
     >
       {tabs.map(tab => (
-        <div key={tab.id} className="nav-item">
+        <div key={tab.id} className="nav-item position-relative" role="presentation">
           <button
             type="button"
-            className={`nav-link ${activeTabId === tab.id ? 'active active-tab-override' : ''}`}
+            className={`nav-link ${tabs.length > 1 ? 'pe-5' : ''} ${activeTabId === tab.id ? 'active active-tab-override' : ''}`}
             onClick={() => onSelectTab(tab.id)}
             role="tab"
             aria-selected={activeTabId === tab.id}
@@ -52,18 +52,16 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
               }}
             ></span>
             {tab.title}
-            {tabs.length > 1 && (
-              <button
-                type="button"
-                className="btn-close btn-close-sm ms-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-                aria-label="Close"
-              ></button>
-            )}
           </button>
+          {tabs.length > 1 && (
+            <button
+              type="button"
+              className="btn-close btn-close-sm position-absolute top-50 end-0 translate-middle-y me-2"
+              style={{ zIndex: 2 }}
+              onClick={() => onCloseTab(tab.id)}
+              aria-label={`Close ${tab.title} tab`}
+            ></button>
+          )}
         </div>
       ))}
       <div className="nav-item">
