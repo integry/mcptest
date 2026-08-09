@@ -66,9 +66,16 @@ export const getSavedResourceUri = (
 
     const variables: Variables = {};
     for (const [parameterName, value] of Object.entries(savedParams)) {
-      variables[parameterName] = Array.isArray(value)
-        ? value.map(item => asTemplateScalar(item, parameterName))
-        : asTemplateScalar(value, parameterName);
+      // Resource forms use an empty string for an untouched optional field.
+      // Omit unset and empty-list values so RFC 6570 optional expressions do
+      // not become `?name=` and nullish values are never stringified.
+      if (value === null || value === undefined || value === '') continue;
+      if (Array.isArray(value)) {
+        if (value.length === 0) continue;
+        variables[parameterName] = value.map(item => asTemplateScalar(item, parameterName));
+      } else {
+        variables[parameterName] = asTemplateScalar(value, parameterName);
+      }
     }
     return template.expand(variables);
   } catch (error) {

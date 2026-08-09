@@ -90,4 +90,23 @@ describe('saved dashboard card connections', () => {
       { tags: ['stateful', 'stateless'] }
     )).toBe('mcp://search?tags=stateful,stateless');
   });
+
+  it('omits optional resource parameters left unset by the form', () => {
+    expect(getSavedResourceUri(
+      'mcp://documents/{documentId}{?format,locale,filter}',
+      {
+        documentId: 'policies/2026',
+        format: '',
+        locale: undefined,
+        filter: null,
+      }
+    )).toBe('mcp://documents/policies%2F2026');
+  });
+
+  it('omits an empty optional list', () => {
+    expect(getSavedResourceUri(
+      'mcp://search{?tags}',
+      { tags: [] }
+    )).toBe('mcp://search');
+  });
 });
