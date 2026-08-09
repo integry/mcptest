@@ -15,6 +15,8 @@ const OAUTH_FILTER_OPTIONS: Array<{ value: OAuthFilter; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'no-auth', label: 'No auth' },
   { value: 'oauth', label: 'OAuth' },
+  { value: 'bearer-token', label: 'Bearer' },
+  { value: 'api-key', label: 'API key' },
 ];
 
 const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
@@ -66,7 +68,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             <label className="form-label d-block" htmlFor={`${idPrefix}-oauth-all`}>
               Authentication
             </label>
-            <div className="btn-group" role="group" aria-label="Authentication filter">
+            <div className="btn-group flex-wrap" role="group" aria-label="Authentication filter">
               {OAUTH_FILTER_OPTIONS.map((option) => {
                 const optionId = `${idPrefix}-oauth-${option.value}`;
 

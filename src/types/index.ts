@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
+import type { CatalogAuthType, CatalogRequiredHeader } from './catalog';
 
 // Define interfaces for state clarity
 export interface LogEntry {
@@ -84,6 +85,9 @@ export interface ConnectionTab {
   useProxy?: boolean; // Whether to use proxy for this connection
   useOAuth?: boolean; // Whether to use OAuth authentication for this connection
   autoConnect?: boolean; // Whether this tab should connect automatically once initialized
+  /** Catalog credential metadata only. Secret values stay in TabContent memory. */
+  catalogAuthType?: CatalogAuthType;
+  catalogRequiredHeaders?: CatalogRequiredHeader[];
   // Capabilities for this specific connection
   tools?: Tool[];
   resources?: Resource[];

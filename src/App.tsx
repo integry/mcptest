@@ -477,16 +477,20 @@ function App() {
     logEvent('catalog_test_server', {
       server_id: server.id,
       requires_oauth: server.requiresOAuth,
+      auth_type: server.authType,
+      protocol_era: server.protocolEra,
     });
 
     const newTab: ConnectionTab = {
       id: uuidv4(),
       title: server.name,
-      serverUrl: server.url,
+      serverUrl: server.validatedUrl || server.url,
       connectionStatus: 'Disconnected',
       useProxy: true,
       useOAuth: server.requiresOAuth,
-      autoConnect: true,
+      autoConnect: server.authType === 'none' || server.authType === 'oauth',
+      catalogAuthType: server.authType,
+      catalogRequiredHeaders: server.requiredHeaders,
     };
 
     setTabs(prevTabs => [...prevTabs, newTab]);

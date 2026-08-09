@@ -60,7 +60,13 @@ const saveRecentServers = (servers: (string | { url: string; useProxy?: boolean 
 };
 
 
-export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void, useProxy?: boolean, useOAuth?: boolean, onAuthFlowStart?: () => void) => {
+export const useConnection = (
+  addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void,
+  useProxy?: boolean,
+  useOAuth?: boolean,
+  onAuthFlowStart?: () => void,
+  requestHeaders?: Record<string, string>
+) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
   const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
@@ -842,10 +848,15 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
       // Set OAuth connection flag based on whether we have an access token
       setIsOAuthConnection(!!latestAccessToken);
       if (latestAccessToken) {
-        console.log('[OAuth] Using access token for connection:', latestAccessToken.substring(0, 20) + '...');
+        console.log('[OAuth] Using access token for connection');
         addLogEntry({ type: 'info', data: `🔐 Using OAuth access token for authenticated connection` });
       }
-      return attemptParallelConnections(targetUrl, abortControllerRef.current?.signal, latestAccessToken || undefined);
+      return attemptParallelConnections(
+        targetUrl,
+        abortControllerRef.current?.signal,
+        latestAccessToken || undefined,
+        requestHeaders
+      );
     };
 
     // Helper function to attempt proxy connection
@@ -867,11 +878,18 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
           addLogEntry({ type: 'error', data: 'Failed to obtain authentication token for proxy' });
         }
       }
-      // For proxy connections, prefer OAuth token over Firebase token
-      const proxyAuthToken = latestAccessToken || authToken;
       // Set OAuth connection flag based on whether we have an OAuth token
       setIsOAuthConnection(!!latestAccessToken);
-      return attemptParallelConnections(connectionUrl, abortControllerRef.current?.signal, proxyAuthToken);
+      const targetHeaders = {
+        ...requestHeaders,
+        ...(latestAccessToken ? { Authorization: `Bearer ${latestAccessToken}` } : {}),
+      };
+      return attemptParallelConnections(
+        connectionUrl,
+        abortControllerRef.current?.signal,
+        authToken,
+        targetHeaders
+      );
     };
 
     try {
@@ -1043,7 +1061,7 @@ export const useConnection = (addLogEntry: (entryData: Omit<LogEntry, 'timestamp
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied, useOAuth, accessToken, getLatestAccessToken]); // Added useProxy, currentUser, isProxied, useOAuth, accessToken, and getLatestAccessToken dependencies
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, isProxied, useOAuth, accessToken, getLatestAccessToken, requestHeaders]);
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {

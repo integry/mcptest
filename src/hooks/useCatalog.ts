@@ -9,7 +9,13 @@ import {
 import { logEvent } from '../utils/analytics';
 
 const isOAuthFilter = (value: string | null): value is OAuthFilter => {
-  return value === 'all' || value === 'oauth' || value === 'no-auth';
+  return (
+    value === 'all' ||
+    value === 'oauth' ||
+    value === 'bearer-token' ||
+    value === 'api-key' ||
+    value === 'no-auth'
+  );
 };
 
 const normalizeSearchQuery = (searchQuery: string) => searchQuery.trim();
@@ -243,7 +249,7 @@ export const useCatalog = () => {
       }
 
       setOauthFilterState(nextOauthFilter);
-      logEvent('catalog_filter_oauth', { filter: nextOauthFilter });
+      logEvent('catalog_filter_auth', { filter: nextOauthFilter });
     },
     [oauthFilter]
   );

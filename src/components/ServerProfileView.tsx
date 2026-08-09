@@ -1,7 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
-import { formatCatalogTransport } from '../utils/catalogSeo';
+import {
+  formatCatalogAuth,
+  formatCatalogTransport,
+  formatProtocolEra,
+} from '../utils/catalogSeo';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -34,6 +38,14 @@ const validationDetail = (server: CatalogServer) => {
   if (server.validationMessage) return server.validationMessage;
   if (server.checkedAt) return 'The latest automated probe completed without additional validation detail.';
   return 'No automated probe result is stored yet. Use the Playground to run a fresh browser-side connection test.';
+};
+
+const authEvidenceNote = (server: CatalogServer) => {
+  if (server.checkedAt && server.authType !== server.declaredAuthType) {
+    return `Validation revised the declared ${formatCatalogAuth(server.declaredAuthType).toLowerCase()} method`;
+  }
+  if (server.checkedAt) return 'Merged from publisher metadata and the latest live probe';
+  return 'Declared by the current catalog listing';
 };
 
 const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer }) => {
@@ -117,10 +129,13 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Authentication</span>
-          <strong>{server.requiresOAuth ? 'OAuth 2.1' : 'No auth declared'}</strong>
-          <small>{server.checkedAt
-            ? (server.requiresOAuth ? 'OAuth detected or required by latest evidence' : 'No OAuth requirement detected by latest validation')
-            : (server.requiresOAuth ? 'Interactive authorization declared' : 'No credentials declared by the current listing')}</small>
+          <strong>{formatCatalogAuth(server.authType)}</strong>
+          <small>{authEvidenceNote(server)}</small>
+        </div>
+        <div className="server-signal-card">
+          <span className="server-signal-label">Protocol lifecycle</span>
+          <strong>{formatProtocolEra(server.protocolEra, server.protocolVersion)}</strong>
+          <small>{server.protocolEra === 'unknown' ? 'No lifecycle negotiation recorded' : 'Negotiated by the catalog validator'}</small>
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Category</span>
@@ -145,6 +160,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
                 <dt>Remote endpoint</dt>
                 <dd><code>{server.url}</code></dd>
               </div>
+              {server.validatedUrl && server.validatedUrl !== server.url && (
+                <div>
+                  <dt>Live-validated endpoint</dt>
+                  <dd><code>{server.validatedUrl}</code></dd>
+                </div>
+              )}
               <div>
                 <dt>Declared MCP transport</dt>
                 <dd>{formatCatalogTransport(server.declaredTransport)}</dd>
@@ -155,7 +176,11 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               </div>
               <div>
                 <dt>Credential flow</dt>
-                <dd>{server.requiresOAuth ? 'OAuth 2.1 authorization code flow with PKCE' : 'No authentication advertised by the catalog entry'}</dd>
+                <dd>{formatCatalogAuth(server.authType)}</dd>
+              </div>
+              <div>
+                <dt>Protocol lifecycle</dt>
+                <dd>{formatProtocolEra(server.protocolEra, server.protocolVersion)}</dd>
               </div>
               <div>
                 <dt>Client environment</dt>
@@ -166,12 +191,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-endpoint-box">
               <div>
                 <span>Endpoint</span>
-                <code>{server.url}</code>
+                <code>{server.validatedUrl || server.url}</code>
               </div>
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary"
-                onClick={() => navigator.clipboard?.writeText(server.url)}
+                onClick={() => navigator.clipboard?.writeText(server.validatedUrl || server.url)}
                 aria-label={`Copy ${server.name} MCP endpoint`}
               >
                 <i className="bi bi-copy" aria-hidden="true"></i>
@@ -221,8 +246,25 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <div className="d-flex flex-wrap gap-3">
             {server.homepageUrl && <a href={server.homepageUrl} target="_blank" rel="noopener noreferrer">Product documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.sourceUrl && <a href={server.sourceUrl} target="_blank" rel="noopener noreferrer">Source repository <i className="bi bi-arrow-up-right"></i></a>}
+            {server.registryUrl && <a href={server.registryUrl} target="_blank" rel="noopener noreferrer">Official MCP Registry record <i className="bi bi-arrow-up-right"></i></a>}
             <Link to="/docs/testing-guide">MCP testing guide <i className="bi bi-arrow-right"></i></Link>
           </div>
+          {(server.requiredHeaders?.length || server.authorizationServers?.length) ? (
+            <dl className="server-spec-list mt-4 mb-0">
+              {server.requiredHeaders?.map((header) => (
+                <div key={header.name}>
+                  <dt>Required header</dt>
+                  <dd><code>{header.name}</code>{header.description ? ` — ${header.description}` : ''}</dd>
+                </div>
+              ))}
+              {server.authorizationServers?.map((issuer) => (
+                <div key={issuer}>
+                  <dt>Authorization server</dt>
+                  <dd><code>{issuer}</code></dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
         </div>
       </section>
     </article>

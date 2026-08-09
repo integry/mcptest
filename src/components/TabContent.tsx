@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionTab, LogEntry } from '../types';
 import { logEvent } from '../utils/analytics';
 
@@ -68,6 +68,28 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const [toolCallHistory, setToolCallHistory] = useState<Record<string, any[]>>(() => loadData(TOOL_HISTORY_KEY, {}));
   const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
   const [lastResult, setLastResult] = useState<LogEntry | null>(null);
+  const [catalogCredential, setCatalogCredential] = useState('');
+  const credentialHeader = useMemo(() => {
+    if (tab.catalogAuthType !== 'api-key' && tab.catalogAuthType !== 'bearer-token') {
+      return undefined;
+    }
+
+    return tab.catalogRequiredHeaders?.find(({ required }) => required)?.name
+      || tab.catalogRequiredHeaders?.[0]?.name
+      || (tab.catalogAuthType === 'bearer-token' ? 'Authorization' : 'x-api-key');
+  }, [tab.catalogAuthType, tab.catalogRequiredHeaders]);
+  const requestHeaders = useMemo(() => {
+    const credential = catalogCredential.trim();
+    if (!credentialHeader || !credential) return undefined;
+
+    const value = tab.catalogAuthType === 'bearer-token'
+      && credentialHeader.toLowerCase() === 'authorization'
+      && !/^Bearer\s/i.test(credential)
+        ? `Bearer ${credential}`
+        : credential;
+
+    return { [credentialHeader]: value };
+  }, [catalogCredential, credentialHeader, tab.catalogAuthType]);
   
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
@@ -117,7 +139,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       // Notify parent that OAuth flow is starting and store tab ID
       onUpdateTab(tab.id, { isAuthFlowActive: true });
       sessionStorage.setItem('oauth_tab_id', tab.id);
-    }
+    },
+    requestHeaders
   );
 
   const {
@@ -794,6 +817,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             oauthProgress={oauthProgress}
             oauthUserInfo={oauthUserInfo}
             isOAuthConnection={isOAuthConnection}
+            catalogAuthType={tab.catalogAuthType}
+            credentialHeader={credentialHeader}
+            credentialValue={catalogCredential}
+            setCredentialValue={setCatalogCredential}
+            credentialInputId={`${tab.id}-catalog-credential`}
           />
       <div className="playground-layout row flex-grow-1" style={{ paddingTop: '0' }}>
         {/* Left Panel */}

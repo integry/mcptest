@@ -3,6 +3,8 @@ import catalogValidation from '../data/catalogValidation.json';
 import {
   CATALOG_CATEGORY_ALL,
   type CatalogFilters,
+  type CatalogAuthType,
+  type CatalogProtocolEra,
   type CatalogServer,
   type CatalogServerSeed,
   type CatalogValidationResult,
@@ -29,12 +31,39 @@ const isValidationTransport = (transport: string | undefined): transport is Cata
   );
 };
 
+const isCatalogAuthType = (authType: string | undefined): authType is CatalogAuthType => {
+  return (
+    authType === 'none' ||
+    authType === 'oauth' ||
+    authType === 'bearer-token' ||
+    authType === 'api-key' ||
+    authType === 'unknown'
+  );
+};
+
+const isCatalogProtocolEra = (era: string | undefined): era is CatalogProtocolEra => {
+  return era === 'stateless' || era === 'stateful' || era === 'legacy' || era === 'unknown';
+};
+
+const getDeclaredAuthType = (seed: CatalogServerSeed): CatalogAuthType => {
+  return isCatalogAuthType(seed.authType)
+    ? seed.authType
+    : seed.requiresOAuth
+      ? 'oauth'
+      : 'none';
+};
+
 const getSearchText = (server: CatalogServer): string => {
   return [
     server.name,
     server.description,
     server.url,
     server.category,
+    server.authType,
+    server.declaredAuthType,
+    server.protocolEra,
+    server.protocolVersion,
+    server.registryName,
     ...server.tags,
   ].join(' ').toLowerCase();
 };
@@ -46,18 +75,29 @@ export const getCatalogServers = (): CatalogServer[] => {
 
   return CATALOG_SEEDS.map((seed) => {
     const validation = validationByServerId.get(seed.id);
+    const declaredAuthType = getDeclaredAuthType(seed);
+    const authType = declaredAuthType === 'api-key' || declaredAuthType === 'bearer-token'
+      ? declaredAuthType
+      : isCatalogAuthType(validation?.authType)
+        ? validation.authType
+        : declaredAuthType;
 
     return {
       ...seed,
       declaredTransport: seed.transport,
+      declaredAuthType,
+      authType,
       status: validation?.status ?? 'unknown',
       transport: isValidationTransport(validation?.transport)
         ? validation.transport
         : 'unknown',
-      requiresOAuth:
-        typeof validation?.requiresOAuth === 'boolean'
-          ? validation.requiresOAuth
-          : seed.requiresOAuth,
+      requiresOAuth: authType === 'oauth',
+      protocolEra: isCatalogProtocolEra(validation?.protocolEra)
+        ? validation.protocolEra
+        : 'unknown',
+      protocolVersion: validation?.protocolVersion,
+      validatedUrl: validation?.validatedUrl,
+      authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
     };
@@ -90,11 +130,19 @@ export const filterCatalogServers = (
     }
 
     if (oauthFilter === 'oauth') {
-      return server.requiresOAuth === true;
+      return server.authType === 'oauth';
+    }
+
+    if (oauthFilter === 'bearer-token') {
+      return server.authType === 'bearer-token';
+    }
+
+    if (oauthFilter === 'api-key') {
+      return server.authType === 'api-key';
     }
 
     if (oauthFilter === 'no-auth') {
-      return server.requiresOAuth === false;
+      return server.authType === 'none';
     }
 
     return true;

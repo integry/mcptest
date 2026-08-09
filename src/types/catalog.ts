@@ -15,6 +15,12 @@ export type CatalogTransport = 'streamable-http' | 'legacy-sse';
  */
 export type CatalogValidationTransport = CatalogTransport | 'both' | 'unknown';
 
+/** MCP lifecycle style observed by validation. */
+export type CatalogProtocolEra = 'stateless' | 'stateful' | 'legacy' | 'unknown';
+
+/** Credential mechanism declared by a listing or detected during validation. */
+export type CatalogAuthType = 'none' | 'oauth' | 'bearer-token' | 'api-key' | 'unknown';
+
 /**
  * Reachability state for a catalog server after validation. The unknown state
  * is intentional because browser CORS restrictions can prevent proving whether
@@ -23,9 +29,20 @@ export type CatalogValidationTransport = CatalogTransport | 'both' | 'unknown';
 export type CatalogServerStatus = 'online' | 'offline' | 'unknown';
 
 /**
- * Three-state OAuth filter used by the searchable catalog UI.
+ * Authentication-method filter used by the searchable catalog UI.
  */
-export type OAuthFilter = 'all' | 'oauth' | 'no-auth';
+export type OAuthFilter = 'all' | 'oauth' | 'bearer-token' | 'api-key' | 'no-auth';
+
+export interface CatalogRequiredHeader {
+  /** HTTP header name expected by the remote server. */
+  name: string;
+  /** Short setup guidance that is safe to render publicly. */
+  description?: string;
+  /** Whether the header must be supplied for a successful MCP connection. */
+  required?: boolean;
+  /** Whether the value is a credential and must never be stored or rendered. */
+  secret?: boolean;
+}
 
 /**
  * Hand-curated or crawled catalog entry before validation data is merged in.
@@ -48,12 +65,22 @@ export interface CatalogServerSeed {
   transport: CatalogTransport;
   /** Whether the server requires an OAuth flow before testing. */
   requiresOAuth: boolean;
+  /** Declared authentication method; requiresOAuth remains for older seed compatibility. */
+  authType?: CatalogAuthType;
+  /** Non-secret header requirements documented by the server publisher. */
+  requiredHeaders?: CatalogRequiredHeader[];
   /** Optional logo path or URL for catalog and suggested-server surfaces. */
   logoUrl?: string;
   /** Optional project, product, or documentation homepage. */
   homepageUrl?: string;
   /** Optional source repository or package URL for the server. */
   sourceUrl?: string;
+  /** Canonical server name in the official MCP Registry. */
+  registryName?: string;
+  /** Registry version used when this listing was last curated. */
+  registryVersion?: string;
+  /** Direct official MCP Registry API record for provenance. */
+  registryUrl?: string;
 }
 
 /**
@@ -69,6 +96,16 @@ export interface CatalogValidationResult {
   transport: CatalogValidationTransport;
   /** Whether validation detected OAuth or the curated seed already required it. */
   requiresOAuth: boolean;
+  /** Authentication method inferred from metadata, challenges, and the curated seed. */
+  authType?: CatalogAuthType;
+  /** MCP lifecycle style negotiated by the probe. */
+  protocolEra?: CatalogProtocolEra;
+  /** Exact MCP protocol revision negotiated by the probe. */
+  protocolVersion?: string;
+  /** Exact endpoint URL that completed a protocol or authentication probe. */
+  validatedUrl?: string;
+  /** Authorization server issuers advertised by protected-resource metadata. */
+  authorizationServers?: string[];
   /** ISO timestamp for when validation completed. */
   checkedAt: string;
   /** Optional machine-readable failure code for diagnostics. */
@@ -86,6 +123,18 @@ export interface CatalogServer extends Omit<CatalogServerSeed, 'transport'> {
   declaredTransport: CatalogTransport;
   /** Transport support from validation, or unknown when validation is missing. */
   transport: CatalogValidationTransport;
+  /** Authentication method declared by the catalog source. */
+  declaredAuthType: CatalogAuthType;
+  /** Best-known authentication method after validation evidence is merged. */
+  authType: CatalogAuthType;
+  /** MCP lifecycle style observed by validation. */
+  protocolEra: CatalogProtocolEra;
+  /** Exact MCP revision observed by validation. */
+  protocolVersion?: string;
+  /** Exact endpoint that most recently completed a validation probe. */
+  validatedUrl?: string;
+  /** Authorization server issuers found during OAuth discovery. */
+  authorizationServers?: string[];
   /** Current catalog reachability state. */
   status: CatalogServerStatus;
   /** ISO timestamp for the latest validation result, when available. */
@@ -102,6 +151,6 @@ export interface CatalogFilters {
   query: string;
   /** Selected category, or CATALOG_CATEGORY_ALL for every category. */
   category: string;
-  /** Three-state OAuth requirement filter. */
+  /** Authentication-method filter. */
   oauth: OAuthFilter;
 }

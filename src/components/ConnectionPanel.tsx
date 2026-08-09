@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { ProtocolEra } from '@modelcontextprotocol/client';
 import ConnectionErrorCard from './ConnectionErrorCard';
 import { TransportType } from '../types';
+import type { CatalogAuthType } from '../types/catalog';
 import { getServerUrl } from '../utils/urlUtils';
 import { useShare } from '../hooks/useShare';
 import { useAuth } from '../context/AuthContext';
@@ -39,6 +40,11 @@ interface ConnectionPanelProps {
   oauthProgress?: string;
   oauthUserInfo?: any; // User info from OAuth
   isOAuthConnection?: boolean; // Whether current connection uses OAuth
+  catalogAuthType?: CatalogAuthType;
+  credentialHeader?: string;
+  credentialValue?: string;
+  setCredentialValue?: (value: string) => void;
+  credentialInputId?: string;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -67,6 +73,11 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   oauthProgress,
   oauthUserInfo,
   isOAuthConnection,
+  catalogAuthType,
+  credentialHeader,
+  credentialValue = '',
+  setCredentialValue,
+  credentialInputId = 'catalog-credential',
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -76,6 +87,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   const [showUserInfoModal, setShowUserInfoModal] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
   const { currentUser } = useAuth();
+  const requiresCatalogCredential = catalogAuthType === 'api-key' || catalogAuthType === 'bearer-token';
 
   // Update timer every second while connecting
   useEffect(() => {
@@ -212,7 +224,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               value={serverUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                if (e.key === 'Enter' && !isConnecting && serverUrl && !isConnected) {
+                if (e.key === 'Enter' && !isConnecting && serverUrl && !isConnected && (!requiresCatalogCredential || credentialValue.trim())) {
                   e.preventDefault();
                   handleConnect();
                 }
@@ -235,7 +247,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                  id="connectBtn"
                  className="btn btn-primary"
                  onClick={() => handleConnect()} // Call without arguments
-                 disabled={isConnecting || !serverUrl}
+                 disabled={isConnecting || !serverUrl || (requiresCatalogCredential && !credentialValue.trim())}
                >
                  {isConnecting ? `Connecting... (${connectionTimer}s)` : 'Connect'}
                </button>
@@ -286,7 +298,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               )}
             </div>
           )}
-          {!isConnected && setUseOAuth && (
+          {!isConnected && !requiresCatalogCredential && setUseOAuth && (
             <div className="mt-2">
               <div className="form-check">
                 <input
@@ -300,6 +312,28 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 <label className="form-check-label" htmlFor="useOAuthCheck">
                   Use OAuth Authentication
                 </label>
+              </div>
+            </div>
+          )}
+          {!isConnected && requiresCatalogCredential && credentialHeader && setCredentialValue && (
+            <div className="mt-3">
+              <label className="form-label" htmlFor={credentialInputId}>
+                {catalogAuthType === 'api-key' ? 'API key' : 'Bearer token'}
+                <span className="text-muted ms-1">({credentialHeader})</span>
+              </label>
+              <input
+                id={credentialInputId}
+                className="form-control"
+                type="password"
+                value={credentialValue}
+                onChange={(event) => setCredentialValue(event.target.value)}
+                disabled={isConnecting}
+                autoComplete="new-password"
+                spellCheck={false}
+                placeholder={catalogAuthType === 'api-key' ? 'Enter API key' : 'Enter bearer token'}
+              />
+              <div className="form-text">
+                Kept only in this tab's memory. It is not saved, synced, logged, or added to the URL.
               </div>
             </div>
           )}

@@ -2,7 +2,12 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogServer, CatalogServerStatus, CatalogValidationTransport } from '../types/catalog';
 import { checkServerLiveness, type LivenessResult } from '../utils/catalogLiveness';
-import { getCatalogServerPath, getEffectiveCatalogTransport } from '../utils/catalogSeo';
+import {
+  formatCatalogAuth,
+  formatProtocolEra,
+  getCatalogServerPath,
+  getEffectiveCatalogTransport,
+} from '../utils/catalogSeo';
 
 export interface CatalogServerCardProps {
   server: CatalogServer;
@@ -68,6 +73,10 @@ const getTransportBadges = (transport: CatalogValidationTransport) => {
   }
 };
 
+const getAuthBadgeClass = (authType: CatalogServer['authType']) => {
+  return authType === 'none' ? 'bg-secondary' : 'bg-dark';
+};
+
 export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, onTest }) => {
   const [isCheckingLiveness, setIsCheckingLiveness] = useState(false);
   const [liveResult, setLiveResult] = useState<LivenessResult | null>(null);
@@ -88,7 +97,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
     setIsCheckingLiveness(true);
 
     try {
-      setLiveResult(await checkServerLiveness(server.url));
+      setLiveResult(await checkServerLiveness(server.validatedUrl || server.url));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unexpected liveness check failure';
       setLiveResult({
@@ -156,10 +165,15 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
 
         <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
           <span className="badge bg-secondary">{server.category}</span>
-          {server.requiresOAuth && (
-            <span className="badge bg-secondary text-white d-inline-flex align-items-center gap-1">
+          <span className={`badge ${getAuthBadgeClass(server.authType)} text-white d-inline-flex align-items-center gap-1`}>
+            {server.authType !== 'none' && (
               <i className="bi bi-shield-lock" aria-hidden="true"></i>
-              OAuth
+            )}
+            {formatCatalogAuth(server.authType)}
+          </span>
+          {server.protocolEra !== 'unknown' && (
+            <span className="badge text-bg-info" title={server.protocolVersion || undefined}>
+              {formatProtocolEra(server.protocolEra)}
             </span>
           )}
           {transportBadges.map((badge) => (

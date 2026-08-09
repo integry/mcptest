@@ -5,6 +5,23 @@ interface Env {
   FIREBASE_PROJECT_ID: string;
 }
 
+export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
+  const headers = new Headers(requestHeaders);
+  const targetAuthorization = headers.get('X-MCP-Authorization');
+
+  headers.delete('Authorization');
+  headers.delete('X-MCP-Authorization');
+  if (targetAuthorization) {
+    headers.set('Authorization', targetAuthorization);
+  }
+  headers.delete('CF-Connecting-IP');
+  headers.delete('CF-IPCountry');
+  headers.delete('CF-RAY');
+  headers.delete('CF-Visitor');
+
+  return headers;
+}
+
 // Firebase public keys URL
 const FIREBASE_PUBLIC_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 
@@ -88,14 +105,7 @@ export default {
       }
 
       // Create a new request to the target URL
-      const headers = new Headers(request.headers);
-      // Remove the Authorization header to avoid forwarding it to the target
-      headers.delete('Authorization');
-      // Remove CF-specific headers
-      headers.delete('CF-Connecting-IP');
-      headers.delete('CF-IPCountry');
-      headers.delete('CF-RAY');
-      headers.delete('CF-Visitor');
+      const headers = getTargetRequestHeaders(request.headers);
 
       const newRequest = new Request(target.toString(), {
         method: request.method,
@@ -254,17 +264,26 @@ async function getFirebasePublicKeys(): Promise<Record<string, string>> {
     throw new Error('Failed to fetch Firebase public keys');
   }
   
-  const keys = await response.json();
+  const keys: unknown = await response.json();
+  if (
+    !keys ||
+    typeof keys !== 'object' ||
+    Array.isArray(keys) ||
+    !Object.values(keys).every((value) => typeof value === 'string')
+  ) {
+    throw new Error('Firebase public-key response had an invalid shape');
+  }
+  const publicKeys = keys as Record<string, string>;
   
   // Cache the keys with expiry from cache-control header
   const cacheControl = response.headers.get('cache-control');
   const maxAgeMatch = cacheControl?.match(/max-age=(\d+)/);
   const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1]) : 3600; // Default 1 hour
   
-  publicKeysCache = keys;
+  publicKeysCache = publicKeys;
   publicKeysCacheExpiry = now + (maxAge * 1000);
   
-  return keys;
+  return publicKeys;
 }
 
 /**

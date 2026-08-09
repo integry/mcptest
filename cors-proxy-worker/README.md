@@ -31,6 +31,9 @@ This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP 
 The proxy expects:
 - A `target` query parameter with the URL to proxy
 - An `Authorization` header with a valid Firebase JWT token
+- Optional target credentials in ordinary headers. If the target itself needs
+  `Authorization`, send it as `X-MCP-Authorization`; the worker remaps it only
+  after authenticating the caller and never forwards the Firebase token.
 
 Example:
 ```

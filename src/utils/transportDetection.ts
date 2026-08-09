@@ -8,336 +8,206 @@ import {
   getProtocolDetails,
 } from './mcpClient';
 
-export async function attemptParallelConnections(serverUrl: string, abortSignal?: AbortSignal, authToken?: string): Promise<{
-  transport: any;
+export interface TransportCandidate {
+  url: string;
+  transportType: TransportType;
+}
+
+const slashVariants = (value: URL): URL[] => {
+  const withoutSlash = new URL(value);
+  withoutSlash.pathname = withoutSlash.pathname.replace(/\/+$/, '') || '/';
+  const withSlash = new URL(withoutSlash);
+  withSlash.pathname = `${withoutSlash.pathname.replace(/\/+$/, '')}/`;
+
+  return Array.from(
+    new Map([withoutSlash, withSlash].map((url) => [url.toString(), url])).values()
+  );
+};
+
+const siblingEndpoint = (value: URL, fromSegment: string, toSegment: string): URL | null => {
+  const pathWithoutSlash = value.pathname.replace(/\/+$/, '');
+  if (!pathWithoutSlash.endsWith(`/${fromSegment}`)) return null;
+
+  const sibling = new URL(value);
+  sibling.pathname = `${pathWithoutSlash.slice(0, -(fromSegment.length + 1))}/${toSegment}`;
+  return sibling;
+};
+
+const directCandidates = (endpoint: URL): TransportCandidate[] => {
+  const candidates: TransportCandidate[] = [];
+  const seen = new Set<string>();
+  const add = (url: URL, transportType: TransportType) => {
+    for (const variant of slashVariants(url)) {
+      const candidate = { url: variant.toString(), transportType };
+      const key = `${candidate.transportType}:${candidate.url}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push(candidate);
+    }
+  };
+  const normalizedPath = endpoint.pathname.replace(/\/+$/, '');
+
+  if (normalizedPath.endsWith('/sse')) {
+    add(endpoint, 'legacy-sse');
+    const httpSibling = siblingEndpoint(endpoint, 'sse', 'mcp');
+    if (httpSibling) add(httpSibling, 'streamable-http');
+  } else if (normalizedPath.endsWith('/mcp')) {
+    add(endpoint, 'streamable-http');
+    const sseSibling = siblingEndpoint(endpoint, 'mcp', 'sse');
+    if (sseSibling) add(sseSibling, 'legacy-sse');
+  } else if (!normalizedPath) {
+    // Some publishers serve MCP directly at the origin, while others use the
+    // conventional /mcp or /sse paths. Preserve both possibilities.
+    add(endpoint, 'streamable-http');
+    const httpEndpoint = new URL(endpoint);
+    httpEndpoint.pathname = '/mcp';
+    add(httpEndpoint, 'streamable-http');
+    add(endpoint, 'legacy-sse');
+    const sseEndpoint = new URL(endpoint);
+    sseEndpoint.pathname = '/sse';
+    add(sseEndpoint, 'legacy-sse');
+  } else {
+    // A non-standard path is an endpoint, not a base URL. Never append a
+    // transport path to it; try both transports at the exact location.
+    add(endpoint, 'streamable-http');
+    add(endpoint, 'legacy-sse');
+  }
+
+  return candidates;
+};
+
+/**
+ * Builds connection candidates while preserving exact custom endpoints. For
+ * proxy URLs, only the encoded target is varied; the proxy URL itself remains
+ * untouched.
+ */
+export const getTransportCandidates = (serverUrl: string): TransportCandidate[] => {
+  const outerUrl = new URL(serverUrl);
+  const targetValue = outerUrl.searchParams.get('target');
+  if (!targetValue) return directCandidates(outerUrl);
+
+  const targetUrl = new URL(targetValue);
+  return directCandidates(targetUrl).map((candidate) => {
+    const proxyUrl = new URL(outerUrl);
+    proxyUrl.searchParams.set('target', candidate.url);
+    return { ...candidate, url: proxyUrl.toString() };
+  });
+};
+
+export const getRequestHeadersForCandidate = (
+  candidateUrl: string,
+  requestHeaders?: HeadersInit
+): Headers => {
+  const headers = new Headers(requestHeaders);
+  const candidate = new URL(candidateUrl);
+
+  if (candidate.searchParams.has('target') && headers.has('Authorization')) {
+    headers.set('X-MCP-Authorization', headers.get('Authorization') || '');
+    headers.delete('Authorization');
+  }
+
+  return headers;
+};
+
+type ConnectedCandidate = {
+  transport: CorsAwareStreamableHTTPTransport | CorsAwareSSETransport;
   transportType: TransportType;
   client: Client;
   url: string;
-  protocolEra: ProtocolEra;
-  protocolVersion?: string;
-}> {
-  const baseUrl = new URL(serverUrl);
-  
-  // Check if this is a proxy URL (contains a target parameter)
-  const isProxyUrl = baseUrl.searchParams.has('target');
-  
-  // Detect preferred transport from URL path only (not domain)
-  const originalPath = baseUrl.pathname;
-  console.log(`[DEBUG] Original path: "${originalPath}"`);
-  console.log(`[DEBUG] Is proxy URL: ${isProxyUrl}`);
-  console.log(`[DEBUG] Path analysis: endsWith('/sse')=${originalPath.endsWith('/sse')}, equals('/sse')=${originalPath === '/sse'}`);
-  
-  const preferredTransport = originalPath.endsWith('/sse') || originalPath.endsWith('/sse/') || originalPath === '/sse' ? 'sse' : 
-                            originalPath.endsWith('/mcp') || originalPath.endsWith('/mcp/') || originalPath === '/mcp' ? 'http' : null;
-  
-  console.log(`[Parallel Connection] URL contains preferred transport: ${preferredTransport || 'none detected'}`);
-  console.log('[Parallel Connection] Attempting both SSE and Streamable HTTP with/without trailing slashes...');
-  
-  // Create URLs for each transport type and slash variation
-  let httpUrlWithSlash: URL;
-  let httpUrlWithoutSlash: URL;
-  let sseUrlWithSlash: URL;
-  let sseUrlWithoutSlash: URL;
-  
-  if (isProxyUrl) {
-    // For proxy URLs, modify the target parameter instead of the proxy path
-    const targetUrl = baseUrl.searchParams.get('target');
-    if (!targetUrl) {
-      throw new Error('Proxy URL missing target parameter');
-    }
-    
-    const targetBaseUrl = new URL(targetUrl);
-    const targetBasePath = targetBaseUrl.pathname.replace(/\/(mcp|sse)\/?$/, '').replace(/\/$/, '');
-    
-    // Create modified target URLs
-    const httpTargetWithSlash = new URL(targetBaseUrl);
-    httpTargetWithSlash.pathname = targetBasePath + '/mcp/';
-    const httpTargetWithoutSlash = new URL(targetBaseUrl);
-    httpTargetWithoutSlash.pathname = targetBasePath + '/mcp';
-    const sseTargetWithSlash = new URL(targetBaseUrl);
-    sseTargetWithSlash.pathname = targetBasePath + '/sse/';
-    const sseTargetWithoutSlash = new URL(targetBaseUrl);
-    sseTargetWithoutSlash.pathname = targetBasePath + '/sse';
-    
-    // Create proxy URLs with modified targets
-    httpUrlWithSlash = new URL(baseUrl);
-    httpUrlWithSlash.searchParams.set('target', httpTargetWithSlash.toString());
-    httpUrlWithoutSlash = new URL(baseUrl);
-    httpUrlWithoutSlash.searchParams.set('target', httpTargetWithoutSlash.toString());
-    sseUrlWithSlash = new URL(baseUrl);
-    sseUrlWithSlash.searchParams.set('target', sseTargetWithSlash.toString());
-    sseUrlWithoutSlash = new URL(baseUrl);
-    sseUrlWithoutSlash.searchParams.set('target', sseTargetWithoutSlash.toString());
-  } else {
-    // For direct URLs, modify the path as before
-    const basePath = baseUrl.pathname.replace(/\/(mcp|sse)\/?$/, '').replace(/\/$/, '');
-    
-    httpUrlWithSlash = new URL(baseUrl);
-    httpUrlWithoutSlash = new URL(baseUrl);
-    sseUrlWithSlash = new URL(baseUrl);
-    sseUrlWithoutSlash = new URL(baseUrl);
-    
-    httpUrlWithSlash.pathname = basePath + '/mcp/';
-    httpUrlWithoutSlash.pathname = basePath + '/mcp';
-    sseUrlWithSlash.pathname = basePath + '/sse/';
-    sseUrlWithoutSlash.pathname = basePath + '/sse';
-  }
-  
-  console.log(`[Parallel Connection] Trying HTTP URLs: ${httpUrlWithSlash.toString()}, ${httpUrlWithoutSlash.toString()}`);
-  console.log(`[Parallel Connection] Trying SSE URLs: ${sseUrlWithSlash.toString()}, ${sseUrlWithoutSlash.toString()}`);
-  
-  // Create clients for all attempts
-  const httpClientWithSlash = createNegotiatingMcpClient('mcptest-web');
-  const httpClientWithoutSlash = createNegotiatingMcpClient('mcptest-web');
-  const sseClientWithSlash = createLegacyMcpClient('mcptest-web');
-  const sseClientWithoutSlash = createLegacyMcpClient('mcptest-web');
-  
-  // Create transport options with auth headers if token provided
-  const transportOpts = authToken ? {
-    authProvider: {
-      token: async () => authToken,
-    },
-  } : undefined;
-  
-  // Create transports for all combinations
-  const httpTransportWithSlash = new CorsAwareStreamableHTTPTransport(httpUrlWithSlash, transportOpts);
-  const httpTransportWithoutSlash = new CorsAwareStreamableHTTPTransport(httpUrlWithoutSlash, transportOpts);
-  const sseTransportWithSlash = new CorsAwareSSETransport(sseUrlWithSlash, transportOpts);
-  const sseTransportWithoutSlash = new CorsAwareSSETransport(sseUrlWithoutSlash, transportOpts);
-  
-  // Create connection promises that handle their own errors
-  const httpPromiseWithSlash = httpClientWithSlash.connect(httpTransportWithSlash)
-    .then(() => ({
-      transport: httpTransportWithSlash,
-      transportType: 'streamable-http' as TransportType,
-      client: httpClientWithSlash,
-      success: true,
-      url: httpUrlWithSlash.toString()
-    }))
-    .catch(error => ({
-      error,
-      transportType: 'streamable-http' as TransportType,
-      client: httpClientWithSlash,
-      success: false,
-      url: httpUrlWithSlash.toString()
-    }));
-  
-  const httpPromiseWithoutSlash = httpClientWithoutSlash.connect(httpTransportWithoutSlash)
-    .then(() => ({
-      transport: httpTransportWithoutSlash,
-      transportType: 'streamable-http' as TransportType,
-      client: httpClientWithoutSlash,
-      success: true,
-      url: httpUrlWithoutSlash.toString()
-    }))
-    .catch(error => ({
-      error,
-      transportType: 'streamable-http' as TransportType,
-      client: httpClientWithoutSlash,
-      success: false,
-      url: httpUrlWithoutSlash.toString()
-    }));
-  
-  const ssePromiseWithSlash = sseClientWithSlash.connect(sseTransportWithSlash)
-    .then(() => ({
-      transport: sseTransportWithSlash,
-      transportType: 'legacy-sse' as TransportType,
-      client: sseClientWithSlash,
-      success: true,
-      url: sseUrlWithSlash.toString()
-    }))
-    .catch(error => ({
-      error,
-      transportType: 'legacy-sse' as TransportType,
-      client: sseClientWithSlash,
-      success: false,
-      url: sseUrlWithSlash.toString()
-    }));
-  
-  const ssePromiseWithoutSlash = sseClientWithoutSlash.connect(sseTransportWithoutSlash)
-    .then(() => ({
-      transport: sseTransportWithoutSlash,
-      transportType: 'legacy-sse' as TransportType,
-      client: sseClientWithoutSlash,
-      success: true,
-      url: sseUrlWithoutSlash.toString()
-    }))
-    .catch(error => ({
-      error,
-      transportType: 'legacy-sse' as TransportType,
-      client: sseClientWithoutSlash,
-      success: false,
-      url: sseUrlWithoutSlash.toString()
-    }));
-  
-  // Create abort promise if signal provided
-  const abortPromise = abortSignal ? new Promise<never>((_, reject) => {
-    abortSignal.addEventListener('abort', () => {
-      reject(new Error('Connection aborted by user'));
-    });
-  }) : new Promise<never>(() => {}); // Never resolves if no abort signal
-  
-  try {
-    // Prioritize preferred transport - try it first with a short timeout
-    if (preferredTransport) {
-      console.log(`[Parallel Connection] Trying preferred transport (${preferredTransport}) first...`);
-      
-      // Try original URL first, then variations
-      const preferredPromises = preferredTransport === 'sse' ? 
-        (originalPath === '/sse' ? [ssePromiseWithoutSlash, ssePromiseWithSlash] : [ssePromiseWithSlash, ssePromiseWithoutSlash]) : 
-        (originalPath === '/mcp' ? [httpPromiseWithoutSlash, httpPromiseWithSlash] : [httpPromiseWithSlash, httpPromiseWithoutSlash]);
-      
-      // Try preferred transport with 5 second timeout
-      const preferredTimeout = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Preferred transport timeout')), 5000)
-      );
-      
-      try {
-        console.log(`[Parallel Connection] Trying ${preferredPromises.length} preferred transport attempts...`);
-        const preferredResults = await Promise.race([
-          Promise.allSettled(preferredPromises),
-          preferredTimeout
-        ]);
-        
-        if (Array.isArray(preferredResults)) {
-          // Check if any preferred transport succeeded
-          for (const result of preferredResults) {
-            if (result.status === 'fulfilled' && result.value.success) {
-              console.log(`[Parallel Connection] Preferred transport ${preferredTransport} succeeded!`);
-              const successfulResult = result.value;
-              
-              // Close all other connections
-              const allClients = [
-                httpClientWithSlash,
-                httpClientWithoutSlash,
-                sseClientWithSlash,
-                sseClientWithoutSlash
-              ];
-              
-              try {
-                await Promise.allSettled(
-                  allClients
-                    .filter(client => client !== successfulResult.client)
-                    .map(client => client.close())
-                );
-              } catch (error) {
-                console.log('[Parallel Connection] Error closing unused connections:', error);
-              }
-              
-              const protocol = getProtocolDetails(successfulResult.client);
-              return {
-                transport: successfulResult.transport,
-                transportType: successfulResult.transportType,
-                client: successfulResult.client,
-                url: successfulResult.url,
-                protocolEra: protocol.era,
-                protocolVersion: protocol.version,
-              };
-            }
-          }
+};
+
+const firstSuccessful = <T,>(promises: Promise<T>[]): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const errors: Error[] = [];
+    let remaining = promises.length;
+
+    for (const promise of promises) {
+      promise.then(resolve).catch((error) => {
+        errors.push(error instanceof Error ? error : new Error(String(error)));
+        remaining -= 1;
+        if (remaining === 0) {
+          reject(new Error(
+            `All connections failed: ${errors.map(({ message }) => message).join(', ')}`
+          ));
         }
-      } catch (error) {
-        console.log(`[Parallel Connection] Preferred transport ${preferredTransport} failed or timed out:`, error.message);
-        console.log(`[Parallel Connection] Falling back to all methods...`);
-      }
+      });
     }
-    
-    // Fall back to all connection attempts
-    const allPromises = [
-      httpPromiseWithSlash,
-      httpPromiseWithoutSlash, 
-      ssePromiseWithSlash,
-      ssePromiseWithoutSlash
-    ];
-    
-    const promises = abortSignal ? [
-      Promise.allSettled(allPromises),
-      abortPromise
-    ] : [Promise.allSettled(allPromises)];
-    
-    const raceResult = await Promise.race(promises);
-    
-    // If we get here and raceResult is an array, it means allSettled completed
-    if (Array.isArray(raceResult)) {
-      const results = raceResult;
-      
-      // Find the first successful connection
-      let successfulResult = null;
-      let errors: Error[] = [];
-      
-      for (const result of results) {
-        if (result.status === 'fulfilled' && result.value.success) {
-          successfulResult = result.value;
-          break;
-        } else if (result.status === 'fulfilled' && !result.value.success) {
-          errors.push(result.value.error);
-        } else if (result.status === 'rejected') {
-          errors.push(result.reason);
-        }
-      }
-      
-      if (successfulResult) {
-        console.log(`[Parallel Connection] ${successfulResult.transportType} connected successfully to ${successfulResult.url}!`);
-        
-        // Close all other connections
-        const allClients = [
-          httpClientWithSlash,
-          httpClientWithoutSlash,
-          sseClientWithSlash,
-          sseClientWithoutSlash
-        ];
-        
-        try {
-          await Promise.allSettled(
-            allClients
-              .filter(client => client !== successfulResult.client)
-              .map(client => client.close())
-          );
-        } catch (error) {
-          console.log('[Parallel Connection] Error closing unused connections:', error);
-        }
-        
-        const protocol = getProtocolDetails(successfulResult.client);
-        return {
-          transport: successfulResult.transport,
-          transportType: successfulResult.transportType,
-          client: successfulResult.client,
-          url: successfulResult.url,
-          protocolEra: protocol.era,
-          protocolVersion: protocol.version,
-        };
-      } else {
-        // All connections failed
-        const errorMessage = errors.length > 0 
-          ? `All connections failed: ${errors.map(e => e.message).join(', ')}`
-          : 'All connections failed with unknown errors';
-        throw new Error(errorMessage);
-      }
-    }
-    
-    // If we reach here, it means abort was triggered
+  });
+};
+
+export async function attemptParallelConnections(
+  serverUrl: string,
+  abortSignal?: AbortSignal,
+  authToken?: string,
+  requestHeaders?: HeadersInit
+): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
+  const candidates = getTransportCandidates(serverUrl);
+  const clients: Client[] = [];
+  const transportOptionsFor = (candidateUrl: string) => {
+    const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders);
+
+    return {
+      ...(authToken ? { authProvider: { token: async () => authToken } } : {}),
+      ...(Array.from(headers.keys()).length > 0 ? { headers } : {}),
+    };
+  };
+
+  if (abortSignal?.aborted) {
     throw new Error('Connection aborted by user');
-    
+  }
+
+  console.log('[Parallel Connection] Trying publisher endpoint candidates:', candidates);
+
+  const attempts = candidates.map(async (candidate): Promise<ConnectedCandidate> => {
+    const client = candidate.transportType === 'legacy-sse'
+      ? createLegacyMcpClient('mcptest-web')
+      : createNegotiatingMcpClient('mcptest-web');
+    clients.push(client);
+    const endpoint = new URL(candidate.url);
+    const transportOpts = transportOptionsFor(candidate.url);
+    const transport = candidate.transportType === 'legacy-sse'
+      ? new CorsAwareSSETransport(endpoint, transportOpts)
+      : new CorsAwareStreamableHTTPTransport(endpoint, transportOpts);
+
+    await client.connect(transport);
+    return { ...candidate, client, transport };
+  });
+
+  let removeAbortListener = () => {};
+  const abortPromise = new Promise<never>((_, reject) => {
+    if (!abortSignal) return;
+    const abort = () => reject(new Error('Connection aborted by user'));
+    abortSignal.addEventListener('abort', abort, { once: true });
+    removeAbortListener = () => abortSignal.removeEventListener('abort', abort);
+  });
+
+  try {
+    const successful = await Promise.race([
+      firstSuccessful(attempts),
+      abortPromise,
+    ]);
+    await Promise.allSettled(
+      clients.filter((client) => client !== successful.client).map((client) => client.close())
+    );
+    const protocol = getProtocolDetails(successful.client);
+
+    console.log(
+      `[Parallel Connection] ${successful.transportType} connected to ${successful.url}`
+    );
+    return {
+      ...successful,
+      protocolEra: protocol.era,
+      protocolVersion: protocol.version,
+    };
   } catch (error) {
-    // Clean up all connections on error
-    const allClients = [
-      httpClientWithSlash,
-      httpClientWithoutSlash,
-      sseClientWithSlash,
-      sseClientWithoutSlash
-    ];
-    
-    try {
-      await Promise.allSettled(allClients.map(client => client.close()));
-    } catch (cleanupError) {
-      console.log('[Parallel Connection] Error during cleanup:', cleanupError);
-    }
+    await Promise.allSettled(clients.map((client) => client.close()));
     throw error;
+  } finally {
+    removeAbortListener();
   }
 }
 
-// Keep the original function for backwards compatibility
+// Kept for callers that still use transport detection only for presentation.
 export async function detectTransport(serverUrl: string): Promise<TransportType> {
-  // This is now just used for display purposes - the actual connection uses parallel attempts
-  return 'legacy-sse';
+  return getTransportCandidates(serverUrl)[0]?.transportType || 'legacy-sse';
 }
