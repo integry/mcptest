@@ -11,6 +11,7 @@
   --card-bg-secondary: #e7f0ef;
   --text-color: #0b1820;
   --text-muted: #58707b;
+  --text-accent: #067255;
   --primary-color: #079f75;
   --primary-hover: #067c5d;
   --primary-light: #47d9ae;
@@ -42,6 +43,7 @@
   --card-bg-secondary: #10242a;
   --text-color: #e7faf5;
   --text-muted: #88a5ad;
+  --text-accent: var(--primary-color);
   --primary-color: #36e0aa;
   --primary-hover: #64efc0;
   --primary-light: #8ff5d0;
@@ -2465,7 +2467,7 @@ span.health-indicator.health-indicator-gray {
 }
 
 .protocol-chip-modern {
-  color: var(--primary-color);
+  color: var(--text-accent);
   border-color: color-mix(in srgb, var(--primary-color) 35%, var(--border-color));
   background: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
 }
@@ -2615,7 +2617,7 @@ span.health-indicator.health-indicator-gray {
 .interface-eyebrow {
   display: block;
   margin-bottom: 0.32rem;
-  color: var(--primary-color);
+  color: var(--text-accent);
   font-family: var(--font-family-mono);
   font-size: 0.62rem;
   font-weight: 700;
@@ -2854,7 +2856,7 @@ span.health-indicator.health-indicator-gray {
 .suggested-server-copy small {
   display: block;
   overflow: hidden;
-  color: var(--primary-color);
+  color: var(--text-accent);
   font-family: var(--font-family-mono);
   font-size: 0.62rem;
   text-overflow: ellipsis;
