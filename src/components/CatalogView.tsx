@@ -57,13 +57,11 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
 
         <div className="catalog-filters">
           <div className="catalog-search-field">
-            <label className="form-label" htmlFor={`${idPrefix}-catalog-search`}>
-              Search servers
-            </label>
             <input
               id={`${idPrefix}-catalog-search`}
               type="search"
               className="form-control"
+              aria-label="Search servers"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search by name, URL, tag, or description"
