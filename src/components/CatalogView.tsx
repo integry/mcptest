@@ -47,10 +47,6 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           <p className="text-muted mb-0">
             Inspect transport, protocol era, and authentication before you connect.
           </p>
-          <div className="catalog-counts" aria-live="polite">
-            <span><strong>{allServers.length}</strong> endpoints indexed</span>
-            <span><strong>{filteredServers.length}</strong> in current view</span>
-          </div>
         </div>
 
         <div className="catalog-filters">
@@ -69,30 +65,23 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           </div>
 
           <div className="catalog-auth-field">
-            <label className="form-label d-block" htmlFor={`${idPrefix}-oauth-all`}>
+            <label className="form-label" htmlFor={`${idPrefix}-catalog-auth`}>
               Authentication
             </label>
-            <div className="btn-group flex-wrap" role="group" aria-label="Authentication filter">
+            <select
+              id={`${idPrefix}-catalog-auth`}
+              className="form-select"
+              value={oauthFilter}
+              onChange={(event) => setOauthFilter(event.target.value as OAuthFilter)}
+            >
               {OAUTH_FILTER_OPTIONS.map((option) => {
-                const optionId = `${idPrefix}-oauth-${option.value}`;
-
                 return (
-                  <React.Fragment key={option.value}>
-                    <input
-                      type="radio"
-                      className="btn-check"
-                      name={`${idPrefix}-oauth-filter`}
-                      id={optionId}
-                      checked={oauthFilter === option.value}
-                      onChange={() => setOauthFilter(option.value)}
-                    />
-                    <label className="btn btn-outline-primary" htmlFor={optionId}>
-                      {option.label}
-                    </label>
-                  </React.Fragment>
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 );
               })}
-            </div>
+            </select>
           </div>
 
           <div className="catalog-category-field">
@@ -114,6 +103,13 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             </select>
           </div>
         </div>
+      </div>
+
+      <div className="catalog-results-bar" aria-live="polite">
+        <p className="catalog-results-count">
+          Showing <strong>{filteredServers.length}</strong> of {allServers.length}{' '}
+          {allServers.length === 1 ? 'server' : 'servers'}
+        </p>
       </div>
 
       {filteredServers.length === 0 ? (
