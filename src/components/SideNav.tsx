@@ -329,7 +329,7 @@ const SideNav: React.FC<SideNavProps> = ({
                   }}
                 >
                   {renderHealthIndicator(space.id)}
-                  <span className="dashboard-name" title={space.name}>{space.name}</span>
+                  <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
                   <span
                     className="dashboard-card-count"
                     title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
