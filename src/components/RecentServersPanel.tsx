@@ -49,30 +49,24 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
         }}
       >
         {serversToShow.map((url) => (
-          <li key={url} className="list-group-item d-flex justify-content-between align-items-center p-2">
-            <span
+          <li key={url} className="list-group-item recent-server-item d-flex justify-content-between align-items-center p-2">
+            <button
+              type="button"
+              className="recent-server-link"
               title={url}
-              style={{
-                cursor: isConnected || isConnecting ? 'default' : 'pointer',
-                textDecoration: isConnected || isConnecting ? 'none' : 'underline',
-                color: isConnected || isConnecting ? 'grey' : 'var(--primary-color)',
-                flexGrow: 1,
-                marginRight: '10px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
               onClick={() => handleReconnect(url)}
+              disabled={isConnected || isConnecting}
             >
               {url}
-            </span>
+            </button>
             <button
-              className="btn btn-sm btn-outline-danger py-0 px-1"
+              type="button"
+              className="btn btn-sm btn-outline-danger recent-server-remove"
               onClick={() => removeRecentServer(url)}
-              title="Remove from list"
-              style={{ lineHeight: '1' }} // Adjust button height
+              title={`Remove ${url} from recent connections`}
+              aria-label={`Remove ${url} from recent connections`}
             >
-              &times; {/* Use times symbol for remove */}
+              <i className="bi bi-x-lg" aria-hidden="true"></i>
             </button>
           </li>
         ))}

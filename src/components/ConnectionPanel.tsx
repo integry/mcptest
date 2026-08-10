@@ -88,6 +88,13 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   const { share, shareStatus, shareMessage } = useShare();
   const { currentUser } = useAuth();
   const requiresCatalogCredential = catalogAuthType === 'api-key' || catalogAuthType === 'bearer-token';
+  const connectionStatusClass = isConnected
+    ? 'success'
+    : connectionStatus === 'Error'
+      ? 'danger'
+      : connectionStatus.startsWith('Connecting')
+        ? 'warning text-dark'
+        : 'secondary';
 
   // Update timer every second while connecting
   useEffect(() => {
@@ -142,69 +149,74 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   return (
     <>
       <div className={`card connection-console ${isConnected ? 'connection-console--connected' : ''}`}>
-      <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
+      <div className="card-header d-flex justify-content-between align-items-center">
         <div className="connection-heading">
-          <h5 className="mb-0">{isConnected ? 'MCP connection ready' : 'Connect a remote endpoint'}</h5>
+          <div className="connection-title-row">
+            <h5 className="mb-0">{isConnected ? 'MCP connection ready' : 'Connect a remote endpoint'}</h5>
+            {!isConnected && (
+              <span id="connectionStatus" className={`badge bg-${connectionStatusClass}`} aria-live="polite">
+                {connectionStatus}
+              </span>
+            )}
+          </div>
           {isConnected && <code className="connection-endpoint" title={serverUrl}>{serverUrl}</code>}
         </div>
-        <div className="d-flex align-items-center gap-2">
-          {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'} me-2`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
-          {protocolEra && (
-            <span
-              className={`badge ${protocolEra === 'modern' ? 'bg-dark' : 'bg-secondary'}`}
-              title={protocolVersion ? `MCP ${protocolVersion}` : `MCP ${protocolEra} protocol`}
-            >
-              {protocolEra === 'modern' ? 'Stateless' : 'Stateful'}
-            </span>
-          )}
-          {isProxied && isConnected && <span className="badge bg-warning text-dark">Proxy</span>}
-          {isConnected && isOAuthConnection && (
-            <div className="d-flex align-items-center gap-1">
-              <span className="badge bg-secondary text-white d-flex align-items-center gap-1">
-                <i className="bi bi-shield-lock"></i>
-                OAuth
-                {oauthUserInfo ? (
-                  <>
-                    {oauthUserInfo.picture && (
-                      <img
-                        src={oauthUserInfo.picture}
-                        alt="User avatar"
-                        className="rounded-circle"
-                        style={{ width: '16px', height: '16px' }}
-                      />
-                    )}
-                    <span className="small">
-                      {oauthUserInfo.name || oauthUserInfo.email || 'User'}
-                    </span>
-                  </>
-                ) : (
-                  <span className="small">Authenticated</span>
-                )}
-              </span>
-              <button
-                className="btn btn-sm btn-link text-decoration-none p-0"
-                onClick={() => setShowUserInfoModal(true)}
-                title={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
+        {isConnected && (
+          <div className="connection-details d-flex align-items-center gap-2" aria-label="Negotiated connection details">
+            {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'}`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
+            {protocolEra && (
+              <span
+                className={`badge ${protocolEra === 'modern' ? 'bg-dark' : 'bg-secondary'}`}
+                title={protocolVersion ? `Negotiated MCP ${protocolVersion}` : `Negotiated MCP ${protocolEra} protocol`}
               >
-                <i className="bi bi-info-circle"></i>
-              </button>
-            </div>
-          )}
-          <div aria-live="polite" className="d-inline-block">
-            <span id="connectionStatus" className={`badge bg-${isConnected ? 'success' : (connectionStatus === 'Error' ? 'danger' : 'secondary')}`}>
-              {connectionStatus}
-            </span>
-          </div>
-          {isConnected && (
+                {protocolEra === 'modern' ? 'Stateless' : 'Stateful'}
+              </span>
+            )}
+            {isProxied && <span className="badge bg-warning text-dark">Proxy</span>}
+            {isOAuthConnection && (
+              <div className="d-flex align-items-center gap-1">
+                <span className="badge bg-secondary text-white d-flex align-items-center gap-1">
+                  <i className="bi bi-shield-lock"></i>
+                  OAuth
+                  {oauthUserInfo ? (
+                    <>
+                      {oauthUserInfo.picture && (
+                        <img
+                          src={oauthUserInfo.picture}
+                          alt="User avatar"
+                          className="rounded-circle"
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                      )}
+                      <span className="small">
+                        {oauthUserInfo.name || oauthUserInfo.email || 'User'}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="small">Authenticated</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-link text-decoration-none p-0"
+                  onClick={() => setShowUserInfoModal(true)}
+                  title={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
+                  aria-label={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
+                >
+                  <i className="bi bi-info-circle" aria-hidden="true"></i>
+                </button>
+              </div>
+            )}
             <div className="position-relative">
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary py-0"
                 onClick={handleShareConnection}
                 title="Share connection link"
+                aria-label="Share connection link"
                 disabled={shareStatus !== 'idle'}
               >
-                {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
+                {shareStatus === 'success' ? <i className="bi bi-check-lg" aria-hidden="true"></i> : <i className="bi bi-share" aria-hidden="true"></i>}
               </button>
               {shareStatus !== 'idle' && (
                 <div className="notification-tooltip" aria-live="polite">
@@ -212,8 +224,6 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 </div>
               )}
             </div>
-          )}
-          {isConnected && (
             <button
               id="disconnectBtn"
               className="btn btn-sm btn-outline-secondary"
@@ -222,8 +232,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             >
               Disconnect
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       {!isConnected && (
       <div className="card-body">
@@ -275,10 +285,13 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 ))}
               </datalist>
               <div className="form-text connection-help">
-                <span>Exact endpoint first</span>
-                <span>2026 discovery</span>
-                <span>2025 fallback</span>
-                <span>For example, https://{placeholder}/ or http://localhost:3001</span>
+                <span className="connection-help-label">Connection sequence</span>
+                <ol className="connection-route" aria-label="Automatic connection negotiation sequence">
+                  <li>Exact endpoint</li>
+                  <li>2026 stateless discovery</li>
+                  <li>2025 stateful fallback</li>
+                </ol>
+                <span className="connection-example">For example, https://{placeholder}/ or http://localhost:3001</span>
               </div>
             </>
           )}
@@ -294,25 +307,26 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             </div>
           )}
           {import.meta.env.VITE_PROXY_URL && !isConnected && setUseProxy && (
-            <div className="mt-2">
+            <div className={`mt-2 proxy-setting ${!currentUser ? 'proxy-setting-locked' : ''}`}>
               <div className="form-check">
                 <input
                   className="form-check-input"
                   type="checkbox"
                   id="proxyFallbackCheck"
-                  checked={useProxy !== undefined ? useProxy : true}
+                  checked={Boolean(currentUser && (useProxy !== undefined ? useProxy : true))}
                   onChange={(e) => setUseProxy(e.target.checked)}
                   disabled={isConnecting || !currentUser}
+                  aria-describedby={!currentUser ? 'proxyFallbackHelp' : undefined}
                 />
                 <label className="form-check-label" htmlFor="proxyFallbackCheck">
                   Automatically use proxy for CORS errors
                   {!currentUser && <span className="text-muted ms-1">(login required)</span>}
                 </label>
               </div>
-              {!currentUser && useProxy && (
-                <small className="text-warning d-block mt-1">
-                  <i className="bi bi-exclamation-triangle-fill me-1"></i>
-                  Please login to use the proxy feature
+              {!currentUser && (
+                <small id="proxyFallbackHelp" className="text-muted d-block mt-1">
+                  <i className="bi bi-lock-fill me-1" aria-hidden="true"></i>
+                  Sign in with Google to enable proxy fallback.
                 </small>
               )}
             </div>
