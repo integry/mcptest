@@ -90,7 +90,10 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
             <div className="flex-grow-1" style={{ minWidth: 0 }}>
               <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
                 <h5 className="mb-0 text-truncate flex-grow-1">
-                  <Link className="catalog-server-title" to={getCatalogServerPath(server.id)}>
+                  <Link
+                    className="catalog-server-title stretched-link"
+                    to={getCatalogServerPath(server.id)}
+                  >
                     {server.name}
                   </Link>
                 </h5>
@@ -108,18 +111,20 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
             </div>
           </div>
 
-          <p className="card-text catalog-server-description text-muted">{server.description}</p>
+          <p className="card-text catalog-server-description">{server.description}</p>
         </div>
 
         <div className="catalog-server-footer mt-auto">
           <div className="catalog-server-badges d-flex flex-wrap align-items-center mb-3">
-            <span className="badge catalog-metadata-badge">{server.category}</span>
-            <span className="badge catalog-metadata-badge">
+            <span className="badge catalog-metadata-badge catalog-metadata-badge--category">
+              {server.category}
+            </span>
+            <span className="badge catalog-metadata-badge catalog-metadata-badge--auth">
               {formatCatalogAuth(server.authType)}
             </span>
             {server.protocolEra !== 'unknown' && (
               <span
-                className="badge catalog-metadata-badge"
+                className="badge catalog-metadata-badge catalog-metadata-badge--architecture"
                 title={server.protocolVersion || undefined}
               >
                 {formatProtocolEra(server.protocolEra)}
@@ -128,7 +133,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
             {transportLabels.map((label) => (
               <span
                 key={label}
-                className="badge catalog-metadata-badge"
+                className="badge catalog-metadata-badge catalog-metadata-badge--transport"
                 title={transportIsDeclaredOnly ? 'Catalog-declared transport; live validation pending' : undefined}
               >
                 {label}
@@ -152,7 +157,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
             </Link>
             <button
               type="button"
-              className="btn btn-primary catalog-test-button"
+              className="btn btn-sm btn-outline-primary catalog-test-button"
               onClick={() => onTest(server)}
               disabled={isOffline}
             >

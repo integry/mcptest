@@ -71,7 +71,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           </div>
 
           <div className="catalog-auth-field">
-            <label className="form-label" htmlFor={`${idPrefix}-catalog-auth`}>
+            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-auth`}>
               Authentication
             </label>
             <select
@@ -83,7 +83,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
               {OAUTH_FILTER_OPTIONS.map((option) => {
                 return (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    Authentication: {option.label}
                   </option>
                 );
               })}
@@ -91,7 +91,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           </div>
 
           <div className="catalog-category-field">
-            <label className="form-label" htmlFor={`${idPrefix}-catalog-category`}>
+            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-category`}>
               Category
             </label>
             <select
@@ -100,10 +100,10 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
               value={category}
               onChange={(event) => setCategory(event.target.value)}
             >
-              <option value={CATALOG_CATEGORY_ALL}>All categories</option>
+              <option value={CATALOG_CATEGORY_ALL}>Category: All</option>
               {categories.map((catalogCategory) => (
                 <option key={catalogCategory} value={catalogCategory}>
-                  {catalogCategory}
+                  Category: {catalogCategory}
                 </option>
               ))}
             </select>

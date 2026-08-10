@@ -23,7 +23,7 @@ const server: CatalogServer = {
 };
 
 describe('CatalogServerCard presentation', () => {
-  it('keeps metadata neutral and presents only the test action as a button', () => {
+  it('styles metadata semantically and keeps testing secondary to card details', () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <CatalogServerCard server={server} onTest={vi.fn()} />
@@ -44,7 +44,10 @@ describe('CatalogServerCard presentation', () => {
       'Stateless MCP',
       'HTTP',
     ]);
-    expect(metadataBadges.every((badge) => badge.classList.length === 2)).toBe(true);
+    expect(metadataBadges[0]?.classList).toContain('catalog-metadata-badge--category');
+    expect(metadataBadges[1]?.classList).toContain('catalog-metadata-badge--auth');
+    expect(metadataBadges[2]?.classList).toContain('catalog-metadata-badge--architecture');
+    expect(metadataBadges[3]?.classList).toContain('catalog-metadata-badge--transport');
     expect(container.querySelector('.catalog-status-badge--verified')?.textContent).toBe(
       'Browser ready'
     );
@@ -56,7 +59,13 @@ describe('CatalogServerCard presentation', () => {
     expect(container.querySelector('.catalog-server-footer .catalog-server-badges')).not.toBeNull();
     expect(container.querySelector('.catalog-server-footer .catalog-card-actions')).not.toBeNull();
     expect(reportLink?.classList.contains('btn')).toBe(false);
+    expect(container.querySelector('.catalog-server-title')?.classList).toContain('stretched-link');
+    expect(container.querySelector('.catalog-server-description')?.classList).not.toContain(
+      'text-muted'
+    );
     expect(buttons).toHaveLength(1);
     expect(buttons[0]?.textContent).toContain('Test server');
+    expect(buttons[0]?.classList).toContain('btn-sm');
+    expect(buttons[0]?.classList).toContain('btn-outline-primary');
   });
 });
