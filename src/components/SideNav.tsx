@@ -451,7 +451,7 @@ const SideNav: React.FC<SideNavProps> = ({
       <div className="mt-auto pt-3 border-top small">
         <div className="px-2 text-center">
           <p className="text-muted mb-1">
-            &copy; {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>.
+            Copyright {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>.
           </p>
           <div className="mb-2">
             <Link to="/docs/contact" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>

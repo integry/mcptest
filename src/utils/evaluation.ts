@@ -89,9 +89,14 @@ interface EvaluationSection {
 export interface EvaluationReport {
   serverUrl: string;
   authenticationUrl?: string;
+  outcome?: 'scored' | 'authorization-required';
   finalScore: number;
   sections: Record<string, EvaluationSection>;
 }
+
+export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
+  report.outcome === 'authorization-required' || Boolean(report.sections.auth)
+);
 
 export const getEvaluationMaxScore = (report: EvaluationReport): number => (
   Object.entries(report.sections)
@@ -716,7 +721,12 @@ export async function evaluateServer(
 ): Promise<EvaluationReport> {
   const serverUrl = normalizeServerUrl(inputUrl);
   const oauthToken = oauthAccessToken || null;
-  const report: EvaluationReport = { serverUrl, finalScore: 0, sections: {} };
+  const report: EvaluationReport = {
+    serverUrl,
+    outcome: 'scored',
+    finalScore: 0,
+    sections: {},
+  };
   let connection: ConnectedEvaluation | null = null;
   const connectionStartedAt = Date.now();
 
@@ -735,6 +745,28 @@ export async function evaluateServer(
       (failure.httpStatus === 401 || failure.httpStatus === 403)
       && failure.authenticationSource === 'target'
     ));
+    if (targetAuthFailure) {
+      report.outcome = 'authorization-required';
+      report.authenticationUrl = targetAuthFailure.candidateUrl || serverUrl;
+      report.sections.auth = {
+        name: 'Authorization Required',
+        description: 'OAuth authorization is required before this server can be evaluated',
+        score: 0,
+        maxScore: 0,
+        details: [{
+          text: '⚠ Authorize with the server before running its report.',
+          context: `The MCP endpoint returned HTTP ${targetAuthFailure.httpStatus || 401} during unauthenticated negotiation.`,
+          metadata: {
+            route: targetAuthFailure.route,
+            status: targetAuthFailure.httpStatus,
+            endpoint: report.authenticationUrl,
+          },
+        }],
+      };
+      onProgress('OAuth authorization is required before evaluation can continue.');
+      return report;
+    }
+
     report.sections.protocol = makeSkippedSection(
       'Core Protocol Adherence',
       'Validates MCP lifecycle and JSON-RPC negotiation',
@@ -765,24 +797,6 @@ export async function evaluateServer(
       15,
       'Performance was not scored because negotiation failed.'
     );
-    if (targetAuthFailure) {
-      report.authenticationUrl = targetAuthFailure.candidateUrl || serverUrl;
-      report.sections.auth = {
-        name: 'Authentication Required',
-        description: 'The MCP endpoint rejected unauthenticated negotiation',
-        score: 0,
-        maxScore: 1,
-        details: [{
-          text: '⚠ Authenticate with the server and run the report again.',
-          context: targetAuthFailure.message,
-          metadata: {
-            route: targetAuthFailure.route,
-            status: targetAuthFailure.httpStatus,
-            endpoint: report.authenticationUrl,
-          },
-        }],
-      };
-    }
     report.finalScore = report.sections.cors.score;
     onProgress('Evaluation finished without an MCP connection.');
     return report;
@@ -823,16 +837,17 @@ export async function evaluateServer(
     const capabilityEvaluation = await evaluateCapabilities(connection);
     report.sections.capabilities = capabilityEvaluation.section;
     if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
+      report.outcome = 'authorization-required';
       report.authenticationUrl = capabilityEvaluation.targetAuthenticationFailures[0].candidateUrl
         || getEvaluationTargetUrl(connection.url, connection.usedProxy);
-      report.sections.auth = {
-        name: 'Authentication Required',
-        description: 'The MCP endpoint rejected standardized capability requests',
+      report.sections = { auth: {
+        name: 'Authorization Required',
+        description: 'OAuth authorization is required before this server can be evaluated',
         score: 0,
-        maxScore: 1,
+        maxScore: 0,
         details: capabilityEvaluation.targetAuthenticationFailures.map((failure) => ({
-          text: `⚠ Authenticate with the server and retry ${failure.method}.`,
-          context: failure.message,
+          text: `⚠ Authorize with the server before calling ${failure.method}.`,
+          context: `The MCP endpoint returned HTTP ${failure.httpStatus || 401} for ${failure.method}.`,
           metadata: {
             method: failure.method,
             route: failure.route,
@@ -841,7 +856,10 @@ export async function evaluateServer(
             endpoint: failure.candidateUrl || report.authenticationUrl,
           },
         })),
-      };
+      } };
+      report.finalScore = 0;
+      onProgress('OAuth authorization is required before evaluation can continue.');
+      return report;
     }
 
     const modernTransport = connection.transportType === 'streamable-http';

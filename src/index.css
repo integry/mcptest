@@ -3459,3 +3459,102 @@ pre.bg-light code {
     min-height: 520px;
   }
 }
+
+/* OAuth-gated reports are prerequisites, not failed scorecards. */
+.report-auth-gate {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: clamp(1.1rem, 3vw, 2rem);
+  border: 1px solid color-mix(in srgb, var(--warning-color) 42%, var(--border-color));
+  border-radius: 0.9rem;
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--warning-color) 12%, transparent), transparent 42%),
+    var(--card-bg);
+}
+
+.report-auth-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.report-auth-heading h3 {
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  letter-spacing: -0.035em;
+}
+
+.report-auth-heading p,
+.report-auth-option p {
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.report-auth-icon {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--warning-color) 42%, var(--border-color));
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--warning-color) 12%, var(--card-bg));
+  color: color-mix(in srgb, var(--warning-color) 72%, var(--text-color));
+  font-size: 1.25rem;
+}
+
+.report-auth-note {
+  padding: 0.8rem 0.9rem;
+  border-left: 3px solid var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 8%, var(--card-bg-secondary));
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.report-auth-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.report-auth-option {
+  display: flex;
+  min-width: 0;
+  min-height: 230px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--card-bg-secondary) 68%, var(--card-bg));
+}
+
+.report-auth-option h4 {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.report-auth-option p {
+  margin-bottom: 0;
+  font-size: 0.88rem;
+}
+
+.report-auth-option .btn {
+  min-height: 2.75rem;
+}
+
+@media (max-width: 767.98px) {
+  .report-auth-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .report-auth-options {
+    grid-template-columns: 1fr;
+  }
+
+  .report-auth-option {
+    min-height: 0;
+  }
+}

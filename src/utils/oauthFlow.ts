@@ -1,5 +1,6 @@
 import {
   auth,
+  discoverOAuthServerInfo,
   RegistrationRejectedError,
   type AuthOptions,
   type AuthResult,
@@ -62,6 +63,10 @@ export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
 export interface CompletedOAuthFlow {
   serverUrl: string;
   issuer?: string;
+}
+
+export interface PrepareManualOAuthClientOptions extends BrowserOAuthProviderOptions {
+  discover?: typeof discoverOAuthServerInfo;
 }
 
 export interface OAuthAuthorization {
@@ -429,6 +434,17 @@ export const beginOAuthFlow = async (
   });
   if (result === 'AUTHORIZED') provider.syncLegacyTokens();
   return result;
+};
+
+export const prepareManualOAuthClient = async (
+  serverUrl: string,
+  options: PrepareManualOAuthClientOptions = {}
+): Promise<void> => {
+  const normalizedServerUrl = normalizeOAuthServerUrl(serverUrl);
+  const { discover = discoverOAuthServerInfo, ...providerOptions } = options;
+  const provider = new BrowserOAuthProvider(normalizedServerUrl, providerOptions);
+  const discovery = provider.discoveryState() || await discover(normalizedServerUrl);
+  provider.saveDiscoveryState(discovery);
 };
 
 export const completeOAuthFlow = async (
