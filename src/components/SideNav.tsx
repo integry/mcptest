@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
@@ -329,7 +329,7 @@ const SideNav: React.FC<SideNavProps> = ({
                   }}
                 >
                   {renderHealthIndicator(space.id)}
-                  <span className="dashboard-name" title={space.name}>{space.name}</span>
+                  <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
                   <span
                     className="dashboard-card-count"
                     title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
@@ -409,40 +409,44 @@ const SideNav: React.FC<SideNavProps> = ({
         <h6 className="sidenav-section-label mb-1">Documentation</h6>
         <ul className="nav flex-column ms-3">
           <li className="nav-item">
-            <Link
+            <NavLink
               to="/docs/what-is-mcp"
-              className="nav-link py-1"
+              end
+              className="nav-link docs-nav-link py-1"
               onClick={() => document.body.classList.remove('menu-open')}
             >
               <i className="bi bi-info-circle me-2"></i> What is MCP?
-            </Link>
+            </NavLink>
           </li>
           <li className="nav-item">
-            <Link
+            <NavLink
               to="/docs/remote-vs-local"
-              className="nav-link py-1"
+              end
+              className="nav-link docs-nav-link py-1"
               onClick={() => document.body.classList.remove('menu-open')}
             >
               <i className="bi bi-cloud-arrow-up me-2"></i> Remote vs Local
-            </Link>
+            </NavLink>
           </li>
           <li className="nav-item">
-            <Link
+            <NavLink
               to="/docs/testing-guide"
-              className="nav-link py-1"
+              end
+              className="nav-link docs-nav-link py-1"
               onClick={() => document.body.classList.remove('menu-open')}
             >
               <i className="bi bi-check-circle me-2"></i> Testing Guide
-            </Link>
+            </NavLink>
           </li>
           <li className="nav-item">
-            <Link
+            <NavLink
               to="/docs/troubleshooting"
-              className="nav-link py-1"
+              end
+              className="nav-link docs-nav-link py-1"
               onClick={() => document.body.classList.remove('menu-open')}
             >
               <i className="bi bi-wrench me-2"></i> Troubleshooting
-            </Link>
+            </NavLink>
           </li>
         </ul>
       </div>

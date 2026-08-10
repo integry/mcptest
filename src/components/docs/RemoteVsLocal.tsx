@@ -5,8 +5,10 @@ const RemoteVsLocal: React.FC = () => {
   return (
     <div className="container-fluid py-4">
       <div className="row justify-content-center">
-        <div className="col" style={{ maxWidth: '860px' }}>
-          <h1 className="mb-4">Remote vs. Local MCP Servers</h1>
+        <div className="col docs-page">
+          <div className="docs-layout">
+            <article className="docs-article" aria-labelledby="remote-vs-local-title">
+          <h1 id="remote-vs-local-title" className="mb-4">Remote vs. Local MCP Servers</h1>
 
           <p className="lead">
             MCP&apos;s standard transports are stdio for a server launched on the user&apos;s machine and
@@ -16,7 +18,7 @@ const RemoteVsLocal: React.FC = () => {
             explicit about which behavior they are using.
           </p>
 
-          <h2 className="mt-5">Local servers: stdio</h2>
+          <h2 id="local-servers" className="mt-5">Local servers: stdio</h2>
           <p>
             With stdio, the client launches the server as a subprocess and exchanges newline-delimited
             JSON-RPC through standard input and output. Nothing except valid MCP messages may be written
@@ -31,7 +33,7 @@ const RemoteVsLocal: React.FC = () => {
             itself mean “legacy.”
           </p>
 
-          <h2 className="mt-5">Remote servers: Streamable HTTP</h2>
+          <h2 id="remote-servers" className="mt-5">Remote servers: Streamable HTTP</h2>
           <p>
             A remote server exposes one exact MCP endpoint, such as{' '}
             <code>https://example.com/mcp</code>. The endpoint accepts JSON-RPC requests over HTTP POST
@@ -40,7 +42,7 @@ const RemoteVsLocal: React.FC = () => {
             behind standard gateways, authentication services, and load balancers.
           </p>
 
-          <h3 className="mt-4">2026 stateless flow</h3>
+          <h3 id="stateless-flow" className="mt-4">2026 stateless flow</h3>
           <p>
             In <code>2026-07-28</code>, every request stands alone. There is no{' '}
             <code>initialize</code> / <code>notifications/initialized</code> handshake and no{' '}
@@ -65,7 +67,7 @@ const RemoteVsLocal: React.FC = () => {
             server-initiated requests on a permanently open connection.
           </p>
 
-          <h3 className="mt-4">2025 stateful flow</h3>
+          <h3 id="stateful-flow" className="mt-4">2025 stateful flow</h3>
           <p>
             Revisions through <code>2025-11-25</code> start with an <code>initialize</code> POST. The
             server returns the selected protocol version, capabilities, and server identity; the client
@@ -74,18 +76,18 @@ const RemoteVsLocal: React.FC = () => {
             and the negotiated <code>MCP-Protocol-Version</code> on later requests.
           </p>
           <ul>
-            <li>A missing required session ID normally produces <code>400 Bad Request</code>.</li>
-            <li>An expired or unknown session ID produces <code>404 Not Found</code>; the client creates a fresh connection rather than retrying the stale session.</li>
-            <li>A client may send DELETE with the session header to terminate it; a server that does not support explicit termination may answer <code>405 Method Not Allowed</code>.</li>
-            <li>A separate GET may open a server-to-client SSE stream. Returning <code>405</code> is valid when that optional stream is unsupported.</li>
+            <li>A missing required session ID normally produces <code className="docs-code-error">400 Bad Request</code>.</li>
+            <li>An expired or unknown session ID produces <code className="docs-code-error">404 Not Found</code>; the client creates a fresh connection rather than retrying the stale session.</li>
+            <li>A client may send DELETE with the session header to terminate it; a server that does not support explicit termination may answer <code className="docs-code-error">405 Method Not Allowed</code>.</li>
+            <li>A separate GET may open a server-to-client SSE stream. Returning <code className="docs-code-error">405</code> is valid when that optional stream is unsupported.</li>
           </ul>
           <p>
             Session IDs must be secure, unpredictable, and kept out of URLs and logs. Stateful servers
             deployed across instances need shared session storage or correct affinity; otherwise users
-            see intermittent 404 responses as calls land on different instances.
+            see intermittent <code className="docs-code-error">404</code> responses as calls land on different instances.
           </p>
 
-          <h3 className="mt-4">Streaming and compatibility</h3>
+          <h3 id="streaming" className="mt-4">Streaming and compatibility</h3>
           <p>
             For 2025 Streamable HTTP, clients send an <code>Accept</code> header offering both{' '}
             <code>application/json</code> and <code>text/event-stream</code>. A JSON-RPC request can
@@ -101,10 +103,10 @@ const RemoteVsLocal: React.FC = () => {
             or <code>/sse</code>.
           </p>
 
-          <h2 className="mt-5">Authorization</h2>
+          <h2 id="authorization" className="mt-5">Authorization</h2>
           <p>
             Remote MCP authorization uses the OAuth 2.1 resource-server model. A protected MCP endpoint
-            returns <code>401 Unauthorized</code> and points the client to protected-resource metadata.
+            returns <code className="docs-code-error">401 Unauthorized</code> and points the client to protected-resource metadata.
             That metadata names the authorization server; the client discovers its metadata, identifies
             itself, and runs authorization code with PKCE and an RFC 8707 <code>resource</code> value
             bound to the MCP server.
@@ -124,7 +126,7 @@ const RemoteVsLocal: React.FC = () => {
             a separate internal header; the two trust boundaries are not conflated.
           </p>
 
-          <h2 className="mt-5">CORS and origin security</h2>
+          <h2 id="cors-security" className="mt-5">CORS and origin security</h2>
           <p>
             A browser client needs the server to allow <code>Content-Type</code>, <code>Accept</code>,{' '}
             <code>Authorization</code>, <code>x-api-key</code>, <code>MCP-Protocol-Version</code>,{' '}
@@ -140,7 +142,7 @@ const RemoteVsLocal: React.FC = () => {
             credential redaction, request-size limits, and tool-level authorization.
           </p>
 
-          <h2 className="mt-5">Choosing and testing a deployment</h2>
+          <h2 id="choosing-deployment" className="mt-5">Choosing and testing a deployment</h2>
           <div className="table-responsive">
             <table className="table">
               <thead>
@@ -190,6 +192,22 @@ const RemoteVsLocal: React.FC = () => {
             <a href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports" target="_blank" rel="noopener noreferrer">2025 transport</a>, and{' '}
             <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization" target="_blank" rel="noopener noreferrer">current authorization specification</a>.
           </p>
+            </article>
+
+            <aside className="docs-toc" aria-labelledby="docs-toc-title">
+              <p id="docs-toc-title" className="docs-toc-title">On this page</p>
+              <nav aria-label="On this page">
+                <a href="#local-servers">Local servers</a>
+                <a href="#remote-servers">Remote servers</a>
+                <a className="docs-toc-subitem" href="#stateless-flow">2026 stateless flow</a>
+                <a className="docs-toc-subitem" href="#stateful-flow">2025 stateful flow</a>
+                <a className="docs-toc-subitem" href="#streaming">Streaming</a>
+                <a href="#authorization">Authorization</a>
+                <a href="#cors-security">CORS and security</a>
+                <a href="#choosing-deployment">Choosing a deployment</a>
+              </nav>
+            </aside>
+          </div>
         </div>
       </div>
     </div>

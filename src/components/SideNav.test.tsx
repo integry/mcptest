@@ -46,8 +46,8 @@ describe('SideNav dashboard rows', () => {
     expect(name?.title).toBe(dashboardName);
     expect(name?.nextElementSibling).toBe(count);
     expect(count?.textContent?.trim()).toBe('0 cards');
-    expect(name?.classList).not.toContain('flex-grow-1');
-    expect(name?.classList).not.toContain('text-truncate');
+    expect(name?.classList).toContain('flex-grow-1');
+    expect(name?.classList).toContain('text-truncate');
 
     const dashboardRulesStart = sidebarCss.indexOf('.dashboard-name {');
     const dashboardRulesEnd = sidebarCss.indexOf('.app-sidenav .nav-link:hover', dashboardRulesStart);
