@@ -47,6 +47,12 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           <p className="text-muted mb-0">
             Inspect transport, protocol era, and authentication before you connect.
           </p>
+          <div className="catalog-results-bar" aria-live="polite">
+            <p className="catalog-results-count">
+              Showing <strong>{filteredServers.length}</strong> of {allServers.length}{' '}
+              {allServers.length === 1 ? 'server' : 'servers'}
+            </p>
+          </div>
         </div>
 
         <div className="catalog-filters">
@@ -103,13 +109,6 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             </select>
           </div>
         </div>
-      </div>
-
-      <div className="catalog-results-bar" aria-live="polite">
-        <p className="catalog-results-count">
-          Showing <strong>{filteredServers.length}</strong> of {allServers.length}{' '}
-          {allServers.length === 1 ? 'server' : 'servers'}
-        </p>
       </div>
 
       {filteredServers.length === 0 ? (

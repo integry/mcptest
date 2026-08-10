@@ -50,6 +50,11 @@ describe('CatalogServerCard presentation', () => {
     );
     expect(container.querySelector('.catalog-status-dot--online')).not.toBeNull();
     expect(container.querySelector('.catalog-refresh')).toBeNull();
+    expect(container.querySelector('.catalog-server-footer')?.classList.contains('mt-auto')).toBe(
+      true
+    );
+    expect(container.querySelector('.catalog-server-footer .catalog-server-badges')).not.toBeNull();
+    expect(container.querySelector('.catalog-server-footer .catalog-card-actions')).not.toBeNull();
     expect(reportLink?.classList.contains('btn')).toBe(false);
     expect(buttons).toHaveLength(1);
     expect(buttons[0]?.textContent).toContain('Test server');

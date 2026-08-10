@@ -2426,10 +2426,15 @@ span.health-indicator.health-indicator-gray {
 }
 
 .dashboard-name {
+  flex: 1 1 auto;
   overflow: hidden;
   min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dashboard-list {
+  margin-left: 0.45rem;
 }
 
 .dashboard-card-count {
@@ -2879,10 +2884,8 @@ span.health-indicator.health-indicator-gray {
 
 .catalog-results-bar {
   display: flex;
-  min-height: 2rem;
   align-items: center;
-  margin-bottom: 0.75rem;
-  padding: 0 0.25rem;
+  margin-top: 1rem;
 }
 
 .catalog-results-count {
@@ -2996,8 +2999,13 @@ span.health-indicator.health-indicator-gray {
   box-shadow: var(--focus-ring);
 }
 
-.catalog-test-button {
+.catalog-test-button.btn-primary {
   min-width: 7.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.catalog-test-button.btn-primary:hover {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .badge {

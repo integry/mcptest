@@ -78,83 +78,87 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
   return (
     <div className="card h-100 catalog-server-card">
       <div className="card-body d-flex flex-column">
-        <div className="d-flex align-items-start gap-3 mb-3">
-          {server.logoUrl && (
-            <img
-              src={server.logoUrl}
-              alt={`${server.name} logo`}
-              className="catalog-server-logo flex-shrink-0"
-            />
-          )}
-          <div className="flex-grow-1" style={{ minWidth: 0 }}>
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
-              <h5 className="mb-0 text-truncate flex-grow-1">
-                <Link className="catalog-server-title" to={getCatalogServerPath(server.id)}>
-                  {server.name}
-                </Link>
-              </h5>
-              <span
-                className={`catalog-status-dot rounded-circle flex-shrink-0 ${statusDetails.className}`}
-                title={statusDetails.tooltip}
-                aria-label={statusDetails.tooltip}
-              >
-                <span className="visually-hidden">{statusDetails.label}</span>
-              </span>
-            </div>
-            <div className="text-muted small text-truncate" title={server.url}>
-              {server.url}
+        <div className="catalog-server-main">
+          <div className="d-flex align-items-start gap-3 mb-3">
+            {server.logoUrl && (
+              <img
+                src={server.logoUrl}
+                alt={`${server.name} logo`}
+                className="catalog-server-logo flex-shrink-0"
+              />
+            )}
+            <div className="flex-grow-1" style={{ minWidth: 0 }}>
+              <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
+                <h5 className="mb-0 text-truncate flex-grow-1">
+                  <Link className="catalog-server-title" to={getCatalogServerPath(server.id)}>
+                    {server.name}
+                  </Link>
+                </h5>
+                <span
+                  className={`catalog-status-dot rounded-circle flex-shrink-0 ${statusDetails.className}`}
+                  title={statusDetails.tooltip}
+                  aria-label={statusDetails.tooltip}
+                >
+                  <span className="visually-hidden">{statusDetails.label}</span>
+                </span>
+              </div>
+              <div className="text-muted small text-truncate" title={server.url}>
+                {server.url}
+              </div>
             </div>
           </div>
+
+          <p className="card-text catalog-server-description text-muted">{server.description}</p>
         </div>
 
-        <p className="card-text catalog-server-description text-muted flex-grow-1">{server.description}</p>
+        <div className="catalog-server-footer mt-auto">
+          <div className="catalog-server-badges d-flex flex-wrap align-items-center mb-3">
+            <span className="badge catalog-metadata-badge">{server.category}</span>
+            <span className="badge catalog-metadata-badge">
+              {formatCatalogAuth(server.authType)}
+            </span>
+            {server.protocolEra !== 'unknown' && (
+              <span
+                className="badge catalog-metadata-badge"
+                title={server.protocolVersion || undefined}
+              >
+                {formatProtocolEra(server.protocolEra)}
+              </span>
+            )}
+            {transportLabels.map((label) => (
+              <span
+                key={label}
+                className="badge catalog-metadata-badge"
+                title={transportIsDeclaredOnly ? 'Catalog-declared transport; live validation pending' : undefined}
+              >
+                {label}
+              </span>
+            ))}
+            {server.browserAccess === 'direct' && (
+              <span className="badge catalog-status-badge catalog-status-badge--verified" title="Verified with an in-browser MCP connection and call">
+                Browser ready
+              </span>
+            )}
+            {server.browserAccess === 'proxy-required' && (
+              <span className="badge catalog-status-badge catalog-status-badge--warning" title="The server is online but does not permit a direct browser connection">
+                Proxy required
+              </span>
+            )}
+          </div>
 
-        <div className="catalog-server-badges d-flex flex-wrap align-items-center mb-3">
-          <span className="badge catalog-metadata-badge">{server.category}</span>
-          <span className="badge catalog-metadata-badge">
-            {formatCatalogAuth(server.authType)}
-          </span>
-          {server.protocolEra !== 'unknown' && (
-            <span
-              className="badge catalog-metadata-badge"
-              title={server.protocolVersion || undefined}
+          <div className="catalog-card-actions">
+            <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
+              View report
+            </Link>
+            <button
+              type="button"
+              className="btn btn-primary catalog-test-button"
+              onClick={() => onTest(server)}
+              disabled={isOffline}
             >
-              {formatProtocolEra(server.protocolEra)}
-            </span>
-          )}
-          {transportLabels.map((label) => (
-            <span
-              key={label}
-              className="badge catalog-metadata-badge"
-              title={transportIsDeclaredOnly ? 'Catalog-declared transport; live validation pending' : undefined}
-            >
-              {label}
-            </span>
-          ))}
-          {server.browserAccess === 'direct' && (
-            <span className="badge catalog-status-badge catalog-status-badge--verified" title="Verified with an in-browser MCP connection and call">
-              Browser ready
-            </span>
-          )}
-          {server.browserAccess === 'proxy-required' && (
-            <span className="badge catalog-status-badge catalog-status-badge--warning" title="The server is online but does not permit a direct browser connection">
-              Proxy required
-            </span>
-          )}
-        </div>
-
-        <div className="catalog-card-actions mt-auto">
-          <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
-            View report
-          </Link>
-          <button
-            type="button"
-            className="btn btn-primary catalog-test-button"
-            onClick={() => onTest(server)}
-            disabled={isOffline}
-          >
-            Test server
-          </button>
+              Test server
+            </button>
+          </div>
         </div>
       </div>
     </div>

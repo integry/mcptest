@@ -296,7 +296,7 @@ const SideNav: React.FC<SideNavProps> = ({
             Create your first dashboard to get started.
           </div>
         ) : (
-          <ul className="nav flex-column ms-3" onKeyDown={handleDashboardKeyDown} role="listbox">
+          <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox">
             {spaces.map((space, index) => (
               <li
                 ref={(el) => { dashboardListRef.current[index] = el; }}
