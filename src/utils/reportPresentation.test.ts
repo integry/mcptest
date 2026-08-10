@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createTestedServerHistoryEntry,
   getTestedServerResultLabel,
+  upsertTestedServerHistoryEntry,
 } from './reportPresentation';
 
 describe('report presentation', () => {
@@ -49,5 +50,30 @@ describe('report presentation', () => {
 
     expect(entry.score).toBe(50);
     expect(getTestedServerResultLabel(entry)).toBe('Score: 50%');
+  });
+
+  it('replaces legacy raw URLs with the normalized authorization-required entry', () => {
+    const legacyEntry = {
+      url: 'mcp.example',
+      score: 92,
+      timestamp: 100,
+    };
+    const authorizationEntry = {
+      url: 'https://mcp.example/',
+      score: null,
+      timestamp: 200,
+      outcome: 'authorization-required' as const,
+    };
+
+    expect(upsertTestedServerHistoryEntry([legacyEntry], authorizationEntry)).toEqual([
+      authorizationEntry,
+    ]);
+  });
+
+  it('uses a safe string identity for malformed legacy URLs', () => {
+    const staleEntry = { url: ' invalid url ', score: 70, timestamp: 100 };
+    const replacement = { url: 'invalid url', score: null, timestamp: 200 };
+
+    expect(upsertTestedServerHistoryEntry([staleEntry], replacement)).toEqual([replacement]);
   });
 });

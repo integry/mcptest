@@ -20,6 +20,7 @@ import {
   createTestedServerHistoryEntry,
   getTestedServerResultLabel,
   type TestedServerHistoryEntry,
+  upsertTestedServerHistoryEntry,
 } from '../utils/reportPresentation';
 
 // Helper functions for score display
@@ -210,12 +211,14 @@ const ReportView: React.FC = () => {
     });
   };
 
-  const addOrUpdateServer = (reportData: EvaluationReport) => {
+  const addOrUpdateServer = useCallback((reportData: EvaluationReport) => {
     const newServer = createTestedServerHistoryEntry(reportData);
-    const updatedServers = [newServer, ...testedServers.filter(s => s.url !== reportData.serverUrl)];
-    setTestedServers(updatedServers);
-    localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
-  };
+    setTestedServers((currentServers) => {
+      const updatedServers = upsertTestedServerHistoryEntry(currentServers, newServer);
+      localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
+      return updatedServers;
+    });
+  }, []);
 
   const removeServer = useCallback((urlToRemove: string) => {
     const updatedServers = testedServers.filter(s => s.url !== urlToRemove);
@@ -235,6 +238,7 @@ const ReportView: React.FC = () => {
 
     setIsRunning(true);
     isRunningRef.current = true;
+    setOAuthError(null);
     setProgress(['Starting evaluation...']);
     setReport(null);
     

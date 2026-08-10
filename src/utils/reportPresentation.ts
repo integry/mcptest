@@ -11,6 +11,18 @@ export interface TestedServerHistoryEntry {
   outcome?: 'scored' | 'authorization-required';
 }
 
+const getServerUrlIdentity = (value: string): string => {
+  const trimmedValue = value.trim();
+  try {
+    const withProtocol = /^https?:\/\//i.test(trimmedValue)
+      ? trimmedValue
+      : `https://${trimmedValue}`;
+    return new URL(withProtocol).toString();
+  } catch {
+    return trimmedValue;
+  }
+};
+
 export const createTestedServerHistoryEntry = (
   report: EvaluationReport,
   timestamp = Date.now()
@@ -39,4 +51,15 @@ export const getTestedServerResultLabel = (
     return 'Authorization required - not scored';
   }
   return typeof server.score === 'number' ? `Score: ${server.score}%` : 'Not scored';
+};
+
+export const upsertTestedServerHistoryEntry = (
+  servers: readonly TestedServerHistoryEntry[],
+  newServer: TestedServerHistoryEntry
+): TestedServerHistoryEntry[] => {
+  const newServerIdentity = getServerUrlIdentity(newServer.url);
+  return [
+    newServer,
+    ...servers.filter((server) => getServerUrlIdentity(server.url) !== newServerIdentity),
+  ];
 };
