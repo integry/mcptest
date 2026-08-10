@@ -149,9 +149,16 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   return (
     <>
       <div className={`card connection-console ${isConnected ? 'connection-console--connected' : ''}`}>
-      <div className={`card-header d-flex justify-content-between align-items-center ${isConnected ? 'bg-success bg-opacity-10' : ''}`}>
+      <div className="card-header d-flex justify-content-between align-items-center">
         <div className="connection-heading">
-          <h5 className="mb-0">{isConnected ? 'MCP connection ready' : 'Connect a remote endpoint'}</h5>
+          <div className="connection-title-row">
+            <h5 className="mb-0">{isConnected ? 'MCP connection ready' : 'Connect a remote endpoint'}</h5>
+            {!isConnected && (
+              <span id="connectionStatus" className={`badge bg-${connectionStatusClass}`} aria-live="polite">
+                {connectionStatus}
+              </span>
+            )}
+          </div>
           {isConnected && <code className="connection-endpoint" title={serverUrl}>{serverUrl}</code>}
         </div>
         {isConnected && (
@@ -231,14 +238,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
       {!isConnected && (
       <div className="card-body">
         <div className="mb-3">
-          <div className="connection-field-heading">
-            <label htmlFor="serverUrl" className="form-label mb-0">MCP endpoint URL</label>
-            <div aria-live="polite">
-              <span id="connectionStatus" className={`badge bg-${connectionStatusClass}`}>
-                {connectionStatus}
-              </span>
-            </div>
-          </div>
+          <label htmlFor="serverUrl" className="form-label">MCP endpoint URL</label>
           <div className="input-group">
             <input
               type="text"

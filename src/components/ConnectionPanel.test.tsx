@@ -66,13 +66,14 @@ describe('ConnectionPanel landing-page states', () => {
     expect(panel.querySelector('#proxyFallbackHelp')).toBeNull();
   });
 
-  it('keeps connection state by the endpoint action and renders negotiation as prose', () => {
+  it('places connection state beside the panel heading and renders negotiation as prose', () => {
     const panel = renderPanel();
-    const heading = panel.querySelector('.connection-field-heading');
+    const heading = panel.querySelector('.connection-title-row');
     const route = panel.querySelector('.connection-route');
 
     expect(heading?.querySelector('#connectionStatus')?.textContent).toBe('Disconnected');
-    expect(panel.querySelector('.card-header #connectionStatus')).toBeNull();
+    expect(panel.querySelector('.card-header #connectionStatus')).not.toBeNull();
+    expect(panel.querySelector('.input-group #connectionStatus')).toBeNull();
     expect(route?.textContent).toContain('Exact endpoint');
     expect(route?.textContent).toContain('2026 stateless discovery');
     expect(route?.textContent).toContain('2025 stateful fallback');
