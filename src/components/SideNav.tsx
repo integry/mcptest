@@ -296,7 +296,7 @@ const SideNav: React.FC<SideNavProps> = ({
             Create your first dashboard to get started.
           </div>
         ) : (
-          <ul className="nav flex-column ms-3" onKeyDown={handleDashboardKeyDown} role="listbox">
+          <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox">
             {spaces.map((space, index) => (
               <li
                 ref={(el) => { dashboardListRef.current[index] = el; }}
@@ -312,7 +312,7 @@ const SideNav: React.FC<SideNavProps> = ({
               >
                 <Link
                   to={getSpaceUrl(space.name)}
-                  className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active fw-bold' : ''}`}
+                  className={`dashboard-link nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active fw-bold' : ''}`}
                   draggable
                   onDragStart={(e) => handleSpaceDragStart(e, space.id)}
                   onDragEnd={handleSpaceDragEnd}
@@ -329,7 +329,7 @@ const SideNav: React.FC<SideNavProps> = ({
                   }}
                 >
                   {renderHealthIndicator(space.id)}
-                  <span className="dashboard-name">{space.name}</span>
+                  <span className="dashboard-name" title={space.name}>{space.name}</span>
                   <span
                     className="dashboard-card-count"
                     title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
