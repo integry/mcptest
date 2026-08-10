@@ -57,6 +57,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
 
         <div className="catalog-filters">
           <div className="catalog-search-field">
+            <i className="bi bi-search catalog-search-icon" aria-hidden="true" />
             <input
               id={`${idPrefix}-catalog-search`}
               type="search"
@@ -110,17 +111,23 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
       </div>
 
       {filteredServers.length === 0 ? (
-        <div className="alert alert-info d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
-          <div>
-            <h3 className="h5 mb-1">No catalog servers match these filters.</h3>
-            <p className="mb-0">
-              Clear the search, authentication, and category filters to show the full catalog.
-            </p>
+        <section
+          className="catalog-empty-state"
+          aria-labelledby={`${idPrefix}-catalog-empty-title`}
+        >
+          <div className="catalog-empty-state-icon" aria-hidden="true">
+            <i className="bi bi-search" />
           </div>
+          <h3 id={`${idPrefix}-catalog-empty-title`}>
+            No servers found matching your criteria
+          </h3>
+          <p>
+            Try adjusting your search or filters, or clear them to browse the full catalog.
+          </p>
           <button type="button" className="btn btn-outline-primary" onClick={handleResetFilters}>
-            Reset filters
+            Clear all filters
           </button>
-        </div>
+        </section>
       ) : (
         <div className="row g-3">
           {filteredServers.map((server) => (

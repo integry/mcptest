@@ -68,4 +68,21 @@ describe('CatalogServerCard presentation', () => {
     expect(buttons[0]?.classList).toContain('btn-sm');
     expect(buttons[0]?.classList).toContain('btn-outline-primary');
   });
+
+  it('keeps long endpoint URLs on a truncated line while preserving the full value', () => {
+    const longUrl =
+      'https://api.enterprise-production-environment.company.com/v1/mcp/tenant/example';
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <CatalogServerCard server={{ ...server, url: longUrl }} onTest={vi.fn()} />
+      </MemoryRouter>
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+    const endpoint = container.querySelector<HTMLElement>('.catalog-server-url');
+
+    expect(endpoint?.textContent).toBe(longUrl);
+    expect(endpoint?.title).toBe(longUrl);
+    expect(endpoint?.classList).toContain('text-truncate');
+  });
 });

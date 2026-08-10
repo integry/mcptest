@@ -2881,6 +2881,26 @@ span.health-indicator.health-indicator-gray {
   min-width: 0;
 }
 
+.catalog-search-field {
+  position: relative;
+}
+
+.catalog-search-icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.9rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.catalog-search-field .form-control {
+  padding-left: 2.55rem;
+}
+
 .catalog-filters .form-label {
   display: block;
   margin-bottom: 0.5rem;
@@ -2918,6 +2938,7 @@ span.health-indicator.health-indicator-gray {
   overflow: hidden;
   min-height: 360px;
   border: 1px solid color-mix(in srgb, var(--primary-color) 13%, var(--border-color));
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
 }
 
 .catalog-server-card::before {
@@ -2936,7 +2957,7 @@ span.health-indicator.health-indicator-gray {
 .catalog-server-card:focus-within {
   border-color: color-mix(in srgb, var(--primary-color) 28%, var(--border-color));
   box-shadow: var(--box-shadow-xl);
-  transform: translateY(-2px);
+  transform: translateY(-4px);
 }
 
 .catalog-server-card:hover::before,
@@ -2947,6 +2968,14 @@ span.health-indicator.health-indicator-gray {
 .catalog-server-description {
   color: var(--text-accent);
   line-height: 1.55;
+}
+
+.catalog-server-url {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .catalog-status-dot {
@@ -3041,6 +3070,43 @@ span.health-indicator.health-indicator-gray {
 
 .catalog-test-button.btn-outline-primary:hover {
   box-shadow: none;
+}
+
+.catalog-empty-state {
+  display: flex;
+  min-height: 300px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2rem, 6vw, 4rem);
+  text-align: center;
+  border: 1px dashed color-mix(in srgb, var(--primary-color) 24%, var(--border-color));
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--card-bg-secondary) 60%, var(--card-bg));
+}
+
+.catalog-empty-state-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--card-bg);
+  font-size: 1.25rem;
+}
+
+.catalog-empty-state h3 {
+  margin-bottom: 0.45rem;
+  font-size: 1.1rem;
+}
+
+.catalog-empty-state p {
+  max-width: 34rem;
+  margin: 0 0 1.25rem;
+  color: var(--text-muted);
 }
 
 .badge {
@@ -3249,6 +3315,11 @@ pre.bg-light code {
   .btn {
     animation: none !important;
     transition: none !important;
+  }
+
+  .catalog-server-card:hover,
+  .catalog-server-card:focus-within {
+    transform: none;
   }
 }
 

@@ -105,9 +105,9 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
                   <span className="visually-hidden">{statusDetails.label}</span>
                 </span>
               </div>
-              <div className="text-muted small text-truncate" title={server.url}>
+              <p className="catalog-server-url text-muted small text-truncate mb-0" title={server.url}>
                 {server.url}
-              </div>
+              </p>
             </div>
           </div>
 
