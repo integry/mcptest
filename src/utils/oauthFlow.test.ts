@@ -10,6 +10,7 @@ import {
   completeOAuthFlow,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
+  prepareManualOAuthClient,
   saveManualOAuthClient,
 } from './oauthFlow';
 
@@ -208,6 +209,28 @@ describe('BrowserOAuthProvider', () => {
       issuer: ISSUER_A,
     });
     expect(provider.clientInformation({ issuer: ISSUER_B })).toBeUndefined();
+  });
+
+  it('prepares provider discovery before showing manual client configuration', async () => {
+    const discover = vi.fn().mockResolvedValue({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+
+    await prepareManualOAuthClient(SERVER_URL, { discover, redirect: vi.fn() });
+    saveManualOAuthClient(SERVER_URL, 'manual-client');
+
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    expect(discover).toHaveBeenCalledWith(SERVER_URL);
+    expect(provider.clientInformation({ issuer: ISSUER_A })).toMatchObject({
+      client_id: 'manual-client',
+      issuer: ISSUER_A,
+    });
   });
 
   it('rehydrates the UI token bridge when the SDK already has authorization', async () => {

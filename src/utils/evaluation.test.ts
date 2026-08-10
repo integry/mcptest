@@ -16,6 +16,7 @@ import {
   getEvaluationProxyHeaders,
   getEvaluationTargetUrl,
   getEvaluationTransportProbeUrl,
+  isAuthenticationRequired,
 } from './evaluation';
 import {
   ProxiedAuthenticationError,
@@ -249,16 +250,19 @@ describe('dual-era server evaluation', () => {
 
     const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
 
+    expect(report.outcome).toBe('authorization-required');
+    expect(isAuthenticationRequired(report)).toBe(true);
     expect(report.sections.auth).toBeDefined();
-    expect(report.sections.auth.details[0].context).toContain('Direct target returned HTTP 401');
+    expect(report.sections.auth.details[0].context).toBe(
+      'The MCP endpoint returned HTTP 401 during unauthenticated negotiation.'
+    );
     expect(report.sections.auth.details[0].metadata).toEqual({
       route: 'direct',
       status: 401,
       endpoint: 'https://mcp.example/mcp',
     });
-    expect(report.sections.protocol.score).toBe(0);
-    expect(report.sections.protocol.details[0].text).toContain('Direct target:');
-    expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
+    expect(Object.keys(report.sections)).toEqual(['auth']);
+    expect(getEvaluationMaxScore(report)).toBe(0);
     expect(JSON.stringify(report)).not.toContain('/mcp/v1/');
   });
 
@@ -312,8 +316,11 @@ describe('dual-era server evaluation', () => {
 
     const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
 
+    expect(report.outcome).toBe('authorization-required');
     expect(report.sections.auth).toBeDefined();
-    expect(report.sections.auth.details[0].context).toContain('MCP target returned HTTP 403');
+    expect(report.sections.auth.details[0].context).toBe(
+      'The MCP endpoint returned HTTP 403 during unauthenticated negotiation.'
+    );
     expect(report.sections.auth.details[0].metadata).toEqual({
       route: 'proxy',
       status: 403,
@@ -343,9 +350,10 @@ describe('dual-era server evaluation', () => {
 
     const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
 
+    expect(report.outcome).toBe('authorization-required');
     expect(report.sections.auth).toBeDefined();
     expect(report.sections.auth.details[0]).toMatchObject({
-      context: 'tools/list returned HTTP 401',
+      context: 'The MCP endpoint returned HTTP 401 for tools/list.',
       metadata: {
         method: 'tools/list',
         route: 'direct',
@@ -353,7 +361,7 @@ describe('dual-era server evaluation', () => {
         authenticationSource: 'target',
       },
     });
-    expect(report.sections.capabilities.score).toBe(6);
+    expect(Object.keys(report.sections)).toEqual(['auth']);
     expect(client.listResources).toHaveBeenCalledOnce();
     expect(client.listPrompts).toHaveBeenCalledOnce();
   });
@@ -461,13 +469,14 @@ describe('dual-era server evaluation', () => {
 
     const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
 
+    expect(report.outcome).toBe('authorization-required');
     expect(report.sections.auth.details[0].metadata).toMatchObject({
       method: 'resources/list',
       route: 'proxy',
       status: 403,
       authenticationSource: 'target',
     });
-    expect(report.sections.capabilities.score).toBe(7);
+    expect(Object.keys(report.sections)).toEqual(['auth']);
   });
 
   it('includes OAuth security posture when protected-resource metadata is supported', async () => {

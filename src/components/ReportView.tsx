@@ -2,17 +2,26 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import OAuthConfig from './OAuthConfig';
+import ReportAuthorizationGate from './ReportAuthorizationGate';
 import {
   beginOAuthFlow,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
+  prepareManualOAuthClient,
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
   getEvaluationMaxScore,
   getEvaluationPercentage,
+  isAuthenticationRequired,
   type EvaluationReport,
 } from '../utils/evaluation';
+import {
+  createTestedServerHistoryEntry,
+  getTestedServerResultLabel,
+  type TestedServerHistoryEntry,
+  upsertTestedServerHistoryEntry,
+} from '../utils/reportPresentation';
 
 // Helper functions for score display
 const getScoreColor = (score: number): string => {
@@ -29,12 +38,6 @@ const getScoreGrade = (score: number): string => {
   if (score >= 60) return 'D';
   return 'F';
 };
-
-interface TestedServer {
-  url: string;
-  score: number;
-  timestamp: number;
-}
 
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
@@ -65,8 +68,10 @@ const ReportView: React.FC = () => {
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [testedServers, setTestedServers] = useState<TestedServer[]>([]);
+  const [testedServers, setTestedServers] = useState<TestedServerHistoryEntry[]>([]);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
+  const [oauthAction, setOAuthAction] = useState<'authorize' | 'configure' | null>(null);
+  const [oauthError, setOAuthError] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -206,12 +211,14 @@ const ReportView: React.FC = () => {
     });
   };
 
-  const addOrUpdateServer = (url: string, score: number) => {
-    const newServer = { url, score, timestamp: Date.now() };
-    const updatedServers = [newServer, ...testedServers.filter(s => s.url !== url)];
-    setTestedServers(updatedServers);
-    localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
-  };
+  const addOrUpdateServer = useCallback((reportData: EvaluationReport) => {
+    const newServer = createTestedServerHistoryEntry(reportData);
+    setTestedServers((currentServers) => {
+      const updatedServers = upsertTestedServerHistoryEntry(currentServers, newServer);
+      localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
+      return updatedServers;
+    });
+  }, []);
 
   const removeServer = useCallback((urlToRemove: string) => {
     const updatedServers = testedServers.filter(s => s.url !== urlToRemove);
@@ -231,6 +238,7 @@ const ReportView: React.FC = () => {
 
     setIsRunning(true);
     isRunningRef.current = true;
+    setOAuthError(null);
     setProgress(['Starting evaluation...']);
     setReport(null);
     
@@ -255,12 +263,10 @@ const ReportView: React.FC = () => {
       const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
       setReport(reportData);
       
-      // A resolved evaluation always has a typed score; failures reject instead.
-      addOrUpdateServer(urlToTest, Math.round(getEvaluationPercentage(reportData)));
+      addOrUpdateServer(reportData);
       
-      // If authentication is required, show a button to authenticate
-      if (reportData && reportData.sections && reportData.sections.auth) {
-        setProgress(prev => [...prev, 'Authentication required. Please authenticate with the server and run the report again.']);
+      if (isAuthenticationRequired(reportData)) {
+        setProgress(prev => [...prev, 'OAuth authorization is required before this server can be scored.']);
       }
     } catch (error) {
       console.error('Report error:', error);
@@ -278,6 +284,8 @@ const ReportView: React.FC = () => {
   }, [handleRunReport]);
 
   const startOAuth = useCallback(async (authenticationUrl: string) => {
+    setOAuthAction('authorize');
+    setOAuthError(null);
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
       activeView: 'report',
       serverUrl: authenticationUrl,
@@ -295,15 +303,32 @@ const ReportView: React.FC = () => {
         return;
       }
       const message = error instanceof Error ? error.message : 'Unknown OAuth error';
-      setProgress(prev => [...prev, `OAuth authorization failed: ${message}`]);
+      setOAuthError(`OAuth authorization could not start: ${message}`);
+    } finally {
+      setOAuthAction(null);
     }
   }, []);
 
-  const scoredSections = report
+  const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
+    setOAuthAction('configure');
+    setOAuthError(null);
+    try {
+      await prepareManualOAuthClient(authenticationUrl);
+      setOAuthConfigServerUrl(authenticationUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown OAuth discovery error';
+      setOAuthError(`OAuth provider discovery failed: ${message}`);
+    } finally {
+      setOAuthAction(null);
+    }
+  }, []);
+
+  const reportRequiresAuthorization = report ? isAuthenticationRequired(report) : false;
+  const scoredSections = report && !reportRequiresAuthorization
     ? Object.entries(report.sections).filter(([key]) => key !== 'auth')
     : [];
-  const reportMaxScore = report ? getEvaluationMaxScore(report) : 0;
-  const reportPercentage = report ? getEvaluationPercentage(report) : 0;
+  const reportMaxScore = report && !reportRequiresAuthorization ? getEvaluationMaxScore(report) : 0;
+  const reportPercentage = report && !reportRequiresAuthorization ? getEvaluationPercentage(report) : 0;
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
@@ -344,7 +369,7 @@ const ReportView: React.FC = () => {
                   >
                     <div className="fw-bold">{server.url}</div>
                     <small className="text-muted">
-                      Score: {server.score}% • Tested {new Date(server.timestamp).toLocaleString()}
+                      {getTestedServerResultLabel(server)}. Tested {new Date(server.timestamp).toLocaleString()}
                     </small>
                   </button>
                   <button
@@ -392,29 +417,31 @@ const ReportView: React.FC = () => {
         <div className="card mb-4">
           <div className="card-header">
             <h4>Report for: {report.serverUrl}</h4>
-            <h3 className={`text-${getScoreColor(reportPercentage)}`}>
-              Final Score: {report.finalScore} / {reportMaxScore} ({Math.round(reportPercentage)}% · {getScoreGrade(reportPercentage)})
-            </h3>
-            {!report.sections.security && (
-              <small className="text-muted">
-                OAuth security metadata was not included in this run; the base report is scored out of {reportMaxScore} points.
-              </small>
+            {!reportRequiresAuthorization && (
+              <>
+                <h3 className={`text-${getScoreColor(reportPercentage)}`}>
+                  Final Score: {report.finalScore} / {reportMaxScore} ({Math.round(reportPercentage)}%, grade {getScoreGrade(reportPercentage)})
+                </h3>
+                {!report.sections.security && (
+                  <small className="text-muted">
+                    OAuth security metadata was not included in this run; the base report is scored out of {reportMaxScore} points.
+                  </small>
+                )}
+              </>
             )}
           </div>
           <div className="card-body">
-            {report.sections && report.sections.auth && (
-              <div className="alert alert-warning mb-3">
-                <h5>OAuth Authentication Required</h5>
-                <p>This server requires OAuth authentication before it can be evaluated.</p>
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => startOAuth(report.authenticationUrl || report.serverUrl)}
-                >
-                  Authenticate with Server
-                </button>
-              </div>
-            )}
-            <div className="row g-3">
+            {reportRequiresAuthorization ? (
+              <ReportAuthorizationGate
+                serverUrl={report.serverUrl}
+                error={oauthError}
+                isAuthorizing={oauthAction === 'authorize'}
+                isPreparingClient={oauthAction === 'configure'}
+                onAuthorize={() => startOAuth(report.authenticationUrl || report.serverUrl)}
+                onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
+              />
+            ) : (
+              <div className="row g-3">
               {scoredSections.map(([key, section]) => {
                 const sectionPercentage = section.maxScore > 0
                   ? section.score / section.maxScore * 100
@@ -505,7 +532,8 @@ const ReportView: React.FC = () => {
                 </div>
                 );
               })}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
