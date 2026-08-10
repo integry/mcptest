@@ -312,7 +312,7 @@ const SideNav: React.FC<SideNavProps> = ({
               >
                 <Link
                   to={getSpaceUrl(space.name)}
-                  className={`nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active fw-bold' : ''}`}
+                  className={`dashboard-link nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active fw-bold' : ''}`}
                   draggable
                   onDragStart={(e) => handleSpaceDragStart(e, space.id)}
                   onDragEnd={handleSpaceDragEnd}
@@ -329,7 +329,7 @@ const SideNav: React.FC<SideNavProps> = ({
                   }}
                 >
                   {renderHealthIndicator(space.id)}
-                  <span className="dashboard-name flex-grow-1 text-truncate">{space.name}</span>
+                  <span className="dashboard-name" title={space.name}>{space.name}</span>
                   <span
                     className="dashboard-card-count"
                     title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}

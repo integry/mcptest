@@ -2435,23 +2435,24 @@ span.health-indicator.health-indicator-gray {
 
 .dashboard-list {
   min-width: 0;
-  margin-left: 0.45rem;
+  /* The health dot already provides hierarchy; extra indentation made the default name overflow. */
+  margin-left: 0;
 }
 
 .dashboard-list .nav-item,
-.dashboard-list .nav-link {
+.dashboard-list .dashboard-link {
   width: 100%;
   min-width: 0;
 }
 
 .dashboard-card-count {
   flex: 0 0 auto;
-  margin-left: auto;
   padding-left: 0.55rem;
   color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: 0.62rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .app-sidenav .nav-link:hover,
