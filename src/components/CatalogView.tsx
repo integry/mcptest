@@ -47,21 +47,22 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           <p className="text-muted mb-0">
             Inspect transport, protocol era, and authentication before you connect.
           </p>
-          <div className="catalog-counts" aria-live="polite">
-            <span><strong>{allServers.length}</strong> endpoints indexed</span>
-            <span><strong>{filteredServers.length}</strong> in current view</span>
+          <div className="catalog-results-bar" aria-live="polite">
+            <p className="catalog-results-count">
+              Showing <strong>{filteredServers.length}</strong> of {allServers.length}{' '}
+              {allServers.length === 1 ? 'server' : 'servers'}
+            </p>
           </div>
         </div>
 
         <div className="catalog-filters">
           <div className="catalog-search-field">
-            <label className="form-label" htmlFor={`${idPrefix}-catalog-search`}>
-              Search servers
-            </label>
+            <i className="bi bi-search catalog-search-icon" aria-hidden="true" />
             <input
               id={`${idPrefix}-catalog-search`}
               type="search"
               className="form-control"
+              aria-label="Search servers"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search by name, URL, tag, or description"
@@ -69,34 +70,27 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           </div>
 
           <div className="catalog-auth-field">
-            <label className="form-label d-block" htmlFor={`${idPrefix}-oauth-all`}>
+            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-auth`}>
               Authentication
             </label>
-            <div className="btn-group flex-wrap" role="group" aria-label="Authentication filter">
+            <select
+              id={`${idPrefix}-catalog-auth`}
+              className="form-select"
+              value={oauthFilter}
+              onChange={(event) => setOauthFilter(event.target.value as OAuthFilter)}
+            >
               {OAUTH_FILTER_OPTIONS.map((option) => {
-                const optionId = `${idPrefix}-oauth-${option.value}`;
-
                 return (
-                  <React.Fragment key={option.value}>
-                    <input
-                      type="radio"
-                      className="btn-check"
-                      name={`${idPrefix}-oauth-filter`}
-                      id={optionId}
-                      checked={oauthFilter === option.value}
-                      onChange={() => setOauthFilter(option.value)}
-                    />
-                    <label className="btn btn-outline-primary" htmlFor={optionId}>
-                      {option.label}
-                    </label>
-                  </React.Fragment>
+                  <option key={option.value} value={option.value}>
+                    Authentication: {option.label}
+                  </option>
                 );
               })}
-            </div>
+            </select>
           </div>
 
           <div className="catalog-category-field">
-            <label className="form-label" htmlFor={`${idPrefix}-catalog-category`}>
+            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-category`}>
               Category
             </label>
             <select
@@ -105,10 +99,10 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
               value={category}
               onChange={(event) => setCategory(event.target.value)}
             >
-              <option value={CATALOG_CATEGORY_ALL}>All categories</option>
+              <option value={CATALOG_CATEGORY_ALL}>Category: All</option>
               {categories.map((catalogCategory) => (
                 <option key={catalogCategory} value={catalogCategory}>
-                  {catalogCategory}
+                  Category: {catalogCategory}
                 </option>
               ))}
             </select>
@@ -117,17 +111,23 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
       </div>
 
       {filteredServers.length === 0 ? (
-        <div className="alert alert-info d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
-          <div>
-            <h3 className="h5 mb-1">No catalog servers match these filters.</h3>
-            <p className="mb-0">
-              Clear the search, authentication, and category filters to show the full catalog.
-            </p>
+        <section
+          className="catalog-empty-state"
+          aria-labelledby={`${idPrefix}-catalog-empty-title`}
+        >
+          <div className="catalog-empty-state-icon" aria-hidden="true">
+            <i className="bi bi-search" />
           </div>
+          <h3 id={`${idPrefix}-catalog-empty-title`}>
+            No servers found matching your criteria
+          </h3>
+          <p>
+            Try adjusting your search or filters, or clear them to browse the full catalog.
+          </p>
           <button type="button" className="btn btn-outline-primary" onClick={handleResetFilters}>
-            Reset filters
+            Clear all filters
           </button>
-        </div>
+        </section>
       ) : (
         <div className="row g-3">
           {filteredServers.map((server) => (
