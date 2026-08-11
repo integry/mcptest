@@ -549,6 +549,11 @@ const connectForEvaluation = async (
   }
 };
 
+const hasExplicitTargetCredential = (targetHeaders: HeadersInit | undefined): boolean => {
+  const headers = new Headers(targetHeaders);
+  return headers.has('authorization') || headers.has('x-api-key') || headers.has('api-key');
+};
+
 interface CapabilityEvaluation {
   section: EvaluationSection;
   targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
@@ -651,6 +656,7 @@ const evaluateCapabilities = async (
   };
   const targetAuthenticationFailures: CapabilityEvaluation['targetAuthenticationFailures'] = [];
   const discovered: { tools?: unknown; resources?: unknown; prompts?: unknown } = {};
+  const incompleteDiscovery = new Set<'tools' | 'resources' | 'prompts'>();
   let canAnalyzeToolSurface = false;
   const checks: Array<{
     name: string;
@@ -726,13 +732,11 @@ const evaluateCapabilities = async (
       }
       if (error instanceof IncompleteDiscoveryPaginationError) {
         const itemCount = check.count(error.result);
+        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
         if (check.name === 'tools') discovered.tools = error.result.tools;
         if (check.name === 'resources') discovered.resources = error.result.resources;
         if (check.name === 'prompts') discovered.prompts = error.result.prompts;
-        if (check.name === 'tools') {
-          (discovered as Record<string, unknown>).nextCursor = error.nextCursor;
-          canAnalyzeToolSurface = true;
-        }
+        if (check.name === 'tools') canAnalyzeToolSurface = true;
         section.status = 'partial';
         section.details.push({
           text: `⚠ ${check.method} pagination was incomplete (${itemCount} ${check.name} retained)`,
@@ -752,10 +756,8 @@ const evaluateCapabilities = async (
         continue;
       }
       if (isDiscoveryPaginationFailure(error)) {
-        if (check.name === 'tools') {
-          (discovered as Record<string, unknown>).nextCursor = 'unknown';
-          canAnalyzeToolSurface = true;
-        }
+        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
+        if (check.name === 'tools') canAnalyzeToolSurface = true;
         section.status = 'partial';
         section.details.push({
           text: `⚠ ${check.method} pagination did not complete`,
@@ -793,7 +795,14 @@ const evaluateCapabilities = async (
   return {
     section,
     targetAuthenticationFailures,
-    ...(canAnalyzeToolSurface ? { toolSurfaceAnalysis: analyzeToolSurface(discovered) } : {}),
+    ...(canAnalyzeToolSurface ? {
+      toolSurfaceAnalysis: analyzeToolSurface({
+        ...discovered,
+        ...(incompleteDiscovery.size > 0
+          ? { incompleteDiscovery: [...incompleteDiscovery] }
+          : {}),
+      }),
+    } : {}),
   };
 };
 
@@ -1054,7 +1063,11 @@ export async function evaluateServer(
   targetHeaders?: HeadersInit
 ): Promise<EvaluationReport> {
   const serverUrl = normalizeServerUrl(inputUrl);
-  const oauthToken = oauthAccessToken || null;
+  // An explicitly entered bearer or API-key credential is the selected target
+  // authentication mode. Never combine it with, or replace it by, cached OAuth.
+  const oauthToken = hasExplicitTargetCredential(targetHeaders)
+    ? null
+    : oauthAccessToken || null;
   const report: EvaluationReport = {
     serverUrl,
     outcome: 'scored',

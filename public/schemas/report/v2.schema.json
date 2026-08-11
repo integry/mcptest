@@ -228,10 +228,30 @@
               "profileId": { "type": "string", "minLength": 1 },
               "profileVersion": { "type": "string", "minLength": 1 },
               "status": { "enum": ["compatible", "compatible-with-caveats", "incompatible", "unknown"] },
-              "findings": { "type": "array", "items": { "type": "object" } }
+              "findings": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/compatibilityFinding" }
+              }
             }
           }
         }
+      }
+    },
+    "compatibilityFinding": {
+      "type": "object",
+      "required": ["outcome", "summary", "detail"],
+      "properties": {
+        "outcome": { "enum": ["pass", "caveat", "fail", "unknown"] },
+        "summary": { "type": "string" },
+        "detail": { "type": "string" },
+        "remediation": { "$ref": "#/$defs/compatibilityRemediation" }
+      }
+    },
+    "compatibilityRemediation": {
+      "type": "object",
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "minLength": 1 }
       }
     },
     "toolSurfaceAnalysis": {
@@ -241,18 +261,60 @@
         "version": { "type": "string", "minLength": 1 },
         "metrics": {
           "type": "object",
-          "required": ["toolCount", "resourceCount", "promptCount", "estimatedContextTokens"]
+          "required": ["toolCount", "resourceCount", "promptCount", "estimatedContextTokens"],
+          "properties": {
+            "toolCount": { "type": "number", "minimum": 0 },
+            "resourceCount": { "type": "number", "minimum": 0 },
+            "promptCount": { "type": "number", "minimum": 0 },
+            "estimatedContextTokens": { "type": "number", "minimum": 0 }
+          }
         },
         "fingerprint": {
           "type": "object",
-          "required": ["algorithm", "value"]
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": { "type": "string", "minLength": 1 },
+            "value": { "type": "string", "minLength": 1 }
+          }
         },
         "findings": {
           "type": "object",
-          "required": ["critical", "high", "medium", "low", "info"]
+          "additionalProperties": false,
+          "required": ["critical", "high", "medium", "low", "info"],
+          "properties": {
+            "critical": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "high": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "medium": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "low": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "info": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            }
+          }
         },
         "findingCount": { "type": "number", "minimum": 0 },
         "interpretation": { "type": "string" }
+      }
+    },
+    "toolSurfaceFinding": {
+      "type": "object",
+      "required": ["title", "summary", "remediation"],
+      "properties": {
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "remediation": { "type": "string" }
       }
     },
     "oauthTrace": {
@@ -264,7 +326,31 @@
         "targetFingerprint": { "type": "string", "minLength": 1 },
         "targetUrl": { "type": "string", "minLength": 1 },
         "startedAt": { "type": "string", "format": "date-time" },
-        "events": { "type": "array", "items": { "type": "object" } }
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/oauthTraceEvent" }
+        }
+      }
+    },
+    "oauthTraceEvent": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "type",
+        "outcome",
+        "timestamp",
+        "provenance",
+        "route",
+        "explanation"
+      ],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "outcome": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "provenance": { "type": "string", "minLength": 1 },
+        "route": { "type": "string", "minLength": 1 },
+        "explanation": { "type": "string" }
       }
     },
     "protocol": {

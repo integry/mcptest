@@ -203,6 +203,47 @@ describe('dual-era server evaluation', () => {
     expect(outgoingTargetHeaders.get('authorization')).toBeNull();
   });
 
+  it.each([
+    ['Authorization', 'Bearer entered-bearer', 'x-mcp-authorization', 'Bearer entered-bearer'],
+    ['x-api-key', 'entered-api-key', 'x-api-key', 'entered-api-key'],
+  ] as const)(
+    'does not combine cached OAuth with an explicitly entered %s credential',
+    async (header, value, expectedHeader, expectedValue) => {
+      const client = createClient();
+      connectionMocks.attempt
+        .mockRejectedValueOnce(new Error('Direct CORS failure'))
+        .mockResolvedValueOnce({
+          client,
+          url: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fstatic-auth.example%2Fmcp',
+          transportType: 'streamable-http',
+          protocolEra: 'modern',
+        });
+
+      const report = await evaluateServer(
+        'https://static-auth.example/mcp',
+        'firebase-jwt',
+        vi.fn(),
+        'stale-cached-oauth',
+        { [header]: value }
+      );
+
+      expect(connectionMocks.attempt.mock.calls[0][2]).toBeUndefined();
+      expect(new Headers(connectionMocks.attempt.mock.calls[0][3]).get(header)).toBe(value);
+      const [proxyUrl, , proxyAuthToken, targetHeaders] = connectionMocks.attempt.mock.calls[1];
+      const outgoingTargetHeaders = getRequestHeadersForCandidate(proxyUrl, targetHeaders, true);
+      expect(proxyAuthToken).toBe('firebase-jwt');
+      expect(outgoingTargetHeaders.get(expectedHeader)).toBe(expectedValue);
+      expect(outgoingTargetHeaders.get('authorization')).toBeNull();
+      if (header === 'x-api-key') {
+        expect(outgoingTargetHeaders.get('x-mcp-authorization')).toBeNull();
+      }
+      expect(report.sections.protocol.details[0].metadata).toMatchObject({
+        authorizationCredentialProvenance: ['target-header'],
+      });
+      expect(JSON.stringify(report)).not.toContain('stale-cached-oauth');
+    }
+  );
+
   it('finalizes a successful post-callback report retry with its actual request facts', async () => {
     const endpoint = 'https://report-retry.example/mcp';
     const trace = recordOAuthAuthenticationChallenge({
@@ -864,6 +905,74 @@ describe('dual-era server evaluation', () => {
       expect.objectContaining({ id: 'analysis.incomplete-pagination' }),
     ]));
   });
+
+  it.each([
+    ['resources', 'resources/list', 'resources-2'],
+    ['prompts', 'prompts/list', 'prompts-2'],
+  ] as const)(
+    'labels tool-surface analysis partial when %s pagination cannot complete',
+    async (capability, method, nextCursor) => {
+      const client = createClient();
+      const listMethod = capability === 'resources' ? client.listResources : client.listPrompts;
+      listMethod
+        .mockResolvedValueOnce({ [capability]: [{ name: 'retained' }], nextCursor })
+        .mockRejectedValueOnce(new Error(`${capability} page two unavailable`));
+      connectionMocks.attempt.mockResolvedValueOnce({
+        client,
+        url: 'https://mcp.example/mcp',
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
+
+      const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+      const paginationFinding = report.toolSurfaceAnalysis?.findings.medium.find(
+        ({ id }) => id === 'analysis.incomplete-pagination'
+      );
+
+      expect(report.outcome).toBe('partial');
+      expect(report.sections.capabilities.details).toContainEqual(expect.objectContaining({
+        metadata: expect.objectContaining({ method, paginationComplete: false, nextCursor }),
+      }));
+      expect(paginationFinding).toMatchObject({
+        summary: expect.stringContaining(method),
+        evidence: expect.arrayContaining([
+          expect.objectContaining({ path: `$.${capability}` }),
+        ]),
+      });
+    }
+  );
+
+  it.each([
+    ['resources', 'resources/list'],
+    ['prompts', 'prompts/list'],
+  ] as const)(
+    'labels tool-surface analysis partial when %s hits an SDK pagination limit',
+    async (capability, method) => {
+      const client = createClient();
+      const listMethod = capability === 'resources' ? client.listResources : client.listPrompts;
+      listMethod.mockRejectedValueOnce(Object.assign(
+        new Error('Automatic list pagination exceeded the configured page limit.'),
+        { code: 'LIST_PAGINATION_EXCEEDED' }
+      ));
+      connectionMocks.attempt.mockResolvedValueOnce({
+        client,
+        url: 'https://mcp.example/mcp',
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
+
+      const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+      const paginationFinding = report.toolSurfaceAnalysis?.findings.medium.find(
+        ({ id }) => id === 'analysis.incomplete-pagination'
+      );
+
+      expect(report.outcome).toBe('partial');
+      expect(report.sections.capabilities.details).toContainEqual(expect.objectContaining({
+        metadata: expect.objectContaining({ method, paginationComplete: false }),
+      }));
+      expect(paginationFinding?.summary).toContain(method);
+    }
+  );
 
   it('keeps tool-surface analysis unknown when tools/list fails operationally', async () => {
     const client = createClient();

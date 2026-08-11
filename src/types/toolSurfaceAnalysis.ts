@@ -112,6 +112,8 @@ export interface ToolSurfaceAnalysisV1 {
   interpretation: string;
 }
 
+export type ToolSurfaceDiscoveryCapability = 'tools' | 'resources' | 'prompts';
+
 /**
  * The analyzer accepts a raw tools array, a tools/list-shaped result, or a
  * capability snapshot containing resources/prompts but no tools.
@@ -123,6 +125,7 @@ export type ToolSurfaceAnalyzerInput =
       resources?: unknown;
       prompts?: unknown;
       nextCursor?: string;
+      incompleteDiscovery?: readonly ToolSurfaceDiscoveryCapability[];
     }
   | null
   | undefined;

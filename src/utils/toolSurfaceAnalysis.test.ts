@@ -165,11 +165,11 @@ describe('analyzeToolSurface', () => {
     expect(paginationFinding).toMatchObject({
       severity: 'medium',
       kind: 'review-signal',
-      summary: expect.stringContaining('fingerprint cover this page only'),
+      summary: expect.stringContaining('fingerprint describe a partial discovery snapshot'),
     });
     expect(paginationFinding?.evidence).toContainEqual(expect.objectContaining({
-      path: '$.nextCursor',
-      detail: expect.stringContaining('additional tool definitions'),
+      path: '$.tools',
+      detail: expect.stringContaining('tools/list pagination did not complete'),
     }));
   });
 

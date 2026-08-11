@@ -252,6 +252,66 @@ const GOLDEN_REPORTS: Record<string, () => EvaluationReport> = {
   failed: failedReport,
 };
 
+const expandedPublicArtifact = (): Record<string, any> => ({
+  ...createPublicReport(publicReport(), FIXED_OPTIONS),
+  compatibility: {
+    schemaVersion: '1.0',
+    assessments: {
+      chatgpt: {
+        schemaVersion: '1.0',
+        profileId: 'chatgpt',
+        profileVersion: '2026-08-11',
+        status: 'compatible',
+        findings: [{
+          outcome: 'pass',
+          summary: 'Compatible.',
+          detail: 'Required behavior was observed.',
+          remediation: { action: 'No remediation is required.' },
+        }],
+      },
+    },
+  },
+  toolSurfaceAnalysis: {
+    version: '1.0.0',
+    metrics: {
+      toolCount: 1,
+      resourceCount: 0,
+      promptCount: 0,
+      estimatedContextTokens: 12,
+    },
+    fingerprint: { algorithm: 'fnv1a-64-v1', value: 'abc123' },
+    findings: {
+      critical: [],
+      high: [],
+      medium: [],
+      low: [],
+      info: [{
+        title: 'Measured surface',
+        summary: 'One tool was measured.',
+        remediation: 'No remediation is required.',
+      }],
+    },
+    findingCount: 1,
+    interpretation: 'Observed signals only.',
+  },
+  oauthTrace: {
+    version: 1,
+    traceId: 'trace-1',
+    targetFingerprint: 'target-1',
+    targetUrl: 'https://public.example/mcp',
+    startedAt: '2026-08-11T12:44:04.000Z',
+    events: [{
+      sequence: 1,
+      type: 'target_challenge',
+      outcome: 'challenged',
+      timestamp: '2026-08-11T12:44:04.000Z',
+      provenance: 'direct_target',
+      route: 'direct',
+      explanation: 'The target requested authentication.',
+    }],
+  },
+});
+
 describe('versioned public report artifacts', () => {
   it.each(Object.entries(GOLDEN_REPORTS))('matches the %s JSON and Markdown golden', (name, makeReport) => {
     const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
@@ -288,6 +348,44 @@ describe('versioned public report artifacts', () => {
   it('publishes a matching versioned JSON Schema identifier', () => {
     expect(publicJsonSchema.$id).toBe(REPORT_SCHEMA_URL);
     expect(publicJsonSchema.properties.schemaVersion.const).toBe('2.0.0');
+  });
+
+  it('rejects malformed nested release-readiness values in both report contracts', () => {
+    const cases: Array<[string, (artifact: Record<string, any>) => void]> = [
+      ['compatibility finding', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].outcome = 'maybe';
+      }],
+      ['compatibility remediation', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].remediation.action = 42;
+      }],
+      ['tool metric', (artifact) => {
+        artifact.toolSurfaceAnalysis.metrics.toolCount = 'one';
+      }],
+      ['tool fingerprint', (artifact) => {
+        artifact.toolSurfaceAnalysis.fingerprint.value = 42;
+      }],
+      ['tool finding', (artifact) => {
+        artifact.toolSurfaceAnalysis.findings.info[0].summary = false;
+      }],
+      ['OAuth event', (artifact) => {
+        artifact.oauthTrace.events[0].sequence = 0;
+      }],
+    ];
+
+    const valid = expandedPublicArtifact();
+    expect(safeParsePublicReport(valid).success).toBe(true);
+    expect(validatePublishedSchema(valid), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+
+    for (const [name, mutate] of cases) {
+      const malformed = expandedPublicArtifact();
+      mutate(malformed);
+
+      expect(safeParsePublicReport(malformed).success, name).toBe(false);
+      expect(
+        validatePublishedSchema(malformed),
+        `${name}: ${JSON.stringify(validatePublishedSchema.errors)}`
+      ).toBe(false);
+    }
   });
 
   it('preserves the closed v1 contract while publishing expanded artifacts as v2', () => {
