@@ -662,8 +662,10 @@ export const useConnection = (
               method: challenge.method,
               requestUrl: challenge.requestUrl,
               timing: {
-                startedAt: new Date(connectionAttemptStartedAt).toISOString(),
-                durationMs: Math.max(0, Date.now() - connectionAttemptStartedAt),
+                startedAt: challenge.startedAt
+                  || new Date(connectionAttemptStartedAt).toISOString(),
+                durationMs: challenge.durationMs
+                  ?? Math.max(0, Date.now() - connectionAttemptStartedAt),
               },
             });
           }

@@ -33,6 +33,12 @@ describe('OAuth flight recorder core', () => {
     await createOAuthTraceFetch(recorder, fetchFn)(
       'https://mcp.example/.well-known/oauth-protected-resource'
     );
+    expect(recorder.snapshot().events[0]).toMatchObject({
+      outcome: 'started',
+      explanation: expect.stringContaining('awaiting SDK parsing and validation'),
+    });
+    expect(recorder.snapshot().events[0].explanation).not.toContain('succeeded');
+    recorder.settleLatestProvisionalOAuthResponse('succeeded');
 
     const trace = recorder.snapshot();
     expect(trace).toMatchObject({
@@ -321,6 +327,61 @@ describe('OAuth flight recorder core', () => {
       })]),
     });
     expect(stored?.authenticatedMcpRetry).toBeUndefined();
+  });
+
+  it('keeps a pending authenticated retry open across a retryable failure that later succeeds', () => {
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: TARGET_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: TARGET_URL,
+      storage: sessionStorage,
+      operation: 'saved-card tool call',
+    });
+    retry?.observeRequest('direct')({
+      method: 'POST',
+      url: TARGET_URL,
+      status: 409,
+      outcome: 'failed',
+    });
+
+    expect(getStoredOAuthTrace(TARGET_URL, sessionStorage)).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+    expect(getStoredOAuthTrace(TARGET_URL, sessionStorage)?.outcome).toBeUndefined();
+
+    const successfulRequest = {
+      method: 'POST',
+      url: TARGET_URL,
+      status: 200,
+      outcome: 'succeeded' as const,
+    };
+    retry?.observeRequest('direct')(successfulRequest);
+    retry?.succeed({
+      route: 'direct',
+      result: {
+        url: TARGET_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        observedRequests: [successfulRequest],
+      },
+    });
+
+    expect(getStoredOAuthTrace(TARGET_URL, sessionStorage)).toMatchObject({
+      outcome: { status: 'authorized' },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'mcp_retry',
+          outcome: 'succeeded',
+          response: expect.objectContaining({ status: 200 }),
+        }),
+      ]),
+    });
   });
 
   it('keeps recording in memory when trace persistence fails', () => {

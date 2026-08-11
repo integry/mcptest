@@ -124,6 +124,12 @@ describe('connection URL finalization', () => {
 
   it('discovers OAuth only after the MCP target returns an authentication challenge', async () => {
     const endpoint = 'https://secure.example/custom/mcp';
+    const challengeRequest = {
+      method: 'POST',
+      url: `${endpoint}?operation=initialize`,
+      startedAt: '2026-08-11T14:59:58.000Z',
+      durationMs: 23,
+    };
     oauthMocks.begin.mockImplementationOnce(async (serverUrl, options) => {
       const issuer = 'https://auth-secure.example/';
       return oauthMocks.actualBegin?.(serverUrl, {
@@ -178,7 +184,8 @@ describe('connection URL finalization', () => {
         new ProxiedAuthenticationError(
           401,
           'target',
-          new Error('The MCP target requires authorization')
+          new Error('The MCP target requires authorization'),
+          challengeRequest
         )
       ]))
       .mockImplementationOnce(async (...args: any[]) => {
@@ -231,7 +238,15 @@ describe('connection URL finalization', () => {
       expect.objectContaining({
         type: 'target_challenge',
         provenance: 'direct_target',
+        request: {
+          method: challengeRequest.method,
+          url: challengeRequest.url,
+        },
         response: { status: 401 },
+        timing: {
+          startedAt: challengeRequest.startedAt,
+          durationMs: challengeRequest.durationMs,
+        },
       }),
       expect.objectContaining({
         type: 'authorization_server_metadata',

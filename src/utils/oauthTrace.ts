@@ -343,22 +343,35 @@ const classifyOAuthRequest = (
   return undefined;
 };
 
+const OAUTH_REQUEST_LABELS: Partial<Record<OAuthTraceEventType, string>> = {
+  protected_resource_metadata: 'Protected-resource metadata discovery',
+  authorization_server_metadata: 'Authorization-server metadata discovery',
+  dynamic_client_registration: 'Dynamic client registration',
+  token_exchange: 'Authorization-code token exchange',
+  refresh: 'Access-token refresh',
+};
+
+const oauthRequestLabel = (type: OAuthTraceEventType): string => (
+  OAUTH_REQUEST_LABELS[type] || 'OAuth request'
+);
+
 const explanationForRequest = (
   type: OAuthTraceEventType,
   ok: boolean,
   status?: number
 ): string => {
-  const label: Partial<Record<OAuthTraceEventType, string>> = {
-    protected_resource_metadata: 'Protected-resource metadata discovery',
-    authorization_server_metadata: 'Authorization-server metadata discovery',
-    dynamic_client_registration: 'Dynamic client registration',
-    token_exchange: 'Authorization-code token exchange',
-    refresh: 'Access-token refresh',
-  };
-  const operation = label[type] || 'OAuth request';
+  const operation = oauthRequestLabel(type);
   if (ok) return `${operation} succeeded${status ? ` with HTTP ${status}` : ''}.`;
   return `${operation} failed${status ? ` with HTTP ${status}` : ''}.`;
 };
+
+const PROVISIONAL_OAUTH_HTTP_EVENT_TYPES = new Set<OAuthTraceEventType>([
+  'protected_resource_metadata',
+  'authorization_server_metadata',
+  'dynamic_client_registration',
+  'token_exchange',
+  'refresh',
+]);
 
 export class OAuthFlightRecorder {
   private readonly secrets = new Set<string>();
@@ -410,6 +423,29 @@ export class OAuthFlightRecorder {
     if (sanitized.outcome) event.outcome = sanitized.outcome;
     if (sanitized.explanation) event.explanation = sanitized.explanation;
     if (sanitized.timing) event.timing = sanitized.timing;
+    this.persist();
+    return true;
+  }
+
+  settleLatestProvisionalOAuthResponse(
+    outcome: 'succeeded' | 'failed',
+    types: readonly OAuthTraceEventType[] = [...PROVISIONAL_OAUTH_HTTP_EVENT_TYPES]
+  ): boolean {
+    const allowedTypes = new Set(types);
+    const event = [...this.trace.events].reverse().find((candidate) => (
+      candidate.outcome === 'started'
+      && allowedTypes.has(candidate.type)
+      && PROVISIONAL_OAUTH_HTTP_EVENT_TYPES.has(candidate.type)
+    ));
+    if (!event) return false;
+
+    event.outcome = outcome;
+    event.explanation = sanitizeText(
+      outcome === 'succeeded'
+        ? `${explanationForRequest(event.type, true, event.response?.status)} The SDK parsed and validated the response.`
+        : `${explanationForRequest(event.type, false, event.response?.status)} The SDK rejected the response during parsing or validation.`,
+      this.secrets
+    );
     this.persist();
     return true;
   }
@@ -758,6 +794,10 @@ export const createOAuthTraceFetch = (
   );
   if (!type) return fetchFn(input, init);
 
+  // Reaching the next OAuth request proves the preceding provisional HTTP
+  // response was parsed and accepted by the SDK.
+  recorder.settleLatestProvisionalOAuthResponse('succeeded');
+
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   try {
@@ -765,12 +805,14 @@ export const createOAuthTraceFetch = (
     const durationMs = Math.max(0, Date.now() - startedAtMs);
     recorder.record({
       type,
-      outcome: response.ok ? 'succeeded' : 'failed',
+      outcome: response.ok ? 'started' : 'failed',
       provenance: type === 'protected_resource_metadata'
         ? 'direct_target'
         : 'authorization_server',
       route: 'direct',
-      explanation: explanationForRequest(type, response.ok, response.status),
+      explanation: response.ok
+        ? `${oauthRequestLabel(type)} received HTTP ${response.status}; awaiting SDK parsing and validation.`
+        : explanationForRequest(type, false, response.status),
       request: {
         method: details.method,
         url: sanitizeOAuthTraceUrl(details.url),

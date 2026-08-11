@@ -618,6 +618,45 @@ describe('OAuth flight recorder integration', () => {
     expect(serialized).not.toContain('callback-refresh-secret');
   });
 
+  it('records a malformed HTTP 200 token response as a failed token exchange', async () => {
+    sessionStorage.setItem('oauth_server_url', SERVER_URL);
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    const state = provider.state();
+    provider.saveCodeVerifier('malformed-token-verifier');
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    provider.saveClientInformation(
+      { client_id: 'callback-client', issuer: ISSUER_A },
+      { issuer: ISSUER_A }
+    );
+
+    await expect(completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=malformed-token-code&state=${state}&iss=${encodeURIComponent(ISSUER_A)}`,
+      {
+        fetchFn: vi.fn(async () => jsonResponse({ token_type: 'Bearer' })),
+        redirect: vi.fn(),
+      }
+    )).rejects.toBeTruthy();
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'token_exchange',
+        outcome: 'failed',
+        response: expect.objectContaining({ status: 200 }),
+        explanation: expect.stringContaining('rejected the response'),
+      }),
+    ]));
+    expect(trace?.outcome?.status).toBe('failed');
+  });
+
   it('records authorization-server metadata failure as the failing stage', async () => {
     const fetchFn: FetchLike = async () => new Response('Unavailable', { status: 503 });
 
@@ -635,5 +674,38 @@ describe('OAuth flight recorder integration', () => {
         response: expect.objectContaining({ status: 503 }),
       }),
     ]));
+  });
+
+  it('records malformed HTTP 200 metadata as a failed discovery stage', async () => {
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({
+          resource: SERVER_URL,
+          authorization_servers: [ISSUER_A],
+        });
+      }
+      return jsonResponse({ issuer: 42 });
+    };
+
+    await expect(beginOAuthFlow(SERVER_URL, {
+      fetchFn,
+      redirect: vi.fn(),
+    })).rejects.toBeTruthy();
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'protected_resource_metadata',
+        outcome: 'succeeded',
+      }),
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'failed',
+        response: expect.objectContaining({ status: 200 }),
+        explanation: expect.stringContaining('rejected the response'),
+      }),
+    ]));
+    expect(trace?.outcome?.status).toBe('failed');
   });
 });

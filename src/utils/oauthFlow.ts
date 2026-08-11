@@ -214,6 +214,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   state(): string {
+    // If a refresh response remains provisional when the SDK proceeds to
+    // state generation, it was rejected in favor of a fresh authorization.
+    this.trace?.settleLatestProvisionalOAuthResponse('failed', ['refresh']);
     const value = randomState();
     this.updateState({ expectedState: value });
     return value;
@@ -310,6 +313,10 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     const issuer = ctx?.issuer || tokens.issuer;
     if (!issuer) throw new Error('Cannot store OAuth tokens without an issuer.');
     this.trace?.registerSecret(tokens.access_token, tokens.refresh_token);
+    this.trace?.settleLatestProvisionalOAuthResponse('succeeded', [
+      'token_exchange',
+      'refresh',
+    ]);
 
     const state = this.readState();
     this.writeState({
@@ -607,6 +614,7 @@ export const beginOAuthFlow = async (
     }
     return result;
   } catch (error) {
+    trace.settleLatestProvisionalOAuthResponse('failed');
     if (isOAuthClientConfigurationRequired(error)) {
       trace.record({
         type: 'pre_registered_client',
@@ -648,6 +656,7 @@ export const prepareManualOAuthClient = async (
       }));
     provider.saveDiscoveryState(discovery);
   } catch (error) {
+    trace.settleLatestProvisionalOAuthResponse('failed');
     trace.terminal('failed', 'OAuth metadata discovery failed while preparing manual client registration.');
     throw error;
   }
@@ -714,6 +723,7 @@ export const completeOAuthFlow = async (
     }
     return { serverUrl, issuer };
   } catch (error) {
+    trace.settleLatestProvisionalOAuthResponse('failed');
     trace.enrichLast('callback', {
       outcome: 'failed',
       explanation: error instanceof OAuthStateMismatchError

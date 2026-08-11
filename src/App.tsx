@@ -1381,8 +1381,9 @@ function App() {
 
         // --- Check for different error types ---
         const isConflict = err.message?.includes('Conflict') || err.message?.includes('409') || err.status === 409;
+        const shouldRetry = isConflict && attempt < MAX_RETRIES;
 
-        if (isConflict && attempt < MAX_RETRIES) {
+        if (shouldRetry) {
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Conflict detected, retrying after ${RETRY_DELAY_MS}ms...`);
           // Close the potentially conflicted client before retrying
           if (tempClient) {
@@ -1392,7 +1393,7 @@ function App() {
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS)); // Wait before retrying
           continue; // Go to the next iteration
         } else {
-          // --- Non-retryable error or max retries reached: Set final error state and break ---
+          // Only a terminal failure may finalize the pending OAuth retry.
           console.error(`[Execute Card ${cardId}] Unrecoverable error or max retries reached.`);
 
           const authenticationChallenge = classifySavedCardAuthenticationFailure(
