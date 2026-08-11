@@ -540,16 +540,16 @@ const redactUrl = (value: string, depth = 0): string => {
   if (!/^https?:$/.test(url.protocol)) return value;
   if (url.username) url.username = REDACTED_VALUE;
   if (url.password) url.password = REDACTED_VALUE;
+  const redactedSearchParams = new URLSearchParams();
   for (const [key, queryValue] of [...url.searchParams.entries()]) {
     if (isSensitiveQueryKey(key)) {
-      url.searchParams.set(key, REDACTED_VALUE);
+      redactedSearchParams.append(key, REDACTED_VALUE);
     } else {
       const redactedQueryValue = redactEncodedQueryValue(queryValue, depth + 1);
-      if (redactedQueryValue !== queryValue) {
-        url.searchParams.set(key, redactedQueryValue);
-      }
+      redactedSearchParams.append(key, redactedQueryValue);
     }
   }
+  url.search = redactedSearchParams.toString();
   if (url.hash) url.hash = `#${REDACTED_VALUE}`;
   return url.toString();
 };
@@ -692,12 +692,26 @@ const isAuthorizationPrerequisiteSchemaField = (path: readonly string[]): boolea
     && path[2] === 'state')
 );
 
+const isJsonRpcErrorCode = (
+  value: unknown,
+  key: string,
+  path: readonly string[]
+): boolean => (
+  canonicalKey(key) === 'code'
+  && canonicalKey(path[path.length - 2] || '') === 'error'
+  && typeof value === 'number'
+  && Number.isInteger(value)
+);
+
 const redactReportValueAtPath = (
   value: unknown,
   key: string | undefined,
   path: readonly string[]
 ): unknown => {
-  if (key && isSensitiveQueryKey(key) && !isAuthorizationPrerequisiteSchemaField(path)) {
+  if (key
+    && isSensitiveQueryKey(key)
+    && !isAuthorizationPrerequisiteSchemaField(path)
+    && !isJsonRpcErrorCode(value, key, path)) {
     return REDACTED_VALUE;
   }
   if (value === undefined) return undefined;

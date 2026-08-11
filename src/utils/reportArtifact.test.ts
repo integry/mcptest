@@ -528,6 +528,32 @@ describe('versioned public report artifacts', () => {
     expect(output).toContain('display=visible');
   });
 
+  it('retains repeated URL parameters in their original order while redacting each occurrence', () => {
+    const repeatedSensitive = redactReportString(
+      'https://client.example/callback?code=first-secret&visible=one&code=second-secret&visible=two'
+    );
+    const repeatedSensitiveEntries = [...new URL(repeatedSensitive).searchParams.entries()];
+
+    expect(repeatedSensitiveEntries).toEqual([
+      ['code', '[REDACTED]'],
+      ['visible', 'one'],
+      ['code', '[REDACTED]'],
+      ['visible', 'two'],
+    ]);
+
+    const repeatedWrappers = redactReportString(
+      'https://proxy.example/?target=https%3A%2F%2Fpublic.example%2Fmcp%3Ftenant%3Done&target=https%3A%2F%2Fprotected.example%2Fmcp%3Faccess_token%3Dnested-secret&target=opaque'
+    );
+    const wrapperValues = new URL(repeatedWrappers).searchParams.getAll('target');
+
+    expect(wrapperValues).toEqual([
+      'https://public.example/mcp?tenant=one',
+      'https://protected.example/mcp?access_token=%5BREDACTED%5D',
+      'opaque',
+    ]);
+    expect(repeatedWrappers).not.toContain('nested-secret');
+  });
+
   it('redacts JWT keys and standalone JWT values from every report path', () => {
     const standaloneJwt = [
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
@@ -1229,25 +1255,32 @@ describe('versioned public report artifacts', () => {
     expect(artifact.timings?.checks[0].name).toBe('API Key Value: [REDACTED]');
   });
 
-  it('redacts generic numeric codes while preserving an explicit JSON-RPC code field', () => {
+  it('redacts generic and OAuth codes while preserving nested JSON-RPC error codes', () => {
     const report = publicReport();
     report.sections.protocol.details[0].metadata = {
       ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
       code: 123456,
-      jsonRpcCode: -32601,
+      authorizationCode: 'oauth-secret',
+      error: {
+        code: -32601,
+        message: 'Method not found',
+      },
     };
 
     const artifact = createPublicReport(report, FIXED_OPTIONS);
     const roundTripped = parsePublicReportJson(serializePublicReportJson(artifact));
     const metadata = roundTripped.sections[0].evidence[0].metadata as Record<string, unknown>;
+    const error = metadata.error as Record<string, unknown>;
     const json = serializePublicReportJson(artifact);
     const markdown = serializePublicReportMarkdown(artifact);
 
     expect(metadata.code).toBe('[REDACTED]');
-    expect(metadata.jsonRpcCode).toBe(-32601);
+    expect(metadata.authorizationCode).toBe('[REDACTED]');
+    expect(error).toEqual({ code: -32601, message: 'Method not found' });
     for (const output of [json, markdown]) {
       expect(output).not.toContain('"code": 123456');
-      expect(output).toContain('"jsonRpcCode": -32601');
+      expect(output).not.toContain('oauth-secret');
+      expect(output).toContain('"code": -32601');
     }
   });
 
