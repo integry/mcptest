@@ -327,7 +327,14 @@ describe('dual-era server evaluation', () => {
 
     const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn(), 'oauth-access-token');
 
-    expect(report.outcome).toBe('scored');
+    expect(report.outcome).toBe('partial');
+    expect(report.sections.capabilities.status).toBe('partial');
+    expect(report.toolSurfaceAnalysis?.findings.medium).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'analysis.incomplete-pagination',
+        summary: expect.stringContaining('prompts/list'),
+      }),
+    ]));
     const stored = getStoredOAuthTrace(endpoint, sessionStorage);
     const retryEvent = stored?.events.find(({ type }) => type === 'mcp_retry');
     expect(retryEvent).toMatchObject({
@@ -852,6 +859,98 @@ describe('dual-era server evaluation', () => {
     expect(client.listTools).toHaveBeenNthCalledWith(2, { cursor: 'tools-2' });
     expect(client.listResources).toHaveBeenNthCalledWith(2, { cursor: 'resources-2' });
     expect(client.listPrompts).toHaveBeenNthCalledWith(2, { cursor: 'prompts-2' });
+  });
+
+  it.each([
+    ['tools', 'tools/list'],
+    ['resources', 'resources/list'],
+    ['prompts', 'prompts/list'],
+  ] as const)('marks a malformed first %s discovery page partial', async (capability, method) => {
+    const client = createClient();
+    const listMethod = capability === 'tools'
+      ? client.listTools
+      : capability === 'resources'
+        ? client.listResources
+        : client.listPrompts;
+    listMethod.mockResolvedValueOnce({});
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('partial');
+    expect(report.sections.capabilities.status).toBe('partial');
+    expect(report.sections.capabilities.details).toContainEqual(expect.objectContaining({
+      text: expect.not.stringContaining('succeeded'),
+      metadata: expect.objectContaining({ method, paginationComplete: false }),
+    }));
+    expect(report.toolSurfaceAnalysis?.findings.medium).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'analysis.incomplete-pagination',
+        summary: expect.stringContaining(method),
+      }),
+    ]));
+  });
+
+  it.each([
+    ['resources', 'resources/list'],
+    ['prompts', 'prompts/list'],
+  ] as const)('marks an operational %s discovery failure incomplete', async (capability, method) => {
+    const client = createClient();
+    const listMethod = capability === 'resources' ? client.listResources : client.listPrompts;
+    listMethod.mockRejectedValueOnce(new Error(`${method} temporarily unavailable`));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('partial');
+    expect(report.sections.capabilities.status).toBe('partial');
+    expect(report.toolSurfaceAnalysis?.findings.medium).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'analysis.incomplete-pagination',
+        summary: expect.stringContaining(method),
+      }),
+    ]));
+  });
+
+  it.each([
+    ['tools', 'tools/list'],
+    ['resources', 'resources/list'],
+    ['prompts', 'prompts/list'],
+  ] as const)('keeps method-not-found conclusive for %s discovery', async (capability, method) => {
+    const client = createClient();
+    const listMethod = capability === 'tools'
+      ? client.listTools
+      : capability === 'resources'
+        ? client.listResources
+        : client.listPrompts;
+    listMethod.mockRejectedValueOnce(Object.assign(new Error('Method not found'), { code: -32601 }));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('scored');
+    expect(report.sections.capabilities.status).toBeUndefined();
+    expect(report.sections.capabilities.details).toContainEqual(expect.objectContaining({
+      text: `⚠ ${method} is not supported`,
+    }));
+    expect(report.toolSurfaceAnalysis?.findings.medium).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'analysis.incomplete-pagination' }),
+    ]));
   });
 
   it('marks the report partial when discovery pagination cannot complete', async () => {

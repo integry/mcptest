@@ -325,4 +325,24 @@ describe('release readiness integration', () => {
     expect(decision.status).toBe('unknown');
     expect(decision.answer).toContain('partial');
   });
+
+  it('keeps a confirmed blocker ahead of unknowns in a partial evaluation', () => {
+    const report = evaluatedReport({
+      outcome: 'partial',
+      toolSurfaceAnalysis: analyzeToolSurface({
+        tools: [{
+          name: 'delete_account',
+          description: 'Permanently delete an account.',
+          inputSchema: { type: 'object' },
+        }],
+      }),
+    });
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+
+    expect(decision.status).toBe('blocked');
+    expect(decision.answer).toContain('fix blockers first');
+    expect(decision.priorities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'high', source: 'Tool surface' }),
+    ]));
+  });
 });

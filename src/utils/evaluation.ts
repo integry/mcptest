@@ -565,10 +565,12 @@ const DISCOVERY_PAGE_LIMIT = 64;
 class IncompleteDiscoveryPaginationError extends Error {
   constructor(
     readonly result: Record<string, unknown>,
-    readonly nextCursor: string,
+    readonly nextCursor: string | undefined,
     readonly cause: unknown
   ) {
-    super(`Discovery pagination stopped before cursor ${nextCursor}: ${errorMessage(cause)}`);
+    super(nextCursor
+      ? `Discovery pagination stopped before cursor ${nextCursor}: ${errorMessage(cause)}`
+      : `Discovery returned a malformed first page: ${errorMessage(cause)}`);
     this.name = 'IncompleteDiscoveryPaginationError';
   }
 }
@@ -588,11 +590,21 @@ const aggregateDiscoveryPages = async (
   fetchPage: (cursor: string) => Promise<unknown>
 ): Promise<Record<string, unknown>> => {
   if (!firstPage || typeof firstPage !== 'object' || Array.isArray(firstPage)) {
-    return { [itemKey]: undefined };
+    throw new IncompleteDiscoveryPaginationError(
+      { [itemKey]: undefined },
+      undefined,
+      new Error(`The ${itemKey} discovery page was malformed.`)
+    );
   }
   const initial = firstPage as Record<string, unknown>;
   const initialItems = initial[itemKey];
-  if (!Array.isArray(initialItems)) return initial;
+  if (!Array.isArray(initialItems)) {
+    throw new IncompleteDiscoveryPaginationError(
+      initial,
+      undefined,
+      new Error(`The ${itemKey} discovery page was malformed.`)
+    );
+  }
 
   const items = [...initialItems];
   let nextCursor = typeof initial.nextCursor === 'string' && initial.nextCursor
@@ -746,7 +758,7 @@ const evaluateCapabilities = async (
             itemCount,
             durationMs: Date.now() - startedAt,
             paginationComplete: false,
-            nextCursor: error.nextCursor,
+            ...(error.nextCursor ? { nextCursor: error.nextCursor } : {}),
             ...(failure.httpStatus ? { status: failure.httpStatus } : {}),
             ...(failure.authenticationSource
               ? { authenticationSource: failure.authenticationSource, route: failure.route }
@@ -771,9 +783,12 @@ const evaluateCapabilities = async (
         continue;
       }
       const methodNotFound = isMethodNotFound(error);
+      if (!methodNotFound) {
+        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
+        section.status = 'partial';
+      }
       if (check.name === 'tools') {
         canAnalyzeToolSurface = methodNotFound;
-        if (!methodNotFound) section.status = 'partial';
       }
       section.details.push({
         text: `${methodNotFound ? '⚠' : '✗'} ${check.method} ${methodNotFound ? 'is not supported' : 'failed'}`,

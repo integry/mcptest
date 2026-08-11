@@ -505,11 +505,11 @@ export const createReleaseDecision = (
   if (outcome === 'failed') {
     return { status: 'blocked', answer: 'No — evaluation failed', summary: 'A complete MCP connection is required before release.', priorities: unique };
   }
-  if (outcome === 'partial') {
-    return { status: 'unknown', answer: 'Unknown — the report is partial', summary: 'Complete the skipped checks before making a release decision.', priorities: unique };
-  }
   if (hasBlocker) {
     return { status: 'blocked', answer: 'No — fix blockers first', summary: 'At least one host incompatibility or high-priority tool risk needs remediation.', priorities: unique };
+  }
+  if (outcome === 'partial') {
+    return { status: 'unknown', answer: 'Unknown — the report is partial', summary: 'Complete the skipped checks before making a release decision.', priorities: unique };
   }
   if (hasUnknown || unique.length > 0) {
     return { status: 'review', answer: 'Review before shipping', summary: 'No confirmed blocker was found, but caveats or unknowns still need a release-owner decision.', priorities: unique };
