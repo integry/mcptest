@@ -52,6 +52,44 @@ const ReleaseDecisionSchema = z.object({
   }).strict()),
 }).strict();
 
+const CompatibilityEvidenceArtifactSchema = z.object({
+  schemaVersion: z.literal('1.0'),
+  source: z.enum([
+    'target-server',
+    'authorization-server',
+    'browser',
+    'proxy',
+    'configuration',
+    'host-profile',
+  ]),
+  description: z.string(),
+  location: z.string().optional(),
+}).strict();
+
+const CompatibilityRemediationArtifactSchema = z.object({
+  schemaVersion: z.literal('1.0'),
+  kind: z.enum([
+    'server-change',
+    'authorization-server-change',
+    'client-configuration',
+    'observation-needed',
+  ]),
+  action: z.string().min(1),
+  documentationUrl: z.string().optional(),
+}).strict();
+
+const CompatibilityFindingArtifactSchema = z.object({
+  schemaVersion: z.literal('1.0'),
+  ruleId: z.string().min(1),
+  scope: z.enum(['target-server', 'authorization-server', 'client-environment']),
+  outcome: z.enum(['pass', 'caveat', 'fail', 'unknown']),
+  severity: z.enum(['info', 'warning', 'error']),
+  summary: z.string(),
+  detail: z.string(),
+  evidence: z.array(CompatibilityEvidenceArtifactSchema),
+  remediation: CompatibilityRemediationArtifactSchema.optional(),
+}).strict();
+
 const CompatibilityArtifactSchema = z.object({
   schemaVersion: z.string().min(1),
   assessments: z.record(z.string(), z.object({
@@ -59,20 +97,35 @@ const CompatibilityArtifactSchema = z.object({
     profileId: z.string().min(1),
     profileVersion: z.string().min(1),
     status: z.enum(['compatible', 'compatible-with-caveats', 'incompatible', 'unknown']),
-    findings: z.array(z.object({
-      outcome: z.enum(['pass', 'caveat', 'fail', 'unknown']),
-      summary: z.string(),
-      detail: z.string(),
-      remediation: z.object({ action: z.string().min(1) }).passthrough().optional(),
-    }).passthrough()),
+    findings: z.array(CompatibilityFindingArtifactSchema),
   }).passthrough()),
 }).passthrough();
 
+const ToolSurfaceEvidenceArtifactSchema = z.object({
+  tool: z.string(),
+  path: z.string(),
+  detail: z.string(),
+}).strict();
+
 const ToolSurfaceFindingArtifactSchema = z.object({
+  id: z.string().min(1),
+  category: z.enum([
+    'availability',
+    'context-cost',
+    'ambiguity',
+    'description-quality',
+    'schema-quality',
+    'capability-risk',
+    'prompt-like-description',
+  ]),
+  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
+  kind: z.enum(['measurement', 'quality-signal', 'capability-signal', 'review-signal']),
   title: z.string(),
   summary: z.string(),
+  evidence: z.array(ToolSurfaceEvidenceArtifactSchema),
+  omittedEvidenceCount: z.number().int().nonnegative(),
   remediation: z.string(),
-}).passthrough();
+}).strict();
 
 const ToolSurfaceArtifactSchema = z.object({
   version: z.string().min(1),
@@ -105,13 +158,55 @@ const OAuthTraceArtifactSchema = z.object({
   startedAt: z.string().datetime({ offset: true }),
   events: z.array(z.object({
     sequence: z.number().int().positive(),
-    type: z.string().min(1),
-    outcome: z.string().min(1),
+    type: z.enum([
+      'target_challenge',
+      'protected_resource_metadata',
+      'authorization_server_metadata',
+      'cimd',
+      'dynamic_client_registration',
+      'pre_registered_client',
+      'pkce',
+      'authorization_redirect',
+      'callback',
+      'token_exchange',
+      'refresh',
+      'mcp_retry',
+      'terminal_outcome',
+    ]),
+    outcome: z.enum([
+      'started',
+      'challenged',
+      'succeeded',
+      'failed',
+      'cancelled',
+      'required',
+      'redirected',
+      'skipped',
+    ]),
     timestamp: z.string().datetime({ offset: true }),
-    provenance: z.string().min(1),
-    route: z.string().min(1),
+    provenance: z.enum([
+      'direct_target',
+      'authenticated_proxy',
+      'authorization_server',
+      'browser_callback',
+      'oauth_client',
+    ]),
+    route: z.enum(['direct', 'proxy', 'browser', 'client']),
     explanation: z.string(),
-  }).passthrough()),
+    request: z.object({
+      method: z.string(),
+      url: z.string(),
+    }).strict().optional(),
+    response: z.object({
+      status: z.number().optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      metadata: z.record(z.string(), JsonValueSchema).optional(),
+    }).strict().optional(),
+    timing: z.object({
+      startedAt: z.string().datetime({ offset: true }),
+      durationMs: z.number().nonnegative().optional(),
+    }).strict().optional(),
+  }).strict()),
 }).passthrough();
 
 const SectionScoreSchema = z.object({

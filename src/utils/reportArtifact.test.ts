@@ -263,10 +263,23 @@ const expandedPublicArtifact = (): Record<string, any> => ({
         profileVersion: '2026-08-11',
         status: 'compatible',
         findings: [{
+          schemaVersion: '1.0',
+          ruleId: 'transport.streamable-http',
+          scope: 'target-server',
           outcome: 'pass',
+          severity: 'info',
           summary: 'Compatible.',
           detail: 'Required behavior was observed.',
-          remediation: { action: 'No remediation is required.' },
+          evidence: [{
+            schemaVersion: '1.0',
+            source: 'target-server',
+            description: 'Streamable HTTP completed successfully.',
+          }],
+          remediation: {
+            schemaVersion: '1.0',
+            kind: 'server-change',
+            action: 'No remediation is required.',
+          },
         }],
       },
     },
@@ -286,8 +299,18 @@ const expandedPublicArtifact = (): Record<string, any> => ({
       medium: [],
       low: [],
       info: [{
+        id: 'availability.measured-surface',
+        category: 'availability',
+        severity: 'info',
+        kind: 'measurement',
         title: 'Measured surface',
         summary: 'One tool was measured.',
+        evidence: [{
+          tool: 'get_weather',
+          path: '$.tools[0]',
+          detail: 'The tool definition was included in the measurement.',
+        }],
+        omittedEvidenceCount: 0,
         remediation: 'No remediation is required.',
       }],
     },
@@ -308,6 +331,19 @@ const expandedPublicArtifact = (): Record<string, any> => ({
       provenance: 'direct_target',
       route: 'direct',
       explanation: 'The target requested authentication.',
+      request: {
+        method: 'POST',
+        url: 'https://public.example/mcp',
+      },
+      response: {
+        status: 401,
+        headers: { 'www-authenticate': 'Bearer' },
+        metadata: { challengeObserved: true },
+      },
+      timing: {
+        startedAt: '2026-08-11T12:44:04.000Z',
+        durationMs: 12,
+      },
     }],
   },
 });
@@ -358,6 +394,12 @@ describe('versioned public report artifacts', () => {
       ['compatibility remediation', (artifact) => {
         artifact.compatibility.assessments.chatgpt.findings[0].remediation.action = 42;
       }],
+      ['compatibility finding scope', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].scope = 'somewhere';
+      }],
+      ['compatibility evidence', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].evidence[0].source = 'guess';
+      }],
       ['tool metric', (artifact) => {
         artifact.toolSurfaceAnalysis.metrics.toolCount = 'one';
       }],
@@ -367,8 +409,26 @@ describe('versioned public report artifacts', () => {
       ['tool finding', (artifact) => {
         artifact.toolSurfaceAnalysis.findings.info[0].summary = false;
       }],
+      ['tool finding category', (artifact) => {
+        artifact.toolSurfaceAnalysis.findings.info[0].category = 'other';
+      }],
+      ['tool finding evidence', (artifact) => {
+        artifact.toolSurfaceAnalysis.findings.info[0].evidence[0].detail = false;
+      }],
       ['OAuth event', (artifact) => {
         artifact.oauthTrace.events[0].sequence = 0;
+      }],
+      ['OAuth event type', (artifact) => {
+        artifact.oauthTrace.events[0].type = 'unknown_event';
+      }],
+      ['OAuth event request', (artifact) => {
+        artifact.oauthTrace.events[0].request.method = 42;
+      }],
+      ['OAuth event response', (artifact) => {
+        artifact.oauthTrace.events[0].response.status = '401';
+      }],
+      ['OAuth event timing', (artifact) => {
+        artifact.oauthTrace.events[0].timing.durationMs = -1;
       }],
     ];
 

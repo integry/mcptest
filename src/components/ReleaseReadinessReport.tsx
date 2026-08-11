@@ -64,25 +64,30 @@ const traceEventTitle = (event: OAuthTraceEventV1): string => (
     : traceEventTitles[event.type]
 );
 
-const expectedOAuthStep = (
+const expectedAuthorizationStep = (
   event: OAuthTraceEventV1,
   schemes: Known<readonly AuthorizationScheme[]>
 ): boolean => {
-  if (schemes === 'unknown' || !schemes.includes('oauth')) return false;
+  if (schemes === 'unknown') return false;
 
-  return (
+  const expectedTargetChallenge = (
     event.type === 'target_challenge'
     && event.outcome === 'challenged'
     && event.provenance === 'direct_target'
-  ) || (
-    event.type === 'pre_registered_client'
-    && event.outcome === 'required'
-    && event.provenance === 'oauth_client'
-  ) || (
-    event.type === 'authorization_redirect'
-    && event.outcome === 'redirected'
-    && event.provenance === 'authorization_server'
+    && schemes.some((scheme) => (
+      scheme === 'oauth' || scheme === 'bearer' || scheme === 'api-key'
+    ))
   );
+  const expectedOAuthStep = schemes.includes('oauth') && (
+    (event.type === 'pre_registered_client'
+      && event.outcome === 'required'
+      && event.provenance === 'oauth_client')
+    || (event.type === 'authorization_redirect'
+      && event.outcome === 'redirected'
+      && event.provenance === 'authorization_server')
+  );
+
+  return expectedTargetChallenge || expectedOAuthStep;
 };
 
 const oauthStepNeedsAttention = (
@@ -95,7 +100,7 @@ const oauthStepNeedsAttention = (
     (event.outcome === 'challenged'
       || event.outcome === 'required'
       || event.outcome === 'redirected')
-    && !expectedOAuthStep(event, schemes)
+    && !expectedAuthorizationStep(event, schemes)
   )
 );
 
@@ -104,7 +109,13 @@ const traceStepState = (
   schemes: Known<readonly AuthorizationScheme[]>
 ): string => {
   if (event.outcome === 'failed' || event.outcome === 'cancelled') return 'Needs attention';
-  if (expectedOAuthStep(event, schemes)) return 'Required step';
+  if (expectedAuthorizationStep(event, schemes)) {
+    if (event.type === 'target_challenge' && schemes !== 'unknown') {
+      if (schemes.includes('api-key') && !schemes.includes('oauth')) return 'API key required';
+      if (schemes.includes('bearer') && !schemes.includes('oauth')) return 'Bearer token required';
+    }
+    return 'Required step';
+  }
   if (event.type === 'target_challenge' && event.provenance === 'authenticated_proxy') {
     return 'Proxy access required';
   }
@@ -311,7 +322,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           <>
             <ol className="oauth-timeline" aria-label="Guided OAuth timeline">
               {oauthTrace.events.map((event) => (
-                <li className={oauthStepNeedsAttention(event, authorizationSchemes) ? 'oauth-step-failed' : expectedOAuthStep(event, authorizationSchemes) ? 'oauth-step-expected' : ''} key={event.sequence}>
+                <li className={oauthStepNeedsAttention(event, authorizationSchemes) ? 'oauth-step-failed' : expectedAuthorizationStep(event, authorizationSchemes) ? 'oauth-step-expected' : ''} key={event.sequence}>
                   <span className="oauth-step-marker" aria-hidden="true">{event.sequence}</span>
                   <div>
                     <div className="oauth-step-heading">

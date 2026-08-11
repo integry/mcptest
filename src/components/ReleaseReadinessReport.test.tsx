@@ -71,6 +71,51 @@ describe('ReleaseReadinessReport', () => {
     expect(markup).toContain('View raw trace (redacted)');
   });
 
+  it('labels an API-key target challenge as a required step instead of a failure', () => {
+    const apiKeyReport: EvaluationReport = {
+      ...authorizationReport,
+      sections: {
+        auth: {
+          ...authorizationReport.sections.auth,
+          description: 'Authorization is a prerequisite',
+          details: [{ text: '⚠ Authorization required' }],
+        },
+      },
+    };
+    const markup = renderToStaticMarkup(
+      <ReleaseReadinessReport
+        report={apiKeyReport}
+        expandedItems={new Set()}
+        onToggleItem={() => undefined}
+        oauthTrace={{
+          version: 1,
+          traceId: 'trace-api-key',
+          targetFingerprint: 'fingerprint',
+          targetUrl: apiKeyReport.serverUrl,
+          startedAt: '2026-08-11T20:02:00.000Z',
+          events: [{
+            sequence: 1,
+            type: 'target_challenge',
+            outcome: 'challenged',
+            timestamp: '2026-08-11T20:02:00.000Z',
+            provenance: 'direct_target',
+            route: 'direct',
+            explanation: 'The MCP target requested an API key.',
+            response: {
+              status: 401,
+              headers: { 'www-authenticate': 'ApiKey realm="mcp"' },
+            },
+          }],
+        }}
+      />
+    );
+
+    expect(markup).toContain('oauth-step-expected');
+    expect(markup).toContain('API key required');
+    expect(markup).not.toContain('oauth-step-failed');
+    expect(markup).not.toContain('Needs attention');
+  });
+
   it('does not present an authenticated-proxy challenge as a required OAuth step', () => {
     const markup = renderToStaticMarkup(
       <ReleaseReadinessReport
