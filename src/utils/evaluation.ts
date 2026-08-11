@@ -100,6 +100,12 @@ export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
 );
 
+/** Legacy reports without an outcome are scored; every explicit incomplete outcome is unscored. */
+export const isScoredEvaluation = (report: EvaluationReport): boolean => (
+  !isAuthenticationRequired(report)
+  && (report.outcome === undefined || report.outcome === 'scored')
+);
+
 export const getEvaluationMaxScore = (report: EvaluationReport): number => (
   Object.entries(report.sections)
     .filter(([key]) => key !== 'auth')
@@ -258,13 +264,16 @@ const makeSkippedSection = (
   name: string,
   description: string,
   maxScore: number,
-  reason: string
+  reason: string,
+  metadata?: Record<string, unknown>,
+  status: EvaluationSection['status'] = 'skipped'
 ): EvaluationSection => ({
   name,
   description,
   score: 0,
   maxScore,
-  details: [{ text: `⚠ ${reason}` }],
+  details: [{ text: `⚠ ${reason}`, ...(metadata ? { metadata } : {}) }],
+  status,
 });
 
 interface ConnectedEvaluation {
@@ -769,11 +778,28 @@ export async function evaluateServer(
       return report;
     }
 
+    report.outcome = 'failed';
+    const lastFailure = failures[failures.length - 1];
+    const failedRouteMetadata = lastFailure ? {
+      route: lastFailure.route === 'proxy' ? 'authenticated proxy' : 'direct',
+      routeFailures: failures.map((failure) => ({
+        route: failure.route === 'proxy' ? 'authenticated proxy' : 'direct',
+        message: failure.message,
+        ...(failure.httpStatus !== undefined ? { status: failure.httpStatus } : {}),
+        ...(failure.authenticationSource
+          ? { authenticationSource: failure.authenticationSource }
+          : {}),
+        ...(failure.candidateUrl ? { endpoint: failure.candidateUrl } : {}),
+      })),
+    } : undefined;
+
     report.sections.protocol = makeSkippedSection(
       'Core Protocol Adherence',
       'Validates MCP lifecycle and JSON-RPC negotiation',
       15,
-      `MCP negotiation failed: ${message}`
+      `MCP negotiation failed: ${message}`,
+      failedRouteMetadata,
+      'failed'
     );
     report.sections.capabilities = makeSkippedSection(
       'MCP Capabilities',

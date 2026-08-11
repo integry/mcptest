@@ -52,6 +52,52 @@ describe('report presentation', () => {
     expect(getTestedServerResultLabel(entry)).toBe('Score: 50%');
   });
 
+  it.each([
+    ['partial', 'Partial evaluation - not scored'],
+    ['failed', 'Evaluation failed - not scored'],
+  ] as const)('stores a %s evaluation without an overall score', (outcome, label) => {
+    const entry = createTestedServerHistoryEntry({
+      serverUrl: 'https://mcp.example/mcp',
+      outcome,
+      finalScore: 35,
+      sections: {
+        protocol: {
+          name: 'Protocol',
+          description: '',
+          score: 35,
+          maxScore: 70,
+          details: [],
+        },
+      },
+    }, 789);
+
+    expect(entry).toEqual({
+      url: 'https://mcp.example/mcp',
+      score: null,
+      timestamp: 789,
+      outcome,
+    });
+    expect(getTestedServerResultLabel(entry)).toBe(label);
+  });
+
+  it('continues to score legacy reports without an explicit outcome', () => {
+    const entry = createTestedServerHistoryEntry({
+      serverUrl: 'https://legacy.example/mcp',
+      finalScore: 35,
+      sections: {
+        protocol: {
+          name: 'Protocol',
+          description: '',
+          score: 35,
+          maxScore: 70,
+          details: [],
+        },
+      },
+    }, 999);
+
+    expect(entry).toMatchObject({ score: 50, outcome: 'scored' });
+  });
+
   it('replaces legacy raw URLs with the normalized authorization-required entry', () => {
     const legacyEntry = {
       url: 'mcp.example',

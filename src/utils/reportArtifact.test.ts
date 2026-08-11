@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest';
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
 import publicJsonSchema from '../../public/schemas/report/v1.schema.json';
 import type { EvaluationReport, EvaluationSection } from './evaluation';
 import {
   REPORT_SCHEMA_URL,
   createPublicReport,
   parsePublicReportJson,
+  redactReportString,
   redactReportValue,
   safeParsePublicReport,
   serializePublicReportJson,
   serializePublicReportMarkdown,
   validatePublicReport,
 } from './reportArtifact';
+
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+const validatePublishedSchema = ajv.compile(publicJsonSchema);
 
 const FIXED_OPTIONS = {
   generatedAt: '2026-08-11T12:44:04.000Z',
@@ -184,13 +191,21 @@ const partialReport = (): EvaluationReport => ({
 
 const failedReport = (): EvaluationReport => ({
   serverUrl: 'https://failed.example/mcp?api_key=do-not-export',
-  outcome: 'scored',
+  outcome: 'failed',
   finalScore: 0,
   sections: {
     protocol: section('Core Protocol', 0, 15, {}, {
+      status: 'failed',
       details: [{
         text: '⚠ MCP negotiation failed: Authorization: Bearer super-secret',
         context: 'Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3Dnested-secret',
+        metadata: {
+          route: 'authenticated proxy',
+          routeFailures: [
+            { route: 'direct', message: 'Direct target failed' },
+            { route: 'authenticated proxy', message: 'Proxy negotiation failed' },
+          ],
+        },
       }],
     }),
     capabilities: section('Capabilities', 0, 10, {}, {
@@ -256,6 +271,69 @@ describe('versioned public report artifacts', () => {
     expect(publicJsonSchema.properties.schemaVersion.const).toBe('1.0.0');
   });
 
+  it.each(Object.entries(GOLDEN_REPORTS))('validates the %s artifact with the published JSON Schema', (_, makeReport) => {
+    const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
+
+    expect(validatePublishedSchema(artifact), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+  });
+
+  it.each(['scored', 'partial', 'failed'] as const)(
+    'forbids authorization prerequisites on %s outcomes in both schemas',
+    (status) => {
+      const base = createPublicReport(
+        status === 'scored' ? publicReport() : status === 'partial' ? partialReport() : failedReport(),
+        FIXED_OPTIONS
+      );
+      const contradictory = {
+        ...base,
+        outcome: {
+          ...base.outcome,
+          authorizationPrerequisite: {
+            required: true,
+            state: 'authorization-required',
+            message: 'Contradictory prerequisite.',
+          },
+        },
+      };
+
+      expect(safeParsePublicReport(contradictory).success).toBe(false);
+      expect(
+        validatePublishedSchema(contradictory),
+        JSON.stringify(validatePublishedSchema.errors)
+      ).toBe(false);
+    }
+  );
+
+  it.each(['failed', 'skipped', 'prerequisite'] as const)(
+    'requires a null earned score for %s sections in both schemas',
+    (status) => {
+      const artifact = createPublicReport(partialReport(), FIXED_OPTIONS);
+      const invalid = structuredClone(artifact);
+      invalid.sections[1].status = status;
+      invalid.sections[1].score.earned = 0;
+
+      expect(safeParsePublicReport(invalid).success).toBe(false);
+      expect(
+        validatePublishedSchema(invalid),
+        JSON.stringify(validatePublishedSchema.errors)
+      ).toBe(false);
+    }
+  );
+
+  it('validates percentage consistency with an explicit numerical tolerance', () => {
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    const withinTolerance = structuredClone(artifact);
+    const inconsistent = structuredClone(artifact);
+    withinTolerance.score!.percentage -= 5e-10;
+    inconsistent.score!.percentage -= 1e-6;
+
+    expect(safeParsePublicReport(withinTolerance).success).toBe(true);
+    expect(safeParsePublicReport(inconsistent).success).toBe(false);
+    expect(() => parsePublicReportJson(JSON.stringify(inconsistent))).toThrow(
+      'The percentage must equal earned / maximum * 100.'
+    );
+  });
+
   it('redacts secrets recursively, including embedded and nested URL values', () => {
     const artifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
     const failedArtifact = createPublicReport(failedReport(), FIXED_OPTIONS);
@@ -278,6 +356,48 @@ describe('versioned public report artifacts', () => {
       safe: 'visible',
       code_challenge_methods_supported: ['S256'],
     });
+  });
+
+  it('closes plain-text, camel-case URL, OAuth state, and deep nested URL bypasses', () => {
+    let deeplyNestedUrl = 'https://deep.example/callback?visible=deepest-secret';
+    for (let depth = 0; depth < 5; depth += 1) {
+      deeplyNestedUrl = `https://level-${depth}.example/next?url=${encodeURIComponent(deeplyNestedUrl)}`;
+    }
+    const output = redactReportString([
+      'token=plain-token secret:plain-secret credentials=plain-credentials oauth_code=plain-code',
+      'https://client.example/callback?authToken=url-token&clientCredentials=client-credentials&sessionId=session-value&state=state-value&nonce=nonce-value&csrf=csrf-value',
+      deeplyNestedUrl,
+    ].join(' '));
+
+    for (const secret of [
+      'plain-token',
+      'plain-secret',
+      'plain-credentials',
+      'plain-code',
+      'url-token',
+      'client-credentials',
+      'session-value',
+      'state-value',
+      'nonce-value',
+      'csrf-value',
+      'deepest-secret',
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+    expect(redactReportValue({ state: 's', nonce: 'n', csrf: 'c' })).toEqual({
+      state: '[REDACTED]',
+      nonce: '[REDACTED]',
+      csrf: '[REDACTED]',
+    });
+  });
+
+  it('sorts keys by code unit without locale-dependent comparison', () => {
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0].metadata = { 'ä': 1, z: 2, A: 3, a: 4 };
+
+    const serialized = serializePublicReportJson(artifact);
+    const reparsed = JSON.parse(serialized);
+    expect(Object.keys(reparsed.sections[0].evidence[0].metadata)).toEqual(['A', 'a', 'z', 'ä']);
   });
 
   it('redacts again at serialization as a defense for directly constructed artifacts', () => {
@@ -308,5 +428,9 @@ describe('versioned public report artifacts', () => {
     expect(serializePublicReportMarkdown(authorizationArtifact)).toContain(
       'Authorization is a prerequisite, not a failed 0% grade.'
     );
+    expect(createPublicReport(failedReport(), FIXED_OPTIONS).provenance).toEqual({
+      route: 'authenticated-proxy',
+      proxyUsed: true,
+    });
   });
 });

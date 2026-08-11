@@ -13,6 +13,8 @@ export const REPORT_SCHEMA_VERSION = '1.0.0' as const;
 export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v1.schema.json' as const;
 export const REDACTED_VALUE = '[REDACTED]' as const;
 
+const SCORE_PERCENTAGE_TOLERANCE = 1e-9;
+
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
   z.number(),
@@ -116,12 +118,30 @@ export const PublicReportSchema = PublicReportObjectSchema.superRefine((report, 
       message: 'An authorization-required report must describe its prerequisite.',
     });
   }
+  if (report.outcome.status !== 'authorization-required'
+      && report.outcome.authorizationPrerequisite) {
+    context.addIssue({
+      code: 'custom',
+      path: ['outcome', 'authorizationPrerequisite'],
+      message: 'Only an authorization-required report may describe an authorization prerequisite.',
+    });
+  }
   if (report.score && report.score.earned > report.score.maximum) {
     context.addIssue({
       code: 'custom',
       path: ['score', 'earned'],
       message: 'The earned score cannot exceed the maximum score.',
     });
+  }
+  if (report.score) {
+    const expectedPercentage = report.score.earned / report.score.maximum * 100;
+    if (Math.abs(report.score.percentage - expectedPercentage) > SCORE_PERCENTAGE_TOLERANCE) {
+      context.addIssue({
+        code: 'custom',
+        path: ['score', 'percentage'],
+        message: 'The percentage must equal earned / maximum * 100.',
+      });
+    }
   }
   for (const [index, section] of report.sections.entries()) {
     if ((section.status === 'skipped' || section.status === 'failed' || section.status === 'prerequisite')
@@ -152,17 +172,17 @@ export interface CreatePublicReportOptions {
   toolCommit?: string;
 }
 
-const SENSITIVE_QUERY_KEY = /(?:^|[_-])(?:token|secret|password|passwd|credential|authorization|auth|code|cookie|session|signature|sig|api[_-]?key)(?:$|[_-])/i;
-
 const EXACT_SENSITIVE_KEYS = new Set([
   'authorization',
   'proxyauthorization',
   'xmcpauthorization',
   'cookie',
   'setcookie',
+  'cookies',
   'password',
   'passwd',
   'secret',
+  'secrets',
   'clientsecret',
   'credential',
   'credentials',
@@ -172,23 +192,33 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'apikey',
   'xapikey',
   'authorizationcode',
+  'authorizationcodes',
   'oauthcode',
+  'oauthcodes',
   'code',
   'token',
+  'tokens',
   'sessionid',
   'signature',
   'sig',
   'privatekey',
+  'state',
+  'nonce',
+  'csrf',
 ]);
 
+const canonicalKey = (key: string): string => (
+  key.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+);
+
 const isSensitiveKey = (key: string): boolean => {
-  const canonical = key.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const canonical = canonicalKey(key);
   return EXACT_SENSITIVE_KEYS.has(canonical)
-    || /(?:token|secret|password|passwd|credential|authorizationcode|oauthcode|apikey|privatekey)$/.test(canonical);
+    || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical);
 };
 
 const redactUrl = (value: string, depth = 0): string => {
-  if (depth > 3) return value;
+  if (depth > 3) return REDACTED_VALUE;
   let url: URL;
   try {
     url = new URL(value);
@@ -200,7 +230,7 @@ const redactUrl = (value: string, depth = 0): string => {
   if (url.username) url.username = REDACTED_VALUE;
   if (url.password) url.password = REDACTED_VALUE;
   for (const [key, queryValue] of [...url.searchParams.entries()]) {
-    if (SENSITIVE_QUERY_KEY.test(key)) {
+    if (isSensitiveKey(key)) {
       url.searchParams.set(key, REDACTED_VALUE);
     } else if (/^https?:\/\//i.test(queryValue)) {
       url.searchParams.set(key, redactUrl(queryValue, depth + 1));
@@ -223,26 +253,53 @@ export const redactReportString = (value: string): string => {
   const redactedUrls = redactUrlsInText(value);
   return redactedUrls
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`)
-    .replace(/\b(access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|api[_-]?key|authorization[_-]?code|password|cookie)\b\s*[:=]\s*([^\s,;&]+)/gi, `$1=${REDACTED_VALUE}`);
+    .replace(
+      /\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*([^\s,;&]+)/g,
+      (assignment, key: string) => (
+        isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : assignment
+      )
+    );
 };
 
-/** Recursively redacts sensitive keys and values while retaining JSON-safe evidence. */
-export const redactReportValue = (value: unknown, key?: string): unknown => {
-  if (key && isSensitiveKey(key)) return REDACTED_VALUE;
+const isAuthorizationPrerequisiteState = (path: readonly string[]): boolean => (
+  path.length === 3
+  && path[0] === 'outcome'
+  && path[1] === 'authorizationPrerequisite'
+  && path[2] === 'state'
+);
+
+const redactReportValueAtPath = (
+  value: unknown,
+  key: string | undefined,
+  path: readonly string[]
+): unknown => {
+  if (key && isSensitiveKey(key) && !isAuthorizationPrerequisiteState(path)) {
+    return REDACTED_VALUE;
+  }
   if (value === undefined) return undefined;
   if (typeof value === 'string') return redactReportString(value);
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
-  if (Array.isArray(value)) return value.map((item) => redactReportValue(item));
+  if (Array.isArray(value)) {
+    return value.map((item, index) => redactReportValueAtPath(item, undefined, [
+      ...path,
+      String(index),
+    ]));
+  }
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value)
       .filter(([, childValue]) => childValue !== undefined)
       .map(([childKey, childValue]) => [
         childKey,
-        redactReportValue(childValue, childKey),
+        redactReportValueAtPath(childValue, childKey, [...path, childKey]),
       ]));
   }
   return String(value);
 };
+
+/** Recursively redacts sensitive keys and values while retaining JSON-safe evidence. */
+export const redactReportValue = (value: unknown, key?: string): unknown => (
+  redactReportValueAtPath(value, key, key ? [key] : [])
+);
 
 const metadataRecords = (report: EvaluationReport): Record<string, unknown>[] => (
   Object.values(report.sections).flatMap((section) => section.details)
@@ -443,7 +500,9 @@ const stableValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stableValue);
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
+      Object.entries(value).sort(([left], [right]) => (
+        left < right ? -1 : left > right ? 1 : 0
+      ))
         .map(([key, child]) => [key, stableValue(child)])
     );
   }

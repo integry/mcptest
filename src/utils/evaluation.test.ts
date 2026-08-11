@@ -17,6 +17,7 @@ import {
   getEvaluationTargetUrl,
   getEvaluationTransportProbeUrl,
   isAuthenticationRequired,
+  isScoredEvaluation,
 } from './evaluation';
 import {
   ProxiedAuthenticationError,
@@ -301,6 +302,21 @@ describe('dual-era server evaluation', () => {
     const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
 
     expect(report.sections.auth).toBeUndefined();
+    expect(report.outcome).toBe('failed');
+    expect(isScoredEvaluation(report)).toBe(false);
+    expect(report.sections.protocol.status).toBe('failed');
+    expect(report.sections.protocol.details[0].metadata).toEqual({
+      route: 'authenticated proxy',
+      routeFailures: [
+        { route: 'direct', message: 'Direct CORS failure' },
+        {
+          route: 'authenticated proxy',
+          message: 'All connections failed: Authenticated proxy returned HTTP 401',
+          status: 401,
+          authenticationSource: 'proxy',
+        },
+      ],
+    });
     expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
   });
 

@@ -65,6 +65,13 @@
         "properties": {
           "outcome": { "required": ["authorizationPrerequisite"] }
         }
+      },
+      "else": {
+        "properties": {
+          "outcome": {
+            "not": { "required": ["authorizationPrerequisite"] }
+          }
+        }
       }
     }
   ],
@@ -197,7 +204,25 @@
           "type": "array",
           "items": { "$ref": "#/$defs/evidence" }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["failed", "skipped", "prerequisite"] }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "score": {
+                "properties": { "earned": { "type": "null" } },
+                "required": ["earned"]
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

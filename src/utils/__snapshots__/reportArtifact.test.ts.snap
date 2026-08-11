@@ -16,8 +16,8 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
     "summary": "The evaluation did not complete and no overall grade was assigned."
   },
   "provenance": {
-    "proxyUsed": null,
-    "route": "unknown"
+    "proxyUsed": true,
+    "route": "authenticated-proxy"
   },
   "schemaVersion": "1.0.0",
   "score": null,
@@ -27,7 +27,20 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
       "evidence": [
         {
           "context": "Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3D%255BREDACTED%255D",
-          "message": "⚠ MCP negotiation failed: Authorization: Bearer [REDACTED]"
+          "message": "⚠ MCP negotiation failed: Authorization: Bearer [REDACTED]",
+          "metadata": {
+            "route": "authenticated proxy",
+            "routeFailures": [
+              {
+                "message": "Direct target failed",
+                "route": "direct"
+              },
+              {
+                "message": "Proxy negotiation failed",
+                "route": "authenticated proxy"
+              }
+            ]
+          }
         }
       ],
       "id": "protocol",
@@ -100,7 +113,7 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
     }
   ],
   "target": {
-    "testedEndpoint": "https://failed.example/mcp?api_key=[REDACTED]"
+    "testedEndpoint": "https://failed.example/mcp?api_key=%5BREDACTED%5D"
   }
 }
 ",
@@ -109,7 +122,7 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
 - Schema: 1.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
-- Tested endpoint: https://failed.example/mcp?api\\_key=\\[REDACTED\\]
+- Tested endpoint: https://failed.example/mcp?api\\_key=%5BREDACTED%5D
 
 ## Outcome
 
@@ -121,9 +134,9 @@ Not scored.
 
 ## Endpoint and provenance
 
-- Tested endpoint: https://failed.example/mcp?api\\_key=\\[REDACTED\\]
-- Route: unknown
-- Proxy used: unknown
+- Tested endpoint: https://failed.example/mcp?api\\_key=%5BREDACTED%5D
+- Route: authenticated-proxy
+- Proxy used: yes
 
 ## Sections
 
@@ -137,6 +150,23 @@ Core Protocol description
 
 - ⚠ MCP negotiation failed: Authorization: Bearer \\[REDACTED\\]
   - Context: Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3D%255BREDACTED%255D
+  - Metadata:
+
+    \`\`\`json
+    {
+      "route": "authenticated proxy",
+      "routeFailures": [
+        {
+          "message": "Direct target failed",
+          "route": "direct"
+        },
+        {
+          "message": "Proxy negotiation failed",
+          "route": "authenticated proxy"
+        }
+      ]
+    }
+    \`\`\`
 
 ### Capabilities
 
@@ -500,7 +530,7 @@ exports[`versioned public report artifacts > matches the oauth-required-unscored
           "message": "⚠ Authorize before running the report; access_token=[REDACTED]",
           "metadata": {
             "authorization": "[REDACTED]",
-            "endpoint": "https://protected.example/mcp?access_token=[REDACTED]",
+            "endpoint": "https://protected.example/mcp?access_token=%5BREDACTED%5D",
             "route": "direct",
             "status": 401
           }
@@ -517,7 +547,7 @@ exports[`versioned public report artifacts > matches the oauth-required-unscored
   ],
   "target": {
     "authenticationEndpoint": "https://protected.example/mcp?code=%5BREDACTED%5D",
-    "testedEndpoint": "https://protected.example/mcp?access_token=[REDACTED]"
+    "testedEndpoint": "https://protected.example/mcp?access_token=%5BREDACTED%5D"
   }
 }
 ",
@@ -526,7 +556,7 @@ exports[`versioned public report artifacts > matches the oauth-required-unscored
 - Schema: 1.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
-- Tested endpoint: https://protected.example/mcp?access\\_token=\\[REDACTED\\]
+- Tested endpoint: https://protected.example/mcp?access\\_token=%5BREDACTED%5D
 
 ## Outcome
 
@@ -542,7 +572,7 @@ Not scored.
 
 ## Endpoint and provenance
 
-- Tested endpoint: https://protected.example/mcp?access\\_token=\\[REDACTED\\]
+- Tested endpoint: https://protected.example/mcp?access\\_token=%5BREDACTED%5D
 - Authorization endpoint: https://protected.example/mcp?code=%5BREDACTED%5D
 - Route: direct
 - Proxy used: no
@@ -564,7 +594,7 @@ OAuth authorization is required before evaluation
     \`\`\`json
     {
       "authorization": "[REDACTED]",
-      "endpoint": "https://protected.example/mcp?access_token=[REDACTED]",
+      "endpoint": "https://protected.example/mcp?access_token=%5BREDACTED%5D",
       "route": "direct",
       "status": 401
     }
