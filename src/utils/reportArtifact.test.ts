@@ -670,21 +670,54 @@ describe('versioned public report artifacts', () => {
       cookieJar: 'session=compound-cookie-secret',
       credentialValue: 'compound-credential-secret',
       passwordValue: 'compound-password-secret',
+      apiKeyValue: 'compound-api-key-secret',
+      api_key_header: 'compound-api-key-header-secret',
       authorizationHeader: 'ApiKey compound-authorization-secret',
       authorizationCodeValue: 'compound-authorization-code-secret',
     };
+    expect(redactReportValue({
+      apiKeyValue: secretsByKey.apiKeyValue,
+      api_key_value: 'structured-snake-api-key-secret',
+      apiKeySupported: true,
+      api_key_placement: 'header',
+    })).toEqual({
+      apiKeyValue: '[REDACTED]',
+      api_key_value: '[REDACTED]',
+      apiKeySupported: true,
+      api_key_placement: 'header',
+    });
+
+    const redactedString = redactReportString(
+      'apiKeyValue=plain-api-key-secret https://example.test/?api_key_value=url-api-key-secret&api_key_supported=true'
+    );
+    expect(redactedString).not.toContain('plain-api-key-secret');
+    expect(redactedString).not.toContain('url-api-key-secret');
+    expect(redactedString).toContain('api_key_supported=true');
+
     const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
-    artifact.sections[0].evidence[0].metadata = secretsByKey;
+    artifact.sections[0].evidence[0].context = (
+      'https://example.test/?apiKeyValue=serializer-url-secret&apiKeySupported=true'
+    );
+    artifact.sections[0].evidence[0].metadata = {
+      ...secretsByKey,
+      apiKeySupported: true,
+      api_key_placement: 'header',
+    };
 
     const json = serializePublicReportJson(artifact);
     const markdown = serializePublicReportMarkdown(artifact);
 
-    for (const secret of Object.values(secretsByKey)) {
+    for (const secret of [...Object.values(secretsByKey), 'serializer-url-secret']) {
       expect(json).not.toContain(secret);
       expect(markdown).not.toContain(secret);
     }
     for (const key of Object.keys(secretsByKey)) {
       expect(json).toContain(`"${key}": "[REDACTED]"`);
+    }
+    for (const output of [json, markdown]) {
+      expect(output).toContain('apiKeySupported');
+      expect(output).toContain('api_key_placement');
+      expect(output).toContain('header');
     }
   });
 

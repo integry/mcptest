@@ -303,6 +303,8 @@ const NON_SENSITIVE_COMPOUND_KEYS = new Set([
   'codechallengemethodssupported',
 ]);
 
+const WRAPPED_CREDENTIAL_KEY = /(?:api|private)key(?:value|header)$/;
+
 const keyComponents = (key: string): string[] => key
   .trim()
   .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
@@ -319,6 +321,7 @@ const isSensitiveKey = (key: string): boolean => {
   }
   return EXACT_SENSITIVE_KEYS.has(canonical)
     || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical)
+    || WRAPPED_CREDENTIAL_KEY.test(canonical)
     || components.includes('code')
       && components.some((component) => component === 'authorization' || component === 'oauth');
 };
