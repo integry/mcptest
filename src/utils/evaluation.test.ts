@@ -23,7 +23,10 @@ import {
   TransportConnectionError,
   getRequestHeadersForCandidate,
 } from './transportDetection';
-import { getStoredOAuthTrace } from './oauthTrace';
+import {
+  getStoredOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+} from './oauthTrace';
 
 const createClient = () => ({
   listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -133,6 +136,104 @@ describe('dual-era server evaluation', () => {
     expect(report.sections.security).toBeUndefined();
     expect(getEvaluationMaxScore(report)).toBe(70);
     expect(client.close).toHaveBeenCalledOnce();
+  });
+
+  it('finalizes a successful post-callback report retry with its actual request facts', async () => {
+    const endpoint = 'https://report-retry.example/mcp';
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: endpoint,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const client = createClient();
+    const retryRequest = {
+      method: 'POST',
+      url: `${endpoint}?operation=initialize`,
+      candidateUrl: endpoint,
+      transportType: 'streamable-http' as const,
+      status: 200,
+      outcome: 'succeeded' as const,
+      startedAt: '2026-08-11T18:10:00.000Z',
+      durationMs: 27,
+    };
+    connectionMocks.attempt.mockImplementationOnce(async (...args: any[]) => {
+      args[6]?.(retryRequest);
+      return {
+        client,
+        url: endpoint,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        protocolVersion: '2026-07-28',
+        observedRequests: [retryRequest],
+      };
+    });
+
+    await evaluateServer(endpoint, 'firebase-jwt', vi.fn(), 'oauth-access-token');
+
+    const stored = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(stored?.events.find(({ type }) => type === 'mcp_retry')).toMatchObject({
+      outcome: 'succeeded',
+      route: 'direct',
+      request: { method: 'POST', url: retryRequest.url },
+      response: { status: 200 },
+      timing: { startedAt: retryRequest.startedAt, durationMs: 27 },
+    });
+    expect(stored?.outcome?.status).toBe('authorized');
+    expect(stored?.authenticatedMcpRetry).toBeUndefined();
+  });
+
+  it('finalizes a failed post-callback report retry and does not leave it for another connection', async () => {
+    const endpoint = 'https://failed-report-retry.example/mcp';
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: endpoint,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const directRequest = {
+      method: 'POST',
+      url: endpoint,
+      status: 502,
+      outcome: 'failed' as const,
+      startedAt: '2026-08-11T18:20:00.000Z',
+      durationMs: 31,
+    };
+    const proxyRequest = {
+      ...directRequest,
+      url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
+      startedAt: '2026-08-11T18:20:01.000Z',
+      durationMs: 44,
+    };
+    connectionMocks.attempt
+      .mockImplementationOnce(async (...args: any[]) => {
+        args[6]?.(directRequest);
+        throw new Error('Direct authenticated retry failed');
+      })
+      .mockImplementationOnce(async (...args: any[]) => {
+        args[6]?.(proxyRequest);
+        throw new Error('Proxy authenticated retry failed');
+      });
+
+    await evaluateServer(endpoint, 'firebase-jwt', vi.fn(), 'oauth-access-token');
+
+    const stored = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(stored?.events.find(({ type }) => type === 'mcp_retry')).toMatchObject({
+      outcome: 'failed',
+      route: 'proxy',
+      request: { method: 'POST', url: proxyRequest.url },
+      response: { status: 502 },
+      timing: { startedAt: proxyRequest.startedAt, durationMs: 44 },
+    });
+    expect(stored?.outcome).toMatchObject({
+      status: 'failed',
+      explanation: expect.stringContaining('authenticated MCP retry'),
+    });
+    expect(stored?.authenticatedMcpRetry).toBeUndefined();
   });
 
   it('closes the connected client when a later evaluation step throws', async () => {

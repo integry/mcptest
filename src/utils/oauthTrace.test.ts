@@ -7,6 +7,8 @@ import {
   getStoredOAuthTrace,
   sanitizeOAuthTraceUrl,
   serializeOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+  resumePendingAuthenticatedMcpRetry,
 } from './oauthTrace';
 
 const TARGET_URL = 'https://mcp.example/mcp';
@@ -167,6 +169,158 @@ describe('OAuth flight recorder core', () => {
       expect(serialized).not.toContain(secret);
     }
     expect(serialized).toContain(OAUTH_TRACE_REDACTED);
+  });
+
+  it('canonicalizes OAuth credential key variants across URLs, metadata, snapshots, persistence, and serialization', () => {
+    const credentialVariants = {
+      device_code: 'device-secret-exact',
+      user_code: 'user-secret-exact',
+      id_token_hint: 'hint-secret-exact',
+      accessToken: 'access-secret-exact',
+      authorizationCode: 'code-secret-exact',
+      'client-secret': 'client-secret-exact',
+    };
+    const credentialUrl = new URL('https://auth.example/authorize');
+    for (const [key, value] of Object.entries(credentialVariants)) {
+      credentialUrl.searchParams.set(key, value);
+    }
+
+    const sanitizedUrl = sanitizeOAuthTraceUrl(credentialUrl);
+    const recorder = createOAuthFlightRecorder({
+      targetUrl: credentialUrl.toString(),
+      storage: sessionStorage,
+    });
+    recorder.record({
+      type: 'callback',
+      outcome: 'failed',
+      provenance: 'browser_callback',
+      route: 'browser',
+      explanation: Object.entries(credentialVariants)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(' '),
+      request: { method: 'GET', url: credentialUrl.toString() },
+      response: { metadata: credentialVariants },
+    });
+
+    const evidence = [
+      sanitizedUrl,
+      JSON.stringify(recorder.snapshot()),
+      JSON.stringify(getStoredOAuthTrace(credentialUrl.toString(), sessionStorage)),
+      recorder.serialize(),
+      serializeOAuthTrace(recorder.snapshot()),
+    ];
+    for (const secret of Object.values(credentialVariants)) {
+      for (const value of evidence) expect(value).not.toContain(secret);
+    }
+    expect(recorder.snapshot().events[0].response?.metadata).toEqual(
+      Object.fromEntries(Object.keys(credentialVariants).map((key) => [key, OAUTH_TRACE_REDACTED]))
+    );
+  });
+
+  it('redacts credentials in nested assignments from ordinary and persisted trace evidence', () => {
+    const nestedSecrets = [
+      'plain-secret-exact',
+      'quoted-secret-exact',
+      'json-secret-exact',
+      'code-secret-exact',
+    ];
+    const nestedText = [
+      `error_description=access_token=${nestedSecrets[0]}`,
+      `error="client_secret=${nestedSecrets[1]}"`,
+      `{"error_description":"refresh_token=${nestedSecrets[2]}"}`,
+      `outer=authorization_code=${nestedSecrets[3]}`,
+    ].join(' | ');
+    const recorder = createOAuthFlightRecorder({ targetUrl: TARGET_URL, storage: sessionStorage });
+    recorder.record({
+      type: 'callback',
+      outcome: 'failed',
+      provenance: 'browser_callback',
+      route: 'browser',
+      explanation: nestedText,
+      response: {
+        metadata: {
+          error_description: nestedText,
+          nested: { message: nestedText },
+        },
+      },
+    });
+
+    const evidence = [
+      recorder.snapshot().events[0].explanation,
+      JSON.stringify(recorder.snapshot()),
+      JSON.stringify(getStoredOAuthTrace(TARGET_URL, sessionStorage)),
+      recorder.serialize(),
+      serializeOAuthTrace(recorder.snapshot()),
+    ];
+    for (const secret of nestedSecrets) {
+      for (const value of evidence) expect(value).not.toContain(secret);
+    }
+  });
+
+  it('resumes and finalizes only the pending retry for the exact target without replacing it', () => {
+    const original = recordOAuthAuthenticationChallenge({
+      targetUrl: TARGET_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    original.setAuthenticatedMcpRetryState('pending');
+    const originalTraceId = original.snapshot().traceId;
+
+    const duplicate = recordOAuthAuthenticationChallenge({
+      targetUrl: TARGET_URL,
+      status: 403,
+      source: 'target',
+      route: 'proxy',
+      storage: sessionStorage,
+    });
+    expect(duplicate.snapshot().traceId).not.toBe(originalTraceId);
+    expect(duplicate.snapshot().events.filter(({ type }) => type === 'target_challenge')).toHaveLength(1);
+    expect(getStoredOAuthTrace(TARGET_URL, sessionStorage)?.traceId).toBe(originalTraceId);
+    expect(resumePendingAuthenticatedMcpRetry({
+      targetUrl: 'https://other.example/mcp',
+      storage: sessionStorage,
+      operation: 'unrelated connection',
+    })).toBeUndefined();
+
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: TARGET_URL,
+      storage: sessionStorage,
+      operation: 'test operation',
+    });
+    const request = {
+      method: 'POST',
+      url: `${TARGET_URL}?operation=initialize`,
+      status: 200,
+      outcome: 'succeeded' as const,
+      startedAt: '2026-08-11T18:00:00.000Z',
+      durationMs: 19,
+    };
+    retry?.observeRequest('direct')(request);
+    expect(retry?.succeed({
+      route: 'direct',
+      result: {
+        url: TARGET_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        observedRequests: [request],
+      },
+    })).toBe(true);
+
+    const stored = getStoredOAuthTrace(TARGET_URL, sessionStorage);
+    expect(stored).toMatchObject({
+      traceId: originalTraceId,
+      outcome: { status: 'authorized' },
+      events: expect.arrayContaining([expect.objectContaining({
+        type: 'mcp_retry',
+        outcome: 'succeeded',
+        request: { method: 'POST', url: request.url },
+        response: { status: 200, metadata: expect.any(Object) },
+        timing: { startedAt: request.startedAt, durationMs: 19 },
+      })]),
+    });
+    expect(stored?.authenticatedMcpRetry).toBeUndefined();
   });
 
   it('keeps recording in memory when trace persistence fails', () => {

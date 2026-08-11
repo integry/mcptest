@@ -293,7 +293,9 @@ const ReportView: React.FC = () => {
     }));
 
     try {
-      const result = await beginOAuthFlow(authenticationUrl);
+      const result = await beginOAuthFlow(authenticationUrl, {
+        deferAuthorizedTraceOutcome: true,
+      });
       if (result === 'AUTHORIZED') {
         await handleRunReportRef.current?.(authenticationUrl);
       }

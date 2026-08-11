@@ -62,7 +62,11 @@ import {
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
 } from './utils/oauthFlow';
-import { recordOAuthAuthenticationChallenge } from './utils/oauthTrace';
+import {
+  recordOAuthAuthenticationChallenge,
+  resumePendingAuthenticatedMcpRetry,
+  type PendingAuthenticatedMcpRetry,
+} from './utils/oauthTrace';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -115,6 +119,20 @@ export const classifySavedCardAuthenticationFailure = (
   const status = getAuthenticationHttpStatus(error);
   return status ? { status, source: 'target' } : undefined;
 };
+
+export const resumeSavedCardAuthenticatedMcpRetry = (
+  serverUrl: string,
+  oauthToken: string | undefined,
+  storage: Pick<Storage, 'getItem' | 'setItem'> = sessionStorage,
+  startedAt = Date.now()
+): PendingAuthenticatedMcpRetry | undefined => oauthToken
+  ? resumePendingAuthenticatedMcpRetry({
+      targetUrl: serverUrl,
+      storage,
+      operation: 'saved-card execution',
+      startedAt,
+    })
+  : undefined;
 
 // Helper function to get the initial theme
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -1281,6 +1299,7 @@ function App() {
     let activeConnection: Awaited<ReturnType<typeof attemptParallelConnections>> | null = null;
     let lastError: any = null;
     let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
+    let pendingOAuthRetry: PendingAuthenticatedMcpRetry | undefined;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const cardAttemptStartedAt = Date.now();
@@ -1294,6 +1313,12 @@ function App() {
         // --- Connection and Request Logic ---
         // Use only the exact resource's issuer-bound SDK token.
         const oauthToken = loadOAuthAuthorization(card.serverUrl)?.accessToken;
+        pendingOAuthRetry = pendingOAuthRetry || resumeSavedCardAuthenticatedMcpRetry(
+          card.serverUrl,
+          oauthToken,
+          sessionStorage,
+          cardAttemptStartedAt
+        );
         const proxyUrl = import.meta.env.VITE_PROXY_URL;
         const proxySelected = Boolean(
           proxyUrl && (card.useProxy !== undefined ? card.useProxy : !oauthToken)
@@ -1322,7 +1347,9 @@ function App() {
           undefined,
           connectionPlan.authToken,
           connectionPlan.targetHeaders,
-          connectionPlan.usesProxy
+          connectionPlan.usesProxy,
+          undefined,
+          pendingOAuthRetry?.observeRequest(connectionPlan.usesProxy ? 'proxy' : 'direct')
         );
         tempClient = activeConnection.client;
         console.log(
@@ -1341,6 +1368,10 @@ function App() {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
             setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.contents, responseType: 'resource_result', error: null }));
         }
+        pendingOAuthRetry?.succeed({
+          route: connectionPlan.usesProxy ? 'proxy' : 'direct',
+          result: activeConnection,
+        });
         // --- Success: Break the retry loop ---
         break;
 
@@ -1371,7 +1402,12 @@ function App() {
           );
           const isTargetAuthError = authenticationChallenge?.source === 'target';
           const isProxyAuthError = authenticationChallenge?.source === 'proxy';
-          if (authenticationChallenge) {
+          const finalizedPendingRetry = pendingOAuthRetry?.fail({
+            route: shouldUseProxy ? 'proxy' : 'direct',
+            error: err,
+            ...(activeConnection ? { result: activeConnection } : {}),
+          });
+          if (authenticationChallenge && !finalizedPendingRetry) {
             const trace = recordOAuthAuthenticationChallenge({
               targetUrl: card.serverUrl,
               status: authenticationChallenge.status,
@@ -1470,7 +1506,10 @@ function App() {
     }));
 
     try {
-      const result = await beginOAuthFlow(serverUrl, { forceReauthorization: true });
+      const result = await beginOAuthFlow(serverUrl, {
+        forceReauthorization: true,
+        deferAuthorizedTraceOutcome: true,
+      });
       if (result === 'AUTHORIZED') await handleExecuteCard(spaceId, cardId);
     } catch (error) {
       if (isOAuthClientConfigurationRequired(error)) {

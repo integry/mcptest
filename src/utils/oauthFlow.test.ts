@@ -13,7 +13,10 @@ import {
   prepareManualOAuthClient,
   saveManualOAuthClient,
 } from './oauthFlow';
-import { getStoredOAuthTrace } from './oauthTrace';
+import {
+  getStoredOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+} from './oauthTrace';
 
 const SERVER_URL = 'https://mcp.example/mcp';
 const ISSUER_A = 'https://auth-a.example/';
@@ -416,6 +419,28 @@ describe('OAuth callback completion', () => {
 });
 
 describe('OAuth flight recorder integration', () => {
+  it('defers challenge-driven synchronous authorization until the MCP retry completes', async () => {
+    recordOAuthAuthenticationChallenge({
+      targetUrl: SERVER_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn().mockResolvedValue('AUTHORIZED'),
+      redirect: vi.fn(),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('AUTHORIZED');
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+    expect(trace?.outcome).toBeUndefined();
+  });
+
   it('records successful CIMD selection and authorization redirect', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
 

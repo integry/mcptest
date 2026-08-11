@@ -593,7 +593,9 @@ export const beginOAuthFlow = async (
     });
     if (result === 'AUTHORIZED') {
       provider.syncLegacyTokens();
-      if (!options.deferAuthorizedTraceOutcome) {
+      if (options.deferAuthorizedTraceOutcome && trace.hasEvent('target_challenge')) {
+        trace.setAuthenticatedMcpRetryState('pending');
+      } else if (!options.deferAuthorizedTraceOutcome) {
         trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
       }
     } else {

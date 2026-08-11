@@ -1,4 +1,9 @@
-import type { FetchLike } from '@modelcontextprotocol/client';
+import type { FetchLike, ProtocolEra } from '@modelcontextprotocol/client';
+import {
+  getObservedAuthenticationChallenge,
+  type ObservedTransportRequest,
+} from './transportDetection';
+import type { TransportType } from '../types';
 
 export const OAUTH_TRACE_VERSION = 1 as const;
 export const OAUTH_TRACE_STORAGE_PREFIX = 'mcp_oauth_trace_v1:';
@@ -97,8 +102,47 @@ type OAuthTraceEventInput = Omit<OAuthTraceEventV1, 'sequence' | 'timestamp'> & 
   timestamp?: string;
 };
 
-const SENSITIVE_KEY = /^(?:authorization|proxy-authorization|x-mcp-authorization|dpop|cookie|set-cookie|x-api-key|x_api_key|api-key|api_key|apikey|key|code|authorization_code|access_token|refresh_token|id_token|registration_access_token|token|client_secret|code_verifier|verifier|state|nonce|csrf|session|session_id|sessionid|credential|assertion|client_assertion|request_uri|password|secret)$/i;
-const SENSITIVE_TEXT_KEY = '(?:authorization|proxy-authorization|x-mcp-authorization|dpop|cookie|set-cookie|x-api-key|x_api_key|api-key|api_key|apikey|key|code|authorization_code|access_token|refresh_token|id_token|registration_access_token|token|client_secret|code_verifier|verifier|state|nonce|csrf|session|session_id|sessionid|credential|assertion|client_assertion|request|request_uri|password|secret)';
+const SENSITIVE_CANONICAL_KEYS = new Set([
+  'authorization',
+  'proxyauthorization',
+  'xmcpauthorization',
+  'dpop',
+  'cookie',
+  'setcookie',
+  'xapikey',
+  'apikey',
+  'key',
+  'code',
+  'authorizationcode',
+  'devicecode',
+  'usercode',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'idtokenhint',
+  'registrationaccesstoken',
+  'token',
+  'clientsecret',
+  'codeverifier',
+  'verifier',
+  'state',
+  'nonce',
+  'csrf',
+  'session',
+  'sessionid',
+  'credential',
+  'assertion',
+  'clientassertion',
+  'requesturi',
+  'password',
+  'secret',
+]);
+const canonicalizeSensitiveKey = (key: string): string => key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+const isSensitiveKey = (key: string): boolean => (
+  SENSITIVE_CANONICAL_KEYS.has(canonicalizeSensitiveKey(key))
+);
+const KEY_SEPARATOR = '[-_]?';
+const SENSITIVE_TEXT_KEY = `(?:authorization|proxy${KEY_SEPARATOR}authorization|x${KEY_SEPARATOR}mcp${KEY_SEPARATOR}authorization|dpop|cookie|set${KEY_SEPARATOR}cookie|x${KEY_SEPARATOR}api${KEY_SEPARATOR}key|api${KEY_SEPARATOR}key|key|code|authorization${KEY_SEPARATOR}code|device${KEY_SEPARATOR}code|user${KEY_SEPARATOR}code|access${KEY_SEPARATOR}token|refresh${KEY_SEPARATOR}token|id${KEY_SEPARATOR}token(?:${KEY_SEPARATOR}hint)?|registration${KEY_SEPARATOR}access${KEY_SEPARATOR}token|token|client${KEY_SEPARATOR}secret|code${KEY_SEPARATOR}verifier|verifier|state|nonce|csrf|session(?:${KEY_SEPARATOR}id)?|credential|assertion|client${KEY_SEPARATOR}assertion|request(?:${KEY_SEPARATOR}uri)?|password|secret)`;
 export const OAUTH_TRACE_REDACTED = '[REDACTED]';
 
 const storageKeyForTarget = (targetUrl: string): string => (
@@ -113,35 +157,40 @@ const makeTraceId = (): string => {
 };
 
 const redactTextPatterns = (value: string): string => {
-  let redacted = value
-    // Form/query, decoded nested, and header-style assignments. The leading
-    // boundary deliberately includes the start of the string so values such
-    // as `error_description=access_token=...` are safe after URL decoding.
-    .replace(
-      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(\\s*=\\s*)(?:"[^"]*"|'[^']*'|[^&#;,\\r\\n\\s]*)`, 'gi'),
-      `$1$2$3${OAUTH_TRACE_REDACTED}`
-    )
-    .replace(
-      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(\\s*:\\s*)[^;,\\r\\n]*`, 'gi'),
-      `$1$2$3${OAUTH_TRACE_REDACTED}`
-    )
-    // Values can still contain an encoded assignment after URLSearchParams
-    // has decoded an outer layer (for example access_token%3Dsecret).
-    .replace(
-      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(%3d)(.*?)(?=%26|[&#;,\\s]|$)`, 'gi'),
-      `$1$2$3${OAUTH_TRACE_REDACTED}`
-    )
-    .replace(new RegExp(`("${SENSITIVE_TEXT_KEY}"\\s*:\\s*")[^"]*`, 'gi'), `$1${OAUTH_TRACE_REDACTED}`)
-    .replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, `$1 ${OAUTH_TRACE_REDACTED}`);
+  let redacted = value;
+  const boundary = `(^|[?&;,\\s=:'"\\[\\]{}()])`;
+  const decodedAssignment = new RegExp(
+    `${boundary}(${SENSITIVE_TEXT_KEY})(\\s*=\\s*)(?:"[^"]*"|'[^']*'|[^&#;,\\r\\n\\s"'\\]\\}]*)`,
+    'gi'
+  );
+  const colonAssignment = new RegExp(
+    `${boundary}(${SENSITIVE_TEXT_KEY})(\\s*:\\s*)(?:"[^"]*"|'[^']*'|[^;,\\r\\n\\]\\}]*)`,
+    'gi'
+  );
+  const encodedAssignment = new RegExp(
+    `${boundary}(${SENSITIVE_TEXT_KEY})(%3d|%253d)(.*?)(?=%2526|%26|[&#;,\\s"'\\]\\}]|$)`,
+    'gi'
+  );
+  const redactAssignment = (
+    match: string,
+    prefix: string,
+    key: string,
+    separator: string
+  ): string => (
+    match.includes(OAUTH_TRACE_REDACTED) || /%5bREDACTED%5d/i.test(match)
+      ? match
+      : `${prefix}${key}${separator}${OAUTH_TRACE_REDACTED}`
+  );
 
-  // A decoded nested value can itself contain one additional encoded layer.
-  // Repeating is bounded and idempotent while covering common double-encoded
-  // callback error descriptions without retaining the credential text.
-  for (let pass = 0; pass < 2; pass += 1) {
-    const next = redacted.replace(
-      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(%253d)(.*?)(?=%2526|%26|[&#;,\\s]|$)`, 'gi'),
-      `$1$2$3${OAUTH_TRACE_REDACTED}`
-    );
+  // Nested OAuth errors can contain several assignment layers. Re-run a
+  // bounded, idempotent pass so delimiters exposed by one replacement cannot
+  // shield a credential deeper in the same explanation or metadata value.
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = redacted
+      .replace(decodedAssignment, redactAssignment)
+      .replace(colonAssignment, redactAssignment)
+      .replace(encodedAssignment, redactAssignment)
+      .replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, `$1 ${OAUTH_TRACE_REDACTED}`);
     if (next === redacted) break;
     redacted = next;
   }
@@ -168,7 +217,7 @@ export const sanitizeOAuthTraceUrl = (
     url.hash = '';
 
     for (const [key, queryValue] of [...url.searchParams.entries()]) {
-      if (SENSITIVE_KEY.test(key)) {
+      if (isSensitiveKey(key)) {
         url.searchParams.set(key, OAUTH_TRACE_REDACTED);
       } else if (key === 'target' || key === 'redirect_uri' || key === 'resource') {
         try {
@@ -192,7 +241,7 @@ const sanitizeValue = (
   key?: string,
   seen = new WeakSet<object>()
 ): unknown => {
-  if (key && SENSITIVE_KEY.test(key)) return OAUTH_TRACE_REDACTED;
+  if (key && isSensitiveKey(key)) return OAUTH_TRACE_REDACTED;
   if (typeof value === 'string') {
     if (key && /url|uri|endpoint|issuer|resource/i.test(key)) {
       return sanitizeOAuthTraceUrl(value, secrets);
@@ -388,6 +437,10 @@ export class OAuthFlightRecorder {
     return this.trace.authenticatedMcpRetry?.phase === 'pending';
   }
 
+  hasAuthenticatedMcpRetryState(): boolean {
+    return Boolean(this.trace.authenticatedMcpRetry);
+  }
+
   terminal(status: OAuthTraceTerminalStatus, explanation: string): void {
     const outcome: OAuthTraceTerminalOutcome = {
       status,
@@ -475,7 +528,16 @@ export const recordOAuthAuthenticationChallenge = ({
   requestUrl,
   timing,
 }: RecordOAuthAuthenticationChallengeOptions): OAuthFlightRecorder => {
-  const recorder = createOAuthFlightRecorder({ targetUrl, storage });
+  const existing = storage
+    ? resumeOAuthFlightRecorder(targetUrl, storage)
+    : undefined;
+  // Preserve an in-flight redirect/retry record. A concurrent challenge may
+  // still be traced in memory by its caller, but must not replace or mutate
+  // the stored flight that owns the pending marker.
+  const recorder = createOAuthFlightRecorder({
+    targetUrl,
+    ...(existing?.hasAuthenticatedMcpRetryState() ? {} : { storage }),
+  });
   recorder.record({
     type: 'target_challenge',
     outcome: 'challenged',
@@ -513,6 +575,173 @@ export const resumeOAuthFlightRecorder = (
 ): OAuthFlightRecorder | undefined => {
   const trace = getStoredOAuthTrace(targetUrl, storage);
   return trace ? new OAuthFlightRecorder(trace, storage) : undefined;
+};
+
+export interface AuthenticatedMcpRetryResult {
+  url: string;
+  transportType: TransportType;
+  protocolEra: ProtocolEra;
+  protocolVersion?: string;
+  observedRequests?: readonly ObservedTransportRequest[];
+}
+
+export interface PendingAuthenticatedMcpRetryOptions {
+  targetUrl: string;
+  storage: OAuthStorage;
+  protocolEraHint?: string;
+  operation: string;
+  startedAt?: number;
+}
+
+interface FinalizeAuthenticatedMcpRetryOptions {
+  route: 'direct' | 'proxy';
+  error?: unknown;
+  result?: AuthenticatedMcpRetryResult;
+  observedRequest?: ObservedTransportRequest;
+}
+
+export class PendingAuthenticatedMcpRetry {
+  private readonly observedRequests: Array<{
+    route: 'direct' | 'proxy';
+    request: ObservedTransportRequest;
+  }> = [];
+  private finalized = false;
+
+  constructor(
+    private recorder: OAuthFlightRecorder,
+    private readonly targetUrl: string,
+    private readonly storage: OAuthStorage,
+    private readonly operation: string,
+    private readonly protocolEraHint?: string,
+    private readonly startedAt = Date.now()
+  ) {}
+
+  observeRequest(route: 'direct' | 'proxy'): (request: ObservedTransportRequest) => void {
+    return (request) => {
+      if (!this.finalized) this.observedRequests.push({ route, request });
+    };
+  }
+
+  succeed(options: Omit<FinalizeAuthenticatedMcpRetryOptions, 'error'>): boolean {
+    return this.finalize('succeeded', options);
+  }
+
+  fail(options: FinalizeAuthenticatedMcpRetryOptions): boolean {
+    return this.finalize('failed', options);
+  }
+
+  private latestRecorder(): OAuthFlightRecorder | undefined {
+    const stored = resumeOAuthFlightRecorder(this.targetUrl, this.storage);
+    if (!stored?.hasPendingAuthenticatedMcpRetry()) return undefined;
+    if (stored.snapshot().traceId !== this.recorder.snapshot().traceId) return undefined;
+    this.recorder = stored;
+    return stored;
+  }
+
+  private selectRequest({
+    route,
+    error,
+    result,
+    observedRequest,
+  }: FinalizeAuthenticatedMcpRetryOptions): ObservedTransportRequest | undefined {
+    if (observedRequest) return observedRequest;
+    const challenge = error ? getObservedAuthenticationChallenge(error) : undefined;
+    const requests = result?.observedRequests?.length
+      ? [...result.observedRequests]
+      : this.observedRequests
+        .filter((entry) => entry.route === route)
+        .map(({ request }) => request);
+    if (challenge?.method && challenge.requestUrl) {
+      const matchingChallenge = [...requests].reverse().find((request) => (
+        request.method === challenge.method && request.url === challenge.requestUrl
+      ));
+      if (matchingChallenge) return matchingChallenge;
+    }
+    return [...requests].reverse().find((request) => request.outcome !== 'started')
+      || [...requests].reverse()[0];
+  }
+
+  private finalize(
+    outcome: 'succeeded' | 'failed',
+    options: FinalizeAuthenticatedMcpRetryOptions
+  ): boolean {
+    if (this.finalized) return false;
+    const recorder = this.latestRecorder();
+    if (!recorder) return false;
+
+    const challenge = options.error
+      ? getObservedAuthenticationChallenge(options.error)
+      : undefined;
+    const request = this.selectRequest(options);
+    const method = request?.method || challenge?.method;
+    const requestUrl = request?.url || challenge?.requestUrl;
+    const status = request?.status ?? challenge?.status;
+    const startedAt = request?.startedAt || challenge?.startedAt
+      || new Date(this.startedAt).toISOString();
+    const durationMs = request?.durationMs ?? challenge?.durationMs
+      ?? Math.max(0, Date.now() - this.startedAt);
+    const errorType = options.error instanceof Error
+      ? options.error.name
+      : options.error === undefined
+        ? undefined
+        : 'UnknownError';
+
+    recorder.record({
+      type: 'mcp_retry',
+      outcome,
+      provenance: options.route === 'direct' ? 'direct_target' : 'authenticated_proxy',
+      route: options.route,
+      explanation: outcome === 'succeeded'
+        ? `The authenticated MCP retry for ${this.operation} succeeded on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}.`
+        : `The authenticated MCP retry for ${this.operation} failed on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`,
+      ...(method && requestUrl ? { request: { method, url: requestUrl } } : {}),
+      response: {
+        ...(status !== undefined ? { status } : {}),
+        metadata: {
+          protocolEraHint: this.protocolEraHint || 'automatic',
+          ...(options.result ? {
+            transportType: options.result.transportType,
+            protocolEra: options.result.protocolEra,
+            protocolVersion: options.result.protocolVersion,
+          } : {}),
+          ...(request?.transportType ? { candidateTransportType: request.transportType } : {}),
+          ...(errorType ? { errorType } : {}),
+        },
+      },
+      timing: { startedAt, durationMs },
+    });
+    recorder.terminal(
+      outcome === 'succeeded' ? 'authorized' : 'failed',
+      outcome === 'succeeded'
+        ? `OAuth authorization and the authenticated MCP retry for ${this.operation} completed successfully.`
+        : `OAuth authorization completed, but the authenticated MCP retry for ${this.operation} failed${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`
+    );
+    this.finalized = true;
+    return true;
+  }
+}
+
+/** Resumes only the pending retry stored under this exact sanitized target. */
+export const resumePendingAuthenticatedMcpRetry = ({
+  targetUrl,
+  storage,
+  protocolEraHint,
+  operation,
+  startedAt,
+}: PendingAuthenticatedMcpRetryOptions): PendingAuthenticatedMcpRetry | undefined => {
+  const recorder = resumeOAuthFlightRecorder(targetUrl, storage);
+  if (!recorder?.hasPendingAuthenticatedMcpRetry()) return undefined;
+  if (recorder.snapshot().targetUrl !== sanitizeOAuthTraceUrl(new URL(targetUrl).toString())) {
+    return undefined;
+  }
+  return new PendingAuthenticatedMcpRetry(
+    recorder,
+    targetUrl,
+    storage,
+    operation,
+    protocolEraHint,
+    startedAt
+  );
 };
 
 /** A fetch wrapper that records only sanitized request/response facts, never bodies. */

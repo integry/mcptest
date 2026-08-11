@@ -1,11 +1,21 @@
-import { describe, expect, it } from 'vitest';
-import { classifySavedCardAuthenticationFailure } from './App';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  classifySavedCardAuthenticationFailure,
+  resumeSavedCardAuthenticatedMcpRetry,
+} from './App';
 import {
   ProxiedAuthenticationError,
   TransportConnectionError,
 } from './utils/transportDetection';
+import {
+  getStoredOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+} from './utils/oauthTrace';
 
 describe('saved card authentication failures', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
   it('does not request OAuth for a direct JSON-RPC Forbidden application error', () => {
     const error = new Error('MCP error -32000: Forbidden operation');
 
@@ -68,4 +78,62 @@ describe('saved card authentication failures', () => {
 
     expect(classifySavedCardAuthenticationFailure(ambiguousError, true)).toBeUndefined();
   });
+
+  it.each([
+    ['successful', 'succeeded', 200, 'authorized'],
+    ['failed', 'failed', 503, 'failed'],
+  ] as const)(
+    'finalizes a %s saved-card post-callback retry with its actual request evidence',
+    (_label, retryOutcome, status, terminalStatus) => {
+      const endpoint = `https://${retryOutcome}-saved-card.example/mcp`;
+      const trace = recordOAuthAuthenticationChallenge({
+        targetUrl: endpoint,
+        status: 401,
+        source: 'target',
+        route: 'direct',
+        storage: sessionStorage,
+      });
+      trace.setAuthenticatedMcpRetryState('pending');
+      const retry = resumeSavedCardAuthenticatedMcpRetry(
+        endpoint,
+        'oauth-access-token',
+        sessionStorage
+      );
+      const request = {
+        method: 'POST',
+        url: `${endpoint}?operation=tools-call`,
+        status,
+        outcome: retryOutcome,
+        startedAt: '2026-08-11T18:30:00.000Z',
+        durationMs: 38,
+        transportType: 'streamable-http' as const,
+      };
+      retry?.observeRequest('direct')(request);
+
+      if (retryOutcome === 'succeeded') {
+        retry?.succeed({
+          route: 'direct',
+          result: {
+            url: endpoint,
+            transportType: 'streamable-http',
+            protocolEra: 'modern',
+            observedRequests: [request],
+          },
+        });
+      } else {
+        retry?.fail({ route: 'direct', error: new Error('Saved-card tool call failed') });
+      }
+
+      const stored = getStoredOAuthTrace(endpoint, sessionStorage);
+      expect(stored?.events.find(({ type }) => type === 'mcp_retry')).toMatchObject({
+        outcome: retryOutcome,
+        route: 'direct',
+        request: { method: 'POST', url: request.url },
+        response: { status },
+        timing: { startedAt: request.startedAt, durationMs: 38 },
+      });
+      expect(stored?.outcome?.status).toBe(terminalStatus);
+      expect(stored?.authenticatedMcpRetry).toBeUndefined();
+    }
+  );
 });
