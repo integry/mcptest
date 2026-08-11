@@ -8,6 +8,7 @@ import {
   getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
+  prepareManualOAuthClient,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
@@ -368,11 +369,10 @@ const ReportView: React.FC = () => {
       const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
         ? oauthChallengeRef.current
         : undefined;
-      const result = await beginOAuthFlow(authenticationUrl, {
+      await prepareManualOAuthClient(authenticationUrl, {
         ...(challenge?.resourceMetadataUrl
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
-        ...(challenge?.scope ? { scope: challenge.scope } : {}),
         ...(proxyUrl && discoveryProxyToken
           ? {
               discoveryProxy: {
@@ -381,11 +381,9 @@ const ReportView: React.FC = () => {
               },
             }
           : {}),
-        deferAuthorizedTraceOutcome: true,
       });
-      if (result === 'AUTHORIZED') {
-        await handleRunReportRef.current?.(authenticationUrl);
-      }
+      setOAuthConfigServerUrl(authenticationUrl);
+      setOAuthPrerequisite(null);
     } catch (error) {
       const prerequisite = getOAuthPrerequisite(error);
       if (isOAuthClientConfigurationRequired(error) || prerequisite) {

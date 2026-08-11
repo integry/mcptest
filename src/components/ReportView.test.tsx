@@ -7,6 +7,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 const oauthMocks = vi.hoisted(() => ({
   begin: vi.fn(),
+  prepare: vi.fn(),
 }));
 const evaluationMocks = vi.hoisted(() => ({
   evaluate: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
   return {
     ...actual,
     beginOAuthFlow: oauthMocks.begin,
+    prepareManualOAuthClient: oauthMocks.prepare,
   };
 });
 
@@ -48,7 +50,6 @@ vi.mock('../utils/evaluation', async (importOriginal) => {
 });
 
 import ReportView from './ReportView';
-import { OAuthPrerequisiteError, type OAuthPrerequisite } from '../utils/oauthFlow';
 
 beforeAll(() => {
   (
@@ -65,6 +66,7 @@ describe('ReportView OAuth discovery', () => {
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
     authMocks.getIdToken.mockReset().mockResolvedValue('firebase-session-token');
     oauthMocks.begin.mockReset().mockResolvedValue('REDIRECT');
+    oauthMocks.prepare.mockReset().mockResolvedValue(undefined);
     evaluationMocks.evaluate.mockReset().mockResolvedValue({
       serverUrl: 'https://api.githubcopilot.com/mcp/',
       authenticationUrl: 'https://api.githubcopilot.com/mcp/',
@@ -233,10 +235,10 @@ describe('ReportView OAuth discovery', () => {
       }
       return new Response('Not found', { status: 404 });
     }));
-    const { beginOAuthFlow: actualBeginOAuthFlow } = await vi.importActual<
+    const { prepareManualOAuthClient: actualPrepareManualOAuthClient } = await vi.importActual<
       typeof import('../utils/oauthFlow')
     >('../utils/oauthFlow');
-    oauthMocks.begin.mockImplementationOnce(actualBeginOAuthFlow);
+    oauthMocks.prepare.mockImplementationOnce(actualPrepareManualOAuthClient);
 
     const container = document.createElement('div');
     root = createRoot(container);
@@ -260,28 +262,17 @@ describe('ReportView OAuth discovery', () => {
     expect(directCalls).toContain(metadataUrl);
     expect(directCalls).toContain(authorizationMetadataUrl);
     expect(proxyTargets).toEqual([authorizationMetadataUrl]);
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Configure an existing client');
     expect(container.querySelector('#clientId')).not.toBeNull();
   });
 
-  it('shows provider-approval guidance instead of client fields when Figma rejects registration', async () => {
+  it('does not launch automatic registration or redirect from the registered-client action', async () => {
     const target = 'https://mcp.figma.com/mcp';
     const resourceMetadataUrl = 'https://mcp.figma.com/.well-known/oauth-protected-resource';
-    const prerequisite: OAuthPrerequisite = {
-      kind: 'provider_approval_required',
-      serverUrl: target,
-      providerName: 'Figma',
-      explanation: 'Figma requires provider approval before mcptest.io can continue.',
-      issuer: 'https://api.figma.com',
-      registrationEndpoint: 'https://api.figma.com/v1/oauth/mcp/register',
-      documentationUrl: 'https://developers.figma.com/docs/figma-mcp-server/',
-      requiredScopes: ['file_content:read'],
-      pkceS256: true,
-      publicClientSecretSupported: 'unknown',
-      canConfigureClient: false,
-      failedStage: 'dynamic client registration',
-      httpStatus: 403,
-    };
+    const issuer = 'https://api.figma.com';
+    const registrationEndpoint = 'https://api.figma.com/v1/oauth/mcp/register';
+    const calls: Array<{ method: string; url: string }> = [];
     evaluationMocks.evaluate.mockResolvedValueOnce({
       serverUrl: target,
       authenticationUrl: target,
@@ -299,7 +290,32 @@ describe('ReportView OAuth discovery', () => {
         },
       },
     });
-    oauthMocks.begin.mockRejectedValueOnce(new OAuthPrerequisiteError(prerequisite));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ method: init?.method || 'GET', url });
+      if (url === resourceMetadataUrl) {
+        return new Response(JSON.stringify({
+          resource: target,
+          authorization_servers: [issuer],
+          scopes_supported: ['file_content:read'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+        return new Response(JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          registration_endpoint: registrationEndpoint,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('Not found', { status: 404 });
+    }));
+    const { prepareManualOAuthClient: actualPrepareManualOAuthClient } = await vi.importActual<
+      typeof import('../utils/oauthFlow')
+    >('../utils/oauthFlow');
+    oauthMocks.prepare.mockImplementationOnce(actualPrepareManualOAuthClient);
 
     const container = document.createElement('div');
     root = createRoot(container);
@@ -320,13 +336,16 @@ describe('ReportView OAuth discovery', () => {
       configureButton?.click();
     });
 
-    expect(oauthMocks.begin).toHaveBeenCalledWith(target, expect.objectContaining({
+    expect(oauthMocks.prepare).toHaveBeenCalledWith(target, expect.objectContaining({
       resourceMetadataUrl,
-      scope: 'file_content:read',
-      deferAuthorizedTraceOutcome: true,
+      discoveryProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-session-token',
+      },
     }));
-    expect(container.textContent).toContain('Figma approval is required');
-    expect(container.textContent).toContain('Supplying arbitrary client credentials is not expected');
-    expect(container.querySelector('#clientId')).toBeNull();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(calls).not.toContainEqual({ method: 'POST', url: registrationEndpoint });
+    expect(container.textContent).toContain('Configure an existing client');
+    expect(container.querySelector('#clientId')).not.toBeNull();
   });
 });

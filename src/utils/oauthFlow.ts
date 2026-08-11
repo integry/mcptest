@@ -278,10 +278,6 @@ const registrationFailureCategory = (
   const errorCode = typeof details.error === 'string'
     ? details.error.toLowerCase()
     : '';
-  if (['invalid_client_metadata', 'invalid_redirect_uri', 'invalid_software_statement'].includes(errorCode)) {
-    return 'invalid_metadata';
-  }
-
   const responseText = ['error_description', 'message', 'detail']
     .map((field) => details[field])
     .filter((value): value is string => typeof value === 'string')
@@ -298,6 +294,10 @@ const registrationFailureCategory = (
   const hasExplicitApprovalEvidence = /(?:\b(?:the\s+|this\s+)?(?:client|software)(?:\s+(?:application|statement))?\s+(?:approval\s+(?:is\s+)?required|requires?\s+(?:provider\s+)?approval|(?:is\s+)?not\s+approved)\b|\b(?:provider\s+)?approval\s+(?:is\s+)?required\s+for\s+(?:the\s+|this\s+)?(?:client|software)\b|\bunapproved\s+(?:client|software(?:\s+statement)?)\b|\bnot\s+(?:on|in)\s+(?:the\s+)?(?:allow|white)\s*list\b|\b(?:allow|white)\s*list\s+access\s+(?:is\s+)?required\b)/i;
   if (hasExplicitApprovalEvidence.test(responseText) || hasExplicitApprovalEvidence.test(approvalCode)) {
     return 'approval_policy';
+  }
+
+  if (['invalid_client_metadata', 'invalid_redirect_uri', 'invalid_software_statement'].includes(errorCode)) {
+    return 'invalid_metadata';
   }
 
   if (details.responseFormat === 'non-json') return 'malformed_response';

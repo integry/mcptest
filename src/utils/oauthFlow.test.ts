@@ -1071,7 +1071,7 @@ describe('OAuth provider interoperability matrix', () => {
       : {}),
   });
 
-  it('follows Figma challenge metadata to api.figma.com and classifies rejected DCR as approval-required', async () => {
+  it('classifies explicit Figma approval evidence ahead of an invalid-client-metadata code', async () => {
     const target = 'https://mcp.figma.com/mcp';
     const resourceMetadataUrl = 'https://mcp.figma.com/.well-known/oauth-protected-resource';
     const issuer = 'https://api.figma.com';
@@ -1092,7 +1092,7 @@ describe('OAuth provider interoperability matrix', () => {
       }
       if (url === registrationEndpoint && init?.method === 'POST') {
         return jsonResponse({
-          error: 'access_denied',
+          error: 'invalid_client_metadata',
           error_description: 'This software requires provider approval',
         }, { status: 403 });
       }
@@ -1129,7 +1129,7 @@ describe('OAuth provider interoperability matrix', () => {
         outcome: 'failed',
         response: expect.objectContaining({
           status: 403,
-          metadata: expect.objectContaining({ error: 'access_denied' }),
+          metadata: expect.objectContaining({ error: 'invalid_client_metadata' }),
         }),
       }),
     ]));
