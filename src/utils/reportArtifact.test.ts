@@ -830,6 +830,76 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts decoded sensitive keys in embedded and JSON-escaped fragments', () => {
+    const embeddedJson = String.raw`error body: {"access token":"space-key-secret","api.key":"punctuation-key-secret","access\u0020token":"escaped-key-secret"} after response`;
+    const escapedJson = String.raw`error body: {\"oauth credential\":\"escaped-fragment-secret\"} after response`;
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      text: embeddedJson,
+      context: escapedJson,
+      metadata: { embeddedJson, escapedJson },
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    expect(JSON.stringify(artifact)).not.toMatch(
+      /space-key-secret|punctuation-key-secret|escaped-key-secret|escaped-fragment-secret/
+    );
+
+    const directlyConstructed = createPublicReport(publicReport(), FIXED_OPTIONS);
+    directlyConstructed.sections[0].evidence[0] = {
+      message: embeddedJson,
+      context: escapedJson,
+      metadata: { embeddedJson, escapedJson },
+    };
+
+    for (const output of [
+      serializePublicReportJson(directlyConstructed),
+      serializePublicReportMarkdown(directlyConstructed),
+    ]) {
+      expect(output).not.toMatch(
+        /space-key-secret|punctuation-key-secret|escaped-key-secret|escaped-fragment-secret/
+      );
+      expect(output).toContain('REDACTED');
+      expect(output).toContain('after response');
+    }
+  });
+
+  it('redacts unmatched quotes inside credential assignments and URL values', () => {
+    const apostropheAssignment = "password=apostrophe'secret-suffix";
+    const quoteAssignment = 'client_secret=quote"secret-suffix';
+    const apostropheUrl = "https://client.example/callback?access_token=url-apostrophe'secret-suffix&visible=yes";
+    const quoteUrl = 'https://client.example/callback?password=url-quote"secret-suffix&visible=yes';
+
+    expect(redactReportString(apostropheAssignment)).toBe('password=[REDACTED]');
+    expect(redactReportString(quoteAssignment)).toBe('client_secret=[REDACTED]');
+    expect(redactReportString(apostropheUrl)).not.toContain("'secret-suffix");
+    expect(redactReportString(quoteUrl)).not.toContain('"secret-suffix');
+
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      text: apostropheAssignment,
+      context: quoteAssignment,
+      metadata: { apostropheUrl, quoteUrl },
+    };
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+
+    const directlyConstructed = createPublicReport(publicReport(), FIXED_OPTIONS);
+    directlyConstructed.sections[0].evidence[0] = {
+      message: apostropheAssignment,
+      context: quoteAssignment,
+      metadata: { apostropheUrl, quoteUrl },
+    };
+
+    for (const output of [
+      JSON.stringify(artifact),
+      serializePublicReportJson(directlyConstructed),
+      serializePublicReportMarkdown(directlyConstructed),
+    ]) {
+      expect(output).not.toContain('secret-suffix');
+      expect(output).toContain('REDACTED');
+    }
+  });
+
   it('redacts complete unquoted authorization assignments in every export path', () => {
     const assignments = [
       'authorization=Bearer bearer-assignment-secret',
@@ -1145,6 +1215,28 @@ describe('versioned public report artifacts', () => {
         { route: 'authenticated-proxy', result: 'failed' },
       ],
     });
+  });
+
+  it('exports mixed evaluated and skipped legacy evidence as a partial section', () => {
+    const report = publicReport();
+    report.outcome = undefined;
+    report.finalScore = 53;
+    report.sections.capabilities = section('Capabilities', 8, 10, {}, {
+      details: [
+        { text: '✓ Tool discovery completed.' },
+        { text: '⚠ Resource checks were skipped after the connection closed.' },
+      ],
+    });
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const capabilities = artifact.sections.find(({ id }) => id === 'capabilities');
+
+    expect(artifact.outcome.status).toBe('partial');
+    expect(artifact.score).toBeNull();
+    expect(capabilities?.status).toBe('partial');
+    expect(capabilities?.score.earned).toBe(8);
+    expect(serializePublicReportJson(artifact)).toContain('"status": "partial"');
+    expect(serializePublicReportMarkdown(artifact)).toContain('Not scored.');
   });
 
   it('keeps a fully evaluated scored report when evidence mentions a failed alternate attempt', () => {

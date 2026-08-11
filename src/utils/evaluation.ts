@@ -100,12 +100,21 @@ export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
 );
 
+const isLegacyIncompleteEvaluationDetail = (detail: DetailItem): boolean => (
+  /^⚠/.test(detail.text)
+  && /skipped|not scored|no standard MCP transport|could not be isolated|negotiation failed/i.test(
+    `${detail.text} ${detail.context || ''}`
+  )
+);
+
+export const hasLegacyIncompleteEvaluationEvidence = (section: EvaluationSection): boolean => (
+  section.details.some(isLegacyIncompleteEvaluationDetail)
+);
+
 export const isLegacySkippedEvaluationSection = (section: EvaluationSection): boolean => (
   section.details.length > 0
   && section.details.every((detail) => /^⚠/.test(detail.text))
-  && section.details.some((detail) => /skipped|not scored|no standard MCP transport|could not be isolated|negotiation failed/i.test(
-    `${detail.text} ${detail.context || ''}`
-  ))
+  && hasLegacyIncompleteEvaluationEvidence(section)
 );
 
 /** Resolves explicit and legacy reports to one outcome for artifacts and presentation. */
@@ -120,7 +129,7 @@ export const resolveEvaluationOutcome = (
     section.status === 'partial'
     || section.status === 'failed'
     || section.status === 'skipped'
-    || (!section.status && isLegacySkippedEvaluationSection(section))
+    || (!section.status && hasLegacyIncompleteEvaluationEvidence(section))
   ));
   const protocolSection = report.sections.protocol;
   const protocolIncomplete = protocolSection && (

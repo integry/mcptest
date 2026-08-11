@@ -629,6 +629,22 @@ describe('dual-era server evaluation', () => {
         },
       },
     };
+    const mixedPartialReport = {
+      ...evaluatedReport,
+      finalScore: 8,
+      sections: {
+        capabilities: {
+          name: 'Capabilities',
+          description: '',
+          score: 8,
+          maxScore: 10,
+          details: [
+            { text: '✓ Tool discovery completed.' },
+            { text: '⚠ Resource checks were skipped after the connection closed.' },
+          ],
+        },
+      },
+    };
 
     expect(resolveEvaluationOutcome(evaluatedReport)).toBe('scored');
     expect(isScoredEvaluation(evaluatedReport)).toBe(true);
@@ -636,5 +652,7 @@ describe('dual-era server evaluation', () => {
     expect(isScoredEvaluation(partialReport)).toBe(false);
     expect(resolveEvaluationOutcome(failedReport)).toBe('failed');
     expect(isScoredEvaluation(failedReport)).toBe(false);
+    expect(resolveEvaluationOutcome(mixedPartialReport)).toBe('partial');
+    expect(isScoredEvaluation(mixedPartialReport)).toBe(false);
   });
 });

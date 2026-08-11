@@ -2,6 +2,7 @@ import { z } from 'zod';
 import packageJson from '../../package.json';
 import {
   getEvaluationMaxScore,
+  hasLegacyIncompleteEvaluationEvidence,
   isLegacySkippedEvaluationSection,
   resolveEvaluationOutcome,
   type DetailItem,
@@ -379,6 +380,23 @@ const balancedAssignmentValueEnd = (value: string, start: number): number | unde
   return undefined;
 };
 
+const surroundingQuoteAt = (value: string, end: number): '"' | "'" | undefined => {
+  let quote: '"' | "'" | undefined;
+  const lineStart = Math.max(value.lastIndexOf('\n', end - 1), value.lastIndexOf('\r', end - 1)) + 1;
+
+  for (let index = lineStart; index < end; index += 1) {
+    const character = value[index];
+    if (quote) {
+      if (character === '\\') index += 1;
+      else if (character === quote) quote = undefined;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    }
+  }
+
+  return quote;
+};
+
 const redactSensitiveAssignments = (value: string): string => {
   const matches: Array<{ start: number; end: number; replacement: string }> = [];
   const assignmentStart = /(?:(['"])([A-Za-z](?:[A-Za-z0-9_+-]|%[A-Fa-f0-9]{2})*)\1|\b([A-Za-z](?:[A-Za-z0-9_+-]|%[A-Fa-f0-9]{2})*)\b)\s*([:=])\s*/g;
@@ -393,6 +411,7 @@ const redactSensitiveAssignments = (value: string): string => {
     const valueStart = assignmentStartIndex + match[0].length;
     let valueEnd = valueStart;
     const quote = value[valueStart];
+    const surroundingQuote = surroundingQuoteAt(value, assignmentStartIndex);
     const canonical = canonicalKey(key);
     const consumesEntireLine = !keyQuote && (
       ['authorization', 'proxyauthorization', 'xmcpauthorization'].includes(canonical)
@@ -424,7 +443,15 @@ const redactSensitiveAssignments = (value: string): string => {
       }
       if (keyQuote) replacement = `${match[0]}${keyQuote}${REDACTED_VALUE}${keyQuote}`;
     } else {
-      while (valueEnd < value.length && !/[\s,;&"']/.test(value[valueEnd])) valueEnd += 1;
+      while (valueEnd < value.length) {
+        const character = value[valueEnd];
+        if (/[\s,;&]/.test(character)) break;
+        if (character === surroundingQuote
+            && (valueEnd + 1 === value.length || /[\s,;&]/.test(value[valueEnd + 1]))) {
+          break;
+        }
+        valueEnd += 1;
+      }
     }
     if (!matches.some((assignment) => (
       assignment.start <= assignmentStartIndex && assignment.end >= valueEnd
@@ -500,9 +527,9 @@ const redactUrl = (value: string, depth = 0): string => {
 };
 
 const redactUrlsInText = (value: string, depth: number): string => value.replace(
-  /https?:\/\/[^\s<>"']+/gi,
+  /https?:\/\/[^\s<>]+/gi,
   (candidate) => {
-    const trailing = candidate.match(/[),.;!?]+$/)?.[0] || '';
+    const trailing = candidate.match(/["'),.;!?]+$/)?.[0] || '';
     const url = trailing ? candidate.slice(0, -trailing.length) : candidate;
     return `${redactUrl(url, depth)}${trailing}`;
   }
@@ -586,8 +613,34 @@ const redactJsonEncodedStringLiterals = (value: string): string => value.replace
   }
 );
 
+const redactEmbeddedJsonFragments = (value: string): string => {
+  const matches: Array<{ start: number; end: number; replacement: string }> = [];
+
+  for (let start = 0; start < value.length; start += 1) {
+    const opening = value[start];
+    const closing = opening === '{' ? '}' : opening === '[' ? ']' : undefined;
+    if (!closing) continue;
+
+    for (let end = start + 1; end < value.length; end += 1) {
+      if (value[end] !== closing) continue;
+      const fragment = value.slice(start, end + 1);
+      const redacted = redactJsonShapedString(fragment);
+      if (redacted === fragment) continue;
+      matches.push({ start, end: end + 1, replacement: redacted });
+      start = end;
+      break;
+    }
+  }
+
+  return matches.reduceRight((redacted, match) => (
+    `${redacted.slice(0, match.start)}${match.replacement}${redacted.slice(match.end)}`
+  ), value);
+};
+
 const redactReportStringAtDepth = (value: string, urlDepth: number): string => {
-  let redacted = redactJsonEncodedStringLiterals(redactJsonShapedString(value));
+  let redacted = redactEmbeddedJsonFragments(
+    redactJsonEncodedStringLiterals(redactJsonShapedString(value))
+  );
   for (let pass = 0; pass < MAX_REDACTION_PASSES; pass += 1) {
     const redactedAssignments = redactSensitiveAssignments(redacted)
       .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`);
@@ -702,6 +755,7 @@ const sectionStatus = (
   if (isLegacySkippedEvaluationSection(section)) return outcome === 'failed' && id === 'protocol'
     ? 'failed'
     : 'skipped';
+  if (hasLegacyIncompleteEvaluationEvidence(section)) return 'partial';
   return 'evaluated';
 };
 
