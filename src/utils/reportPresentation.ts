@@ -1,6 +1,6 @@
 import {
   getEvaluationPercentage,
-  isAuthenticationRequired,
+  resolveEvaluationOutcome,
   type EvaluationReport,
 } from './evaluation';
 
@@ -8,7 +8,7 @@ export interface TestedServerHistoryEntry {
   url: string;
   score: number | null;
   timestamp: number;
-  outcome?: 'scored' | 'authorization-required';
+  outcome?: EvaluationReport['outcome'];
 }
 
 const getServerUrlIdentity = (value: string): string => {
@@ -27,12 +27,13 @@ export const createTestedServerHistoryEntry = (
   report: EvaluationReport,
   timestamp = Date.now()
 ): TestedServerHistoryEntry => {
-  if (isAuthenticationRequired(report)) {
+  const outcome = resolveEvaluationOutcome(report);
+  if (outcome !== 'scored') {
     return {
       url: report.serverUrl,
       score: null,
       timestamp,
-      outcome: 'authorization-required',
+      outcome,
     };
   }
 
@@ -50,6 +51,8 @@ export const getTestedServerResultLabel = (
   if (server.outcome === 'authorization-required') {
     return 'Authorization required - not scored';
   }
+  if (server.outcome === 'partial') return 'Partial evaluation - not scored';
+  if (server.outcome === 'failed') return 'Evaluation failed - not scored';
   return typeof server.score === 'number' ? `Score: ${server.score}%` : 'Not scored';
 };
 

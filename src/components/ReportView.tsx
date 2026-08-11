@@ -13,7 +13,8 @@ import {
   evaluateServer,
   getEvaluationMaxScore,
   getEvaluationPercentage,
-  isAuthenticationRequired,
+  isLegacySkippedEvaluationSection,
+  resolveEvaluationOutcome,
   type EvaluationReport,
 } from '../utils/evaluation';
 import {
@@ -265,7 +266,7 @@ const ReportView: React.FC = () => {
       
       addOrUpdateServer(reportData);
       
-      if (isAuthenticationRequired(reportData)) {
+      if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
         setProgress(prev => [...prev, 'OAuth authorization is required before this server can be scored.']);
       }
     } catch (error) {
@@ -325,12 +326,14 @@ const ReportView: React.FC = () => {
     }
   }, []);
 
-  const reportRequiresAuthorization = report ? isAuthenticationRequired(report) : false;
-  const scoredSections = report && !reportRequiresAuthorization
+  const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
+  const reportRequiresAuthorization = reportOutcome === 'authorization-required';
+  const reportIsScored = reportOutcome === 'scored';
+  const visibleSections = report && !reportRequiresAuthorization
     ? Object.entries(report.sections).filter(([key]) => key !== 'auth')
     : [];
-  const reportMaxScore = report && !reportRequiresAuthorization ? getEvaluationMaxScore(report) : 0;
-  const reportPercentage = report && !reportRequiresAuthorization ? getEvaluationPercentage(report) : 0;
+  const reportMaxScore = report && reportIsScored ? getEvaluationMaxScore(report) : 0;
+  const reportPercentage = report && reportIsScored ? getEvaluationPercentage(report) : 0;
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
@@ -419,7 +422,7 @@ const ReportView: React.FC = () => {
         <div className="card mb-4">
           <div className="card-header">
             <h4>Report for: {report.serverUrl}</h4>
-            {!reportRequiresAuthorization && (
+            {reportIsScored && (
               <>
                 <h3 className={`text-${getScoreColor(reportPercentage)}`}>
                   Final Score: {report.finalScore} / {reportMaxScore} ({Math.round(reportPercentage)}%, grade {getScoreGrade(reportPercentage)})
@@ -430,6 +433,11 @@ const ReportView: React.FC = () => {
                   </small>
                 )}
               </>
+            )}
+            {!reportRequiresAuthorization && !reportIsScored && (
+              <h3 className="text-muted">
+                {reportOutcome === 'partial' ? 'Partial evaluation' : 'Evaluation failed'} — not scored
+              </h3>
             )}
           </div>
           <div className="card-body">
@@ -444,10 +452,13 @@ const ReportView: React.FC = () => {
               />
             ) : (
               <div className="row g-3">
-              {scoredSections.map(([key, section]) => {
+              {visibleSections.map(([key, section]) => {
                 const sectionPercentage = section.maxScore > 0
                   ? section.score / section.maxScore * 100
                   : 0;
+                const sectionWasScored = section.status !== 'failed'
+                  && section.status !== 'skipped'
+                  && !(!section.status && isLegacySkippedEvaluationSection(section));
 
                 return (
                 <div key={key} className="col-12">
@@ -455,14 +466,14 @@ const ReportView: React.FC = () => {
                     <div className="card-header">
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <h5 className="mb-0">{section.name}</h5>
-                        <div className="d-flex align-items-center gap-2">
+                        {sectionWasScored ? <div className="d-flex align-items-center gap-2">
                           <span className={`text-${getScoreColor(sectionPercentage)} fw-bold`}>
                             {section.score} / {section.maxScore} points
                           </span>
                           <span className={`badge bg-${getScoreColor(sectionPercentage)}`}>
                             {Math.round(sectionPercentage)}%
                           </span>
-                        </div>
+                        </div> : <span className="text-muted fw-bold">Not scored</span>}
                       </div>
                       <small className="text-muted d-block">{section.description}</small>
                     </div>
