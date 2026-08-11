@@ -176,6 +176,8 @@ describe('analyzeToolSurface', () => {
     expect(contextFinding?.summary).toContain('approximately');
     expect(finding(analysis, 'ambiguity.descriptions')?.evidence).toHaveLength(12);
     expect(finding(analysis, 'ambiguity.descriptions')?.omittedEvidenceCount).toBeGreaterThan(0);
+    expect(analysis.metrics.riskSignals.writeCapabilityToolCount).toBe(0);
+    expect(finding(analysis, 'risk.write-capabilities')).toBeUndefined();
     expect(JSON.stringify(analysis).length).toBeLessThan(100_000);
   });
 
@@ -302,6 +304,45 @@ describe('analyzeToolSurface', () => {
     expect(() => JSON.stringify(analysis)).not.toThrow();
   });
 
+  it('requires the root input schema to declare object type', () => {
+    const analysis = analyzeToolSurface([{
+      name: 'empty_root_schema',
+      description: 'Exercises validation of an otherwise empty root input schema.',
+      inputSchema: {},
+    }]);
+
+    expect(analysis.metrics.schemas.malformedSchemaCount).toBe(1);
+    expect(finding(analysis, 'schema.malformed-definitions')?.evidence).toContainEqual({
+      tool: 'empty_root_schema',
+      path: '$.inputSchema.type',
+      detail: 'MCP tool inputSchema must declare type "object".',
+    });
+  });
+
+  it('keeps boolean-leaf depth evidence aligned with the maximum depth', () => {
+    let inputSchema: unknown = true;
+    for (let depth = 0; depth < 4; depth += 1) {
+      inputSchema = {
+        type: 'object',
+        properties: { child: inputSchema },
+      };
+    }
+
+    const analysis = analyzeToolSurface([{
+      name: 'inspect_boolean_leaf',
+      description: 'Inspects a nested schema whose final schema node is boolean.',
+      inputSchema,
+    }]);
+    const complexityFinding = finding(analysis, 'schema.complexity');
+
+    expect(analysis.metrics.schemas.maximumDepth).toBe(5);
+    expect(complexityFinding?.evidence).toContainEqual({
+      tool: 'inspect_boolean_leaf',
+      path: '$.inputSchema.properties.child.properties.child.properties.child.properties.child',
+      detail: 'Schema reaches depth 5.',
+    });
+  });
+
   it('separates write/destructive capability signals from vulnerability claims', () => {
     const schema = { type: 'object', properties: {}, additionalProperties: false };
     const analysis = analyzeToolSurface([
@@ -330,6 +371,72 @@ describe('analyzeToolSurface', () => {
     expect(finding(analysis, 'risk.destructive-capabilities')?.summary).toContain('not proof of a vulnerability');
     expect(finding(analysis, 'risk.write-capabilities')?.summary).toContain('does not establish a vulnerability');
     expect(analysis.interpretation).toContain('do not prove a vulnerability');
+  });
+
+  it('detects composite read/write names without treating archive nouns as actions', () => {
+    const schema = { type: 'object', properties: {}, additionalProperties: false };
+    const analysis = analyzeToolSurface([
+      {
+        name: 'get_and_delete_user',
+        inputSchema: schema,
+      },
+      {
+        name: 'lookup_or_create_account',
+        inputSchema: schema,
+      },
+      {
+        name: 'read_metric',
+        description: 'Reads a metric from the observability archive without changing server state.',
+        inputSchema: schema,
+      },
+      {
+        name: 'archive_metric',
+        description: 'Archives the selected metric for long-term retention.',
+        inputSchema: schema,
+      },
+    ]);
+
+    expect(analysis.metrics.riskSignals).toMatchObject({
+      writeCapabilityToolCount: 3,
+      destructiveCapabilityToolCount: 1,
+    });
+    expect(finding(analysis, 'risk.destructive-capabilities')?.evidence[0].tool)
+      .toBe('get_and_delete_user');
+    expect(finding(analysis, 'risk.write-capabilities')?.evidence.map((item) => item.tool))
+      .toEqual(['archive_metric', 'lookup_or_create_account']);
+  });
+
+  it('honors read-only and destructive annotations when classifying actions', () => {
+    const schema = { type: 'object', properties: {}, additionalProperties: false };
+    const analysis = analyzeToolSurface([
+      {
+        name: 'archive_lookup_results',
+        description: 'Archives are returned from the search index.',
+        annotations: { readOnlyHint: true },
+        inputSchema: schema,
+      },
+      {
+        name: 'remove_cached_result',
+        description: 'Removes one cached result; the operation is reversible.',
+        annotations: { destructiveHint: false },
+        inputSchema: schema,
+      },
+      {
+        name: 'expire_cached_result',
+        description: 'Expires one cached result immediately.',
+        annotations: { destructiveHint: true },
+        inputSchema: schema,
+      },
+    ]);
+
+    expect(analysis.metrics.riskSignals).toMatchObject({
+      writeCapabilityToolCount: 2,
+      destructiveCapabilityToolCount: 1,
+    });
+    expect(finding(analysis, 'risk.destructive-capabilities')?.evidence[0].tool)
+      .toBe('expire_cached_result');
+    expect(finding(analysis, 'risk.write-capabilities')?.evidence[0].tool)
+      .toBe('remove_cached_result');
   });
 
   it('flags strong prompt-like text for review while allowing ordinary usage guidance', () => {

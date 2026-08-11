@@ -201,6 +201,8 @@ interface ToolRecord {
   description: string | null;
   inputSchema: unknown;
   outputSchema: unknown;
+  readOnlyHint: boolean | null;
+  destructiveHint: boolean | null;
   raw: unknown;
   valid: boolean;
 }
@@ -414,6 +416,8 @@ const normalizeTool = (raw: unknown, index: number): ToolRecord => {
       description: null,
       inputSchema: null,
       outputSchema: null,
+      readOnlyHint: null,
+      destructiveHint: null,
       raw,
       valid: false,
     };
@@ -424,6 +428,7 @@ const normalizeTool = (raw: unknown, index: number): ToolRecord => {
     ? raw.description.trim()
     : null;
   const inputSchema = raw.inputSchema;
+  const annotations = isRecord(raw.annotations) ? raw.annotations : null;
 
   return {
     index,
@@ -432,6 +437,12 @@ const normalizeTool = (raw: unknown, index: number): ToolRecord => {
     description,
     inputSchema,
     outputSchema: raw.outputSchema,
+    readOnlyHint: typeof annotations?.readOnlyHint === 'boolean'
+      ? annotations.readOnlyHint
+      : null,
+    destructiveHint: typeof annotations?.destructiveHint === 'boolean'
+      ? annotations.destructiveHint
+      : null,
     raw,
     valid: Boolean(name && isRecord(inputSchema)),
   };
@@ -447,6 +458,28 @@ const markMalformedSchema = (
   accumulator.malformedEvidence.push(evidence(tool.displayName, displayPath(path), detail));
 };
 
+const recordSchemaDepth = (
+  accumulator: SchemaAccumulator,
+  tool: ToolRecord,
+  path: string,
+  depth: number
+): void => {
+  if (depth > accumulator.maximumDepth) {
+    accumulator.maximumDepth = depth;
+    accumulator.depthEvidence = [evidence(
+      tool.displayName,
+      displayPath(path),
+      `Schema reaches depth ${depth}.`
+    )];
+  } else if (depth === accumulator.maximumDepth) {
+    accumulator.depthEvidence.push(evidence(
+      tool.displayName,
+      displayPath(path),
+      `Schema reaches depth ${depth}.`
+    ));
+  }
+};
+
 const visitSchema = (
   schema: unknown,
   tool: ToolRecord,
@@ -457,7 +490,7 @@ const visitSchema = (
 ): void => {
   if (typeof schema === 'boolean') {
     accumulator.schemaNodeCount += 1;
-    accumulator.maximumDepth = Math.max(accumulator.maximumDepth, depth);
+    recordSchemaDepth(accumulator, tool, path, depth);
     return;
   }
 
@@ -473,20 +506,7 @@ const visitSchema = (
 
   ancestors.add(schema);
   accumulator.schemaNodeCount += 1;
-  if (depth > accumulator.maximumDepth) {
-    accumulator.maximumDepth = depth;
-    accumulator.depthEvidence = [evidence(
-      tool.displayName,
-      displayPath(path),
-      `Schema reaches depth ${depth}.`
-    )];
-  } else if (depth === accumulator.maximumDepth) {
-    accumulator.depthEvidence.push(evidence(
-      tool.displayName,
-      displayPath(path),
-      `Schema reaches depth ${depth}.`
-    ));
-  }
+  recordSchemaDepth(accumulator, tool, path, depth);
 
   if (
     schema.type !== undefined
@@ -694,6 +714,24 @@ const isNegatedAction = (tokens: readonly string[], index: number): boolean => {
   return phrase.endsWith('how to') || phrase.endsWith('whether to');
 };
 
+const isActionUseOfArchive = (tokens: readonly string[], index: number): boolean => {
+  const rawToken = tokens[index];
+  if (['are', 'contains', 'is'].includes(tokens[index + 1])) return false;
+  if (rawToken === 'archives' || rawToken === 'archiving') return true;
+
+  const previous = tokens[index - 1];
+  if (previous === 'and' || previous === 'or' || previous === 'then' || previous === 'to') {
+    return true;
+  }
+
+  const preceding = tokens.slice(Math.max(0, index - 3), index);
+  if (preceding.some((token) => ['from', 'in', 'of', 'through', 'within'].includes(token))) {
+    return false;
+  }
+  if (previous === 'a' || previous === 'an' || previous === 'the') return false;
+  return true;
+};
+
 const actionSignals = (tool: ToolRecord): { write: string[]; destructive: string[] } => {
   const write = new Set<string>();
   const destructive = new Set<string>();
@@ -701,7 +739,12 @@ const actionSignals = (tool: ToolRecord): { write: string[]; destructive: string
 
   for (let index = 0; index < nameTokens.length; index += 1) {
     const token = nameTokens[index];
-    if (nameTokens.slice(0, index).some((preceding) => READ_ACTIONS.has(preceding))) continue;
+    if (
+      token === 'archive'
+      && nameTokens.slice(0, index).some((preceding) => READ_ACTIONS.has(preceding))
+      && nameTokens[index - 1] !== 'and'
+      && nameTokens[index - 1] !== 'or'
+    ) continue;
     if (WRITE_ACTIONS.has(token)) write.add(token);
     if (DESTRUCTIVE_ACTIONS.has(token)) {
       destructive.add(token);
@@ -714,11 +757,27 @@ const actionSignals = (tool: ToolRecord): { write: string[]; destructive: string
     const rawToken = descriptionTokens[index];
     const action = DESCRIPTION_ACTION_FORMS[rawToken] || rawToken;
     if (isNegatedAction(descriptionTokens, index)) continue;
+    if (action === 'archive' && !isActionUseOfArchive(descriptionTokens, index)) continue;
     if (WRITE_ACTIONS.has(action)) write.add(action);
     if (DESTRUCTIVE_ACTIONS.has(action)) {
       destructive.add(action);
       write.add(action);
     }
+  }
+
+  if (tool.readOnlyHint === true && tool.destructiveHint !== true) {
+    write.clear();
+    destructive.clear();
+  } else {
+    if (tool.readOnlyHint === false) write.add('annotation: readOnlyHint=false');
+    if (tool.destructiveHint === false) {
+      for (const action of destructive) write.add(action);
+      destructive.clear();
+    }
+  }
+  if (tool.destructiveHint === true) {
+    destructive.add('annotation: destructiveHint=true');
+    write.add('annotation: destructiveHint=true');
   }
 
   return {
@@ -838,12 +897,12 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       schemaAccumulator.malformedToolIndexes.add(tool.index);
       continue;
     }
-    if (tool.inputSchema.type !== undefined && tool.inputSchema.type !== 'object') {
+    if (tool.inputSchema.type !== 'object') {
       markMalformedSchema(
         schemaAccumulator,
         tool,
         '$.inputSchema.type',
-        'MCP tool inputSchema should have object type.'
+        'MCP tool inputSchema must declare type "object".'
       );
     }
     visitSchema(tool.inputSchema, tool, '$.inputSchema', 1, schemaAccumulator, new Set());
@@ -1111,7 +1170,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       summary: `${destructiveSignals.length} tools advertise verbs associated with destructive or difficult-to-reverse operations. This capability signal is not proof of a vulnerability or unsafe implementation.`,
       evidence: destructiveSignals.map(({ tool, actions }) => evidence(
         tool.displayName,
-        '$.name|$.description',
+        '$.name|$.description|$.annotations',
         `Matched destructive action${actions.length === 1 ? '' : 's'}: ${actions.join(', ')}.`
       )),
       remediation: 'Require explicit authorization and confirmation, constrain target scope, support dry runs where practical, and document reversibility.',
@@ -1131,7 +1190,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       summary: `${nonDestructiveWriteSignals.length} tools advertise write or execution actions. Capability presence alone does not establish a vulnerability.`,
       evidence: nonDestructiveWriteSignals.map(({ tool, actions }) => evidence(
         tool.displayName,
-        '$.name|$.description',
+        '$.name|$.description|$.annotations',
         `Matched state-changing action${actions.length === 1 ? '' : 's'}: ${actions.join(', ')}.`
       )),
       remediation: 'Apply least-privilege authorization, validate inputs, make side effects explicit, and add idempotency or confirmation controls where appropriate.',
