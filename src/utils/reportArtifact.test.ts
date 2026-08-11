@@ -568,21 +568,34 @@ describe('versioned public report artifacts', () => {
     const jsonShaped = '{"access_token":"json-report-secret"}';
     const authorization = 'Authorization: ApiKey authorization-report-secret';
     const cookies = 'Cookie: a=cookie-one-secret; b=cookie-two-secret';
+    const equalsCookies = 'Cookie=a=equals-cookie-one-secret; b=equals-cookie-two-secret';
 
     expect(redactReportString(jsonShaped)).toBe('{"access_token":"[REDACTED]"}');
     expect(redactReportString(authorization)).toBe('Authorization: [REDACTED]');
     expect(redactReportString(cookies)).toBe('Cookie: [REDACTED]');
-    expect(redactReportValue({ jsonShaped, authorizationHeader: authorization, cookieHeader: cookies })).toEqual({
+    expect(redactReportString(equalsCookies)).toBe('Cookie=[REDACTED]');
+    expect(redactReportValue({
+      jsonShaped,
+      authorizationHeader: authorization,
+      cookieHeader: cookies,
+      equalsCookieHeader: equalsCookies,
+    })).toEqual({
       jsonShaped: '{"access_token":"[REDACTED]"}',
       authorizationHeader: 'Authorization: [REDACTED]',
       cookieHeader: 'Cookie: [REDACTED]',
+      equalsCookieHeader: 'Cookie=[REDACTED]',
     });
 
     const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
     artifact.sections[0].evidence[0] = {
       message: jsonShaped,
       context: authorization,
-      metadata: { jsonShaped, authorizationHeader: authorization, cookieHeader: cookies },
+      metadata: {
+        jsonShaped,
+        authorizationHeader: authorization,
+        cookieHeader: cookies,
+        equalsCookieHeader: equalsCookies,
+      },
     };
     const json = serializePublicReportJson(artifact);
     const markdown = serializePublicReportMarkdown(artifact);
@@ -592,6 +605,8 @@ describe('versioned public report artifacts', () => {
       'authorization-report-secret',
       'cookie-one-secret',
       'cookie-two-secret',
+      'equals-cookie-one-secret',
+      'equals-cookie-two-secret',
     ]) {
       expect(json).not.toContain(secret);
       expect(markdown).not.toContain(secret);

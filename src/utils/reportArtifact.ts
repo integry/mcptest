@@ -289,7 +289,6 @@ const redactSensitiveAssignments = (value: string): string => {
   while ((match = assignmentStart.exec(value)) !== null) {
     const keyQuote = match[1];
     const key = match[2] || match[3];
-    const delimiter = match[4];
     if (!isSensitiveKey(key)) continue;
 
     const assignmentStartIndex = match.index;
@@ -299,7 +298,7 @@ const redactSensitiveAssignments = (value: string): string => {
     const canonical = canonicalKey(key);
     const consumesEntireLine = !keyQuote && (
       ['authorization', 'proxyauthorization', 'xmcpauthorization'].includes(canonical)
-      || (delimiter === ':' && ['cookie', 'setcookie', 'cookies'].includes(canonical))
+      || ['cookie', 'setcookie', 'cookies'].includes(canonical)
     );
     let replacement = `${match[0]}${REDACTED_VALUE}`;
 
