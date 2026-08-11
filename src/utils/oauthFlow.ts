@@ -16,6 +16,7 @@ import {
   OAuthFlightRecorder,
   createOAuthFlightRecorder,
   createOAuthTraceFetch,
+  markOAuthTraceErrorOrigin,
   markOAuthTraceResponseOrigin,
   resumeOAuthFlightRecorder,
   sanitizeOAuthTraceUrl,
@@ -249,6 +250,60 @@ const registrationFailureDetails = (error: RegistrationRejectedError): Record<st
   }
 };
 
+type RegistrationFailureCategory =
+  | 'approval_policy'
+  | 'rate_limited'
+  | 'server_error'
+  | 'invalid_metadata'
+  | 'malformed_response'
+  | 'rejected';
+
+const registrationFailureCategory = (
+  error: RegistrationRejectedError,
+  details = registrationFailureDetails(error)
+): RegistrationFailureCategory => {
+  if (error.status === 429) return 'rate_limited';
+  if (error.status >= 500) return 'server_error';
+
+  const responseText = Object.values(details)
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .replace(/[-_]+/g, ' ');
+  if (/(?:\b(?:provider\s+)?approval\s+(?:is\s+)?required\b|\brequires?\s+(?:provider\s+)?approval\b|\bnot\s+approved\b|\bunapproved\s+software\s+statement\b|\bnot\s+(?:on|in)\s+(?:the\s+)?(?:allow|white)\s*list\b|\b(?:allow|white)\s*list\s+access\s+(?:is\s+)?required\b)/i.test(responseText)) {
+    return 'approval_policy';
+  }
+
+  const errorCode = typeof details.error === 'string' ? details.error : '';
+  if (['invalid_client_metadata', 'invalid_redirect_uri', 'invalid_software_statement'].includes(errorCode)) {
+    return 'invalid_metadata';
+  }
+  if (details.responseFormat === 'non-json') return 'malformed_response';
+  return 'rejected';
+};
+
+const registrationFailureExplanation = (
+  category: RegistrationFailureCategory,
+  providerName: string,
+  status: number
+): string => {
+  if (category === 'approval_policy') {
+    return `${providerName} advertises automatic client registration, but its HTTP ${status} response indicates that provider approval or allow-list access is required before mcptest.io can continue.`;
+  }
+  if (category === 'rate_limited') {
+    return `${providerName} rate-limited dynamic client registration with HTTP ${status}. Retry automatic registration later or configure an existing OAuth client.`;
+  }
+  if (category === 'server_error') {
+    return `${providerName}'s dynamic client registration endpoint failed with server error HTTP ${status}. Retry later or configure an existing OAuth client.`;
+  }
+  if (category === 'invalid_metadata') {
+    return `${providerName} rejected the submitted dynamic client metadata with HTTP ${status}. Automatic registration may succeed with corrected metadata; an existing OAuth client can also be configured.`;
+  }
+  if (category === 'malformed_response') {
+    return `${providerName}'s dynamic client registration endpoint returned a malformed error response with HTTP ${status}. Retry automatic registration or configure an existing OAuth client.`;
+  }
+  return `${providerName} rejected dynamic client registration with HTTP ${status}, but the response did not indicate a provider approval or allow-list policy. Retry registration or configure an existing OAuth client.`;
+};
+
 const buildOAuthPrerequisite = (
   kind: OAuthPrerequisiteKind,
   serverUrl: string,
@@ -297,6 +352,14 @@ const buildOAuthPrerequisite = (
       ...base,
       canConfigureClient: true,
       explanation: `${guidance.name} advertises neither Client ID Metadata Documents nor Dynamic Client Registration. Use an OAuth application registered with the provider.`,
+    };
+  }
+  if (error instanceof RegistrationRejectedError) {
+    const category = registrationFailureCategory(error);
+    return {
+      ...base,
+      canConfigureClient: true,
+      explanation: registrationFailureExplanation(category, guidance.name, error.status),
     };
   }
   return {
@@ -355,7 +418,7 @@ const createCorsFallbackDiscoveryFetch = (
         : 'authorization_server',
       route: 'direct',
       explanation: 'Direct browser discovery did not receive a readable response; retrying this metadata GET through the authenticated proxy.',
-      request: { method: 'GET', url: exactUrl },
+      request: { method: 'GET', url: sanitizeOAuthTraceUrl(exactUrl) },
       timing: {
         startedAt: new Date(directStartedAtMs).toISOString(),
         durationMs: Math.max(0, Date.now() - directStartedAtMs),
@@ -375,12 +438,17 @@ const createCorsFallbackDiscoveryFetch = (
   headers.delete('x-mcp-authorization');
   headers.delete('cookie');
   headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
-  const response = await (proxy.fetchFn || fetch)(proxyRequestUrl, {
-    method: 'GET',
-    headers,
-    signal: init?.signal || request?.signal,
-    credentials: 'omit',
-  });
+  let response: Response;
+  try {
+    response = await (proxy.fetchFn || fetch)(proxyRequestUrl, {
+      method: 'GET',
+      headers,
+      signal: init?.signal || request?.signal,
+      credentials: 'omit',
+    });
+  } catch (error) {
+    throw markOAuthTraceErrorOrigin(error, { route: 'proxy', source: 'proxy' });
+  }
   const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
     ? 'target'
     : 'proxy';
@@ -902,23 +970,29 @@ export const beginOAuthFlow = async (
     trace.settleLatestProvisionalOAuthResponse('failed');
     let prerequisite: OAuthPrerequisite | undefined;
     if (error instanceof RegistrationRejectedError) {
+      const details = registrationFailureDetails(error);
+      const category = registrationFailureCategory(error, details);
+      const guidance = providerGuidance(normalizedServerUrl, issuerForDiscovery(provider.discoveryState()));
+      const explanation = registrationFailureExplanation(category, guidance.name, error.status);
       trace.enrichLast('dynamic_client_registration', {
         outcome: 'failed',
-        explanation: `Dynamic client registration was rejected with HTTP ${error.status}; provider approval or allow-list access may be required.`,
+        explanation,
         response: {
           status: error.status,
-          metadata: registrationFailureDetails(error),
+          metadata: details,
         },
       });
       prerequisite = buildOAuthPrerequisite(
-        'provider_approval_required',
+        category === 'approval_policy'
+          ? 'provider_approval_required'
+          : 'discovery_blocked_invalid',
         normalizedServerUrl,
         provider,
         trace,
         error,
         options.scope
       );
-      trace.terminal('provider_approval_required', prerequisite.explanation);
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
     } else if (isPreRegisteredClientRequired(error)) {
       trace.record({
         type: 'pre_registered_client',

@@ -1030,6 +1030,92 @@ describe('OAuth provider interoperability matrix', () => {
     ]));
   });
 
+  it.each([
+    [
+      'rate-limited',
+      429,
+      { error: 'temporarily_unavailable', error_description: 'Too many registration requests' },
+      'rate-limited dynamic client registration',
+    ],
+    [
+      'server-error',
+      503,
+      { error: 'temporarily_unavailable', error_description: 'Registration service unavailable' },
+      'server error HTTP 503',
+    ],
+    [
+      'invalid-metadata',
+      400,
+      { error: 'invalid_client_metadata', error_description: 'redirect_uris must contain one entry' },
+      'rejected the submitted dynamic client metadata',
+    ],
+    [
+      'malformed-response',
+      400,
+      'not-json',
+      'malformed error response',
+    ],
+    [
+      'generic-rejection',
+      401,
+      { error: 'access_denied', error_description: 'Registration request rejected' },
+      'did not indicate a provider approval or allow-list policy',
+    ],
+  ])('does not classify a %s DCR failure as provider approval', async (
+    slug,
+    status,
+    registrationBody,
+    expectedExplanation
+  ) => {
+    const target = `https://mcp-${slug}.example/mcp`;
+    const resourceMetadataUrl = `https://mcp-${slug}.example/.well-known/oauth-protected-resource`;
+    const issuer = `https://issuer-${slug}.example`;
+    const registrationEndpoint = `${issuer}/register`;
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return typeof registrationBody === 'string'
+          ? new Response(registrationBody, { status })
+          : jsonResponse(registrationBody, { status });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        fetchFn,
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      canConfigureClient: true,
+      httpStatus: status,
+      explanation: expect.stringContaining(expectedExplanation),
+    });
+    expect(getStoredOAuthTrace(target, sessionStorage)).toMatchObject({
+      outcome: { status: 'discovery_blocked_invalid' },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'dynamic_client_registration',
+          outcome: 'failed',
+          response: expect.objectContaining({ status }),
+        }),
+      ]),
+    });
+  });
+
   it('falls Slack protected-resource discovery back from the MCP path to root', async () => {
     const target = 'https://mcp.slack.com/mcp';
     const issuer = 'https://slack.com';
@@ -1138,6 +1224,110 @@ describe('OAuth provider interoperability matrix', () => {
         request: { method: 'GET', url: authorizationMetadataUrl },
       }),
     ]));
+  });
+
+  it('sanitizes a query-bearing challenge URL after the direct CORS failure', async () => {
+    const target = 'https://challenge-query.example/mcp';
+    const challengeSecret = 'challenge-secret';
+    const resourceMetadataUrl = `https://challenge-query.example/.well-known/oauth-protected-resource?token=${challengeSecret}&tenant=acme`;
+    const issuer = 'https://issuer.challenge-query.example';
+    const proxyTargets: string[] = [];
+    recordOAuthAuthenticationChallenge({
+      targetUrl: target,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+      method: 'POST',
+      requestUrl: target,
+      responseHeaders: {
+        'www-authenticate': `Bearer resource_metadata="${resourceMetadataUrl}"`,
+      },
+    });
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) throw new TypeError('Failed to fetch');
+      if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+        return jsonResponse(authorizationMetadata(issuer));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const proxyFetch: FetchLike = async (input) => {
+      const proxyUrl = new URL(String(input));
+      proxyTargets.push(proxyUrl.searchParams.get('target') || '');
+      return jsonResponse({ resource: target, authorization_servers: [issuer] }, {
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    };
+
+    await expect(beginOAuthFlow(target, {
+      resourceMetadataUrl,
+      fetchFn: directFetch,
+      discoveryProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-token',
+        fetchFn: proxyFetch,
+      },
+      redirect: vi.fn(),
+    })).rejects.toBeTruthy();
+
+    expect(proxyTargets).toEqual([resourceMetadataUrl]);
+    const trace = getStoredOAuthTrace(target, sessionStorage);
+    const directFailure = trace?.events.find((event) => (
+      event.type === 'protected_resource_metadata'
+      && event.outcome === 'failed'
+      && event.route === 'direct'
+    ));
+    expect(new URL(directFailure?.request?.url || '').searchParams.get('token'))
+      .toBe(OAUTH_TRACE_REDACTED);
+    expect(new URL(directFailure?.request?.url || '').searchParams.get('tenant')).toBe('acme');
+    expect(JSON.stringify(trace)).not.toContain(challengeSecret);
+  });
+
+  it('records a rejected proxy fetch with proxy provenance and no duplicate direct failure', async () => {
+    const target = 'https://proxy-transport.example/mcp';
+    const resourceMetadataUrl = 'https://proxy-transport.example/.well-known/oauth-protected-resource';
+    const issuer = 'https://issuer.proxy-transport.example';
+    const authorizationMetadataUrl = `${issuer}/.well-known/oauth-authorization-server`;
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === authorizationMetadataUrl) throw new TypeError('Direct CORS failure');
+      return new Response('Not found', { status: 404 });
+    };
+    const proxyFetch: FetchLike = async () => {
+      throw new TypeError('Proxy transport failure');
+    };
+
+    await expect(beginOAuthFlow(target, {
+      resourceMetadataUrl,
+      fetchFn: directFetch,
+      discoveryProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-token',
+        fetchFn: proxyFetch,
+      },
+      redirect: vi.fn(),
+    })).rejects.toBeTruthy();
+
+    const failures = getStoredOAuthTrace(target, sessionStorage)?.events.filter((event) => (
+      event.type === 'authorization_server_metadata' && event.outcome === 'failed'
+    ));
+    expect(failures).toHaveLength(2);
+    expect(failures).toEqual([
+      expect.objectContaining({
+        provenance: 'authorization_server',
+        route: 'direct',
+        request: { method: 'GET', url: authorizationMetadataUrl },
+      }),
+      expect.objectContaining({
+        provenance: 'authenticated_proxy',
+        route: 'proxy',
+        request: { method: 'GET', url: authorizationMetadataUrl },
+      }),
+    ]);
   });
 
   it('stops at a proxy-owned discovery response instead of treating it as provider metadata', async () => {

@@ -741,6 +741,7 @@ type OAuthTraceResponseOrigin = {
 };
 
 const oauthTraceResponseOrigins = new WeakMap<Response, OAuthTraceResponseOrigin>();
+const oauthTraceErrorOrigins = new WeakMap<object, OAuthTraceResponseOrigin>();
 
 class ProxyOwnedOAuthDiscoveryResponseError extends Error {}
 
@@ -751,6 +752,17 @@ export const markOAuthTraceResponseOrigin = (
 ): Response => {
   oauthTraceResponseOrigins.set(response, origin);
   return response;
+};
+
+/** Attaches ephemeral proxy provenance to a thrown fetch error. */
+export const markOAuthTraceErrorOrigin = <T,>(
+  error: T,
+  origin: OAuthTraceResponseOrigin
+): T => {
+  if ((typeof error === 'object' && error !== null) || typeof error === 'function') {
+    oauthTraceErrorOrigins.set(error as object, origin);
+  }
+  return error;
 };
 
 /** Starts a trace at the point an HTTP authentication challenge is actually observed. */
@@ -1082,14 +1094,27 @@ export const createOAuthTraceFetch = (
     return response;
   } catch (error) {
     if (error instanceof ProxyOwnedOAuthDiscoveryResponseError) throw error;
+    const traceableError = (
+      (typeof error === 'object' && error !== null) || typeof error === 'function'
+    ) ? error as object : undefined;
+    const errorOrigin = traceableError
+      ? oauthTraceErrorOrigins.get(traceableError)
+      : undefined;
+    if (traceableError) oauthTraceErrorOrigins.delete(traceableError);
+    const origin = errorOrigin || {
+      route: 'direct' as const,
+      source: 'target' as const,
+    };
     recorder.record({
       type,
       outcome: 'failed',
-      provenance: type === 'protected_resource_metadata'
-        ? 'direct_target'
-        : 'authorization_server',
-      route: 'direct',
-      explanation: `${explanationForRequest(type, false)} The request did not receive an HTTP response.`,
+      provenance: origin.source === 'proxy'
+        ? 'authenticated_proxy'
+        : type === 'protected_resource_metadata'
+          ? 'direct_target'
+          : 'authorization_server',
+      route: origin.route,
+      explanation: `${explanationForRequest(type, false)} The ${origin.route} request did not receive an HTTP response.`,
       request: {
         method: details.method,
         url: sanitizeOAuthTraceUrl(details.url),
