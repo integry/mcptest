@@ -2,6 +2,7 @@ import type { EvaluationReport } from '../utils/evaluation';
 import { evaluateServer } from '../utils/evaluation';
 import {
   createPublicReport,
+  PublicReportSchema,
   REDACTED_VALUE,
   redactReportString,
   serializePublicReportJson,
@@ -98,26 +99,91 @@ const redactKnownCredentialString = (value: string, credentials: readonly string
   ))
 );
 
-const redactKnownCredentials = (
+const STRUCTURAL_ARTIFACT_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  generator: new Set(['name', 'version', 'commit']),
+  provenance: new Set(['route', 'result']),
+  outcome: new Set(['status', 'state']),
+  protocol: new Set(['era', 'version']),
+  transport: new Set(['type']),
+  timings: new Set(['name']),
+  releaseDecision: new Set(['status', 'id', 'severity', 'source']),
+  compatibility: new Set([
+    'schemaVersion', 'profileId', 'profileVersion', 'status', 'ruleId', 'scope',
+    'outcome', 'severity', 'kind',
+  ]),
+  toolSurfaceAnalysis: new Set([
+    'version', 'algorithm', 'value', 'id', 'category', 'severity', 'kind', 'tool', 'path',
+  ]),
+  oauthTrace: new Set([
+    'traceId', 'targetFingerprint', 'startedAt', 'type', 'outcome', 'timestamp',
+    'provenance', 'route', 'method',
+  ]),
+  sections: new Set(['id', 'status']),
+};
+
+const STRUCTURAL_METADATA_FIELDS = new Set([
+  'authenticationSource',
+  'authorizationCredentialProvenance',
+  'authorizationSchemes',
+  'category',
+  'evaluationRuntime',
+  'method',
+  'outcome',
+  'paginationComplete',
+  'protocolEra',
+  'protocolVersion',
+  'provenance',
+  'requiredHeaders',
+  'requiredMethod',
+  'route',
+  'scopesSupported',
+  'severity',
+  'source',
+  'status',
+  'supportedGrantTypes',
+  'supportedMethods',
+  'transportType',
+  'type',
+]);
+
+const isStructuralArtifactString = (path: readonly string[]): boolean => {
+  const root = path[0];
+  const field = path[path.length - 1];
+  if (!root || !field) return false;
+  if (['$schema', 'artifactType', 'schemaVersion', 'generatedAt'].includes(field)) return true;
+
+  const metadataIndex = path.lastIndexOf('metadata');
+  if (metadataIndex >= 0) {
+    const metadataField = [...path.slice(metadataIndex + 1)].reverse()
+      .find((part) => !/^\d+$/.test(part));
+    return metadataField !== undefined && STRUCTURAL_METADATA_FIELDS.has(metadataField);
+  }
+
+  return STRUCTURAL_ARTIFACT_FIELDS[root]?.has(field) ?? false;
+};
+
+const redactPublicArtifactCredentials = (
   value: unknown,
   credentials: readonly string[],
-  seen = new WeakMap<object, unknown>()
+  path: readonly string[] = []
 ): unknown => {
-  if (typeof value === 'string') return redactKnownCredentialString(value, credentials);
+  if (typeof value === 'string') {
+    return isStructuralArtifactString(path)
+      ? value
+      : redactKnownCredentialString(value, credentials);
+  }
   if (!value || typeof value !== 'object') return value;
-  if (seen.has(value)) return seen.get(value);
   if (Array.isArray(value)) {
-    const redacted: unknown[] = [];
-    seen.set(value, redacted);
-    for (const item of value) redacted.push(redactKnownCredentials(item, credentials, seen));
-    return redacted;
+    return value.map((item, index) => redactPublicArtifactCredentials(
+      item,
+      credentials,
+      [...path, String(index)]
+    ));
   }
-  const redacted: Record<string, unknown> = {};
-  seen.set(value, redacted);
-  for (const [key, child] of Object.entries(value)) {
-    redacted[key] = redactKnownCredentials(child, credentials, seen);
-  }
-  return redacted;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    redactPublicArtifactCredentials(child, credentials, [...path, key]),
+  ]));
 };
 
 const safeFilenameHost = (endpoint: string): string => {
@@ -161,7 +227,8 @@ export const getReleaseGateThresholdReasons = (
 
 const createReleaseArtifact = (
   evaluation: EvaluationReport,
-  generatedAt: string | Date | undefined
+  generatedAt: string | Date | undefined,
+  credentials: readonly string[]
 ): { decision: ReleaseDecision; report: PublicReport } => {
   const compatibilityMatrix = createCompatibilityMatrix(evaluation);
   const decision = createReleaseDecision(
@@ -169,12 +236,13 @@ const createReleaseArtifact = (
     compatibilityMatrix,
     evaluation.toolSurfaceAnalysis
   );
-  const report = createPublicReport(evaluation, {
+  const artifact = createPublicReport(evaluation, {
     generatedAt,
     compatibilityMatrix,
     releaseDecision: decision,
     toolSurfaceAnalysis: evaluation.toolSurfaceAnalysis,
   });
+  const report = PublicReportSchema.parse(redactPublicArtifactCredentials(artifact, credentials));
   return { decision, report };
 };
 
@@ -207,11 +275,11 @@ export const runReleaseGate = async (
         undefined,
         { runtime: 'headless' }
       );
-      const sanitizedEvaluation = redactKnownCredentials(
+      const { decision, report } = createReleaseArtifact(
         evaluation,
+        options.generatedAt,
         credentials
-      ) as EvaluationReport;
-      const { decision, report } = createReleaseArtifact(sanitizedEvaluation, options.generatedAt);
+      );
       const authorizationRequired = decision.status === 'authorization-required';
       targets.push({
         index,
@@ -220,7 +288,8 @@ export const runReleaseGate = async (
         status: authorizationRequired ? 'authorization-required' : 'evaluated',
         thresholdReasons: authorizationRequired
           ? []
-          : getReleaseGateThresholdReasons(decision, policy),
+          : getReleaseGateThresholdReasons(decision, policy)
+            .map((reason) => redactKnownCredentialString(reason, credentials)),
         releaseDecision: report.releaseDecision || decision,
         report,
         json: serializePublicReportJson(report),

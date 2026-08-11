@@ -69,12 +69,20 @@ jobs:
       MCPTEST_CREDENTIAL_MODE: ${{ inputs.credential_mode }}
       MCPTEST_FAIL_RESULTS: ${{ inputs.fail_on_result }}
       MCPTEST_FAIL_SEVERITY: ${{ inputs.fail_on_severity }}
+    defaults:
+      run:
+        working-directory: mcptest
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: mcptest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: mcptest/package-lock.json
       - run: npm ci
       - name: Validate credential mode
         shell: bash
@@ -115,5 +123,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mcptest-reports
-          path: mcptest-reports/
+          path: mcptest/mcptest-reports/
           if-no-files-found: ignore

@@ -400,11 +400,11 @@ export const createObservedServerFacts = (
     environment: {
       directAccess: observed(direct || directBrowserPassed ? 'reachable' : proxy ? 'blocked' : 'unknown',
         directAccessDescription, isHeadless ? 'target-server' : 'browser'),
-      cors: observed(directBrowserPassed ? 'allowed' : proxy ? 'blocked' : 'unknown',
-        directBrowserPassed
-          ? 'The browser read MCP responses directly.'
-          : isHeadless
-            ? 'Browser CORS behavior is not observable from the headless runtime.'
+      cors: observed(isHeadless ? 'unknown' : directBrowserPassed ? 'allowed' : proxy ? 'blocked' : 'unknown',
+        isHeadless
+          ? 'Browser CORS behavior is not observable from the headless runtime.'
+          : directBrowserPassed
+            ? 'The browser read MCP responses directly.'
             : proxy
               ? 'Direct browser access failed and the proxy was used.'
               : 'Browser CORS behavior was not established.', 'browser'),

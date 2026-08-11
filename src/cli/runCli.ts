@@ -92,6 +92,11 @@ const normalizeEndpoint = (value: string): string => {
       'Endpoint userinfo is not allowed; supply credentials through an environment variable.'
     );
   }
+  if (endpoint.hash) {
+    throw new ReleaseGateConfigurationError(
+      'Endpoint URL fragments are not allowed; supply credentials through an environment variable.'
+    );
+  }
   if ([...endpoint.searchParams.keys()].some(isOAuthSensitiveKey)) {
     throw new ReleaseGateConfigurationError(
       'Credential-like endpoint query parameters are not allowed; supply credentials through an environment variable.'

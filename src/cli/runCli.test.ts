@@ -39,6 +39,7 @@ describe('release gate CLI configuration', () => {
     [['--bearer-token', 'secret', 'https://fixture.example/mcp'], {}, 'Unknown option --bearer-token.'],
     [['https://user:secret@fixture.example/mcp'], {}, 'Endpoint userinfo is not allowed'],
     [['https://fixture.example/mcp?api_key=secret'], {}, 'Credential-like endpoint query parameters are not allowed'],
+    [['https://fixture.example/mcp#access_token=secret'], {}, 'Endpoint URL fragments are not allowed'],
     [['--bearer-token-env', 'TOKEN', 'https://fixture.example/mcp'], {}, 'Environment variable TOKEN is empty or missing'],
   ] as const)('rejects unsafe or invalid credential configuration', (argv, environment, message) => {
     expect(() => parseReleaseGateArgs(argv, environment)).toThrowError(

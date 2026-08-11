@@ -144,6 +144,36 @@ describe('headless release gate', () => {
     expect(result.targets[0].markdown).not.toContain(secret);
   });
 
+  it.each(['direct', 'scored'])('keeps gate semantics intact when the credential is %s', async (credential) => {
+    const generatedAt = '2026-08-11T23:30:00.000Z';
+    const evaluate = async () => {
+      const report = evaluatedReport();
+      report.sections.protocol.details[0].context = `Opaque SDK diagnostic ${credential}`;
+      return report;
+    };
+    const baseline = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      generatedAt,
+    }, { evaluate });
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { Authorization: `Bearer ${credential}` },
+      generatedAt,
+    }, { evaluate });
+
+    expect(result.exitCode).toBe(baseline.exitCode);
+    expect(result.targets[0].thresholdReasons).toEqual(baseline.targets[0].thresholdReasons);
+    expect(result.targets[0].releaseDecision?.status)
+      .toBe(baseline.targets[0].releaseDecision?.status);
+    expect(result.targets[0].report?.outcome.status).toBe('scored');
+    expect(result.targets[0].report?.provenance.route).toBe('direct');
+    expect(result.targets[0].report?.transport?.type).toBe('streamable-http');
+    expect(result.targets[0].report?.sections[0].evidence[0].context)
+      .toBe(`Opaque SDK diagnostic ${REDACTED_VALUE}`);
+    expect(PublicReportSchema.parse(JSON.parse(result.targets[0].json || '')))
+      .toEqual(result.targets[0].report);
+  });
+
   it('applies overall and severity thresholds without redefining release semantics', () => {
     const decision: ReleaseDecision = {
       status: 'review',
