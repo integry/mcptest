@@ -23,6 +23,7 @@ import {
   TransportConnectionError,
   getRequestHeadersForCandidate,
 } from './transportDetection';
+import { getStoredOAuthTrace } from './oauthTrace';
 
 const createClient = () => ({
   listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -33,6 +34,7 @@ const createClient = () => ({
 
 describe('dual-era server evaluation', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('Not found', { status: 404 })));
     connectionMocks.attempt.mockReset();
@@ -264,6 +266,43 @@ describe('dual-era server evaluation', () => {
     expect(Object.keys(report.sections)).toEqual(['auth']);
     expect(getEvaluationMaxScore(report)).toBe(0);
     expect(JSON.stringify(report)).not.toContain('/mcp/v1/');
+  });
+
+  it('records the observed outer proxy request facts for a target challenge', async () => {
+    const targetUrl = 'https://mcp.example/custom/endpoint';
+    const proxyRequestUrl = `https://proxy.mcptest.test/?target=${encodeURIComponent(targetUrl)}`;
+    const challenge = new ProxiedAuthenticationError(
+      401,
+      'target',
+      new Error('Target authorization required'),
+      {
+        method: 'POST',
+        url: proxyRequestUrl,
+        startedAt: '2026-08-11T16:30:00.000Z',
+        durationMs: 23,
+      }
+    );
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockRejectedValueOnce(new TransportConnectionError(
+        [challenge],
+        [{ candidateUrl: proxyRequestUrl, error: challenge }]
+      ));
+
+    const report = await evaluateServer(targetUrl, 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('authorization-required');
+    expect(getStoredOAuthTrace(targetUrl, sessionStorage)?.events[0]).toMatchObject({
+      type: 'target_challenge',
+      route: 'proxy',
+      provenance: 'direct_target',
+      request: { method: 'POST', url: proxyRequestUrl },
+      response: { status: 401 },
+      timing: {
+        startedAt: '2026-08-11T16:30:00.000Z',
+        durationMs: 23,
+      },
+    });
   });
 
   it('uses the challenged fallback endpoint for authentication', async () => {

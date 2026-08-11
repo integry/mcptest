@@ -1283,6 +1283,7 @@ function App() {
     let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const cardAttemptStartedAt = Date.now();
       try {
         console.log(`[Execute Card ${cardId} Attempt ${attempt}/${MAX_RETRIES}] Starting execution. Card URL: ${card.serverUrl}`);
         lastError = null; // Clear last error on new attempt
@@ -1377,6 +1378,14 @@ function App() {
               source: authenticationChallenge.source,
               route: shouldUseProxy ? 'proxy' : 'direct',
               storage: sessionStorage,
+              method: authenticationChallenge.method,
+              requestUrl: authenticationChallenge.requestUrl,
+              timing: {
+                startedAt: authenticationChallenge.startedAt
+                  || new Date(cardAttemptStartedAt).toISOString(),
+                durationMs: authenticationChallenge.durationMs
+                  ?? Math.max(0, Date.now() - cardAttemptStartedAt),
+              },
             });
             if (isProxyAuthError) {
               trace.terminal(

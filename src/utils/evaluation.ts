@@ -9,6 +9,7 @@ import {
 import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
+  getObservedAuthenticationChallenge,
   type ObservedAuthenticationChallenge,
   type ProxyAuthenticationSource,
   type TransportCandidateFailure,
@@ -48,7 +49,9 @@ const recordEvaluationAuthenticationChallenge = (
     source: 'target',
     route: failure.route,
     storage: sessionStorage,
-    requestUrl: failure.candidateUrl || targetUrl,
+    method: failure.method,
+    requestUrl: failure.requestUrl,
+    timing: failure.timing,
   });
 };
 
@@ -304,6 +307,12 @@ interface EvaluationRouteFailure {
   httpStatus?: number;
   authenticationSource?: ProxyAuthenticationSource;
   candidateUrl?: string;
+  method?: string;
+  requestUrl?: string;
+  timing?: {
+    startedAt: string;
+    durationMs?: number;
+  };
 }
 
 const getAuthenticationCandidateUrl = (
@@ -348,9 +357,10 @@ const makeRouteFailure = (
   route: EvaluationRouteFailure['route'],
   error: unknown,
   observedChallenge?: ObservedAuthenticationChallenge,
-  connectedCandidateUrl?: string
+  connectedCandidateUrl?: string,
+  attemptStartedAtMs?: number
 ): EvaluationRouteFailure => {
-  const authenticationChallenge = observedChallenge || getProxyAuthenticationChallenge(error);
+  const authenticationChallenge = observedChallenge || getObservedAuthenticationChallenge(error);
   const httpStatus = authenticationChallenge?.status || getAuthenticationHttpStatus(error);
   const authenticationSource = authenticationChallenge?.source || (
     route === 'direct' && httpStatus ? 'target' : undefined
@@ -369,6 +379,16 @@ const makeRouteFailure = (
     candidateUrl: failedCandidateUrl
       ? getEvaluationTargetUrl(failedCandidateUrl, route === 'proxy')
       : undefined,
+    method: authenticationChallenge?.method,
+    requestUrl: authenticationChallenge?.requestUrl || failedCandidateUrl,
+    timing: {
+      startedAt: authenticationChallenge?.startedAt
+        || new Date(attemptStartedAtMs ?? Date.now()).toISOString(),
+      durationMs: authenticationChallenge?.durationMs
+        ?? (attemptStartedAtMs === undefined
+          ? undefined
+          : Math.max(0, Date.now() - attemptStartedAtMs)),
+    },
   };
 };
 
@@ -388,6 +408,7 @@ const connectForEvaluation = async (
   onProgress: (message: string) => void
 ): Promise<ConnectedEvaluation> => {
   const abortController = new AbortController();
+  const directStartedAt = Date.now();
 
   try {
     onProgress('Attempting direct MCP negotiation...');
@@ -400,10 +421,17 @@ const connectForEvaluation = async (
     );
     return { ...direct, usedProxy: false };
   } catch (directError) {
-    const directFailure = makeRouteFailure('direct', directError);
+    const directFailure = makeRouteFailure(
+      'direct',
+      directError,
+      undefined,
+      undefined,
+      directStartedAt
+    );
     const proxyUrl = getProxyUrl();
     if (!proxyUrl) throw new EvaluationConnectionError([directFailure]);
 
+    const proxyStartedAt = Date.now();
     try {
       onProgress('Direct negotiation failed; retrying through the authenticated CORS proxy...');
       const proxyConnectionUrl = new URL(proxyUrl);
@@ -422,7 +450,7 @@ const connectForEvaluation = async (
     } catch (proxyError) {
       throw new EvaluationConnectionError([
         directFailure,
-        makeRouteFailure('proxy', proxyError),
+        makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt),
       ]);
     }
   }
@@ -477,8 +505,8 @@ const evaluateCapabilities = async (
   for (const check of checks) {
     // Discard any challenge already handled while negotiating the connection.
     connection.takeAuthenticationChallenge?.();
+    const startedAt = Date.now();
     try {
-      const startedAt = Date.now();
       const result = await check.run();
       const durationMs = Date.now() - startedAt;
       const itemCount = check.count(result);
@@ -494,7 +522,8 @@ const evaluateCapabilities = async (
         connection.usedProxy ? 'proxy' : 'direct',
         error,
         connection.takeAuthenticationChallenge?.(),
-        connection.url
+        connection.url,
+        startedAt
       );
       if (
         (failure.httpStatus === 401 || failure.httpStatus === 403)

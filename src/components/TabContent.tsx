@@ -143,14 +143,18 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   );
 
   const catalogProtocolEndpointRef = useRef(
-    tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+    tab.catalogProtocolEra === 'stateless'
+      || tab.catalogProtocolEra === 'stateful'
+      || tab.catalogProtocolEra === 'legacy'
       ? tab.serverUrl
       : undefined
   );
 
   const getCatalogProtocolEraHint = useCallback((urlToConnect: string) => {
     if (urlToConnect !== catalogProtocolEndpointRef.current) return undefined;
-    return tab.catalogProtocolEra === 'stateful' || tab.catalogProtocolEra === 'legacy'
+    return tab.catalogProtocolEra === 'stateless'
+      || tab.catalogProtocolEra === 'stateful'
+      || tab.catalogProtocolEra === 'legacy'
       ? tab.catalogProtocolEra
       : undefined;
   }, [tab.catalogProtocolEra]);
@@ -677,7 +681,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       setResponses,
       urlToConnect,
       tab.useProxy, // Pass the current tab's useProxy value
-      protocolEraHint === 'stateful' || protocolEraHint === 'legacy'
+      protocolEraHint === 'stateless'
+        || protocolEraHint === 'stateful'
+        || protocolEraHint === 'legacy'
         ? protocolEraHint
         : getCatalogProtocolEraHint(requestedUrl)
     );

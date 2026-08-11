@@ -27,7 +27,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
 });
 
 import { useConnection } from './useConnection';
-import { BrowserOAuthProvider } from '../utils/oauthFlow';
+import { BrowserOAuthProvider, completeOAuthFlow } from '../utils/oauthFlow';
 import { getStoredOAuthTrace } from '../utils/oauthTrace';
 import {
   ProxiedAuthenticationError,
@@ -182,8 +182,26 @@ describe('connection URL finalization', () => {
         )
       ]))
       .mockImplementationOnce(async (...args: any[]) => {
-        args[6]?.({ method: 'POST', url: `${endpoint}/` });
-        return successfulRetry;
+        args[6]?.({
+          method: 'GET',
+          url: `${endpoint}/sse`,
+          candidateUrl: `${endpoint}/sse`,
+          transportType: 'legacy-sse',
+          status: 500,
+          outcome: 'failed',
+        });
+        const winningRequest = {
+          method: 'POST',
+          url: `${endpoint}/`,
+          candidateUrl: endpoint,
+          transportType: 'streamable-http' as const,
+          startedAt: '2026-08-11T15:00:00.000Z',
+          durationMs: 9,
+          status: 200,
+          outcome: 'succeeded' as const,
+        };
+        args[6]?.(winningRequest);
+        return { ...successfulRetry, observedRequests: [winningRequest] };
       });
     const view = renderConnectionHook();
 
@@ -225,11 +243,16 @@ describe('connection URL finalization', () => {
         route: 'direct',
         request: { method: 'POST', url: `${endpoint}/` },
         response: expect.objectContaining({
+          status: 200,
           metadata: expect.objectContaining({
             protocolEra: 'modern',
             protocolEraHint: 'automatic',
           }),
         }),
+        timing: {
+          startedAt: '2026-08-11T15:00:00.000Z',
+          durationMs: 9,
+        },
       }),
     ]));
     expect(getStoredOAuthTrace(endpoint, sessionStorage)?.outcome?.status).toBe('authorized');
@@ -453,6 +476,201 @@ describe('connection URL finalization', () => {
       }),
     ]));
     view.unmount();
+  });
+
+  it.each([
+    { label: 'stateful successful', hint: 'stateful' as const, succeeds: true },
+    { label: 'stateless successful', hint: 'stateless' as const, succeeds: true },
+    { label: 'stateful failed', hint: 'stateful' as const, succeeds: false },
+    { label: 'stateless failed', hint: 'stateless' as const, succeeds: false },
+  ])('preserves one redirect OAuth trace through a $label MCP retry', async ({ hint, succeeds }) => {
+    const endpoint = `https://redirect-${hint || 'stateless'}-${succeeds ? 'success' : 'failure'}.example/mcp`;
+    const issuer = `https://auth-${hint || 'stateless'}-${succeeds ? 'success' : 'failure'}.example/`;
+    let callbackState = '';
+
+    oauthMocks.begin.mockImplementationOnce(async (serverUrl, options) => (
+      oauthMocks.actualBegin?.(serverUrl, {
+        ...options,
+        fetchFn: vi.fn().mockResolvedValue(new Response('{}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })),
+        authenticate: async (provider: BrowserOAuthProvider, authOptions: any) => {
+          await authOptions.fetchFn(`${issuer}.well-known/oauth-authorization-server`);
+          provider.saveDiscoveryState({
+            authorizationServerUrl: issuer,
+            authorizationServerMetadata: {
+              issuer,
+              authorization_endpoint: `${issuer}authorize`,
+              token_endpoint: `${issuer}token`,
+              response_types_supported: ['code'],
+            },
+          });
+          callbackState = provider.state();
+          provider.saveCodeVerifier('redirect-verifier-secret');
+          const authorizationUrl = new URL(`${issuer}authorize`);
+          authorizationUrl.searchParams.set('state', callbackState);
+          authorizationUrl.searchParams.set('code_challenge', 'challenge-secret');
+          await provider.redirectToAuthorization(authorizationUrl);
+          return 'REDIRECT';
+        },
+        redirect: vi.fn(),
+      })
+    ));
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        401,
+        'target',
+        new Error('Authorization required'),
+        { method: 'POST', url: endpoint }
+      ),
+    ]));
+
+    const beforeRedirect = renderConnectionHook();
+    await act(async () => {
+      await beforeRedirect.connection.handleConnect(
+        vi.fn(),
+        vi.fn(),
+        vi.fn(),
+        endpoint,
+        undefined,
+        hint
+      );
+    });
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)).toMatchObject({
+      authenticatedMcpRetry: { phase: 'awaiting_callback' },
+    });
+    beforeRedirect.unmount();
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=redirect-code-secret&state=${callbackState}&iss=${encodeURIComponent(issuer)}`,
+      {
+        fetchFn: vi.fn().mockResolvedValue(new Response(JSON.stringify({
+          access_token: 'redirect-access-secret',
+          token_type: 'Bearer',
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })),
+        authenticate: async (provider: BrowserOAuthProvider, authOptions: any) => {
+          await authOptions.fetchFn(`${issuer}token`, {
+            method: 'POST',
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              code: 'redirect-code-secret',
+            }),
+          });
+          provider.saveTokens(
+            { access_token: 'redirect-access-secret', token_type: 'Bearer', issuer },
+            { issuer }
+          );
+          return 'AUTHORIZED';
+        },
+        redirect: vi.fn(),
+      }
+    );
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+
+    const observedRetry = {
+      method: 'POST',
+      url: `${endpoint}?operation=initialize`,
+      candidateUrl: endpoint,
+      transportType: 'streamable-http' as const,
+      startedAt: '2026-08-11T16:00:00.000Z',
+      durationMs: 17,
+      status: succeeds ? 200 : 502,
+      outcome: succeeds ? 'succeeded' as const : 'failed' as const,
+    };
+    connectionMocks.attempt.mockImplementationOnce(async (...args: any[]) => {
+      args[6]?.(observedRetry);
+      if (!succeeds) throw new Error('Authenticated MCP negotiation failed');
+      return {
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: endpoint,
+        transportType: 'streamable-http',
+        protocolEra: hint === 'stateful' ? 'stateful' : 'modern',
+        protocolVersion: hint === 'stateful' ? '2025-11-25' : '2026-07-28',
+        observedRequests: [observedRetry],
+      };
+    });
+
+    const afterCallback = renderConnectionHook();
+    await act(async () => {
+      await afterCallback.connection.handleConnect(
+        vi.fn(),
+        vi.fn(),
+        vi.fn(),
+        endpoint,
+        undefined,
+        hint
+      );
+    });
+
+    const trace = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(trace?.events.map(({ type }) => type)).toEqual([
+      'target_challenge',
+      'authorization_server_metadata',
+      'protected_resource_metadata',
+      'pkce',
+      'authorization_redirect',
+      'callback',
+      'token_exchange',
+      'mcp_retry',
+      'terminal_outcome',
+    ]);
+    expect(trace?.events.map(({ sequence }) => sequence).every(
+      (sequence, index) => sequence === index + 1
+    )).toBe(true);
+    expect(trace?.events.find(({ type }) => type === 'mcp_retry')).toMatchObject({
+      outcome: succeeds ? 'succeeded' : 'failed',
+      route: 'direct',
+      request: { method: 'POST', url: `${endpoint}?operation=initialize` },
+      response: {
+        status: succeeds ? 200 : 502,
+        metadata: expect.objectContaining({
+          protocolEraHint: hint,
+        }),
+      },
+      timing: {
+        startedAt: '2026-08-11T16:00:00.000Z',
+        durationMs: 17,
+      },
+    });
+    expect(trace?.outcome?.status).toBe(succeeds ? 'authorized' : 'failed');
+    if (!succeeds) {
+      expect(trace?.outcome?.explanation).toContain('authenticated MCP retry failed');
+      expect(trace?.outcome?.explanation).toContain('HTTP 502');
+    }
+    expect(trace?.authenticatedMcpRetry).toBeUndefined();
+    expect(JSON.stringify(trace)).not.toContain('redirect-code-secret');
+    expect(JSON.stringify(trace)).not.toContain('redirect-access-secret');
+    afterCallback.unmount();
+
+    const retryEventCount = trace?.events.filter(({ type }) => type === 'mcp_retry').length;
+    connectionMocks.attempt.mockImplementationOnce(async (...args: any[]) => {
+      args[6]?.({ method: 'POST', url: endpoint, status: 200, outcome: 'succeeded' });
+      return {
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: endpoint,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      };
+    });
+    const ordinaryTokenConnection = renderConnectionHook();
+    await act(async () => {
+      await ordinaryTokenConnection.connection.handleConnect(
+        vi.fn(),
+        vi.fn(),
+        vi.fn(),
+        endpoint
+      );
+    });
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)?.events.filter(
+      ({ type }) => type === 'mcp_retry'
+    )).toHaveLength(retryEventCount || 0);
+    ordinaryTokenConnection.unmount();
   });
 
   it('shows manual client configuration only after challenge-driven automatic OAuth fails', async () => {

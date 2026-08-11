@@ -182,6 +182,24 @@ describe('transport candidate generation', () => {
     expect(connectOptions).toEqual({ prior: { kind: 'legacy' } });
   });
 
+  it('keeps modern negotiation when a catalog entry is known to be stateless', async () => {
+    let connectOptions: { prior?: { kind: string } } | undefined;
+    connectionMocks.connect = async (_transport, options) => {
+      connectOptions = options;
+    };
+
+    await attemptParallelConnections(
+      'https://example.com/mcp',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      'stateless'
+    );
+
+    expect(connectOptions).toBeUndefined();
+  });
+
   it('moves from a hanging root group to a succeeding endpoint fallback', async () => {
     vi.useFakeTimers();
     const attemptedUrls: string[] = [];
@@ -389,7 +407,7 @@ describe('transport candidate generation', () => {
     };
     await mockTransport.fetch?.(connection.url);
 
-    expect(connection.takeAuthenticationChallenge()).toEqual({
+    expect(connection.takeAuthenticationChallenge()).toMatchObject({
       status: 403,
       source: 'target',
       method: 'GET',
@@ -416,7 +434,7 @@ describe('transport candidate generation', () => {
     };
     await mockTransport.fetch?.(connection.url);
 
-    expect(connection.takeAuthenticationChallenge()).toEqual({
+    expect(connection.takeAuthenticationChallenge()).toMatchObject({
       status: 401,
       source: 'target',
       method: 'GET',

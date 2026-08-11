@@ -597,7 +597,11 @@ export const beginOAuthFlow = async (
         trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
       }
     } else {
-      trace.terminal('redirected', 'OAuth authorization is awaiting the browser callback.');
+      if (trace.hasEvent('target_challenge')) {
+        trace.setAuthenticatedMcpRetryState('awaiting_callback');
+      } else {
+        trace.terminal('redirected', 'OAuth authorization is awaiting the browser callback.');
+      }
     }
     return result;
   } catch (error) {
@@ -701,7 +705,11 @@ export const completeOAuthFlow = async (
     });
     provider.invalidateCredentials('verifier');
     storage.setItem('oauth_completed_time', Date.now().toString());
-    trace.terminal('authorized', 'OAuth authorization completed successfully.');
+    if (trace.hasEvent('target_challenge')) {
+      trace.setAuthenticatedMcpRetryState('pending');
+    } else {
+      trace.terminal('authorized', 'OAuth authorization completed successfully.');
+    }
     return { serverUrl, issuer };
   } catch (error) {
     trace.enrichLast('callback', {

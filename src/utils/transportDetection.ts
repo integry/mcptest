@@ -16,6 +16,7 @@ export interface TransportCandidate {
 export interface TransportCandidateFailure {
   candidateUrl: string;
   error: unknown;
+  observedRequests?: readonly ObservedTransportRequest[];
 }
 
 export class TransportConnectionError extends Error {
@@ -38,11 +39,19 @@ export interface ObservedAuthenticationChallenge {
   source: ProxyAuthenticationSource;
   method?: string;
   requestUrl?: string;
+  startedAt?: string;
+  durationMs?: number;
 }
 
 export interface ObservedTransportRequest {
   method: string;
   url: string;
+  candidateUrl?: string;
+  transportType?: TransportType;
+  startedAt?: string;
+  durationMs?: number;
+  status?: number;
+  outcome?: 'started' | 'succeeded' | 'failed';
 }
 
 export class ProxiedAuthenticationError extends Error {
@@ -63,10 +72,14 @@ export class ProxiedAuthenticationError extends Error {
     this.cause = cause;
     this.method = request?.method;
     this.requestUrl = request?.url;
+    this.startedAt = request?.startedAt;
+    this.durationMs = request?.durationMs;
   }
 
   readonly method?: string;
   readonly requestUrl?: string;
+  readonly startedAt?: string;
+  readonly durationMs?: number;
 }
 
 export const getObservedAuthenticationChallenge = (
@@ -82,6 +95,8 @@ export const getObservedAuthenticationChallenge = (
       source: error.responseSource,
       ...(error.method ? { method: error.method } : {}),
       ...(error.requestUrl ? { requestUrl: error.requestUrl } : {}),
+      ...(error.startedAt ? { startedAt: error.startedAt } : {}),
+      ...(error.durationMs !== undefined ? { durationMs: error.durationMs } : {}),
     };
   }
 
@@ -111,15 +126,33 @@ const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
 const observeAuthenticationResponses = (
   usesProxy: boolean,
   onChallenge: (challenge: ObservedAuthenticationChallenge) => void,
+  observedRequests: ObservedTransportRequest[],
+  candidate: TransportCandidate,
   onRequest?: (request: ObservedTransportRequest) => void
 ): FetchLike => async (input, init) => {
   const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
-  const attemptedRequest = {
+  const startedAtMs = Date.now();
+  const attemptedRequest: ObservedTransportRequest = {
     method: (init?.method || request?.method || 'GET').toUpperCase(),
     url: request?.url || String(input),
+    candidateUrl: candidate.url,
+    transportType: candidate.transportType,
+    startedAt: new Date(startedAtMs).toISOString(),
+    outcome: 'started',
   };
+  observedRequests.push(attemptedRequest);
   onRequest?.(attemptedRequest);
-  const response = await fetch(input, init);
+  let response: Response;
+  try {
+    response = await fetch(input, init);
+    attemptedRequest.status = response.status;
+    attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
+    attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
+  } catch (error) {
+    attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
+    attemptedRequest.outcome = 'failed';
+    throw error;
+  }
   if (response.status === 401 || response.status === 403) {
     const responseSource = !usesProxy
       ? 'target'
@@ -131,6 +164,8 @@ const observeAuthenticationResponses = (
       source: responseSource,
       method: attemptedRequest.method,
       requestUrl: attemptedRequest.url,
+      startedAt: attemptedRequest.startedAt,
+      durationMs: attemptedRequest.durationMs,
     });
   }
   return response;
@@ -246,21 +281,26 @@ type ConnectedCandidate = {
   transportType: TransportType;
   client: Client;
   url: string;
+  observedRequests: readonly ObservedTransportRequest[];
   takeAuthenticationChallenge: () => ObservedAuthenticationChallenge | undefined;
 };
 
 const firstSuccessful = <T,>(
-  attempts: Array<{ promise: Promise<T>; candidateUrl: string }>,
+  attempts: Array<{
+    promise: Promise<T>;
+    candidateUrl: string;
+    observedRequests: readonly ObservedTransportRequest[];
+  }>,
   candidateFailures: TransportCandidateFailure[]
 ): Promise<T> => {
   return new Promise((resolve, reject) => {
     const errors: unknown[] = [];
     let remaining = attempts.length;
 
-    for (const { promise, candidateUrl } of attempts) {
+    for (const { promise, candidateUrl, observedRequests } of attempts) {
       promise.then(resolve).catch((error) => {
         errors.push(error);
-        candidateFailures.push({ candidateUrl, error });
+        candidateFailures.push({ candidateUrl, error, observedRequests });
         remaining -= 1;
         if (remaining === 0) {
           reject(new TransportConnectionError(errors, [...candidateFailures]));
@@ -308,21 +348,28 @@ export async function attemptParallelConnections(
   authToken?: string,
   requestHeaders?: HeadersInit,
   usesProxy = false,
-  protocolEraHint?: 'stateful' | 'legacy',
+  protocolEraHint?: 'stateless' | 'stateful' | 'legacy',
   onRequest?: (request: ObservedTransportRequest) => void
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
   const candidates = getTransportCandidates(serverUrl, usesProxy);
   const clients: Client[] = [];
   const transportOptionsFor = (
-    candidateUrl: string,
+    candidate: TransportCandidate,
+    observedRequests: ObservedTransportRequest[],
     onAuthenticationChallenge: (challenge: ObservedAuthenticationChallenge) => void
   ) => {
-    const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders, usesProxy);
+    const headers = getRequestHeadersForCandidate(candidate.url, requestHeaders, usesProxy);
 
     return {
       ...(authToken ? { authProvider: { token: async () => authToken } } : {}),
       ...(Array.from(headers.keys()).length > 0 ? { headers } : {}),
-      fetch: observeAuthenticationResponses(usesProxy, onAuthenticationChallenge, onRequest),
+      fetch: observeAuthenticationResponses(
+        usesProxy,
+        onAuthenticationChallenge,
+        observedRequests,
+        candidate,
+        onRequest
+      ),
     };
   };
 
@@ -333,7 +380,8 @@ export async function attemptParallelConnections(
   console.log('[Parallel Connection] Trying publisher endpoint candidates:', candidates);
 
   const attemptConnection = async (
-    candidate: TransportCandidate
+    candidate: TransportCandidate,
+    observedRequests: ObservedTransportRequest[]
   ): Promise<ConnectedCandidate> => {
     const client = candidate.transportType === 'legacy-sse'
       ? createLegacyMcpClient('mcptest-web')
@@ -341,7 +389,7 @@ export async function attemptParallelConnections(
     clients.push(client);
     const endpoint = new URL(candidate.url);
     let authenticationChallenge: ObservedAuthenticationChallenge | undefined;
-    const transportOpts = transportOptionsFor(candidate.url, (challenge) => {
+    const transportOpts = transportOptionsFor(candidate, observedRequests, (challenge) => {
       authenticationChallenge = challenge;
     });
     const transport = candidate.transportType === 'legacy-sse'
@@ -351,7 +399,9 @@ export async function attemptParallelConnections(
     try {
       await client.connect(
         transport,
-        protocolEraHint ? { prior: { kind: 'legacy' } } : undefined
+        protocolEraHint === 'stateful' || protocolEraHint === 'legacy'
+          ? { prior: { kind: 'legacy' } }
+          : undefined
       );
     } catch (error) {
       if (authenticationChallenge) {
@@ -363,6 +413,8 @@ export async function attemptParallelConnections(
             ? {
                 method: authenticationChallenge.method,
                 url: authenticationChallenge.requestUrl,
+                startedAt: authenticationChallenge.startedAt,
+                durationMs: authenticationChallenge.durationMs,
               }
             : undefined
         );
@@ -374,6 +426,7 @@ export async function attemptParallelConnections(
       ...candidate,
       client,
       transport,
+      observedRequests,
       takeAuthenticationChallenge: () => {
         const challenge = authenticationChallenge;
         authenticationChallenge = undefined;
@@ -416,10 +469,11 @@ export async function attemptParallelConnections(
       try {
         successful = await Promise.race([
           firstSuccessful(
-            candidateGroup.map((candidate) => ({
-              promise: attemptConnection(candidate),
-              candidateUrl: candidate.url,
-            })),
+            candidateGroup.map((candidate) => {
+              const observedRequests: ObservedTransportRequest[] = [];
+              const promise = attemptConnection(candidate, observedRequests);
+              return { promise, candidateUrl: candidate.url, observedRequests };
+            }),
             candidateFailures
           ),
           abortPromise,

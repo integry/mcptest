@@ -84,6 +84,10 @@ export interface OAuthTraceV1 {
   targetUrl: string;
   startedAt: string;
   events: OAuthTraceEventV1[];
+  authenticatedMcpRetry?: {
+    phase: 'awaiting_callback' | 'pending';
+    updatedAt: string;
+  };
   outcome?: OAuthTraceTerminalOutcome;
 }
 
@@ -108,10 +112,41 @@ const makeTraceId = (): string => {
   return `oauth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 };
 
-const redactTextPatterns = (value: string): string => value
-  .replace(new RegExp(`([?&]${SENSITIVE_TEXT_KEY}=)[^&#\\s]*`, 'gi'), `$1${OAUTH_TRACE_REDACTED}`)
-  .replace(new RegExp(`("${SENSITIVE_TEXT_KEY}"\\s*:\\s*")[^"]*`, 'gi'), `$1${OAUTH_TRACE_REDACTED}`)
-  .replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, `$1 ${OAUTH_TRACE_REDACTED}`);
+const redactTextPatterns = (value: string): string => {
+  let redacted = value
+    // Form/query, decoded nested, and header-style assignments. The leading
+    // boundary deliberately includes the start of the string so values such
+    // as `error_description=access_token=...` are safe after URL decoding.
+    .replace(
+      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(\\s*=\\s*)(?:"[^"]*"|'[^']*'|[^&#;,\\r\\n\\s]*)`, 'gi'),
+      `$1$2$3${OAUTH_TRACE_REDACTED}`
+    )
+    .replace(
+      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(\\s*:\\s*)[^;,\\r\\n]*`, 'gi'),
+      `$1$2$3${OAUTH_TRACE_REDACTED}`
+    )
+    // Values can still contain an encoded assignment after URLSearchParams
+    // has decoded an outer layer (for example access_token%3Dsecret).
+    .replace(
+      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(%3d)(.*?)(?=%26|[&#;,\\s]|$)`, 'gi'),
+      `$1$2$3${OAUTH_TRACE_REDACTED}`
+    )
+    .replace(new RegExp(`("${SENSITIVE_TEXT_KEY}"\\s*:\\s*")[^"]*`, 'gi'), `$1${OAUTH_TRACE_REDACTED}`)
+    .replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, `$1 ${OAUTH_TRACE_REDACTED}`);
+
+  // A decoded nested value can itself contain one additional encoded layer.
+  // Repeating is bounded and idempotent while covering common double-encoded
+  // callback error descriptions without retaining the credential text.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = redacted.replace(
+      new RegExp(`(^|[?&;,\\s])(${SENSITIVE_TEXT_KEY})(%253d)(.*?)(?=%2526|%26|[&#;,\\s]|$)`, 'gi'),
+      `$1$2$3${OAUTH_TRACE_REDACTED}`
+    );
+    if (next === redacted) break;
+    redacted = next;
+  }
+  return redacted;
+};
 
 const sanitizeText = (value: string, secrets: ReadonlySet<string>): string => {
   let sanitized = redactTextPatterns(value);
@@ -336,12 +371,30 @@ export class OAuthFlightRecorder {
     ));
   }
 
+  setAuthenticatedMcpRetryState(state: 'awaiting_callback' | 'pending'): void {
+    this.trace.authenticatedMcpRetry = {
+      phase: state,
+      updatedAt: new Date().toISOString(),
+    };
+    // A redirect is an intermediate browser handoff for challenge-driven
+    // authorization, not the final result of the authorization flight.
+    if (this.trace.outcome?.status === 'redirected') {
+      delete this.trace.outcome;
+    }
+    this.persist();
+  }
+
+  hasPendingAuthenticatedMcpRetry(): boolean {
+    return this.trace.authenticatedMcpRetry?.phase === 'pending';
+  }
+
   terminal(status: OAuthTraceTerminalStatus, explanation: string): void {
     const outcome: OAuthTraceTerminalOutcome = {
       status,
       timestamp: new Date().toISOString(),
       explanation: sanitizeText(explanation, this.secrets),
     };
+    delete this.trace.authenticatedMcpRetry;
     this.trace.outcome = outcome;
     this.record({
       type: 'terminal_outcome',

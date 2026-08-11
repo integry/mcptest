@@ -140,6 +140,35 @@ describe('OAuth flight recorder core', () => {
     expect(getStoredOAuthTrace(target, sessionStorage)?.targetUrl).not.toContain('target-secret');
   });
 
+  it('redacts sensitive assignments nested in decoded, encoded, and header-style text', () => {
+    const callback = new URL('https://mcptest.io/oauth/callback');
+    callback.searchParams.set(
+      'error_description',
+      'access_token=nested-access&refresh_token=nested-refresh&authorization_code%3Dnested-code'
+    );
+    const recorder = createOAuthFlightRecorder({ targetUrl: TARGET_URL });
+    recorder.record({
+      type: 'callback',
+      outcome: 'failed',
+      provenance: 'browser_callback',
+      route: 'browser',
+      explanation: 'Authorization: Bearer header-access, refresh_token: header-refresh',
+      request: { method: 'GET', url: callback.toString() },
+    });
+
+    const serialized = recorder.serialize();
+    for (const secret of [
+      'nested-access',
+      'nested-refresh',
+      'nested-code',
+      'header-access',
+      'header-refresh',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).toContain(OAUTH_TRACE_REDACTED);
+  });
+
   it('keeps recording in memory when trace persistence fails', () => {
     const unavailableStorage = {
       getItem: vi.fn().mockReturnValue(null),
