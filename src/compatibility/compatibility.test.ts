@@ -60,6 +60,26 @@ describe('host compatibility evaluator', () => {
     expect(JSON.stringify(matrix)).not.toContain('credentials are absent');
   });
 
+  it('accepts optional authorization when the host supports none of the advertised schemes', () => {
+    const facts = cloneFacts(publicServerFixture);
+    facts.authorization.requirement = observedFact(
+      'optional',
+      'The target accepts unauthenticated requests and optionally supports bearer authorization.'
+    );
+    facts.authorization.schemes = observedFact(
+      ['bearer'],
+      'The target optionally accepts a bearer credential.'
+    );
+
+    const assessment = assessHostCompatibility(facts, 'chatgpt');
+
+    expect(assessment.status).toBe('compatible');
+    expect(assessment.findings).toContainEqual(expect.objectContaining({
+      ruleId: 'authorization.scheme',
+      outcome: 'pass',
+    }));
+  });
+
   it('distinguishes stateful and stateless Streamable HTTP behavior', () => {
     const stateful = assessCompatibilityMatrix(statefulStreamableHttpServerFixture);
     const stateless = assessCompatibilityMatrix(statelessStreamableHttpServerFixture);

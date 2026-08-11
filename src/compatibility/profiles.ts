@@ -183,7 +183,7 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       id: 'authorization.scheme',
       scope: 'target-server',
       passWhen: any(
-        observed('authorization.requirement', 'none'),
+        condition('authorization.requirement', 'one-of', ['none', 'optional']),
         condition('authorization.schemes', 'contains-any', profile.authSchemes)
       ),
       onPass: result(
