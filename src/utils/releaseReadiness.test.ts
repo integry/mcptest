@@ -250,7 +250,7 @@ describe('release readiness integration', () => {
     expect(oauth.dynamicRedirectRegistration.evidence[0].description).toContain('succeeded');
   });
 
-  it('derives bearer from a direct target challenge without calling it OAuth', () => {
+  it('preserves OAuth and static-token paths for a legacy Bearer-only OAuth target', () => {
     const report = evaluatedReport({
       outcome: 'authorization-required',
       finalScore: 0,
@@ -264,7 +264,7 @@ describe('release readiness integration', () => {
             text: '⚠ Authorization required',
             metadata: {
               authenticationSource: 'target',
-              responseHeaders: { 'WWW-Authenticate': 'Bearer realm="mcp"' },
+              responseHeaders: { 'WWW-Authenticate': 'Bearer' },
             },
           }],
         },
@@ -272,8 +272,44 @@ describe('release readiness integration', () => {
     });
 
     const facts = createObservedServerFacts(report);
-    expect(facts.authorization.schemes.value).toEqual(['bearer']);
+    expect(facts.authorization.schemes.value).toEqual(['bearer', 'oauth']);
     expect(facts.authorization.oauth.protectedResourceMetadata.value).toBe('unknown');
+    const remediation = createReleaseDecision(report, createCompatibilityMatrix(report))
+      .priorities[0].remediation;
+    expect(remediation).toContain('guided OAuth');
+    expect(remediation).toContain('bearer token');
+  });
+
+  it('preserves every advertised alternative from a multi-challenge target', () => {
+    const report = evaluatedReport({
+      outcome: 'authorization-required',
+      finalScore: 0,
+      sections: {
+        auth: {
+          name: 'Authorization',
+          description: 'Credential prerequisite',
+          score: 0,
+          maxScore: 0,
+          details: [{
+            text: '⚠ Authorization required',
+            metadata: {
+              authenticationSource: 'target',
+              responseHeaders: {
+                'WWW-Authenticate': 'Bearer, ApiKey',
+              },
+            },
+          }],
+        },
+      },
+    });
+
+    const facts = createObservedServerFacts(report);
+    expect(facts.authorization.schemes.value).toEqual(['bearer', 'oauth', 'api-key']);
+    const remediation = createReleaseDecision(report, createCompatibilityMatrix(report))
+      .priorities[0].remediation;
+    expect(remediation).toContain('guided OAuth');
+    expect(remediation).toContain('bearer token');
+    expect(remediation).toContain('API key');
   });
 
   it('ignores proxy-only traces when deriving target authorization facts', () => {

@@ -23,13 +23,28 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
-import type { AuthorizationScheme } from '../compatibility';
 
-const firstObservedAuthorizationScheme = (
-  report: EvaluationReport
-): AuthorizationScheme | undefined => {
-  const schemes = createObservedServerFacts(report).authorization.schemes.value;
-  return schemes === 'unknown' ? undefined : schemes[0];
+type StaticAuthorizationScheme = 'bearer' | 'api-key';
+
+export const getAuthorizationGateOptions = (
+  report: EvaluationReport,
+  trace?: OAuthTraceV1
+): {
+  offersOAuth: boolean;
+  staticSchemes: StaticAuthorizationScheme[];
+  isUnknown: boolean;
+} => {
+  const schemes = createObservedServerFacts(report, trace).authorization.schemes.value;
+  if (schemes === 'unknown' || schemes.length === 0) {
+    return { offersOAuth: false, staticSchemes: [], isUnknown: true };
+  }
+  return {
+    offersOAuth: schemes.includes('oauth'),
+    staticSchemes: schemes.filter((scheme): scheme is StaticAuthorizationScheme => (
+      scheme === 'bearer' || scheme === 'api-key'
+    )),
+    isUnknown: false,
+  };
 };
 
 const targetAuthenticateChallenge = (report: EvaluationReport): string | undefined => (
@@ -137,6 +152,7 @@ const ReportView: React.FC = () => {
   const [reportError, setReportError] = useState<string | null>(null);
   const [staticCredential, setStaticCredential] = useState('');
   const [staticCredentialError, setStaticCredentialError] = useState<string | null>(null);
+  const [staticAuthorizationScheme, setStaticAuthorizationScheme] = useState<StaticAuthorizationScheme>('bearer');
   const [unknownAuthorizationScheme, setUnknownAuthorizationScheme] = useState<'bearer' | 'api-key'>('bearer');
   const [apiKeyHeader, setApiKeyHeader] = useState<'x-api-key' | 'api-key' | 'authorization'>('x-api-key');
   const [oauthTrace, setOAuthTrace] = useState<OAuthTraceV1 | undefined>();
@@ -356,18 +372,19 @@ const ReportView: React.FC = () => {
       addOrUpdateServer(reportData);
       
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
-        const scheme = firstObservedAuthorizationScheme(reportData);
-        const requirement = scheme === 'oauth'
-          ? 'OAuth authorization'
-          : scheme === 'bearer'
-            ? 'A bearer token'
-            : scheme === 'api-key'
-              ? 'An API key'
-              : 'Target authorization';
+        const options = getAuthorizationGateOptions(reportData);
+        const requirements = [
+          options.offersOAuth ? 'OAuth authorization' : undefined,
+          options.staticSchemes.includes('bearer') ? 'a bearer token' : undefined,
+          options.staticSchemes.includes('api-key') ? 'an API key' : undefined,
+        ].filter((value): value is string => Boolean(value));
+        const requirement = requirements.length > 0
+          ? requirements.join(' or ')
+          : 'Target authorization';
         setProgress(prev => [...prev, `${requirement} is required before this server can be scored.`]);
         if (targetHeaders) {
           setStaticCredentialError(
-            `The ${scheme === 'api-key' ? 'API key' : scheme === 'bearer' ? 'bearer token' : 'credential'} was rejected. Check it and retry.`
+            'The target credential was rejected. Check it and retry.'
           );
         }
       } else if (targetHeaders) {
@@ -435,12 +452,14 @@ const ReportView: React.FC = () => {
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required';
-  const authorizationSchemes = report
-    ? createObservedServerFacts(report, oauthTrace).authorization.schemes.value
-    : 'unknown';
-  const authorizationScheme = authorizationSchemes === 'unknown'
-    ? undefined
-    : authorizationSchemes[0];
+  const authorizationGateOptions = report
+    ? getAuthorizationGateOptions(report, oauthTrace)
+    : { offersOAuth: false, staticSchemes: [], isUnknown: true };
+  const selectedStaticAuthorizationScheme = authorizationGateOptions.staticSchemes.includes(
+    staticAuthorizationScheme
+  )
+    ? staticAuthorizationScheme
+    : authorizationGateOptions.staticSchemes[0];
 
   const retryWithStaticCredential = async (
     scheme: 'bearer' | 'api-key',
@@ -581,7 +600,7 @@ const ReportView: React.FC = () => {
               expandedItems={expandedItems}
               onToggleItem={toggleItemExpanded}
             />
-            {reportRequiresAuthorization && authorizationScheme === 'oauth' && (
+            {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
               <ReportAuthorizationGate
                 serverUrl={report.serverUrl}
                 error={oauthError}
@@ -592,7 +611,7 @@ const ReportView: React.FC = () => {
               />
             )}
             {reportRequiresAuthorization
-              && (authorizationScheme === 'bearer' || authorizationScheme === 'api-key') && (
+              && selectedStaticAuthorizationScheme && (
               <section className="report-auth-gate" aria-labelledby="report-static-auth-title">
                 <div className="report-auth-heading">
                   <div className="report-auth-icon" aria-hidden="true">
@@ -601,7 +620,9 @@ const ReportView: React.FC = () => {
                   <div>
                     <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
                       <h3 id="report-static-auth-title" className="mb-0">
-                        {authorizationScheme === 'bearer' ? 'Bearer token' : 'API key'} required
+                        {authorizationGateOptions.staticSchemes.length > 1
+                          ? 'Choose a target credential'
+                          : `${selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'} required`}
                       </h3>
                       <span className="badge text-bg-warning">Not scored</span>
                     </div>
@@ -614,11 +635,34 @@ const ReportView: React.FC = () => {
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
-                    void retryWithStaticCredential(authorizationScheme);
+                    void retryWithStaticCredential(selectedStaticAuthorizationScheme);
                   }}
                 >
+                  {authorizationGateOptions.staticSchemes.length > 1 && (
+                    <>
+                      <label className="form-label" htmlFor="report-static-auth-scheme">
+                        Authentication type
+                      </label>
+                      <select
+                        id="report-static-auth-scheme"
+                        className="form-select mb-3"
+                        value={selectedStaticAuthorizationScheme}
+                        onChange={(event) => {
+                          setStaticAuthorizationScheme(event.target.value as StaticAuthorizationScheme);
+                          setStaticCredentialError(null);
+                        }}
+                        disabled={isRunning}
+                      >
+                        {authorizationGateOptions.staticSchemes.map((scheme) => (
+                          <option key={scheme} value={scheme}>
+                            {scheme === 'bearer' ? 'Bearer token' : 'API key'}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                   <label className="form-label" htmlFor="report-static-credential">
-                    {authorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
+                    {selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
                   </label>
                   <input
                     id="report-static-credential"
@@ -649,7 +693,7 @@ const ReportView: React.FC = () => {
                 </form>
               </section>
             )}
-            {reportRequiresAuthorization && authorizationScheme === undefined && (
+            {reportRequiresAuthorization && authorizationGateOptions.isUnknown && (
               <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
                 <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
                 <p>

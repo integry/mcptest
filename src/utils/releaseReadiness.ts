@@ -115,13 +115,19 @@ const targetChallengeEvents = (trace: OAuthTraceV1 | undefined) => (
 
 const challengeSchemes = (value: string): AuthorizationScheme[] => {
   const schemes: AuthorizationScheme[] = [];
-  for (const challenge of value.split(/,(?=\s*[A-Za-z][A-Za-z0-9_-]*\s)/)) {
+  for (const challenge of value.split(/,(?=\s*[A-Za-z][A-Za-z0-9_-]*(?:\s|,|$))/)) {
     const scheme = challenge.trim().match(/^([A-Za-z][A-Za-z0-9_-]*)/)?.[1]?.toLowerCase();
     if (!scheme) continue;
     if (scheme === 'apikey' || scheme === 'api-key' || scheme === 'x-api-key') {
       schemes.push('api-key');
     } else if (scheme === 'bearer') {
-      schemes.push(/\bresource_metadata\s*=/i.test(challenge) ? 'oauth' : 'bearer');
+      if (/\bresource_metadata\s*=/i.test(challenge)) {
+        schemes.push('oauth');
+      } else {
+        // A legacy OAuth resource may advertise only Bearer, without RFC 9728
+        // resource metadata. Preserve both interpretations until one is proven.
+        schemes.push('bearer', 'oauth');
+      }
     } else if (scheme === 'oauth' || scheme === 'oauth2') {
       schemes.push('oauth');
     }
@@ -421,18 +427,30 @@ export const createReleaseDecision = (
   const outcome = resolveEvaluationOutcome(report);
   if (outcome === 'authorization-required') {
     const schemes = inferAuthorizationSchemes(report, trace);
-    const scheme = schemes === 'unknown' || schemes.length === 0 ? undefined : schemes[0];
-    const remediation = scheme === 'oauth'
-      ? 'Complete the guided OAuth flow or configure a registered OAuth client, then rerun the report.'
-      : scheme === 'bearer'
-        ? 'Supply a valid bearer token for the MCP target, then rerun the report.'
-        : scheme === 'api-key'
-          ? 'Configure the API key required by the MCP target, then rerun the report.'
-          : 'Inspect the target WWW-Authenticate challenge or authorization configuration, provide the required credential, then rerun the report.';
+    const advertisedSchemes = schemes === 'unknown' ? [] : schemes;
+    const authorizationLabels = [
+      advertisedSchemes.includes('oauth') ? 'OAuth' : undefined,
+      advertisedSchemes.includes('bearer') ? 'bearer token' : undefined,
+      advertisedSchemes.includes('api-key') ? 'API key' : undefined,
+    ].filter((label): label is string => Boolean(label));
+    const remediationOptions = [
+      advertisedSchemes.includes('oauth')
+        ? 'complete the guided OAuth flow or configure a registered OAuth client'
+        : undefined,
+      advertisedSchemes.includes('bearer')
+        ? 'supply a valid bearer token for the MCP target'
+        : undefined,
+      advertisedSchemes.includes('api-key')
+        ? 'configure the API key required by the MCP target'
+        : undefined,
+    ].filter((option): option is string => Boolean(option));
+    const remediation = remediationOptions.length > 0
+      ? `Choose an advertised authorization method: ${remediationOptions.join('; ')}, then rerun the report.`
+      : 'Inspect the target WWW-Authenticate challenge or authorization configuration, provide the required credential, then rerun the report.';
     return {
       status: 'authorization-required',
       answer: 'Not yet — authorization is required',
-      summary: `${scheme === 'oauth' ? 'OAuth' : scheme === 'bearer' ? 'Bearer-token' : scheme === 'api-key' ? 'API-key' : 'Target'} authorization must complete before a release decision can be made.`,
+      summary: `${authorizationLabels.length > 0 ? authorizationLabels.join(' or ') : 'Target'} authorization must complete before a release decision can be made.`,
       priorities: [{
         id: 'evaluation.authorization',
         severity: 'high',

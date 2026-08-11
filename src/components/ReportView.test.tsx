@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { EvaluationReport } from '../utils/evaluation';
-import { getOAuthTraceForEvaluation, getStaticCredentialHeaders } from './ReportView';
+import {
+  getAuthorizationGateOptions,
+  getOAuthTraceForEvaluation,
+  getStaticCredentialHeaders,
+} from './ReportView';
 import { createOAuthFlightRecorder } from '../utils/oauthTrace';
 
 const challengedReport = (challenge: string): EvaluationReport => ({
@@ -53,6 +57,26 @@ describe('report static credential delivery', () => {
       'secret-value',
       header
     )).toEqual(expected);
+  });
+});
+
+describe('report authorization alternatives', () => {
+  it('offers guided OAuth alongside bearer entry for a legacy Bearer-only target', () => {
+    expect(getAuthorizationGateOptions(challengedReport('Bearer'))).toEqual({
+      offersOAuth: true,
+      staticSchemes: ['bearer'],
+      isUnknown: false,
+    });
+  });
+
+  it('keeps every choice exposed for a multi-challenge target', () => {
+    expect(getAuthorizationGateOptions(
+      challengedReport('Bearer, ApiKey')
+    )).toEqual({
+      offersOAuth: true,
+      staticSchemes: ['bearer', 'api-key'],
+      isUnknown: false,
+    });
   });
 });
 
