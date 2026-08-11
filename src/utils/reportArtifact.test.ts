@@ -480,6 +480,36 @@ describe('versioned public report artifacts', () => {
     expect(output).toContain('display=visible');
   });
 
+  it('redacts encoded sensitive query names through both serializers and fails closed at the decode bound', () => {
+    const singlyEncodedUrl = 'https://client.example/?access%5Ftoken=single-name-secret';
+    const repeatedlyEncodedUrl = 'https://client.example/?access%255Ftoken=repeated-name-secret';
+    let overBoundKey = 'access%5Ftoken';
+    for (let layer = 0; layer < 6; layer += 1) overBoundKey = encodeURIComponent(overBoundKey);
+    const overBoundUrl = `https://client.example/?${overBoundKey}=bounded-name-secret`;
+
+    for (const [url, secret] of [
+      [singlyEncodedUrl, 'single-name-secret'],
+      [repeatedlyEncodedUrl, 'repeated-name-secret'],
+      [overBoundUrl, 'bounded-name-secret'],
+    ]) {
+      expect(redactReportString(url)).not.toContain(secret);
+    }
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: singlyEncodedUrl,
+      context: repeatedlyEncodedUrl,
+      metadata: { callback: repeatedlyEncodedUrl, bounded: overBoundUrl },
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    for (const secret of ['single-name-secret', 'repeated-name-secret', 'bounded-name-secret']) {
+      expect(json).not.toContain(secret);
+      expect(markdown).not.toContain(secret);
+    }
+  });
+
   it('redacts OAuth credential parameters from plain-text assignments', () => {
     const output = redactReportString(
       'id_token_hint=plain-id-secret client-assertion=plain-assertion-secret deviceCode=plain-device-secret user_code=plain-user-secret'

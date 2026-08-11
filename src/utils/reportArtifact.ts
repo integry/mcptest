@@ -16,7 +16,7 @@ export const REDACTED_VALUE = '[REDACTED]' as const;
 const SCORE_PERCENTAGE_TOLERANCE = 1e-9;
 const MAX_REDACTION_PASSES = 8;
 const MAX_URL_REDACTION_DEPTH = 4;
-const MAX_QUERY_VALUE_DECODE_PASSES = 4;
+const MAX_QUERY_COMPONENT_DECODE_PASSES = 4;
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
@@ -260,6 +260,26 @@ const isSensitiveKey = (key: string): boolean => {
     || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical);
 };
 
+const isSensitiveQueryKey = (key: string): boolean => {
+  let decoded = key;
+
+  for (let pass = 0; pass <= MAX_QUERY_COMPONENT_DECODE_PASSES; pass += 1) {
+    if (isSensitiveKey(decoded)) return true;
+
+    let next: string;
+    try {
+      next = decodeURIComponent(decoded);
+    } catch {
+      return false;
+    }
+    if (next === decoded) return false;
+    if (pass === MAX_QUERY_COMPONENT_DECODE_PASSES) return true;
+    decoded = next;
+  }
+
+  return true;
+};
+
 const redactSensitiveAssignments = (value: string): string => {
   const matches: Array<{ start: number; end: number; replacement: string }> = [];
   const assignmentStart = /(?:(['"])([A-Za-z][A-Za-z0-9_-]*)\1|\b([A-Za-z][A-Za-z0-9_-]*)\b)\s*([:=])\s*/g;
@@ -317,7 +337,7 @@ const redactEncodedQueryValue = (value: string, depth: number): string => {
   let decoded = value;
   let decodedLayers = 0;
 
-  for (let pass = 0; pass <= MAX_QUERY_VALUE_DECODE_PASSES; pass += 1) {
+  for (let pass = 0; pass <= MAX_QUERY_COMPONENT_DECODE_PASSES; pass += 1) {
     const redacted = redactReportStringAtDepth(decoded, depth);
     if (redacted !== decoded) {
       let reencoded = redacted;
@@ -340,7 +360,7 @@ const redactEncodedQueryValue = (value: string, depth: number): string => {
       return value;
     }
     if (next === decoded) return value;
-    if (pass === MAX_QUERY_VALUE_DECODE_PASSES) return REDACTED_VALUE;
+    if (pass === MAX_QUERY_COMPONENT_DECODE_PASSES) return REDACTED_VALUE;
     decoded = next;
     decodedLayers += 1;
   }
@@ -361,7 +381,7 @@ const redactUrl = (value: string, depth = 0): string => {
   if (url.username) url.username = REDACTED_VALUE;
   if (url.password) url.password = REDACTED_VALUE;
   for (const [key, queryValue] of [...url.searchParams.entries()]) {
-    if (isSensitiveKey(key)) {
+    if (isSensitiveQueryKey(key)) {
       url.searchParams.set(key, REDACTED_VALUE);
     } else {
       const redactedQueryValue = redactEncodedQueryValue(queryValue, depth + 1);
