@@ -126,6 +126,46 @@ export const getObservedAuthenticationChallenge = (
 
 const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
 
+const OAUTH_SENSITIVE_CANONICAL_KEYS = new Set([
+  'authorization',
+  'proxyauthorization',
+  'xmcpauthorization',
+  'dpop',
+  'cookie',
+  'setcookie',
+  'xapikey',
+  'apikey',
+  'key',
+  'code',
+  'authorizationcode',
+  'devicecode',
+  'usercode',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'idtokenhint',
+  'registrationaccesstoken',
+  'token',
+  'clientsecret',
+  'codeverifier',
+  'verifier',
+  'state',
+  'nonce',
+  'csrf',
+  'session',
+  'sessionid',
+  'credential',
+  'assertion',
+  'clientassertion',
+  'requesturi',
+  'password',
+  'secret',
+]);
+
+export const isOAuthSensitiveKey = (key: string): boolean => (
+  OAUTH_SENSITIVE_CANONICAL_KEYS.has(key.replace(/[^a-z0-9]/gi, '').toLowerCase())
+);
+
 const sanitizeChallengeMetadataUrl = (value: string): string => {
   try {
     const url = new URL(value);
@@ -133,8 +173,7 @@ const sanitizeChallengeMetadataUrl = (value: string): string => {
     if (url.password) url.password = '[REDACTED]';
     url.hash = '';
     for (const [key] of url.searchParams) {
-      const canonicalKey = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-      if (/^(?:authorization|token|accesstoken|refreshtoken|idtoken|code|state|nonce|apikey|key|clientsecret|verifier|assertion|credential|password|secret|session)$/.test(canonicalKey)) {
+      if (isOAuthSensitiveKey(key)) {
         url.searchParams.set(key, '[REDACTED]');
       }
     }
@@ -144,7 +183,7 @@ const sanitizeChallengeMetadataUrl = (value: string): string => {
   }
 };
 
-const sanitizeAuthenticationChallenge = (value: string): string => {
+export const sanitizeAuthenticationChallenge = (value: string): string => {
   const withoutControls = value.replace(/[\r\n\0]/g, ' ');
   const scheme = withoutControls.match(/^\s*([a-z][a-z0-9_-]*)/i)?.[1];
   if (!scheme) return '[REDACTED]';

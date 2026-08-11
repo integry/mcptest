@@ -589,17 +589,22 @@ export const beginOAuthFlow = async (
   const storage = options.storage || getSessionStorage();
   storage.setItem(OAUTH_SERVER_URL_KEY, normalizedServerUrl);
   const pendingTrace = options.trace || resumeOAuthFlightRecorder(normalizedServerUrl, storage);
+  const pendingOutcome = pendingTrace?.snapshot().outcome?.status;
+  const continuesAfterManualClient = pendingOutcome === 'manual_client_required';
   const carriesChallengeDrivenRetry = Boolean(
     pendingTrace?.hasAuthenticatedMcpRetryState()
     || (
-      pendingTrace?.snapshot().outcome?.status === 'manual_client_required'
+      continuesAfterManualClient
       && pendingTrace.hasEvent('target_challenge')
     )
   );
-  const trace = pendingTrace && !pendingTrace.snapshot().outcome
+  const trace = pendingTrace && (!pendingOutcome || continuesAfterManualClient)
     ? pendingTrace
     : createOAuthFlightRecorder({ targetUrl: normalizedServerUrl, storage });
-  if (trace !== pendingTrace && carriesChallengeDrivenRetry) {
+  if (continuesAfterManualClient) {
+    trace.continueAfterManualClientRequired();
+  }
+  if (carriesChallengeDrivenRetry) {
     trace.setAuthenticatedMcpRetryState('awaiting_callback');
   }
   const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...options, trace });

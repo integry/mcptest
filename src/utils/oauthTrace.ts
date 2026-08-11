@@ -1,6 +1,8 @@
 import type { FetchLike, ProtocolEra } from '@modelcontextprotocol/client';
 import {
   getObservedAuthenticationChallenge,
+  isOAuthSensitiveKey,
+  sanitizeAuthenticationChallenge,
   type ObservedTransportRequest,
 } from './transportDetection';
 import type { TransportType } from '../types';
@@ -103,45 +105,6 @@ type OAuthTraceEventInput = Omit<OAuthTraceEventV1, 'sequence' | 'timestamp'> & 
   timestamp?: string;
 };
 
-const SENSITIVE_CANONICAL_KEYS = new Set([
-  'authorization',
-  'proxyauthorization',
-  'xmcpauthorization',
-  'dpop',
-  'cookie',
-  'setcookie',
-  'xapikey',
-  'apikey',
-  'key',
-  'code',
-  'authorizationcode',
-  'devicecode',
-  'usercode',
-  'accesstoken',
-  'refreshtoken',
-  'idtoken',
-  'idtokenhint',
-  'registrationaccesstoken',
-  'token',
-  'clientsecret',
-  'codeverifier',
-  'verifier',
-  'state',
-  'nonce',
-  'csrf',
-  'session',
-  'sessionid',
-  'credential',
-  'assertion',
-  'clientassertion',
-  'requesturi',
-  'password',
-  'secret',
-]);
-const canonicalizeSensitiveKey = (key: string): string => key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-const isSensitiveKey = (key: string): boolean => (
-  SENSITIVE_CANONICAL_KEYS.has(canonicalizeSensitiveKey(key))
-);
 const KEY_SEPARATOR = '[-_]?';
 const SENSITIVE_TEXT_KEY = `(?:authorization|proxy${KEY_SEPARATOR}authorization|x${KEY_SEPARATOR}mcp${KEY_SEPARATOR}authorization|dpop|cookie|set${KEY_SEPARATOR}cookie|x${KEY_SEPARATOR}api${KEY_SEPARATOR}key|api${KEY_SEPARATOR}key|key|code|authorization${KEY_SEPARATOR}code|device${KEY_SEPARATOR}code|user${KEY_SEPARATOR}code|access${KEY_SEPARATOR}token|refresh${KEY_SEPARATOR}token|id${KEY_SEPARATOR}token(?:${KEY_SEPARATOR}hint)?|registration${KEY_SEPARATOR}access${KEY_SEPARATOR}token|token|client${KEY_SEPARATOR}secret|code${KEY_SEPARATOR}verifier|verifier|state|nonce|csrf|session(?:${KEY_SEPARATOR}id)?|credential|assertion|client${KEY_SEPARATOR}assertion|request(?:${KEY_SEPARATOR}uri)?|password|secret)`;
 export const OAUTH_TRACE_REDACTED = '[REDACTED]';
@@ -302,7 +265,7 @@ export const sanitizeOAuthTraceUrl = (
     url.hash = '';
 
     for (const [key, queryValue] of [...url.searchParams.entries()]) {
-      if (isSensitiveKey(key)) {
+      if (isOAuthSensitiveKey(key)) {
         url.searchParams.set(key, OAUTH_TRACE_REDACTED);
       } else if (key === 'target' || key === 'redirect_uri' || key === 'resource') {
         try {
@@ -326,7 +289,7 @@ const sanitizeValue = (
   key?: string,
   seen = new WeakSet<object>()
 ): unknown => {
-  if (key && isSensitiveKey(key)) return OAUTH_TRACE_REDACTED;
+  if (key && isOAuthSensitiveKey(key)) return OAUTH_TRACE_REDACTED;
   if (typeof value === 'string') {
     if (key && /url|uri|endpoint|issuer|resource/i.test(key)) {
       return sanitizeOAuthTraceUrl(value, secrets);
@@ -351,7 +314,12 @@ const safeResponseHeaders = (response: Response, secrets: ReadonlySet<string>): 
   const authenticate = response.headers.get('www-authenticate');
   if (contentType) headers['content-type'] = sanitizeText(contentType, secrets);
   if (location) headers.location = sanitizeOAuthTraceUrl(location, secrets);
-  if (authenticate) headers['www-authenticate'] = sanitizeText(authenticate, secrets);
+  if (authenticate) {
+    headers['www-authenticate'] = sanitizeText(
+      sanitizeAuthenticationChallenge(authenticate),
+      secrets
+    );
+  }
   return headers;
 };
 
@@ -363,7 +331,12 @@ const safeChallengeResponseHeaders = (
     ([key]) => key.toLowerCase() === 'www-authenticate'
   )?.[1];
   return authenticate
-    ? { 'www-authenticate': sanitizeText(authenticate, secrets) }
+    ? {
+      'www-authenticate': sanitizeText(
+        sanitizeAuthenticationChallenge(authenticate),
+        secrets
+      ),
+    }
     : {};
 };
 
@@ -572,6 +545,24 @@ export class OAuthFlightRecorder {
 
   hasAuthenticatedMcpRetryState(): boolean {
     return Boolean(this.trace.authenticatedMcpRetry);
+  }
+
+  continueAfterManualClientRequired(): boolean {
+    if (this.trace.outcome?.status !== 'manual_client_required') return false;
+
+    delete this.trace.outcome;
+    const provisionalTerminal = [...this.trace.events].reverse().find((event) => (
+      event.type === 'terminal_outcome' && event.outcome === 'required'
+    ));
+    if (provisionalTerminal) {
+      provisionalTerminal.outcome = 'skipped';
+      provisionalTerminal.explanation = sanitizeText(
+        'The provisional manual-client-required outcome was superseded when OAuth authorization resumed for manual-client continuation.',
+        this.secrets
+      );
+    }
+    this.persist();
+    return true;
   }
 
   terminal(status: OAuthTraceTerminalStatus, explanation: string): void {

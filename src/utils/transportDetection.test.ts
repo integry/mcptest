@@ -6,6 +6,7 @@ import {
   attemptParallelConnections,
   getRequestHeadersForCandidate,
   getTransportCandidates,
+  sanitizeAuthenticationChallenge,
 } from './transportDetection';
 
 const connectionMocks = vi.hoisted(() => ({
@@ -63,6 +64,29 @@ afterEach(() => {
 });
 
 describe('transport candidate generation', () => {
+  it('strictly redacts challenge parameters and credential variants in metadata URLs', () => {
+    const sanitized = sanitizeAuthenticationChallenge(
+      'Bearer realm="private-tenant", error="invalid_token", error_description="token rejected for alice@example.com", '
+      + 'resource_metadata="https://auth.example/metadata?device_code=device-secret&user_code=user-secret&code_verifier=verifier-secret&client_assertion=assertion-secret&registration_access_token=registration-secret&tenant=acme"'
+    );
+
+    expect(sanitized).toContain('realm="[REDACTED]"');
+    expect(sanitized).toContain('error="invalid_token"');
+    expect(sanitized).toContain('error_description="[REDACTED]"');
+    expect(sanitized).toContain('tenant=acme');
+    for (const secret of [
+      'private-tenant',
+      'token rejected for alice@example.com',
+      'device-secret',
+      'user-secret',
+      'verifier-secret',
+      'assertion-secret',
+      'registration-secret',
+    ]) {
+      expect(sanitized).not.toContain(secret);
+    }
+  });
+
   it('does not append paths to a custom publisher endpoint', () => {
     const candidates = getTransportCandidates('https://mcp.atlassian.com/v1/mcp/authv2');
 

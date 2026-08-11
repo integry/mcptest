@@ -509,12 +509,22 @@ describe('OAuth flight recorder integration', () => {
   });
 
   it('carries challenge retry ownership through manual client continuation and callback', async () => {
-    recordOAuthAuthenticationChallenge({
+    const initialTrace = recordOAuthAuthenticationChallenge({
       targetUrl: SERVER_URL,
       status: 401,
       source: 'target',
       route: 'direct',
       storage: sessionStorage,
+    });
+    const traceId = initialTrace.snapshot().traceId;
+    initialTrace.record({
+      type: 'dynamic_client_registration',
+      outcome: 'failed',
+      provenance: 'authorization_server',
+      route: 'direct',
+      explanation: 'Dynamic client registration was rejected.',
+      request: { method: 'POST', url: `${ISSUER_A}register` },
+      response: { status: 400 },
     });
     await expect(beginOAuthFlow(SERVER_URL, {
       authenticate: vi.fn().mockRejectedValue(
@@ -523,15 +533,45 @@ describe('OAuth flight recorder integration', () => {
       deferAuthorizedTraceOutcome: true,
     })).rejects.toThrow();
 
+    const manualRequiredTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(manualRequiredTrace).toMatchObject({
+      traceId,
+      outcome: { status: 'manual_client_required' },
+      events: expect.arrayContaining([
+        expect.objectContaining({ type: 'target_challenge', outcome: 'challenged' }),
+        expect.objectContaining({ type: 'dynamic_client_registration', outcome: 'failed' }),
+        expect.objectContaining({ type: 'pre_registered_client', outcome: 'required' }),
+      ]),
+    });
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    saveManualOAuthClient(SERVER_URL, 'manual-client', 'manual-client-secret');
+
     let state = '';
     await expect(beginOAuthFlow(SERVER_URL, {
       authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+        expect(provider.clientInformation?.({ issuer: ISSUER_A })).toMatchObject({
+          client_id: 'manual-client',
+        });
         state = await provider.state();
+        await provider.redirectToAuthorization(
+          new URL(`${ISSUER_A}authorize?client_id=manual-client&state=${state}`)
+        );
         return 'REDIRECT' as const;
       }),
+      redirect: vi.fn(),
       deferAuthorizedTraceOutcome: true,
     })).resolves.toBe('REDIRECT');
     expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      traceId,
       authenticatedMcpRetry: { phase: 'awaiting_callback' },
     });
 
@@ -549,6 +589,7 @@ describe('OAuth flight recorder integration', () => {
       }
     );
     expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      traceId,
       authenticatedMcpRetry: { phase: 'pending' },
     });
 
@@ -565,12 +606,40 @@ describe('OAuth flight recorder integration', () => {
         protocolEra: 'modern',
       },
     })).toBe(true);
-    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+    const completedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(completedTrace).toMatchObject({
+      traceId,
       outcome: { status: 'authorized' },
       events: expect.arrayContaining([
+        expect.objectContaining({ type: 'target_challenge', outcome: 'challenged' }),
+        expect.objectContaining({ type: 'dynamic_client_registration', outcome: 'failed' }),
+        expect.objectContaining({ type: 'pre_registered_client', outcome: 'required' }),
+        expect.objectContaining({ type: 'pre_registered_client', outcome: 'succeeded' }),
+        expect.objectContaining({ type: 'authorization_redirect', outcome: 'redirected' }),
+        expect.objectContaining({ type: 'callback', outcome: 'succeeded' }),
         expect.objectContaining({ type: 'mcp_retry', outcome: 'succeeded' }),
       ]),
     });
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome').map(
+      ({ outcome }) => outcome
+    )).toEqual(['skipped', 'succeeded']);
+    const orderedStages = completedTrace?.events.map(({ type, outcome }) => `${type}:${outcome}`) || [];
+    const expectedOrder = [
+      'target_challenge:challenged',
+      'dynamic_client_registration:failed',
+      'pre_registered_client:required',
+      'pre_registered_client:succeeded',
+      'authorization_redirect:redirected',
+      'callback:succeeded',
+      'mcp_retry:succeeded',
+      'terminal_outcome:succeeded',
+    ];
+    const stageIndexes = expectedOrder.map((stage) => orderedStages.indexOf(stage));
+    expect(stageIndexes).not.toContain(-1);
+    for (let index = 1; index < expectedOrder.length; index += 1) {
+      expect(stageIndexes[index]).toBeGreaterThan(stageIndexes[index - 1]);
+    }
+    expect(JSON.stringify(completedTrace)).not.toContain('manual-client-secret');
   });
 
   it('records refresh without serializing old or new tokens', async () => {

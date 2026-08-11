@@ -182,7 +182,7 @@ describe('OAuth flight recorder core', () => {
       source: 'target',
       route: 'direct',
       responseHeaders: {
-        'www-authenticate': 'Bearer realm="mcp", resource_metadata="https://auth.example/metadata?token=%5BREDACTED%5D"',
+        'www-authenticate': 'Bearer realm="private-realm", error_description="credential rejected for alice@example.com", resource_metadata="https://auth.example/metadata?device_code=device-secret&token=%5BREDACTED%5D"',
         'set-cookie': 'session=must-not-be-stored',
       },
     });
@@ -192,6 +192,9 @@ describe('OAuth flight recorder core', () => {
     });
     expect(recorder.serialize()).toContain('auth.example/metadata');
     expect(recorder.serialize()).not.toContain('must-not-be-stored');
+    expect(recorder.serialize()).not.toContain('private-realm');
+    expect(recorder.serialize()).not.toContain('credential rejected for alice@example.com');
+    expect(recorder.serialize()).not.toContain('device-secret');
     expect(recorder.serialize()).toMatch(/(?:\[REDACTED\]|%5BREDACTED%5D)/i);
   });
 
