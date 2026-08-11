@@ -399,7 +399,12 @@ const surroundingQuoteAt = (value: string, end: number): '"' | "'" | undefined =
 
 const redactSensitiveAssignments = (value: string): string => {
   const matches: Array<{ start: number; end: number; replacement: string }> = [];
-  const assignmentStart = /(?:(['"])([A-Za-z](?:[A-Za-z0-9_+-]|%[A-Fa-f0-9]{2})*)\1|\b([A-Za-z](?:[A-Za-z0-9_+-]|%[A-Fa-f0-9]{2})*)\b)\s*([:=])\s*/g;
+  const keyPart = String.raw`[A-Za-z](?:[A-Za-z0-9_+.-]|%[A-Fa-f0-9]{2})*`;
+  const compoundKey = `${keyPart}(?:\\s+${keyPart})?`;
+  const assignmentStart = new RegExp(
+    `(?:(['"])(` + compoundKey + `)\\1|\\b(` + compoundKey + `)\\b)\\s*([:=])\\s*`,
+    'g'
+  );
   let match: RegExpExecArray | null;
 
   while ((match = assignmentStart.exec(value)) !== null) {
@@ -748,10 +753,12 @@ const failedRouteAttempts = (
 const sectionStatus = (
   id: string,
   section: EvaluationSection,
-  outcome: PublicReportOutcome
+  outcome: PublicReportOutcome,
+  inferLegacyStatus: boolean
 ): PublicReport['sections'][number]['status'] => {
   if (id === 'auth') return 'prerequisite';
   if (section.status) return section.status;
+  if (!inferLegacyStatus && outcome === 'scored') return 'evaluated';
   if (isLegacySkippedEvaluationSection(section)) return outcome === 'failed' && id === 'protocol'
     ? 'failed'
     : 'skipped';
@@ -879,7 +886,7 @@ export const createPublicReport = (
       },
     } : {}),
     sections: Object.entries(report.sections).map(([id, section]) => {
-      const status = sectionStatus(id, section, outcome);
+      const status = sectionStatus(id, section, outcome, report.outcome === undefined);
       return {
         id,
         name: section.name,

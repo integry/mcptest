@@ -125,17 +125,20 @@ export const resolveEvaluationOutcome = (
   if (report.outcome === 'failed' || report.outcome === 'partial') return report.outcome;
 
   const sections = Object.values(report.sections);
+  const inferLegacyOutcome = report.outcome === undefined;
   const incomplete = sections.some((section) => (
     section.status === 'partial'
     || section.status === 'failed'
     || section.status === 'skipped'
-    || (!section.status && hasLegacyIncompleteEvaluationEvidence(section))
+    || (inferLegacyOutcome && !section.status && hasLegacyIncompleteEvaluationEvidence(section))
   ));
   const protocolSection = report.sections.protocol;
   const protocolIncomplete = protocolSection && (
     protocolSection.status === 'failed'
     || protocolSection.status === 'skipped'
-    || (!protocolSection.status && isLegacySkippedEvaluationSection(protocolSection))
+    || (inferLegacyOutcome
+      && !protocolSection.status
+      && isLegacySkippedEvaluationSection(protocolSection))
   );
   const negotiationFailed = protocolIncomplete && protocolSection.details.some((detail) => (
     /negotiation failed|no MCP connection/i.test(`${detail.text} ${detail.context || ''}`)

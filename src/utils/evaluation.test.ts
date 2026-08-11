@@ -645,6 +645,16 @@ describe('dual-era server evaluation', () => {
         },
       },
     };
+    const explicitlyScoredReport = {
+      ...evaluatedReport,
+      outcome: 'scored' as const,
+      sections: {
+        protocol: {
+          ...evaluatedReport.sections.protocol,
+          details: [{ text: '⚠ Unsupported optional probe was skipped; scored checks completed.' }],
+        },
+      },
+    };
 
     expect(resolveEvaluationOutcome(evaluatedReport)).toBe('scored');
     expect(isScoredEvaluation(evaluatedReport)).toBe(true);
@@ -654,5 +664,7 @@ describe('dual-era server evaluation', () => {
     expect(isScoredEvaluation(failedReport)).toBe(false);
     expect(resolveEvaluationOutcome(mixedPartialReport)).toBe('partial');
     expect(isScoredEvaluation(mixedPartialReport)).toBe(false);
+    expect(resolveEvaluationOutcome(explicitlyScoredReport)).toBe('scored');
+    expect(isScoredEvaluation(explicitlyScoredReport)).toBe(true);
   });
 });

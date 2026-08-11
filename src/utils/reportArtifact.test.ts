@@ -609,6 +609,33 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts punctuation- and whitespace-separated sensitive assignment keys everywhere', () => {
+    const assignments = [
+      ['api.key=punctuation-api-secret', 'punctuation-api-secret'],
+      ['API Key: whitespace-api-secret', 'whitespace-api-secret'],
+      ['private key=private-key-secret', 'private-key-secret'],
+      ['code verifier: verifier-secret', 'verifier-secret'],
+    ] as const;
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      text: assignments.map(([assignment]) => assignment).join('\n'),
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const directlyConstructed = createPublicReport(publicReport(), FIXED_OPTIONS);
+    directlyConstructed.sections[0].evidence[0].message = report.sections.protocol.details[0].text;
+    const outputs = [
+      artifact.sections[0].evidence[0].message,
+      serializePublicReportJson(directlyConstructed),
+      serializePublicReportMarkdown(directlyConstructed),
+    ];
+
+    for (const output of outputs) {
+      for (const [, secret] of assignments) expect(output).not.toContain(secret);
+    }
+    expect(outputs[0].match(/\[REDACTED\]/g)).toHaveLength(assignments.length);
+  });
+
   it('redacts compound and form-encoded secret names through both serializers', () => {
     const secretsByKey = {
       secret_key: 'compound-secret-value',
@@ -1245,6 +1272,22 @@ describe('versioned public report artifacts', () => {
       ...report.sections.protocol.details[0],
       text: '✓ MCP negotiation succeeded after an alternate negotiation failed.',
       context: 'The alternate route had no MCP connection, but the direct route succeeded.',
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+
+    expect(artifact.outcome.status).toBe('scored');
+    expect(artifact.score).toEqual({ earned: 55, maximum: 55, percentage: 100 });
+    expect(artifact.sections.every((reportSection) => reportSection.status === 'evaluated')).toBe(true);
+    expect(serializePublicReportJson(artifact)).toContain('"status": "scored"');
+    expect(serializePublicReportMarkdown(artifact)).toContain('55 / 55 (100.00%)');
+  });
+
+  it('keeps explicit scored reports when warning evidence mentions a skipped optional probe', () => {
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      ...report.sections.protocol.details[0],
+      text: '⚠ Unsupported optional probe was skipped; scored checks completed.',
     };
 
     const artifact = createPublicReport(report, FIXED_OPTIONS);
