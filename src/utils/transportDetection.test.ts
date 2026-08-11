@@ -448,6 +448,9 @@ describe('transport candidate generation', () => {
         'www-authenticate': expect.stringContaining('resource_metadata='),
       },
     });
+    expect(challenge?.resourceMetadataUrl).toBe(
+      'https://auth.example/metadata?token=header-secret'
+    );
     expect(JSON.stringify(challenge)).not.toContain('header-secret');
     expect(JSON.stringify(challenge)).not.toContain('raw-secret');
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();

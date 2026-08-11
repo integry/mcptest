@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import proxyWorker, {
   PROXY_RESPONSE_SOURCE_HEADER,
@@ -5,6 +6,28 @@ import proxyWorker, {
   getTargetRequestHeaders,
   withCorsResponseHeaders,
 } from './index';
+
+interface CorsRequest {
+  getResponseHeader(name: string): string | null;
+  onerror: (() => void) | null;
+  onload: (() => void) | null;
+  open(method: string, url: string): void;
+  send(): void;
+}
+
+const CorsXmlHttpRequest = (globalThis as unknown as {
+  XMLHttpRequest: new () => CorsRequest;
+}).XMLHttpRequest;
+
+const readProvenanceThroughCors = (url: string): Promise<string | null> => (
+  new Promise((resolve, reject) => {
+    const request = new CorsXmlHttpRequest();
+    request.open('GET', url);
+    request.onload = () => resolve(request.getResponseHeader(PROXY_RESPONSE_SOURCE_HEADER));
+    request.onerror = () => reject(new Error(`Cross-origin request failed for ${url}`));
+    request.send();
+  })
+);
 
 describe('proxy target credential forwarding', () => {
   it('replaces proxy authorization with the isolated target credential', () => {
@@ -79,7 +102,7 @@ describe('proxy target credential forwarding', () => {
     expect(requests[0].url).toBe('https://example.com/mcp');
   });
 
-  it('marks upstream responses separately from proxy-owned responses', async () => {
+  it('exposes upstream and proxy-error provenance to cross-origin browser code', async () => {
     const targetResponse = withCorsResponseHeaders(
       new Response('Target authentication required', { status: 401 }),
       'target'
@@ -89,12 +112,26 @@ describe('proxy target credential forwarding', () => {
       { FIREBASE_PROJECT_ID: 'test-project' }
     );
 
-    expect(targetResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
-    expect(targetResponse.headers.get('access-control-expose-headers')).toContain(
-      PROXY_RESPONSE_SOURCE_HEADER.toLowerCase()
-    );
-    expect(proxyResponse.status).toBe(400);
-    expect(proxyResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    const server = createServer(async (request, response) => {
+      const workerResponse = request.url === '/target' ? targetResponse : proxyResponse;
+      response.writeHead(workerResponse.status, Object.fromEntries(workerResponse.headers.entries()));
+      response.end(await workerResponse.text());
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Test server did not bind to TCP');
+      const origin = `http://127.0.0.1:${address.port}`;
+
+      expect(proxyResponse.status).toBe(400);
+      await expect(readProvenanceThroughCors(`${origin}/target`)).resolves.toBe('target');
+      await expect(readProvenanceThroughCors(`${origin}/proxy-error`)).resolves.toBe('proxy');
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => (
+        error ? reject(error) : resolve()
+      )));
+    }
   });
 
   it('allows caller-provided custom target headers during preflight', async () => {
