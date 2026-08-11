@@ -564,6 +564,86 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts secrets in metadata keys through artifact creation and both serializers', () => {
+    const standaloneJwt = [
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+      'eyJzdWIiOiJtZXRhZGF0YS1rZXkifQ',
+      'c2VjcmV0LXNpZ25hdHVyZQ',
+    ].join('.');
+    const sensitiveKeys = [
+      'https://example.test/?access_token=url-key-secret&visible=yes',
+      'client_secret=assignment-key-secret',
+      standaloneJwt,
+    ];
+    const report = publicReport();
+    report.sections.protocol.details[0].metadata = Object.fromEntries(
+      sensitiveKeys.map((key) => [key, true])
+    );
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const createdMetadata = artifact.sections[0].evidence[0].metadata as Record<string, unknown>;
+    const directlyConstructed = createPublicReport(publicReport(), FIXED_OPTIONS);
+    directlyConstructed.sections[0].evidence[0].metadata = {
+      'https://example.test/?code=serializer-url-key-secret': true,
+      'password=serializer-assignment-key-secret': true,
+      [standaloneJwt]: true,
+    };
+
+    expect(Object.keys(createdMetadata)).toEqual([
+      'client_secret=[REDACTED]',
+      '[REDACTED]',
+      'https://example.test/?access_token=%5BREDACTED%5D&visible=yes',
+    ]);
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+      serializePublicReportJson(directlyConstructed),
+      serializePublicReportMarkdown(directlyConstructed),
+    ]) {
+      for (const secret of [
+        'url-key-secret',
+        'assignment-key-secret',
+        'serializer-url-key-secret',
+        'serializer-assignment-key-secret',
+        standaloneJwt,
+      ]) {
+        expect(output).not.toContain(secret);
+      }
+      expect(output).toContain('[REDACTED]');
+    }
+  });
+
+  it('retains colliding redacted metadata keys with deterministic suffixes', () => {
+    const first = redactReportValue({
+      'access_token=beta-secret': false,
+      'access_token=alpha-secret': true,
+    });
+    const second = redactReportValue({
+      'access_token=alpha-secret': true,
+      'access_token=beta-secret': false,
+    });
+
+    expect(first).toEqual({
+      'access_token=[REDACTED]': '[REDACTED]',
+      'access_token=[REDACTED]#2': '[REDACTED]',
+    });
+    expect(second).toEqual(first);
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0].metadata = {
+      'access_token=beta-secret': false,
+      'access_token=alpha-secret': true,
+    };
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ]) {
+      expect(output).toContain('access_token=[REDACTED]');
+      expect(output).toContain('access_token=[REDACTED]#2');
+      expect(output).not.toMatch(/alpha-secret|beta-secret/);
+    }
+  });
+
   it('redacts encoded sensitive query names through both serializers and fails closed at the decode bound', () => {
     const singlyEncodedUrl = 'https://client.example/?access%5Ftoken=single-name-secret';
     const repeatedlyEncodedUrl = 'https://client.example/?access%255Ftoken=repeated-name-secret';

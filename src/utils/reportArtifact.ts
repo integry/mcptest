@@ -690,12 +690,23 @@ const redactReportValueAtPath = (
     ]));
   }
   if (value && typeof value === 'object') {
+    const redactedKeys = new Set<string>();
+    // Sort the source keys so collision suffixes do not depend on insertion order.
     return Object.fromEntries(Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .filter(([, childValue]) => childValue !== undefined)
-      .map(([childKey, childValue]) => [
-        childKey,
-        redactReportValueAtPath(childValue, childKey, [...path, childKey]),
-      ]));
+      .map(([childKey, childValue]) => {
+        const redactedKey = redactReportString(childKey);
+        let uniqueKey = redactedKey;
+        for (let collision = 2; redactedKeys.has(uniqueKey); collision += 1) {
+          uniqueKey = `${redactedKey}#${collision}`;
+        }
+        redactedKeys.add(uniqueKey);
+        return [
+          uniqueKey,
+          redactReportValueAtPath(childValue, childKey, [...path, childKey]),
+        ];
+      }));
   }
   return String(value);
 };
