@@ -13,6 +13,12 @@ import {
   prepareManualOAuthClient,
   saveManualOAuthClient,
 } from './oauthFlow';
+import {
+  OAUTH_TRACE_REDACTED,
+  getStoredOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+  resumePendingAuthenticatedMcpRetry,
+} from './oauthTrace';
 
 const SERVER_URL = 'https://mcp.example/mcp';
 const ISSUER_A = 'https://auth-a.example/';
@@ -411,5 +417,534 @@ describe('OAuth callback completion', () => {
       { authenticate, redirect: vi.fn() }
     )).rejects.toBeInstanceOf(OAuthStateMismatchError);
     expect(authenticate).not.toHaveBeenCalled();
+  });
+});
+
+describe('OAuth flight recorder integration', () => {
+  it('retains pending retry ownership whenever an authorized outcome is deferred', async () => {
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn().mockResolvedValue('AUTHORIZED'),
+      redirect: vi.fn(),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('AUTHORIZED');
+
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.outcome).toBeUndefined();
+  });
+
+  it('defers challenge-driven synchronous authorization until the MCP retry completes', async () => {
+    recordOAuthAuthenticationChallenge({
+      targetUrl: SERVER_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn().mockResolvedValue('AUTHORIZED'),
+      redirect: vi.fn(),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('AUTHORIZED');
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+    expect(trace?.outcome).toBeUndefined();
+  });
+
+  it('keeps a fresh deferred redirect open through callback until the MCP retry completes', async () => {
+    let state = '';
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+        state = await provider.state();
+        await provider.redirectToAuthorization(
+          new URL(`${ISSUER_A}authorize?state=${state}`)
+        );
+        return 'REDIRECT' as const;
+      }),
+      redirect: vi.fn(),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('REDIRECT');
+
+    const redirectedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(redirectedTrace).toMatchObject({
+      authenticatedMcpRetry: { phase: 'awaiting_callback' },
+    });
+    expect(redirectedTrace?.outcome).toBeUndefined();
+    expect(redirectedTrace?.events.some(({ type }) => type === 'terminal_outcome')).toBe(false);
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=callback-code&state=${state}`,
+      { authenticate: vi.fn().mockResolvedValue('AUTHORIZED') }
+    );
+
+    const callbackTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(callbackTrace).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+    expect(callbackTrace?.outcome).toBeUndefined();
+    expect(callbackTrace?.events.some(({ type }) => type === 'terminal_outcome')).toBe(false);
+
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: SERVER_URL,
+      storage: sessionStorage,
+      operation: 'fresh deferred redirect',
+    });
+    expect(retry?.succeed({
+      route: 'direct',
+      result: {
+        url: SERVER_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      },
+    })).toBe(true);
+
+    const completedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(completedTrace?.outcome?.status).toBe('authorized');
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome')).toHaveLength(1);
+  });
+
+  it('records successful CIMD selection and authorization redirect', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+
+    await beginOAuthFlow(SERVER_URL, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      redirect: vi.fn(),
+      fetchFn: oauthFetch({ supportsCimd: true, supportsDcr: true, calls }),
+    });
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'cimd', outcome: 'succeeded' }),
+      expect.objectContaining({ type: 'pkce', outcome: 'succeeded' }),
+      expect.objectContaining({ type: 'authorization_redirect', outcome: 'redirected' }),
+    ]));
+    expect(trace?.outcome?.status).toBe('redirected');
+  });
+
+  it('supersedes a redirected terminal outcome when the callback resumes the trace', async () => {
+    let state = '';
+    await beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+        state = await provider.state();
+        await provider.redirectToAuthorization(
+          new URL(`${ISSUER_A}authorize?state=${state}`)
+        );
+        return 'REDIRECT' as const;
+      }),
+      redirect: vi.fn(),
+    });
+
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.outcome?.status).toBe('redirected');
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=callback-code&state=${state}`,
+      { authenticate: vi.fn().mockResolvedValue('AUTHORIZED') }
+    );
+
+    const completedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(completedTrace?.outcome?.status).toBe('authorized');
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome').map(
+      ({ outcome }) => outcome
+    )).toEqual(['skipped', 'succeeded']);
+    expect(completedTrace?.events[completedTrace.events.length - 1]).toMatchObject({
+      type: 'terminal_outcome',
+      outcome: 'succeeded',
+    });
+  });
+
+  it('records successful DCR with HTTP status and timing', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+
+    await beginOAuthFlow(SERVER_URL, {
+      redirectUrl: 'https://preview.mcptest.io/oauth/callback',
+      redirect: vi.fn(),
+      fetchFn: oauthFetch({ supportsCimd: false, supportsDcr: true, calls }),
+    });
+
+    const event = getStoredOAuthTrace(SERVER_URL, sessionStorage)?.events.find(
+      ({ type }) => type === 'dynamic_client_registration'
+    );
+    expect(event).toMatchObject({
+      outcome: 'succeeded',
+      provenance: 'authorization_server',
+      request: { method: 'POST', url: `${ISSUER_A}register` },
+      response: expect.objectContaining({ status: 200 }),
+      timing: expect.objectContaining({ durationMs: expect.any(Number) }),
+    });
+  });
+
+  it('records when manual pre-registration is required and later selected', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const flowOptions = {
+      redirectUrl: 'https://preview.mcptest.io/oauth/callback',
+      redirect: vi.fn(),
+      fetchFn: oauthFetch({ supportsCimd: false, supportsDcr: false, calls }),
+    };
+
+    await expect(beginOAuthFlow(SERVER_URL, flowOptions)).rejects.toBeTruthy();
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      outcome: { status: 'manual_client_required' },
+      events: expect.arrayContaining([
+        expect.objectContaining({ type: 'pre_registered_client', outcome: 'required' }),
+      ]),
+    });
+
+    saveManualOAuthClient(SERVER_URL, 'manual-client', 'manual-client-secret');
+    await beginOAuthFlow(SERVER_URL, flowOptions);
+
+    const serialized = JSON.stringify(getStoredOAuthTrace(SERVER_URL, sessionStorage));
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'pre_registered_client', outcome: 'succeeded' }),
+    ]));
+    expect(serialized).not.toContain('manual-client-secret');
+  });
+
+  it('carries challenge retry ownership through manual client continuation and callback', async () => {
+    const initialTrace = recordOAuthAuthenticationChallenge({
+      targetUrl: SERVER_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    const traceId = initialTrace.snapshot().traceId;
+    initialTrace.record({
+      type: 'dynamic_client_registration',
+      outcome: 'failed',
+      provenance: 'authorization_server',
+      route: 'direct',
+      explanation: 'Dynamic client registration was rejected.',
+      request: { method: 'POST', url: `${ISSUER_A}register` },
+      response: { status: 400 },
+    });
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn().mockRejectedValue(
+        new Error('Authorization server does not support dynamic client registration')
+      ),
+      deferAuthorizedTraceOutcome: true,
+    })).rejects.toThrow();
+
+    const manualRequiredTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(manualRequiredTrace).toMatchObject({
+      traceId,
+      outcome: { status: 'manual_client_required' },
+      events: expect.arrayContaining([
+        expect.objectContaining({ type: 'target_challenge', outcome: 'challenged' }),
+        expect.objectContaining({ type: 'dynamic_client_registration', outcome: 'failed' }),
+        expect.objectContaining({ type: 'pre_registered_client', outcome: 'required' }),
+      ]),
+    });
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    saveManualOAuthClient(SERVER_URL, 'manual-client', 'manual-client-secret');
+
+    let state = '';
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+        expect(provider.clientInformation?.({ issuer: ISSUER_A })).toMatchObject({
+          client_id: 'manual-client',
+        });
+        state = await provider.state();
+        await provider.redirectToAuthorization(
+          new URL(`${ISSUER_A}authorize?client_id=manual-client&state=${state}`)
+        );
+        return 'REDIRECT' as const;
+      }),
+      redirect: vi.fn(),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('REDIRECT');
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      traceId,
+      authenticatedMcpRetry: { phase: 'awaiting_callback' },
+    });
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=manual-code&state=${state}`,
+      {
+        authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+          await provider.saveTokens({
+            access_token: 'manual-access-token',
+            token_type: 'Bearer',
+            issuer: ISSUER_A,
+          }, { issuer: ISSUER_A });
+          return 'AUTHORIZED' as const;
+        }),
+      }
+    );
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      traceId,
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: SERVER_URL,
+      storage: sessionStorage,
+      operation: 'manual client continuation',
+    });
+    expect(retry?.succeed({
+      route: 'direct',
+      result: {
+        url: SERVER_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      },
+    })).toBe(true);
+    const completedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(completedTrace).toMatchObject({
+      traceId,
+      outcome: { status: 'authorized' },
+      events: expect.arrayContaining([
+        expect.objectContaining({ type: 'target_challenge', outcome: 'challenged' }),
+        expect.objectContaining({ type: 'dynamic_client_registration', outcome: 'failed' }),
+        expect.objectContaining({ type: 'pre_registered_client', outcome: 'required' }),
+        expect.objectContaining({ type: 'pre_registered_client', outcome: 'succeeded' }),
+        expect.objectContaining({ type: 'authorization_redirect', outcome: 'redirected' }),
+        expect.objectContaining({ type: 'callback', outcome: 'succeeded' }),
+        expect.objectContaining({ type: 'mcp_retry', outcome: 'succeeded' }),
+      ]),
+    });
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome').map(
+      ({ outcome }) => outcome
+    )).toEqual(['skipped', 'succeeded']);
+    const orderedStages = completedTrace?.events.map(({ type, outcome }) => `${type}:${outcome}`) || [];
+    const expectedOrder = [
+      'target_challenge:challenged',
+      'dynamic_client_registration:failed',
+      'pre_registered_client:required',
+      'pre_registered_client:succeeded',
+      'authorization_redirect:redirected',
+      'callback:succeeded',
+      'mcp_retry:succeeded',
+      'terminal_outcome:succeeded',
+    ];
+    const stageIndexes = expectedOrder.map((stage) => orderedStages.indexOf(stage));
+    expect(stageIndexes).not.toContain(-1);
+    for (let index = 1; index < expectedOrder.length; index += 1) {
+      expect(stageIndexes[index]).toBeGreaterThan(stageIndexes[index - 1]);
+    }
+    expect(JSON.stringify(completedTrace)).not.toContain('manual-client-secret');
+  });
+
+  it('records refresh without serializing old or new tokens', async () => {
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    provider.saveClientInformation(
+      { client_id: 'refresh-client', issuer: ISSUER_A },
+      { issuer: ISSUER_A }
+    );
+    provider.saveTokens({
+      access_token: 'old-access-secret',
+      refresh_token: 'old-refresh-secret',
+      token_type: 'Bearer',
+      issuer: ISSUER_A,
+    }, { issuer: ISSUER_A });
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(init?.body)).toContain('grant_type=refresh_token');
+      return jsonResponse({
+        access_token: 'new-access-secret',
+        refresh_token: 'new-refresh-secret',
+        token_type: 'Bearer',
+      }, {
+        headers: {
+          'WWW-Authenticate': 'Bearer realm="The previous credential was old-access-secret"',
+        },
+      });
+    });
+
+    await expect(beginOAuthFlow(SERVER_URL, { fetchFn, redirect: vi.fn() })).resolves.toBe('AUTHORIZED');
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'refresh',
+        outcome: 'succeeded',
+        request: { method: 'POST', url: `${ISSUER_A}token` },
+      }),
+    ]));
+    const serialized = JSON.stringify(trace);
+    expect(serialized).not.toContain('old-access-secret');
+    expect(serialized).not.toContain('old-refresh-secret');
+    expect(serialized).not.toContain('new-access-secret');
+    expect(serialized).not.toContain('new-refresh-secret');
+    expect(trace?.events.find(({ type }) => type === 'refresh')?.response?.headers).toMatchObject({
+      'www-authenticate': expect.stringContaining(OAUTH_TRACE_REDACTED),
+    });
+  });
+
+  it('records callback validation failure without exposing code or state', async () => {
+    sessionStorage.setItem('oauth_server_url', SERVER_URL);
+    new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() }).state();
+
+    await expect(completeOAuthFlow(
+      'https://mcptest.io/oauth/callback?code=callback-code-secret&state=attacker-state-secret',
+      { redirect: vi.fn() }
+    )).rejects.toBeInstanceOf(OAuthStateMismatchError);
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace).toMatchObject({
+      outcome: { status: 'failed' },
+      events: expect.arrayContaining([
+        expect.objectContaining({ type: 'callback', outcome: 'failed' }),
+      ]),
+    });
+    expect(JSON.stringify(trace)).not.toContain('callback-code-secret');
+    expect(JSON.stringify(trace)).not.toContain('attacker-state-secret');
+  });
+
+  it('records a successful authorization-code exchange without exposing grants or tokens', async () => {
+    sessionStorage.setItem('oauth_server_url', SERVER_URL);
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    const state = provider.state();
+    provider.saveCodeVerifier('callback-verifier-secret');
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    provider.saveClientInformation(
+      { client_id: 'callback-client', issuer: ISSUER_A },
+      { issuer: ISSUER_A }
+    );
+    const fetchFn = vi.fn(async () => jsonResponse({
+      access_token: 'callback-access-secret',
+      refresh_token: 'callback-refresh-secret',
+      token_type: 'Bearer',
+    }));
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=callback-code-secret&state=${state}&iss=${encodeURIComponent(ISSUER_A)}`,
+      { fetchFn, redirect: vi.fn() }
+    );
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'callback', outcome: 'succeeded' }),
+      expect.objectContaining({
+        type: 'token_exchange',
+        outcome: 'succeeded',
+        response: expect.objectContaining({ status: 200 }),
+      }),
+    ]));
+    const serialized = JSON.stringify(trace);
+    expect(serialized).not.toContain('callback-code-secret');
+    expect(serialized).not.toContain('callback-verifier-secret');
+    expect(serialized).not.toContain('callback-access-secret');
+    expect(serialized).not.toContain('callback-refresh-secret');
+  });
+
+  it('records a malformed HTTP 200 token response as a failed token exchange', async () => {
+    sessionStorage.setItem('oauth_server_url', SERVER_URL);
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    const state = provider.state();
+    provider.saveCodeVerifier('malformed-token-verifier');
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    provider.saveClientInformation(
+      { client_id: 'callback-client', issuer: ISSUER_A },
+      { issuer: ISSUER_A }
+    );
+
+    await expect(completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=malformed-token-code&state=${state}&iss=${encodeURIComponent(ISSUER_A)}`,
+      {
+        fetchFn: vi.fn(async () => jsonResponse({ token_type: 'Bearer' })),
+        redirect: vi.fn(),
+      }
+    )).rejects.toBeTruthy();
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'token_exchange',
+        outcome: 'failed',
+        response: expect.objectContaining({ status: 200 }),
+        explanation: expect.stringContaining('rejected the response'),
+      }),
+    ]));
+    expect(trace?.outcome?.status).toBe('failed');
+  });
+
+  it('records authorization-server metadata failure as the failing stage', async () => {
+    const fetchFn: FetchLike = async () => new Response('Unavailable', { status: 503 });
+
+    await expect(beginOAuthFlow(SERVER_URL, {
+      fetchFn,
+      redirect: vi.fn(),
+    })).rejects.toBeTruthy();
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.outcome?.status).toBe('failed');
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'failed',
+        response: expect.objectContaining({ status: 503 }),
+      }),
+    ]));
+  });
+
+  it('records malformed HTTP 200 metadata as a failed discovery stage', async () => {
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({
+          resource: SERVER_URL,
+          authorization_servers: [ISSUER_A],
+        });
+      }
+      return jsonResponse({ issuer: 42 });
+    };
+
+    await expect(beginOAuthFlow(SERVER_URL, {
+      fetchFn,
+      redirect: vi.fn(),
+    })).rejects.toBeTruthy();
+
+    const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'protected_resource_metadata',
+        outcome: 'succeeded',
+      }),
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'failed',
+        response: expect.objectContaining({ status: 200 }),
+        explanation: expect.stringContaining('rejected the response'),
+      }),
+    ]));
+    expect(trace?.outcome?.status).toBe('failed');
   });
 });

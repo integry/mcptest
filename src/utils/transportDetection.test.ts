@@ -6,6 +6,7 @@ import {
   attemptParallelConnections,
   getRequestHeadersForCandidate,
   getTransportCandidates,
+  sanitizeAuthenticationChallenge,
 } from './transportDetection';
 
 const connectionMocks = vi.hoisted(() => ({
@@ -63,6 +64,33 @@ afterEach(() => {
 });
 
 describe('transport candidate generation', () => {
+  it('strictly redacts challenge parameters and credential variants in metadata URLs', () => {
+    const sanitized = sanitizeAuthenticationChallenge(
+      'Bearer realm="private-tenant", error="invalid_token", error_description="token rejected for alice@example.com", '
+      + 'resource_metadata="https://auth.example/metadata?device_code=device-secret&user_code=user-secret&code_verifier=verifier-secret&client_assertion=assertion-secret&registration_access_token=registration-secret&custom_secret=custom-secret&signed_request=signed-secret&login_hint=alice%40example.com&x-amz-signature=aws-secret&tenant=acme"'
+    );
+
+    expect(sanitized).toContain('realm="[REDACTED]"');
+    expect(sanitized).toContain('error="invalid_token"');
+    expect(sanitized).toContain('error_description="[REDACTED]"');
+    expect(sanitized).toContain('tenant=acme');
+    for (const secret of [
+      'private-tenant',
+      'token rejected for alice@example.com',
+      'device-secret',
+      'user-secret',
+      'verifier-secret',
+      'assertion-secret',
+      'registration-secret',
+      'custom-secret',
+      'signed-secret',
+      'alice@example.com',
+      'aws-secret',
+    ]) {
+      expect(decodeURIComponent(sanitized)).not.toContain(secret);
+    }
+  });
+
   it('does not append paths to a custom publisher endpoint', () => {
     const candidates = getTransportCandidates('https://mcp.atlassian.com/v1/mcp/authv2');
 
@@ -180,6 +208,24 @@ describe('transport candidate generation', () => {
     );
 
     expect(connectOptions).toEqual({ prior: { kind: 'legacy' } });
+  });
+
+  it('keeps modern negotiation when a catalog entry is known to be stateless', async () => {
+    let connectOptions: { prior?: { kind: string } } | undefined;
+    connectionMocks.connect = async (_transport, options) => {
+      connectOptions = options;
+    };
+
+    await attemptParallelConnections(
+      'https://example.com/mcp',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      'stateless'
+    );
+
+    expect(connectOptions).toBeUndefined();
   });
 
   it('moves from a hanging root group to a succeeding endpoint fallback', async () => {
@@ -381,6 +427,9 @@ describe('transport candidate generation', () => {
   it('retains direct target provenance for requests made after connection', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
       status: 403,
+      headers: {
+        'WWW-Authenticate': 'Bearer realm="mcp", resource_metadata="https://auth.example/metadata?token=header-secret", access_token="raw-secret"',
+      },
     })));
 
     const connection = await attemptParallelConnections('https://example.com/custom');
@@ -389,10 +438,18 @@ describe('transport candidate generation', () => {
     };
     await mockTransport.fetch?.(connection.url);
 
-    expect(connection.takeAuthenticationChallenge()).toEqual({
+    const challenge = connection.takeAuthenticationChallenge();
+    expect(challenge).toMatchObject({
       status: 403,
       source: 'target',
+      method: 'GET',
+      requestUrl: 'https://example.com/custom',
+      responseHeaders: {
+        'www-authenticate': expect.stringContaining('resource_metadata='),
+      },
     });
+    expect(JSON.stringify(challenge)).not.toContain('header-secret');
+    expect(JSON.stringify(challenge)).not.toContain('raw-secret');
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
   });
 
@@ -414,9 +471,11 @@ describe('transport candidate generation', () => {
     };
     await mockTransport.fetch?.(connection.url);
 
-    expect(connection.takeAuthenticationChallenge()).toEqual({
+    expect(connection.takeAuthenticationChallenge()).toMatchObject({
       status: 401,
       source: 'target',
+      method: 'GET',
+      requestUrl: 'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
     });
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
   });

@@ -9,10 +9,17 @@ import {
 import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
+  getObservedAuthenticationChallenge,
   type ObservedAuthenticationChallenge,
+  type ObservedTransportRequest,
   type ProxyAuthenticationSource,
   type TransportCandidateFailure,
 } from './transportDetection';
+import {
+  recordOAuthAuthenticationChallenge,
+  resumePendingAuthenticatedMcpRetry,
+  type PendingAuthenticatedMcpRetry,
+} from './oauthTrace';
 import type { TransportType } from '../types';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
@@ -29,6 +36,35 @@ const isConfiguredProxyTarget = (value: string, proxyUrl: string): boolean => {
 const normalizeServerUrl = (value: string): string => {
   const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
   return new URL(withProtocol).toString();
+};
+
+const recordEvaluationAuthenticationChallenge = (
+  targetUrl: string,
+  failure: EvaluationRouteFailure
+): void => {
+  if (
+    typeof sessionStorage === 'undefined'
+    || (failure.httpStatus !== 401 && failure.httpStatus !== 403)
+    || (failure.authenticationSource !== 'target' && failure.authenticationSource !== 'proxy')
+  ) return;
+
+  const recorder = recordOAuthAuthenticationChallenge({
+    targetUrl,
+    status: failure.httpStatus,
+    source: failure.authenticationSource,
+    route: failure.route,
+    storage: sessionStorage,
+    method: failure.method,
+    requestUrl: failure.requestUrl,
+    responseHeaders: failure.responseHeaders,
+    timing: failure.timing,
+  });
+  if (failure.authenticationSource === 'proxy') {
+    recorder.terminal(
+      'failed',
+      'The server report evaluation stopped at authenticated proxy access; target OAuth discovery was not started.'
+    );
+  }
 };
 
 export const getEvaluationTargetUrl = (
@@ -273,6 +309,7 @@ interface ConnectedEvaluation {
   protocolVersion?: string;
   usedProxy: boolean;
   directError?: string;
+  observedRequests?: readonly ObservedTransportRequest[];
   takeAuthenticationChallenge?: () => ObservedAuthenticationChallenge | undefined;
 }
 
@@ -283,6 +320,13 @@ interface EvaluationRouteFailure {
   httpStatus?: number;
   authenticationSource?: ProxyAuthenticationSource;
   candidateUrl?: string;
+  method?: string;
+  requestUrl?: string;
+  responseHeaders?: Record<string, string>;
+  timing?: {
+    startedAt: string;
+    durationMs?: number;
+  };
 }
 
 const getAuthenticationCandidateUrl = (
@@ -327,9 +371,10 @@ const makeRouteFailure = (
   route: EvaluationRouteFailure['route'],
   error: unknown,
   observedChallenge?: ObservedAuthenticationChallenge,
-  connectedCandidateUrl?: string
+  connectedCandidateUrl?: string,
+  attemptStartedAtMs?: number
 ): EvaluationRouteFailure => {
-  const authenticationChallenge = observedChallenge || getProxyAuthenticationChallenge(error);
+  const authenticationChallenge = observedChallenge || getObservedAuthenticationChallenge(error);
   const httpStatus = authenticationChallenge?.status || getAuthenticationHttpStatus(error);
   const authenticationSource = authenticationChallenge?.source || (
     route === 'direct' && httpStatus ? 'target' : undefined
@@ -348,6 +393,17 @@ const makeRouteFailure = (
     candidateUrl: failedCandidateUrl
       ? getEvaluationTargetUrl(failedCandidateUrl, route === 'proxy')
       : undefined,
+    method: authenticationChallenge?.method,
+    requestUrl: authenticationChallenge?.requestUrl || failedCandidateUrl,
+    responseHeaders: authenticationChallenge?.responseHeaders,
+    timing: {
+      startedAt: authenticationChallenge?.startedAt
+        || new Date(attemptStartedAtMs ?? Date.now()).toISOString(),
+      durationMs: authenticationChallenge?.durationMs
+        ?? (attemptStartedAtMs === undefined
+          ? undefined
+          : Math.max(0, Date.now() - attemptStartedAtMs)),
+    },
   };
 };
 
@@ -364,9 +420,11 @@ const connectForEvaluation = async (
   serverUrl: string,
   firebaseToken: string,
   oauthToken: string | null,
-  onProgress: (message: string) => void
+  onProgress: (message: string) => void,
+  pendingRetry?: PendingAuthenticatedMcpRetry
 ): Promise<ConnectedEvaluation> => {
   const abortController = new AbortController();
+  const directStartedAt = Date.now();
 
   try {
     onProgress('Attempting direct MCP negotiation...');
@@ -375,14 +433,23 @@ const connectForEvaluation = async (
       abortController.signal,
       oauthToken || undefined,
       undefined,
-      false
+      false,
+      undefined,
+      pendingRetry?.observeRequest('direct')
     );
     return { ...direct, usedProxy: false };
   } catch (directError) {
-    const directFailure = makeRouteFailure('direct', directError);
+    const directFailure = makeRouteFailure(
+      'direct',
+      directError,
+      undefined,
+      undefined,
+      directStartedAt
+    );
     const proxyUrl = getProxyUrl();
     if (!proxyUrl) throw new EvaluationConnectionError([directFailure]);
 
+    const proxyStartedAt = Date.now();
     try {
       onProgress('Direct negotiation failed; retrying through the authenticated CORS proxy...');
       const proxyConnectionUrl = new URL(proxyUrl);
@@ -395,13 +462,15 @@ const connectForEvaluation = async (
         abortController.signal,
         firebaseToken,
         targetHeaders,
-        true
+        true,
+        undefined,
+        pendingRetry?.observeRequest('proxy')
       );
       return { ...proxied, usedProxy: true, directError: directFailure.message };
     } catch (proxyError) {
       throw new EvaluationConnectionError([
         directFailure,
-        makeRouteFailure('proxy', proxyError),
+        makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt),
       ]);
     }
   }
@@ -456,8 +525,8 @@ const evaluateCapabilities = async (
   for (const check of checks) {
     // Discard any challenge already handled while negotiating the connection.
     connection.takeAuthenticationChallenge?.();
+    const startedAt = Date.now();
     try {
-      const startedAt = Date.now();
       const result = await check.run();
       const durationMs = Date.now() - startedAt;
       const itemCount = check.count(result);
@@ -473,7 +542,8 @@ const evaluateCapabilities = async (
         connection.usedProxy ? 'proxy' : 'direct',
         error,
         connection.takeAuthenticationChallenge?.(),
-        connection.url
+        connection.url,
+        startedAt
       );
       if (
         (failure.httpStatus === 401 || failure.httpStatus === 403)
@@ -729,6 +799,14 @@ export async function evaluateServer(
   };
   let connection: ConnectedEvaluation | null = null;
   const connectionStartedAt = Date.now();
+  const pendingRetry = oauthToken && typeof sessionStorage !== 'undefined'
+    ? resumePendingAuthenticatedMcpRetry({
+        targetUrl: serverUrl,
+        storage: sessionStorage,
+        operation: 'server report evaluation',
+        startedAt: connectionStartedAt,
+      })
+    : undefined;
 
   onProgress('Establishing MCP connection with automatic 2026/2025 negotiation...');
   try {
@@ -736,7 +814,8 @@ export async function evaluateServer(
       serverUrl,
       firebaseToken,
       oauthToken,
-      onProgress
+      onProgress,
+      pendingRetry
     );
   } catch (error) {
     const message = errorMessage(error);
@@ -745,9 +824,31 @@ export async function evaluateServer(
       (failure.httpStatus === 401 || failure.httpStatus === 403)
       && failure.authenticationSource === 'target'
     ));
+    const proxyAuthFailure = failures.find((failure) => (
+      (failure.httpStatus === 401 || failure.httpStatus === 403)
+      && failure.authenticationSource === 'proxy'
+    ));
+    const terminalFailure = failures[failures.length - 1];
+    const finalizedPendingRetry = pendingRetry?.fail({
+      route: terminalFailure?.route || 'direct',
+      error,
+      ...(terminalFailure?.method && terminalFailure.requestUrl ? {
+        observedRequest: {
+          method: terminalFailure.method,
+          url: terminalFailure.requestUrl,
+          status: terminalFailure.httpStatus,
+          startedAt: terminalFailure.timing?.startedAt,
+          durationMs: terminalFailure.timing?.durationMs,
+          outcome: 'failed',
+        },
+      } : {}),
+    });
     if (targetAuthFailure) {
       report.outcome = 'authorization-required';
       report.authenticationUrl = targetAuthFailure.candidateUrl || serverUrl;
+      if (!finalizedPendingRetry) {
+        recordEvaluationAuthenticationChallenge(report.authenticationUrl, targetAuthFailure);
+      }
       report.sections.auth = {
         name: 'Authorization Required',
         description: 'OAuth authorization is required before this server can be evaluated',
@@ -765,6 +866,9 @@ export async function evaluateServer(
       };
       onProgress('OAuth authorization is required before evaluation can continue.');
       return report;
+    }
+    if (proxyAuthFailure && !finalizedPendingRetry) {
+      recordEvaluationAuthenticationChallenge(serverUrl, proxyAuthFailure);
     }
 
     report.sections.protocol = makeSkippedSection(
@@ -840,6 +944,24 @@ export async function evaluateServer(
       report.outcome = 'authorization-required';
       report.authenticationUrl = capabilityEvaluation.targetAuthenticationFailures[0].candidateUrl
         || getEvaluationTargetUrl(connection.url, connection.usedProxy);
+      const retryFailure = capabilityEvaluation.targetAuthenticationFailures[0];
+      const finalizedPendingRetry = pendingRetry?.fail({
+        route: retryFailure.route,
+        error: retryFailure.error,
+        ...(retryFailure.method && retryFailure.requestUrl ? {
+          observedRequest: {
+            method: retryFailure.method,
+            url: retryFailure.requestUrl,
+            status: retryFailure.httpStatus,
+            startedAt: retryFailure.timing?.startedAt,
+            durationMs: retryFailure.timing?.durationMs,
+            outcome: 'failed',
+          },
+        } : {}),
+      });
+      if (!finalizedPendingRetry) {
+        recordEvaluationAuthenticationChallenge(report.authenticationUrl, retryFailure);
+      }
       report.sections = { auth: {
         name: 'Authorization Required',
         description: 'OAuth authorization is required before this server can be evaluated',
@@ -899,8 +1021,19 @@ export async function evaluateServer(
       .filter(([key]) => key !== 'auth')
       .reduce((total, [, section]) => total + section.score, 0);
 
+    pendingRetry?.succeed({
+      route: connection.usedProxy ? 'proxy' : 'direct',
+      result: connection,
+    });
     onProgress('Evaluation complete.');
     return report;
+  } catch (error) {
+    pendingRetry?.fail({
+      route: connection.usedProxy ? 'proxy' : 'direct',
+      error,
+      result: connection,
+    });
+    throw error;
   } finally {
     try {
       await connection.client.close();

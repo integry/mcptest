@@ -62,6 +62,11 @@ import {
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
 } from './utils/oauthFlow';
+import {
+  recordOAuthAuthenticationChallenge,
+  resumePendingAuthenticatedMcpRetry,
+  type PendingAuthenticatedMcpRetry,
+} from './utils/oauthTrace';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -114,6 +119,20 @@ export const classifySavedCardAuthenticationFailure = (
   const status = getAuthenticationHttpStatus(error);
   return status ? { status, source: 'target' } : undefined;
 };
+
+export const resumeSavedCardAuthenticatedMcpRetry = (
+  serverUrl: string,
+  oauthToken: string | undefined,
+  storage: Pick<Storage, 'getItem' | 'setItem'> = sessionStorage,
+  startedAt = Date.now()
+): PendingAuthenticatedMcpRetry | undefined => oauthToken
+  ? resumePendingAuthenticatedMcpRetry({
+      targetUrl: serverUrl,
+      storage,
+      operation: 'saved-card execution',
+      startedAt,
+    })
+  : undefined;
 
 // Helper function to get the initial theme
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -1280,8 +1299,10 @@ function App() {
     let activeConnection: Awaited<ReturnType<typeof attemptParallelConnections>> | null = null;
     let lastError: any = null;
     let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
+    let pendingOAuthRetry: PendingAuthenticatedMcpRetry | undefined;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const cardAttemptStartedAt = Date.now();
       try {
         console.log(`[Execute Card ${cardId} Attempt ${attempt}/${MAX_RETRIES}] Starting execution. Card URL: ${card.serverUrl}`);
         lastError = null; // Clear last error on new attempt
@@ -1292,6 +1313,12 @@ function App() {
         // --- Connection and Request Logic ---
         // Use only the exact resource's issuer-bound SDK token.
         const oauthToken = loadOAuthAuthorization(card.serverUrl)?.accessToken;
+        pendingOAuthRetry = pendingOAuthRetry || resumeSavedCardAuthenticatedMcpRetry(
+          card.serverUrl,
+          oauthToken,
+          sessionStorage,
+          cardAttemptStartedAt
+        );
         const proxyUrl = import.meta.env.VITE_PROXY_URL;
         const proxySelected = Boolean(
           proxyUrl && (card.useProxy !== undefined ? card.useProxy : !oauthToken)
@@ -1320,7 +1347,9 @@ function App() {
           undefined,
           connectionPlan.authToken,
           connectionPlan.targetHeaders,
-          connectionPlan.usesProxy
+          connectionPlan.usesProxy,
+          undefined,
+          pendingOAuthRetry?.observeRequest(connectionPlan.usesProxy ? 'proxy' : 'direct')
         );
         tempClient = activeConnection.client;
         console.log(
@@ -1339,6 +1368,10 @@ function App() {
             console.log(`[Execute Card ${cardId} Attempt ${attempt}] Resource result received.`);
             setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, responseData: result.contents, responseType: 'resource_result', error: null }));
         }
+        pendingOAuthRetry?.succeed({
+          route: connectionPlan.usesProxy ? 'proxy' : 'direct',
+          result: activeConnection,
+        });
         // --- Success: Break the retry loop ---
         break;
 
@@ -1348,8 +1381,9 @@ function App() {
 
         // --- Check for different error types ---
         const isConflict = err.message?.includes('Conflict') || err.message?.includes('409') || err.status === 409;
+        const shouldRetry = isConflict && attempt < MAX_RETRIES;
 
-        if (isConflict && attempt < MAX_RETRIES) {
+        if (shouldRetry) {
           console.log(`[Execute Card ${cardId} Attempt ${attempt}] Conflict detected, retrying after ${RETRY_DELAY_MS}ms...`);
           // Close the potentially conflicted client before retrying
           if (tempClient) {
@@ -1359,7 +1393,7 @@ function App() {
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS)); // Wait before retrying
           continue; // Go to the next iteration
         } else {
-          // --- Non-retryable error or max retries reached: Set final error state and break ---
+          // Only a terminal failure may finalize the pending OAuth retry.
           console.error(`[Execute Card ${cardId}] Unrecoverable error or max retries reached.`);
 
           const authenticationChallenge = classifySavedCardAuthenticationFailure(
@@ -1369,6 +1403,35 @@ function App() {
           );
           const isTargetAuthError = authenticationChallenge?.source === 'target';
           const isProxyAuthError = authenticationChallenge?.source === 'proxy';
+          const finalizedPendingRetry = pendingOAuthRetry?.fail({
+            route: shouldUseProxy ? 'proxy' : 'direct',
+            error: err,
+            ...(activeConnection ? { result: activeConnection } : {}),
+          });
+          if (authenticationChallenge && !finalizedPendingRetry) {
+            const trace = recordOAuthAuthenticationChallenge({
+              targetUrl: card.serverUrl,
+              status: authenticationChallenge.status,
+              source: authenticationChallenge.source,
+              route: shouldUseProxy ? 'proxy' : 'direct',
+              storage: sessionStorage,
+              method: authenticationChallenge.method,
+              requestUrl: authenticationChallenge.requestUrl,
+              responseHeaders: authenticationChallenge.responseHeaders,
+              timing: {
+                startedAt: authenticationChallenge.startedAt
+                  || new Date(cardAttemptStartedAt).toISOString(),
+                durationMs: authenticationChallenge.durationMs
+                  ?? Math.max(0, Date.now() - cardAttemptStartedAt),
+              },
+            });
+            if (isProxyAuthError) {
+              trace.terminal(
+                'failed',
+                'The saved-card request stopped at authenticated proxy access; target OAuth discovery was not started.'
+              );
+            }
+          }
           
           // Use enhanced error formatting for better debugging information
           const errorDetails = formatErrorForDisplay(err, {
@@ -1445,7 +1508,10 @@ function App() {
     }));
 
     try {
-      const result = await beginOAuthFlow(serverUrl, { forceReauthorization: true });
+      const result = await beginOAuthFlow(serverUrl, {
+        forceReauthorization: true,
+        deferAuthorizedTraceOutcome: true,
+      });
       if (result === 'AUTHORIZED') await handleExecuteCard(spaceId, cardId);
     } catch (error) {
       if (isOAuthClientConfigurationRequired(error)) {

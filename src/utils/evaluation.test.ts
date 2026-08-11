@@ -23,6 +23,10 @@ import {
   TransportConnectionError,
   getRequestHeadersForCandidate,
 } from './transportDetection';
+import {
+  getStoredOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+} from './oauthTrace';
 
 const createClient = () => ({
   listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -33,6 +37,7 @@ const createClient = () => ({
 
 describe('dual-era server evaluation', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('Not found', { status: 404 })));
     connectionMocks.attempt.mockReset();
@@ -131,6 +136,158 @@ describe('dual-era server evaluation', () => {
     expect(report.sections.security).toBeUndefined();
     expect(getEvaluationMaxScore(report)).toBe(70);
     expect(client.close).toHaveBeenCalledOnce();
+  });
+
+  it('finalizes a successful post-callback report retry with its actual request facts', async () => {
+    const endpoint = 'https://report-retry.example/mcp';
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: endpoint,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const client = createClient();
+    const retryRequest = {
+      method: 'POST',
+      url: `${endpoint}?operation=initialize`,
+      candidateUrl: endpoint,
+      transportType: 'streamable-http' as const,
+      status: 200,
+      outcome: 'succeeded' as const,
+      startedAt: '2026-08-11T18:10:00.000Z',
+      durationMs: 27,
+    };
+    connectionMocks.attempt.mockImplementationOnce(async (...args: any[]) => {
+      args[6]?.(retryRequest);
+      return {
+        client,
+        url: endpoint,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        protocolVersion: '2026-07-28',
+        observedRequests: [retryRequest],
+      };
+    });
+
+    await evaluateServer(endpoint, 'firebase-jwt', vi.fn(), 'oauth-access-token');
+
+    const stored = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(stored?.events.find(({ type }) => type === 'mcp_retry')).toMatchObject({
+      outcome: 'succeeded',
+      route: 'direct',
+      request: { method: 'POST', url: retryRequest.url },
+      response: { status: 200 },
+      timing: { startedAt: retryRequest.startedAt, durationMs: 27 },
+    });
+    expect(stored?.outcome?.status).toBe('authorized');
+    expect(stored?.authenticatedMcpRetry).toBeUndefined();
+  });
+
+  it('does not cite a failed capability request as evidence for a successful report retry', async () => {
+    const endpoint = 'https://partial-report-retry.example/mcp';
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: endpoint,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const observedRequests: Array<{
+      method: string;
+      url: string;
+      status: number;
+      outcome: 'failed';
+    }> = [];
+    const client = createClient();
+    client.listPrompts.mockImplementationOnce(async () => {
+      observedRequests.push({
+        method: 'POST',
+        url: `${endpoint}?operation=prompts-list`,
+        status: 500,
+        outcome: 'failed',
+      });
+      throw new Error('prompts/list returned HTTP 500');
+    });
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: endpoint,
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+      observedRequests,
+    });
+
+    const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn(), 'oauth-access-token');
+
+    expect(report.outcome).toBe('scored');
+    const stored = getStoredOAuthTrace(endpoint, sessionStorage);
+    const retryEvent = stored?.events.find(({ type }) => type === 'mcp_retry');
+    expect(retryEvent).toMatchObject({
+      outcome: 'succeeded',
+      route: 'direct',
+      response: {
+        metadata: {
+          transportType: 'streamable-http',
+          protocolEra: 'modern',
+        },
+      },
+    });
+    expect(retryEvent?.request).toBeUndefined();
+    expect(retryEvent?.response?.status).toBeUndefined();
+    expect(retryEvent?.explanation).not.toContain('HTTP 500');
+  });
+
+  it('finalizes a failed post-callback report retry and does not leave it for another connection', async () => {
+    const endpoint = 'https://failed-report-retry.example/mcp';
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: endpoint,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const directRequest = {
+      method: 'POST',
+      url: endpoint,
+      status: 502,
+      outcome: 'failed' as const,
+      startedAt: '2026-08-11T18:20:00.000Z',
+      durationMs: 31,
+    };
+    const proxyRequest = {
+      ...directRequest,
+      url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
+      startedAt: '2026-08-11T18:20:01.000Z',
+      durationMs: 44,
+    };
+    connectionMocks.attempt
+      .mockImplementationOnce(async (...args: any[]) => {
+        args[6]?.(directRequest);
+        throw new Error('Direct authenticated retry failed');
+      })
+      .mockImplementationOnce(async (...args: any[]) => {
+        args[6]?.(proxyRequest);
+        throw new Error('Proxy authenticated retry failed');
+      });
+
+    await evaluateServer(endpoint, 'firebase-jwt', vi.fn(), 'oauth-access-token');
+
+    const stored = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(stored?.events.find(({ type }) => type === 'mcp_retry')).toMatchObject({
+      outcome: 'failed',
+      route: 'proxy',
+      request: { method: 'POST', url: proxyRequest.url },
+      response: { status: 502 },
+      timing: { startedAt: proxyRequest.startedAt, durationMs: 44 },
+    });
+    expect(stored?.outcome).toMatchObject({
+      status: 'failed',
+      explanation: expect.stringContaining('authenticated MCP retry'),
+    });
+    expect(stored?.authenticatedMcpRetry).toBeUndefined();
   });
 
   it('closes the connected client when a later evaluation step throws', async () => {
@@ -266,6 +423,43 @@ describe('dual-era server evaluation', () => {
     expect(JSON.stringify(report)).not.toContain('/mcp/v1/');
   });
 
+  it('records the observed outer proxy request facts for a target challenge', async () => {
+    const targetUrl = 'https://mcp.example/custom/endpoint';
+    const proxyRequestUrl = `https://proxy.mcptest.test/?target=${encodeURIComponent(targetUrl)}`;
+    const challenge = new ProxiedAuthenticationError(
+      401,
+      'target',
+      new Error('Target authorization required'),
+      {
+        method: 'POST',
+        url: proxyRequestUrl,
+        startedAt: '2026-08-11T16:30:00.000Z',
+        durationMs: 23,
+      }
+    );
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockRejectedValueOnce(new TransportConnectionError(
+        [challenge],
+        [{ candidateUrl: proxyRequestUrl, error: challenge }]
+      ));
+
+    const report = await evaluateServer(targetUrl, 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('authorization-required');
+    expect(getStoredOAuthTrace(targetUrl, sessionStorage)?.events[0]).toMatchObject({
+      type: 'target_challenge',
+      route: 'proxy',
+      provenance: 'direct_target',
+      request: { method: 'POST', url: proxyRequestUrl },
+      response: { status: 401 },
+      timing: {
+        startedAt: '2026-08-11T16:30:00.000Z',
+        durationMs: 23,
+      },
+    });
+  });
+
   it('uses the challenged fallback endpoint for authentication', async () => {
     const targetAuthError = Object.assign(new Error('Fallback returned HTTP 401'), {
       status: 401,
@@ -289,19 +483,42 @@ describe('dual-era server evaluation', () => {
   });
 
   it('does not mistake a proxy-hop authentication failure for target OAuth', async () => {
+    const endpoint = 'https://mcp.example/mcp';
+    const proxyRequest = {
+      method: 'POST',
+      url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
+      status: 401,
+      outcome: 'failed' as const,
+      startedAt: '2026-08-11T18:40:00.000Z',
+      durationMs: 23,
+    };
     const proxyAuthError = new ProxiedAuthenticationError(
       401,
       'proxy',
-      new Error('Firebase token was rejected')
+      new Error('Firebase token was rejected'),
+      proxyRequest
     );
     connectionMocks.attempt
       .mockRejectedValueOnce(new Error('Direct CORS failure'))
       .mockRejectedValueOnce(new TransportConnectionError([proxyAuthError]));
 
-    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+    const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn());
 
     expect(report.sections.auth).toBeUndefined();
     expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
+    const stored = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(stored?.events.find(({ type }) => type === 'target_challenge')).toMatchObject({
+      outcome: 'challenged',
+      provenance: 'authenticated_proxy',
+      route: 'proxy',
+      request: { method: 'POST', url: proxyRequest.url },
+      response: { status: 401 },
+      timing: { startedAt: proxyRequest.startedAt, durationMs: 23 },
+    });
+    expect(stored?.outcome).toMatchObject({
+      status: 'failed',
+      explanation: expect.stringContaining('target OAuth discovery was not started'),
+    });
   });
 
   it('offers target OAuth for a verified upstream challenge observed through the proxy', async () => {

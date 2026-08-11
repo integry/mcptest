@@ -5,6 +5,7 @@ import { formatErrorForDisplay } from '../utils/errorHandling';
 import {
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  type ObservedTransportRequest,
 } from '../utils/transportDetection';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +14,12 @@ import {
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
 } from '../utils/oauthFlow';
+import {
+  OAuthFlightRecorder,
+  recordOAuthAuthenticationChallenge,
+  resumeOAuthFlightRecorder,
+  resumePendingAuthenticatedMcpRetry,
+} from '../utils/oauthTrace';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -327,7 +334,7 @@ export const useConnection = (
     setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
     urlToConnect?: string, // Optional URL parameter
     forceUseProxy?: boolean, // Optional proxy override
-    protocolEraHint?: 'stateful' | 'legacy'
+    protocolEraHint?: 'stateless' | 'stateful' | 'legacy'
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
@@ -381,6 +388,29 @@ export const useConnection = (
     let finalProtocolVersion: string | null = null;
     let finalUrl: string | null = null;
     let finalUsedProxy = false;
+    let connectionRoute: 'direct' | 'proxy' = 'direct';
+    const storedRetryTrace = latestAccessToken
+      ? resumeOAuthFlightRecorder(targetUrl, sessionStorage)
+      : undefined;
+    let pendingOAuthRetry = latestAccessToken
+      ? resumePendingAuthenticatedMcpRetry({
+          targetUrl,
+          storage: sessionStorage,
+          protocolEraHint,
+          operation: 'connection',
+        })
+      : undefined;
+    let oauthTrace = pendingOAuthRetry ? storedRetryTrace : undefined;
+    let oauthRetryPending = Boolean(pendingOAuthRetry);
+    let connectionAttemptStartedAt = Date.now();
+    const reloadLatestOAuthTrace = (): OAuthFlightRecorder | undefined => {
+      const storedTrace = resumeOAuthFlightRecorder(targetUrl, sessionStorage);
+      if (!storedTrace || !oauthTrace) return storedTrace || oauthTrace;
+
+      return storedTrace.snapshot().events.length >= oauthTrace.snapshot().events.length
+        ? storedTrace
+        : oauthTrace;
+    };
     const withConnectionTimeout = async <T,>(attempt: Promise<T>): Promise<T> => {
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
@@ -397,8 +427,40 @@ export const useConnection = (
       }
     };
 
+    const observeOAuthRetryRequest = (
+      route: 'direct' | 'proxy'
+    ) => (request: ObservedTransportRequest): void => {
+      if (oauthRetryPending) pendingOAuthRetry?.observeRequest(route)(request);
+    };
+
+    const finalizeOAuthRetry = (
+      outcome: 'succeeded' | 'failed' | 'cancelled',
+      route: 'direct' | 'proxy',
+      options: {
+        error?: unknown;
+        result?: {
+          url: string;
+          transportType: TransportType;
+          protocolEra: ProtocolEra;
+          protocolVersion?: string;
+          observedRequests?: readonly ObservedTransportRequest[];
+        };
+      } = {}
+    ): boolean => {
+      if (!oauthRetryPending || !pendingOAuthRetry) return false;
+      const finalized = outcome === 'succeeded'
+        ? pendingOAuthRetry.succeed({ route, ...(options.result ? { result: options.result } : {}) })
+        : outcome === 'cancelled'
+          ? pendingOAuthRetry.cancel({ route, ...options })
+          : pendingOAuthRetry.fail({ route, ...options });
+      if (finalized) oauthTrace = resumeOAuthFlightRecorder(targetUrl, sessionStorage);
+      return finalized;
+    };
+
     // Helper function to attempt direct connection
     const connectDirectly = async () => {
+      connectionRoute = 'direct';
+      connectionAttemptStartedAt = Date.now();
       setIsProxied(false);
       addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
       // Set OAuth connection flag based on whether we have an access token
@@ -413,12 +475,15 @@ export const useConnection = (
         latestAccessToken || undefined,
         requestHeaders,
         false,
-        protocolEraHint
+        protocolEraHint,
+        observeOAuthRetryRequest('direct')
       );
     };
 
     // Helper function to attempt proxy connection
     const connectViaProxy = async () => {
+      connectionRoute = 'proxy';
+      connectionAttemptStartedAt = Date.now();
       if (!import.meta.env.VITE_PROXY_URL) {
         return Promise.reject(new Error("Proxy not configured."));
       }
@@ -448,7 +513,8 @@ export const useConnection = (
         authToken,
         targetHeaders,
         true,
-        protocolEraHint
+        protocolEraHint,
+        observeOAuthRetryRequest('proxy')
       );
     };
 
@@ -496,17 +562,52 @@ export const useConnection = (
           finalUrl = result.url;
           finalUsedProxy = usedProxy;
           connectionSuccess = true;
+          if (oauthRetryPending) {
+            finalizeOAuthRetry('succeeded', usedProxy ? 'proxy' : 'direct', { result });
+            oauthRetryPending = false;
+          }
           addLogEntry({
             type: 'info',
             data: `${usedProxy ? 'Proxy connection' : 'Connection'} successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}`
           });
         } catch (error) {
           const challenge = getObservedAuthenticationChallenge(error);
+          // A pending authenticated retry suppresses recursive discovery, but
+          // terminalization belongs to the outer connection-attempt boundary.
+          const suppressOAuthDiscovery = oauthRetryPending;
           const shouldDiscoverOAuth = challenge?.source === 'target'
             && !attemptedAutomaticOAuth
+            && !suppressOAuthDiscovery
             && !hasExplicitTargetCredential;
 
-          if (!shouldDiscoverOAuth) throw error;
+          if (challenge && !oauthTrace) {
+            oauthTrace = recordOAuthAuthenticationChallenge({
+              targetUrl,
+              status: challenge.status,
+              source: challenge.source,
+              route: challenge.source === 'proxy' ? 'proxy' : connectionRoute,
+              storage: sessionStorage,
+              method: challenge.method,
+              requestUrl: challenge.requestUrl,
+              responseHeaders: challenge.responseHeaders,
+              timing: {
+                startedAt: challenge.startedAt
+                  || new Date(connectionAttemptStartedAt).toISOString(),
+                durationMs: challenge.durationMs
+                  ?? Math.max(0, Date.now() - connectionAttemptStartedAt),
+              },
+            });
+          }
+
+          if (!shouldDiscoverOAuth) {
+            if (!suppressOAuthDiscovery) oauthTrace?.terminal(
+              'failed',
+              challenge?.source === 'proxy'
+                ? 'The connection stopped at authenticated proxy access; target OAuth discovery was not started.'
+                : 'The target authentication challenge was not converted into automatic OAuth discovery.'
+            );
+            throw error;
+          }
           attemptedAutomaticOAuth = true;
 
           addLogEntry({
@@ -523,8 +624,11 @@ export const useConnection = (
 
           try {
             const result = await beginOAuthFlow(targetUrl, {
-              ...(latestAccessToken ? { forceReauthorization: true } : {})
+              ...(latestAccessToken ? { forceReauthorization: true } : {}),
+              trace: oauthTrace,
+              deferAuthorizedTraceOutcome: true,
             });
+            oauthTrace = reloadLatestOAuthTrace();
 
             if (result === 'REDIRECT') {
               setIsConnecting(false);
@@ -537,6 +641,16 @@ export const useConnection = (
             if (!latestAccessToken) {
               throw new Error('OAuth completed without returning an access token.');
             }
+            if (!oauthTrace?.hasPendingAuthenticatedMcpRetry()) {
+              oauthTrace?.setAuthenticatedMcpRetryState('pending');
+            }
+            pendingOAuthRetry = resumePendingAuthenticatedMcpRetry({
+              targetUrl,
+              storage: sessionStorage,
+              protocolEraHint,
+              operation: 'connection',
+              startedAt: connectionAttemptStartedAt,
+            });
 
             setIsAuthFlowActive(false);
             setOauthProgress(null);
@@ -545,7 +659,12 @@ export const useConnection = (
               type: 'info',
               data: '✅ OAuth authorization found. Retrying the MCP connection.'
             });
+            // Trace persistence is best-effort. OAuth may have completed even
+            // when storage is unavailable, so continue the authenticated MCP
+            // retry and only enable retry tracing when its recorder was restored.
+            oauthRetryPending = Boolean(pendingOAuthRetry);
           } catch (oauthError) {
+            oauthTrace = reloadLatestOAuthTrace();
             setIsAuthFlowActive(false);
             setOauthProgress(null);
             setIsConnecting(false);
@@ -561,6 +680,13 @@ export const useConnection = (
                 data: '⚠️ Automatic OAuth discovery completed, but this provider requires a pre-registered client.'
               });
               return;
+            }
+
+            if (!oauthTrace?.snapshot().outcome) {
+              oauthTrace?.terminal(
+                'failed',
+                'OAuth authorization failed before an authenticated MCP retry could begin.'
+              );
             }
 
             const message = oauthError instanceof Error
@@ -624,6 +750,10 @@ export const useConnection = (
 
     } catch (error: any) {
         const isUserAborted = error.message && error.message.includes('Connection aborted by user');
+        if (oauthRetryPending) {
+          finalizeOAuthRetry(isUserAborted ? 'cancelled' : 'failed', connectionRoute, { error });
+          oauthRetryPending = false;
+        }
         if (!isUserAborted) {
             // Handle all other errors normally
             logEvent('connect_failure');
