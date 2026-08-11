@@ -703,6 +703,42 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts backslash-escaped JSON credentials during report creation and serialization', () => {
+    const escapedJson = String.raw`body="{\"access_token\":\"escaped-json-secret\"}"`;
+    const escapedObject = String.raw`{\"client_secret\":\"escaped-object-secret\"}`;
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      text: escapedJson,
+      context: escapedObject,
+      metadata: { escapedJson, escapedObject },
+    };
+
+    expect(redactReportString(escapedJson)).toBe(
+      String.raw`body="{\"access_token\":\"[REDACTED]\"}"`
+    );
+    expect(redactReportString(escapedObject)).toBe(
+      String.raw`{\"client_secret\":\"[REDACTED]\"}`
+    );
+    let overBoundJson = '{"access_token":"over-bound-json-secret"}';
+    for (let layer = 0; layer < 6; layer += 1) overBoundJson = JSON.stringify(overBoundJson);
+    expect(redactReportString(overBoundJson)).not.toContain('over-bound-json-secret');
+    expect(redactReportString(overBoundJson)).toContain('[REDACTED]');
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    expect(JSON.stringify(artifact)).not.toContain('escaped-json-secret');
+    expect(JSON.stringify(artifact)).not.toContain('escaped-object-secret');
+
+    const directlyConstructed = createPublicReport(publicReport(), FIXED_OPTIONS);
+    directlyConstructed.sections[0].evidence[0].message = String.raw`body="{\"access_token\":\"serializer-escaped-secret\"}"`;
+    for (const output of [
+      serializePublicReportJson(directlyConstructed),
+      serializePublicReportMarkdown(directlyConstructed),
+    ]) {
+      expect(output).not.toContain('serializer-escaped-secret');
+      expect(output).toContain('REDACTED');
+    }
+  });
+
   it('redacts complete array and object values for sensitive keys in every export path', () => {
     const arrayValue = '{"access_token":["array-report-secret"]}';
     const objectValue = '{"credentials":{"password":"object-report-secret"}}';
@@ -1033,6 +1069,22 @@ describe('versioned public report artifacts', () => {
     expect(output).not.toContain('serializer-secret');
     expect(output).not.toContain('metadata-secret');
     expect(output).not.toContain('url-secret');
+  });
+
+  it('keeps multiline Markdown-shaped generator metadata on the generator line', () => {
+    const artifact = createPublicReport(publicReport(), {
+      ...FIXED_OPTIONS,
+      toolVersion: '1.2.3\n## Forged heading <script>',
+      toolCommit: 'deadbeef\n- forged **content**',
+    });
+
+    const markdown = serializePublicReportMarkdown(artifact);
+    expect(markdown).toContain(
+      '- Generator: mcptest 1.2.3 ## Forged heading \\<script\\> (deadbeef - forged \\*\\*content\\*\\*)'
+    );
+    expect(markdown).not.toMatch(/^## Forged heading/m);
+    expect(markdown).not.toMatch(/^- forged/m);
+    expect(markdown).not.toContain('<script>');
   });
 
   it('never turns authorization, partial, or failed outcomes into a zero grade', () => {

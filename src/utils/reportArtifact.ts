@@ -18,6 +18,7 @@ const SCORE_PERCENTAGE_TOLERANCE = 1e-9;
 const MAX_REDACTION_PASSES = 8;
 const MAX_URL_REDACTION_DEPTH = 4;
 const MAX_QUERY_COMPONENT_DECODE_PASSES = 4;
+const MAX_JSON_STRING_DECODE_PASSES = 4;
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
@@ -498,25 +499,79 @@ const redactStandaloneJwtValues = (value: string): string => value.replace(
 
 const redactJsonShapedString = (value: string): string => {
   const trimmed = value.trim();
-  if ((!trimmed.startsWith('{') || !trimmed.endsWith('}'))
-      && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
-    return value;
-  }
+  let candidate = trimmed;
+  const encodings: Array<'literal' | 'content'> = [];
+  let isStructured = false;
 
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
+  for (let pass = 0; pass <= MAX_JSON_STRING_DECODE_PASSES; pass += 1) {
+    const isObjectOrArray = (candidate.startsWith('{') && candidate.endsWith('}'))
+      || (candidate.startsWith('[') && candidate.endsWith(']'));
+    if (!isObjectOrArray && !candidate.startsWith('"')) return value;
+    isStructured ||= isObjectOrArray;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(candidate) as unknown;
+    } catch {
+      if (!isObjectOrArray) return value;
+      if (pass === MAX_JSON_STRING_DECODE_PASSES) return REDACTED_VALUE;
+      try {
+        parsed = JSON.parse(`"${candidate}"`) as unknown;
+      } catch {
+        return value;
+      }
+      if (parsed === candidate) return value;
+      encodings.push('content');
+    }
+
+    if (typeof parsed === 'string') {
+      const decoded = parsed.trim();
+      const decodedIsStructured = (decoded.startsWith('{') && decoded.endsWith('}'))
+        || (decoded.startsWith('[') && decoded.endsWith(']'));
+      if (!decodedIsStructured && !decoded.startsWith('"')) return value;
+      if (pass === MAX_JSON_STRING_DECODE_PASSES) {
+        return isStructured || decodedIsStructured ? REDACTED_VALUE : value;
+      }
+      candidate = decoded;
+      if (encodings.length === 0 || encodings[encodings.length - 1] !== 'content') {
+        encodings.push('literal');
+      }
+      isStructured ||= decodedIsStructured;
+      continue;
+    }
+
+    if (!parsed || typeof parsed !== 'object') return value;
     const redacted = redactReportValueAtPath(parsed, undefined, []);
-    const serialized = JSON.stringify(redacted);
+    let serialized = JSON.stringify(redacted);
     if (serialized === JSON.stringify(parsed)) return value;
+    for (const encoding of [...encodings].reverse()) {
+      const encoded = JSON.stringify(serialized);
+      serialized = encoding === 'literal' ? encoded : encoded.slice(1, -1);
+    }
     const start = value.indexOf(trimmed);
     return `${value.slice(0, start)}${serialized}${value.slice(start + trimmed.length)}`;
-  } catch {
-    return value;
   }
+
+  return isStructured ? REDACTED_VALUE : value;
 };
 
+const redactJsonEncodedStringLiterals = (value: string): string => value.replace(
+  /"(?:\\["\\/bfnrt]|\\u[A-Fa-f0-9]{4}|[^"\\\u0000-\u001f])*"/g,
+  (literal) => {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(literal) as unknown;
+    } catch {
+      return literal;
+    }
+    if (typeof decoded !== 'string') return literal;
+    const redacted = redactJsonShapedString(decoded);
+    return redacted === decoded ? literal : JSON.stringify(redacted);
+  }
+);
+
 const redactReportStringAtDepth = (value: string, urlDepth: number): string => {
-  let redacted = redactJsonShapedString(value);
+  let redacted = redactJsonEncodedStringLiterals(redactJsonShapedString(value));
   for (let pass = 0; pass < MAX_REDACTION_PASSES; pass += 1) {
     const redactedAssignments = redactSensitiveAssignments(redacted)
       .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`);
@@ -811,7 +866,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     '',
     `- Schema: ${value.schemaVersion}`,
     `- Generated: ${value.generatedAt}`,
-    `- Generator: ${value.generator.name}${value.generator.version ? ` ${value.generator.version}` : ''}${value.generator.commit ? ` (${value.generator.commit})` : ''}`,
+    `- Generator: ${value.generator.name}${value.generator.version ? ` ${markdownInline(value.generator.version)}` : ''}${value.generator.commit ? ` (${markdownInline(value.generator.commit)})` : ''}`,
     `- Tested endpoint: ${markdownInline(value.target.testedEndpoint)}`,
     '',
     '## Outcome',
