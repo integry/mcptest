@@ -697,6 +697,7 @@ export const completeOAuthFlow = async (
   const trace = options.trace
     || resumeOAuthFlightRecorder(serverUrl, storage)
     || createOAuthFlightRecorder({ targetUrl: serverUrl, storage });
+  trace.continueAfterRedirect();
   const authorizationCode = callback.searchParams.get('code');
   const callbackState = callback.searchParams.get('state');
   trace.registerSecret(authorizationCode, callbackState);

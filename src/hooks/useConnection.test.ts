@@ -28,7 +28,10 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
 
 import { useConnection } from './useConnection';
 import { BrowserOAuthProvider, completeOAuthFlow } from '../utils/oauthFlow';
-import { getStoredOAuthTrace } from '../utils/oauthTrace';
+import {
+  getStoredOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+} from '../utils/oauthTrace';
 import {
   ProxiedAuthenticationError,
   TransportConnectionError,
@@ -352,6 +355,85 @@ describe('connection URL finalization', () => {
       status: 'failed',
       explanation: expect.stringContaining('authenticated MCP retry failed'),
     });
+    view.unmount();
+  });
+
+  it('keeps an authenticated retry pending when direct failure falls back to proxy success', async () => {
+    const endpoint = 'https://retry-proxy-fallback.example/mcp';
+    const issuer = 'https://auth-retry-proxy-fallback.example/';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const provider = new BrowserOAuthProvider(endpoint);
+    provider.saveDiscoveryState({
+      authorizationServerUrl: issuer,
+      authorizationServerMetadata: {
+        issuer,
+        authorization_endpoint: `${issuer}authorize`,
+        token_endpoint: `${issuer}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    provider.saveTokens(
+      { access_token: 'proxy-fallback-token', token_type: 'Bearer', issuer },
+      { issuer }
+    );
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: endpoint,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    authMocks.currentUser = { getIdToken: vi.fn().mockResolvedValue('proxy-session-token') };
+
+    const proxyRequestUrl = `${proxyUrl}?target=${encodeURIComponent(endpoint)}`;
+    connectionMocks.attempt
+      .mockImplementationOnce(async (...args: any[]) => {
+        args[6]?.({
+          method: 'POST',
+          url: endpoint,
+          status: 0,
+          outcome: 'failed',
+        });
+        throw new Error('CORS failed to fetch');
+      })
+      .mockImplementationOnce(async (...args: any[]) => {
+        const request = {
+          method: 'POST',
+          url: proxyRequestUrl,
+          status: 200,
+          outcome: 'succeeded' as const,
+        };
+        args[6]?.(request);
+        return {
+          client: { close: vi.fn().mockResolvedValue(undefined) },
+          url: proxyRequestUrl,
+          transportType: 'streamable-http',
+          protocolEra: 'modern',
+          observedRequests: [request],
+        };
+      });
+    const view = renderConnectionHook(undefined, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    const completedTrace = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(completedTrace?.outcome?.status).toBe('authorized');
+    expect(completedTrace?.events.filter(({ type }) => type === 'mcp_retry')).toEqual([
+      expect.objectContaining({
+        outcome: 'succeeded',
+        route: 'proxy',
+        provenance: 'authenticated_proxy',
+      }),
+    ]);
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome')).toEqual([
+      expect.objectContaining({ outcome: 'succeeded' }),
+    ]);
     view.unmount();
   });
 

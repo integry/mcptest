@@ -3,6 +3,7 @@ import {
   getObservedAuthenticationChallenge,
   isOAuthSensitiveKey,
   sanitizeAuthenticationChallenge,
+  sanitizeOAuthUrlQueryValues,
   type ObservedTransportRequest,
 } from './transportDetection';
 import type { TransportType } from '../types';
@@ -258,29 +259,8 @@ export const sanitizeOAuthTraceUrl = (
   value: string | URL,
   secrets: ReadonlySet<string> = new Set()
 ): string => {
-  try {
-    const url = new URL(String(value));
-    if (url.username) url.username = OAUTH_TRACE_REDACTED;
-    if (url.password) url.password = OAUTH_TRACE_REDACTED;
-    url.hash = '';
-
-    for (const [key, queryValue] of [...url.searchParams.entries()]) {
-      if (isOAuthSensitiveKey(key)) {
-        url.searchParams.set(key, OAUTH_TRACE_REDACTED);
-      } else if (key === 'target' || key === 'redirect_uri' || key === 'resource') {
-        try {
-          url.searchParams.set(key, sanitizeOAuthTraceUrl(queryValue, secrets));
-        } catch {
-          url.searchParams.set(key, sanitizeText(queryValue, secrets));
-        }
-      } else {
-        url.searchParams.set(key, sanitizeText(queryValue, secrets));
-      }
-    }
-    return sanitizeText(url.toString(), secrets);
-  } catch {
-    return sanitizeText(String(value), secrets);
-  }
+  const sanitized = sanitizeOAuthUrlQueryValues(value, OAUTH_TRACE_REDACTED);
+  return sanitizeText(sanitized, secrets);
 };
 
 const sanitizeValue = (
@@ -545,6 +525,24 @@ export class OAuthFlightRecorder {
 
   hasAuthenticatedMcpRetryState(): boolean {
     return Boolean(this.trace.authenticatedMcpRetry);
+  }
+
+  continueAfterRedirect(): boolean {
+    if (this.trace.outcome?.status !== 'redirected') return false;
+
+    delete this.trace.outcome;
+    const provisionalTerminal = [...this.trace.events].reverse().find((event) => (
+      event.type === 'terminal_outcome' && event.outcome === 'redirected'
+    ));
+    if (provisionalTerminal) {
+      provisionalTerminal.outcome = 'skipped';
+      provisionalTerminal.explanation = sanitizeText(
+        'The provisional redirected outcome was superseded when OAuth authorization resumed at the browser callback.',
+        this.secrets
+      );
+    }
+    this.persist();
+    return true;
   }
 
   continueAfterManualClientRequired(): boolean {

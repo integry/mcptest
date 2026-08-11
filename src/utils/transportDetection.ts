@@ -166,22 +166,65 @@ export const isOAuthSensitiveKey = (key: string): boolean => (
   OAUTH_SENSITIVE_CANONICAL_KEYS.has(key.replace(/[^a-z0-9]/gi, '').toLowerCase())
 );
 
-const sanitizeChallengeMetadataUrl = (value: string): string => {
+type OAuthQueryValuePolicy = 'nested_url' | 'safe_context' | 'redact';
+
+const OAUTH_SAFE_CONTEXT_QUERY_KEYS = new Set([
+  'operation',
+  'tenant',
+]);
+
+const OAUTH_NESTED_URL_QUERY_KEYS = new Set([
+  'redirecturi',
+  'resource',
+  'target',
+]);
+
+/**
+ * Trace URLs use an allowlist: only routing context and recursively sanitized
+ * nested URLs retain values. Every extension parameter is redacted by default.
+ */
+const getOAuthQueryValuePolicy = (key: string): OAuthQueryValuePolicy => {
+  const canonicalKey = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  if (OAUTH_NESTED_URL_QUERY_KEYS.has(canonicalKey)) return 'nested_url';
+  if (OAUTH_SAFE_CONTEXT_QUERY_KEYS.has(canonicalKey)) return 'safe_context';
+  return 'redact';
+};
+
+export const sanitizeOAuthUrlQueryValues = (
+  value: string | URL,
+  redacted = '[REDACTED]'
+): string => {
   try {
-    const url = new URL(value);
-    if (url.username) url.username = '[REDACTED]';
-    if (url.password) url.password = '[REDACTED]';
+    const url = new URL(String(value));
+    if (url.username) url.username = redacted;
+    if (url.password) url.password = redacted;
     url.hash = '';
-    for (const [key] of url.searchParams) {
-      if (isOAuthSensitiveKey(key)) {
-        url.searchParams.set(key, '[REDACTED]');
+
+    for (const [key, queryValue] of [...url.searchParams.entries()]) {
+      const policy = getOAuthQueryValuePolicy(key);
+      if (policy === 'safe_context') continue;
+      if (policy === 'nested_url') {
+        try {
+          new URL(queryValue);
+          url.searchParams.set(key, sanitizeOAuthUrlQueryValues(queryValue, redacted));
+        } catch {
+          // A non-URL target/resource is still routing context rather than
+          // arbitrary authentication metadata.
+          url.searchParams.set(key, queryValue);
+        }
+      } else {
+        url.searchParams.set(key, redacted);
       }
     }
     return url.toString();
   } catch {
-    return '[REDACTED]';
+    return redacted;
   }
 };
+
+const sanitizeChallengeMetadataUrl = (value: string): string => (
+  sanitizeOAuthUrlQueryValues(value)
+);
 
 export const sanitizeAuthenticationChallenge = (value: string): string => {
   const withoutControls = value.replace(/[\r\n\0]/g, ' ');

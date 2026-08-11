@@ -570,13 +570,12 @@ export const useConnection = (
           });
         } catch (error) {
           const challenge = getObservedAuthenticationChallenge(error);
-          const authenticatedRetryFailed = oauthRetryPending;
-          if (authenticatedRetryFailed) {
-            finalizeOAuthRetry('failed', connectionRoute, { error });
-          }
+          // A pending authenticated retry suppresses recursive discovery, but
+          // terminalization belongs to the outer connection-attempt boundary.
+          const suppressOAuthDiscovery = oauthRetryPending;
           const shouldDiscoverOAuth = challenge?.source === 'target'
             && !attemptedAutomaticOAuth
-            && !authenticatedRetryFailed
+            && !suppressOAuthDiscovery
             && !hasExplicitTargetCredential;
 
           if (challenge && !oauthTrace) {
@@ -599,13 +598,12 @@ export const useConnection = (
           }
 
           if (!shouldDiscoverOAuth) {
-            if (!authenticatedRetryFailed) oauthTrace?.terminal(
+            if (!suppressOAuthDiscovery) oauthTrace?.terminal(
               'failed',
               challenge?.source === 'proxy'
                 ? 'The connection stopped at authenticated proxy access; target OAuth discovery was not started.'
                 : 'The target authentication challenge was not converted into automatic OAuth discovery.'
             );
-            oauthRetryPending = false;
             throw error;
           }
           attemptedAutomaticOAuth = true;
@@ -749,6 +747,10 @@ export const useConnection = (
         }
 
     } catch (error: any) {
+        if (oauthRetryPending) {
+          finalizeOAuthRetry('failed', connectionRoute, { error });
+          oauthRetryPending = false;
+        }
         const isUserAborted = error.message && error.message.includes('Connection aborted by user');
         if (!isUserAborted) {
             // Handle all other errors normally

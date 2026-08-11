@@ -67,7 +67,7 @@ describe('transport candidate generation', () => {
   it('strictly redacts challenge parameters and credential variants in metadata URLs', () => {
     const sanitized = sanitizeAuthenticationChallenge(
       'Bearer realm="private-tenant", error="invalid_token", error_description="token rejected for alice@example.com", '
-      + 'resource_metadata="https://auth.example/metadata?device_code=device-secret&user_code=user-secret&code_verifier=verifier-secret&client_assertion=assertion-secret&registration_access_token=registration-secret&tenant=acme"'
+      + 'resource_metadata="https://auth.example/metadata?device_code=device-secret&user_code=user-secret&code_verifier=verifier-secret&client_assertion=assertion-secret&registration_access_token=registration-secret&custom_secret=custom-secret&signed_request=signed-secret&login_hint=alice%40example.com&x-amz-signature=aws-secret&tenant=acme"'
     );
 
     expect(sanitized).toContain('realm="[REDACTED]"');
@@ -82,8 +82,12 @@ describe('transport candidate generation', () => {
       'verifier-secret',
       'assertion-secret',
       'registration-secret',
+      'custom-secret',
+      'signed-secret',
+      'alice@example.com',
+      'aws-secret',
     ]) {
-      expect(sanitized).not.toContain(secret);
+      expect(decodeURIComponent(sanitized)).not.toContain(secret);
     }
   });
 

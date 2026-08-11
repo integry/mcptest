@@ -461,6 +461,37 @@ describe('OAuth flight recorder integration', () => {
     expect(trace?.outcome?.status).toBe('redirected');
   });
 
+  it('supersedes a redirected terminal outcome when the callback resumes the trace', async () => {
+    let state = '';
+    await beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+        state = await provider.state();
+        await provider.redirectToAuthorization(
+          new URL(`${ISSUER_A}authorize?state=${state}`)
+        );
+        return 'REDIRECT' as const;
+      }),
+      redirect: vi.fn(),
+    });
+
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.outcome?.status).toBe('redirected');
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=callback-code&state=${state}`,
+      { authenticate: vi.fn().mockResolvedValue('AUTHORIZED') }
+    );
+
+    const completedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(completedTrace?.outcome?.status).toBe('authorized');
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome').map(
+      ({ outcome }) => outcome
+    )).toEqual(['skipped', 'succeeded']);
+    expect(completedTrace?.events[completedTrace.events.length - 1]).toMatchObject({
+      type: 'terminal_outcome',
+      outcome: 'succeeded',
+    });
+  });
+
   it('records successful DCR with HTTP status and timing', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
 

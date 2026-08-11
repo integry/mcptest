@@ -132,20 +132,30 @@ describe('OAuth flight recorder core', () => {
   });
 
   it('sanitizes nested proxy targets without losing route context', () => {
-    const target = 'https://mcp.example/mcp?access_token=target-secret&tenant=acme';
-    const proxy = `https://proxy.example/?target=${encodeURIComponent(target)}&state=proxy-secret`;
+    const target = 'https://mcp.example/mcp?access_token=target-secret&custom_secret=custom-secret&tenant=acme&operation=initialize';
+    const proxy = `https://proxy.example/?target=${encodeURIComponent(target)}&state=proxy-secret&signed_request=signed-secret&login_hint=alice%40example.com&x-amz-signature=aws-secret`;
 
     const sanitized = sanitizeOAuthTraceUrl(proxy);
+    const sanitizedTarget = new URL(sanitized).searchParams.get('target') || '';
 
     expect(sanitized).toContain('proxy.example');
     expect(new URL(sanitized).searchParams.get('state')).toBe(OAUTH_TRACE_REDACTED);
-    expect(new URL(new URL(sanitized).searchParams.get('target') || '').searchParams.get('tenant')).toBe('acme');
-    expect(sanitized).not.toContain('target-secret');
-    expect(sanitized).not.toContain('proxy-secret');
+    expect(new URL(sanitizedTarget).searchParams.get('tenant')).toBe('acme');
+    expect(new URL(sanitizedTarget).searchParams.get('operation')).toBe('initialize');
+    for (const secret of [
+      'target-secret',
+      'custom-secret',
+      'proxy-secret',
+      'signed-secret',
+      'alice@example.com',
+      'aws-secret',
+    ]) {
+      expect(decodeURIComponent(sanitized)).not.toContain(secret);
+    }
 
     createOAuthFlightRecorder({ targetUrl: target, storage: sessionStorage });
     expect(Object.keys(sessionStorage).join(' ')).not.toContain('target-secret');
-    expect(getStoredOAuthTrace(target, sessionStorage)?.targetUrl).not.toContain('target-secret');
+    expect(JSON.stringify(getStoredOAuthTrace(target, sessionStorage))).not.toContain('custom-secret');
   });
 
   it('keys and validates traces by the exact target without exposing sensitive query values', () => {
