@@ -11,8 +11,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [showSecret, setShowSecret] = useState(false);
-  const [serviceGuide, setServiceGuide] = useState<string>('');
   const [configurationError, setConfigurationError] = useState<string | null>(null);
+  const serviceDomain = new URL(serverUrl).host;
+  const callbackUrl = `${window.location.origin}/oauth/callback`;
 
   useEffect(() => {
     setClientId('');
@@ -24,31 +25,6 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
       setClientId(storedClient.clientId);
       setClientSecret(storedClient.clientSecret || '');
     }
-    
-    // Always use generic guide for OAuth service
-    const url = new URL(serverUrl);
-    const serviceDomain = url.hostname;
-    
-    setServiceGuide(`
-      OAuth 2.1 Authentication Required for ${serviceDomain}:
-      
-      Automatic Client ID Metadata and Dynamic Client Registration are unavailable for this server.
-      Register mcptest.io as an OAuth 2.1 public client with PKCE.
-      
-      1. Register your application with the OAuth provider
-      2. Configure the following settings:
-         - Application Name: mcptest.io (or your preferred name)
-         - Application Type: Public (SPA/Native)
-         - Redirect URI: ${window.location.origin}/oauth/callback
-         - Grant Type: Authorization Code with PKCE
-         - Scopes: As required by the service
-      3. Copy the OAuth client credentials provided:
-         - Client ID (required)
-         - Client Secret (optional for public clients)
-      4. Enter the credentials below to continue
-      
-      The client registration will be bound to the authorization-server issuer discovered for this MCP resource.
-    `);
   }, [serverUrl]);
 
   const handleSave = () => {
@@ -69,29 +45,52 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
   };
 
   return (
-    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+    <div
+      className="modal show d-block"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="oauth-config-title"
+    >
       <div className="modal-dialog modal-lg">
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title">
-              OAuth 2.1 Configuration
+            <h5 id="oauth-config-title" className="modal-title">
+              Manual OAuth client setup
             </h5>
-            <button type="button" className="btn-close" onClick={onCancel}></button>
+            <button type="button" className="btn-close" onClick={onCancel} aria-label="Close"></button>
           </div>
           <div className="modal-body">
-            <div className="alert alert-info">
-              <h6 className="alert-heading">ℹ️ OAuth Client Configuration for {new URL(serverUrl).host}</h6>
-              <p className="mb-2">Please provide your OAuth client credentials to connect to {new URL(serverUrl).host}.</p>
-              <p className="mb-0">These credentials will be stored specifically for this server. Each server requires its own OAuth client credentials.</p>
+            <div className="alert alert-warning">
+              <h6 className="alert-heading">Automatic OAuth setup is unavailable for {serviceDomain}</h6>
+              <p className="mb-2">
+                mcptest.io first connected without credentials, received an authorization challenge,
+                and completed OAuth provider discovery.
+              </p>
+              <p className="mb-0">
+                The provider offers neither a usable Client ID Metadata path nor Dynamic Client
+                Registration. A client registered with the provider is the remaining option.
+              </p>
             </div>
 
             {configurationError && (
               <div className="alert alert-danger" role="alert">{configurationError}</div>
             )}
             
-            <div className="alert alert-info">
-              <h6 className="alert-heading">Setup Instructions</h6>
-              <pre className="mb-0" style={{ whiteSpace: 'pre-wrap' }}>{serviceGuide.trim()}</pre>
+            <div className="mb-4">
+              <h6>Register mcptest.io as a public OAuth client</h6>
+              <ol className="mb-2">
+                <li>Open the provider&apos;s developer or integration settings.</li>
+                <li>Choose a public SPA/native client using Authorization Code with PKCE.</li>
+                <li>
+                  Add redirect URI <code>{callbackUrl}</code>.
+                </li>
+                <li>Copy the client ID below. Add a secret only if the provider requires one.</li>
+              </ol>
+              <p className="text-muted small mb-0">
+                The credentials are bound to the authorization-server issuer already discovered for
+                this MCP resource; they are not reused for other providers.
+              </p>
             </div>
             
             <div className="mb-3">
@@ -151,7 +150,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
               onClick={handleSave}
               disabled={!clientId}
             >
-              Save Configuration
+              Save and continue
             </button>
           </div>
         </div>

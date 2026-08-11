@@ -77,6 +77,8 @@ describe('ConnectionPanel landing-page states', () => {
     expect(route?.textContent).toContain('Exact endpoint');
     expect(route?.textContent).toContain('2026 stateless discovery');
     expect(route?.textContent).toContain('2025 stateful fallback');
+    expect(route?.textContent).toContain('OAuth discovery after a verified authorization challenge');
     expect(route?.querySelector('.badge')).toBeNull();
+    expect(panel.textContent).not.toContain('Use OAuth Authentication');
   });
 });

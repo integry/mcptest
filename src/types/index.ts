@@ -70,7 +70,6 @@ export interface ConnectionTab {
   connectionStatus: 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
   transportType?: TransportType | null;
   useProxy?: boolean; // Whether to use proxy for this connection
-  useOAuth?: boolean; // Whether to use OAuth authentication for this connection
   autoConnect?: boolean; // Whether this tab should connect automatically once initialized
   /** Catalog credential metadata only. Secret values stay in TabContent memory. */
   catalogAuthType?: CatalogAuthType;

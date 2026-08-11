@@ -2,7 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { LogEntry, Resource, TransportType } from '../types';
 import { Client, type ProtocolEra } from '@modelcontextprotocol/client';
 import { formatErrorForDisplay } from '../utils/errorHandling';
-import { attemptParallelConnections } from '../utils/transportDetection';
+import {
+  attemptParallelConnections,
+  getObservedAuthenticationChallenge,
+} from '../utils/transportDetection';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -80,7 +83,6 @@ const saveRecentServers = (servers: (string | { url: string; useProxy?: boolean 
 export const useConnection = (
   addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void,
   useProxy?: boolean,
-  useOAuth?: boolean,
   onAuthFlowStart?: () => void,
   requestHeaders?: Record<string, string>
 ) => {
@@ -342,57 +344,6 @@ export const useConnection = (
 
     // Always get the latest access token from sessionStorage
     let latestAccessToken = getLatestAccessToken(targetUrl);
-    
-    // Use the official SDK flow for discovery, PKCE, issuer binding, CIMD,
-    // and legacy DCR fallback. The provider persists redirect state safely.
-    if (useOAuth) {
-      addLogEntry({
-        type: 'info',
-        data: '🔐 Starting standards-based OAuth authorization...'
-      });
-      setIsAuthFlowActive(true);
-      setOauthProgress('Discovering the protected resource and authorization server...');
-      onAuthFlowStart?.();
-
-      const activeTabs = localStorage.getItem('mcpConnectionTabs');
-      if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
-
-      try {
-        const result = await beginOAuthFlow(targetUrl);
-        if (result === 'REDIRECT') return;
-
-        latestAccessToken = getLatestAccessToken(targetUrl);
-        if (!latestAccessToken) {
-          throw new Error('OAuth completed without returning an access token.');
-        }
-        setIsAuthFlowActive(false);
-        setOauthProgress(null);
-        addLogEntry({ type: 'info', data: '✅ Existing OAuth authorization refreshed.' });
-      } catch (error) {
-        setIsAuthFlowActive(false);
-        setOauthProgress(null);
-        setIsConnecting(false);
-
-        if (isOAuthClientConfigurationRequired(error)) {
-          setNeedsOAuthConfig(true);
-          setOAuthConfigServerUrl(targetUrl);
-          addLogEntry({
-            type: 'warning',
-            data: '⚠️ This authorization server requires a pre-registered OAuth client.'
-          });
-          return;
-        }
-
-        const message = error instanceof Error ? error.message : 'Unknown OAuth error';
-        setConnectionError({
-          error: `OAuth authorization failed: ${message}`,
-          serverUrl: targetUrl,
-          timestamp: new Date()
-        });
-        addLogEntry({ type: 'error', data: `OAuth authorization failed: ${message}` });
-        return;
-      }
-    }
 
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
@@ -430,10 +381,21 @@ export const useConnection = (
     let finalProtocolVersion: string | null = null;
     let finalUrl: string | null = null;
     let finalUsedProxy = false;
-    let lastError: any = null;
-    const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
-    );
+    const withConnectionTimeout = async <T,>(attempt: Promise<T>): Promise<T> => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Connection timeout after 30 seconds')),
+          30000
+        );
+      });
+
+      try {
+        return await Promise.race([attempt, timeout]);
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    };
 
     // Helper function to attempt direct connection
     const connectDirectly = async () => {
@@ -490,52 +452,131 @@ export const useConnection = (
       );
     };
 
+    const connectOnce = async () => {
+      // Always try the unauthenticated or already-authorized MCP connection
+      // before considering a new OAuth flow.
+      try {
+        const result = await withConnectionTimeout(connectDirectly());
+        return { result, usedProxy: false };
+      } catch (error: any) {
+        // Check if it's a CORS error and if automatic proxy fallback is enabled
+        const isCorsError = error.message?.toLowerCase().includes('cors') ||
+          (error.message?.toLowerCase().includes('failed to fetch') &&
+            !error.message?.toLowerCase().includes('network'));
+
+        // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
+        const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
+
+        if (isCorsError && shouldUseProxy && currentUser) {
+          const result = await withConnectionTimeout(connectViaProxy());
+          return { result, usedProxy: true };
+        }
+
+        if (isCorsError && shouldUseProxy && !currentUser) {
+          addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+        }
+        throw error;
+      }
+    };
+
+    const hasExplicitTargetCredential = Object.keys(requestHeaders || {}).some((header) => (
+      ['authorization', 'x-api-key', 'api-key'].includes(header.toLowerCase())
+    ));
+
     try {
-        // Always try direct connection first
+      let attemptedAutomaticOAuth = false;
+
+      while (!connectionSuccess) {
         try {
-          const result = await Promise.race([
-            connectDirectly(),
-            timeoutPromise
-          ]);
-          
+          const { result, usedProxy } = await connectOnce();
           finalClient = result.client;
           finalTransportType = result.transportType;
           finalProtocolEra = result.protocolEra;
           finalProtocolVersion = result.protocolVersion ?? null;
           finalUrl = result.url;
-          finalUsedProxy = false;
+          finalUsedProxy = usedProxy;
           connectionSuccess = true;
-          addLogEntry({ type: 'info', data: `Connection successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}` });
-        } catch (error: any) {
-          // Check if it's a CORS error and if automatic proxy fallback is enabled
-          const isCorsError = error.message?.toLowerCase().includes('cors') || 
-                            (error.message?.toLowerCase().includes('failed to fetch') && 
-                             !error.message?.toLowerCase().includes('network'));
-          
-          // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
-          const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
-          
-          if (isCorsError && shouldUseProxy && currentUser) {
-            // Attempt proxy connection as fallback only if user is logged in
-            const result = await Promise.race([
-              connectViaProxy(),
-              timeoutPromise
-            ]);
-            finalClient = result.client;
-            finalTransportType = result.transportType;
-            finalProtocolEra = result.protocolEra;
-            finalProtocolVersion = result.protocolVersion ?? null;
-            finalUrl = result.url;
-            finalUsedProxy = true;
-            connectionSuccess = true;
-            addLogEntry({ type: 'info', data: `Proxy connection successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}` });
-          } else {
-            if (isCorsError && shouldUseProxy && !currentUser) {
-              addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+          addLogEntry({
+            type: 'info',
+            data: `${usedProxy ? 'Proxy connection' : 'Connection'} successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}`
+          });
+        } catch (error) {
+          const challenge = getObservedAuthenticationChallenge(error);
+          const shouldDiscoverOAuth = challenge?.source === 'target'
+            && !attemptedAutomaticOAuth
+            && !hasExplicitTargetCredential;
+
+          if (!shouldDiscoverOAuth) throw error;
+          attemptedAutomaticOAuth = true;
+
+          addLogEntry({
+            type: 'info',
+            data: `🔐 The MCP server returned HTTP ${challenge.status}. Discovering its OAuth configuration...`
+          });
+          setConnectionStatus('Authorization required');
+          setIsAuthFlowActive(true);
+          setOauthProgress('Discovering the protected resource and authorization server...');
+          onAuthFlowStart?.();
+
+          const activeTabs = localStorage.getItem('mcpConnectionTabs');
+          if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+
+          try {
+            const result = await beginOAuthFlow(targetUrl, {
+              ...(latestAccessToken ? { forceReauthorization: true } : {})
+            });
+
+            if (result === 'REDIRECT') {
+              setIsConnecting(false);
+              setConnectionStartTime(null);
+              abortControllerRef.current = null;
+              return;
             }
-            throw error; // Re-throw if not a CORS error, proxy is disabled, or user not logged in
+
+            latestAccessToken = getLatestAccessToken(targetUrl);
+            if (!latestAccessToken) {
+              throw new Error('OAuth completed without returning an access token.');
+            }
+
+            setIsAuthFlowActive(false);
+            setOauthProgress(null);
+            setConnectionStatus('Connecting...');
+            addLogEntry({
+              type: 'info',
+              data: '✅ OAuth authorization found. Retrying the MCP connection.'
+            });
+          } catch (oauthError) {
+            setIsAuthFlowActive(false);
+            setOauthProgress(null);
+            setIsConnecting(false);
+            setConnectionStartTime(null);
+            abortControllerRef.current = null;
+
+            if (isOAuthClientConfigurationRequired(oauthError)) {
+              setNeedsOAuthConfig(true);
+              setOAuthConfigServerUrl(targetUrl);
+              setConnectionStatus('Authorization required');
+              addLogEntry({
+                type: 'warning',
+                data: '⚠️ Automatic OAuth discovery completed, but this provider requires a pre-registered client.'
+              });
+              return;
+            }
+
+            const message = oauthError instanceof Error
+              ? oauthError.message
+              : 'Unknown OAuth error';
+            setConnectionStatus('Error');
+            setConnectionError({
+              error: `OAuth authorization failed: ${message}`,
+              serverUrl: targetUrl,
+              timestamp: new Date()
+            });
+            addLogEntry({ type: 'error', data: `OAuth authorization failed: ${message}` });
+            return;
           }
         }
+      }
 
         // --- Finalize Connection ---
         if (connectionSuccess && finalClient && finalTransportType && finalUrl) {
@@ -584,21 +625,6 @@ export const useConnection = (
     } catch (error: any) {
         const isUserAborted = error.message && error.message.includes('Connection aborted by user');
         if (!isUserAborted) {
-            // Check if this is a 401 Unauthorized error
-            const is401Error = error.message && (
-                error.message.includes('401') || 
-                error.message.toLowerCase().includes('unauthorized') ||
-                error.statusCode === 401 ||
-                error.status === 401
-            );
-            
-            if (is401Error && !useOAuth) {
-                addLogEntry({
-                    type: 'warning',
-                    data: 'This endpoint requires authentication. Enable OAuth and reconnect to use protected-resource discovery.'
-                });
-            }
-            
             // Handle all other errors normally
             logEvent('connect_failure');
             const errorDetails = formatErrorForDisplay(error, {
@@ -615,7 +641,7 @@ export const useConnection = (
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, useOAuth, accessToken, getLatestAccessToken, requestHeaders]);
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, accessToken, getLatestAccessToken, requestHeaders, onAuthFlowStart]);
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {

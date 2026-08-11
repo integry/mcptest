@@ -23,6 +23,10 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
 
 import { useConnection } from './useConnection';
 import { BrowserOAuthProvider } from '../utils/oauthFlow';
+import {
+  ProxiedAuthenticationError,
+  TransportConnectionError,
+} from '../utils/transportDetection';
 
 beforeAll(() => {
   (
@@ -30,14 +34,14 @@ beforeAll(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
-const renderConnectionHook = (useOAuth = false) => {
+const renderConnectionHook = (requestHeaders?: Record<string, string>) => {
   let connection: ReturnType<typeof useConnection> | undefined;
   const container = document.createElement('div');
   const root: Root = createRoot(container);
   const addLogEntry = vi.fn();
 
   const Probe = () => {
-    connection = useConnection(addLogEntry, false, useOAuth);
+    connection = useConnection(addLogEntry, false, undefined, requestHeaders);
     return null;
   };
 
@@ -95,6 +99,7 @@ describe('connection URL finalization', () => {
     });
 
     expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
     expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint.toString());
     expect(connectionMocks.attempt.mock.calls[0][4]).toBe(false);
     expect(view.connection.serverUrl).toBe(endpoint.toString());
@@ -105,7 +110,7 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
-  it('authorizes through the SDK and uses the token for the requested endpoint', async () => {
+  it('discovers OAuth only after the MCP target returns an authentication challenge', async () => {
     const endpoint = 'https://secure.example/custom/mcp';
     oauthMocks.begin.mockImplementationOnce(async () => {
       const issuer = 'https://auth-secure.example/';
@@ -141,20 +146,32 @@ describe('connection URL finalization', () => {
       );
       return 'AUTHORIZED';
     });
-    connectionMocks.attempt.mockResolvedValueOnce({
-      client: { close: vi.fn().mockResolvedValue(undefined) },
-      url: endpoint,
-      transportType: 'streamable-http',
-      protocolEra: 'modern',
-    });
-    const view = renderConnectionHook(true);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([
+        new ProxiedAuthenticationError(
+          401,
+          'target',
+          new Error('The MCP target requires authorization')
+        )
+      ]))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: endpoint,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
+    const view = renderConnectionHook();
 
     await act(async () => {
       await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
     });
 
-    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint);
-    expect(connectionMocks.attempt).toHaveBeenCalledWith(
+    expect(connectionMocks.attempt.mock.calls[0][2]).toBeUndefined();
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, {});
+    expect(oauthMocks.begin.mock.invocationCallOrder[0]).toBeGreaterThan(
+      connectionMocks.attempt.mock.invocationCallOrder[0]
+    );
+    expect(connectionMocks.attempt).toHaveBeenLastCalledWith(
       endpoint,
       expect.anything(),
       'sdk-token',
@@ -163,6 +180,73 @@ describe('connection URL finalization', () => {
       undefined
     );
     expect(view.connection.connectionStatus).toBe('Connected');
+    view.unmount();
+  });
+
+  it('shows manual client configuration only after challenge-driven automatic OAuth fails', async () => {
+    const endpoint = 'https://manual-client.example/mcp';
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        401,
+        'target',
+        new Error('The MCP target requires authorization')
+      )
+    ]));
+    oauthMocks.begin.mockRejectedValueOnce(
+      new Error('authorization server does not support dynamic client registration')
+    );
+    const view = renderConnectionHook();
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(oauthMocks.begin).toHaveBeenCalledOnce();
+    expect(view.connection.needsOAuthConfig).toBe(true);
+    expect(view.connection.oauthConfigServerUrl).toBe(endpoint);
+    expect(view.connection.connectionStatus).toBe('Authorization required');
+    view.unmount();
+  });
+
+  it('does not launch target OAuth for a proxy-owned authentication failure', async () => {
+    const endpoint = 'https://public.example/mcp';
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        401,
+        'proxy',
+        new Error('The proxy session expired')
+      )
+    ]));
+    const view = renderConnectionHook();
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(view.connection.needsOAuthConfig).toBe(false);
+    expect(view.connection.connectionError).not.toBeNull();
+    view.unmount();
+  });
+
+  it('does not replace an explicit API credential with OAuth discovery', async () => {
+    const endpoint = 'https://api-key.example/mcp';
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        401,
+        'target',
+        new Error('The API key was rejected')
+      )
+    ]));
+    const view = renderConnectionHook({ 'X-API-Key': 'incorrect-key' });
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(view.connection.needsOAuthConfig).toBe(false);
     view.unmount();
   });
 });

@@ -134,7 +134,6 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   } = useConnection(
     addLogEntry, 
     tab.useProxy, 
-    tab.useOAuth,
     () => {
       // Notify parent that OAuth flow is starting and store tab ID
       onUpdateTab(tab.id, { isAuthFlowActive: true });
@@ -845,8 +844,6 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             useProxy={tab.useProxy}
             setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
             isProxied={isProxied} // Pass the new prop
-            useOAuth={tab.useOAuth}
-            setUseOAuth={(useOAuth: boolean) => onUpdateTab(tab.id, { useOAuth })}
             isAuthFlowActive={isAuthFlowActive}
             oauthProgress={oauthProgress}
             oauthUserInfo={oauthUserInfo}

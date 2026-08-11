@@ -34,8 +34,6 @@ interface ConnectionPanelProps {
   useProxy?: boolean;
   setUseProxy?: (useProxy: boolean) => void;
   isProxied?: boolean; // New prop
-  useOAuth?: boolean;
-  setUseOAuth?: (useOAuth: boolean) => void;
   isAuthFlowActive?: boolean;
   oauthProgress?: string;
   oauthUserInfo?: any; // User info from OAuth
@@ -67,8 +65,6 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   useProxy,
   setUseProxy,
   isProxied, // Destructure new prop
-  useOAuth,
-  setUseOAuth,
   isAuthFlowActive,
   oauthProgress,
   oauthUserInfo,
@@ -137,13 +133,12 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   useEffect(() => {
     console.log('[ConnectionPanel Debug] OAuth state:', {
       isConnected,
-      useOAuth,
       isAuthFlowActive,
       oauthUserInfo,
       oauthProgress,
       isOAuthConnection
     });
-  }, [isConnected, useOAuth, isAuthFlowActive, oauthUserInfo, oauthProgress, isOAuthConnection]);
+  }, [isConnected, isAuthFlowActive, oauthUserInfo, oauthProgress, isOAuthConnection]);
 
   // Return JSX directly without outer parentheses
   return (
@@ -290,6 +285,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   <li>Exact endpoint</li>
                   <li>2026 stateless discovery</li>
                   <li>2025 stateful fallback</li>
+                  <li>OAuth discovery after a verified authorization challenge</li>
                 </ol>
                 <span className="connection-example">For example, https://{placeholder}/ or http://localhost:3001</span>
               </div>
@@ -329,23 +325,6 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   Sign in with Google to enable proxy fallback.
                 </small>
               )}
-            </div>
-          )}
-          {!isConnected && !requiresCatalogCredential && setUseOAuth && (
-            <div className="mt-2">
-              <div className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="useOAuthCheck"
-                  checked={useOAuth !== undefined ? useOAuth : false}
-                  onChange={(e) => setUseOAuth(e.target.checked)}
-                  disabled={isConnecting}
-                />
-                <label className="form-check-label" htmlFor="useOAuthCheck">
-                  Use OAuth Authentication
-                </label>
-              </div>
             </div>
           )}
           {!isConnected && requiresCatalogCredential && credentialHeader && setCredentialValue && (

@@ -46,9 +46,9 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import {
-  ProxiedAuthenticationError,
   TransportConnectionError,
   attemptParallelConnections,
+  getObservedAuthenticationChallenge,
   type ObservedAuthenticationChallenge,
 } from './utils/transportDetection';
 import {
@@ -66,34 +66,6 @@ import {
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
 const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
-
-const getProxiedAuthenticationChallenge = (
-  error: unknown,
-  seen = new Set<object>()
-): ObservedAuthenticationChallenge | undefined => {
-  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
-  seen.add(error);
-
-  if (error instanceof ProxiedAuthenticationError) {
-    return { status: error.status, source: error.responseSource };
-  }
-
-  let proxyChallenge: ObservedAuthenticationChallenge | undefined;
-  if (error instanceof TransportConnectionError) {
-    for (const nestedError of error.errors) {
-      const challenge = getProxiedAuthenticationChallenge(nestedError, seen);
-      if (challenge?.source === 'target') return challenge;
-      if (challenge?.source === 'proxy') proxyChallenge = challenge;
-    }
-  }
-
-  const causeChallenge = getProxiedAuthenticationChallenge(
-    (error as { cause?: unknown }).cause,
-    seen
-  );
-  if (causeChallenge?.source === 'target') return causeChallenge;
-  return causeChallenge || proxyChallenge;
-};
 
 const getAuthenticationHttpStatus = (
   error: unknown,
@@ -132,7 +104,7 @@ export const classifySavedCardAuthenticationFailure = (
   usesProxy: boolean,
   observedChallenge?: ObservedAuthenticationChallenge
 ): ObservedAuthenticationChallenge | undefined => {
-  const proxiedChallenge = observedChallenge || getProxiedAuthenticationChallenge(error);
+  const proxiedChallenge = observedChallenge || getObservedAuthenticationChallenge(error);
   if (proxiedChallenge) return proxiedChallenge;
 
   // A generic proxied 401/403 has ambiguous provenance. Never turn it into a
@@ -566,7 +538,6 @@ function App() {
       serverUrl: server.browserUrl || server.validatedUrl || server.url,
       connectionStatus: 'Disconnected',
       useProxy: server.browserAccess !== 'direct',
-      useOAuth: server.requiresOAuth,
       autoConnect: server.authType === 'none' || server.authType === 'oauth',
       catalogAuthType: server.authType,
       catalogRequiredHeaders: server.requiredHeaders,

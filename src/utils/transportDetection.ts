@@ -56,6 +56,38 @@ export class ProxiedAuthenticationError extends Error {
   }
 }
 
+export const getObservedAuthenticationChallenge = (
+  error: unknown,
+  seen = new Set<object>()
+): ObservedAuthenticationChallenge | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+
+  if (error instanceof ProxiedAuthenticationError) {
+    return { status: error.status, source: error.responseSource };
+  }
+
+  const nestedErrors = error instanceof TransportConnectionError
+    ? error.errors
+    : (error as { errors?: readonly unknown[] }).errors;
+  let proxyChallenge: ObservedAuthenticationChallenge | undefined;
+
+  if (Array.isArray(nestedErrors)) {
+    for (const nestedError of nestedErrors) {
+      const challenge = getObservedAuthenticationChallenge(nestedError, seen);
+      if (challenge?.source === 'target') return challenge;
+      if (challenge?.source === 'proxy') proxyChallenge = challenge;
+    }
+  }
+
+  const causeChallenge = getObservedAuthenticationChallenge(
+    (error as { cause?: unknown }).cause,
+    seen
+  );
+  if (causeChallenge?.source === 'target') return causeChallenge;
+  return causeChallenge || proxyChallenge;
+};
+
 const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
 
 const observeAuthenticationResponses = (
