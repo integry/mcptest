@@ -1,4 +1,4 @@
-import { HOST_PROFILE_LIST, HOST_PROFILES } from './profiles';
+import { HOST_IDS, HOST_PROFILE_LIST, HOST_PROFILES } from './profiles';
 import {
   COMPATIBILITY_SCHEMA_VERSION,
   type CompatibilityConditionV1,
@@ -12,6 +12,7 @@ import {
   type HostProfileV1,
   type ObservedServerFactsV1,
   type ObservedValueV1,
+  type PartialCompatibilityMatrixV1,
   type RuleResultDefinitionV1,
 } from './types';
 
@@ -184,10 +185,10 @@ export const assessHostCompatibility = (
   const findings: CompatibilityFindingV1[] = [];
   for (const rule of profile.rules) {
     assertSupportedSchema(rule, `rule ${rule.id}`);
-    // If applicability itself is unknown, another foundational rule (for
-    // example authorization.scheme) owns that uncertainty. Optional branches
-    // must not multiply unknowns or fail closed.
-    if (rule.appliesWhen && evaluateCondition(rule.appliesWhen, facts) !== true) continue;
+    const applicability = rule.appliesWhen
+      ? evaluateCondition(rule.appliesWhen, facts)
+      : true;
+    if (applicability === false) continue;
 
     const explicitlyUnknown = rule.unknownWhen
       && evaluateCondition(rule.unknownWhen, facts) === true;
@@ -197,6 +198,27 @@ export const assessHostCompatibility = (
       : outcome === false
         ? rule.onFail
         : rule.onUnknown;
+
+    // An unresolved applicability branch must not apply its failure or caveat
+    // as though it were certain, nor silently discard a potentially material
+    // result. If applying the rule would currently be neutral, it is safe to
+    // omit it; otherwise the branch itself is an unknown finding.
+    if (applicability === 'unknown') {
+      const possibleDefinitions = outcome === true
+        ? [rule.onPass]
+        : outcome === false
+          ? [rule.onFail]
+          : [rule.onPass, rule.onFail, rule.onUnknown];
+      if (possibleDefinitions.some(({ outcome: possibleOutcome }) => possibleOutcome !== 'pass')) {
+        findings.push(findingFrom(profile, rule, {
+          ...rule.onUnknown,
+          outcome: 'unknown',
+          severity: 'warning',
+        }, facts));
+      }
+      continue;
+    }
+
     findings.push(findingFrom(profile, rule, definition, facts));
   }
 
@@ -209,16 +231,53 @@ export const assessHostCompatibility = (
   };
 };
 
-export const assessCompatibilityMatrix = (
+export function assessCompatibilityMatrix(
   facts: ObservedServerFactsV1,
-  profiles: readonly HostProfileV1[] = HOST_PROFILE_LIST
-): CompatibilityMatrixV1 => {
-  const entries = profiles.map((profile) => [
+  profiles?: undefined
+): CompatibilityMatrixV1;
+export function assessCompatibilityMatrix(
+  facts: ObservedServerFactsV1,
+  profiles: readonly HostProfileV1[]
+): PartialCompatibilityMatrixV1;
+export function assessCompatibilityMatrix(
+  facts: ObservedServerFactsV1,
+  profiles: readonly HostProfileV1[] | undefined
+): CompatibilityMatrixV1 | PartialCompatibilityMatrixV1;
+export function assessCompatibilityMatrix(
+  facts: ObservedServerFactsV1,
+  profiles?: readonly HostProfileV1[]
+): CompatibilityMatrixV1 | PartialCompatibilityMatrixV1 {
+  const selectedProfiles = profiles ?? HOST_PROFILE_LIST;
+  const profileIds = new Set<HostId>();
+  for (const profile of selectedProfiles) {
+    if (profileIds.has(profile.id)) {
+      throw new Error(`Duplicate host profile id: ${profile.id}.`);
+    }
+    profileIds.add(profile.id);
+  }
+  if (profiles === undefined) {
+    for (const hostId of HOST_IDS) {
+      if (!profileIds.has(hostId)) {
+        throw new Error(`Missing default host profile id: ${hostId}.`);
+      }
+    }
+  }
+
+  const entries = selectedProfiles.map((profile) => [
     profile.id,
     assessHostCompatibility(facts, profile),
   ] as const);
+  const assessments = Object.fromEntries(entries);
+
+  if (profiles !== undefined) {
+    return {
+      schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
+      assessments,
+    };
+  }
+
   return {
     schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
-    assessments: Object.fromEntries(entries) as Record<HostId, HostCompatibilityAssessmentV1>,
+    assessments: assessments as Record<HostId, HostCompatibilityAssessmentV1>,
   };
-};
+}

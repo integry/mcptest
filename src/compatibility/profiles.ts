@@ -92,10 +92,20 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
     ? ['unrestricted', 'https-only']
     : profile.callbackKind === 'loopback'
       ? ['unrestricted', 'loopback-only']
-      : ['unrestricted', 'https-only', 'loopback-only', 'exact-match'];
+      : ['unrestricted', 'https-only', 'loopback-only'];
+  const supportedStaticSchemes = profile.authSchemes.filter((scheme) => scheme !== 'oauth');
   const oauthApplies = all(
     observed('authorization.requirement', 'required'),
-    condition('authorization.schemes', 'contains-any', ['oauth'])
+    condition('authorization.schemes', 'contains-any', ['oauth']),
+    ...(supportedStaticSchemes.length > 0
+      ? [{
+          not: condition(
+            'authorization.schemes',
+            'contains-any',
+            supportedStaticSchemes
+          ),
+        } satisfies CompatibilityConditionV1]
+      : [])
   );
 
   const rule = (
@@ -321,7 +331,7 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       id: 'authorization.oauth.redirects',
       scope: 'authorization-server',
       appliesWhen: oauthApplies,
-      ...(profile.callbackUris.length === 0 && profile.callbackKind !== 'flexible'
+      ...(profile.callbackUris.length === 0
         ? {
             unknownWhen: all(
               observed('authorization.oauth.dynamicRedirectRegistration', false),
@@ -352,12 +362,12 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       onUnknown: result(
         'unknown',
         'OAuth redirect compatibility is unknown',
-        profile.callbackUris.length === 0 && profile.callbackKind !== 'flexible'
+        profile.callbackUris.length === 0
           ? `No verified ${profile.name} callback URI is available to compare with the authorization server's exact-match policy.`
           : 'The available redirect evidence does not establish whether the authorization server accepts the host callback URI.',
         remediation(
           'observation-needed',
-          profile.callbackUris.length === 0 && profile.callbackKind !== 'flexible'
+          profile.callbackUris.length === 0
             ? `Verify ${profile.name}'s exact callback URI and compare it with the registered redirect URIs.`
             : 'Record accepted redirect URI classes or the exact registered callbacks.'
         )
@@ -484,6 +494,14 @@ const common = {
   sessions: ['stateful', 'stateless'] as const,
 };
 
+export const HOST_IDS = Object.freeze([
+  'chatgpt',
+  'claude',
+  'cursor',
+  'vscode-copilot',
+  'generic-sdk',
+] as const satisfies readonly HostId[]);
+
 const constraints: readonly ProfileConstraints[] = [
   {
     id: 'chatgpt',
@@ -594,5 +612,5 @@ export const HOST_PROFILES: Readonly<Record<HostId, HostProfileV1>> = Object.fre
 );
 
 export const HOST_PROFILE_LIST: readonly HostProfileV1[] = Object.freeze(
-  constraints.map(({ id }) => HOST_PROFILES[id])
+  HOST_IDS.map((id) => HOST_PROFILES[id])
 );

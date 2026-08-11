@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   COMPATIBILITY_SCHEMA_VERSION,
   HOST_PROFILE_LIST,
+  HOST_PROFILES,
   assessCompatibilityMatrix,
   assessHostCompatibility,
   evaluateCondition,
@@ -13,7 +14,9 @@ import {
   statefulStreamableHttpServerFixture,
   statelessStreamableHttpServerFixture,
   unknownFact,
+  type CompatibilityMatrixV1,
   type ObservedServerFactsV1,
+  type PartialCompatibilityMatrixV1,
 } from '.';
 
 const cloneFacts = (facts: ObservedServerFactsV1): ObservedServerFactsV1 => structuredClone(facts);
@@ -88,6 +91,59 @@ describe('host compatibility evaluator', () => {
       expect(assessment.status).not.toBe('incompatible');
       expect(assessment.findings.some(({ ruleId }) => ruleId.startsWith('authorization.oauth.'))).toBe(false);
     }
+  });
+
+  it.each(['bearer', 'api-key'] as const)(
+    'does not run broken OAuth when a required %s path is usable',
+    (staticScheme) => {
+      const facts = cloneFacts(oauthProtectedServerFixture);
+      facts.authorization.schemes = observedFact(
+        ['oauth', staticScheme],
+        `The target accepts either OAuth or a static ${staticScheme} credential.`
+      );
+      facts.authorization.oauth.protectedResourceMetadata = observedFact(
+        false,
+        'The unused OAuth protected-resource metadata is unavailable.'
+      );
+
+      for (const profileId of ['cursor', 'vscode-copilot', 'generic-sdk'] as const) {
+        const assessment = assessHostCompatibility(facts, profileId);
+        expect(assessment.status).toBe('compatible');
+        expect(assessment.findings.some(({ ruleId }) => ruleId.startsWith('authorization.oauth.'))).toBe(false);
+      }
+
+      for (const profileId of ['chatgpt', 'claude'] as const) {
+        expect(assessHostCompatibility(facts, profileId)).toMatchObject({
+          status: 'incompatible',
+          findings: expect.arrayContaining([
+            expect.objectContaining({
+              ruleId: 'authorization.oauth.protected-resource-metadata',
+              outcome: 'fail',
+            }),
+          ]),
+        });
+      }
+    }
+  );
+
+  it('preserves unknown OAuth applicability when the unresolved branch can change compatibility', () => {
+    const facts = cloneFacts(oauthProtectedServerFixture);
+    facts.authorization.requirement = unknownFact(
+      'The target advertised OAuth, but no request established whether authorization is required.'
+    );
+    facts.authorization.oauth.protectedResourceMetadata = observedFact(
+      false,
+      'Protected resource metadata is conclusively unavailable if OAuth is required.'
+    );
+
+    const assessment = assessHostCompatibility(facts, 'claude');
+
+    expect(assessment.status).toBe('unknown');
+    expect(assessment.findings).toContainEqual(expect.objectContaining({
+      ruleId: 'authorization.oauth.protected-resource-metadata',
+      outcome: 'unknown',
+    }));
+    expect(assessment.findings.some(({ outcome }) => outcome === 'fail')).toBe(false);
   });
 
   it('distinguishes stateful and stateless Streamable HTTP behavior', () => {
@@ -190,7 +246,7 @@ describe('host compatibility evaluator', () => {
     expect(assessHostCompatibility(facts, 'generic-sdk').status).toBe('compatible');
   });
 
-  it.each(['chatgpt', 'cursor', 'vscode-copilot'] as const)(
+  it.each(['chatgpt', 'cursor', 'vscode-copilot', 'generic-sdk'] as const)(
     'returns unknown for an exact-match redirect policy when %s has no verified callback URI',
     (profileId) => {
       const facts = cloneFacts(oauthProtectedServerFixture);
@@ -232,6 +288,66 @@ describe('host compatibility evaluator', () => {
       ruleId: 'authorization.oauth.redirects',
       outcome: 'pass',
     }));
+  });
+
+  it('fails exact-match redirects when a known callback has no usable registration evidence', () => {
+    const facts = cloneFacts(oauthProtectedServerFixture);
+    facts.authorization.oauth.dynamicRedirectRegistration = observedFact(
+      false,
+      'Redirects cannot be added during registration.'
+    );
+
+    const assessment = assessHostCompatibility(facts, 'claude');
+
+    expect(assessment.status).toBe('incompatible');
+    expect(assessment.findings).toContainEqual(expect.objectContaining({
+      ruleId: 'authorization.oauth.redirects',
+      outcome: 'fail',
+    }));
+  });
+
+  it('returns unknown when exact-match registration evidence is unavailable for a known callback', () => {
+    const facts = cloneFacts(oauthProtectedServerFixture);
+    facts.authorization.oauth.dynamicRedirectRegistration = observedFact(
+      false,
+      'Redirects cannot be added during registration.'
+    );
+    facts.authorization.oauth.registeredRedirectUris = unknownFact(
+      'The authorization server did not expose its registered callbacks.'
+    );
+
+    const assessment = assessHostCompatibility(facts, 'claude');
+
+    expect(assessment.status).toBe('unknown');
+    expect(assessment.findings).toContainEqual(expect.objectContaining({
+      ruleId: 'authorization.oauth.redirects',
+      outcome: 'unknown',
+    }));
+  });
+
+  it('types custom compatibility matrices as partial and handles empty selections', () => {
+    const complete = assessCompatibilityMatrix(publicServerFixture);
+    const empty = assessCompatibilityMatrix(publicServerFixture, []);
+
+    expectTypeOf(complete).toEqualTypeOf<CompatibilityMatrixV1>();
+    expectTypeOf(empty).toEqualTypeOf<PartialCompatibilityMatrixV1>();
+    expect(empty.assessments).toEqual({});
+    expect(empty.assessments.chatgpt).toBeUndefined();
+  });
+
+  it('returns only requested profiles in a custom partial matrix', () => {
+    const matrix = assessCompatibilityMatrix(publicServerFixture, [HOST_PROFILES.claude]);
+
+    expect(Object.keys(matrix.assessments)).toEqual(['claude']);
+    expect(matrix.assessments.claude?.profileId).toBe('claude');
+    expect(matrix.assessments.chatgpt).toBeUndefined();
+  });
+
+  it('rejects duplicate profile IDs in a custom matrix', () => {
+    expect(() => assessCompatibilityMatrix(publicServerFixture, [
+      HOST_PROFILES.claude,
+      HOST_PROFILES.claude,
+    ])).toThrow('Duplicate host profile id: claude.');
   });
 
   it('makes missing refresh support a caveat rather than an OAuth failure', () => {

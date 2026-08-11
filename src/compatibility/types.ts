@@ -204,3 +204,8 @@ export interface CompatibilityMatrixV1 {
   schemaVersion: CompatibilitySchemaVersion;
   assessments: Readonly<Record<HostId, HostCompatibilityAssessmentV1>>;
 }
+
+export interface PartialCompatibilityMatrixV1 {
+  schemaVersion: CompatibilitySchemaVersion;
+  assessments: Readonly<Partial<Record<HostId, HostCompatibilityAssessmentV1>>>;
+}
