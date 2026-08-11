@@ -100,4 +100,64 @@ describe('ReleaseReadinessReport', () => {
     expect(markup).toContain('Proxy access required');
     expect(markup).not.toContain('Required step');
   });
+
+  it('keeps a failed target challenge visibly actionable', () => {
+    const markup = renderToStaticMarkup(
+      <ReleaseReadinessReport
+        report={authorizationReport}
+        expandedItems={new Set()}
+        onToggleItem={() => undefined}
+        oauthTrace={{
+          version: 1,
+          traceId: 'trace-failed-challenge',
+          targetFingerprint: 'fingerprint',
+          targetUrl: authorizationReport.serverUrl,
+          startedAt: '2026-08-11T20:02:00.000Z',
+          events: [{
+            sequence: 1,
+            type: 'target_challenge',
+            outcome: 'failed',
+            timestamp: '2026-08-11T20:02:00.000Z',
+            provenance: 'direct_target',
+            route: 'direct',
+            explanation: 'The target challenge could not be processed.',
+          }],
+        }}
+      />
+    );
+
+    expect(markup).toContain('oauth-step-failed');
+    expect(markup).toContain('Needs attention');
+    expect(markup).not.toContain('Required step');
+  });
+
+  it('does not present an unexpected metadata-discovery challenge as a required step', () => {
+    const markup = renderToStaticMarkup(
+      <ReleaseReadinessReport
+        report={authorizationReport}
+        expandedItems={new Set()}
+        onToggleItem={() => undefined}
+        oauthTrace={{
+          version: 1,
+          traceId: 'trace-unexpected-challenge',
+          targetFingerprint: 'fingerprint',
+          targetUrl: authorizationReport.serverUrl,
+          startedAt: '2026-08-11T20:02:00.000Z',
+          events: [{
+            sequence: 1,
+            type: 'authorization_server_metadata',
+            outcome: 'challenged',
+            timestamp: '2026-08-11T20:02:00.000Z',
+            provenance: 'authorization_server',
+            route: 'direct',
+            explanation: 'Metadata discovery received an unexpected challenge.',
+          }],
+        }}
+      />
+    );
+
+    expect(markup).toContain('oauth-step-failed');
+    expect(markup).toContain('Needs attention');
+    expect(markup).not.toContain('Required step');
+  });
 });

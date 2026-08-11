@@ -67,15 +67,35 @@ const traceEventTitle = (event: OAuthTraceEventV1): string => (
 const expectedOAuthStep = (
   event: OAuthTraceEventV1,
   schemes: Known<readonly AuthorizationScheme[]>
-): boolean => (
-  schemes !== 'unknown'
-  && schemes.includes('oauth')
-  && event.provenance !== 'authenticated_proxy'
-  && (
+): boolean => {
+  if (schemes === 'unknown' || !schemes.includes('oauth')) return false;
+
+  return (
     event.type === 'target_challenge'
-    || event.outcome === 'challenged'
-    || event.outcome === 'required'
-    || event.outcome === 'redirected'
+    && event.outcome === 'challenged'
+    && event.provenance === 'direct_target'
+  ) || (
+    event.type === 'pre_registered_client'
+    && event.outcome === 'required'
+    && event.provenance === 'oauth_client'
+  ) || (
+    event.type === 'authorization_redirect'
+    && event.outcome === 'redirected'
+    && event.provenance === 'authorization_server'
+  );
+};
+
+const oauthStepNeedsAttention = (
+  event: OAuthTraceEventV1,
+  schemes: Known<readonly AuthorizationScheme[]>
+): boolean => (
+  event.outcome === 'failed'
+  || event.outcome === 'cancelled'
+  || (
+    (event.outcome === 'challenged'
+      || event.outcome === 'required'
+      || event.outcome === 'redirected')
+    && !expectedOAuthStep(event, schemes)
   )
 );
 
@@ -83,6 +103,7 @@ const traceStepState = (
   event: OAuthTraceEventV1,
   schemes: Known<readonly AuthorizationScheme[]>
 ): string => {
+  if (event.outcome === 'failed' || event.outcome === 'cancelled') return 'Needs attention';
   if (expectedOAuthStep(event, schemes)) return 'Required step';
   if (event.type === 'target_challenge' && event.provenance === 'authenticated_proxy') {
     return 'Proxy access required';
@@ -92,7 +113,7 @@ const traceStepState = (
     if (schemes !== 'unknown' && schemes.includes('api-key')) return 'API key required';
     return 'Authorization required';
   }
-  if (event.outcome === 'failed' || event.outcome === 'cancelled') return 'Needs attention';
+  if (oauthStepNeedsAttention(event, schemes)) return 'Needs attention';
   if (event.outcome === 'succeeded') return 'Complete';
   return event.outcome.charAt(0).toUpperCase() + event.outcome.slice(1);
 };
@@ -290,7 +311,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           <>
             <ol className="oauth-timeline" aria-label="Guided OAuth timeline">
               {oauthTrace.events.map((event) => (
-                <li className={event.outcome === 'failed' ? 'oauth-step-failed' : expectedOAuthStep(event, authorizationSchemes) ? 'oauth-step-expected' : ''} key={event.sequence}>
+                <li className={oauthStepNeedsAttention(event, authorizationSchemes) ? 'oauth-step-failed' : expectedOAuthStep(event, authorizationSchemes) ? 'oauth-step-expected' : ''} key={event.sequence}>
                   <span className="oauth-step-marker" aria-hidden="true">{event.sequence}</span>
                   <div>
                     <div className="oauth-step-heading">
