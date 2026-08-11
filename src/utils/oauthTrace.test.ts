@@ -139,4 +139,29 @@ describe('OAuth flight recorder core', () => {
     expect(Object.keys(sessionStorage).join(' ')).not.toContain('target-secret');
     expect(getStoredOAuthTrace(target, sessionStorage)?.targetUrl).not.toContain('target-secret');
   });
+
+  it('keeps recording in memory when trace persistence fails', () => {
+    const unavailableStorage = {
+      getItem: vi.fn().mockReturnValue(null),
+      setItem: vi.fn(() => {
+        throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
+      }),
+    };
+
+    expect(() => {
+      const recorder = createOAuthFlightRecorder({
+        targetUrl: TARGET_URL,
+        storage: unavailableStorage,
+      });
+      recorder.record({
+        type: 'target_challenge',
+        outcome: 'challenged',
+        provenance: 'direct_target',
+        route: 'direct',
+        explanation: 'The target requires OAuth.',
+      });
+      expect(recorder.snapshot().events).toHaveLength(1);
+    }).not.toThrow();
+    expect(unavailableStorage.setItem).toHaveBeenCalled();
+  });
 });

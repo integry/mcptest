@@ -392,6 +392,8 @@ describe('transport candidate generation', () => {
     expect(connection.takeAuthenticationChallenge()).toEqual({
       status: 403,
       source: 'target',
+      method: 'GET',
+      requestUrl: 'https://example.com/custom',
     });
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
   });
@@ -417,6 +419,8 @@ describe('transport candidate generation', () => {
     expect(connection.takeAuthenticationChallenge()).toEqual({
       status: 401,
       source: 'target',
+      method: 'GET',
+      requestUrl: 'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
     });
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
   });

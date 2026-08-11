@@ -5,6 +5,7 @@ import { formatErrorForDisplay } from '../utils/errorHandling';
 import {
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  type ObservedTransportRequest,
 } from '../utils/transportDetection';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
@@ -389,7 +390,17 @@ export const useConnection = (
     let connectionRoute: 'direct' | 'proxy' = 'direct';
     let oauthTrace: OAuthFlightRecorder | undefined;
     let oauthRetryPending = false;
+    let oauthRetryEventPending = false;
+    let oauthRetryEventStartedAt: number | undefined;
     let connectionAttemptStartedAt = Date.now();
+    const reloadLatestOAuthTrace = (): OAuthFlightRecorder | undefined => {
+      const storedTrace = resumeOAuthFlightRecorder(targetUrl, sessionStorage);
+      if (!storedTrace || !oauthTrace) return storedTrace || oauthTrace;
+
+      return storedTrace.snapshot().events.length >= oauthTrace.snapshot().events.length
+        ? storedTrace
+        : oauthTrace;
+    };
     const withConnectionTimeout = async <T,>(attempt: Promise<T>): Promise<T> => {
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
@@ -404,6 +415,48 @@ export const useConnection = (
       } finally {
         if (timeoutId) clearTimeout(timeoutId);
       }
+    };
+
+    const observeOAuthRetryRequest = (
+      route: 'direct' | 'proxy'
+    ) => ({ method, url }: ObservedTransportRequest): void => {
+      if (!oauthRetryPending || oauthRetryEventPending || !oauthTrace) return;
+
+      oauthRetryEventStartedAt = Date.now();
+      oauthTrace.record({
+        type: 'mcp_retry',
+        outcome: 'started',
+        provenance: route === 'direct' ? 'direct_target' : 'authenticated_proxy',
+        route,
+        explanation: `Retrying the MCP connection with OAuth credentials on the ${route} route using the ${protocolEraHint || 'negotiated'} protocol path.`,
+        request: { method, url },
+        response: { metadata: { protocolEraHint: protocolEraHint || 'automatic' } },
+        timing: { startedAt: new Date(oauthRetryEventStartedAt).toISOString() },
+      });
+      oauthRetryEventPending = true;
+    };
+
+    const failOAuthRetryEvent = (
+      error: unknown,
+      route: 'direct' | 'proxy'
+    ): void => {
+      if (!oauthRetryEventPending) return;
+
+      const challenge = getObservedAuthenticationChallenge(error);
+      const status = challenge?.status;
+      oauthTrace?.enrichLast('mcp_retry', {
+        outcome: 'failed',
+        explanation: `The authenticated MCP retry failed on the ${route} route${status ? ` with HTTP ${status}` : ''}.`,
+        ...(status ? { response: { status } } : {}),
+        ...(oauthRetryEventStartedAt ? {
+          timing: {
+            startedAt: new Date(oauthRetryEventStartedAt).toISOString(),
+            durationMs: Math.max(0, Date.now() - oauthRetryEventStartedAt),
+          },
+        } : {}),
+      });
+      oauthRetryEventPending = false;
+      oauthRetryEventStartedAt = undefined;
     };
 
     // Helper function to attempt direct connection
@@ -424,7 +477,8 @@ export const useConnection = (
         latestAccessToken || undefined,
         requestHeaders,
         false,
-        protocolEraHint
+        protocolEraHint,
+        observeOAuthRetryRequest('direct')
       );
     };
 
@@ -461,7 +515,8 @@ export const useConnection = (
         authToken,
         targetHeaders,
         true,
-        protocolEraHint
+        protocolEraHint,
+        observeOAuthRetryRequest('proxy')
       );
     };
 
@@ -472,6 +527,9 @@ export const useConnection = (
         const result = await withConnectionTimeout(connectDirectly());
         return { result, usedProxy: false };
       } catch (error: any) {
+        if (oauthRetryPending) {
+          failOAuthRetryEvent(error, 'direct');
+        }
         // Check if it's a CORS error and if automatic proxy fallback is enabled
         const isCorsError = error.message?.toLowerCase().includes('cors') ||
           (error.message?.toLowerCase().includes('failed to fetch') &&
@@ -520,8 +578,20 @@ export const useConnection = (
                   protocolVersion: result.protocolVersion,
                 },
               },
+              ...(oauthRetryEventStartedAt ? {
+                timing: {
+                  startedAt: new Date(oauthRetryEventStartedAt).toISOString(),
+                  durationMs: Math.max(0, Date.now() - oauthRetryEventStartedAt),
+                },
+              } : {}),
             });
+            oauthTrace?.terminal(
+              'authorized',
+              'OAuth authorization and the authenticated MCP retry completed successfully.'
+            );
             oauthRetryPending = false;
+            oauthRetryEventPending = false;
+            oauthRetryEventStartedAt = undefined;
           }
           addLogEntry({
             type: 'info',
@@ -529,17 +599,23 @@ export const useConnection = (
           });
         } catch (error) {
           const challenge = getObservedAuthenticationChallenge(error);
+          const authenticatedRetryFailed = oauthRetryPending;
+          if (authenticatedRetryFailed) {
+            failOAuthRetryEvent(error, connectionRoute);
+          }
           const shouldDiscoverOAuth = challenge?.source === 'target'
             && !attemptedAutomaticOAuth
             && !hasExplicitTargetCredential;
 
-          if (challenge) {
-            oauthTrace = oauthTrace || recordOAuthAuthenticationChallenge({
+          if (challenge && !oauthTrace) {
+            oauthTrace = recordOAuthAuthenticationChallenge({
               targetUrl,
               status: challenge.status,
               source: challenge.source,
               route: challenge.source === 'proxy' ? 'proxy' : connectionRoute,
               storage: sessionStorage,
+              method: challenge.method,
+              requestUrl: challenge.requestUrl,
               timing: {
                 startedAt: new Date(connectionAttemptStartedAt).toISOString(),
                 durationMs: Math.max(0, Date.now() - connectionAttemptStartedAt),
@@ -550,10 +626,13 @@ export const useConnection = (
           if (!shouldDiscoverOAuth) {
             oauthTrace?.terminal(
               'failed',
-              challenge?.source === 'proxy'
+              authenticatedRetryFailed
+                ? `OAuth authorization completed, but the authenticated MCP retry failed on the ${connectionRoute} route${challenge?.status ? ` with HTTP ${challenge.status}` : ''}.`
+                : challenge?.source === 'proxy'
                 ? 'The connection stopped at authenticated proxy access; target OAuth discovery was not started.'
                 : 'The target authentication challenge was not converted into automatic OAuth discovery.'
             );
+            oauthRetryPending = false;
             throw error;
           }
           attemptedAutomaticOAuth = true;
@@ -572,8 +651,11 @@ export const useConnection = (
 
           try {
             const result = await beginOAuthFlow(targetUrl, {
-              ...(latestAccessToken ? { forceReauthorization: true } : {})
+              ...(latestAccessToken ? { forceReauthorization: true } : {}),
+              trace: oauthTrace,
+              deferAuthorizedTraceOutcome: true,
             });
+            oauthTrace = reloadLatestOAuthTrace();
 
             if (result === 'REDIRECT') {
               setIsConnecting(false);
@@ -594,18 +676,9 @@ export const useConnection = (
               type: 'info',
               data: '✅ OAuth authorization found. Retrying the MCP connection.'
             });
-            oauthTrace = oauthTrace || resumeOAuthFlightRecorder(targetUrl, sessionStorage);
-            oauthTrace?.record({
-              type: 'mcp_retry',
-              outcome: 'started',
-              provenance: 'direct_target',
-              route: connectionRoute,
-              explanation: `Retrying the MCP connection with OAuth credentials using the ${protocolEraHint || 'negotiated'} protocol path.`,
-              request: { method: 'POST', url: targetUrl },
-              response: { metadata: { protocolEraHint: protocolEraHint || 'automatic' } },
-            });
             oauthRetryPending = true;
           } catch (oauthError) {
+            oauthTrace = reloadLatestOAuthTrace();
             setIsAuthFlowActive(false);
             setOauthProgress(null);
             setIsConnecting(false);
@@ -621,6 +694,13 @@ export const useConnection = (
                 data: '⚠️ Automatic OAuth discovery completed, but this provider requires a pre-registered client.'
               });
               return;
+            }
+
+            if (!oauthTrace?.snapshot().outcome) {
+              oauthTrace?.terminal(
+                'failed',
+                'OAuth authorization failed before an authenticated MCP retry could begin.'
+              );
             }
 
             const message = oauthError instanceof Error

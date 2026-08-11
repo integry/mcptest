@@ -36,6 +36,13 @@ export type ProxyAuthenticationSource = 'proxy' | 'target';
 export interface ObservedAuthenticationChallenge {
   status: 401 | 403;
   source: ProxyAuthenticationSource;
+  method?: string;
+  requestUrl?: string;
+}
+
+export interface ObservedTransportRequest {
+  method: string;
+  url: string;
 }
 
 export class ProxiedAuthenticationError extends Error {
@@ -44,7 +51,8 @@ export class ProxiedAuthenticationError extends Error {
   constructor(
     readonly status: 401 | 403,
     readonly responseSource: ProxyAuthenticationSource,
-    cause: unknown
+    cause: unknown,
+    request?: ObservedTransportRequest
   ) {
     super(
       responseSource === 'target'
@@ -53,7 +61,12 @@ export class ProxiedAuthenticationError extends Error {
     );
     this.name = 'ProxiedAuthenticationError';
     this.cause = cause;
+    this.method = request?.method;
+    this.requestUrl = request?.url;
   }
+
+  readonly method?: string;
+  readonly requestUrl?: string;
 }
 
 export const getObservedAuthenticationChallenge = (
@@ -64,7 +77,12 @@ export const getObservedAuthenticationChallenge = (
   seen.add(error);
 
   if (error instanceof ProxiedAuthenticationError) {
-    return { status: error.status, source: error.responseSource };
+    return {
+      status: error.status,
+      source: error.responseSource,
+      ...(error.method ? { method: error.method } : {}),
+      ...(error.requestUrl ? { requestUrl: error.requestUrl } : {}),
+    };
   }
 
   const nestedErrors = error instanceof TransportConnectionError
@@ -92,8 +110,15 @@ const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
 
 const observeAuthenticationResponses = (
   usesProxy: boolean,
-  onChallenge: (status: 401 | 403, source: ProxyAuthenticationSource) => void
+  onChallenge: (challenge: ObservedAuthenticationChallenge) => void,
+  onRequest?: (request: ObservedTransportRequest) => void
 ): FetchLike => async (input, init) => {
+  const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
+  const attemptedRequest = {
+    method: (init?.method || request?.method || 'GET').toUpperCase(),
+    url: request?.url || String(input),
+  };
+  onRequest?.(attemptedRequest);
   const response = await fetch(input, init);
   if (response.status === 401 || response.status === 403) {
     const responseSource = !usesProxy
@@ -101,7 +126,12 @@ const observeAuthenticationResponses = (
       : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
         ? 'target'
         : 'proxy';
-    onChallenge(response.status, responseSource);
+    onChallenge({
+      status: response.status,
+      source: responseSource,
+      method: attemptedRequest.method,
+      requestUrl: attemptedRequest.url,
+    });
   }
   return response;
 };
@@ -278,20 +308,21 @@ export async function attemptParallelConnections(
   authToken?: string,
   requestHeaders?: HeadersInit,
   usesProxy = false,
-  protocolEraHint?: 'stateful' | 'legacy'
+  protocolEraHint?: 'stateful' | 'legacy',
+  onRequest?: (request: ObservedTransportRequest) => void
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
   const candidates = getTransportCandidates(serverUrl, usesProxy);
   const clients: Client[] = [];
   const transportOptionsFor = (
     candidateUrl: string,
-    onAuthenticationChallenge: (status: 401 | 403, source: ProxyAuthenticationSource) => void
+    onAuthenticationChallenge: (challenge: ObservedAuthenticationChallenge) => void
   ) => {
     const headers = getRequestHeadersForCandidate(candidateUrl, requestHeaders, usesProxy);
 
     return {
       ...(authToken ? { authProvider: { token: async () => authToken } } : {}),
       ...(Array.from(headers.keys()).length > 0 ? { headers } : {}),
-      fetch: observeAuthenticationResponses(usesProxy, onAuthenticationChallenge),
+      fetch: observeAuthenticationResponses(usesProxy, onAuthenticationChallenge, onRequest),
     };
   };
 
@@ -310,8 +341,8 @@ export async function attemptParallelConnections(
     clients.push(client);
     const endpoint = new URL(candidate.url);
     let authenticationChallenge: ObservedAuthenticationChallenge | undefined;
-    const transportOpts = transportOptionsFor(candidate.url, (status, source) => {
-      authenticationChallenge = { status, source };
+    const transportOpts = transportOptionsFor(candidate.url, (challenge) => {
+      authenticationChallenge = challenge;
     });
     const transport = candidate.transportType === 'legacy-sse'
       ? new CorsAwareSSETransport(endpoint, transportOpts)
@@ -327,7 +358,13 @@ export async function attemptParallelConnections(
         throw new ProxiedAuthenticationError(
           authenticationChallenge.status,
           authenticationChallenge.source,
-          error
+          error,
+          authenticationChallenge.method && authenticationChallenge.requestUrl
+            ? {
+                method: authenticationChallenge.method,
+                url: authenticationChallenge.requestUrl,
+              }
+            : undefined
         );
       }
       throw error;

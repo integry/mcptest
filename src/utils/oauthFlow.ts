@@ -83,6 +83,7 @@ export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
   fetchFn?: FetchLike;
   forceReauthorization?: boolean;
   scope?: string;
+  deferAuthorizedTraceOutcome?: boolean;
 }
 
 export interface CompletedOAuthFlow {
@@ -592,7 +593,9 @@ export const beginOAuthFlow = async (
     });
     if (result === 'AUTHORIZED') {
       provider.syncLegacyTokens();
-      trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
+      if (!options.deferAuthorizedTraceOutcome) {
+        trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
+      }
     } else {
       trace.terminal('redirected', 'OAuth authorization is awaiting the browser callback.');
     }

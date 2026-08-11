@@ -310,7 +310,7 @@ export class OAuthFlightRecorder {
 
   enrichLast(
     type: OAuthTraceEventType,
-    update: Partial<Pick<OAuthTraceEventV1, 'outcome' | 'explanation' | 'response'>>
+    update: Partial<Pick<OAuthTraceEventV1, 'outcome' | 'explanation' | 'response' | 'timing'>>
   ): boolean {
     const event = [...this.trace.events].reverse().find((candidate) => candidate.type === type);
     if (!event) return false;
@@ -325,6 +325,7 @@ export class OAuthFlightRecorder {
     }
     if (sanitized.outcome) event.outcome = sanitized.outcome;
     if (sanitized.explanation) event.explanation = sanitized.explanation;
+    if (sanitized.timing) event.timing = sanitized.timing;
     this.persist();
     return true;
   }
@@ -370,7 +371,12 @@ export class OAuthFlightRecorder {
   }
 
   private persist(): void {
-    this.storage?.setItem(this.storageKey, JSON.stringify(this.snapshot()));
+    try {
+      this.storage?.setItem(this.storageKey, JSON.stringify(this.snapshot()));
+    } catch {
+      // Diagnostics are best-effort. Storage can be unavailable or full, but
+      // recording must continue in memory without changing the primary flow.
+    }
   }
 }
 
@@ -412,8 +418,8 @@ export const recordOAuthAuthenticationChallenge = ({
   source,
   route,
   storage,
-  method = 'POST',
-  requestUrl = targetUrl,
+  method,
+  requestUrl,
   timing,
 }: RecordOAuthAuthenticationChallengeOptions): OAuthFlightRecorder => {
   const recorder = createOAuthFlightRecorder({ targetUrl, storage });
@@ -425,7 +431,7 @@ export const recordOAuthAuthenticationChallenge = ({
     explanation: source === 'target'
       ? `The MCP target returned the expected HTTP ${status} authentication challenge.`
       : `The authenticated proxy returned HTTP ${status}; this is not an OAuth challenge from the MCP target.`,
-    request: { method, url: requestUrl },
+    ...(method && requestUrl ? { request: { method, url: requestUrl } } : {}),
     response: { status },
     ...(timing ? { timing } : {}),
   });
