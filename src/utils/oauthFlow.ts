@@ -242,6 +242,16 @@ const discoveryStage = (trace: OAuthFlightRecorder): string => {
   return lastFailed?.type.replace(/_/g, ' ') || 'OAuth discovery';
 };
 
+const latestFailureIsDiscovery = (trace: OAuthFlightRecorder): boolean => {
+  const events = trace.snapshot().events;
+  const latest = events[events.length - 1];
+  return latest?.outcome === 'failed'
+    && (
+      latest.type === 'protected_resource_metadata'
+      || latest.type === 'authorization_server_metadata'
+    );
+};
+
 const registrationFailureDetails = (error: RegistrationRejectedError): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(error.body) as Record<string, unknown>;
@@ -720,7 +730,6 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   saveDiscoveryState(discovery: OAuthDiscoveryState): void {
     this.resourceMetadataUrlOverride = discovery.resourceMetadataUrl
       || this.resourceMetadataUrlOverride;
-    this.updateState({ discovery });
     this.trace?.trackResourceMetadataUrl(discovery.resourceMetadataUrl);
     const resourceResponse = {
       metadata: {
@@ -784,6 +793,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
         response: serverResponse,
       });
     }
+    this.updateState({ discovery });
   }
 
   discoveryState(): OAuthDiscoveryState | undefined {
@@ -1052,7 +1062,7 @@ export const beginOAuthFlow = async (
         options.scope
       );
       trace.terminal('pre_registered_client_required', prerequisite.explanation);
-    } else {
+    } else if (latestFailureIsDiscovery(trace)) {
       prerequisite = buildOAuthPrerequisite(
         'discovery_blocked_invalid',
         normalizedServerUrl,
@@ -1062,6 +1072,12 @@ export const beginOAuthFlow = async (
         options.scope
       );
       trace.terminal('discovery_blocked_invalid', prerequisite.explanation);
+    } else {
+      trace.terminal(
+        'failed',
+        `OAuth authorization failed${error instanceof Error ? ` during ${error.name}` : ''}.`
+      );
+      throw error;
     }
     throw new OAuthPrerequisiteError(prerequisite, { cause: error });
   }

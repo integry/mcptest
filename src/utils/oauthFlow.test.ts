@@ -554,6 +554,77 @@ describe('OAuth flight recorder integration', () => {
     expect(trace?.outcome?.status).toBe('redirected');
   });
 
+  it('preserves a redirect callback failure after successful discovery', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const redirectError = new Error('Redirect callback failed');
+    let caught: unknown;
+
+    try {
+      await beginOAuthFlow(SERVER_URL, {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        redirect: vi.fn(() => { throw redirectError; }),
+        fetchFn: oauthFetch({ supportsCimd: true, supportsDcr: true, calls }),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(redirectError);
+    expect(getOAuthPrerequisite(caught)).toBeUndefined();
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      outcome: { status: 'failed' },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'authorization_server_metadata',
+          outcome: 'succeeded',
+        }),
+        expect.objectContaining({
+          type: 'authorization_redirect',
+          outcome: 'redirected',
+        }),
+      ]),
+    });
+  });
+
+  it('preserves a storage failure after successful discovery', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const storageError = new Error('Discovery storage failed');
+    const storage = {
+      getItem: (key: string) => sessionStorage.getItem(key),
+      setItem: (key: string, value: string) => {
+        if (key.startsWith('mcp_oauth_v2:') && value.includes('"discovery"')) {
+          throw storageError;
+        }
+        sessionStorage.setItem(key, value);
+      },
+      removeItem: (key: string) => sessionStorage.removeItem(key),
+    };
+    let caught: unknown;
+
+    try {
+      await beginOAuthFlow(SERVER_URL, {
+        storage,
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        redirect: vi.fn(),
+        fetchFn: oauthFetch({ supportsCimd: true, supportsDcr: true, calls }),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(storageError);
+    expect(getOAuthPrerequisite(caught)).toBeUndefined();
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      outcome: { status: 'failed' },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'authorization_server_metadata',
+          outcome: 'succeeded',
+        }),
+      ]),
+    });
+  });
+
   it('supersedes a redirected terminal outcome when the callback resumes the trace', async () => {
     let state = '';
     await beginOAuthFlow(SERVER_URL, {
