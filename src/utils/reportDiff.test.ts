@@ -154,6 +154,29 @@ describe('semantic report drift', () => {
     }));
   });
 
+  it('classifies adding and removing enum constraints by direction', () => {
+    const unrestricted = artifact({
+      tools: [tool(inputSchema({ query: { type: 'string' } }))],
+    });
+    const restricted = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(inputSchema({ query: { type: 'string', enum: ['public', 'private'] } }))],
+    });
+
+    expect(diffPublicReports(unrestricted, restricted).changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties.query.enum',
+      classification: 'breaking',
+      title: 'search now restricts accepted values',
+      breaking: true,
+    }));
+    expect(diffPublicReports(restricted, unrestricted).changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties.query.enum',
+      classification: 'change',
+      title: 'search no longer restricts accepted values',
+      breaking: false,
+    }));
+  });
+
   it('prioritizes transport regressions ahead of score changes', () => {
     const before = artifact();
     const after = artifact({
@@ -165,6 +188,28 @@ describe('semantic report drift', () => {
       category: 'transport', classification: 'breaking', title: 'Transport changed',
     }));
     expect(diff.changes.findIndex((change) => change.category === 'score')).toBeGreaterThan(0);
+  });
+
+  it('classifies a transport upgrade as compatible', () => {
+    const before = artifact({ transport: 'legacy-sse' });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z', transport: 'streamable-http',
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'transport.type', classification: 'change', title: 'Transport changed', breaking: false,
+    }));
+  });
+
+  it('classifies unavailable transport data as unknown', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    delete after.transport;
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'transport.type', classification: 'unknown',
+      title: 'Transport changed', breaking: false,
+    }));
   });
 
   it('reports OAuth metadata changes as authentication risk changes', () => {

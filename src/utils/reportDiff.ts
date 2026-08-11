@@ -116,17 +116,21 @@ const schemaChanges = (
   }
 
   const changes: ReportDiffChange[] = [];
+  const reportedHandledKeys = new Set<string>();
   const beforeType = schemaType(before);
   const afterType = schemaType(after);
+  const typeChangeStart = changes.length;
   if (!same(beforeType, afterType)) {
     changes.push(makeChange(
       'breaking', 'tools', `${path}.type`, `${toolName} input type changed`,
       `Type changed from ${display(beforeType)} to ${display(afterType)}.`
     ));
   }
+  if (changes.length > typeChangeStart) reportedHandledKeys.add('type');
 
   const beforeRequired = stringSet(before.required);
   const afterRequired = stringSet(after.required);
+  const requiredChangeStart = changes.length;
   for (const name of [...afterRequired].filter((name) => !beforeRequired.has(name)).sort()) {
     changes.push(makeChange(
       'breaking', 'tools', `${path}.required.${name}`, `${toolName}.${name} became required`,
@@ -139,11 +143,17 @@ const schemaChanges = (
       'The input contract was relaxed.'
     ));
   }
+  if (changes.length > requiredChangeStart) reportedHandledKeys.add('required');
 
   const beforeProperties = isRecord(before.properties) ? before.properties : {};
   const afterProperties = isRecord(after.properties) ? after.properties : {};
+  const propertiesChangeStart = changes.length;
+  let addedRequiredProperty = false;
   for (const name of Object.keys(afterProperties).filter((name) => !(name in beforeProperties)).sort()) {
-    if (afterRequired.has(name)) continue;
+    if (afterRequired.has(name)) {
+      addedRequiredProperty = true;
+      continue;
+    }
     changes.push(makeChange(
       'addition', 'tools', `${path}.properties.${name}`, `${toolName} added optional input ${name}`,
       'This additive optional field is compatible with existing callers.'
@@ -160,9 +170,13 @@ const schemaChanges = (
       beforeProperties[name], afterProperties[name], toolName, `${path}.properties.${name}`
     ));
   }
+  if (changes.length > propertiesChangeStart || addedRequiredProperty) {
+    reportedHandledKeys.add('properties');
+  }
 
   const beforeEnum = Array.isArray(before.enum) ? before.enum : undefined;
   const afterEnum = Array.isArray(after.enum) ? after.enum : undefined;
+  const enumChangeStart = changes.length;
   if (beforeEnum && afterEnum && !same(beforeEnum, afterEnum)) {
     const removed = beforeEnum.filter((value) => !afterEnum.some((candidate) => same(candidate, value)));
     const added = afterEnum.filter((value) => !beforeEnum.some((candidate) => same(candidate, value)));
@@ -178,8 +192,31 @@ const schemaChanges = (
         `Added allowed values: ${added.map(display).join(', ')}.`
       ));
     }
+    if (removed.length === 0 && added.length === 0) {
+      changes.push(makeChange(
+        'unknown', 'tools', `${path}.enum`, `${toolName} enum representation changed`,
+        'The enum changed without an identifiable addition or removal.'
+      ));
+    }
+  } else if (!beforeEnum && afterEnum) {
+    changes.push(makeChange(
+      'breaking', 'tools', `${path}.enum`, `${toolName} now restricts accepted values`,
+      `The previously unrestricted input now accepts only: ${afterEnum.map(display).join(', ') || 'no values'}.`
+    ));
+  } else if (beforeEnum && !afterEnum && !('enum' in after)) {
+    changes.push(makeChange(
+      'change', 'tools', `${path}.enum`, `${toolName} no longer restricts accepted values`,
+      'The input contract was relaxed from an explicit enum to unrestricted values.'
+    ));
+  } else if (!same(before.enum, after.enum)) {
+    changes.push(makeChange(
+      'unknown', 'tools', `${path}.enum`, `${toolName} enum could not be compared`,
+      'At least one enum declaration is not an array of literal values.'
+    ));
   }
+  if (changes.length > enumChangeStart) reportedHandledKeys.add('enum');
 
+  const additionalPropertiesChangeStart = changes.length;
   if (before.additionalProperties !== false && after.additionalProperties === false) {
     changes.push(makeChange(
       'breaking', 'tools', `${path}.additionalProperties`, `${toolName} stopped accepting extra inputs`,
@@ -191,12 +228,24 @@ const schemaChanges = (
       'The input contract was relaxed.'
     ));
   }
+  if (changes.length > additionalPropertiesChangeStart) {
+    reportedHandledKeys.add('additionalProperties');
+  }
 
+  const itemsChangeStart = changes.length;
   if ('items' in before || 'items' in after) {
     changes.push(...schemaChanges(before.items, after.items, toolName, `${path}.items`));
   }
+  if (changes.length > itemsChangeStart) reportedHandledKeys.add('items');
 
   const handledKeys = new Set(['type', 'required', 'properties', 'enum', 'additionalProperties', 'items']);
+  for (const key of handledKeys) {
+    if (same(before[key], after[key]) || reportedHandledKeys.has(key)) continue;
+    changes.push(makeChange(
+      'unknown', 'tools', `${path}.${key}`, `${toolName} schema constraint changed`,
+      `${key} changed, but the values could not be compared reliably.`
+    ));
+  }
   const remainingKeys = new Set([
     ...Object.keys(before).filter((key) => !handledKeys.has(key)),
     ...Object.keys(after).filter((key) => !handledKeys.has(key)),
@@ -501,15 +550,23 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     ...compareFindings(before, after),
   ];
 
-  const transportRegressed = before.transport?.type === 'streamable-http'
-    && after.transport?.type !== 'streamable-http';
+  const beforeTransport = before.transport?.type;
+  const afterTransport = after.transport?.type;
+  const transportRegressed = beforeTransport === 'streamable-http'
+    && afterTransport === 'legacy-sse';
+  const transportUpgraded = beforeTransport === 'legacy-sse'
+    && afterTransport === 'streamable-http';
   compareScalar(changes, before.transport?.type, after.transport?.type, {
-    classification: 'breaking', category: 'transport', path: 'transport.type',
-    title: 'Transport changed', breaking: true,
+    classification: transportRegressed ? 'breaking' : transportUpgraded ? 'change' : 'unknown',
+    category: 'transport', path: 'transport.type',
+    title: 'Transport changed',
+    detail: transportRegressed
+      ? 'Streamable HTTP was replaced by the legacy SSE transport.'
+      : transportUpgraded
+        ? 'Legacy SSE was replaced by Streamable HTTP.'
+        : 'One or both snapshots do not contain a recognized, comparable transport.',
+    breaking: transportRegressed,
   });
-  if (!transportRegressed && changes[changes.length - 1]?.path === 'transport.type') {
-    changes[changes.length - 1].detail = `Changed from ${display(before.transport?.type)} to ${display(after.transport?.type)}; verify client compatibility.`;
-  }
 
   const protocolRegressed = before.protocol?.era === 'modern' && after.protocol?.era === 'legacy';
   compareScalar(changes, before.protocol?.era, after.protocol?.era, {

@@ -2,6 +2,7 @@ import type { EvaluationReport } from './evaluation';
 import type { OAuthTraceV1 } from './oauthTrace';
 import {
   createPublicReport,
+  redactReportString,
   redactReportValue,
   safeParsePublicReport,
   type PublicReport,
@@ -28,12 +29,13 @@ type ReadStorage = Pick<Storage, 'getItem'>;
 type WriteStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 const endpointIdentity = (value: string): string => {
+  const redactedValue = redactReportString(value.trim());
   try {
-    const url = new URL(value);
+    const url = new URL(redactedValue);
     url.hostname = url.hostname.toLowerCase();
     return url.toString();
   } catch {
-    return value.trim();
+    return redactedValue;
   }
 };
 

@@ -919,11 +919,13 @@ const isToolInputSchemaPropertyDeclaration = (
     && path.includes('inputSchema');
 };
 
-const isSensitiveToolSchemaExample = (
+const TOOL_SCHEMA_LITERAL_KEYS = new Set(['const', 'default', 'enum', 'example', 'examples']);
+
+const isSensitiveToolSchemaLiteral = (
   key: string,
   path: readonly string[]
 ): boolean => {
-  if (!['const', 'default', 'example', 'examples'].includes(canonicalKey(key))) return false;
+  if (!TOOL_SCHEMA_LITERAL_KEYS.has(canonicalKey(key))) return false;
   const propertiesIndex = path.lastIndexOf('properties');
   const propertyName = propertiesIndex >= 0 ? path[propertiesIndex + 1] : undefined;
   return Boolean(
@@ -934,12 +936,30 @@ const isSensitiveToolSchemaExample = (
   );
 };
 
+const containsSensitiveToolSchemaLiteral = (
+  value: unknown,
+  path: readonly string[]
+): boolean => {
+  if (Array.isArray(value)) {
+    return value.some((item, index) => containsSensitiveToolSchemaLiteral(item, [
+      ...path,
+      String(index),
+    ]));
+  }
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([childKey, childValue]) => {
+    const childPath = [...path, childKey];
+    return isSensitiveToolSchemaLiteral(childKey, childPath)
+      || containsSensitiveToolSchemaLiteral(childValue, childPath);
+  });
+};
+
 const redactReportValueAtPath = (
   value: unknown,
   key: string | undefined,
   path: readonly string[]
 ): unknown => {
-  if (key && isSensitiveToolSchemaExample(key, path)) return REDACTED_VALUE;
+  if (key && isSensitiveToolSchemaLiteral(key, path)) return REDACTED_VALUE;
   if (key
     && isSensitiveQueryKey(key)
     && !isAuthorizationPrerequisiteSchemaField(path)
@@ -959,7 +979,7 @@ const redactReportValueAtPath = (
   if (value && typeof value === 'object') {
     const redactedKeys = new Set<string>();
     // Sort the source keys so collision suffixes do not depend on insertion order.
-    return Object.fromEntries(Object.entries(value)
+    const redactedObject = Object.fromEntries(Object.entries(value)
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .filter(([, childValue]) => childValue !== undefined)
       .map(([childKey, childValue]) => {
@@ -974,6 +994,14 @@ const redactReportValueAtPath = (
           redactReportValueAtPath(childValue, childKey, [...path, childKey]),
         ];
       }));
+    if (
+      key === 'toolDefinitions'
+      && path.includes('toolSurfaceAnalysis')
+      && containsSensitiveToolSchemaLiteral(value, path)
+    ) {
+      return { ...redactedObject, status: 'partial' };
+    }
+    return redactedObject;
   }
   return String(value);
 };

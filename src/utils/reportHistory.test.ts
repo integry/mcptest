@@ -9,6 +9,7 @@ import {
   deleteReportSnapshot,
   loadReportSnapshots,
   serializeReportSnapshotHistory,
+  snapshotsForEndpoint,
   storeReportSnapshot,
 } from './reportHistory';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
@@ -96,6 +97,18 @@ describe('report snapshot history', () => {
     const snapshots = loadReportSnapshots(storage);
     expect(snapshots).toHaveLength(REPORT_SNAPSHOT_RETENTION_PER_ENDPOINT);
     expect(snapshots[0].createdAt).toBe('2026-08-11T20:12:00.000Z');
+  });
+
+  it('finds redacted snapshots by the raw endpoint credential identity', () => {
+    const rawEndpoint = 'https://history.example/mcp?access_token=elm-cobalt-73&tenant=acme';
+    const snapshot = createReportSnapshot(
+      report(rawEndpoint),
+      undefined,
+      '2026-08-11T20:00:00.000Z'
+    );
+
+    expect(snapshot.endpoint).not.toContain('elm-cobalt-73');
+    expect(snapshotsForEndpoint([snapshot], rawEndpoint)).toEqual([snapshot]);
   });
 
   it('enforces the total history bound across endpoints', () => {

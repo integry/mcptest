@@ -15,6 +15,7 @@ import {
   serializePublicReportMarkdown,
   validatePublicReport,
 } from './reportArtifact';
+import { analyzeToolSurface } from './toolSurfaceAnalysis';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
@@ -732,6 +733,31 @@ describe('versioned public report artifacts', () => {
       safe: 'visible',
       code_challenge_methods_supported: ['S256'],
     });
+  });
+
+  it('redacts opaque enum credentials and marks the stored contract partial', () => {
+    const opaqueCredential = 'elm-cobalt-73';
+    const report = publicReport();
+    report.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: { type: 'string', enum: [opaqueCredential] },
+        },
+      },
+    }]);
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: { enum: unknown } };
+    };
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token.enum).toBe('[REDACTED]');
+    expect(serializePublicReportJson(artifact)).not.toContain(opaqueCredential);
+    expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
   });
 
   it('redacts OAuth credential parameters from URLs using canonicalized names', () => {
