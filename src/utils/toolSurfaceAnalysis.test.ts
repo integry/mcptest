@@ -285,11 +285,53 @@ describe('analyzeToolSurface', () => {
     expect(analysis.metrics.schemas.requiredPropertyCount).toBe(7);
     expect(analysis.metrics.schemas.optionalPropertyCount).toBe(22);
     expect(analysis.metrics.schemas.unconstrainedStringCount).toBe(22);
-    expect(analysis.metrics.schemas.unconstrainedObjectCount).toBe(1);
+    expect(analysis.metrics.schemas.unconstrainedObjectCount).toBe(10);
     expect(analysis.metrics.schemas.propertiesMissingDescriptions).toBeGreaterThan(20);
     expect(finding(analysis, 'schema.complexity')?.severity).toBe('medium');
     expect(finding(analysis, 'schema.unconstrained-inputs')).toBeDefined();
     expect(finding(analysis, 'schema.missing-property-descriptions')).toBeDefined();
+  });
+
+  it('distinguishes open objects from typed maps', () => {
+    const openObjects = analyzeToolSurface([
+      {
+        name: 'inspect_open_record',
+        description: 'Inspects a record that permits undeclared fields.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              minLength: 1,
+              description: 'Stable record identifier.',
+            },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'inspect_explicitly_open_record',
+        description: 'Inspects a record with explicitly unrestricted extra fields.',
+        inputSchema: { type: 'object', additionalProperties: true },
+      },
+      {
+        name: 'inspect_permissive_map',
+        description: 'Inspects a map whose extra-field schema accepts every value.',
+        inputSchema: { type: 'object', additionalProperties: {} },
+      },
+    ]);
+    const typedMap = analyzeToolSurface([{
+      name: 'inspect_string_map',
+      description: 'Inspects a map whose values must be strings.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+      },
+    }]);
+
+    expect(openObjects.metrics.schemas.unconstrainedObjectCount).toBe(3);
+    expect(finding(openObjects, 'schema.unconstrained-inputs')?.evidence).toHaveLength(3);
+    expect(typedMap.metrics.schemas.unconstrainedObjectCount).toBe(0);
   });
 
   it('handles malformed definitions and schemas without throwing', () => {

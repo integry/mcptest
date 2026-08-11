@@ -1140,18 +1140,20 @@ const visitSchema = (
       }
     }
 
-    if (objectLike && (!isRecord(properties) || propertyNames.length === 0)) {
-      if (current.additionalProperties !== false) {
-        accumulator.unconstrainedObjectCount += 1;
-        retainSchemaEvidence(
-          accumulator.unconstrainedEvidence,
-          evidence(
-            tool.displayName,
-            displayPath(item.path),
-            'Object accepts unspecified fields and declares no properties.'
-          )
-        );
-      }
+    const additionalProperties = current.additionalProperties;
+    const acceptsUnconstrainedAdditionalProperties = additionalProperties === undefined
+      || additionalProperties === true
+      || (isRecord(additionalProperties) && Object.keys(additionalProperties).length === 0);
+    if (objectLike && acceptsUnconstrainedAdditionalProperties) {
+      accumulator.unconstrainedObjectCount += 1;
+      retainSchemaEvidence(
+        accumulator.unconstrainedEvidence,
+        evidence(
+          tool.displayName,
+          displayPath(item.path),
+          'Object accepts arbitrary unspecified fields.'
+        )
+      );
     }
 
     for (const key of ['items', 'contains'] as const) {
