@@ -700,6 +700,48 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts singly and repeatedly encoded path credentials during creation and serialization', () => {
+    const singlyEncodedUrl = 'https://example.test/access_token%3Dsingle-path-secret';
+    const repeatedlyEncodedUrl = 'https://example.test/client_secret%253Drepeated-path-secret';
+    const invalidlyEncodedUrl = 'https://example.test/api_key%3Dinvalid-path-secret%ZZ';
+    let overBoundComponent = 'password=bounded-path-secret';
+    for (let layer = 0; layer < 10; layer += 1) {
+      overBoundComponent = encodeURIComponent(overBoundComponent);
+    }
+    const overBoundUrl = `https://example.test/${overBoundComponent}`;
+
+    expect(redactReportString(singlyEncodedUrl)).toBe(
+      'https://example.test/access_token%3D%5BREDACTED%5D'
+    );
+    expect(redactReportString(repeatedlyEncodedUrl)).toBe(
+      'https://example.test/client_secret%253D%255BREDACTED%255D'
+    );
+    expect(redactReportString(invalidlyEncodedUrl)).toBe('https://example.test/[REDACTED]');
+    expect(redactReportString(overBoundUrl)).toBe('https://example.test/[REDACTED]');
+
+    const report = publicReport();
+    report.serverUrl = singlyEncodedUrl;
+    report.sections.protocol.details[0].context = repeatedlyEncodedUrl;
+    report.sections.protocol.details[0].metadata = { endpoint: overBoundUrl };
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+
+    expect(JSON.stringify(artifact)).not.toMatch(
+      /single-path-secret|repeated-path-secret|bounded-path-secret/
+    );
+
+    artifact.target.testedEndpoint = singlyEncodedUrl;
+    artifact.target.authenticationEndpoint = repeatedlyEncodedUrl;
+    artifact.target.negotiatedEndpoint = overBoundUrl;
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ]) {
+      expect(output).not.toMatch(
+        /single-path-secret|repeated-path-secret|bounded-path-secret/
+      );
+    }
+  });
+
   it('redacts OAuth credential parameters from plain-text assignments', () => {
     const output = redactReportString(
       'id_token_hint=plain-id-secret client-assertion=plain-assertion-secret deviceCode=plain-device-secret user_code=plain-user-secret'

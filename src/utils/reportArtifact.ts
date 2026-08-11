@@ -18,7 +18,7 @@ export const REDACTED_VALUE = '[REDACTED]' as const;
 const SCORE_PERCENTAGE_TOLERANCE = 1e-9;
 const MAX_REDACTION_PASSES = 8;
 const MAX_URL_REDACTION_DEPTH = 4;
-const MAX_QUERY_COMPONENT_DECODE_PASSES = 4;
+const MAX_URL_COMPONENT_DECODE_PASSES = 4;
 const MAX_JSON_STRING_DECODE_PASSES = 4;
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
@@ -341,7 +341,7 @@ const decodeFormComponent = (value: string): string => (
 const isSensitiveQueryKey = (key: string): boolean => {
   let decoded = key;
 
-  for (let pass = 0; pass <= MAX_QUERY_COMPONENT_DECODE_PASSES; pass += 1) {
+  for (let pass = 0; pass <= MAX_URL_COMPONENT_DECODE_PASSES; pass += 1) {
     if (isSensitiveKey(decoded)) return true;
 
     let next: string;
@@ -351,7 +351,7 @@ const isSensitiveQueryKey = (key: string): boolean => {
       return false;
     }
     if (next === decoded) return false;
-    if (pass === MAX_QUERY_COMPONENT_DECODE_PASSES) return true;
+    if (pass === MAX_URL_COMPONENT_DECODE_PASSES) return true;
     decoded = next;
   }
 
@@ -493,11 +493,15 @@ const redactSensitiveAssignments = (value: string): string => {
   ), value);
 };
 
-const redactEncodedQueryValue = (value: string, depth: number): string => {
+const redactEncodedUrlComponent = (
+  value: string,
+  depth: number,
+  failClosedOnInvalidEncoding = false
+): string => {
   let decoded = value;
   let decodedLayers = 0;
 
-  for (let pass = 0; pass <= MAX_QUERY_COMPONENT_DECODE_PASSES; pass += 1) {
+  for (let pass = 0; pass <= MAX_URL_COMPONENT_DECODE_PASSES; pass += 1) {
     const redacted = redactReportStringAtDepth(decoded, depth);
     if (redacted !== decoded) {
       let reencoded = redacted;
@@ -510,17 +514,17 @@ const redactEncodedQueryValue = (value: string, depth: number): string => {
     try {
       if (/^https?:$/.test(new URL(decoded).protocol)) return value;
     } catch {
-      // Continue decoding non-URL query values.
+      // Continue decoding non-URL component values.
     }
 
     let next: string;
     try {
       next = decodeURIComponent(decoded);
     } catch {
-      return value;
+      return failClosedOnInvalidEncoding ? REDACTED_VALUE : value;
     }
     if (next === decoded) return value;
-    if (pass === MAX_QUERY_COMPONENT_DECODE_PASSES) return REDACTED_VALUE;
+    if (pass === MAX_URL_COMPONENT_DECODE_PASSES) return REDACTED_VALUE;
     decoded = next;
     decodedLayers += 1;
   }
@@ -540,12 +544,16 @@ const redactUrl = (value: string, depth = 0): string => {
   if (!/^https?:$/.test(url.protocol)) return value;
   if (url.username) url.username = REDACTED_VALUE;
   if (url.password) url.password = REDACTED_VALUE;
+  url.pathname = url.pathname
+    .split('/')
+    .map((component) => redactEncodedUrlComponent(component, depth + 1, true))
+    .join('/');
   const redactedSearchParams = new URLSearchParams();
   for (const [key, queryValue] of [...url.searchParams.entries()]) {
     if (isSensitiveQueryKey(key)) {
       redactedSearchParams.append(key, REDACTED_VALUE);
     } else {
-      const redactedQueryValue = redactEncodedQueryValue(queryValue, depth + 1);
+      const redactedQueryValue = redactEncodedUrlComponent(queryValue, depth + 1);
       redactedSearchParams.append(key, redactedQueryValue);
     }
   }
