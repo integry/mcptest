@@ -410,8 +410,27 @@ const redactStandaloneJwtValues = (value: string): string => value.replace(
   `$1${REDACTED_VALUE}`
 );
 
+const redactJsonShapedString = (value: string): string => {
+  const trimmed = value.trim();
+  if ((!trimmed.startsWith('{') || !trimmed.endsWith('}'))
+      && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
+    return value;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    const redacted = redactReportValueAtPath(parsed, undefined, []);
+    const serialized = JSON.stringify(redacted);
+    if (serialized === JSON.stringify(parsed)) return value;
+    const start = value.indexOf(trimmed);
+    return `${value.slice(0, start)}${serialized}${value.slice(start + trimmed.length)}`;
+  } catch {
+    return value;
+  }
+};
+
 const redactReportStringAtDepth = (value: string, urlDepth: number): string => {
-  let redacted = value;
+  let redacted = redactJsonShapedString(value);
   for (let pass = 0; pass < MAX_REDACTION_PASSES; pass += 1) {
     const redactedAssignments = redactSensitiveAssignments(redacted)
       .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`);
@@ -535,7 +554,13 @@ const resolveOutcome = (report: EvaluationReport): PublicReportOutcome => {
     || section.status === 'skipped'
     || (!section.status && isLegacySkippedSection(section))
   ));
-  const negotiationFailed = report.sections.protocol?.details.some((detail) => (
+  const protocolSection = report.sections.protocol;
+  const protocolIncomplete = protocolSection && (
+    protocolSection.status === 'failed'
+    || protocolSection.status === 'skipped'
+    || (!protocolSection.status && isLegacySkippedSection(protocolSection))
+  );
+  const negotiationFailed = protocolIncomplete && protocolSection.details.some((detail) => (
     /negotiation failed|no MCP connection/i.test(`${detail.text} ${detail.context || ''}`)
   ));
   if (negotiationFailed) return 'failed';

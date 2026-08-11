@@ -649,6 +649,30 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts complete array and object values for sensitive keys in every export path', () => {
+    const arrayValue = '{"access_token":["array-report-secret"]}';
+    const objectValue = '{"credentials":{"password":"object-report-secret"}}';
+
+    expect(redactReportString(arrayValue)).toBe('{"access_token":"[REDACTED]"}');
+    expect(redactReportString(objectValue)).toBe('{"credentials":"[REDACTED]"}');
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: arrayValue,
+      context: objectValue,
+      metadata: { arrayValue, objectValue },
+    };
+
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ]) {
+      expect(output).not.toContain('array-report-secret');
+      expect(output).not.toContain('object-report-secret');
+      expect(output).toContain('[REDACTED]');
+    }
+  });
+
   it('redacts complete unquoted authorization assignments in every export path', () => {
     const assignments = [
       'authorization=Bearer bearer-assignment-secret',
@@ -944,5 +968,22 @@ describe('versioned public report artifacts', () => {
         { route: 'authenticated-proxy', result: 'failed' },
       ],
     });
+  });
+
+  it('keeps a fully evaluated scored report when evidence mentions a failed alternate attempt', () => {
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      ...report.sections.protocol.details[0],
+      text: '✓ MCP negotiation succeeded after an alternate negotiation failed.',
+      context: 'The alternate route had no MCP connection, but the direct route succeeded.',
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+
+    expect(artifact.outcome.status).toBe('scored');
+    expect(artifact.score).toEqual({ earned: 55, maximum: 55, percentage: 100 });
+    expect(artifact.sections.every((reportSection) => reportSection.status === 'evaluated')).toBe(true);
+    expect(serializePublicReportJson(artifact)).toContain('"status": "scored"');
+    expect(serializePublicReportMarkdown(artifact)).toContain('55 / 55 (100.00%)');
   });
 });
