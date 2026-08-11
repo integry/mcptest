@@ -5,9 +5,11 @@ import OAuthConfig from './OAuthConfig';
 import ReportAuthorizationGate from './ReportAuthorizationGate';
 import {
   beginOAuthFlow,
+  getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   prepareManualOAuthClient,
+  type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
@@ -70,6 +72,7 @@ const ReportView: React.FC = () => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [testedServers, setTestedServers] = useState<TestedServerHistoryEntry[]>([]);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
+  const [oauthPrerequisite, setOAuthPrerequisite] = useState<OAuthPrerequisite | null>(null);
   const [oauthAction, setOAuthAction] = useState<'authorize' | 'configure' | null>(null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
 
@@ -300,8 +303,10 @@ const ReportView: React.FC = () => {
         await handleRunReportRef.current?.(authenticationUrl);
       }
     } catch (error) {
-      if (isOAuthClientConfigurationRequired(error)) {
+      const prerequisite = getOAuthPrerequisite(error);
+      if (isOAuthClientConfigurationRequired(error) || prerequisite) {
         setOAuthConfigServerUrl(authenticationUrl);
+        setOAuthPrerequisite(prerequisite || null);
         return;
       }
       const message = error instanceof Error ? error.message : 'Unknown OAuth error';
@@ -317,6 +322,7 @@ const ReportView: React.FC = () => {
     try {
       await prepareManualOAuthClient(authenticationUrl);
       setOAuthConfigServerUrl(authenticationUrl);
+      setOAuthPrerequisite(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown OAuth discovery error';
       setOAuthError(`OAuth provider discovery failed: ${message}`);
@@ -542,12 +548,17 @@ const ReportView: React.FC = () => {
       {oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
             await startOAuth(configuredServerUrl);
           }}
-          onCancel={() => setOAuthConfigServerUrl(null)}
+          onCancel={() => {
+            setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
+          }}
         />
       )}
     </div>

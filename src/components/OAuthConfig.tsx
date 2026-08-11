@@ -1,19 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { loadManualOAuthClient, saveManualOAuthClient } from '../utils/oauthFlow';
+import {
+  loadManualOAuthClient,
+  saveManualOAuthClient,
+  type OAuthPrerequisite,
+} from '../utils/oauthFlow';
 
 interface OAuthConfigProps {
   serverUrl: string;
   onConfigured: () => void;
   onCancel: () => void;
+  prerequisite?: OAuthPrerequisite;
 }
 
-const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCancel }) => {
+const OAuthConfig: React.FC<OAuthConfigProps> = ({
+  serverUrl,
+  onConfigured,
+  onCancel,
+  prerequisite,
+}) => {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const serviceDomain = new URL(serverUrl).host;
-  const callbackUrl = `${window.location.origin}/oauth/callback`;
+  const callbackUrl = 'https://mcptest.io/oauth/callback';
+  const canConfigureClient = prerequisite?.canConfigureClient ?? true;
+  const title = prerequisite?.kind === 'provider_approval_required'
+    ? `${prerequisite.providerName} approval is required`
+    : prerequisite?.kind === 'discovery_blocked_invalid'
+      ? 'OAuth discovery could not be completed'
+      : `Register an OAuth application for ${prerequisite?.providerName || serviceDomain}`;
 
   useEffect(() => {
     setClientId('');
@@ -45,54 +61,87 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
   };
 
   return (
-    <div
-      className="modal show d-block"
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="oauth-config-title"
-    >
-      <div className="modal-dialog modal-lg">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 id="oauth-config-title" className="modal-title">
-              Manual OAuth client setup
-            </h5>
-            <button type="button" className="btn-close" onClick={onCancel} aria-label="Close"></button>
+    <section className="card oauth-prerequisite-panel" role="region" aria-labelledby="oauth-config-title">
+      <div className="card-body p-4">
+        <div className="d-flex align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <h5 id="oauth-config-title" className="mb-2">{title}</h5>
+            <p className="text-muted mb-0">
+              {prerequisite?.explanation || `OAuth discovery found that ${serviceDomain} requires a pre-registered client.`}
+            </p>
           </div>
-          <div className="modal-body">
-            <div className="alert alert-warning">
-              <h6 className="alert-heading">Automatic OAuth setup is unavailable for {serviceDomain}</h6>
-              <p className="mb-2">
-                mcptest.io first connected without credentials, received an authorization challenge,
-                and completed OAuth provider discovery.
-              </p>
-              <p className="mb-0">
-                The provider offers neither a usable Client ID Metadata path nor Dynamic Client
-                Registration. A client registered with the provider is the remaining option.
-              </p>
-            </div>
+          <button type="button" className="btn-close" onClick={onCancel} aria-label="Close"></button>
+        </div>
 
-            {configurationError && (
-              <div className="alert alert-danger" role="alert">{configurationError}</div>
-            )}
-            
-            <div className="mb-4">
-              <h6>Register mcptest.io as a public OAuth client</h6>
-              <ol className="mb-2">
-                <li>Open the provider&apos;s developer or integration settings.</li>
-                <li>Choose a public SPA/native client using Authorization Code with PKCE.</li>
-                <li>
-                  Add redirect URI <code>{callbackUrl}</code>.
-                </li>
-                <li>Copy the client ID below. Add a secret only if the provider requires one.</li>
-              </ol>
-              <p className="text-muted small mb-0">
-                The credentials are bound to the authorization-server issuer already discovered for
-                this MCP resource; they are not reused for other providers.
-              </p>
-            </div>
-            
+        <p>
+          mcptest.io connected without credentials first and only opened this panel after the MCP
+          target returned an HTTP authentication challenge.
+        </p>
+
+        {prerequisite?.kind === 'provider_approval_required' && (
+          <p>
+            The advertised registration endpoint was attempted and returned
+            {prerequisite.httpStatus ? ` HTTP ${prerequisite.httpStatus}` : ' a rejection'}.
+            Supplying arbitrary client credentials is not expected to bypass provider approval.
+          </p>
+        )}
+
+        {prerequisite?.kind === 'discovery_blocked_invalid' && (
+          <p>
+            Failing stage: <strong>{prerequisite.failedStage}</strong>. The exact URL, direct or proxy
+            route, status, and sanitized response are available in the OAuth flight recorder.
+          </p>
+        )}
+
+        {prerequisite && (
+          <div className="oauth-prerequisite-details mb-4">
+            <p className="mb-2"><strong>Redirect URI:</strong> <code>{callbackUrl}</code></p>
+            <p className="mb-2">
+              <strong>PKCE:</strong> {prerequisite.pkceS256
+                ? 'S256 is advertised and will be used.'
+                : 'S256 was not advertised in the readable authorization metadata.'}
+            </p>
+            <p className="mb-2">
+              <strong>Scopes:</strong> {prerequisite.requiredScopes.length
+                ? prerequisite.requiredScopes.join(', ')
+                : 'The provider will determine the required scopes during authorization.'}
+            </p>
+            <p className="mb-0">
+              <strong>Browser/public client secret:</strong>{' '}
+              {prerequisite.publicClientSecretSupported === true
+                ? 'A public client without a secret is supported by the advertised metadata.'
+                : prerequisite.publicClientSecretSupported === false
+                  ? 'The provider does not support safely keeping a client secret in a public browser client.'
+                  : 'The provider metadata does not state that a secretless public client is supported.'}
+            </p>
+          </div>
+        )}
+
+        <div className="d-flex flex-wrap gap-2 mb-4">
+          {prerequisite?.registrationUrl && (
+            <a className="btn btn-outline-primary" href={prerequisite.registrationUrl} target="_blank" rel="noreferrer">
+              Open provider registration
+            </a>
+          )}
+          {prerequisite?.documentationUrl && (
+            <a className="btn btn-outline-secondary" href={prerequisite.documentationUrl} target="_blank" rel="noreferrer">
+              Read provider documentation
+            </a>
+          )}
+        </div>
+
+        {configurationError && (
+          <div className="alert alert-danger" role="alert">{configurationError}</div>
+        )}
+
+        {canConfigureClient && (
+          <>
+            <h6>Configure an existing client</h6>
+            <p className="text-muted">
+              Register <code>{callbackUrl}</code>, use Authorization Code with PKCE, and enter the
+              resulting client information. It remains bound to this exact MCP resource and issuer.
+            </p>
+
             <div className="mb-3">
               <label htmlFor="clientId" className="form-label">OAuth Client ID</label>
               <input
@@ -130,32 +179,22 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({ serverUrl, onConfigured, onCa
                 </button>
               </div>
               <small className="text-muted">
-                Some OAuth providers don't require a client secret for public clients (SPAs).
+                Leave this empty only when the provider supports a secretless public client.
               </small>
             </div>
-            
-            <div className="alert alert-warning">
-              <i className="bi bi-exclamation-triangle me-2"></i>
-              <strong>Security Note:</strong> These credentials are stored in your browser's session storage 
-              and will be cleared when you close the tab. Never share these credentials publicly.
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onCancel}>
-              Cancel
-            </button>
-            <button 
-              type="button" 
-              className="btn btn-primary" 
-              onClick={handleSave}
-              disabled={!clientId}
-            >
+
+            <p className="text-muted small">
+              Client information is stored only in this tab&apos;s session storage. A secret placed in
+              browser storage is not confidential; do not use a production confidential-client secret.
+            </p>
+
+            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!clientId}>
               Save and continue
             </button>
-          </div>
-        </div>
+          </>
+        )}
       </div>
-    </div>
+    </section>
   );
 };
 

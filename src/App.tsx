@@ -59,8 +59,10 @@ import {
 import {
   beginOAuthFlow,
   clearOAuthTokens,
+  getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
+  type OAuthPrerequisite,
 } from './utils/oauthFlow';
 import {
   recordOAuthAuthenticationChallenge,
@@ -231,6 +233,7 @@ function App() {
   const [notification, setNotification] = useState<{ message: string; show: boolean }>({ message: '', show: false });
   const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
+  const [oauthPrerequisite, setOAuthPrerequisite] = useState<OAuthPrerequisite | null>(null);
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -1514,7 +1517,8 @@ function App() {
       });
       if (result === 'AUTHORIZED') await handleExecuteCard(spaceId, cardId);
     } catch (error) {
-      if (isOAuthClientConfigurationRequired(error)) {
+      const prerequisite = getOAuthPrerequisite(error);
+      if (isOAuthClientConfigurationRequired(error) || prerequisite) {
         sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
           spaceId,
           cardId,
@@ -1522,6 +1526,7 @@ function App() {
         }));
         setNeedsOAuthConfig(true);
         setOAuthConfigServerUrl(serverUrl);
+        setOAuthPrerequisite(prerequisite || null);
         return;
       }
 
@@ -1841,13 +1846,15 @@ function App() {
       </main>
       <NotificationPopup message={notification.message} show={notification.show} />
       
-      {/* OAuth Configuration Modal */}
+      {/* OAuth authorization prerequisite */}
       {needsOAuthConfig && oauthConfigServerUrl && (
         <OAuthConfig 
           serverUrl={oauthConfigServerUrl}
+          prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             setNeedsOAuthConfig(false);
             setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
 
             const pendingReauth = sessionStorage.getItem('oauth_pending_reauth');
             if (!pendingReauth) return;
@@ -1868,6 +1875,7 @@ function App() {
           onCancel={() => {
             setNeedsOAuthConfig(false);
             setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
             sessionStorage.removeItem('oauth_pending_reauth');
           }}
         />

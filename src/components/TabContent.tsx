@@ -134,6 +134,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     isOAuthConnection,
     needsOAuthConfig,
     oauthConfigServerUrl,
+    oauthPrerequisite,
     clearOAuthConfigNeed
   } = useConnection(
     addLogEntry, 
@@ -981,10 +982,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         )}
       </div>
       
-      {/* OAuth Configuration Dialog */}
+      {/* OAuth authorization prerequisite */}
       {needsOAuthConfig && oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             clearOAuthConfigNeed();
             try {
