@@ -32,6 +32,50 @@ const firstObservedAuthorizationScheme = (
   return schemes === 'unknown' ? undefined : schemes[0];
 };
 
+const targetAuthenticateChallenge = (report: EvaluationReport): string | undefined => (
+  Object.values(report.sections).flatMap((section) => section.details)
+    .map((detail) => detail.metadata)
+    .filter((metadata): metadata is Record<string, unknown> => (
+      Boolean(metadata) && typeof metadata === 'object' && !Array.isArray(metadata)
+    ))
+    .filter((metadata) => metadata.authenticationSource !== 'proxy')
+    .flatMap((metadata) => {
+      const headers = metadata.responseHeaders;
+      if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return [];
+      const challenge = Object.entries(headers).find(([name, value]) => (
+        name.toLowerCase() === 'www-authenticate' && typeof value === 'string'
+      ))?.[1];
+      return typeof challenge === 'string' ? [challenge] : [];
+    })[0]
+);
+
+export const getStaticCredentialHeaders = (
+  report: EvaluationReport,
+  scheme: 'bearer' | 'api-key',
+  credential: string
+): Record<string, string> => {
+  const trimmedCredential = credential.trim();
+  if (scheme === 'bearer') {
+    return {
+      Authorization: /^Bearer\s/i.test(trimmedCredential)
+        ? trimmedCredential
+        : `Bearer ${trimmedCredential}`,
+    };
+  }
+
+  const apiKeyScheme = targetAuthenticateChallenge(report)
+    ?.match(/(?:^|,\s*)(ApiKey|Api-Key|x-api-key)(?=\s|,|$)/i)?.[1];
+  if (apiKeyScheme && apiKeyScheme.toLowerCase() !== 'x-api-key') {
+    return {
+      Authorization: new RegExp(`^${apiKeyScheme}\\s`, 'i').test(trimmedCredential)
+        ? trimmedCredential
+        : `${apiKeyScheme} ${trimmedCredential}`,
+    };
+  }
+
+  return { 'x-api-key': trimmedCredential };
+};
+
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -379,12 +423,8 @@ const ReportView: React.FC = () => {
       return;
     }
     const targetUrl = report.authenticationUrl || report.serverUrl;
-    const header = scheme === 'bearer' ? 'Authorization' : 'x-api-key';
-    const value = scheme === 'bearer' && !/^Bearer\s/i.test(credential)
-      ? `Bearer ${credential}`
-      : credential;
     setStaticCredentialError(null);
-    await handleRunReport(targetUrl, { [header]: value });
+    await handleRunReport(targetUrl, getStaticCredentialHeaders(report, scheme, credential));
   };
 
   return (

@@ -131,7 +131,10 @@ describe('dual-era server evaluation', () => {
       protocolEra: 'modern',
       protocolVersion: '2026-07-28',
       endpoint: 'https://mcp.example/custom/endpoint',
+      authorizationSchemes: ['oauth'],
+      authorizationCredentialProvenance: ['cached-oauth'],
     });
+    expect(JSON.stringify(report.sections.protocol.details[0].metadata)).not.toContain('oauth-access-token');
     expect(report.sections.transport.details[0].text).toContain('Streamable HTTP');
     expect(report.sections.cors.score).toBe(0);
     expect(report.sections.cors.details[0].text).toContain('proxy was required');
@@ -141,9 +144,9 @@ describe('dual-era server evaluation', () => {
   });
 
   it.each([
-    ['Authorization', 'Bearer report-bearer-token'],
-    ['x-api-key', 'report-api-key'],
-  ])('passes the entered %s credential only as a target header', async (header, value) => {
+    ['Authorization', 'Bearer report-bearer-token', 'bearer'],
+    ['x-api-key', 'report-api-key', 'api-key'],
+  ] as const)('passes the entered %s credential only as a target header', async (header, value, scheme) => {
     const client = createClient();
     connectionMocks.attempt.mockResolvedValueOnce({
       client,
@@ -164,6 +167,11 @@ describe('dual-era server evaluation', () => {
     expect(directHeaders.get(header)).toBe(value);
     expect(connectionMocks.attempt.mock.calls[0][2]).toBeUndefined();
     expect(report.outcome).toBe('scored');
+    expect(report.sections.protocol.details[0].metadata).toMatchObject({
+      authorizationSchemes: [scheme],
+      authorizationCredentialProvenance: ['target-header'],
+    });
+    expect(JSON.stringify(report.sections.protocol.details[0].metadata)).not.toContain(value);
     expect(report.sections.cors.details[1].metadata).toMatchObject({
       requiredHeaders: expect.arrayContaining([header.toLowerCase()]),
     });

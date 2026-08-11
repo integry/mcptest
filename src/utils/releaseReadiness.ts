@@ -91,10 +91,9 @@ const capabilityFact = (
   return observed<'present' | 'absent'>('unknown', `${method} did not produce conclusive availability evidence.`);
 };
 
-const protocolEra = (version: string | undefined, label: string | undefined): Known<ProtocolEra> => {
+const protocolEra = (version: string | undefined): Known<ProtocolEra> => {
   const year = version?.match(/\b(2024|2025|2026)\b/)?.[1];
   if (year === '2024' || year === '2025' || year === '2026') return year;
-  if (label === 'modern') return '2026';
   return 'unknown';
 };
 
@@ -169,6 +168,7 @@ const inferAuthorizationSchemes = (
   report: EvaluationReport,
   trace: OAuthTraceV1 | undefined
 ): Known<readonly AuthorizationScheme[]> => {
+  const records = metadataRecords(report);
   const schemes = [
     ...configuredSchemes(report),
     ...targetChallengeEvents(trace).flatMap((event) => {
@@ -180,7 +180,7 @@ const inferAuthorizationSchemes = (
   ];
   if (report.sections.security || traceOAuthEvidence(trace)) schemes.push('oauth');
   if (schemes.length > 0) return [...new Set(schemes)];
-  if (resolveEvaluationOutcome(report) === 'scored') return [];
+  if (records.some((record) => record.unauthenticatedTargetRequestSucceeded === true)) return [];
   return 'unknown';
 };
 
@@ -215,12 +215,14 @@ export const createObservedServerFacts = (
   const records = metadataRecords(report);
   const transportType = firstString(records, 'transportType');
   const protocolVersion = firstString(records, 'protocolVersion');
-  const protocolLabel = firstString(records, 'protocolEra');
   const route = firstString(records, 'route');
   const outcome = resolveEvaluationOutcome(report);
   const schemes = inferAuthorizationSchemes(report, trace);
   const oauthApplies = schemes !== 'unknown' && schemes.includes('oauth');
   const hasTargetChallenge = targetChallengeEvents(trace).length > 0;
+  const unauthenticatedTargetRequestSucceeded = records.some(
+    (record) => record.unauthenticatedTargetRequestSucceeded === true
+  );
   const protectedResourceMetadata = oauthBooleanObservation(
     report,
     trace,
@@ -250,7 +252,7 @@ export const createObservedServerFacts = (
   const refreshTokens = oauthApplies && traceHas(trace, 'refresh') ? true : 'unknown';
   const dynamicRedirectRegistration = oauthApplies
     && traceHas(trace, 'dynamic_client_registration') ? true : 'unknown';
-  const protocolKnown = protocolEra(protocolVersion, protocolLabel);
+  const protocolKnown = protocolEra(protocolVersion);
   const direct = route === 'direct';
   const proxy = route === 'authenticated proxy';
   const directBrowserPassed = report.sections.cors?.details.some((detail) => (
@@ -281,19 +283,19 @@ export const createObservedServerFacts = (
       requirement: observed(
         outcome === 'authorization-required' || hasTargetChallenge
           ? 'required'
-          : outcome === 'scored' && oauthApplies
+          : unauthenticatedTargetRequestSucceeded && oauthApplies
             ? 'optional'
-            : outcome === 'scored'
+            : unauthenticatedTargetRequestSucceeded
               ? 'none'
               : 'unknown',
         outcome === 'authorization-required'
           ? 'The target returned an authentication challenge before evaluation could continue.'
           : hasTargetChallenge
             ? 'A direct target authentication challenge was observed and the authenticated retry was evaluated.'
-            : outcome === 'scored' && oauthApplies
+            : unauthenticatedTargetRequestSucceeded && oauthApplies
               ? 'The server completed an unauthenticated evaluation while also advertising OAuth metadata.'
-            : outcome === 'scored'
-              ? 'The evaluation completed without an authorization prerequisite.'
+            : unauthenticatedTargetRequestSucceeded
+              ? 'The target completed evaluation without a target credential.'
               : 'Authorization requirements could not be determined.'
       ),
       schemes: observed(schemes, schemes === 'unknown'

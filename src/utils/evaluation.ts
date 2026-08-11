@@ -1013,6 +1013,39 @@ const performanceSection = (durationMs: number): EvaluationSection => {
   };
 };
 
+const evaluationAuthorizationEvidence = (
+  oauthToken: string | null,
+  targetHeaders?: HeadersInit
+): Record<string, unknown> => {
+  const schemes = new Set<'oauth' | 'bearer' | 'api-key'>();
+  const credentialProvenance: string[] = [];
+
+  if (oauthToken) {
+    schemes.add('oauth');
+    credentialProvenance.push('cached-oauth');
+  }
+
+  const headers = new Headers(targetHeaders);
+  const authorization = headers.get('authorization')?.trim();
+  const targetCredentialSent = Boolean(authorization)
+    || headers.has('x-api-key')
+    || headers.has('api-key');
+  if (/^Bearer(?:\s|$)/i.test(authorization || '')) schemes.add('bearer');
+  if (/^(?:ApiKey|Api-Key)(?:\s|$)/i.test(authorization || '')) schemes.add('api-key');
+  if (headers.has('x-api-key') || headers.has('api-key')) schemes.add('api-key');
+
+  if (targetCredentialSent) credentialProvenance.push('target-header');
+
+  if (credentialProvenance.length === 0) {
+    return { unauthenticatedTargetRequestSucceeded: true };
+  }
+
+  return {
+    authorizationSchemes: [...schemes],
+    authorizationCredentialProvenance: credentialProvenance,
+  };
+};
+
 export async function evaluateServer(
   inputUrl: string,
   firebaseToken: string,
@@ -1179,6 +1212,7 @@ export async function evaluateServer(
             protocolVersion: connection.protocolVersion,
             endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
             route: connection.usedProxy ? 'authenticated proxy' : 'direct',
+            ...evaluationAuthorizationEvidence(oauthToken, targetHeaders),
           },
         },
         {

@@ -25,6 +25,7 @@ const evaluatedReport = (overrides: Partial<EvaluationReport> = {}): EvaluationR
           protocolVersion: '2026-07-28',
           transportType: 'streamable-http',
           route: 'direct',
+          unauthenticatedTargetRequestSucceeded: true,
         },
       }],
     },
@@ -92,6 +93,48 @@ describe('release readiness integration', () => {
 
     expect(sessionBehavior.value).toBe('stateful');
     expect(sessionBehavior.evidence[0].description).toContain('MCP-Session-Id');
+  });
+
+  it('keeps a modern transport era unknown without an explicit protocol version', () => {
+    const report = evaluatedReport();
+    const metadata = report.sections.protocol.details[0].metadata as Record<string, unknown>;
+    delete metadata.protocolVersion;
+
+    expect(createObservedServerFacts(report).protocol.era.value).toBe('unknown');
+  });
+
+  it('derives the 2025 era from an explicit negotiated protocol version', () => {
+    const report = evaluatedReport();
+    report.sections.protocol.details[0].metadata = {
+      ...(report.sections.protocol.details[0].metadata as Record<string, unknown>),
+      protocolVersion: '2025-11-25',
+    };
+
+    expect(createObservedServerFacts(report).protocol.era.value).toBe('2025');
+  });
+
+  it.each([
+    ['cached OAuth', 'oauth', 'cached-oauth'],
+    ['bearer retry', 'bearer', 'target-header'],
+    ['API-key retry', 'api-key', 'target-header'],
+  ] as const)('keeps authorization unknown after a successful authenticated %s evaluation', (
+    _label,
+    scheme,
+    provenance
+  ) => {
+    const report = evaluatedReport();
+    report.sections.protocol.details[0].metadata = {
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+      transportType: 'streamable-http',
+      route: 'direct',
+      authorizationSchemes: [scheme],
+      authorizationCredentialProvenance: [provenance],
+    };
+
+    const authorization = createObservedServerFacts(report).authorization;
+    expect(authorization.schemes.value).toEqual([scheme]);
+    expect(authorization.requirement.value).toBe('unknown');
   });
 
   it.each([
@@ -235,6 +278,8 @@ describe('release readiness integration', () => {
 
   it('ignores proxy-only traces when deriving target authorization facts', () => {
     const report = evaluatedReport({ outcome: 'failed' });
+    delete (report.sections.protocol.details[0].metadata as Record<string, unknown>)
+      .unauthenticatedTargetRequestSucceeded;
     const facts = createObservedServerFacts(report, {
       version: 1,
       traceId: 'proxy-trace',
