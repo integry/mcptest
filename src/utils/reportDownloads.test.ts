@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import publicJsonSchema from '../../public/schemas/report/v1.schema.json';
+import publicJsonSchema from '../../public/schemas/report/v2.schema.json';
 import type { EvaluationReport } from './evaluation';
 import { createCompatibilityMatrix, createReleaseDecision } from './releaseReadiness';
 import { createReportDownload } from './reportDownloads';

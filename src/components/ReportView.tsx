@@ -25,8 +25,6 @@ import { getStoredOAuthTrace } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
 import type { AuthorizationScheme } from '../compatibility';
 
-const STATIC_AUTH_TABS_KEY = 'mcpConnectionTabs';
-
 const firstObservedAuthorizationScheme = (
   report: EvaluationReport
 ): AuthorizationScheme | undefined => {
@@ -68,6 +66,8 @@ const ReportView: React.FC = () => {
   const [oauthAction, setOAuthAction] = useState<'authorize' | 'configure' | null>(null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [staticCredential, setStaticCredential] = useState('');
+  const [staticCredentialError, setStaticCredentialError] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -75,7 +75,10 @@ const ReportView: React.FC = () => {
   const hasProcessedOAuthReturn = useRef(false);
   
   // Store handleRunReport in a ref to avoid dependency issues
-  const handleRunReportRef = useRef<((urlToTest: string) => Promise<void>) | null>(null);
+  const handleRunReportRef = useRef<((
+    urlToTest: string,
+    targetHeaders?: Record<string, string>
+  ) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
   useEffect(() => {
@@ -222,7 +225,10 @@ const ReportView: React.FC = () => {
     localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
   }, [testedServers]);
 
-  const handleRunReport = useCallback(async (urlToTest: string) => {
+  const handleRunReport = useCallback(async (
+    urlToTest: string,
+    targetHeaders?: Record<string, string>
+  ) => {
     if (!currentUser) {
       alert('Please login to run a report.');
       return;
@@ -236,6 +242,10 @@ const ReportView: React.FC = () => {
     isRunningRef.current = true;
     setOAuthError(null);
     setReportError(null);
+    if (!targetHeaders) {
+      setStaticCredential('');
+      setStaticCredentialError(null);
+    }
     setProgress(['Starting evaluation...']);
     setReport(null);
     
@@ -257,7 +267,13 @@ const ReportView: React.FC = () => {
     };
     
     try {
-      const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
+      const reportData = await evaluateServer(
+        urlToTest,
+        token,
+        onProgress,
+        oauthAccessToken,
+        targetHeaders
+      );
       setReport(reportData);
       
       addOrUpdateServer(reportData);
@@ -272,6 +288,14 @@ const ReportView: React.FC = () => {
               ? 'An API key'
               : 'Target authorization';
         setProgress(prev => [...prev, `${requirement} is required before this server can be scored.`]);
+        if (targetHeaders) {
+          setStaticCredentialError(
+            `The ${scheme === 'api-key' ? 'API key' : 'bearer token'} was rejected. Check it and retry.`
+          );
+        }
+      } else if (targetHeaders) {
+        setStaticCredential('');
+        setStaticCredentialError(null);
       }
     } catch (error) {
       console.error('Report error:', error);
@@ -345,37 +369,22 @@ const ReportView: React.FC = () => {
     ? undefined
     : authorizationSchemes[0];
 
-  const openStaticCredentialPath = (scheme: 'bearer' | 'api-key') => {
+  const retryWithStaticCredential = async (scheme: 'bearer' | 'api-key') => {
     if (!report) return;
-    const targetUrl = report.authenticationUrl || report.serverUrl;
-    const existingValue = localStorage.getItem(STATIC_AUTH_TABS_KEY);
-    let existingTabs: unknown[] = [];
-    try {
-      const parsed = existingValue ? JSON.parse(existingValue) : [];
-      if (Array.isArray(parsed)) existingTabs = parsed;
-    } catch {
-      // Replace malformed local-only tab state with the requested credential tab.
+    const credential = staticCredential.trim();
+    if (!credential) {
+      setStaticCredentialError(
+        `Enter ${scheme === 'bearer' ? 'a bearer token' : 'an API key'} before retrying.`
+      );
+      return;
     }
+    const targetUrl = report.authenticationUrl || report.serverUrl;
     const header = scheme === 'bearer' ? 'Authorization' : 'x-api-key';
-    existingTabs.unshift({
-      id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `report-credential-${Date.now()}`,
-      title: `${scheme === 'bearer' ? 'Bearer' : 'API key'}: ${targetUrl}`,
-      serverUrl: targetUrl,
-      connectionStatus: 'Disconnected',
-      useProxy: true,
-      autoConnect: false,
-      catalogAuthType: scheme === 'bearer' ? 'bearer-token' : 'api-key',
-      catalogRequiredHeaders: [{
-        name: header,
-        required: true,
-        secret: true,
-        description: `Credential required by the ${scheme === 'bearer' ? 'bearer-token' : 'API-key'} challenge observed by the report.`,
-      }],
-    });
-    localStorage.setItem(STATIC_AUTH_TABS_KEY, JSON.stringify(existingTabs));
-    window.location.assign('/');
+    const value = scheme === 'bearer' && !/^Bearer\s/i.test(credential)
+      ? `Bearer ${credential}`
+      : credential;
+    setStaticCredentialError(null);
+    await handleRunReport(targetUrl, { [header]: value });
   };
 
   return (
@@ -522,18 +531,47 @@ const ReportView: React.FC = () => {
                       <span className="badge text-bg-warning">Not scored</span>
                     </div>
                     <p className="mb-0">
-                      Enter the target credential in the playground, then connect to retry the MCP
-                      endpoint. OAuth discovery will not be started for this static credential scheme.
+                      Enter the target credential to retry this report. It is kept only in this
+                      page&apos;s memory and is not saved, logged, or added to the URL.
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => openStaticCredentialPath(authorizationScheme)}
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void retryWithStaticCredential(authorizationScheme);
+                  }}
                 >
-                  Enter {authorizationScheme === 'bearer' ? 'bearer token' : 'API key'}
-                </button>
+                  <label className="form-label" htmlFor="report-static-credential">
+                    {authorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
+                  </label>
+                  <input
+                    id="report-static-credential"
+                    className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
+                    type="password"
+                    value={staticCredential}
+                    onChange={(event) => {
+                      setStaticCredential(event.target.value);
+                      setStaticCredentialError(null);
+                    }}
+                    disabled={isRunning}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    aria-describedby={staticCredentialError ? 'report-static-credential-error' : undefined}
+                  />
+                  {staticCredentialError && (
+                    <div id="report-static-credential-error" className="invalid-feedback">
+                      {staticCredentialError}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    className="btn btn-primary mt-3"
+                    disabled={isRunning}
+                  >
+                    {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                  </button>
+                </form>
               </section>
             )}
             {reportRequiresAuthorization && authorizationScheme === undefined && (

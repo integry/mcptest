@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import publicJsonSchema from '../../public/schemas/report/v1.schema.json';
+import legacyPublicJsonSchema from '../../public/schemas/report/v1.schema.json';
+import publicJsonSchema from '../../public/schemas/report/v2.schema.json';
 import type { EvaluationReport, EvaluationSection } from './evaluation';
 import {
   REPORT_SCHEMA_URL,
@@ -18,6 +19,7 @@ import {
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 const validatePublishedSchema = ajv.compile(publicJsonSchema);
+const validateLegacyPublishedSchema = ajv.compile(legacyPublicJsonSchema);
 
 const FIXED_OPTIONS = {
   generatedAt: '2026-08-11T12:44:04.000Z',
@@ -274,7 +276,7 @@ describe('versioned public report artifacts', () => {
 
     expect(parsePublicReportJson(serialized)).toEqual(artifact);
     expect(validatePublicReport(artifact)).toEqual(artifact);
-    expect(safeParsePublicReport({ ...artifact, schemaVersion: '2.0.0' }).success).toBe(false);
+    expect(safeParsePublicReport({ ...artifact, schemaVersion: '1.0.0' }).success).toBe(false);
     expect(safeParsePublicReport({ ...artifact, score: null }).success).toBe(false);
     expect(safeParsePublicReport({
       ...artifact,
@@ -285,7 +287,35 @@ describe('versioned public report artifacts', () => {
 
   it('publishes a matching versioned JSON Schema identifier', () => {
     expect(publicJsonSchema.$id).toBe(REPORT_SCHEMA_URL);
-    expect(publicJsonSchema.properties.schemaVersion.const).toBe('1.0.0');
+    expect(publicJsonSchema.properties.schemaVersion.const).toBe('2.0.0');
+  });
+
+  it('preserves the closed v1 contract while publishing expanded artifacts as v2', () => {
+    const artifact = createPublicReport(publicReport(), {
+      ...FIXED_OPTIONS,
+      releaseDecision: {
+        status: 'ready',
+        answer: 'Yes.',
+        summary: 'Ready.',
+        priorities: [],
+      },
+    });
+    const {
+      $schema: _currentSchema,
+      schemaVersion: _currentVersion,
+      releaseDecision,
+      ...sharedFields
+    } = artifact;
+    const legacyArtifact = {
+      ...sharedFields,
+      $schema: legacyPublicJsonSchema.$id,
+      schemaVersion: '1.0.0',
+    };
+
+    expect(validatePublishedSchema(artifact), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+    expect(validateLegacyPublishedSchema(legacyArtifact), JSON.stringify(validateLegacyPublishedSchema.errors)).toBe(true);
+    expect(validateLegacyPublishedSchema({ ...legacyArtifact, releaseDecision })).toBe(false);
+    expect(legacyPublicJsonSchema.properties).not.toHaveProperty('releaseDecision');
   });
 
   it('labels the performance baseline as connection setup and reserves negotiation for explicit metadata', () => {

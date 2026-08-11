@@ -140,6 +140,61 @@ describe('dual-era server evaluation', () => {
     expect(client.close).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['Authorization', 'Bearer report-bearer-token'],
+    ['x-api-key', 'report-api-key'],
+  ])('passes the entered %s credential only as a target header', async (header, value) => {
+    const client = createClient();
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://static-auth.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer(
+      'https://static-auth.example/mcp',
+      'firebase-jwt',
+      vi.fn(),
+      undefined,
+      { [header]: value }
+    );
+
+    const directHeaders = new Headers(connectionMocks.attempt.mock.calls[0][3]);
+    expect(directHeaders.get(header)).toBe(value);
+    expect(connectionMocks.attempt.mock.calls[0][2]).toBeUndefined();
+    expect(report.outcome).toBe('scored');
+    expect(report.sections.cors.details[1].metadata).toMatchObject({
+      requiredHeaders: expect.arrayContaining([header.toLowerCase()]),
+    });
+  });
+
+  it('keeps an API key on the target channel during proxy fallback', async () => {
+    const client = createClient();
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockResolvedValueOnce({
+        client,
+        url: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fstatic-auth.example%2Fmcp',
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
+
+    await evaluateServer(
+      'https://static-auth.example/mcp',
+      'firebase-jwt',
+      vi.fn(),
+      undefined,
+      { 'x-api-key': 'report-api-key' }
+    );
+
+    const [proxyUrl, , proxyAuthToken, targetHeaders] = connectionMocks.attempt.mock.calls[1];
+    const outgoingTargetHeaders = getRequestHeadersForCandidate(proxyUrl, targetHeaders, true);
+    expect(proxyAuthToken).toBe('firebase-jwt');
+    expect(outgoingTargetHeaders.get('x-api-key')).toBe('report-api-key');
+    expect(outgoingTargetHeaders.get('authorization')).toBeNull();
+  });
+
   it('finalizes a successful post-callback report retry with its actual request facts', async () => {
     const endpoint = 'https://report-retry.example/mcp';
     const trace = recordOAuthAuthenticationChallenge({
@@ -397,6 +452,7 @@ describe('dual-era server evaluation', () => {
       'last-event-id',
       'authorization',
     ]);
+    expect(getEvaluationCorsHeaders('modern', false, ['X-API-Key'])).toContain('x-api-key');
   });
 
   it('preserves a direct target authentication response when the proxy also fails', async () => {
@@ -796,6 +852,30 @@ describe('dual-era server evaluation', () => {
     expect(report.sections.capabilities.details[0]).toMatchObject({
       metadata: { method: 'tools/list', paginationComplete: false },
     });
+    expect(report.toolSurfaceAnalysis?.findings.medium).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'analysis.incomplete-pagination' }),
+    ]));
+  });
+
+  it('keeps tool-surface analysis unknown when tools/list fails operationally', async () => {
+    const client = createClient();
+    client.listTools.mockRejectedValueOnce(new Error('tools service temporarily unavailable'));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('partial');
+    expect(report.sections.capabilities.status).toBe('partial');
+    expect(report.sections.capabilities.details[0]).toMatchObject({
+      text: '✗ tools/list failed',
+      metadata: { method: 'tools/list', error: 'tools service temporarily unavailable' },
+    });
+    expect(report.toolSurfaceAnalysis).toBeUndefined();
   });
 
   it('includes OAuth security posture when protected-resource metadata is supported', async () => {

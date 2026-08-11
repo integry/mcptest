@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mcptest.io/schemas/report/v1.schema.json",
-  "title": "mcptest public evaluation report v1",
+  "$id": "https://mcptest.io/schemas/report/v2.schema.json",
+  "title": "mcptest public evaluation report v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,9 +17,9 @@
     "sections"
   ],
   "properties": {
-    "$schema": { "const": "https://mcptest.io/schemas/report/v1.schema.json" },
+    "$schema": { "const": "https://mcptest.io/schemas/report/v2.schema.json" },
     "artifactType": { "const": "mcptest.report" },
-    "schemaVersion": { "const": "1.0.0" },
+    "schemaVersion": { "const": "2.0.0" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "generator": { "$ref": "#/$defs/generator" },
     "target": { "$ref": "#/$defs/target" },
@@ -34,6 +34,10 @@
     "protocol": { "$ref": "#/$defs/protocol" },
     "transport": { "$ref": "#/$defs/transport" },
     "timings": { "$ref": "#/$defs/timings" },
+    "releaseDecision": { "$ref": "#/$defs/releaseDecision" },
+    "compatibility": { "$ref": "#/$defs/compatibility" },
+    "toolSurfaceAnalysis": { "$ref": "#/$defs/toolSurfaceAnalysis" },
+    "oauthTrace": { "$ref": "#/$defs/oauthTrace" },
     "sections": {
       "type": "array",
       "items": { "$ref": "#/$defs/section" }
@@ -181,6 +185,86 @@
         "earned": { "type": "number", "minimum": 0 },
         "maximum": { "type": "number", "exclusiveMinimum": 0 },
         "percentage": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "releaseDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "answer", "summary", "priorities"],
+      "properties": {
+        "status": { "enum": ["ready", "blocked", "review", "authorization-required", "unknown"] },
+        "answer": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "priorities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "severity", "title", "detail", "remediation", "source"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "severity": { "enum": ["critical", "high", "medium", "unknown"] },
+              "title": { "type": "string", "minLength": 1 },
+              "detail": { "type": "string" },
+              "remediation": { "type": "string", "minLength": 1 },
+              "source": { "enum": ["Host compatibility", "Tool surface", "Evaluation"] }
+            }
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": ["schemaVersion", "assessments"],
+      "properties": {
+        "schemaVersion": { "type": "string", "minLength": 1 },
+        "assessments": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["schemaVersion", "profileId", "profileVersion", "status", "findings"],
+            "properties": {
+              "schemaVersion": { "type": "string", "minLength": 1 },
+              "profileId": { "type": "string", "minLength": 1 },
+              "profileVersion": { "type": "string", "minLength": 1 },
+              "status": { "enum": ["compatible", "compatible-with-caveats", "incompatible", "unknown"] },
+              "findings": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        }
+      }
+    },
+    "toolSurfaceAnalysis": {
+      "type": "object",
+      "required": ["version", "metrics", "fingerprint", "findings", "findingCount", "interpretation"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "metrics": {
+          "type": "object",
+          "required": ["toolCount", "resourceCount", "promptCount", "estimatedContextTokens"]
+        },
+        "fingerprint": {
+          "type": "object",
+          "required": ["algorithm", "value"]
+        },
+        "findings": {
+          "type": "object",
+          "required": ["critical", "high", "medium", "low", "info"]
+        },
+        "findingCount": { "type": "number", "minimum": 0 },
+        "interpretation": { "type": "string" }
+      }
+    },
+    "oauthTrace": {
+      "type": "object",
+      "required": ["version", "traceId", "targetFingerprint", "targetUrl", "startedAt", "events"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "traceId": { "type": "string", "minLength": 1 },
+        "targetFingerprint": { "type": "string", "minLength": 1 },
+        "targetUrl": { "type": "string", "minLength": 1 },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "events": { "type": "array", "items": { "type": "object" } }
       }
     },
     "protocol": {

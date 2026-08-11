@@ -15,8 +15,8 @@ import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
 
-export const REPORT_SCHEMA_VERSION = '1.0.0' as const;
-export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v1.schema.json' as const;
+export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
+export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
 export const REDACTED_VALUE = '[REDACTED]' as const;
 
 const SCORE_PERCENTAGE_TOLERANCE = 1e-9;

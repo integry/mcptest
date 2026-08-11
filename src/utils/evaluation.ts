@@ -267,7 +267,8 @@ export async function fetchForEvaluation(
 
 export const getEvaluationCorsHeaders = (
   protocolEra: ProtocolEra,
-  authenticated: boolean
+  authenticated: boolean,
+  targetHeaderNames: readonly string[] = []
 ): string[] => {
   const headers = ['content-type', 'accept', 'mcp-protocol-version'];
 
@@ -278,6 +279,10 @@ export const getEvaluationCorsHeaders = (
   }
 
   if (authenticated) headers.push('authorization');
+  for (const header of targetHeaderNames) {
+    const normalized = header.toLowerCase();
+    if (!headers.includes(normalized)) headers.push(normalized);
+  }
   return headers;
 };
 
@@ -488,6 +493,7 @@ const connectForEvaluation = async (
   serverUrl: string,
   firebaseToken: string,
   oauthToken: string | null,
+  targetHeaders: HeadersInit | undefined,
   onProgress: (message: string) => void,
   pendingRetry?: PendingAuthenticatedMcpRetry
 ): Promise<ConnectedEvaluation> => {
@@ -500,7 +506,7 @@ const connectForEvaluation = async (
       serverUrl,
       abortController.signal,
       oauthToken || undefined,
-      undefined,
+      targetHeaders,
       false,
       undefined,
       pendingRetry?.observeRequest('direct')
@@ -522,14 +528,13 @@ const connectForEvaluation = async (
       onProgress('Direct negotiation failed; retrying through the authenticated CORS proxy...');
       const proxyConnectionUrl = new URL(proxyUrl);
       proxyConnectionUrl.searchParams.set('target', serverUrl);
-      const targetHeaders = oauthToken
-        ? { Authorization: `Bearer ${oauthToken}` }
-        : undefined;
+      const proxiedTargetHeaders = new Headers(targetHeaders);
+      if (oauthToken) proxiedTargetHeaders.set('Authorization', `Bearer ${oauthToken}`);
       const proxied = await attemptParallelConnections(
         proxyConnectionUrl.toString(),
         abortController.signal,
         firebaseToken,
-        targetHeaders,
+        proxiedTargetHeaders,
         true,
         undefined,
         pendingRetry?.observeRequest('proxy')
@@ -547,7 +552,7 @@ const connectForEvaluation = async (
 interface CapabilityEvaluation {
   section: EvaluationSection;
   targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
-  toolSurfaceAnalysis: ToolSurfaceAnalysisV1;
+  toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
 }
 
 const DISCOVERY_PAGE_LIMIT = 64;
@@ -646,6 +651,7 @@ const evaluateCapabilities = async (
   };
   const targetAuthenticationFailures: CapabilityEvaluation['targetAuthenticationFailures'] = [];
   const discovered: { tools?: unknown; resources?: unknown; prompts?: unknown } = {};
+  let canAnalyzeToolSurface = false;
   const checks: Array<{
     name: string;
     method: string;
@@ -697,6 +703,7 @@ const evaluateCapabilities = async (
       if (check.name === 'resources') discovered.resources = (result as { resources?: unknown })?.resources;
       if (check.name === 'prompts') discovered.prompts = (result as { prompts?: unknown })?.prompts;
       section.score += check.points;
+      if (check.name === 'tools') canAnalyzeToolSurface = true;
       section.details.push({
         text: `✓ ${check.method} succeeded (${itemCount} ${check.name})`,
         context: `The server implements the standard ${check.name} discovery method, including valid empty lists.`,
@@ -724,6 +731,7 @@ const evaluateCapabilities = async (
         if (check.name === 'prompts') discovered.prompts = error.result.prompts;
         if (check.name === 'tools') {
           (discovered as Record<string, unknown>).nextCursor = error.nextCursor;
+          canAnalyzeToolSurface = true;
         }
         section.status = 'partial';
         section.details.push({
@@ -744,6 +752,10 @@ const evaluateCapabilities = async (
         continue;
       }
       if (isDiscoveryPaginationFailure(error)) {
+        if (check.name === 'tools') {
+          (discovered as Record<string, unknown>).nextCursor = 'unknown';
+          canAnalyzeToolSurface = true;
+        }
         section.status = 'partial';
         section.details.push({
           text: `⚠ ${check.method} pagination did not complete`,
@@ -757,6 +769,10 @@ const evaluateCapabilities = async (
         continue;
       }
       const methodNotFound = isMethodNotFound(error);
+      if (check.name === 'tools') {
+        canAnalyzeToolSurface = methodNotFound;
+        if (!methodNotFound) section.status = 'partial';
+      }
       section.details.push({
         text: `${methodNotFound ? '⚠' : '✗'} ${check.method} ${methodNotFound ? 'is not supported' : 'failed'}`,
         context: methodNotFound
@@ -777,7 +793,7 @@ const evaluateCapabilities = async (
   return {
     section,
     targetAuthenticationFailures,
-    toolSurfaceAnalysis: analyzeToolSurface(discovered),
+    ...(canAnalyzeToolSurface ? { toolSurfaceAnalysis: analyzeToolSurface(discovered) } : {}),
   };
 };
 
@@ -925,10 +941,15 @@ const evaluateSecurityPosture = async (
 
 const evaluateBrowserAccessibility = (
   connection: ConnectedEvaluation,
-  authenticated: boolean
+  authenticated: boolean,
+  targetHeaders?: HeadersInit
 ): EvaluationSection => {
   const endpointUrl = getEvaluationTargetUrl(connection.url, connection.usedProxy);
-  const requiredHeaders = getEvaluationCorsHeaders(connection.protocolEra, authenticated);
+  const requiredHeaders = getEvaluationCorsHeaders(
+    connection.protocolEra,
+    authenticated,
+    Array.from(new Headers(targetHeaders).keys())
+  );
   const section: EvaluationSection = {
     name: 'Web Client Accessibility',
     description: 'Validates direct-browser MCP access at the negotiated endpoint',
@@ -996,7 +1017,8 @@ export async function evaluateServer(
   inputUrl: string,
   firebaseToken: string,
   onProgress: (message: string) => void,
-  oauthAccessToken?: string | null
+  oauthAccessToken?: string | null,
+  targetHeaders?: HeadersInit
 ): Promise<EvaluationReport> {
   const serverUrl = normalizeServerUrl(inputUrl);
   const oauthToken = oauthAccessToken || null;
@@ -1023,6 +1045,7 @@ export async function evaluateServer(
       serverUrl,
       firebaseToken,
       oauthToken,
+      targetHeaders,
       onProgress,
       pendingRetry
     );
@@ -1213,7 +1236,9 @@ export async function evaluateServer(
       onProgress('Target authorization is required before evaluation can continue.');
       return report;
     }
-    report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
+    if (capabilityEvaluation.toolSurfaceAnalysis) {
+      report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
+    }
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';
     }
@@ -1248,7 +1273,11 @@ export async function evaluateServer(
     }
 
     onProgress('Confirming direct-browser MCP accessibility at the negotiated endpoint...');
-    report.sections.cors = evaluateBrowserAccessibility(connection, Boolean(oauthToken));
+    report.sections.cors = evaluateBrowserAccessibility(
+      connection,
+      Boolean(oauthToken),
+      targetHeaders
+    );
 
     report.sections.performance = performanceSection(durationMs);
     report.finalScore = Object.entries(report.sections)
