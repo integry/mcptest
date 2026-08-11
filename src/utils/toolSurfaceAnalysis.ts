@@ -11,8 +11,19 @@ import {
 } from '../types/toolSurfaceAnalysis';
 
 const EVIDENCE_LIMIT = 12;
+const EVIDENCE_FIELD_CHARACTER_LIMIT = 2_000;
+const SCHEMA_PATH_SEGMENT_CHARACTER_LIMIT = 256;
 const SHORT_DESCRIPTION_CHARACTERS = 24;
 const LONG_DESCRIPTION_CHARACTERS = 1_000;
+const TEXT_ANALYSIS_CHARACTER_LIMIT = 4_000;
+const TOOL_ANALYSIS_LIMIT = 2_000;
+const CANONICAL_DEPTH_LIMIT = 64;
+const CANONICAL_NODE_LIMIT = 100_000;
+const CANONICAL_BYTE_LIMIT = 2_000_000;
+const SCHEMA_DEPTH_LIMIT = 64;
+const SCHEMA_NODE_LIMIT = 50_000;
+const SIMILARITY_COMPARISON_LIMIT = 50_000;
+const OVERLAP_PAIR_RETENTION_LIMIT = EVIDENCE_LIMIT;
 
 const SEVERITIES: readonly ToolSurfaceSeverity[] = [
   'critical',
@@ -203,6 +214,7 @@ interface ToolRecord {
   outputSchema: unknown;
   readOnlyHint: boolean | null;
   destructiveHint: boolean | null;
+  textTruncated: boolean;
   raw: unknown;
   valid: boolean;
 }
@@ -211,6 +223,25 @@ interface PairEvidence {
   left: string;
   right: string;
   score: number;
+}
+
+interface PairAnalysis {
+  comparisonCount: number;
+  comparisonLimitReached: boolean;
+  pairCount: number;
+  retainedPairs: PairEvidence[];
+}
+
+interface CanonicalResult {
+  serialized: string;
+  nodeCount: number;
+  truncationReasons: Set<'depth' | 'nodes' | 'bytes'>;
+}
+
+interface CanonicalCollectionResult {
+  serialized: string;
+  truncationReasons: Set<'depth' | 'nodes' | 'bytes'>;
+  omittedValueCount: number;
 }
 
 interface SchemaAccumulator {
@@ -229,6 +260,9 @@ interface SchemaAccumulator {
   missingDescriptionEvidence: ToolSurfaceEvidenceV1[];
   depthEvidence: ToolSurfaceEvidenceV1[];
   widthEvidence: ToolSurfaceEvidenceV1[];
+  depthLimitReached: boolean;
+  nodeLimitReached: boolean;
+  budgetEvidence: ToolSurfaceEvidenceV1[];
 }
 
 interface FindingInput {
@@ -239,6 +273,7 @@ interface FindingInput {
   title: string;
   summary: string;
   evidence: ToolSurfaceEvidenceV1[];
+  omittedEvidenceCount?: number;
   remediation: string;
 }
 
@@ -255,39 +290,208 @@ const compareText = (left: string, right: string): number => (
   left < right ? -1 : left > right ? 1 : 0
 );
 
-const canonicalStringify = (value: unknown, ancestors = new Set<object>()): string => {
-  if (value === null) return 'null';
-  if (typeof value === 'string') return JSON.stringify(value);
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'null';
-  if (typeof value === 'bigint') return JSON.stringify(value.toString());
-  if (typeof value !== 'object') return 'null';
-
-  if (ancestors.has(value)) return JSON.stringify('[Circular]');
-  ancestors.add(value);
-
-  let serialized: string;
-  if (Array.isArray(value)) {
-    serialized = `[${value.map((item) => canonicalStringify(item, ancestors)).join(',')}]`;
-  } else {
-    const entries = Object.keys(value as Record<string, unknown>)
-      .filter((key) => {
-        const item = (value as Record<string, unknown>)[key];
-        return item !== undefined && typeof item !== 'function' && typeof item !== 'symbol';
-      })
-      .sort(compareText)
-      .map((key) => `${JSON.stringify(key)}:${canonicalStringify(
-        (value as Record<string, unknown>)[key],
-        ancestors
-      )}`);
-    serialized = `{${entries.join(',')}}`;
+const boundedOwnKeys = (
+  value: Record<string, unknown>,
+  maximumKeys: number,
+  include: (key: string) => boolean = () => true
+): { keys: string[]; truncated: boolean } => {
+  const keys: string[] = [];
+  let truncated = false;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key) || !include(key)) continue;
+    if (keys.length >= maximumKeys) {
+      truncated = true;
+      break;
+    }
+    keys.push(key);
   }
-
-  ancestors.delete(value);
-  return serialized;
+  keys.sort(compareText);
+  return { keys, truncated };
 };
 
 const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).length;
+
+type CanonicalWorkItem =
+  | { kind: 'value'; value: unknown; depth: number }
+  | { kind: 'key'; value: string }
+  | { kind: 'text'; value: string }
+  | { kind: 'exit'; value: object; close: ']' | '}' };
+
+/** Iterative canonicalization keeps ordinary output byte-for-byte compatible. */
+const canonicalStringify = (
+  value: unknown,
+  maximumNodes: number,
+  maximumBytes: number
+): CanonicalResult => {
+  const output: string[] = [];
+  const ancestors = new Set<object>();
+  const work: CanonicalWorkItem[] = [{ kind: 'value', value, depth: 0 }];
+  const truncationReasons = new Set<'depth' | 'nodes' | 'bytes'>();
+  let nodeCount = 0;
+  let byteCount = 0;
+  let aborted = false;
+
+  const append = (text: string): boolean => {
+    const bytes = utf8ByteLength(text);
+    if (byteCount + bytes > maximumBytes) return false;
+    output.push(text);
+    byteCount += bytes;
+    return true;
+  };
+
+  const abort = (reason: 'nodes' | 'bytes'): void => {
+    truncationReasons.add(reason);
+    output.push(JSON.stringify(`[Truncated: canonical-${reason}-limit]`));
+    for (let index = work.length - 1; index >= 0; index -= 1) {
+      const item = work[index];
+      if (item.kind === 'exit') output.push(item.close);
+    }
+    aborted = true;
+  };
+
+  while (work.length > 0 && !aborted) {
+    const item = work.pop() as CanonicalWorkItem;
+    if (item.kind === 'text') {
+      if (!append(item.value)) abort('bytes');
+      continue;
+    }
+    if (item.kind === 'key') {
+      if (item.value.length > maximumBytes - byteCount) {
+        abort('bytes');
+        continue;
+      }
+      if (!append(`${JSON.stringify(item.value)}:`)) abort('bytes');
+      continue;
+    }
+    if (item.kind === 'exit') {
+      ancestors.delete(item.value);
+      if (!append(item.close)) abort('bytes');
+      continue;
+    }
+
+    if (nodeCount >= maximumNodes) {
+      abort('nodes');
+      continue;
+    }
+    nodeCount += 1;
+
+    if (item.depth > CANONICAL_DEPTH_LIMIT) {
+      truncationReasons.add('depth');
+      if (!append(JSON.stringify('[Truncated: canonical-depth-limit]'))) abort('bytes');
+      continue;
+    }
+
+    const current = item.value;
+    let primitive: string | null = null;
+    if (current === null) primitive = 'null';
+    else if (typeof current === 'string') {
+      if (current.length > maximumBytes - byteCount) {
+        abort('bytes');
+        continue;
+      }
+      primitive = JSON.stringify(current);
+    } else if (typeof current === 'boolean') primitive = current ? 'true' : 'false';
+    else if (typeof current === 'number') primitive = Number.isFinite(current) ? String(current) : 'null';
+    else if (typeof current === 'bigint') primitive = JSON.stringify(current.toString());
+    else if (typeof current !== 'object') primitive = 'null';
+
+    if (primitive !== null) {
+      if (!append(primitive)) abort('bytes');
+      continue;
+    }
+
+    const objectValue = current as object;
+    if (ancestors.has(objectValue)) {
+      if (!append(JSON.stringify('[Circular]'))) abort('bytes');
+      continue;
+    }
+    ancestors.add(objectValue);
+
+    if (Array.isArray(current)) {
+      if (!append('[')) {
+        abort('bytes');
+        continue;
+      }
+      work.push({ kind: 'exit', value: current, close: ']' });
+      const retainedLength = Math.min(current.length, Math.max(0, maximumNodes - nodeCount));
+      if (retainedLength < current.length) {
+        truncationReasons.add('nodes');
+        work.push({ kind: 'value', value: '[Truncated: canonical-nodes-limit]', depth: item.depth + 1 });
+        if (retainedLength > 0) work.push({ kind: 'text', value: ',' });
+      }
+      for (let index = retainedLength - 1; index >= 0; index -= 1) {
+        if (index < retainedLength - 1) work.push({ kind: 'text', value: ',' });
+        work.push({ kind: 'value', value: current[index], depth: item.depth + 1 });
+      }
+      continue;
+    }
+
+    const record = current as Record<string, unknown>;
+    const boundedKeys = boundedOwnKeys(
+      record,
+      Math.max(0, maximumNodes - nodeCount),
+      (key) => {
+        const child = record[key];
+        return child !== undefined && typeof child !== 'function' && typeof child !== 'symbol';
+      }
+    );
+    const keys = boundedKeys.keys;
+    if (!append('{')) {
+      abort('bytes');
+      continue;
+    }
+    work.push({ kind: 'exit', value: record, close: '}' });
+    if (boundedKeys.truncated) {
+      truncationReasons.add('nodes');
+      work.push({ kind: 'value', value: true, depth: item.depth + 1 });
+      work.push({ kind: 'text', value: `${JSON.stringify('[Truncated: canonical-nodes-limit]')}:` });
+      if (keys.length > 0) work.push({ kind: 'text', value: ',' });
+    }
+    for (let index = keys.length - 1; index >= 0; index -= 1) {
+      if (index < keys.length - 1) work.push({ kind: 'text', value: ',' });
+      const key = keys[index];
+      work.push({ kind: 'value', value: record[key], depth: item.depth + 1 });
+      work.push({ kind: 'key', value: key });
+    }
+  }
+
+  return { serialized: output.join(''), nodeCount, truncationReasons };
+};
+
+const canonicalizeCollection = (
+  values: readonly unknown[],
+  emptyValue: string
+): CanonicalCollectionResult => {
+  const entries: string[] = [];
+  const truncationReasons = new Set<'depth' | 'nodes' | 'bytes'>();
+  let remainingNodes = CANONICAL_NODE_LIMIT;
+  let remainingBytes = CANONICAL_BYTE_LIMIT;
+  let omittedValueCount = 0;
+
+  for (let index = 0; index < values.length; index += 1) {
+    if (remainingNodes <= 0 || remainingBytes <= 0) {
+      omittedValueCount = values.length - index;
+      if (remainingNodes <= 0) truncationReasons.add('nodes');
+      if (remainingBytes <= 0) truncationReasons.add('bytes');
+      break;
+    }
+    const result = canonicalStringify(values[index], remainingNodes, remainingBytes);
+    entries.push(result.serialized);
+    remainingNodes -= result.nodeCount;
+    remainingBytes -= Math.min(remainingBytes, utf8ByteLength(result.serialized));
+    result.truncationReasons.forEach((reason) => truncationReasons.add(reason));
+  }
+
+  if (omittedValueCount > 0) {
+    entries.push(JSON.stringify(`[Truncated: ${omittedValueCount} canonical values omitted]`));
+  }
+  if (values.length === 0) return { serialized: emptyValue, truncationReasons, omittedValueCount };
+  return {
+    serialized: `[${entries.sort(compareText).join(',')}]`,
+    truncationReasons,
+    omittedValueCount,
+  };
+};
 
 const fingerprint = (value: string): string => {
   let hash = 0xcbf29ce484222325n;
@@ -335,10 +539,18 @@ const normalizeText = (value: string): string => value.trim().toLowerCase().repl
 
 const displayPath = (path: string): string => path || '$';
 
+const boundedLabel = (value: string, limit: number): string => (
+  value.length <= limit ? value : `${value.slice(0, limit)}…`
+);
+
+const schemaPathSegment = (value: string): string => (
+  boundedLabel(value, SCHEMA_PATH_SEGMENT_CHARACTER_LIMIT)
+);
+
 const evidence = (tool: string, path: string, detail: string): ToolSurfaceEvidenceV1 => ({
-  tool,
-  path,
-  detail,
+  tool: boundedLabel(tool, EVIDENCE_FIELD_CHARACTER_LIMIT),
+  path: boundedLabel(path, EVIDENCE_FIELD_CHARACTER_LIMIT),
+  detail: boundedLabel(detail, EVIDENCE_FIELD_CHARACTER_LIMIT),
 });
 
 const emptyFindings = (): ToolSurfaceFindingsBySeverityV1 => ({
@@ -362,7 +574,8 @@ const addFinding = (
   findings[input.severity].push({
     ...input,
     evidence: selectedEvidence,
-    omittedEvidenceCount: sortedEvidence.length - selectedEvidence.length,
+    omittedEvidenceCount: (input.omittedEvidenceCount || 0)
+      + sortedEvidence.length - selectedEvidence.length,
   });
 };
 
@@ -418,14 +631,21 @@ const normalizeTool = (raw: unknown, index: number): ToolRecord => {
       outputSchema: null,
       readOnlyHint: null,
       destructiveHint: null,
+      textTruncated: false,
       raw,
       valid: false,
     };
   }
 
-  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : null;
-  const description = typeof raw.description === 'string' && raw.description.trim()
-    ? raw.description.trim()
+  const nameText = typeof raw.name === 'string'
+    ? raw.name.slice(0, TEXT_ANALYSIS_CHARACTER_LIMIT + 1).trim()
+    : '';
+  const descriptionText = typeof raw.description === 'string'
+    ? raw.description.slice(0, TEXT_ANALYSIS_CHARACTER_LIMIT + 1).trim()
+    : '';
+  const name = nameText ? nameText.slice(0, TEXT_ANALYSIS_CHARACTER_LIMIT) : null;
+  const description = descriptionText
+    ? descriptionText.slice(0, TEXT_ANALYSIS_CHARACTER_LIMIT)
     : null;
   const inputSchema = raw.inputSchema;
   const annotations = isRecord(raw.annotations) ? raw.annotations : null;
@@ -443,6 +663,8 @@ const normalizeTool = (raw: unknown, index: number): ToolRecord => {
     destructiveHint: typeof annotations?.destructiveHint === 'boolean'
       ? annotations.destructiveHint
       : null,
+    textTruncated: (typeof raw.name === 'string' && raw.name.length > TEXT_ANALYSIS_CHARACTER_LIMIT)
+      || (typeof raw.description === 'string' && raw.description.length > TEXT_ANALYSIS_CHARACTER_LIMIT),
     raw,
     valid: Boolean(name && isRecord(inputSchema)),
   };
@@ -480,176 +702,252 @@ const recordSchemaDepth = (
   }
 };
 
+type SchemaWorkItem =
+  | { kind: 'visit'; schema: unknown; path: string; depth: number }
+  | { kind: 'exit'; schema: object };
+
 const visitSchema = (
   schema: unknown,
   tool: ToolRecord,
   path: string,
   depth: number,
-  accumulator: SchemaAccumulator,
-  ancestors: Set<object>
+  accumulator: SchemaAccumulator
 ): void => {
-  if (typeof schema === 'boolean') {
-    accumulator.schemaNodeCount += 1;
-    recordSchemaDepth(accumulator, tool, path, depth);
-    return;
-  }
-
-  if (!isRecord(schema)) {
-    markMalformedSchema(accumulator, tool, path, 'Schema node must be an object or boolean.');
-    return;
-  }
-
-  if (ancestors.has(schema)) {
-    markMalformedSchema(accumulator, tool, path, 'Circular schema reference cannot be serialized as JSON.');
-    return;
-  }
-
-  ancestors.add(schema);
-  accumulator.schemaNodeCount += 1;
-  recordSchemaDepth(accumulator, tool, path, depth);
-
-  if (
-    schema.type !== undefined
-    && typeof schema.type !== 'string'
-    && !(Array.isArray(schema.type) && schema.type.every((type) => typeof type === 'string'))
-  ) {
-    markMalformedSchema(accumulator, tool, `${path}.type`, 'Schema type must be a string or string array.');
-  }
-
-  const properties = schema.properties;
-  const objectLike = schema.type === 'object' || isRecord(properties);
-  if (properties !== undefined && !isRecord(properties)) {
-    markMalformedSchema(accumulator, tool, `${path}.properties`, 'Schema properties must be an object.');
-  }
-
-  const requiredValue = schema.required;
-  const validRequired = requiredValue === undefined
-    || (Array.isArray(requiredValue) && requiredValue.every((name) => typeof name === 'string'));
-  if (!validRequired) {
-    markMalformedSchema(accumulator, tool, `${path}.required`, 'Schema required must be an array of property names.');
-  }
-  const required = new Set<string>(validRequired && Array.isArray(requiredValue) ? requiredValue : []);
-
-  if (isRecord(properties)) {
-    const propertyNames = Object.keys(properties).sort(compareText);
-    const width = propertyNames.length;
-    accumulator.maximumWidth = Math.max(accumulator.maximumWidth, width);
-    if (width > 0) {
-      accumulator.widthEvidence.push(evidence(
-        tool.displayName,
-        displayPath(path),
-        `Object declares ${width} properties.`
+  const ancestors = new Set<object>();
+  const work: SchemaWorkItem[] = [{ kind: 'visit', schema, path, depth }];
+  let scheduledVisitCount = 1;
+  const markNodeLimit = (budgetTool: ToolRecord, budgetPath: string): void => {
+    if (!accumulator.nodeLimitReached) {
+      accumulator.budgetEvidence.push(evidence(
+        budgetTool.displayName,
+        displayPath(budgetPath),
+        `Schema traversal stopped after ${SCHEMA_NODE_LIMIT} schema nodes.`
       ));
     }
-    accumulator.propertyCount += width;
+    accumulator.nodeLimitReached = true;
+  };
 
-    for (const requiredName of required) {
-      if (!Object.prototype.hasOwnProperty.call(properties, requiredName)) {
-        markMalformedSchema(
-          accumulator,
-          tool,
-          `${path}.required`,
-          `Required property "${requiredName}" is not declared in properties.`
-        );
-      }
+  while (work.length > 0) {
+    const item = work.pop() as SchemaWorkItem;
+    if (item.kind === 'exit') {
+      ancestors.delete(item.schema);
+      continue;
     }
+    scheduledVisitCount -= 1;
 
-    for (const propertyName of propertyNames) {
-      const propertySchema = properties[propertyName];
-      if (required.has(propertyName)) accumulator.requiredPropertyCount += 1;
-      else accumulator.optionalPropertyCount += 1;
-
-      if (!isRecord(propertySchema) || typeof propertySchema.description !== 'string' || !propertySchema.description.trim()) {
-        accumulator.propertiesMissingDescriptions += 1;
-        accumulator.missingDescriptionEvidence.push(evidence(
+    if (item.depth > SCHEMA_DEPTH_LIMIT) {
+      if (!accumulator.depthLimitReached) {
+        accumulator.budgetEvidence.push(evidence(
           tool.displayName,
-          `${path}.properties.${propertyName}`,
-          `Property "${propertyName}" has no description.`
+          displayPath(item.path),
+          `Schema traversal stopped at the deterministic depth limit of ${SCHEMA_DEPTH_LIMIT}.`
         ));
       }
-      visitSchema(
-        propertySchema,
-        tool,
-        `${path}.properties.${propertyName}`,
-        depth + 1,
-        accumulator,
-        ancestors
+      accumulator.depthLimitReached = true;
+      continue;
+    }
+    if (accumulator.schemaNodeCount >= SCHEMA_NODE_LIMIT) {
+      markNodeLimit(tool, item.path);
+      continue;
+    }
+
+    if (typeof item.schema === 'boolean') {
+      accumulator.schemaNodeCount += 1;
+      recordSchemaDepth(accumulator, tool, item.path, item.depth);
+      continue;
+    }
+    if (!isRecord(item.schema)) {
+      markMalformedSchema(accumulator, tool, item.path, 'Schema node must be an object or boolean.');
+      continue;
+    }
+    if (ancestors.has(item.schema)) {
+      markMalformedSchema(accumulator, tool, item.path, 'Circular schema reference cannot be serialized as JSON.');
+      continue;
+    }
+
+    const current = item.schema;
+    ancestors.add(current);
+    accumulator.schemaNodeCount += 1;
+    recordSchemaDepth(accumulator, tool, item.path, item.depth);
+    const childrenToVisit: Array<{ schema: unknown; path: string }> = [];
+    const maximumChildren = Math.max(
+      0,
+      SCHEMA_NODE_LIMIT - accumulator.schemaNodeCount - scheduledVisitCount
+    );
+    const addChild = (child: { schema: unknown; path: string }): void => {
+      if (childrenToVisit.length >= maximumChildren) {
+        markNodeLimit(tool, child.path);
+        return;
+      }
+      childrenToVisit.push(child);
+      scheduledVisitCount += 1;
+    };
+
+    if (
+      current.type !== undefined
+      && typeof current.type !== 'string'
+      && !(Array.isArray(current.type) && current.type.every((type) => typeof type === 'string'))
+    ) {
+      markMalformedSchema(accumulator, tool, `${item.path}.type`, 'Schema type must be a string or string array.');
+    }
+
+    const properties = current.properties;
+    const objectLike = current.type === 'object' || isRecord(properties);
+    if (properties !== undefined && !isRecord(properties)) {
+      markMalformedSchema(accumulator, tool, `${item.path}.properties`, 'Schema properties must be an object.');
+    }
+
+    const requiredValue = current.required;
+    const validRequired = requiredValue === undefined
+      || (Array.isArray(requiredValue) && requiredValue.every((name) => typeof name === 'string'));
+    if (!validRequired) {
+      markMalformedSchema(accumulator, tool, `${item.path}.required`, 'Schema required must be an array of property names.');
+    }
+    const required = new Set<string>(validRequired && Array.isArray(requiredValue) ? requiredValue : []);
+
+    let propertyNames: string[] = [];
+    if (isRecord(properties)) {
+      const boundedProperties = boundedOwnKeys(properties, maximumChildren);
+      propertyNames = boundedProperties.keys;
+      if (boundedProperties.truncated) markNodeLimit(tool, `${item.path}.properties`);
+      const width = propertyNames.length;
+      accumulator.maximumWidth = Math.max(accumulator.maximumWidth, width);
+      if (width > 0) {
+        accumulator.widthEvidence.push(evidence(
+          tool.displayName,
+          displayPath(item.path),
+          `Object declares ${width} properties.`
+        ));
+      }
+      accumulator.propertyCount += width;
+
+      for (const requiredName of required) {
+        if (!Object.prototype.hasOwnProperty.call(properties, requiredName)) {
+          markMalformedSchema(
+            accumulator,
+            tool,
+            `${item.path}.required`,
+            `Required property "${schemaPathSegment(requiredName)}" is not declared in properties.`
+          );
+        }
+      }
+
+      for (const propertyName of propertyNames) {
+        const propertySchema = properties[propertyName];
+        if (required.has(propertyName)) accumulator.requiredPropertyCount += 1;
+        else accumulator.optionalPropertyCount += 1;
+        if (!isRecord(propertySchema) || typeof propertySchema.description !== 'string' || !propertySchema.description.trim()) {
+          accumulator.propertiesMissingDescriptions += 1;
+          accumulator.missingDescriptionEvidence.push(evidence(
+            tool.displayName,
+            `${item.path}.properties.${schemaPathSegment(propertyName)}`,
+            `Property "${schemaPathSegment(propertyName)}" has no description.`
+          ));
+        }
+        addChild({
+          schema: propertySchema,
+          path: `${item.path}.properties.${schemaPathSegment(propertyName)}`,
+        });
+      }
+    }
+
+    const hasStringType = current.type === 'string'
+      || (Array.isArray(current.type) && current.type.includes('string'));
+    if (hasStringType) {
+      const hasConstraint = [
+        'const',
+        'enum',
+        'format',
+        'maxLength',
+        'minLength',
+        'pattern',
+      ].some((key) => current[key] !== undefined);
+      if (!hasConstraint) {
+        accumulator.unconstrainedStringCount += 1;
+        accumulator.unconstrainedEvidence.push(evidence(
+          tool.displayName,
+          displayPath(item.path),
+          'String accepts arbitrary text without a format, pattern, length, enum, or const constraint.'
+        ));
+      }
+    }
+
+    if (objectLike && (!isRecord(properties) || propertyNames.length === 0)) {
+      if (current.additionalProperties !== false) {
+        accumulator.unconstrainedObjectCount += 1;
+        accumulator.unconstrainedEvidence.push(evidence(
+          tool.displayName,
+          displayPath(item.path),
+          'Object accepts unspecified fields and declares no properties.'
+        ));
+      }
+    }
+
+    for (const key of ['items', 'contains'] as const) {
+      if (current[key] !== undefined) {
+        addChild({ schema: current[key], path: `${item.path}.${key}` });
+      }
+    }
+    if (typeof current.additionalProperties === 'object' && current.additionalProperties !== null) {
+      addChild({
+        schema: current.additionalProperties,
+        path: `${item.path}.additionalProperties`,
+      });
+    }
+    for (const key of ['not', 'if', 'then', 'else'] as const) {
+      if (current[key] !== undefined) {
+        addChild({ schema: current[key], path: `${item.path}.${key}` });
+      }
+    }
+
+    for (const keyword of ['allOf', 'anyOf', 'oneOf', 'prefixItems'] as const) {
+      const keywordChildren = current[keyword];
+      if (keywordChildren === undefined) continue;
+      if (!Array.isArray(keywordChildren)) {
+        markMalformedSchema(accumulator, tool, `${item.path}.${keyword}`, `${keyword} must be an array.`);
+        continue;
+      }
+      const retainedLength = Math.min(
+        keywordChildren.length,
+        Math.max(0, maximumChildren - childrenToVisit.length)
       );
+      for (let index = 0; index < retainedLength; index += 1) {
+        addChild({
+          schema: keywordChildren[index],
+          path: `${item.path}.${keyword}[${index}]`,
+        });
+      }
+      if (retainedLength < keywordChildren.length) {
+        markNodeLimit(tool, `${item.path}.${keyword}[${retainedLength}]`);
+      }
+    }
+
+    for (const keyword of ['$defs', 'definitions', 'dependentSchemas', 'patternProperties'] as const) {
+      const keywordChildren = current[keyword];
+      if (keywordChildren === undefined) continue;
+      if (!isRecord(keywordChildren)) {
+        markMalformedSchema(accumulator, tool, `${item.path}.${keyword}`, `${keyword} must be an object.`);
+        continue;
+      }
+      const boundedChildren = boundedOwnKeys(
+        keywordChildren,
+        Math.max(0, maximumChildren - childrenToVisit.length)
+      );
+      for (const key of boundedChildren.keys) {
+        addChild({
+          schema: keywordChildren[key],
+          path: `${item.path}.${keyword}.${schemaPathSegment(key)}`,
+        });
+      }
+      if (boundedChildren.truncated) markNodeLimit(tool, `${item.path}.${keyword}`);
+    }
+
+    work.push({ kind: 'exit', schema: current });
+    for (let index = childrenToVisit.length - 1; index >= 0; index -= 1) {
+      const child = childrenToVisit[index];
+      work.push({ kind: 'visit', schema: child.schema, path: child.path, depth: item.depth + 1 });
     }
   }
-
-  const hasStringType = schema.type === 'string'
-    || (Array.isArray(schema.type) && schema.type.includes('string'));
-  if (hasStringType) {
-    const hasConstraint = [
-      'const',
-      'enum',
-      'format',
-      'maxLength',
-      'minLength',
-      'pattern',
-    ].some((key) => schema[key] !== undefined);
-    if (!hasConstraint) {
-      accumulator.unconstrainedStringCount += 1;
-      accumulator.unconstrainedEvidence.push(evidence(
-        tool.displayName,
-        displayPath(path),
-        'String accepts arbitrary text without a format, pattern, length, enum, or const constraint.'
-      ));
-    }
-  }
-
-  if (objectLike && (!isRecord(properties) || Object.keys(properties).length === 0)) {
-    if (schema.additionalProperties !== false) {
-      accumulator.unconstrainedObjectCount += 1;
-      accumulator.unconstrainedEvidence.push(evidence(
-        tool.displayName,
-        displayPath(path),
-        'Object accepts unspecified fields and declares no properties.'
-      ));
-    }
-  }
-
-  const visitChild = (key: string, child: unknown): void => {
-    if (child !== undefined) {
-      visitSchema(child, tool, `${path}.${key}`, depth + 1, accumulator, ancestors);
-    }
-  };
-  visitChild('items', schema.items);
-  visitChild('contains', schema.contains);
-  visitChild('additionalProperties', typeof schema.additionalProperties === 'object'
-    ? schema.additionalProperties
-    : undefined);
-  visitChild('not', schema.not);
-  visitChild('if', schema.if);
-  visitChild('then', schema.then);
-  visitChild('else', schema.else);
-
-  for (const keyword of ['allOf', 'anyOf', 'oneOf', 'prefixItems'] as const) {
-    const children = schema[keyword];
-    if (children === undefined) continue;
-    if (!Array.isArray(children)) {
-      markMalformedSchema(accumulator, tool, `${path}.${keyword}`, `${keyword} must be an array.`);
-      continue;
-    }
-    children.forEach((child, index) => {
-      visitSchema(child, tool, `${path}.${keyword}[${index}]`, depth + 1, accumulator, ancestors);
-    });
-  }
-
-  for (const keyword of ['$defs', 'definitions', 'dependentSchemas', 'patternProperties'] as const) {
-    const children = schema[keyword];
-    if (children === undefined) continue;
-    if (!isRecord(children)) {
-      markMalformedSchema(accumulator, tool, `${path}.${keyword}`, `${keyword} must be an object.`);
-      continue;
-    }
-    for (const key of Object.keys(children).sort(compareText)) {
-      visitSchema(children[key], tool, `${path}.${keyword}.${key}`, depth + 1, accumulator, ancestors);
-    }
-  }
-
-  ancestors.delete(schema);
 };
 
 const findDuplicateGroups = (
@@ -671,23 +969,57 @@ const findDuplicateGroups = (
     .sort((left, right) => compareText(left.join('\u0000'), right.join('\u0000')));
 };
 
+const duplicateGroupLabel = (group: readonly string[]): string => {
+  const retained = group.slice(0, EVIDENCE_LIMIT).join(', ');
+  return group.length <= EVIDENCE_LIMIT
+    ? retained
+    : `${retained}, … (${group.length - EVIDENCE_LIMIT} more)`;
+};
+
 const findOverlappingPairs = (
   tools: readonly ToolRecord[],
   select: (tool: ToolRecord) => string | null,
   stopWords: Set<string>,
   threshold: number,
   minimumOverlap: number
-): PairEvidence[] => {
+): PairAnalysis => {
   const values = tools
     .map((tool) => {
       const selected = select(tool);
       return selected ? { tool, normalized: normalizeText(selected), tokens: similarityTokens(selected, stopWords) } : null;
     })
-    .filter((value): value is NonNullable<typeof value> => Boolean(value));
-  const pairs: PairEvidence[] = [];
+    .filter((value): value is NonNullable<typeof value> => Boolean(value))
+    .sort((left, right) => (
+      compareText(left.normalized, right.normalized)
+        || compareText(left.tool.displayName, right.tool.displayName)
+    ));
+  const retainedPairs: PairEvidence[] = [];
+  let comparisonCount = 0;
+  let pairCount = 0;
+
+  const pairOrder = (left: PairEvidence, right: PairEvidence): number => (
+    compareText(`${left.left}, ${left.right}`, `${right.left}, ${right.right}`)
+      || compareText(String(left.score), String(right.score))
+  );
+
+  const retainPair = (pair: PairEvidence): void => {
+    const insertionIndex = retainedPairs.findIndex((retained) => pairOrder(pair, retained) < 0);
+    if (insertionIndex === -1) retainedPairs.push(pair);
+    else retainedPairs.splice(insertionIndex, 0, pair);
+    if (retainedPairs.length > OVERLAP_PAIR_RETENTION_LIMIT) retainedPairs.pop();
+  };
 
   for (let leftIndex = 0; leftIndex < values.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < values.length; rightIndex += 1) {
+      if (comparisonCount >= SIMILARITY_COMPARISON_LIMIT) {
+        return {
+          comparisonCount,
+          comparisonLimitReached: true,
+          pairCount,
+          retainedPairs,
+        };
+      }
+      comparisonCount += 1;
       const left = values[leftIndex];
       const right = values[rightIndex];
       if (left.normalized === right.normalized) continue;
@@ -695,16 +1027,18 @@ const findOverlappingPairs = (
       if (similarity.overlap >= minimumOverlap && similarity.score >= threshold) {
         const names = [left.tool.displayName, right.tool.displayName]
           .sort(compareText);
-        pairs.push({ left: names[0], right: names[1], score: round(similarity.score, 3) });
+        pairCount += 1;
+        retainPair({ left: names[0], right: names[1], score: round(similarity.score, 3) });
       }
     }
   }
 
-  return pairs.sort((left, right) => (
-    compareText(left.left, right.left)
-      || compareText(left.right, right.right)
-      || right.score - left.score
-  ));
+  return {
+    comparisonCount,
+    comparisonLimitReached: false,
+    pairCount,
+    retainedPairs,
+  };
 };
 
 const isNegatedAction = (tokens: readonly string[], index: number): boolean => {
@@ -720,7 +1054,10 @@ const isActionUseOfArchive = (tokens: readonly string[], index: number): boolean
   if (rawToken === 'archives' || rawToken === 'archiving') return true;
 
   const previous = tokens[index - 1];
-  if (previous === 'and' || previous === 'or' || previous === 'then' || previous === 'to') {
+  if (
+    index === 0
+    || ['and', 'can', 'may', 'must', 'or', 'should', 'then', 'to', 'will'].includes(previous)
+  ) {
     return true;
   }
 
@@ -729,7 +1066,7 @@ const isActionUseOfArchive = (tokens: readonly string[], index: number): boolean
     return false;
   }
   if (previous === 'a' || previous === 'an' || previous === 'the') return false;
-  return true;
+  return false;
 };
 
 const actionSignals = (tool: ToolRecord): { write: string[]; destructive: string[] } => {
@@ -814,27 +1151,30 @@ const contextSeverity = (toolCount: number, tokenCount: number): ToolSurfaceSeve
  */
 export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurfaceAnalysisV1 {
   const extracted = extractTools(input);
-  const tools = extracted.tools.map(normalizeTool);
+  const analyzedRawTools = extracted.tools.slice(0, TOOL_ANALYSIS_LIMIT);
+  const tools = analyzedRawTools.map(normalizeTool);
+  const omittedToolCount = extracted.tools.length - analyzedRawTools.length;
   const findings = emptyFindings();
 
-  const canonicalDefinitions = tools
-    .map((tool) => canonicalStringify(tool.raw))
-    .sort(compareText);
-  const serializedDefinitions = tools.length > 0 ? `[${canonicalDefinitions.join(',')}]` : '';
-  const serializedDefinitionBytes = utf8ByteLength(serializedDefinitions);
+  const canonicalDefinitions = canonicalizeCollection(tools.map((tool) => tool.raw), '');
+  const serializedDefinitions = canonicalDefinitions.serialized;
+  const serializedDefinitionBytes = canonicalDefinitions.truncationReasons.has('bytes')
+    ? CANONICAL_BYTE_LIMIT
+    : utf8ByteLength(serializedDefinitions);
   const estimatedContextTokens = serializedDefinitionBytes === 0
     ? 0
     : Math.ceil(serializedDefinitionBytes / 4);
 
-  const fingerprintEntries = tools
-    .map((tool) => canonicalStringify({
-      description: tool.description,
+  const fingerprintResult = canonicalizeCollection(tools
+    .map((tool) => ({
+      description: tool.textTruncated && isRecord(tool.raw)
+        ? tool.raw.description
+        : tool.description,
       inputSchema: tool.inputSchema,
-      name: tool.name,
+      name: tool.textTruncated && isRecord(tool.raw) ? tool.raw.name : tool.name,
       outputSchema: tool.outputSchema,
-    }))
-    .sort(compareText);
-  const canonicalFingerprint = `[${fingerprintEntries.join(',')}]`;
+    })), '[]');
+  const canonicalFingerprint = fingerprintResult.serialized;
 
   const malformedToolEvidence: ToolSurfaceEvidenceV1[] = [];
   for (const tool of tools) {
@@ -890,6 +1230,9 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     missingDescriptionEvidence: [],
     depthEvidence: [],
     widthEvidence: [],
+    depthLimitReached: false,
+    nodeLimitReached: false,
+    budgetEvidence: [],
   };
 
   for (const tool of tools) {
@@ -905,7 +1248,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
         'MCP tool inputSchema must declare type "object".'
       );
     }
-    visitSchema(tool.inputSchema, tool, '$.inputSchema', 1, schemaAccumulator, new Set());
+    visitSchema(tool.inputSchema, tool, '$.inputSchema', 1, schemaAccumulator);
   }
 
   const duplicateNameGroups = findDuplicateGroups(tools, (tool) => tool.name);
@@ -924,6 +1267,54 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     0.85,
     4
   );
+
+  const budgetEvidence: ToolSurfaceEvidenceV1[] = [];
+  if (omittedToolCount > 0) {
+    budgetEvidence.push(evidence(
+      '<surface>',
+      '$.tools',
+      `Analyzed ${tools.length} of ${extracted.tools.length} tools; ${omittedToolCount} were omitted by the deterministic tool limit of ${TOOL_ANALYSIS_LIMIT}.`
+    ));
+  }
+  const truncatedTextCount = tools.filter((tool) => tool.textTruncated).length;
+  if (truncatedTextCount > 0) {
+    budgetEvidence.push(evidence(
+      '<surface>',
+      '$.tools[*].name|description',
+      `Text analysis used at most ${TEXT_ANALYSIS_CHARACTER_LIMIT} characters for ${truncatedTextCount} tools; canonical serialization retained its independent byte budget.`
+    ));
+  }
+  const canonicalReasons = new Set([
+    ...canonicalDefinitions.truncationReasons,
+    ...fingerprintResult.truncationReasons,
+  ]);
+  if (canonicalReasons.size > 0 || canonicalDefinitions.omittedValueCount > 0 || fingerprintResult.omittedValueCount > 0) {
+    const limits = [
+      canonicalReasons.has('depth') ? `depth ${CANONICAL_DEPTH_LIMIT}` : null,
+      canonicalReasons.has('nodes') ? `${CANONICAL_NODE_LIMIT} nodes` : null,
+      canonicalReasons.has('bytes') ? `${CANONICAL_BYTE_LIMIT} bytes` : null,
+    ].filter((limit): limit is string => Boolean(limit));
+    budgetEvidence.push(evidence(
+      '<surface>',
+      '$.tools',
+      `Canonical serialization was truncated at deterministic ${limits.join(', ')} limit${limits.length === 1 ? '' : 's'}; the fingerprint covers the retained canonical representation only.`
+    ));
+  }
+  budgetEvidence.push(...schemaAccumulator.budgetEvidence);
+  if (overlappingNames.comparisonLimitReached) {
+    budgetEvidence.push(evidence(
+      '<surface>',
+      '$.tools[*].name',
+      `Name similarity stopped after ${overlappingNames.comparisonCount} comparisons (limit ${SIMILARITY_COMPARISON_LIMIT}); ${overlappingNames.pairCount} overlaps were observed and at most ${OVERLAP_PAIR_RETENTION_LIMIT} pairs were retained.`
+    ));
+  }
+  if (overlappingDescriptions.comparisonLimitReached) {
+    budgetEvidence.push(evidence(
+      '<surface>',
+      '$.tools[*].description',
+      `Description similarity stopped after ${overlappingDescriptions.comparisonCount} comparisons (limit ${SIMILARITY_COMPARISON_LIMIT}); ${overlappingDescriptions.pairCount} overlaps were observed and at most ${OVERLAP_PAIR_RETENTION_LIMIT} pairs were retained.`
+    ));
+  }
 
   const writeSignals: Array<{ tool: ToolRecord; actions: string[] }> = [];
   const destructiveSignals: Array<{ tool: ToolRecord; actions: string[] }> = [];
@@ -967,6 +1358,19 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     });
   }
 
+  if (budgetEvidence.length > 0) {
+    addFinding(findings, {
+      id: 'analysis.incomplete-budget',
+      category: 'availability',
+      severity: 'medium',
+      kind: 'review-signal',
+      title: 'Analysis was truncated by deterministic budgets',
+      summary: 'One or more deterministic safety budgets were reached, so metrics and the fingerprint describe only the analyzed portion of this tool surface.',
+      evidence: budgetEvidence,
+      remediation: 'Reduce or partition the tool surface and simplify oversized schemas, then analyze each bounded subset separately.',
+    });
+  }
+
   if (malformedToolEvidence.length > 0 || schemaAccumulator.malformedEvidence.length > 0) {
     addFinding(findings, {
       id: 'schema.malformed-definitions',
@@ -980,16 +1384,27 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     });
   }
 
-  const surfaceSeverity = contextSeverity(tools.length, estimatedContextTokens);
+  const surfaceSeverity = contextSeverity(extracted.tools.length, estimatedContextTokens);
   if (surfaceSeverity) {
+    const serializationIncomplete = canonicalDefinitions.truncationReasons.size > 0
+      || canonicalDefinitions.omittedValueCount > 0
+      || omittedToolCount > 0;
     addFinding(findings, {
       id: 'context.large-tool-surface',
       category: 'context-cost',
       severity: surfaceSeverity,
       kind: 'measurement',
       title: 'Large tool surface increases context cost',
-      summary: `${tools.length} definitions serialize to ${serializedDefinitionBytes} bytes (approximately ${estimatedContextTokens} tokens at four UTF-8 bytes per token).`,
-      evidence: [evidence('<surface>', '$.tools', `${tools.length} tools; ${serializedDefinitionBytes} serialized bytes.`)],
+      summary: serializationIncomplete
+        ? `${extracted.tools.length} definitions reached ${serializedDefinitionBytes} analyzed bytes (approximately ${estimatedContextTokens} tokens at four UTF-8 bytes per token) before deterministic analysis limits were applied.`
+        : `${extracted.tools.length} definitions serialize to ${serializedDefinitionBytes} bytes (approximately ${estimatedContextTokens} tokens at four UTF-8 bytes per token).`,
+      evidence: [evidence(
+        '<surface>',
+        '$.tools',
+        serializationIncomplete
+          ? `${extracted.tools.length} tools; at least ${serializedDefinitionBytes} analyzed serialized bytes before truncation.`
+          : `${extracted.tools.length} tools; ${serializedDefinitionBytes} serialized bytes.`
+      )],
       remediation: 'Expose only task-relevant tools, shorten redundant descriptions, and consider capability discovery or namespaced subsets.',
     });
   }
@@ -1112,50 +1527,52 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     });
   }
 
-  if (duplicateNameGroups.length > 0 || overlappingNames.length > 0) {
+  if (duplicateNameGroups.length > 0 || overlappingNames.pairCount > 0) {
     addFinding(findings, {
       id: 'ambiguity.names',
       category: 'ambiguity',
       severity: duplicateNameGroups.length > 0 ? 'high' : 'medium',
       kind: 'quality-signal',
       title: 'Tool names are duplicate or highly overlapping',
-      summary: `${duplicateNameGroups.length} duplicate-name groups and ${overlappingNames.length} highly overlapping name pairs were found.`,
+      summary: `${duplicateNameGroups.length} duplicate-name groups and ${overlappingNames.pairCount} highly overlapping name pairs were found${overlappingNames.comparisonLimitReached ? ' before the comparison budget was reached' : ''}.`,
       evidence: [
         ...duplicateNameGroups.map((group) => evidence(
-          group.join(', '),
+          duplicateGroupLabel(group),
           '$.name',
           `Duplicate normalized name shared by ${group.length} definitions.`
         )),
-        ...overlappingNames.map((pair) => evidence(
+        ...overlappingNames.retainedPairs.map((pair) => evidence(
           `${pair.left}, ${pair.right}`,
           '$.name',
           `Name token similarity is ${pair.score}.`
         )),
       ],
+      omittedEvidenceCount: overlappingNames.pairCount - overlappingNames.retainedPairs.length,
       remediation: 'Give every tool a unique action-and-target name and encode the meaningful distinction in the name, not only the description.',
     });
   }
 
-  if (duplicateDescriptionGroups.length > 0 || overlappingDescriptions.length > 0) {
+  if (duplicateDescriptionGroups.length > 0 || overlappingDescriptions.pairCount > 0) {
     addFinding(findings, {
       id: 'ambiguity.descriptions',
       category: 'ambiguity',
       severity: 'medium',
       kind: 'quality-signal',
       title: 'Descriptions do not clearly distinguish tools',
-      summary: `${duplicateDescriptionGroups.length} duplicate-description groups and ${overlappingDescriptions.length} highly overlapping description pairs were found.`,
+      summary: `${duplicateDescriptionGroups.length} duplicate-description groups and ${overlappingDescriptions.pairCount} highly overlapping description pairs were found${overlappingDescriptions.comparisonLimitReached ? ' before the comparison budget was reached' : ''}.`,
       evidence: [
         ...duplicateDescriptionGroups.map((group) => evidence(
-          group.join(', '),
+          duplicateGroupLabel(group),
           '$.description',
           `Identical normalized description shared by ${group.length} definitions.`
         )),
-        ...overlappingDescriptions.map((pair) => evidence(
+        ...overlappingDescriptions.retainedPairs.map((pair) => evidence(
           `${pair.left}, ${pair.right}`,
           '$.description',
           `Description token similarity is ${pair.score}.`
         )),
       ],
+      omittedEvidenceCount: overlappingDescriptions.pairCount - overlappingDescriptions.retainedPairs.length,
       remediation: 'State each tool’s distinct intent, scope, side effects, and selection boundary in its description.',
     });
   }
@@ -1227,7 +1644,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     version: TOOL_SURFACE_ANALYSIS_VERSION,
     metrics: {
       toolListStatus: extracted.status,
-      toolCount: tools.length,
+      toolCount: extracted.tools.length,
       validToolCount: tools.filter((tool) => tool.valid).length,
       malformedToolCount: tools.filter((tool) => !tool.valid).length,
       resourceCount: extracted.resourceCount,
@@ -1263,9 +1680,9 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       },
       ambiguity: {
         duplicateNameGroupCount: duplicateNameGroups.length,
-        overlappingNamePairCount: overlappingNames.length,
+        overlappingNamePairCount: overlappingNames.pairCount,
         duplicateDescriptionGroupCount: duplicateDescriptionGroups.length,
-        overlappingDescriptionPairCount: overlappingDescriptions.length,
+        overlappingDescriptionPairCount: overlappingDescriptions.pairCount,
       },
       riskSignals: {
         writeCapabilityToolCount: writeSignals.length,

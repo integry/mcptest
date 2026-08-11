@@ -439,6 +439,97 @@ describe('analyzeToolSurface', () => {
       .toBe('remove_cached_result');
   });
 
+  it('truncates 5,000-level schemas deterministically without recursive overflow', () => {
+    let inputSchema: Record<string, unknown> = { type: 'string' };
+    for (let level = 0; level < 5_000; level += 1) {
+      inputSchema = {
+        type: 'object',
+        properties: { child: inputSchema },
+        required: ['child'],
+      };
+    }
+    const tools = [{
+      name: 'inspect_deep_payload',
+      description: 'Inspects a deeply nested payload without changing server state.',
+      inputSchema,
+    }];
+
+    const analysis = analyzeToolSurface(tools);
+    const repeated = analyzeToolSurface(tools);
+    const budgetFinding = finding(analysis, 'analysis.incomplete-budget');
+
+    expect(analysis.metrics.schemas).toMatchObject({
+      maximumDepth: 64,
+      schemaNodeCount: 64,
+    });
+    expect(budgetFinding?.summary).toContain('deterministic safety budgets');
+    expect(budgetFinding?.evidence.some((item) => item.detail.includes('depth limit of 64')))
+      .toBe(true);
+    expect(budgetFinding?.evidence.some((item) => item.detail.includes('Canonical serialization was truncated')))
+      .toBe(true);
+    expect(repeated.fingerprint).toEqual(analysis.fingerprint);
+    expect(() => JSON.stringify(analysis)).not.toThrow();
+  });
+
+  it('caps canonical and schema traversal by node count', () => {
+    const analysis = analyzeToolSurface([{
+      name: 'inspect_many_schema_nodes',
+      description: 'Inspects a schema with many alternatives without changing state.',
+      inputSchema: {
+        type: 'object',
+        anyOf: Array.from({ length: 100_100 }, () => true),
+      },
+    }]);
+    const budgetFinding = finding(analysis, 'analysis.incomplete-budget');
+
+    expect(analysis.metrics.schemas.schemaNodeCount).toBe(50_000);
+    expect(budgetFinding?.evidence.some((item) => item.detail.includes('after 50000 schema nodes')))
+      .toBe(true);
+    expect(budgetFinding?.evidence.some((item) => item.detail.includes('100000 nodes')))
+      .toBe(true);
+    expect(() => JSON.stringify(analysis)).not.toThrow();
+  });
+
+  it('bounds comparisons and retained overlap pairs on a 2,000-tool surface', () => {
+    const tools = Array.from({ length: 2_000 }, (_, index) => ({
+      name: `inspect_customer_record_${index}`,
+      description: `Inspects customer account profile status detail history settings preferences permissions metadata for record ${index}.`,
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    }));
+
+    const analysis = analyzeToolSurface(tools);
+    const overlapFinding = finding(analysis, 'ambiguity.descriptions');
+    const budgetFinding = finding(analysis, 'analysis.incomplete-budget');
+
+    expect(analysis.metrics.toolCount).toBe(2_000);
+    expect(analysis.metrics.ambiguity.overlappingDescriptionPairCount).toBeLessThanOrEqual(50_000);
+    expect(overlapFinding?.evidence.length).toBeLessThanOrEqual(12);
+    expect(overlapFinding?.omittedEvidenceCount).toBeGreaterThan(40_000);
+    expect(budgetFinding?.evidence).toContainEqual(expect.objectContaining({
+      path: '$.tools[*].description',
+      detail: expect.stringContaining('after 50000 comparisons'),
+    }));
+    expect(JSON.stringify(analysis).length).toBeLessThan(100_000);
+  });
+
+  it('reports tool-count and serialized-size budget exhaustion', () => {
+    const tools = Array.from({ length: 2_001 }, (_, index) => ({
+      name: `read_item_${index}`,
+      description: index === 0 ? 'x'.repeat(2_000_001) : 'Reads one item without changing state.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    }));
+
+    const analysis = analyzeToolSurface(tools);
+    const budgetFinding = finding(analysis, 'analysis.incomplete-budget');
+
+    expect(analysis.metrics.toolCount).toBe(2_001);
+    expect(analysis.metrics.serializedDefinitionBytes).toBe(2_000_000);
+    expect(budgetFinding?.evidence.some((item) => item.detail.includes('deterministic tool limit of 2000')))
+      .toBe(true);
+    expect(budgetFinding?.evidence.some((item) => item.detail.includes('2000000 bytes')))
+      .toBe(true);
+  });
+
   it('flags strong prompt-like text for review while allowing ordinary usage guidance', () => {
     const schema = { type: 'object', properties: {}, additionalProperties: false };
     const analysis = analyzeToolSurface([
