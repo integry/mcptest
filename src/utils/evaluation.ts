@@ -21,6 +21,8 @@ import {
   type PendingAuthenticatedMcpRetry,
 } from './oauthTrace';
 import type { TransportType } from '../types';
+import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
+import { analyzeToolSurface } from './toolSurfaceAnalysis';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
@@ -130,6 +132,8 @@ export interface EvaluationReport {
   outcome?: 'scored' | 'authorization-required' | 'partial' | 'failed';
   finalScore: number;
   sections: Record<string, EvaluationSection>;
+  /** Deterministic analysis of definitions returned by tools/list. */
+  toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
 }
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
@@ -543,6 +547,7 @@ const connectForEvaluation = async (
 interface CapabilityEvaluation {
   section: EvaluationSection;
   targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
+  toolSurfaceAnalysis: ToolSurfaceAnalysisV1;
 }
 
 const evaluateCapabilities = async (
@@ -556,6 +561,7 @@ const evaluateCapabilities = async (
     details: [],
   };
   const targetAuthenticationFailures: CapabilityEvaluation['targetAuthenticationFailures'] = [];
+  const discovered: { tools?: unknown; resources?: unknown; prompts?: unknown } = {};
   const checks: Array<{
     name: string;
     method: string;
@@ -594,6 +600,9 @@ const evaluateCapabilities = async (
       const result = await check.run();
       const durationMs = Date.now() - startedAt;
       const itemCount = check.count(result);
+      if (check.name === 'tools') discovered.tools = (result as { tools?: unknown })?.tools;
+      if (check.name === 'resources') discovered.resources = (result as { resources?: unknown })?.resources;
+      if (check.name === 'prompts') discovered.prompts = (result as { prompts?: unknown })?.prompts;
       section.score += check.points;
       section.details.push({
         text: `✓ ${check.method} succeeded (${itemCount} ${check.name})`,
@@ -633,7 +642,11 @@ const evaluateCapabilities = async (
     }
   }
 
-  return { section, targetAuthenticationFailures };
+  return {
+    section,
+    targetAuthenticationFailures,
+    toolSurfaceAnalysis: analyzeToolSurface(discovered),
+  };
 };
 
 type AuthorizationServerMetadata = NonNullable<
@@ -1064,6 +1077,7 @@ export async function evaluateServer(
       onProgress('OAuth authorization is required before evaluation can continue.');
       return report;
     }
+    report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
 
     const modernTransport = connection.transportType === 'streamable-http';
     report.sections.transport = {

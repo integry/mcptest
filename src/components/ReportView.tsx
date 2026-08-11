@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import OAuthConfig from './OAuthConfig';
 import ReportAuthorizationGate from './ReportAuthorizationGate';
+import ReleaseReadinessReport from './ReleaseReadinessReport';
 import {
   beginOAuthFlow,
   isOAuthClientConfigurationRequired,
@@ -11,9 +12,6 @@ import {
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
-  getEvaluationMaxScore,
-  getEvaluationPercentage,
-  isLegacySkippedEvaluationSection,
   resolveEvaluationOutcome,
   type EvaluationReport,
 } from '../utils/evaluation';
@@ -23,22 +21,7 @@ import {
   type TestedServerHistoryEntry,
   upsertTestedServerHistoryEntry,
 } from '../utils/reportPresentation';
-
-// Helper functions for score display
-const getScoreColor = (score: number): string => {
-  if (score >= 90) return 'success';
-  if (score >= 70) return 'warning';
-  if (score >= 50) return 'info';
-  return 'danger';
-};
-
-const getScoreGrade = (score: number): string => {
-  if (score >= 90) return 'A';
-  if (score >= 80) return 'B';
-  if (score >= 70) return 'C';
-  if (score >= 60) return 'D';
-  return 'F';
-};
+import { getStoredOAuthTrace } from '../utils/oauthTrace';
 
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
@@ -73,6 +56,7 @@ const ReportView: React.FC = () => {
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
   const [oauthAction, setOAuthAction] = useState<'authorize' | 'configure' | null>(null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -240,6 +224,7 @@ const ReportView: React.FC = () => {
     setIsRunning(true);
     isRunningRef.current = true;
     setOAuthError(null);
+    setReportError(null);
     setProgress(['Starting evaluation...']);
     setReport(null);
     
@@ -271,7 +256,9 @@ const ReportView: React.FC = () => {
       }
     } catch (error) {
       console.error('Report error:', error);
-      setProgress(prev => [...prev, `Error: ${(error as Error).message}`]);
+      const message = (error as Error).message;
+      setProgress(prev => [...prev, `Error: ${message}`]);
+      setReportError(message);
       setReport(null);
     } finally {
       setIsRunning(false);
@@ -328,16 +315,14 @@ const ReportView: React.FC = () => {
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required';
-  const reportIsScored = reportOutcome === 'scored';
-  const visibleSections = report && !reportRequiresAuthorization
-    ? Object.entries(report.sections).filter(([key]) => key !== 'auth')
-    : [];
-  const reportMaxScore = report && reportIsScored ? getEvaluationMaxScore(report) : 0;
-  const reportPercentage = report && reportIsScored ? getEvaluationPercentage(report) : 0;
+  const oauthTrace = report && typeof sessionStorage !== 'undefined'
+    ? getStoredOAuthTrace(report.authenticationUrl || report.serverUrl, sessionStorage)
+      || getStoredOAuthTrace(report.serverUrl, sessionStorage)
+    : undefined;
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
-      <h2 className="mb-3">MCP Server Report Card</h2>
+      <h2 className="mb-3">MCP release-readiness report</h2>
       <div className="input-group mb-3">
         <input
           type="text"
@@ -396,20 +381,34 @@ const ReportView: React.FC = () => {
       )}
 
       {isRunning && (
-        <div className="progress mb-3">
-          <div
-            className="progress-bar progress-bar-striped progress-bar-animated"
-            role="progressbar"
-            aria-label="Report progress"
-            aria-valuenow={Math.min(progress.length * 10, 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            style={{ width: `${Math.min(progress.length * 10, 100)}%` }}
-          />
+        <div className="report-state report-state-loading mb-3" role="status" aria-live="polite">
+          <div className="d-flex align-items-center gap-2 mb-2">
+            <span className="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            <strong>Building release-readiness report</strong>
+          </div>
+          <div className="progress">
+            <div
+              className="progress-bar progress-bar-striped progress-bar-animated"
+              role="progressbar"
+              aria-label="Report progress"
+              aria-valuenow={Math.min(progress.length * 10, 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              style={{ width: `${Math.min(progress.length * 10, 100)}%` }}
+            />
+          </div>
+          <span className="visually-hidden">{progress[progress.length - 1] || 'Starting evaluation'}</span>
         </div>
       )}
 
-      {progress.length > 0 && !report && (
+      {reportError && !isRunning && (
+        <div className="report-state report-state-failure mb-3" role="alert">
+          <h3>Report could not be completed</h3>
+          <p className="mb-0">{reportError}</p>
+        </div>
+      )}
+
+      {progress.length > 0 && !report && !reportError && (
         <div className="card mb-3">
           <div className="card-header">Progress</div>
           <ul className="list-group list-group-flush">
@@ -418,30 +417,29 @@ const ReportView: React.FC = () => {
         </div>
       )}
 
+      {!isRunning && !report && progress.length === 0 && !reportError && (
+        <section className="report-state report-state-empty mb-3" aria-labelledby="empty-report-title">
+          <i className="bi bi-clipboard2-check" aria-hidden="true"></i>
+          <div>
+            <h3 id="empty-report-title">No report yet</h3>
+            <p className="mb-0">Enter an MCP server URL to check shipping blockers, client compatibility, OAuth, and tool risk.</p>
+          </div>
+        </section>
+      )}
+
       {report && (
         <div className="card mb-4">
           <div className="card-header">
-            <h4>Report for: {report.serverUrl}</h4>
-            {reportIsScored && (
-              <>
-                <h3 className={`text-${getScoreColor(reportPercentage)}`}>
-                  Final Score: {report.finalScore} / {reportMaxScore} ({Math.round(reportPercentage)}%, grade {getScoreGrade(reportPercentage)})
-                </h3>
-                {!report.sections.security && (
-                  <small className="text-muted">
-                    OAuth security metadata was not included in this run; the base report is scored out of {reportMaxScore} points.
-                  </small>
-                )}
-              </>
-            )}
-            {!reportRequiresAuthorization && !reportIsScored && (
-              <h3 className="text-muted">
-                {reportOutcome === 'partial' ? 'Partial evaluation' : 'Evaluation failed'} — not scored
-              </h3>
-            )}
+            <h4 className="report-target-title mb-0">Report for: {report.serverUrl}</h4>
           </div>
           <div className="card-body">
-            {reportRequiresAuthorization ? (
+            <ReleaseReadinessReport
+              report={report}
+              oauthTrace={oauthTrace}
+              expandedItems={expandedItems}
+              onToggleItem={toggleItemExpanded}
+            />
+            {reportRequiresAuthorization && (
               <ReportAuthorizationGate
                 serverUrl={report.serverUrl}
                 error={oauthError}
@@ -450,102 +448,6 @@ const ReportView: React.FC = () => {
                 onAuthorize={() => startOAuth(report.authenticationUrl || report.serverUrl)}
                 onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
               />
-            ) : (
-              <div className="row g-3">
-              {visibleSections.map(([key, section]) => {
-                const sectionPercentage = section.maxScore > 0
-                  ? section.score / section.maxScore * 100
-                  : 0;
-                const sectionWasScored = section.status !== 'failed'
-                  && section.status !== 'skipped'
-                  && !(!section.status && isLegacySkippedEvaluationSection(section));
-
-                return (
-                <div key={key} className="col-12">
-                  <div className="card h-100 shadow-sm">
-                    <div className="card-header">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <h5 className="mb-0">{section.name}</h5>
-                        {sectionWasScored ? <div className="d-flex align-items-center gap-2">
-                          <span className={`text-${getScoreColor(sectionPercentage)} fw-bold`}>
-                            {section.score} / {section.maxScore} points
-                          </span>
-                          <span className={`badge bg-${getScoreColor(sectionPercentage)}`}>
-                            {Math.round(sectionPercentage)}%
-                          </span>
-                        </div> : <span className="text-muted fw-bold">Not scored</span>}
-                      </div>
-                      <small className="text-muted d-block">{section.description}</small>
-                    </div>
-                    <div className="card-body">
-                      {section.details && (
-                        <div>
-                          {section.details.map((detail: any, i: number) => {
-                            const detailText = typeof detail === 'string' ? detail : detail.text;
-                            const detailContext = typeof detail === 'object' ? detail.context : null;
-                            const detailMetadata = typeof detail === 'object' ? detail.metadata : null;
-                            const isSuccess = detailText.startsWith('✓');
-                            const isError = detailText.startsWith('✗');
-                            const isWarning = detailText.startsWith('⚠');
-                            const itemKey = `${key}-${i}`;
-                            const isExpanded = expandedItems.has(itemKey);
-                            const hasMoreInfo = detailContext || detailMetadata;
-                            
-                            return (
-                              <div key={i} className="mb-3">
-                                <div className={`d-flex align-items-start ${isSuccess ? 'text-success' : isError ? 'text-danger' : 'text-warning'}`}>
-                                  <span style={{ marginRight: '10px', marginTop: '2px' }}>{isSuccess ? '✓' : isError ? '✗' : '⚠'}</span>
-                                  <div className="flex-grow-1">
-                                    {hasMoreInfo ? (
-                                      <button
-                                        type="button"
-                                        className="d-flex align-items-center w-100 text-start border-0 bg-transparent rounded px-1"
-                                        onClick={() => toggleItemExpanded(itemKey)}
-                                        aria-expanded={isExpanded}
-                                        aria-controls={`${itemKey}-details`}
-                                      >
-                                        <span className="flex-grow-1">{detailText.substring(2)}</span>
-                                        <span 
-                                          className="text-muted ms-2" 
-                                          style={{ fontSize: '0.875rem' }}
-                                          aria-hidden="true"
-                                        >
-                                          {isExpanded ? '▼' : '▶'}
-                                        </span>
-                                      </button>
-                                    ) : (
-                                      <div className="px-1">{detailText.substring(2)}</div>
-                                    )}
-                                    {isExpanded && (
-                                      <div id={`${itemKey}-details`} className="mt-2" style={{ marginLeft: '20px' }}>
-                                        {detailContext && (
-                                          <div className="text-muted mb-2" style={{ fontSize: '0.875rem' }}>
-                                            {detailContext}
-                                          </div>
-                                        )}
-                                        {detailMetadata && (
-                                          <div className="bg-light rounded p-2" style={{ fontSize: '0.813rem' }}>
-                                            <strong className="text-muted">Request Details:</strong>
-                                            <pre className="mb-0 mt-1" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                              {JSON.stringify(detailMetadata, null, 2)}
-                                            </pre>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                );
-              })}
-              </div>
             )}
           </div>
         </div>
