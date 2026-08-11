@@ -456,6 +456,58 @@ describe('OAuth flight recorder integration', () => {
     expect(trace?.outcome).toBeUndefined();
   });
 
+  it('keeps a fresh deferred redirect open through callback until the MCP retry completes', async () => {
+    let state = '';
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+        state = await provider.state();
+        await provider.redirectToAuthorization(
+          new URL(`${ISSUER_A}authorize?state=${state}`)
+        );
+        return 'REDIRECT' as const;
+      }),
+      redirect: vi.fn(),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('REDIRECT');
+
+    const redirectedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(redirectedTrace).toMatchObject({
+      authenticatedMcpRetry: { phase: 'awaiting_callback' },
+    });
+    expect(redirectedTrace?.outcome).toBeUndefined();
+    expect(redirectedTrace?.events.some(({ type }) => type === 'terminal_outcome')).toBe(false);
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=callback-code&state=${state}`,
+      { authenticate: vi.fn().mockResolvedValue('AUTHORIZED') }
+    );
+
+    const callbackTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(callbackTrace).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+    expect(callbackTrace?.outcome).toBeUndefined();
+    expect(callbackTrace?.events.some(({ type }) => type === 'terminal_outcome')).toBe(false);
+
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: SERVER_URL,
+      storage: sessionStorage,
+      operation: 'fresh deferred redirect',
+    });
+    expect(retry?.succeed({
+      route: 'direct',
+      result: {
+        url: SERVER_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      },
+    })).toBe(true);
+
+    const completedTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
+    expect(completedTrace?.outcome?.status).toBe('authorized');
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome')).toHaveLength(1);
+  });
+
   it('records successful CIMD selection and authorization redirect', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
 

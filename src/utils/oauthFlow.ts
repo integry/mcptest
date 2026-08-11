@@ -628,7 +628,11 @@ export const beginOAuthFlow = async (
         trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
       }
     } else {
-      if (trace.hasEvent('target_challenge') || trace.hasAuthenticatedMcpRetryState()) {
+      if (
+        options.deferAuthorizedTraceOutcome
+        || trace.hasEvent('target_challenge')
+        || trace.hasAuthenticatedMcpRetryState()
+      ) {
         trace.setAuthenticatedMcpRetryState('awaiting_callback');
       } else {
         trace.terminal('redirected', 'OAuth authorization is awaiting the browser callback.');
