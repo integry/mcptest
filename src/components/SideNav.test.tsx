@@ -100,6 +100,7 @@ describe('SideNav dashboard rows', () => {
       '.server-endpoint-box span',
       '.catalog-filters .form-label',
       '.docs-toc-title',
+      '.first-connection-eyebrow',
     ];
 
     labelSelectors.forEach((selector) => {

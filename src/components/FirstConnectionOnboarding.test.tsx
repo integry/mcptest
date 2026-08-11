@@ -11,6 +11,7 @@ describe('first connection onboarding', () => {
     const container = document.createElement('div');
     container.innerHTML = markup;
 
+    expect(container.querySelector('.first-connection-eyebrow')?.textContent).toBe('MCP Inspector');
     expect(container.querySelector('h1')?.textContent).toBe('Welcome to mcptest.io');
     expect(container.textContent).toContain('inspect, debug, and negotiate');
     expect(container.querySelector('button')?.textContent).toContain('Connect your first server');
