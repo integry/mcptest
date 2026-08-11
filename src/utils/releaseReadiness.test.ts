@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EvaluationReport } from './evaluation';
+import type { OAuthTraceV1 } from './oauthTrace';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
 import {
   createCompatibilityMatrix,
@@ -69,15 +70,28 @@ const evaluatedReport = (overrides: Partial<EvaluationReport> = {}): EvaluationR
 });
 
 describe('release readiness integration', () => {
-  it('builds compatibility facts for a stateless public Streamable HTTP report', () => {
+  it('keeps session behavior unknown when only a protocol era was observed', () => {
     const facts = createObservedServerFacts(evaluatedReport());
 
     expect(facts.transport.kind.value).toBe('streamable-http');
     expect(facts.protocol.era.value).toBe('2026');
-    expect(facts.protocol.sessionBehavior.value).toBe('stateless');
+    expect(facts.protocol.sessionBehavior.value).toBe('unknown');
     expect(facts.authorization.requirement.value).toBe('none');
     expect(facts.capabilities.tools.value).toBe('present');
     expect(facts.environment.directAccess.value).toBe('reachable');
+  });
+
+  it('marks session behavior stateful from observed MCP-Session-Id evidence', () => {
+    const report = evaluatedReport();
+    report.sections.protocol.details[0].metadata = {
+      ...(report.sections.protocol.details[0].metadata as Record<string, unknown>),
+      responseHeaders: { 'MCP-Session-Id': '[REDACTED]' },
+    };
+
+    const sessionBehavior = createObservedServerFacts(report).protocol.sessionBehavior;
+
+    expect(sessionBehavior.value).toBe('stateful');
+    expect(sessionBehavior.evidence[0].description).toContain('MCP-Session-Id');
   });
 
   it.each([
@@ -142,6 +156,55 @@ describe('release readiness integration', () => {
     expect(oauth.protectedResourceMetadata.value).toBe(false);
     expect(oauth.authorizationServerMetadata.value).toBe(false);
     expect(oauth.pkceS256.value).toBe(false);
+  });
+
+  it('keeps operational OAuth trace failures unknown without a conclusive response', () => {
+    const report = evaluatedReport();
+    const trace: OAuthTraceV1 = {
+      version: 1,
+      traceId: 'failed-discovery',
+      targetFingerprint: 'fingerprint',
+      targetUrl: report.serverUrl,
+      startedAt: '2026-08-11T20:02:00.000Z',
+      events: [{
+        sequence: 1,
+        type: 'authorization_server_metadata' as const,
+        outcome: 'failed' as const,
+        timestamp: '2026-08-11T20:02:00.000Z',
+        provenance: 'authorization_server' as const,
+        route: 'direct' as const,
+        explanation: 'The request did not receive an HTTP response.',
+      }],
+    };
+
+    expect(createObservedServerFacts(report, trace).authorization.oauth.authorizationServerMetadata.value)
+      .toBe('unknown');
+  });
+
+  it('describes successful refresh and dynamic-registration observations as established', () => {
+    const report = evaluatedReport();
+    const trace: OAuthTraceV1 = {
+      version: 1,
+      traceId: 'successful-oauth-operations',
+      targetFingerprint: 'fingerprint',
+      targetUrl: report.serverUrl,
+      startedAt: '2026-08-11T20:02:00.000Z',
+      events: ['refresh', 'dynamic_client_registration'].map((type, index) => ({
+        sequence: index + 1,
+        type: type as 'refresh' | 'dynamic_client_registration',
+        outcome: 'succeeded' as const,
+        timestamp: '2026-08-11T20:02:00.000Z',
+        provenance: 'authorization_server' as const,
+        route: 'direct' as const,
+        explanation: `${type} succeeded.`,
+      })),
+    };
+
+    const oauth = createObservedServerFacts(report, trace).authorization.oauth;
+    expect(oauth.refreshTokens.value).toBe(true);
+    expect(oauth.refreshTokens.evidence[0].description).toContain('succeeded');
+    expect(oauth.dynamicRedirectRegistration.value).toBe(true);
+    expect(oauth.dynamicRedirectRegistration.evidence[0].description).toContain('succeeded');
   });
 
   it('derives bearer from a direct target challenge without calling it OAuth', () => {

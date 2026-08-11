@@ -38,6 +38,40 @@ const firstString = (records: Record<string, unknown>[], key: string): string | 
   records.map((record) => record[key]).find((value): value is string => typeof value === 'string')
 );
 
+const canonicalKey = (value: string): string => value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+const containsSessionIdHeader = (value: unknown, seen = new WeakSet<object>()): boolean => {
+  if (!value || typeof value !== 'object' || seen.has(value as object)) return false;
+  seen.add(value as object);
+  if (Array.isArray(value)) return value.some((item) => containsSessionIdHeader(item, seen));
+
+  return Object.entries(value as Record<string, unknown>).some(([key, child]) => (
+    canonicalKey(key) === 'mcpsessionid' || containsSessionIdHeader(child, seen)
+  ));
+};
+
+const sessionBehaviorFact = (
+  records: Record<string, unknown>[]
+): ObservedValueV1<'stateful' | 'stateless'> => {
+  const explicitBehavior = firstString(records, 'sessionBehavior');
+  if (explicitBehavior === 'stateful' || explicitBehavior === 'stateless') {
+    return observed(
+      explicitBehavior,
+      `The evaluation observed ${explicitBehavior} MCP session behavior.`
+    );
+  }
+  if (records.some((record) => containsSessionIdHeader(record))) {
+    return observed(
+      'stateful',
+      'The evaluation observed MCP-Session-Id issuance or use during the transport lifecycle.'
+    );
+  }
+  return observed<'stateful' | 'stateless'>(
+    'unknown',
+    'Session behavior was not established from transport or session-lifecycle evidence.'
+  );
+};
+
 const capabilityFact = (
   report: EvaluationReport,
   method: string
@@ -160,8 +194,16 @@ const oauthBooleanObservation = (
   const securityDetails = report.sections.security?.details || [];
   if (securityDetails.some((detail) => successPattern.test(`${detail.text} ${detail.context || ''}`))
       || traceHas(trace, type, ['succeeded'])) return true;
-  if (securityDetails.some((detail) => failurePattern.test(`${detail.text} ${detail.context || ''}`))
-      || traceHas(trace, type, ['failed'])) return false;
+  if (securityDetails.some((detail) => failurePattern.test(`${detail.text} ${detail.context || ''}`))) {
+    return false;
+  }
+  const conclusiveTraceNegative = trace?.events.some((event) => (
+    event.provenance !== 'authenticated_proxy'
+    && event.type === type
+    && (event.outcome === 'failed' || event.outcome === 'skipped')
+    && (event.response?.status === 404 || event.response?.status === 410)
+  ));
+  if (conclusiveTraceNegative) return false;
   return 'unknown';
 };
 
@@ -205,6 +247,9 @@ export const createObservedServerFacts = (
   if (traceHas(trace, 'dynamic_client_registration')) registrationModes.push('dynamic-client-registration');
   if (traceHas(trace, 'pre_registered_client')) registrationModes.push('pre-registered');
   if (trace?.outcome?.status === 'manual_client_required') registrationModes.push('manual-client-credentials');
+  const refreshTokens = oauthApplies && traceHas(trace, 'refresh') ? true : 'unknown';
+  const dynamicRedirectRegistration = oauthApplies
+    && traceHas(trace, 'dynamic_client_registration') ? true : 'unknown';
   const protocolKnown = protocolEra(protocolVersion, protocolLabel);
   const direct = route === 'direct';
   const proxy = route === 'authenticated proxy';
@@ -230,14 +275,7 @@ export const createObservedServerFacts = (
       version: observed(protocolVersion || 'unknown', protocolVersion
         ? `The server selected MCP ${protocolVersion}.`
         : 'The server did not expose a protocol version.'),
-      sessionBehavior: observed(
-        protocolLabel === 'modern' ? 'stateless' : protocolKnown !== 'unknown' ? 'stateful' : 'unknown',
-        protocolLabel === 'modern'
-          ? 'The 2026 server/discover lifecycle completed without a transport session.'
-          : protocolKnown !== 'unknown'
-            ? 'The initialize lifecycle used stateful compatibility semantics.'
-            : 'Session behavior was not observed.'
-      ),
+      sessionBehavior: sessionBehaviorFact(records),
     },
     authorization: {
       requirement: observed(
@@ -297,15 +335,19 @@ export const createObservedServerFacts = (
           'authorization-server'
         ),
         refreshTokens: observed(
-          oauthApplies && traceHas(trace, 'refresh') ? true : 'unknown',
-          'Refresh-token support was not established by this flight.',
+          refreshTokens,
+          refreshTokens === true
+            ? 'A refresh-token grant succeeded during this OAuth flight.'
+            : 'Refresh-token support was not established by this flight.',
           'authorization-server'
         ),
         redirectPolicy: observed<RedirectPolicy>('unknown', 'The authorization server redirect matching policy was not observed.', 'authorization-server'),
         registeredRedirectUris: observed<readonly string[]>('unknown', 'Registered host callback URIs were not observed.', 'authorization-server'),
         dynamicRedirectRegistration: observed(
-          traceHas(trace, 'dynamic_client_registration') ? true : 'unknown',
-          'Dynamic callback registration was not conclusively observed.',
+          dynamicRedirectRegistration,
+          dynamicRedirectRegistration === true
+            ? 'Dynamic client registration succeeded during this OAuth flight.'
+            : 'Dynamic callback registration was not conclusively observed.',
           'authorization-server'
         ),
       },

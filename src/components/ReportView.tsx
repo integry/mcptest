@@ -22,6 +22,17 @@ import {
   upsertTestedServerHistoryEntry,
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace } from '../utils/oauthTrace';
+import { createObservedServerFacts } from '../utils/releaseReadiness';
+import type { AuthorizationScheme } from '../compatibility';
+
+const STATIC_AUTH_TABS_KEY = 'mcpConnectionTabs';
+
+const firstObservedAuthorizationScheme = (
+  report: EvaluationReport
+): AuthorizationScheme | undefined => {
+  const schemes = createObservedServerFacts(report).authorization.schemes.value;
+  return schemes === 'unknown' ? undefined : schemes[0];
+};
 
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
@@ -252,7 +263,15 @@ const ReportView: React.FC = () => {
       addOrUpdateServer(reportData);
       
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
-        setProgress(prev => [...prev, 'OAuth authorization is required before this server can be scored.']);
+        const scheme = firstObservedAuthorizationScheme(reportData);
+        const requirement = scheme === 'oauth'
+          ? 'OAuth authorization'
+          : scheme === 'bearer'
+            ? 'A bearer token'
+            : scheme === 'api-key'
+              ? 'An API key'
+              : 'Target authorization';
+        setProgress(prev => [...prev, `${requirement} is required before this server can be scored.`]);
       }
     } catch (error) {
       console.error('Report error:', error);
@@ -319,6 +338,45 @@ const ReportView: React.FC = () => {
     ? getStoredOAuthTrace(report.authenticationUrl || report.serverUrl, sessionStorage)
       || getStoredOAuthTrace(report.serverUrl, sessionStorage)
     : undefined;
+  const authorizationSchemes = report
+    ? createObservedServerFacts(report, oauthTrace).authorization.schemes.value
+    : 'unknown';
+  const authorizationScheme = authorizationSchemes === 'unknown'
+    ? undefined
+    : authorizationSchemes[0];
+
+  const openStaticCredentialPath = (scheme: 'bearer' | 'api-key') => {
+    if (!report) return;
+    const targetUrl = report.authenticationUrl || report.serverUrl;
+    const existingValue = localStorage.getItem(STATIC_AUTH_TABS_KEY);
+    let existingTabs: unknown[] = [];
+    try {
+      const parsed = existingValue ? JSON.parse(existingValue) : [];
+      if (Array.isArray(parsed)) existingTabs = parsed;
+    } catch {
+      // Replace malformed local-only tab state with the requested credential tab.
+    }
+    const header = scheme === 'bearer' ? 'Authorization' : 'x-api-key';
+    existingTabs.unshift({
+      id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `report-credential-${Date.now()}`,
+      title: `${scheme === 'bearer' ? 'Bearer' : 'API key'}: ${targetUrl}`,
+      serverUrl: targetUrl,
+      connectionStatus: 'Disconnected',
+      useProxy: true,
+      autoConnect: false,
+      catalogAuthType: scheme === 'bearer' ? 'bearer-token' : 'api-key',
+      catalogRequiredHeaders: [{
+        name: header,
+        required: true,
+        secret: true,
+        description: `Credential required by the ${scheme === 'bearer' ? 'bearer-token' : 'API-key'} challenge observed by the report.`,
+      }],
+    });
+    localStorage.setItem(STATIC_AUTH_TABS_KEY, JSON.stringify(existingTabs));
+    window.location.assign('/');
+  };
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
@@ -439,7 +497,7 @@ const ReportView: React.FC = () => {
               expandedItems={expandedItems}
               onToggleItem={toggleItemExpanded}
             />
-            {reportRequiresAuthorization && (
+            {reportRequiresAuthorization && authorizationScheme === 'oauth' && (
               <ReportAuthorizationGate
                 serverUrl={report.serverUrl}
                 error={oauthError}
@@ -448,6 +506,44 @@ const ReportView: React.FC = () => {
                 onAuthorize={() => startOAuth(report.authenticationUrl || report.serverUrl)}
                 onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
               />
+            )}
+            {reportRequiresAuthorization
+              && (authorizationScheme === 'bearer' || authorizationScheme === 'api-key') && (
+              <section className="report-auth-gate" aria-labelledby="report-static-auth-title">
+                <div className="report-auth-heading">
+                  <div className="report-auth-icon" aria-hidden="true">
+                    <i className="bi bi-key-fill"></i>
+                  </div>
+                  <div>
+                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                      <h3 id="report-static-auth-title" className="mb-0">
+                        {authorizationScheme === 'bearer' ? 'Bearer token' : 'API key'} required
+                      </h3>
+                      <span className="badge text-bg-warning">Not scored</span>
+                    </div>
+                    <p className="mb-0">
+                      Enter the target credential in the playground, then connect to retry the MCP
+                      endpoint. OAuth discovery will not be started for this static credential scheme.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => openStaticCredentialPath(authorizationScheme)}
+                >
+                  Enter {authorizationScheme === 'bearer' ? 'bearer token' : 'API key'}
+                </button>
+              </section>
+            )}
+            {reportRequiresAuthorization && authorizationScheme === undefined && (
+              <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
+                <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
+                <p className="mb-0">
+                  Inspect the target&apos;s challenge or configuration and provide the required
+                  credential before rerunning. OAuth was not started because no OAuth scheme was observed.
+                </p>
+              </section>
             )}
           </div>
         </div>
