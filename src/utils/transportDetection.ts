@@ -179,48 +179,115 @@ const OAUTH_NESTED_URL_QUERY_KEYS = new Set([
   'target',
 ]);
 
+const OAUTH_QUERY_ENCODING_LAYER_LIMIT = 8;
+const OAUTH_RELATIVE_URL_BASE = 'https://oauth-trace.invalid';
+const OAUTH_SENSITIVE_NESTED_ASSIGNMENT_PATTERN = new RegExp(
+  `(?:^|[^a-z0-9_.-])(?:${[...OAUTH_SENSITIVE_CANONICAL_KEYS]
+    .map((key) => [...key].join('[^a-z0-9]*'))
+    .join('|')})\\s*=`,
+  'i'
+);
+
+const canonicalizeOAuthKey = (key: string): string => (
+  key.replace(/[^a-z0-9]/gi, '').toLowerCase()
+);
+
+const decodeAsciiQueryEncodingOnce = (value: string): string => (
+  value.replace(/%([0-7][0-9a-f])/gi, (_match, hex: string) => (
+    String.fromCharCode(Number.parseInt(hex, 16))
+  ))
+);
+
+const containsSensitiveNestedAssignment = (value: string): boolean => {
+  return OAUTH_SENSITIVE_NESTED_ASSIGNMENT_PATTERN.test(value);
+};
+
+/**
+ * Allowlisted context is still untrusted. Inspect each supported percent-
+ * encoding layer before retaining it; inputs nested beyond the limit are
+ * redacted instead of being copied without inspection.
+ */
+const sanitizeOAuthContextValue = (value: string, redacted: string): string => {
+  let decoded = value;
+  for (let depth = 0; depth <= OAUTH_QUERY_ENCODING_LAYER_LIMIT; depth += 1) {
+    if (containsSensitiveNestedAssignment(decoded)) return redacted;
+    const next = decodeAsciiQueryEncodingOnce(decoded);
+    if (next === decoded) return value;
+    decoded = next;
+  }
+  return redacted;
+};
+
 /**
  * Trace URLs use an allowlist: only routing context and recursively sanitized
  * nested URLs retain values. Every extension parameter is redacted by default.
  */
 const getOAuthQueryValuePolicy = (key: string): OAuthQueryValuePolicy => {
-  const canonicalKey = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const canonicalKey = canonicalizeOAuthKey(key);
   if (OAUTH_NESTED_URL_QUERY_KEYS.has(canonicalKey)) return 'nested_url';
   if (OAUTH_SAFE_CONTEXT_QUERY_KEYS.has(canonicalKey)) return 'safe_context';
   return 'redact';
 };
 
+const sanitizeOAuthUrlQueryValuesAtDepth = (
+  value: string | URL,
+  redacted: string,
+  depth: number,
+  allowRelative: boolean
+): string => {
+  const rawValue = String(value);
+  let url: URL;
+  let relativePath: string | undefined;
+
+  try {
+    url = new URL(rawValue);
+  } catch {
+    if (!allowRelative || rawValue.startsWith('//')) return redacted;
+    try {
+      url = new URL(rawValue, OAUTH_RELATIVE_URL_BASE);
+      if (url.origin !== OAUTH_RELATIVE_URL_BASE) return redacted;
+      relativePath = rawValue.split(/[?#]/, 1)[0];
+      if (!relativePath && !rawValue.startsWith('?')) return redacted;
+      if (sanitizeOAuthContextValue(relativePath, redacted) === redacted) return redacted;
+    } catch {
+      return redacted;
+    }
+  }
+
+  if (url.username) url.username = redacted;
+  if (url.password) url.password = redacted;
+  url.hash = '';
+
+  for (const [key, queryValue] of [...url.searchParams.entries()]) {
+    const policy = getOAuthQueryValuePolicy(key);
+    if (policy === 'safe_context') {
+      url.searchParams.set(key, sanitizeOAuthContextValue(queryValue, redacted));
+    } else if (policy === 'nested_url') {
+      const canonicalKey = canonicalizeOAuthKey(key);
+      url.searchParams.set(
+        key,
+        depth >= OAUTH_QUERY_ENCODING_LAYER_LIMIT
+          ? redacted
+          : sanitizeOAuthUrlQueryValuesAtDepth(
+            queryValue,
+            redacted,
+            depth + 1,
+            canonicalKey === 'redirecturi'
+          )
+      );
+    } else {
+      url.searchParams.set(key, redacted);
+    }
+  }
+
+  if (relativePath !== undefined) return `${relativePath}${url.search}`;
+  return url.toString();
+};
+
 export const sanitizeOAuthUrlQueryValues = (
   value: string | URL,
   redacted = '[REDACTED]'
-): string => {
-  try {
-    const url = new URL(String(value));
-    if (url.username) url.username = redacted;
-    if (url.password) url.password = redacted;
-    url.hash = '';
-
-    for (const [key, queryValue] of [...url.searchParams.entries()]) {
-      const policy = getOAuthQueryValuePolicy(key);
-      if (policy === 'safe_context') continue;
-      if (policy === 'nested_url') {
-        try {
-          new URL(queryValue);
-          url.searchParams.set(key, sanitizeOAuthUrlQueryValues(queryValue, redacted));
-        } catch {
-          // A non-URL target/resource is still routing context rather than
-          // arbitrary authentication metadata.
-          url.searchParams.set(key, queryValue);
-        }
-      } else {
-        url.searchParams.set(key, redacted);
-      }
-    }
-    return url.toString();
-  } catch {
-    return redacted;
-  }
-};
+): string => sanitizeOAuthUrlQueryValuesAtDepth(value, redacted, 0, false);
 
 const sanitizeChallengeMetadataUrl = (value: string): string => (
   sanitizeOAuthUrlQueryValues(value)

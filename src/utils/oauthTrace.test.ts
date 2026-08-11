@@ -179,6 +179,41 @@ describe('OAuth flight recorder core', () => {
     expect(JSON.stringify(getStoredOAuthTrace(target, sessionStorage))).not.toContain('custom-secret');
   });
 
+  it('redacts sensitive assignments hidden in allowlisted nested query values', () => {
+    const url = new URL('https://proxy.example/connect');
+    url.searchParams.set('operation', 'initialize&access_token=operation-secret');
+    url.searchParams.set('tenant', 'acme%2526client%255Fsecret%253Dtenant-secret');
+    url.searchParams.set('target', 'not-a-url&refresh_token=target-secret');
+    url.searchParams.set('resource', 'resource-scope%26code%3Dresource-secret');
+    url.searchParams.set(
+      'redirect_uri',
+      '/oauth/callback?code=redirect-secret&operation=complete%26state%3Dnested-secret'
+    );
+
+    const sanitized = sanitizeOAuthTraceUrl(url);
+    const params = new URL(sanitized).searchParams;
+    const redirectUri = params.get('redirect_uri') || '';
+
+    expect(params.get('operation')).toBe(OAUTH_TRACE_REDACTED);
+    expect(params.get('tenant')).toBe(OAUTH_TRACE_REDACTED);
+    expect(params.get('target')).toBe(OAUTH_TRACE_REDACTED);
+    expect(params.get('resource')).toBe(OAUTH_TRACE_REDACTED);
+    expect(new URL(redirectUri, 'https://proxy.example').searchParams.get('code'))
+      .toBe(OAUTH_TRACE_REDACTED);
+    expect(new URL(redirectUri, 'https://proxy.example').searchParams.get('operation'))
+      .toBe(OAUTH_TRACE_REDACTED);
+    for (const secret of [
+      'operation-secret',
+      'tenant-secret',
+      'target-secret',
+      'resource-secret',
+      'redirect-secret',
+      'nested-secret',
+    ]) {
+      expect(decodeURIComponent(sanitized)).not.toContain(secret);
+    }
+  });
+
   it('keys and validates traces by the exact target without exposing sensitive query values', () => {
     const firstTarget = `${TARGET_URL}?state=first-secret&tenant=acme`;
     const secondTarget = `${TARGET_URL}?state=second-secret&tenant=acme`;
