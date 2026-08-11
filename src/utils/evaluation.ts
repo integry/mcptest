@@ -108,18 +108,20 @@ export function getEvaluationTransportProbeUrl(
   return outerUrl.toString();
 }
 
-interface DetailItem {
+export interface DetailItem {
   text: string;
   context?: string;
   metadata?: unknown;
 }
 
-interface EvaluationSection {
+export interface EvaluationSection {
   name: string;
   description: string;
   score: number;
   maxScore: number;
   details: DetailItem[];
+  /** Optional export hint for reports that could not evaluate every section. */
+  status?: 'evaluated' | 'partial' | 'failed' | 'skipped';
 }
 
 export interface EvaluationReport {
@@ -128,13 +130,72 @@ export interface EvaluationReport {
   /** Exact challenge directives are attached non-enumerably for the current report view only. */
   resourceMetadataUrl?: string;
   scope?: string;
-  outcome?: 'scored' | 'authorization-required';
+  outcome?: 'scored' | 'authorization-required' | 'partial' | 'failed';
   finalScore: number;
   sections: Record<string, EvaluationSection>;
 }
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
+);
+
+const isLegacyIncompleteEvaluationDetail = (detail: DetailItem): boolean => {
+  const evidence = `${detail.text}. ${detail.context || ''}`;
+  const scoredChecksCompleted = (
+    /(?:^|[.;]\s*)(?:all\s+)?scored checks (?:were\s+)?completed(?:[.!]|$)/i.test(evidence)
+  );
+
+  return /^⚠/.test(detail.text)
+    && !scoredChecksCompleted
+    && /skipped|not scored|no standard MCP transport|could not be isolated|negotiation failed/i.test(
+      evidence
+    );
+};
+
+export const hasLegacyIncompleteEvaluationEvidence = (section: EvaluationSection): boolean => (
+  section.details.some(isLegacyIncompleteEvaluationDetail)
+);
+
+export const isLegacySkippedEvaluationSection = (section: EvaluationSection): boolean => (
+  section.details.length > 0
+  && section.details.every((detail) => /^⚠/.test(detail.text))
+  && hasLegacyIncompleteEvaluationEvidence(section)
+);
+
+/** Resolves explicit and legacy reports to one outcome for artifacts and presentation. */
+export const resolveEvaluationOutcome = (
+  report: EvaluationReport
+): NonNullable<EvaluationReport['outcome']> => {
+  if (isAuthenticationRequired(report)) return 'authorization-required';
+  if (report.outcome === 'failed' || report.outcome === 'partial') return report.outcome;
+
+  const sections = Object.values(report.sections);
+  const inferLegacyOutcome = report.outcome === undefined;
+  const incomplete = sections.some((section) => (
+    section.status === 'partial'
+    || section.status === 'failed'
+    || section.status === 'skipped'
+    || (inferLegacyOutcome && !section.status && hasLegacyIncompleteEvaluationEvidence(section))
+  ));
+  const protocolSection = report.sections.protocol;
+  const protocolIncomplete = protocolSection && (
+    protocolSection.status === 'failed'
+    || protocolSection.status === 'skipped'
+    || (inferLegacyOutcome
+      && !protocolSection.status
+      && isLegacySkippedEvaluationSection(protocolSection))
+  );
+  const negotiationFailed = protocolIncomplete && protocolSection.details.some((detail) => (
+    /negotiation failed|no MCP connection/i.test(`${detail.text} ${detail.context || ''}`)
+  ));
+
+  if (negotiationFailed) return 'failed';
+  if (incomplete) return 'partial';
+  return 'scored';
+};
+
+export const isScoredEvaluation = (report: EvaluationReport): boolean => (
+  resolveEvaluationOutcome(report) === 'scored'
 );
 
 export const getEvaluationMaxScore = (report: EvaluationReport): number => (
@@ -295,13 +356,16 @@ const makeSkippedSection = (
   name: string,
   description: string,
   maxScore: number,
-  reason: string
+  reason: string,
+  metadata?: Record<string, unknown>,
+  status: EvaluationSection['status'] = 'skipped'
 ): EvaluationSection => ({
   name,
   description,
   score: 0,
   maxScore,
-  details: [{ text: `⚠ ${reason}` }],
+  details: [{ text: `⚠ ${reason}`, ...(metadata ? { metadata } : {}) }],
+  status,
 });
 
 interface ConnectedEvaluation {
@@ -898,11 +962,28 @@ export async function evaluateServer(
       recordEvaluationAuthenticationChallenge(serverUrl, proxyAuthFailure);
     }
 
+    report.outcome = 'failed';
+    const lastFailure = failures[failures.length - 1];
+    const failedRouteMetadata = lastFailure ? {
+      route: lastFailure.route === 'proxy' ? 'authenticated proxy' : 'direct',
+      routeFailures: failures.map((failure) => ({
+        route: failure.route === 'proxy' ? 'authenticated proxy' : 'direct',
+        message: failure.message,
+        ...(failure.httpStatus !== undefined ? { status: failure.httpStatus } : {}),
+        ...(failure.authenticationSource
+          ? { authenticationSource: failure.authenticationSource }
+          : {}),
+        ...(failure.candidateUrl ? { endpoint: failure.candidateUrl } : {}),
+      })),
+    } : undefined;
+
     report.sections.protocol = makeSkippedSection(
       'Core Protocol Adherence',
       'Validates MCP lifecycle and JSON-RPC negotiation',
       15,
-      `MCP negotiation failed: ${message}`
+      `MCP negotiation failed: ${message}`,
+      failedRouteMetadata,
+      'failed'
     );
     report.sections.capabilities = makeSkippedSection(
       'MCP Capabilities',

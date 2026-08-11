@@ -17,6 +17,8 @@ import {
   getEvaluationTargetUrl,
   getEvaluationTransportProbeUrl,
   isAuthenticationRequired,
+  isScoredEvaluation,
+  resolveEvaluationOutcome,
 } from './evaluation';
 import {
   ProxiedAuthenticationError,
@@ -528,6 +530,21 @@ describe('dual-era server evaluation', () => {
     const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn());
 
     expect(report.sections.auth).toBeUndefined();
+    expect(report.outcome).toBe('failed');
+    expect(isScoredEvaluation(report)).toBe(false);
+    expect(report.sections.protocol.status).toBe('failed');
+    expect(report.sections.protocol.details[0].metadata).toEqual({
+      route: 'authenticated proxy',
+      routeFailures: [
+        { route: 'direct', message: 'Direct CORS failure' },
+        {
+          route: 'authenticated proxy',
+          message: 'All connections failed: Authenticated proxy returned HTTP 401',
+          status: 401,
+          authenticationSource: 'proxy',
+        },
+      ],
+    });
     expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
     const stored = getStoredOAuthTrace(endpoint, sessionStorage);
     expect(stored?.events.find(({ type }) => type === 'target_challenge')).toMatchObject({
@@ -812,5 +829,81 @@ describe('dual-era server evaluation', () => {
 
     expect(getEvaluationMaxScore(report)).toBe(55);
     expect(getEvaluationPercentage(report)).toBe(100);
+  });
+
+  it('resolves legacy outcomes from whether their sections were actually evaluated', () => {
+    const evaluatedReport = {
+      serverUrl: 'https://legacy.example/mcp',
+      finalScore: 15,
+      sections: {
+        protocol: {
+          name: 'Protocol',
+          description: '',
+          score: 15,
+          maxScore: 15,
+          details: [{ text: '✓ MCP negotiation completed.' }],
+        },
+      },
+    };
+    const partialReport = {
+      ...evaluatedReport,
+      sections: {
+        ...evaluatedReport.sections,
+        capabilities: {
+          name: 'Capabilities',
+          description: '',
+          score: 0,
+          maxScore: 10,
+          details: [{ text: '⚠ Capability checks were skipped after the connection closed.' }],
+        },
+      },
+    };
+    const failedReport = {
+      ...evaluatedReport,
+      finalScore: 0,
+      sections: {
+        protocol: {
+          ...evaluatedReport.sections.protocol,
+          score: 0,
+          details: [{ text: '⚠ MCP negotiation failed: no MCP connection.' }],
+        },
+      },
+    };
+    const mixedPartialReport = {
+      ...evaluatedReport,
+      finalScore: 8,
+      sections: {
+        capabilities: {
+          name: 'Capabilities',
+          description: '',
+          score: 8,
+          maxScore: 10,
+          details: [
+            { text: '✓ Tool discovery completed.' },
+            { text: '⚠ Resource checks were skipped after the connection closed.' },
+          ],
+        },
+      },
+    };
+    const completedOptionalProbeReport = {
+      ...evaluatedReport,
+      sections: {
+        protocol: {
+          ...evaluatedReport.sections.protocol,
+          details: [{ text: '⚠ Unsupported optional probe was skipped; scored checks completed.' }],
+        },
+      },
+    };
+
+    expect(resolveEvaluationOutcome(evaluatedReport)).toBe('scored');
+    expect(isScoredEvaluation(evaluatedReport)).toBe(true);
+    expect(resolveEvaluationOutcome(partialReport)).toBe('partial');
+    expect(isScoredEvaluation(partialReport)).toBe(false);
+    expect(resolveEvaluationOutcome(failedReport)).toBe('failed');
+    expect(isScoredEvaluation(failedReport)).toBe(false);
+    expect(resolveEvaluationOutcome(mixedPartialReport)).toBe('partial');
+    expect(isScoredEvaluation(mixedPartialReport)).toBe(false);
+    expect(resolveEvaluationOutcome(completedOptionalProbeReport)).toBe('scored');
+    expect(isScoredEvaluation(completedOptionalProbeReport)).toBe(true);
   });
 });
