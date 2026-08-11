@@ -283,11 +283,23 @@ const canonicalKey = (key: string): string => (
 );
 
 const SENSITIVE_KEY_COMPONENTS = new Set([
+  'auth',
+  'authorization',
+  'cookie',
+  'cookies',
+  'credential',
+  'credentials',
+  'passwd',
+  'password',
   'secret',
   'secrets',
   'token',
   'tokens',
   'signature',
+]);
+
+const NON_SENSITIVE_COMPOUND_KEYS = new Set([
+  'codechallengemethodssupported',
 ]);
 
 const keyComponents = (key: string): string[] => key
@@ -298,12 +310,16 @@ const keyComponents = (key: string): string[] => key
   .filter(Boolean);
 
 const isSensitiveKey = (key: string): boolean => {
-  if (keyComponents(key).some((component) => SENSITIVE_KEY_COMPONENTS.has(component))) {
+  const canonical = canonicalKey(key);
+  if (NON_SENSITIVE_COMPOUND_KEYS.has(canonical)) return false;
+  const components = keyComponents(key);
+  if (components.some((component) => SENSITIVE_KEY_COMPONENTS.has(component))) {
     return true;
   }
-  const canonical = canonicalKey(key);
   return EXACT_SENSITIVE_KEYS.has(canonical)
-    || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical);
+    || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical)
+    || components.includes('code')
+      && components.some((component) => component === 'authorization' || component === 'oauth');
 };
 
 const decodeFormComponent = (value: string): string => (
@@ -585,11 +601,14 @@ const redactReportStringAtDepth = (value: string, urlDepth: number): string => {
 
 export const redactReportString = (value: string): string => redactReportStringAtDepth(value, 0);
 
-const isAuthorizationPrerequisiteState = (path: readonly string[]): boolean => (
-  path.length === 3
-  && path[0] === 'outcome'
-  && path[1] === 'authorizationPrerequisite'
-  && path[2] === 'state'
+const isAuthorizationPrerequisiteSchemaField = (path: readonly string[]): boolean => (
+  (path.length === 2
+    && path[0] === 'outcome'
+    && path[1] === 'authorizationPrerequisite')
+  || (path.length === 3
+    && path[0] === 'outcome'
+    && path[1] === 'authorizationPrerequisite'
+    && path[2] === 'state')
 );
 
 const redactReportValueAtPath = (
@@ -597,7 +616,7 @@ const redactReportValueAtPath = (
   key: string | undefined,
   path: readonly string[]
 ): unknown => {
-  if (key && isSensitiveQueryKey(key) && !isAuthorizationPrerequisiteState(path)) {
+  if (key && isSensitiveQueryKey(key) && !isAuthorizationPrerequisiteSchemaField(path)) {
     return REDACTED_VALUE;
   }
   if (value === undefined) return undefined;

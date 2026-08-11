@@ -638,6 +638,44 @@ describe('versioned public report artifacts', () => {
     });
   });
 
+  it('redacts compound credential-family keys through both serializers', () => {
+    const secretsByKey = {
+      cookieJar: 'session=compound-cookie-secret',
+      credentialValue: 'compound-credential-secret',
+      passwordValue: 'compound-password-secret',
+      authorizationHeader: 'ApiKey compound-authorization-secret',
+      authorizationCodeValue: 'compound-authorization-code-secret',
+    };
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0].metadata = secretsByKey;
+
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    for (const secret of Object.values(secretsByKey)) {
+      expect(json).not.toContain(secret);
+      expect(markdown).not.toContain(secret);
+    }
+    for (const key of Object.keys(secretsByKey)) {
+      expect(json).toContain(`"${key}": "[REDACTED]"`);
+    }
+  });
+
+  it('preserves non-secret authorization prerequisite and PKCE capability fields', () => {
+    const artifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0].metadata = {
+      code_challenge_methods_supported: ['S256'],
+    };
+
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ]) {
+      expect(output).toContain('Authorize access to the MCP server, then run the evaluation again.');
+      expect(output).toContain('S256');
+    }
+  });
+
   it('redacts OAuth credential parameters from structured metadata', () => {
     expect(redactReportValue({
       id_token_hint: 'metadata-id-secret',
@@ -671,9 +709,9 @@ describe('versioned public report artifacts', () => {
       equalsCookieHeader: equalsCookies,
     })).toEqual({
       jsonShaped: '{"access_token":"[REDACTED]"}',
-      authorizationHeader: 'Authorization: [REDACTED]',
-      cookieHeader: 'Cookie: [REDACTED]',
-      equalsCookieHeader: 'Cookie=[REDACTED]',
+      authorizationHeader: '[REDACTED]',
+      cookieHeader: '[REDACTED]',
+      equalsCookieHeader: '[REDACTED]',
     });
 
     const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
