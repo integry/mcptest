@@ -1005,9 +1005,16 @@ export const createOAuthTraceFetch = (
   );
   if (!type) return fetchFn(input, init);
 
-  // Reaching the next OAuth request proves the preceding provisional HTTP
-  // response was parsed and accepted by the SDK.
-  recorder.settleLatestProvisionalOAuthResponse('succeeded');
+  // Another request for the same stage means the SDK rejected the preceding
+  // response and is trying a fallback or retry. A different stage proves the
+  // preceding response was parsed and accepted.
+  const rejectedSameStageResponse = recorder.settleLatestProvisionalOAuthResponse(
+    'failed',
+    [type]
+  );
+  if (!rejectedSameStageResponse) {
+    recorder.settleLatestProvisionalOAuthResponse('succeeded');
+  }
 
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();

@@ -90,6 +90,62 @@ describe('OAuth flight recorder core', () => {
     expect(recorder.serialize()).not.toContain('cookie-secret');
   });
 
+  it('records malformed OAuth metadata as failed when OpenID discovery succeeds as fallback', async () => {
+    const recorder = createOAuthFlightRecorder({ targetUrl: TARGET_URL });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response('{"issuer":42}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        issuer: 'https://auth.example/',
+        authorization_endpoint: 'https://auth.example/authorize',
+        token_endpoint: 'https://auth.example/token',
+        response_types_supported: ['code'],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response('{"client_id":"registered-client"}', {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    const tracedFetch = createOAuthTraceFetch(recorder, fetchFn);
+
+    await tracedFetch('https://auth.example/.well-known/oauth-authorization-server');
+    await tracedFetch('https://auth.example/.well-known/openid-configuration');
+    await tracedFetch('https://auth.example/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        client_name: 'MCP Test',
+        redirect_uris: ['https://mcptest.io/oauth/callback'],
+      }),
+    });
+
+    expect(recorder.snapshot().events).toEqual([
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'failed',
+        request: expect.objectContaining({
+          url: 'https://auth.example/.well-known/oauth-authorization-server',
+        }),
+        explanation: expect.stringContaining('rejected the response'),
+      }),
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'succeeded',
+        request: expect.objectContaining({
+          url: 'https://auth.example/.well-known/openid-configuration',
+        }),
+        explanation: expect.stringContaining('parsed and validated'),
+      }),
+      expect.objectContaining({
+        type: 'dynamic_client_registration',
+        outcome: 'started',
+      }),
+    ]);
+  });
+
   it('redacts every OAuth credential class from JSON serialization', () => {
     const secrets = {
       code: 'authorization-code-secret',
