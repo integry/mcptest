@@ -14,6 +14,8 @@ export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v1.schema.js
 export const REDACTED_VALUE = '[REDACTED]' as const;
 
 const SCORE_PERCENTAGE_TOLERANCE = 1e-9;
+const MAX_REDACTION_PASSES = 8;
+const MAX_URL_REDACTION_DEPTH = 4;
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
@@ -62,6 +64,10 @@ const PublicReportObjectSchema = z.object({
   provenance: z.object({
     route: z.enum(['direct', 'authenticated-proxy', 'unknown']),
     proxyUsed: z.boolean().nullable(),
+    attempts: z.array(z.object({
+      route: z.enum(['direct', 'authenticated-proxy']),
+      result: z.literal('failed'),
+    }).strict()).min(1).optional(),
   }).strict(),
   outcome: z.object({
     status: z.enum(['scored', 'authorization-required', 'partial', 'failed']),
@@ -155,6 +161,17 @@ export const PublicReportSchema = PublicReportObjectSchema.superRefine((report, 
       });
     }
   }
+  if (isScored) {
+    for (const [index, section] of report.sections.entries()) {
+      if (section.status !== 'evaluated' || section.score.earned === null) {
+        context.addIssue({
+          code: 'custom',
+          path: ['sections', index],
+          message: 'Every section in a scored report must be evaluated with an earned score.',
+        });
+      }
+    }
+  }
   for (const [index, section] of report.sections.entries()) {
     if ((section.status === 'skipped' || section.status === 'failed' || section.status === 'prerequisite')
         && section.score.earned !== null) {
@@ -218,6 +235,8 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'signature',
   'sig',
   'privatekey',
+  'auth',
+  'codeverifier',
   'state',
   'nonce',
   'csrf',
@@ -233,8 +252,54 @@ const isSensitiveKey = (key: string): boolean => {
     || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical);
 };
 
+const redactSensitiveAssignments = (value: string): string => {
+  const matches: Array<{ start: number; end: number; key: string }> = [];
+  const assignmentStart = /\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = assignmentStart.exec(value)) !== null) {
+    const key = match[1];
+    if (!isSensitiveKey(key)) continue;
+
+    const assignmentStartIndex = match.index;
+    const valueStart = assignmentStartIndex + match[0].length;
+    let valueEnd = valueStart;
+    const quote = value[valueStart];
+    const authorizationValue = value.slice(valueStart).match(
+      /^(?:Bearer|Basic)\s+(?:[A-Za-z0-9._~+/=-]+|\[REDACTED\])/i
+    );
+    if (authorizationValue) {
+      continue;
+    }
+    if (quote === '"' || quote === "'") {
+      valueEnd += 1;
+      while (valueEnd < value.length) {
+        if (value[valueEnd] === '\\') {
+          valueEnd = Math.min(valueEnd + 2, value.length);
+        } else if (value[valueEnd] === quote) {
+          valueEnd += 1;
+          break;
+        } else {
+          valueEnd += 1;
+        }
+      }
+    } else {
+      while (valueEnd < value.length && !/[\s,;&"']/.test(value[valueEnd])) valueEnd += 1;
+    }
+    if (!matches.some((assignment) => (
+      assignment.start <= assignmentStartIndex && assignment.end >= valueEnd
+    ))) {
+      matches.push({ start: assignmentStartIndex, end: valueEnd, key });
+    }
+  }
+
+  return matches.reduceRight((redacted, assignment) => (
+    `${redacted.slice(0, assignment.start)}${assignment.key}=${REDACTED_VALUE}${redacted.slice(assignment.end)}`
+  ), value);
+};
+
 const redactUrl = (value: string, depth = 0): string => {
-  if (depth > 3) return REDACTED_VALUE;
+  if (depth >= MAX_URL_REDACTION_DEPTH) return REDACTED_VALUE;
   let url: URL;
   try {
     url = new URL(value);
@@ -248,34 +313,39 @@ const redactUrl = (value: string, depth = 0): string => {
   for (const [key, queryValue] of [...url.searchParams.entries()]) {
     if (isSensitiveKey(key)) {
       url.searchParams.set(key, REDACTED_VALUE);
-    } else if (/^https?:\/\//i.test(queryValue)) {
-      url.searchParams.set(key, redactUrl(queryValue, depth + 1));
+    } else {
+      const redactedQueryValue = redactReportStringAtDepth(queryValue, depth + 1);
+      if (redactedQueryValue !== queryValue) {
+        url.searchParams.set(key, redactedQueryValue);
+      }
     }
   }
   if (url.hash) url.hash = `#${REDACTED_VALUE}`;
   return url.toString();
 };
 
-const redactUrlsInText = (value: string): string => value.replace(
+const redactUrlsInText = (value: string, depth: number): string => value.replace(
   /https?:\/\/[^\s<>"']+/gi,
   (candidate) => {
     const trailing = candidate.match(/[),.;!?]+$/)?.[0] || '';
     const url = trailing ? candidate.slice(0, -trailing.length) : candidate;
-    return `${redactUrl(url)}${trailing}`;
+    return `${redactUrl(url, depth)}${trailing}`;
   }
 );
 
-export const redactReportString = (value: string): string => {
-  const redactedUrls = redactUrlsInText(value);
-  return redactedUrls
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`)
-    .replace(
-      /\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/g,
-      (assignment, key: string) => (
-        isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : assignment
-      )
-    );
+const redactReportStringAtDepth = (value: string, urlDepth: number): string => {
+  let redacted = value;
+  for (let pass = 0; pass < MAX_REDACTION_PASSES; pass += 1) {
+    const redactedAssignments = redactSensitiveAssignments(redacted)
+      .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`);
+    const next = redactUrlsInText(redactedAssignments, urlDepth);
+    if (next === redacted) break;
+    redacted = next;
+  }
+  return redacted;
 };
+
+export const redactReportString = (value: string): string => redactReportStringAtDepth(value, 0);
 
 const isAuthorizationPrerequisiteState = (path: readonly string[]): boolean => (
   path.length === 3
@@ -334,6 +404,26 @@ const metadataString = (
   }
   return undefined;
 };
+
+const publicRoute = (value: unknown): PublicReport['provenance']['route'] => (
+  value === 'direct'
+    ? 'direct'
+    : value === 'proxy' || value === 'authenticated proxy' || value === 'authenticated-proxy'
+      ? 'authenticated-proxy'
+      : 'unknown'
+);
+
+const failedRouteAttempts = (
+  records: readonly Record<string, unknown>[]
+): NonNullable<PublicReport['provenance']['attempts']> => records.flatMap((record) => (
+  Array.isArray(record.routeFailures)
+    ? record.routeFailures.flatMap((failure) => {
+      if (!failure || typeof failure !== 'object' || Array.isArray(failure)) return [];
+      const route = publicRoute((failure as Record<string, unknown>).route);
+      return route === 'unknown' ? [] : [{ route, result: 'failed' as const }];
+    })
+    : []
+));
 
 const isLegacySkippedSection = (section: EvaluationSection): boolean => (
   section.details.length > 0
@@ -411,11 +501,8 @@ export const createPublicReport = (
   const outcome = resolveOutcome(report);
   const metadata = metadataRecords(report);
   const routeValue = metadataString(metadata, 'route');
-  const route = routeValue === 'direct'
-    ? 'direct'
-    : routeValue === 'proxy' || routeValue === 'authenticated proxy'
-      ? 'authenticated-proxy'
-      : 'unknown';
+  const route = publicRoute(routeValue);
+  const routeAttempts = outcome === 'failed' ? failedRouteAttempts(metadata) : [];
   const protocolEra = metadataString(metadata, 'protocolEra');
   const protocolVersion = metadataString(metadata, 'protocolVersion');
   const transportType = metadataString(metadata, 'transportType');
@@ -464,6 +551,7 @@ export const createPublicReport = (
     provenance: {
       route,
       proxyUsed: route === 'unknown' ? null : route === 'authenticated-proxy',
+      ...(routeAttempts.length > 0 ? { attempts: routeAttempts } : {}),
     },
     outcome: {
       status: outcome,
@@ -592,6 +680,9 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       : []),
     `- Route: ${value.provenance.route}`,
     `- Proxy used: ${value.provenance.proxyUsed === null ? 'unknown' : value.provenance.proxyUsed ? 'yes' : 'no'}`,
+    ...((value.provenance.attempts || []).map((attempt) => (
+      `- Attempt: ${attempt.route} (${attempt.result})`
+    ))),
     ''
   );
 

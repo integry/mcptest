@@ -321,6 +321,23 @@ describe('versioned public report artifacts', () => {
     }
   );
 
+  it('requires authorization prerequisites on authorization-required outcomes in both schemas', () => {
+    const artifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
+    const invalid = {
+      ...artifact,
+      outcome: {
+        status: artifact.outcome.status,
+        summary: artifact.outcome.summary,
+      },
+    };
+
+    expect(safeParsePublicReport(invalid).success).toBe(false);
+    expect(
+      validatePublishedSchema(invalid),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(false);
+  });
+
   it.each(['failed', 'skipped', 'prerequisite'] as const)(
     'requires a null earned score for %s sections in both schemas',
     (status) => {
@@ -336,6 +353,32 @@ describe('versioned public report artifacts', () => {
       ).toBe(false);
     }
   );
+
+  it.each(['partial', 'failed', 'skipped', 'prerequisite'] as const)(
+    'rejects a scored artifact containing a %s section in both schemas',
+    (status) => {
+      const invalid = structuredClone(createPublicReport(publicReport(), FIXED_OPTIONS));
+      invalid.sections[0].status = status;
+      invalid.sections[0].score.earned = status === 'partial' ? 15 : null;
+
+      expect(safeParsePublicReport(invalid).success).toBe(false);
+      expect(
+        validatePublishedSchema(invalid),
+        JSON.stringify(validatePublishedSchema.errors)
+      ).toBe(false);
+    }
+  );
+
+  it('rejects a scored artifact containing a null-earned evaluated section in both schemas', () => {
+    const invalid = structuredClone(createPublicReport(publicReport(), FIXED_OPTIONS));
+    invalid.sections[0].score.earned = null;
+
+    expect(safeParsePublicReport(invalid).success).toBe(false);
+    expect(
+      validatePublishedSchema(invalid),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(false);
+  });
 
   it.each([
     ['direct', false],
@@ -450,6 +493,123 @@ describe('versioned public report artifacts', () => {
     });
   });
 
+  it('redacts nested sensitive assignments to a bounded fixed point in every export path', () => {
+    const plaintext = 'error_description=access_token=report-secret';
+    const quoted = 'message="client_secret=report-secret"';
+    const encodedUrl = 'https://x.example/?error_description=access_token%3Dreport-secret';
+
+    expect(redactReportString(plaintext)).toBe(
+      'error_description=access_token=[REDACTED]'
+    );
+    expect(redactReportString(quoted)).toBe(
+      'message="client_secret=[REDACTED]"'
+    );
+    expect(redactReportString(encodedUrl)).toBe(
+      'https://x.example/?error_description=access_token%3D%5BREDACTED%5D'
+    );
+    expect(redactReportValue({ description: plaintext, message: quoted })).toEqual({
+      description: 'error_description=access_token=[REDACTED]',
+      message: 'message="client_secret=[REDACTED]"',
+    });
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: plaintext,
+      context: quoted,
+      metadata: { description: plaintext, callback: encodedUrl },
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(json).not.toContain('report-secret');
+    expect(markdown).not.toContain('report-secret');
+    expect(json).not.toContain(encodeURIComponent('report-secret'));
+    expect(markdown).not.toContain(encodeURIComponent('report-secret'));
+    expect(`${json}${markdown}`).toContain('access_token%3D%5BREDACTED%5D');
+  });
+
+  it('redacts state, nonce, and csrf across endpoints, nested URLs, metadata, and serialization', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://target.example/mcp?state=target-state-secret';
+    report.authenticationUrl = 'https://auth.example/authorize?nonce=auth-nonce-secret';
+    report.sections.protocol.details[0].metadata = {
+      ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
+      endpoint: 'https://target.example/mcp?csrf=negotiated-csrf-secret',
+      callback: 'https://outer.example/?next=https%3A%2F%2Finner.example%2F%3Fstate%3Dnested-state-secret',
+      state: 'metadata-state-secret',
+      nonce: 'metadata-nonce-secret',
+      csrf: 'metadata-csrf-secret',
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    artifact.sections[0].evidence.push({
+      message: 'Serializer defense for OAuth correlation values.',
+      metadata: {
+        state: 'serializer-state-secret',
+        nonce: 'serializer-nonce-secret',
+        csrf: 'serializer-csrf-secret',
+      },
+    });
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    for (const secret of [
+      'target-state-secret',
+      'auth-nonce-secret',
+      'negotiated-csrf-secret',
+      'nested-state-secret',
+      'metadata-state-secret',
+      'metadata-nonce-secret',
+      'metadata-csrf-secret',
+      'serializer-state-secret',
+      'serializer-nonce-secret',
+      'serializer-csrf-secret',
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+    expect(artifact.sections[0].evidence[0].metadata).toMatchObject({
+      state: '[REDACTED]',
+      nonce: '[REDACTED]',
+      csrf: '[REDACTED]',
+    });
+  });
+
+  it('redacts auth and codeVerifier in URLs, assignments, metadata, and both serializers', () => {
+    expect(redactReportString('auth=plain-auth-secret codeVerifier=plain-verifier-secret')).toBe(
+      'auth=[REDACTED] codeVerifier=[REDACTED]'
+    );
+    expect(redactReportString(
+      'https://proxy.example/?auth=url-auth-secret&code_verifier=url-verifier-secret&visible=yes'
+    )).toBe(
+      'https://proxy.example/?auth=%5BREDACTED%5D&code_verifier=%5BREDACTED%5D&visible=yes'
+    );
+    expect(redactReportValue({
+      auth: 'metadata-auth-secret',
+      codeVerifier: 'metadata-verifier-secret',
+      visible: 'yes',
+    })).toEqual({
+      auth: '[REDACTED]',
+      codeVerifier: '[REDACTED]',
+      visible: 'yes',
+    });
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: 'message=auth=serialized-auth-secret',
+      metadata: {
+        description: 'codeVerifier=serialized-verifier-secret',
+        endpoint: 'https://proxy.example/?auth=serialized-url-secret',
+      },
+    };
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+    for (const secret of [
+      'serialized-auth-secret',
+      'serialized-verifier-secret',
+      'serialized-url-secret',
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+  });
+
   it('consumes complete quoted secret assignments containing spaces', () => {
     const redacted = redactReportString(
       `password="prefix actual-password" client_secret='prefix actual-secret' safe="visible value"`
@@ -541,6 +701,10 @@ describe('versioned public report artifacts', () => {
     expect(createPublicReport(failedReport(), FIXED_OPTIONS).provenance).toEqual({
       route: 'authenticated-proxy',
       proxyUsed: true,
+      attempts: [
+        { route: 'direct', result: 'failed' },
+        { route: 'authenticated-proxy', result: 'failed' },
+      ],
     });
   });
 });

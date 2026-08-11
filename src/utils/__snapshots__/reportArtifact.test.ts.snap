@@ -16,6 +16,16 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
     "summary": "The evaluation did not complete and no overall grade was assigned."
   },
   "provenance": {
+    "attempts": [
+      {
+        "result": "failed",
+        "route": "direct"
+      },
+      {
+        "result": "failed",
+        "route": "authenticated-proxy"
+      }
+    ],
     "proxyUsed": true,
     "route": "authenticated-proxy"
   },
@@ -137,6 +147,8 @@ Not scored.
 - Tested endpoint: https://failed.example/mcp?api\\_key=%5BREDACTED%5D
 - Route: authenticated-proxy
 - Proxy used: yes
+- Attempt: direct (failed)
+- Attempt: authenticated-proxy (failed)
 
 ## Sections
 
