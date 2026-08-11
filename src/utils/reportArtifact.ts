@@ -403,9 +403,13 @@ const surroundingQuoteAt = (value: string, end: number): '"' | "'" | undefined =
 const redactSensitiveAssignments = (value: string): string => {
   const matches: Array<{ start: number; end: number; replacement: string }> = [];
   const keyPart = String.raw`[A-Za-z](?:[A-Za-z0-9_+.-]|%[A-Fa-f0-9]{2})*`;
-  const compoundKey = `${keyPart}(?:\\s+${keyPart})?`;
+  const compoundKey = `${keyPart}(?:\\s+${keyPart}){0,2}`;
   const assignmentStart = new RegExp(
     `(?:(['"])(` + compoundKey + `)\\1|\\b(` + compoundKey + `)\\b)\\s*([:=])\\s*`,
+    'g'
+  );
+  const nextAssignment = new RegExp(
+    `([,;&]|\\s+)(?:(['"])(` + compoundKey + `)\\2|\\b(` + compoundKey + `)\\b)\\s*[:=]\\s*`,
     'g'
   );
   let match: RegExpExecArray | null;
@@ -451,14 +455,22 @@ const redactSensitiveAssignments = (value: string): string => {
       }
       if (keyQuote) replacement = `${match[0]}${keyQuote}${REDACTED_VALUE}${keyQuote}`;
     } else {
-      while (valueEnd < value.length) {
+      while (valueEnd < value.length && !/[\r\n]/.test(value[valueEnd])) {
         const character = value[valueEnd];
-        if (/[\s,;&]/.test(character)) break;
-        if (character === surroundingQuote
-            && (valueEnd + 1 === value.length || /[\s,;&]/.test(value[valueEnd + 1]))) {
+        if (character === '\\') valueEnd = Math.min(valueEnd + 1, value.length);
+        else if (character === surroundingQuote) break;
+        valueEnd += 1;
+      }
+
+      nextAssignment.lastIndex = valueStart;
+      let boundary: RegExpExecArray | null;
+      while ((boundary = nextAssignment.exec(value)) !== null && boundary.index < valueEnd) {
+        const delimiter = boundary[1];
+        const nextKey = boundary[3] || boundary[4];
+        if (/[,;&]/.test(delimiter) || isSensitiveQueryKey(nextKey)) {
+          valueEnd = boundary.index;
           break;
         }
-        valueEnd += 1;
       }
     }
     if (!matches.some((assignment) => (
@@ -781,9 +793,9 @@ const sectionStatus = (
 };
 
 const redactEvidence = (detail: DetailItem): PublicReport['sections'][number]['evidence'][number] => ({
-  message: redactReportString(detail.text),
-  ...(detail.context ? { context: redactReportString(detail.context) } : {}),
-  ...(detail.metadata !== undefined ? { metadata: redactReportValue(detail.metadata) } : {}),
+  message: detail.text,
+  ...(detail.context ? { context: detail.context } : {}),
+  ...(detail.metadata !== undefined ? { metadata: detail.metadata } : {}),
 });
 
 const normalizeGeneratedAt = (generatedAt: string | Date | undefined): string => {
@@ -917,7 +929,7 @@ export const createPublicReport = (
     }),
   };
 
-  return PublicReportSchema.parse(artifact);
+  return PublicReportSchema.parse(redactReportValue(artifact));
 };
 
 const stableValue = (value: unknown): unknown => {

@@ -1075,6 +1075,81 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('fails closed for spaced unquoted credentials and three-word credential labels', () => {
+    const spacedPassword = 'password=correct horse battery staple';
+    const threeWordLabel = 'API Key Value: three word credential secret';
+
+    expect(redactReportString(spacedPassword)).toBe('password=[REDACTED]');
+    expect(redactReportString(threeWordLabel)).toBe('API Key Value: [REDACTED]');
+
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      text: spacedPassword,
+      context: threeWordLabel,
+    };
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+
+    for (const output of [
+      JSON.stringify(artifact),
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ]) {
+      expect(output).not.toMatch(/correct horse battery staple|three word credential secret/);
+      expect(output).toContain('REDACTED');
+    }
+  });
+
+  it('redacts every string field before returning a created report', () => {
+    const report = publicReport();
+    report.sections.protocol.name = 'Authorization: Bearer section-name-secret';
+    report.sections.protocol.description = 'password=section description secret';
+    report.sections.protocol.details[0].metadata = {
+      ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
+      protocolEra: 'password=protocol era secret',
+      protocolVersion: 'password=protocol version secret',
+      method: 'API Key Value: timing name secret',
+      durationMs: 18,
+    };
+    report.sections.transport.details[0].metadata = {
+      ...report.sections.transport.details[0].metadata as Record<string, unknown>,
+      transportType: 'password=transport type secret',
+    };
+
+    const artifact = createPublicReport(report, {
+      ...FIXED_OPTIONS,
+      toolVersion: 'password=generator version secret',
+      toolCommit: 'password=generator commit secret',
+    });
+    const created = JSON.stringify(artifact);
+
+    for (const secret of [
+      'section-name-secret',
+      'section description secret',
+      'protocol era secret',
+      'protocol version secret',
+      'transport type secret',
+      'timing name secret',
+      'generator version secret',
+      'generator commit secret',
+    ]) {
+      expect(created).not.toContain(secret);
+    }
+    expect(artifact.sections[0]).toMatchObject({
+      name: 'Authorization: [REDACTED]',
+      description: 'password=[REDACTED]',
+    });
+    expect(artifact.generator).toMatchObject({
+      version: 'password=[REDACTED]',
+      commit: 'password=[REDACTED]',
+    });
+    expect(artifact.protocol).toEqual({
+      era: 'password=[REDACTED]',
+      version: 'password=[REDACTED]',
+    });
+    expect(artifact.transport).toEqual({ type: 'password=[REDACTED]' });
+    expect(artifact.timings?.checks[0].name).toBe('API Key Value: [REDACTED]');
+  });
+
   it('redacts generic numeric codes while preserving an explicit JSON-RPC code field', () => {
     const report = publicReport();
     report.sections.protocol.details[0].metadata = {
