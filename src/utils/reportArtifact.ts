@@ -93,6 +93,7 @@ const PublicReportObjectSchema = z.object({
   }).strict().optional(),
   timings: z.object({
     negotiationMs: z.number().nonnegative().optional(),
+    connectionSetupMs: z.number().nonnegative().optional(),
     checks: z.array(z.object({
       name: z.string().min(1),
       durationMs: z.number().nonnegative(),
@@ -295,13 +296,14 @@ const redactSensitiveAssignments = (value: string): string => {
     const valueStart = assignmentStartIndex + match[0].length;
     let valueEnd = valueStart;
     const quote = value[valueStart];
-    const isSensitiveHeader = !keyQuote
-      && delimiter === ':'
-      && ['authorization', 'proxyauthorization', 'xmcpauthorization', 'cookie', 'setcookie', 'cookies']
-        .includes(canonicalKey(key));
+    const canonical = canonicalKey(key);
+    const consumesEntireLine = !keyQuote && (
+      ['authorization', 'proxyauthorization', 'xmcpauthorization'].includes(canonical)
+      || (delimiter === ':' && ['cookie', 'setcookie', 'cookies'].includes(canonical))
+    );
     let replacement = `${match[0]}${REDACTED_VALUE}`;
 
-    if (isSensitiveHeader) {
+    if (consumesEntireLine) {
       while (valueEnd < value.length && !/[\r\n]/.test(value[valueEnd])) valueEnd += 1;
     } else if (quote === '"' || quote === "'") {
       valueEnd += 1;
@@ -429,6 +431,9 @@ const redactReportValueAtPath = (
   key: string | undefined,
   path: readonly string[]
 ): unknown => {
+  if (key && canonicalKey(key) === 'code' && typeof value === 'number') {
+    return value;
+  }
   if (key && isSensitiveKey(key) && !isAuthorizationPrerequisiteState(path)) {
     return REDACTED_VALUE;
   }
@@ -471,6 +476,16 @@ const metadataString = (
 ): string | undefined => {
   for (const record of records) {
     if (typeof record[key] === 'string' && record[key]) return record[key] as string;
+  }
+  return undefined;
+};
+
+const metadataNumber = (
+  records: readonly Record<string, unknown>[],
+  key: string
+): number | undefined => {
+  for (const record of records) {
+    if (typeof record[key] === 'number' && record[key] >= 0) return record[key] as number;
   }
   return undefined;
 };
@@ -583,7 +598,8 @@ export const createPublicReport = (
       Boolean(value) && typeof value === 'object' && !Array.isArray(value)
     ));
   const negotiatedEndpoint = metadataString(negotiationMetadata, 'endpoint');
-  const negotiationMs = report.sections.performance?.details
+  const negotiationMs = metadataNumber(metadata, 'negotiationMs');
+  const connectionSetupMs = report.sections.performance?.details
     .map((detail) => (detail.metadata as { durationMs?: unknown } | undefined)?.durationMs)
     .find((duration): duration is number => typeof duration === 'number' && duration >= 0);
   const checks = Object.values(report.sections).flatMap((section) => section.details)
@@ -646,9 +662,10 @@ export const createPublicReport = (
       },
     } : {}),
     ...(transportType ? { transport: { type: transportType } } : {}),
-    ...(negotiationMs !== undefined || checks.length > 0 ? {
+    ...(negotiationMs !== undefined || connectionSetupMs !== undefined || checks.length > 0 ? {
       timings: {
         ...(negotiationMs !== undefined ? { negotiationMs } : {}),
+        ...(connectionSetupMs !== undefined ? { connectionSetupMs } : {}),
         checks,
       },
     } : {}),
@@ -770,6 +787,9 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     lines.push('## Timings', '');
     if (value.timings.negotiationMs !== undefined) {
       lines.push(`- Negotiation: ${value.timings.negotiationMs} ms`);
+    }
+    if (value.timings.connectionSetupMs !== undefined) {
+      lines.push(`- Connection setup (endpoint selection through MCP negotiation): ${value.timings.connectionSetupMs} ms`);
     }
     for (const check of value.timings.checks) {
       lines.push(`- ${markdownInline(check.name)}: ${check.durationMs} ms`);

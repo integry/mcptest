@@ -500,7 +500,7 @@ exports[`versioned public report artifacts > matches the legacy-sse JSON and Mar
         "name": "prompts/list"
       }
     ],
-    "negotiationMs": 2800
+    "connectionSetupMs": 2800
   },
   "transport": {
     "type": "legacy-sse"
@@ -537,7 +537,7 @@ exports[`versioned public report artifacts > matches the legacy-sse JSON and Mar
 
 ## Timings
 
-- Negotiation: 2800 ms
+- Connection setup (endpoint selection through MCP negotiation): 2800 ms
 - prompts/list: 52 ms
 
 ## Sections
@@ -1010,7 +1010,7 @@ exports[`versioned public report artifacts > matches the public JSON and Markdow
         "name": "tools/list"
       }
     ],
-    "negotiationMs": 240
+    "connectionSetupMs": 240
   },
   "transport": {
     "type": "streamable-http"
@@ -1047,7 +1047,7 @@ exports[`versioned public report artifacts > matches the public JSON and Markdow
 
 ## Timings
 
-- Negotiation: 240 ms
+- Connection setup (endpoint selection through MCP negotiation): 240 ms
 - tools/list: 18 ms
 
 ## Sections
@@ -1283,7 +1283,7 @@ exports[`versioned public report artifacts > matches the stateful JSON and Markd
         "name": "resources/list"
       }
     ],
-    "negotiationMs": 3200
+    "connectionSetupMs": 3200
   },
   "transport": {
     "type": "streamable-http"
@@ -1320,7 +1320,7 @@ exports[`versioned public report artifacts > matches the stateful JSON and Markd
 
 ## Timings
 
-- Negotiation: 3200 ms
+- Connection setup (endpoint selection through MCP negotiation): 3200 ms
 - resources/list: 35 ms
 
 ## Sections
@@ -1579,7 +1579,7 @@ exports[`versioned public report artifacts > matches the stateless JSON and Mark
         "name": "tools/list"
       }
     ],
-    "negotiationMs": 240
+    "connectionSetupMs": 240
   },
   "transport": {
     "type": "streamable-http"
@@ -1616,7 +1616,7 @@ exports[`versioned public report artifacts > matches the stateless JSON and Mark
 
 ## Timings
 
-- Negotiation: 240 ms
+- Connection setup (endpoint selection through MCP negotiation): 240 ms
 - tools/list: 18 ms
 
 ## Sections

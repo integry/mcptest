@@ -288,6 +288,29 @@ describe('versioned public report artifacts', () => {
     expect(publicJsonSchema.properties.schemaVersion.const).toBe('1.0.0');
   });
 
+  it('labels the performance baseline as connection setup and reserves negotiation for explicit metadata', () => {
+    const report = publicReport();
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+
+    expect(artifact.timings).toEqual({
+      connectionSetupMs: 240,
+      checks: [{ name: 'tools/list', durationMs: 18 }],
+    });
+    expect(serializePublicReportMarkdown(artifact)).toContain(
+      '- Connection setup (endpoint selection through MCP negotiation): 240 ms'
+    );
+    expect(serializePublicReportMarkdown(artifact)).not.toContain('- Negotiation: 240 ms');
+
+    report.sections.protocol.details[0].metadata = {
+      ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
+      negotiationMs: 125,
+    };
+    expect(createPublicReport(report, FIXED_OPTIONS).timings).toMatchObject({
+      negotiationMs: 125,
+      connectionSetupMs: 240,
+    });
+  });
+
   it.each(Object.entries(GOLDEN_REPORTS))('validates the %s artifact with the published JSON Schema', (_, makeReport) => {
     const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
 
@@ -573,6 +596,59 @@ describe('versioned public report artifacts', () => {
       expect(json).not.toContain(secret);
       expect(markdown).not.toContain(secret);
     }
+  });
+
+  it('redacts complete unquoted authorization assignments in every export path', () => {
+    const assignments = [
+      'authorization=Bearer bearer-assignment-secret',
+      'authorization=Basic basic-assignment-secret',
+      'proxy-authorization=Bearer proxy-bearer-assignment-secret',
+      'x-mcp-authorization=Basic proxy-basic-assignment-secret',
+    ];
+
+    for (const assignment of assignments) {
+      expect(redactReportString(assignment)).toMatch(/=\[REDACTED\]$/);
+    }
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: assignments[0],
+      context: assignments[1],
+      metadata: {
+        proxyBearerEvidence: assignments[2],
+        proxyBasicEvidence: assignments[3],
+      },
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    for (const secret of [
+      'bearer-assignment-secret',
+      'basic-assignment-secret',
+      'proxy-bearer-assignment-secret',
+      'proxy-basic-assignment-secret',
+    ]) {
+      expect(json).not.toContain(secret);
+      expect(markdown).not.toContain(secret);
+    }
+  });
+
+  it('round-trips numeric protocol codes without exposing authorization codes', () => {
+    const report = publicReport();
+    report.sections.protocol.details[0].metadata = {
+      ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
+      code: -32601,
+      authorizationCode: 123456,
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const roundTripped = parsePublicReportJson(serializePublicReportJson(artifact));
+    const metadata = roundTripped.sections[0].evidence[0].metadata as Record<string, unknown>;
+
+    expect(metadata.code).toBe(-32601);
+    expect(typeof metadata.code).toBe('number');
+    expect(metadata.authorizationCode).toBe('[REDACTED]');
+    expect(serializePublicReportMarkdown(artifact)).toContain('"code": -32601');
   });
 
   it('redacts nested sensitive assignments to a bounded fixed point in every export path', () => {
