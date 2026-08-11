@@ -125,6 +125,9 @@ interface EvaluationSection {
 export interface EvaluationReport {
   serverUrl: string;
   authenticationUrl?: string;
+  /** Exact challenge directives are attached non-enumerably for the current report view only. */
+  resourceMetadataUrl?: string;
+  scope?: string;
   outcome?: 'scored' | 'authorization-required';
   finalScore: number;
   sections: Record<string, EvaluationSection>;
@@ -323,11 +326,34 @@ interface EvaluationRouteFailure {
   method?: string;
   requestUrl?: string;
   responseHeaders?: Record<string, string>;
+  resourceMetadataUrl?: string;
+  scope?: string;
   timing?: {
     startedAt: string;
     durationMs?: number;
   };
 }
+
+const attachEphemeralChallengeDirectives = <T extends object>(
+  target: T,
+  directives: { resourceMetadataUrl?: string; scope?: string }
+): T => {
+  if (directives.resourceMetadataUrl) {
+    Object.defineProperty(target, 'resourceMetadataUrl', {
+      value: directives.resourceMetadataUrl,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  if (directives.scope) {
+    Object.defineProperty(target, 'scope', {
+      value: directives.scope,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  return target;
+};
 
 const getAuthenticationCandidateUrl = (
   error: unknown,
@@ -384,7 +410,7 @@ const makeRouteFailure = (
       ? getAuthenticationCandidateUrl(error, authenticationSource)
       : undefined
   );
-  return {
+  return attachEphemeralChallengeDirectives({
     route,
     error,
     message: errorMessage(error),
@@ -404,7 +430,7 @@ const makeRouteFailure = (
           ? undefined
           : Math.max(0, Date.now() - attemptStartedAtMs)),
     },
-  };
+  }, authenticationChallenge || {});
 };
 
 class EvaluationConnectionError extends Error {
@@ -846,6 +872,7 @@ export async function evaluateServer(
     if (targetAuthFailure) {
       report.outcome = 'authorization-required';
       report.authenticationUrl = targetAuthFailure.candidateUrl || serverUrl;
+      attachEphemeralChallengeDirectives(report, targetAuthFailure);
       if (!finalizedPendingRetry) {
         recordEvaluationAuthenticationChallenge(report.authenticationUrl, targetAuthFailure);
       }
@@ -945,6 +972,7 @@ export async function evaluateServer(
       report.authenticationUrl = capabilityEvaluation.targetAuthenticationFailures[0].candidateUrl
         || getEvaluationTargetUrl(connection.url, connection.usedProxy);
       const retryFailure = capabilityEvaluation.targetAuthenticationFailures[0];
+      attachEphemeralChallengeDirectives(report, retryFailure);
       const finalizedPendingRetry = pendingRetry?.fail({
         route: retryFailure.route,
         error: retryFailure.error,

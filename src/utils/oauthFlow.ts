@@ -492,6 +492,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   private readonly storeKey: string;
   private readonly redirect: (authorizationUrl: URL) => void | Promise<void>;
   private readonly trace?: OAuthFlightRecorder;
+  private resourceMetadataUrlOverride?: string;
 
   constructor(
     readonly serverUrl: string,
@@ -503,7 +504,11 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     this.redirectUrl = options.redirectUrl || getOAuthCallbackUrl();
     this.redirect = options.redirect || defaultRedirect;
     this.trace = options.trace;
-    this.trace?.trackResourceMetadataUrl(this.readState().discovery?.resourceMetadataUrl);
+    const persistedState = this.readState();
+    this.trace?.trackResourceMetadataUrl(persistedState.discovery?.resourceMetadataUrl);
+    if (persistedState.discovery?.resourceMetadataUrl) {
+      this.writeState(persistedState);
+    }
 
     const productionCallback = `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`;
     this.clientMetadataUrl = options.clientMetadataUrl ?? (
@@ -696,6 +701,8 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   saveDiscoveryState(discovery: OAuthDiscoveryState): void {
+    this.resourceMetadataUrlOverride = discovery.resourceMetadataUrl
+      || this.resourceMetadataUrlOverride;
     this.updateState({ discovery });
     this.trace?.trackResourceMetadataUrl(discovery.resourceMetadataUrl);
     const resourceResponse = {
@@ -763,7 +770,16 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   discoveryState(): OAuthDiscoveryState | undefined {
-    return this.readState().discovery;
+    const discovery = this.readState().discovery;
+    if (!discovery || !this.resourceMetadataUrlOverride) return discovery;
+    return {
+      ...discovery,
+      resourceMetadataUrl: this.resourceMetadataUrlOverride,
+    };
+  }
+
+  setResourceMetadataUrlOverride(resourceMetadataUrl?: string): void {
+    this.resourceMetadataUrlOverride = resourceMetadataUrl;
   }
 
   invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): void {
@@ -799,7 +815,12 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   private writeState(state: PersistedOAuthState): void {
-    this.storage.setItem(this.storeKey, JSON.stringify(state));
+    const discovery = state.discovery && { ...state.discovery };
+    if (discovery) delete discovery.resourceMetadataUrl;
+    this.storage.setItem(this.storeKey, JSON.stringify({
+      ...state,
+      ...(discovery ? { discovery } : {}),
+    }));
   }
 
   private updateState(update: Partial<PersistedOAuthState>): void {
@@ -923,14 +944,18 @@ export const beginOAuthFlow = async (
   }
   const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...options, trace });
   provider.invalidateCredentials('verifier');
+  const resourceMetadataUrl = options.resourceMetadataUrl
+    ? new URL(options.resourceMetadataUrl).toString()
+    : undefined;
   if (
-    options.resourceMetadataUrl
-    && provider.discoveryState()?.resourceMetadataUrl !== new URL(options.resourceMetadataUrl).toString()
+    resourceMetadataUrl
+    && provider.discoveryState()?.resourceMetadataUrl !== resourceMetadataUrl
   ) {
     provider.invalidateCredentials('discovery');
   }
+  provider.setResourceMetadataUrlOverride(resourceMetadataUrl);
   const authenticate = options.authenticate || auth;
-  if (options.resourceMetadataUrl) trace.trackResourceMetadataUrl(options.resourceMetadataUrl);
+  if (resourceMetadataUrl) trace.trackResourceMetadataUrl(resourceMetadataUrl);
   const discoveryFetch = createCorsFallbackDiscoveryFetch(
     trace,
     options.fetchFn || fetch,
@@ -941,8 +966,8 @@ export const beginOAuthFlow = async (
     const result = await authenticate(provider, {
       serverUrl: normalizedServerUrl,
       fetchFn,
-      ...(options.resourceMetadataUrl
-        ? { resourceMetadataUrl: new URL(options.resourceMetadataUrl) }
+      ...(resourceMetadataUrl
+        ? { resourceMetadataUrl: new URL(resourceMetadataUrl) }
         : {}),
       ...(options.scope ? { scope: options.scope } : {}),
       ...(options.forceReauthorization ? { forceReauthorization: true } : {}),

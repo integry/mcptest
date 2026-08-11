@@ -120,4 +120,60 @@ describe('ReportView OAuth discovery', () => {
       })
     );
   });
+
+  it('passes ephemeral challenge metadata and scope into report OAuth discovery', async () => {
+    const metadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/?token=challenge-secret';
+    evaluationMocks.evaluate.mockImplementationOnce(async () => {
+      const report = {
+        serverUrl: 'https://api.githubcopilot.com/mcp/',
+        authenticationUrl: 'https://api.githubcopilot.com/mcp/',
+        outcome: 'authorization-required' as const,
+        finalScore: 0,
+        sections: {
+          auth: {
+            name: 'Authorization Required',
+            description: 'OAuth authorization is required',
+            score: 0,
+            maxScore: 0,
+            details: [],
+          },
+        },
+      };
+      Object.defineProperties(report, {
+        resourceMetadataUrl: { value: metadataUrl, enumerable: false },
+        scope: { value: 'repo read:user', enumerable: false },
+      });
+      return report;
+    });
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+    const authorizeButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Authorize and run report')
+    );
+    await act(async () => {
+      authorizeButton?.click();
+    });
+
+    expect(oauthMocks.begin).toHaveBeenCalledWith(
+      'https://api.githubcopilot.com/mcp/',
+      expect.objectContaining({
+        resourceMetadataUrl: metadataUrl,
+        scope: 'repo read:user',
+      })
+    );
+    expect(Array.from({ length: sessionStorage.length }, (_, index) => {
+      const key = sessionStorage.key(index) || '';
+      return `${key}:${sessionStorage.getItem(key) || ''}`;
+    }).join('\n')).not.toContain('challenge-secret');
+  });
 });

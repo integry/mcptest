@@ -287,6 +287,30 @@ describe('BrowserOAuthProvider', () => {
     expect(() => restored.assertState('wrong-state')).toThrow(OAuthStateMismatchError);
   });
 
+  it('keeps an exact challenge metadata URL only on the current provider instance', () => {
+    const challengeSecret = 'challenge-secret';
+    const resourceMetadataUrl = `https://mcp.example/.well-known/oauth-protected-resource?token=${challengeSecret}`;
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      resourceMetadataUrl,
+      resourceMetadata: {
+        resource: SERVER_URL,
+        authorization_servers: [ISSUER_A],
+      },
+    });
+
+    expect(provider.discoveryState()?.resourceMetadataUrl).toBe(resourceMetadataUrl);
+    expect(new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() })
+      .discoveryState()?.resourceMetadataUrl).toBeUndefined();
+    const allSessionStorage = Array.from({ length: sessionStorage.length }, (_, index) => {
+      const key = sessionStorage.key(index) || '';
+      return `${key}:${sessionStorage.getItem(key) || ''}`;
+    }).join('\n');
+    expect(allSessionStorage).not.toContain(challengeSecret);
+  });
+
   it('publishes CIMD only for the exact production callback', () => {
     const production = new BrowserOAuthProvider(SERVER_URL, {
       redirectUrl: 'https://mcptest.io/oauth/callback',
@@ -1282,6 +1306,11 @@ describe('OAuth provider interoperability matrix', () => {
       .toBe(OAUTH_TRACE_REDACTED);
     expect(new URL(directFailure?.request?.url || '').searchParams.get('tenant')).toBe('acme');
     expect(JSON.stringify(trace)).not.toContain(challengeSecret);
+    const allSessionStorage = Array.from({ length: sessionStorage.length }, (_, index) => {
+      const key = sessionStorage.key(index) || '';
+      return `${key}:${sessionStorage.getItem(key) || ''}`;
+    }).join('\n');
+    expect(allSessionStorage).not.toContain(challengeSecret);
   });
 
   it('records a rejected proxy fetch with proxy provenance and no duplicate direct failure', async () => {

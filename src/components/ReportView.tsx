@@ -80,6 +80,11 @@ const ReportView: React.FC = () => {
   const [hasInitialized, setHasInitialized] = useState(false);
   const isRunningRef = useRef(false);
   const hasProcessedOAuthReturn = useRef(false);
+  const oauthChallengeRef = useRef<{
+    authenticationUrl: string;
+    resourceMetadataUrl?: string;
+    scope?: string;
+  } | null>(null);
   
   // Store handleRunReport in a ref to avoid dependency issues
   const handleRunReportRef = useRef<((urlToTest: string) => Promise<void>) | null>(null);
@@ -244,6 +249,7 @@ const ReportView: React.FC = () => {
     setOAuthError(null);
     setProgress(['Starting evaluation...']);
     setReport(null);
+    oauthChallengeRef.current = null;
     
     // Only navigate if we're not already on the correct URL
     const currentReportUrl = urlParam ? decodeURIComponent(urlParam) : '';
@@ -264,6 +270,15 @@ const ReportView: React.FC = () => {
     
     try {
       const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
+      if (isAuthenticationRequired(reportData)) {
+        oauthChallengeRef.current = {
+          authenticationUrl: reportData.authenticationUrl || reportData.serverUrl,
+          ...(reportData.resourceMetadataUrl
+            ? { resourceMetadataUrl: reportData.resourceMetadataUrl }
+            : {}),
+          ...(reportData.scope ? { scope: reportData.scope } : {}),
+        };
+      }
       setReport(reportData);
       
       addOrUpdateServer(reportData);
@@ -300,7 +315,14 @@ const ReportView: React.FC = () => {
       const discoveryProxyToken = proxyUrl && currentUser
         ? await currentUser.getIdToken()
         : undefined;
+      const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
+        ? oauthChallengeRef.current
+        : undefined;
       const result = await beginOAuthFlow(authenticationUrl, {
+        ...(challenge?.resourceMetadataUrl
+          ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
+          : {}),
+        ...(challenge?.scope ? { scope: challenge.scope } : {}),
         ...(proxyUrl && discoveryProxyToken
           ? {
               discoveryProxy: {

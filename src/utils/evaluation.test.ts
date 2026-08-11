@@ -482,6 +482,29 @@ describe('dual-era server evaluation', () => {
     });
   });
 
+  it('carries challenge discovery directives ephemerally on an authorization report', async () => {
+    const endpoint = 'https://challenge.example/mcp';
+    const metadataUrl = 'https://challenge.example/.well-known/oauth-protected-resource?token=challenge-secret';
+    const challenge = new ProxiedAuthenticationError(
+      401,
+      'target',
+      new Error('Target authorization required'),
+      { method: 'POST', url: endpoint },
+      { 'www-authenticate': 'Bearer resource_metadata="[sanitized]"' },
+      metadataUrl,
+      'channels:read chat:write'
+    );
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([challenge]))
+      .mockRejectedValueOnce(new Error('Proxy network failure'));
+
+    const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn());
+
+    expect(report.resourceMetadataUrl).toBe(metadataUrl);
+    expect(report.scope).toBe('channels:read chat:write');
+    expect(JSON.stringify(report)).not.toContain('challenge-secret');
+  });
+
   it('does not mistake a proxy-hop authentication failure for target OAuth', async () => {
     const endpoint = 'https://mcp.example/mcp';
     const proxyRequest = {
