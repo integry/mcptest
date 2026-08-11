@@ -238,6 +238,9 @@ export interface CreatePublicReportOptions {
 }
 
 const EXACT_SENSITIVE_KEYS = new Set([
+  'key',
+  'accesskey',
+  'subscriptionkey',
   'authorization',
   'proxyauthorization',
   'xmcpauthorization',

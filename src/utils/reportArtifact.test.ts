@@ -801,6 +801,39 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts common credential-key aliases during creation and serialization', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://target.example/mcp?key=target-key-secret';
+    report.authenticationUrl = 'https://auth.example/authorize?access_key=auth-key-secret';
+    report.sections.protocol.details[0].metadata = {
+      key: 'metadata-key-secret',
+      access_key: 'metadata-access-key-secret',
+      subscriptionKey: 'metadata-subscription-key-secret',
+      callback: 'https://client.example/callback?subscription_key=url-subscription-key-secret',
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const directlyConstructed = createPublicReport(publicReport(), FIXED_OPTIONS);
+    directlyConstructed.sections[0].evidence[0].metadata = {
+      key: 'serializer-key-secret',
+      endpoint: 'https://serializer.example/mcp?access_key=serializer-access-key-secret',
+    };
+
+    const outputs = [
+      JSON.stringify(artifact),
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+      serializePublicReportJson(directlyConstructed),
+      serializePublicReportMarkdown(directlyConstructed),
+    ];
+    for (const output of outputs) {
+      expect(output).not.toMatch(
+        /target-key-secret|auth-key-secret|metadata-(?:key|access-key|subscription-key)-secret|url-subscription-key-secret|serializer-(?:key|access-key)-secret/
+      );
+      expect(output).toContain('REDACTED');
+    }
+  });
+
   it('preserves non-secret authorization prerequisite and PKCE capability fields', () => {
     const artifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
     artifact.sections[0].evidence[0].metadata = {
@@ -1471,8 +1504,9 @@ describe('versioned public report artifacts', () => {
     expect(serializePublicReportMarkdown(artifact)).toContain('55 / 55 (100.00%)');
   });
 
-  it('keeps explicit scored reports when warning evidence mentions a skipped optional probe', () => {
+  it('keeps legacy scored reports when warning evidence mentions a skipped optional probe', () => {
     const report = publicReport();
+    report.outcome = undefined;
     report.sections.protocol.details[0] = {
       ...report.sections.protocol.details[0],
       text: '⚠ Unsupported optional probe was skipped; scored checks completed.',

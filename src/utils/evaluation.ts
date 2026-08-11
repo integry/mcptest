@@ -100,12 +100,18 @@ export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
 );
 
-const isLegacyIncompleteEvaluationDetail = (detail: DetailItem): boolean => (
-  /^⚠/.test(detail.text)
-  && /skipped|not scored|no standard MCP transport|could not be isolated|negotiation failed/i.test(
-    `${detail.text} ${detail.context || ''}`
-  )
-);
+const isLegacyIncompleteEvaluationDetail = (detail: DetailItem): boolean => {
+  const evidence = `${detail.text}. ${detail.context || ''}`;
+  const scoredChecksCompleted = (
+    /(?:^|[.;]\s*)(?:all\s+)?scored checks (?:were\s+)?completed(?:[.!]|$)/i.test(evidence)
+  );
+
+  return /^⚠/.test(detail.text)
+    && !scoredChecksCompleted
+    && /skipped|not scored|no standard MCP transport|could not be isolated|negotiation failed/i.test(
+      evidence
+    );
+};
 
 export const hasLegacyIncompleteEvaluationEvidence = (section: EvaluationSection): boolean => (
   section.details.some(isLegacyIncompleteEvaluationDetail)
