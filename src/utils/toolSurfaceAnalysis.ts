@@ -2,6 +2,7 @@ import {
   TOOL_SURFACE_ANALYSIS_VERSION,
   type ToolSurfaceAnalysisV1,
   type ToolSurfaceAnalyzerInput,
+  type ToolDefinitionSnapshotSetV1,
   type ToolSurfaceDiscoveryCapability,
   type ToolSurfaceEvidenceV1,
   type ToolSurfaceFindingCategory,
@@ -28,6 +29,9 @@ const SCHEMA_NODE_LIMIT = 50_000;
 const SCHEMA_EVIDENCE_RETENTION_LIMIT = EVIDENCE_LIMIT;
 const SIMILARITY_COMPARISON_LIMIT = 50_000;
 const OVERLAP_PAIR_RETENTION_LIMIT = EVIDENCE_LIMIT;
+const SNAPSHOT_DEFINITION_LIMIT = 500;
+const SNAPSHOT_DEFINITION_BYTE_LIMIT = 64_000;
+const SNAPSHOT_SCHEMA_BYTE_LIMIT = 32_000;
 
 const SEVERITIES: readonly ToolSurfaceSeverity[] = [
   'critical',
@@ -1416,6 +1420,65 @@ const promptLikeSignals = (description: string | null): string[] => {
     .map(([label]) => label);
 };
 
+const createToolDefinitionSnapshot = (
+  tools: readonly ToolRecord[],
+  expectedToolCount: number,
+  discoveryIncomplete: boolean
+): ToolDefinitionSnapshotSetV1 => {
+  const definitions: ToolDefinitionSnapshotSetV1['tools'] = [];
+  const names = new Set<string>();
+  let retainedBytes = 0;
+  let complete = !discoveryIncomplete && tools.length === expectedToolCount;
+
+  for (const tool of tools) {
+    if (
+      definitions.length >= SNAPSHOT_DEFINITION_LIMIT
+      || !tool.valid
+      || !tool.name
+      || tool.textTruncated
+      || names.has(tool.name)
+    ) {
+      complete = false;
+      continue;
+    }
+
+    const candidate = {
+      name: tool.name,
+      ...(tool.description ? { description: tool.description } : {}),
+      inputSchema: tool.inputSchema,
+    };
+    const canonical = canonicalStringify(
+      candidate,
+      CANONICAL_ORDER_NODE_LIMIT,
+      SNAPSHOT_SCHEMA_BYTE_LIMIT
+    );
+    const candidateBytes = utf8ByteLength(canonical.serialized);
+    if (
+      canonical.truncationReasons.size > 0
+      || retainedBytes + candidateBytes > SNAPSHOT_DEFINITION_BYTE_LIMIT
+    ) {
+      complete = false;
+      continue;
+    }
+
+    try {
+      definitions.push(JSON.parse(canonical.serialized));
+      names.add(tool.name);
+      retainedBytes += candidateBytes;
+    } catch {
+      complete = false;
+    }
+  }
+
+  definitions.sort((left, right) => compareText(left.name, right.name));
+  return {
+    status: expectedToolCount === 0 && discoveryIncomplete
+      ? 'unavailable'
+      : complete ? 'complete' : 'partial',
+    tools: definitions,
+  };
+};
+
 const contextSeverity = (toolCount: number, tokenCount: number): ToolSurfaceSeverity | null => {
   if (toolCount >= 100 || tokenCount >= 20_000) return 'high';
   if (toolCount >= 40 || tokenCount >= 8_000) return 'medium';
@@ -2014,6 +2077,11 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       value: fingerprint(canonicalFingerprint),
       canonicalBytes: utf8ByteLength(canonicalFingerprint),
     },
+    toolDefinitions: createToolDefinitionSnapshot(
+      tools,
+      extracted.tools.length,
+      extracted.incompleteDiscovery.includes('tools')
+    ),
     findings,
     findingCount,
     interpretation: 'Findings describe observable context, quality, ambiguity, and capability signals. They do not prove a vulnerability, exploitation, or malicious intent.',

@@ -14,6 +14,12 @@
 
 The exact URL entered by a user or supplied by the catalog is tried first. Conventional `/mcp` and `/sse` paths are compatibility fallbacks; they do not replace an explicit custom endpoint.
 
+## Report history and privacy
+
+Completed reports are saved as redacted snapshots in the current browser so the report page can show semantic drift. History retains the newest 10 snapshots for each endpoint and 20 snapshots overall. Once either limit is reached, the oldest applicable snapshots are removed automatically.
+
+Snapshots contain the public report artifact, including bounded tool contracts, protocol and transport observations, OAuth metadata, capabilities, scores, timings, and findings. Report redaction runs before local storage; credentials and secret-bearing fields are never retained. The report history panel can export the redacted history, delete one snapshot, or delete all report history. Deleting all history removes only the dedicated report-history storage key and leaves tabs, dashboards, recent servers, and OAuth data unchanged.
+
 ## Protocol negotiation
 
 The client uses automatic version negotiation from the official TypeScript SDK:

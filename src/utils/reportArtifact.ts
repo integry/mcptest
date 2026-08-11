@@ -139,6 +139,14 @@ const ToolSurfaceArtifactSchema = z.object({
     algorithm: z.string().min(1),
     value: z.string().min(1),
   }).passthrough(),
+  toolDefinitions: z.object({
+    status: z.enum(['complete', 'partial', 'unavailable']),
+    tools: z.array(z.object({
+      name: z.string().min(1),
+      description: z.string().optional(),
+      inputSchema: JsonValueSchema,
+    }).strict()),
+  }).strict().optional(),
   findings: z.object({
     critical: z.array(ToolSurfaceFindingArtifactSchema),
     high: z.array(ToolSurfaceFindingArtifactSchema),
@@ -899,14 +907,43 @@ const isJsonRpcErrorCode = (
   && Number.isInteger(value)
 );
 
+const isToolInputSchemaPropertyDeclaration = (
+  key: string,
+  path: readonly string[]
+): boolean => {
+  const propertyIndex = path.length - 2;
+  return propertyIndex >= 0
+    && path[propertyIndex] === 'properties'
+    && path[path.length - 1] === key
+    && path.includes('toolDefinitions')
+    && path.includes('inputSchema');
+};
+
+const isSensitiveToolSchemaExample = (
+  key: string,
+  path: readonly string[]
+): boolean => {
+  if (!['const', 'default', 'example', 'examples'].includes(canonicalKey(key))) return false;
+  const propertiesIndex = path.lastIndexOf('properties');
+  const propertyName = propertiesIndex >= 0 ? path[propertiesIndex + 1] : undefined;
+  return Boolean(
+    propertyName
+    && path.includes('toolDefinitions')
+    && path.includes('inputSchema')
+    && isSensitiveQueryKey(propertyName)
+  );
+};
+
 const redactReportValueAtPath = (
   value: unknown,
   key: string | undefined,
   path: readonly string[]
 ): unknown => {
+  if (key && isSensitiveToolSchemaExample(key, path)) return REDACTED_VALUE;
   if (key
     && isSensitiveQueryKey(key)
     && !isAuthorizationPrerequisiteSchemaField(path)
+    && !isToolInputSchemaPropertyDeclaration(key, path)
     && !isJsonRpcErrorCode(value, key, path)) {
     return REDACTED_VALUE;
   }

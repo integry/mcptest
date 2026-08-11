@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import OAuthConfig from './OAuthConfig';
 import ReportAuthorizationGate from './ReportAuthorizationGate';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
+import ReportHistory from './ReportHistory';
 import {
   beginOAuthFlow,
   getOAuthPrerequisite,
@@ -27,6 +28,15 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import {
+  createReportSnapshot,
+  deleteAllReportSnapshots,
+  deleteReportSnapshot,
+  loadReportSnapshots,
+  saveReportSnapshotHistoryDownload,
+  storeReportSnapshot,
+  type ReportSnapshotV1,
+} from '../utils/reportHistory';
 
 type StaticAuthorizationScheme = 'bearer' | 'api-key';
 
@@ -161,6 +171,8 @@ const ReportView: React.FC = () => {
   const [unknownAuthorizationScheme, setUnknownAuthorizationScheme] = useState<'bearer' | 'api-key'>('bearer');
   const [apiKeyHeader, setApiKeyHeader] = useState<'x-api-key' | 'api-key' | 'authorization'>('x-api-key');
   const [oauthTrace, setOAuthTrace] = useState<OAuthTraceV1 | undefined>();
+  const [reportSnapshots, setReportSnapshots] = useState<ReportSnapshotV1[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -295,6 +307,7 @@ const ReportView: React.FC = () => {
     } catch (e) {
       console.error("Failed to load servers from localStorage", e);
     }
+    setReportSnapshots(loadReportSnapshots(localStorage));
   }, []);
 
   const toggleItemExpanded = (itemKey: string) => {
@@ -388,8 +401,18 @@ const ReportView: React.FC = () => {
         };
       }
       setReport(reportData);
+      let evaluationTrace: OAuthTraceV1 | undefined;
       if (typeof sessionStorage !== 'undefined') {
-        setOAuthTrace(getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage));
+        evaluationTrace = getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage);
+        setOAuthTrace(evaluationTrace);
+      }
+      try {
+        const snapshot = createReportSnapshot(reportData, evaluationTrace);
+        setReportSnapshots(storeReportSnapshot(snapshot, localStorage));
+        setHistoryError(null);
+      } catch (snapshotError) {
+        console.error('Failed to store report snapshot:', snapshotError);
+        setHistoryError('This report completed, but its local snapshot could not be saved. Browser storage may be full or unavailable.');
       }
       
       addOrUpdateServer(reportData);
@@ -681,6 +704,22 @@ const ReportView: React.FC = () => {
               oauthTrace={oauthTrace}
               expandedItems={expandedItems}
               onToggleItem={toggleItemExpanded}
+            />
+            {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
+            <ReportHistory
+              endpoint={report.serverUrl}
+              snapshots={reportSnapshots}
+              onDeleteSnapshot={(id) => {
+                setReportSnapshots(deleteReportSnapshot(id, localStorage));
+                setHistoryError(null);
+              }}
+              onDeleteAll={() => {
+                if (!window.confirm('Delete all locally stored report snapshots? Other app data will be kept.')) return;
+                deleteAllReportSnapshots(localStorage);
+                setReportSnapshots([]);
+                setHistoryError(null);
+              }}
+              onExportAll={() => saveReportSnapshotHistoryDownload(reportSnapshots)}
             />
             {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
               <ReportAuthorizationGate
