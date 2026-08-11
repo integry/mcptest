@@ -21,7 +21,7 @@ import {
   type TestedServerHistoryEntry,
   upsertTestedServerHistoryEntry,
 } from '../utils/reportPresentation';
-import { getStoredOAuthTrace } from '../utils/oauthTrace';
+import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
 import type { AuthorizationScheme } from '../compatibility';
 
@@ -52,7 +52,8 @@ const targetAuthenticateChallenge = (report: EvaluationReport): string | undefin
 export const getStaticCredentialHeaders = (
   report: EvaluationReport,
   scheme: 'bearer' | 'api-key',
-  credential: string
+  credential: string,
+  apiKeyHeader?: 'x-api-key' | 'api-key' | 'authorization'
 ): Record<string, string> => {
   const trimmedCredential = credential.trim();
   if (scheme === 'bearer') {
@@ -62,6 +63,15 @@ export const getStaticCredentialHeaders = (
         : `Bearer ${trimmedCredential}`,
     };
   }
+
+  if (apiKeyHeader === 'authorization') {
+    return {
+      Authorization: /^ApiKey\s/i.test(trimmedCredential)
+        ? trimmedCredential
+        : `ApiKey ${trimmedCredential}`,
+    };
+  }
+  if (apiKeyHeader) return { [apiKeyHeader]: trimmedCredential };
 
   const apiKeyScheme = targetAuthenticateChallenge(report)
     ?.match(/(?:^|,\s*)(ApiKey|Api-Key|x-api-key)(?=\s|,|$)/i)?.[1];
@@ -74,6 +84,21 @@ export const getStaticCredentialHeaders = (
   }
 
   return { 'x-api-key': trimmedCredential };
+};
+
+export const getOAuthTraceForEvaluation = (
+  report: EvaluationReport,
+  evaluationStartedAt: number,
+  storage: Pick<Storage, 'getItem' | 'setItem'>
+): OAuthTraceV1 | undefined => {
+  const targetUrls = [...new Set([report.authenticationUrl, report.serverUrl].filter(
+    (value): value is string => Boolean(value)
+  ))];
+  return targetUrls
+    .map((targetUrl) => getStoredOAuthTrace(targetUrl, storage))
+    .find((trace) => trace?.events.some((event) => (
+      Date.parse(event.timestamp) >= evaluationStartedAt
+    )));
 };
 
 const ReportView: React.FC = () => {
@@ -112,6 +137,9 @@ const ReportView: React.FC = () => {
   const [reportError, setReportError] = useState<string | null>(null);
   const [staticCredential, setStaticCredential] = useState('');
   const [staticCredentialError, setStaticCredentialError] = useState<string | null>(null);
+  const [unknownAuthorizationScheme, setUnknownAuthorizationScheme] = useState<'bearer' | 'api-key'>('bearer');
+  const [apiKeyHeader, setApiKeyHeader] = useState<'x-api-key' | 'api-key' | 'authorization'>('x-api-key');
+  const [oauthTrace, setOAuthTrace] = useState<OAuthTraceV1 | undefined>();
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -292,6 +320,7 @@ const ReportView: React.FC = () => {
     }
     setProgress(['Starting evaluation...']);
     setReport(null);
+    setOAuthTrace(undefined);
     
     // Only navigate if we're not already on the correct URL
     const currentReportUrl = urlParam ? decodeURIComponent(urlParam) : '';
@@ -311,6 +340,7 @@ const ReportView: React.FC = () => {
     };
     
     try {
+      const evaluationStartedAt = Date.now();
       const reportData = await evaluateServer(
         urlToTest,
         token,
@@ -319,6 +349,9 @@ const ReportView: React.FC = () => {
         targetHeaders
       );
       setReport(reportData);
+      if (typeof sessionStorage !== 'undefined') {
+        setOAuthTrace(getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage));
+      }
       
       addOrUpdateServer(reportData);
       
@@ -334,7 +367,7 @@ const ReportView: React.FC = () => {
         setProgress(prev => [...prev, `${requirement} is required before this server can be scored.`]);
         if (targetHeaders) {
           setStaticCredentialError(
-            `The ${scheme === 'api-key' ? 'API key' : 'bearer token'} was rejected. Check it and retry.`
+            `The ${scheme === 'api-key' ? 'API key' : scheme === 'bearer' ? 'bearer token' : 'credential'} was rejected. Check it and retry.`
           );
         }
       } else if (targetHeaders) {
@@ -402,10 +435,6 @@ const ReportView: React.FC = () => {
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required';
-  const oauthTrace = report && typeof sessionStorage !== 'undefined'
-    ? getStoredOAuthTrace(report.authenticationUrl || report.serverUrl, sessionStorage)
-      || getStoredOAuthTrace(report.serverUrl, sessionStorage)
-    : undefined;
   const authorizationSchemes = report
     ? createObservedServerFacts(report, oauthTrace).authorization.schemes.value
     : 'unknown';
@@ -413,7 +442,10 @@ const ReportView: React.FC = () => {
     ? undefined
     : authorizationSchemes[0];
 
-  const retryWithStaticCredential = async (scheme: 'bearer' | 'api-key') => {
+  const retryWithStaticCredential = async (
+    scheme: 'bearer' | 'api-key',
+    selectedApiKeyHeader?: 'x-api-key' | 'api-key' | 'authorization'
+  ) => {
     if (!report) return;
     const credential = staticCredential.trim();
     if (!credential) {
@@ -424,7 +456,10 @@ const ReportView: React.FC = () => {
     }
     const targetUrl = report.authenticationUrl || report.serverUrl;
     setStaticCredentialError(null);
-    await handleRunReport(targetUrl, getStaticCredentialHeaders(report, scheme, credential));
+    await handleRunReport(
+      targetUrl,
+      getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader)
+    );
   };
 
   return (
@@ -617,10 +652,81 @@ const ReportView: React.FC = () => {
             {reportRequiresAuthorization && authorizationScheme === undefined && (
               <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
                 <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
-                <p className="mb-0">
-                  Inspect the target&apos;s challenge or configuration and provide the required
-                  credential before rerunning. OAuth was not started because no OAuth scheme was observed.
+                <p>
+                  Choose the target&apos;s credential type and retry. The credential is kept only
+                  in this page&apos;s memory and is not saved, logged, or added to the URL.
                 </p>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void retryWithStaticCredential(
+                      unknownAuthorizationScheme,
+                      unknownAuthorizationScheme === 'api-key' ? apiKeyHeader : undefined
+                    );
+                  }}
+                >
+                  <label className="form-label" htmlFor="report-unknown-auth-scheme">
+                    Authentication type
+                  </label>
+                  <select
+                    id="report-unknown-auth-scheme"
+                    className="form-select mb-3"
+                    value={unknownAuthorizationScheme}
+                    onChange={(event) => {
+                      setUnknownAuthorizationScheme(event.target.value as 'bearer' | 'api-key');
+                      setStaticCredentialError(null);
+                    }}
+                    disabled={isRunning}
+                  >
+                    <option value="bearer">Bearer token</option>
+                    <option value="api-key">API key</option>
+                  </select>
+                  {unknownAuthorizationScheme === 'api-key' && (
+                    <>
+                      <label className="form-label" htmlFor="report-api-key-header">
+                        API-key header
+                      </label>
+                      <select
+                        id="report-api-key-header"
+                        className="form-select mb-3"
+                        value={apiKeyHeader}
+                        onChange={(event) => setApiKeyHeader(
+                          event.target.value as 'x-api-key' | 'api-key' | 'authorization'
+                        )}
+                        disabled={isRunning}
+                      >
+                        <option value="x-api-key">x-api-key</option>
+                        <option value="api-key">api-key</option>
+                        <option value="authorization">Authorization (ApiKey value)</option>
+                      </select>
+                    </>
+                  )}
+                  <label className="form-label" htmlFor="report-unknown-static-credential">
+                    {unknownAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
+                  </label>
+                  <input
+                    id="report-unknown-static-credential"
+                    className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
+                    type="password"
+                    value={staticCredential}
+                    onChange={(event) => {
+                      setStaticCredential(event.target.value);
+                      setStaticCredentialError(null);
+                    }}
+                    disabled={isRunning}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    aria-describedby={staticCredentialError ? 'report-unknown-static-credential-error' : undefined}
+                  />
+                  {staticCredentialError && (
+                    <div id="report-unknown-static-credential-error" className="invalid-feedback">
+                      {staticCredentialError}
+                    </div>
+                  )}
+                  <button type="submit" className="btn btn-primary mt-3" disabled={isRunning}>
+                    {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                  </button>
+                </form>
               </section>
             )}
           </div>

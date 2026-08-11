@@ -302,6 +302,30 @@ describe('release readiness integration', () => {
     expect(facts.authorization.requirement.value).toBe('unknown');
   });
 
+  it('does not let a historical target challenge override current unauthenticated success', () => {
+    const report = evaluatedReport();
+    const facts = createObservedServerFacts(report, {
+      version: 1,
+      traceId: 'historical-target-trace',
+      targetFingerprint: 'fingerprint',
+      targetUrl: report.serverUrl,
+      startedAt: '2026-08-10T20:02:00.000Z',
+      events: [{
+        sequence: 1,
+        type: 'target_challenge',
+        outcome: 'challenged',
+        timestamp: '2026-08-10T20:02:00.000Z',
+        provenance: 'direct_target',
+        route: 'direct',
+        explanation: 'A previous evaluation received a challenge.',
+        response: { status: 401, headers: { 'www-authenticate': 'Bearer realm="mcp"' } },
+      }],
+    });
+
+    expect(facts.authorization.schemes.value).toEqual([]);
+    expect(facts.authorization.requirement.value).toBe('none');
+  });
+
   it('keeps the authorization prerequisite unscored and ahead of every other decision', () => {
     const report = evaluatedReport({
       outcome: 'authorization-required',

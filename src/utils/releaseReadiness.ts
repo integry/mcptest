@@ -169,9 +169,12 @@ const inferAuthorizationSchemes = (
   trace: OAuthTraceV1 | undefined
 ): Known<readonly AuthorizationScheme[]> => {
   const records = metadataRecords(report);
+  const unauthenticatedTargetRequestSucceeded = records.some(
+    (record) => record.unauthenticatedTargetRequestSucceeded === true
+  );
   const schemes = [
     ...configuredSchemes(report),
-    ...targetChallengeEvents(trace).flatMap((event) => {
+    ...targetChallengeEvents(unauthenticatedTargetRequestSucceeded ? undefined : trace).flatMap((event) => {
       const authenticate = Object.entries(event.response?.headers || {}).find(
         ([key]) => key.toLowerCase() === 'www-authenticate'
       )?.[1];
@@ -180,7 +183,7 @@ const inferAuthorizationSchemes = (
   ];
   if (report.sections.security || traceOAuthEvidence(trace)) schemes.push('oauth');
   if (schemes.length > 0) return [...new Set(schemes)];
-  if (records.some((record) => record.unauthenticatedTargetRequestSucceeded === true)) return [];
+  if (unauthenticatedTargetRequestSucceeded) return [];
   return 'unknown';
 };
 
@@ -219,10 +222,14 @@ export const createObservedServerFacts = (
   const outcome = resolveEvaluationOutcome(report);
   const schemes = inferAuthorizationSchemes(report, trace);
   const oauthApplies = schemes !== 'unknown' && schemes.includes('oauth');
-  const hasTargetChallenge = targetChallengeEvents(trace).length > 0;
   const unauthenticatedTargetRequestSucceeded = records.some(
     (record) => record.unauthenticatedTargetRequestSucceeded === true
   );
+  // Explicit current unauthenticated success takes precedence over a target
+  // challenge from unrelated session history.
+  const hasTargetChallenge = targetChallengeEvents(
+    unauthenticatedTargetRequestSucceeded ? undefined : trace
+  ).length > 0;
   const protectedResourceMetadata = oauthBooleanObservation(
     report,
     trace,

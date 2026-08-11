@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EvaluationReport } from '../utils/evaluation';
-import { getStaticCredentialHeaders } from './ReportView';
+import { getOAuthTraceForEvaluation, getStaticCredentialHeaders } from './ReportView';
+import { createOAuthFlightRecorder } from '../utils/oauthTrace';
 
 const challengedReport = (challenge: string): EvaluationReport => ({
   serverUrl: 'https://auth.example/mcp',
@@ -39,5 +40,49 @@ describe('report static credential delivery', () => {
       'api-key',
       'secret-value'
     )).toEqual({ 'x-api-key': 'secret-value' });
+  });
+
+  it.each([
+    ['x-api-key', { 'x-api-key': 'secret-value' }],
+    ['api-key', { 'api-key': 'secret-value' }],
+    ['authorization', { Authorization: 'ApiKey secret-value' }],
+  ] as const)('uses the selected %s API-key delivery for an unknown challenge', (header, expected) => {
+    expect(getStaticCredentialHeaders(
+      challengedReport('Proprietary realm="mcp"'),
+      'api-key',
+      'secret-value',
+      header
+    )).toEqual(expected);
+  });
+});
+
+describe('report OAuth trace correlation', () => {
+  it('excludes a target trace that was not created or continued by the current evaluation', () => {
+    sessionStorage.clear();
+    const report = challengedReport('Bearer realm="mcp"');
+    const recorder = createOAuthFlightRecorder({
+      targetUrl: report.serverUrl,
+      storage: sessionStorage,
+      startedAt: '2026-08-11T20:00:00.000Z',
+    });
+    recorder.record({
+      type: 'target_challenge',
+      outcome: 'challenged',
+      timestamp: '2026-08-11T20:00:00.000Z',
+      provenance: 'direct_target',
+      route: 'direct',
+      explanation: 'Historical challenge.',
+    });
+
+    expect(getOAuthTraceForEvaluation(
+      report,
+      Date.parse('2026-08-11T21:00:00.000Z'),
+      sessionStorage
+    )).toBeUndefined();
+    expect(getOAuthTraceForEvaluation(
+      report,
+      Date.parse('2026-08-11T19:00:00.000Z'),
+      sessionStorage
+    )?.traceId).toBe(recorder.snapshot().traceId);
   });
 });
