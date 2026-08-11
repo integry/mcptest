@@ -311,6 +311,35 @@ describe('versioned public report artifacts', () => {
     });
   });
 
+  it('keeps a failed candidate URL in redacted route evidence without reporting it as negotiated', () => {
+    const report = failedReport();
+    const candidateUrl = 'https://failed.example/fallback?access_token=failed-candidate-secret';
+    report.sections.protocol.details[0].metadata = {
+      endpoint: candidateUrl,
+      route: 'authenticated proxy',
+      routeFailures: [
+        { route: 'direct', message: 'Direct target failed' },
+        { route: 'authenticated proxy', message: 'Proxy negotiation failed', endpoint: candidateUrl },
+      ],
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const protocolEvidence = artifact.sections.find(({ id }) => id === 'protocol')?.evidence[0];
+
+    expect(artifact.target.negotiatedEndpoint).toBeUndefined();
+    expect(protocolEvidence?.metadata).toMatchObject({
+      routeFailures: [
+        { route: 'direct', message: 'Direct target failed' },
+        {
+          route: 'authenticated proxy',
+          message: 'Proxy negotiation failed',
+          endpoint: 'https://failed.example/fallback?access_token=%5BREDACTED%5D',
+        },
+      ],
+    });
+    expect(JSON.stringify(artifact)).not.toContain('failed-candidate-secret');
+  });
+
   it.each(Object.entries(GOLDEN_REPORTS))('validates the %s artifact with the published JSON Schema', (_, makeReport) => {
     const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
 

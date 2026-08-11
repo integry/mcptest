@@ -869,7 +869,9 @@ export const createPublicReport = (
     .filter((value): value is Record<string, unknown> => (
       Boolean(value) && typeof value === 'object' && !Array.isArray(value)
     ));
-  const negotiatedEndpoint = metadataString(negotiationMetadata, 'endpoint');
+  const negotiatedEndpoint = outcome === 'failed'
+    ? undefined
+    : metadataString(negotiationMetadata, 'endpoint');
   const negotiationMs = metadataNumber(metadata, 'negotiationMs');
   const connectionSetupMs = report.sections.performance?.details
     .map((detail) => (detail.metadata as { durationMs?: unknown } | undefined)?.durationMs)
