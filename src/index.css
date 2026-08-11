@@ -2888,7 +2888,7 @@ span.health-indicator.health-indicator-gray {
   display: -webkit-box;
   overflow: hidden;
   margin: 0 0 0.55rem;
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-muted) 76%, var(--text-color));
   font-size: 0.8rem;
   line-height: 1.5;
   -webkit-box-orient: vertical;
@@ -2914,7 +2914,7 @@ span.health-indicator.health-indicator-gray {
   align-items: center;
   gap: clamp(2rem, 5vw, 5rem);
   min-height: 340px;
-  margin-bottom: 1.25rem;
+  margin-bottom: 2.5rem;
   padding: clamp(2rem, 5vw, 4.5rem);
   border: 1px solid color-mix(in srgb, var(--primary-color) 22%, var(--border-color));
   border-radius: calc(var(--border-radius) * 1.35);
@@ -3050,17 +3050,18 @@ span.health-indicator.health-indicator-gray {
   margin: 0 auto;
 }
 
-.suggested-servers-intro {
-  margin: 0.35rem 0 1rem;
+.suggested-servers-panel--onboarding .suggested-servers-intro {
+  margin: 0;
+  padding: 1.5rem 1.1rem 1rem;
   text-align: center;
 }
 
-.suggested-servers-intro h2 {
+.suggested-servers-panel--onboarding .suggested-servers-intro h2 {
   margin-bottom: 0.35rem;
   font-size: clamp(1.3rem, 2vw, 1.65rem);
 }
 
-.suggested-servers-intro p {
+.suggested-servers-panel--onboarding .suggested-servers-intro p {
   margin: 0;
   color: var(--text-muted);
 }
@@ -3075,7 +3076,7 @@ span.health-indicator.health-indicator-gray {
 
 .awaiting-connection-tabs {
   display: flex;
-  gap: 1.4rem;
+  gap: 2rem;
   padding: 0.8rem 1.1rem;
   color: var(--text-muted);
   border-bottom: 1px dashed var(--border-color);
@@ -3084,7 +3085,20 @@ span.health-indicator.health-indicator-gray {
 }
 
 .awaiting-connection-tabs span:first-child {
+  position: relative;
   color: var(--text-accent);
+  font-weight: 700;
+}
+
+.awaiting-connection-tabs span:first-child::after {
+  position: absolute;
+  right: 0;
+  bottom: -0.8rem;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--primary-color);
+  content: '';
 }
 
 .awaiting-connection-empty {

@@ -9,6 +9,7 @@ interface SuggestedServersPanelProps {
   handleConnect: (urlToConnect?: string, protocolEraHint?: CatalogProtocolEra) => void;
   isConnected: boolean;
   isConnecting: boolean;
+  showOnboardingIntro?: boolean;
 }
 
 const suggestedCatalogServers = getCatalogServers()
@@ -26,6 +27,7 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
   handleConnect,
   isConnected,
   isConnecting,
+  showOnboardingIntro = false,
 }) => {
   const handleServerClick = (url: string, protocolEra: CatalogProtocolEra) => {
     if (isConnecting) return;
@@ -34,7 +36,13 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
   };
 
   return (
-    <div className="card mb-3 suggested-servers-panel">
+    <div className={`card mb-3 suggested-servers-panel${showOnboardingIntro ? ' suggested-servers-panel--onboarding' : ''}`}>
+      {showOnboardingIntro && (
+        <div className="suggested-servers-intro">
+          <h2>See mcptest.io in action</h2>
+          <p>Don&apos;t have a server yet? Try a public endpoint and start inspecting in one click.</p>
+        </div>
+      )}
       <div className="card-header">
         <div>
           <h6 className="mb-0">Suggested servers</h6>

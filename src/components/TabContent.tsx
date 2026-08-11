@@ -872,12 +872,6 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
           <div className="w-100 idle-onboarding-layout">
-            {showFirstConnectionOnboarding && (
-              <div className="suggested-servers-intro">
-                <h2>See mcptest.io in action</h2>
-                <p>Don&apos;t have a server yet? Try a public endpoint and start inspecting in one click.</p>
-              </div>
-            )}
             {!showFirstConnectionOnboarding && <AwaitingConnectionPanel />}
             {isFirstConnection ? (
               <SuggestedServersPanel
@@ -885,6 +879,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 handleConnect={handleConnectWrapper}
                 isConnected={isConnected}
                 isConnecting={isConnecting}
+                showOnboardingIntro={showFirstConnectionOnboarding}
               />
             ) : (
               <div className="row g-3">
