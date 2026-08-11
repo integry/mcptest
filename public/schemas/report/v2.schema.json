@@ -1,0 +1,634 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcptest.io/schemas/report/v2.schema.json",
+  "title": "mcptest public evaluation report v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "artifactType",
+    "schemaVersion",
+    "generatedAt",
+    "generator",
+    "target",
+    "provenance",
+    "outcome",
+    "score",
+    "sections"
+  ],
+  "properties": {
+    "$schema": { "const": "https://mcptest.io/schemas/report/v2.schema.json" },
+    "artifactType": { "const": "mcptest.report" },
+    "schemaVersion": { "const": "2.0.0" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "generator": { "$ref": "#/$defs/generator" },
+    "target": { "$ref": "#/$defs/target" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "outcome": { "$ref": "#/$defs/outcome" },
+    "score": {
+      "oneOf": [
+        { "$ref": "#/$defs/overallScore" },
+        { "type": "null" }
+      ]
+    },
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "transport": { "$ref": "#/$defs/transport" },
+    "timings": { "$ref": "#/$defs/timings" },
+    "releaseDecision": { "$ref": "#/$defs/releaseDecision" },
+    "compatibility": { "$ref": "#/$defs/compatibility" },
+    "toolSurfaceAnalysis": { "$ref": "#/$defs/toolSurfaceAnalysis" },
+    "oauthTrace": { "$ref": "#/$defs/oauthTrace" },
+    "sections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/section" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "properties": { "status": { "const": "scored" } },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "score": { "$ref": "#/$defs/overallScore" },
+          "sections": {
+            "items": {
+              "properties": {
+                "status": { "const": "evaluated" },
+                "score": {
+                  "properties": { "earned": { "type": "number" } },
+                  "required": ["earned"]
+                }
+              },
+              "required": ["status", "score"]
+            }
+          }
+        }
+      },
+      "else": { "properties": { "score": { "type": "null" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "properties": { "status": { "const": "authorization-required" } },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "outcome": { "required": ["authorizationPrerequisite"] }
+        }
+      },
+      "else": {
+        "properties": {
+          "outcome": {
+            "not": { "required": ["authorizationPrerequisite"] }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "const": "mcptest" },
+        "version": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "minLength": 1 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["testedEndpoint"],
+      "properties": {
+        "testedEndpoint": { "type": "string", "minLength": 1 },
+        "authenticationEndpoint": { "type": "string", "minLength": 1 },
+        "negotiatedEndpoint": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "proxyUsed"],
+      "properties": {
+        "route": { "enum": ["direct", "authenticated-proxy", "unknown"] },
+        "proxyUsed": { "type": ["boolean", "null"] },
+        "attempts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["route", "result"],
+            "properties": {
+              "route": { "enum": ["direct", "authenticated-proxy"] },
+              "result": { "const": "failed" }
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "route": { "const": "direct" },
+            "proxyUsed": { "const": false }
+          }
+        },
+        {
+          "properties": {
+            "route": { "const": "authenticated-proxy" },
+            "proxyUsed": { "const": true }
+          }
+        },
+        {
+          "properties": {
+            "route": { "const": "unknown" },
+            "proxyUsed": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "summary"],
+      "properties": {
+        "status": { "enum": ["scored", "authorization-required", "partial", "failed"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "authorizationPrerequisite": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "state", "message"],
+          "properties": {
+            "required": { "const": true },
+            "state": { "const": "authorization-required" },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "overallScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["earned", "maximum", "percentage"],
+      "properties": {
+        "earned": { "type": "number", "minimum": 0 },
+        "maximum": { "type": "number", "exclusiveMinimum": 0 },
+        "percentage": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "releaseDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "answer", "summary", "priorities"],
+      "properties": {
+        "status": { "enum": ["ready", "blocked", "review", "authorization-required", "unknown"] },
+        "answer": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "priorities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "severity", "title", "detail", "remediation", "source"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "severity": { "enum": ["critical", "high", "medium", "unknown"] },
+              "title": { "type": "string", "minLength": 1 },
+              "detail": { "type": "string" },
+              "remediation": { "type": "string", "minLength": 1 },
+              "source": { "enum": ["Host compatibility", "Tool surface", "Evaluation"] }
+            }
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": ["schemaVersion", "assessments"],
+      "properties": {
+        "schemaVersion": { "type": "string", "minLength": 1 },
+        "assessments": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["schemaVersion", "profileId", "profileVersion", "status", "findings"],
+            "properties": {
+              "schemaVersion": { "type": "string", "minLength": 1 },
+              "profileId": { "type": "string", "minLength": 1 },
+              "profileVersion": { "type": "string", "minLength": 1 },
+              "status": { "enum": ["compatible", "compatible-with-caveats", "incompatible", "unknown"] },
+              "findings": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/compatibilityFinding" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "compatibilityFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "ruleId",
+        "scope",
+        "outcome",
+        "severity",
+        "summary",
+        "detail",
+        "evidence"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "ruleId": { "type": "string", "minLength": 1 },
+        "scope": { "enum": ["target-server", "authorization-server", "client-environment"] },
+        "outcome": { "enum": ["pass", "caveat", "fail", "unknown"] },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "summary": { "type": "string" },
+        "detail": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/compatibilityEvidence" }
+        },
+        "remediation": { "$ref": "#/$defs/compatibilityRemediation" }
+      }
+    },
+    "compatibilityEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "source", "description"],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "source": {
+          "enum": [
+            "target-server",
+            "authorization-server",
+            "browser",
+            "proxy",
+            "configuration",
+            "host-profile"
+          ]
+        },
+        "description": { "type": "string" },
+        "location": { "type": "string" }
+      }
+    },
+    "compatibilityRemediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "action"],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "kind": {
+          "enum": [
+            "server-change",
+            "authorization-server-change",
+            "client-configuration",
+            "observation-needed"
+          ]
+        },
+        "action": { "type": "string", "minLength": 1 },
+        "documentationUrl": { "type": "string" }
+      }
+    },
+    "toolSurfaceAnalysis": {
+      "type": "object",
+      "required": ["version", "metrics", "fingerprint", "findings", "findingCount", "interpretation"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "metrics": {
+          "type": "object",
+          "required": ["toolCount", "resourceCount", "promptCount", "estimatedContextTokens"],
+          "properties": {
+            "toolCount": { "type": "number", "minimum": 0 },
+            "resourceCount": { "type": "number", "minimum": 0 },
+            "promptCount": { "type": "number", "minimum": 0 },
+            "estimatedContextTokens": { "type": "number", "minimum": 0 }
+          }
+        },
+        "fingerprint": {
+          "type": "object",
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": { "type": "string", "minLength": 1 },
+            "value": { "type": "string", "minLength": 1 }
+          }
+        },
+        "findings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["critical", "high", "medium", "low", "info"],
+          "properties": {
+            "critical": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "high": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "medium": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "low": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            },
+            "info": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolSurfaceFinding" }
+            }
+          }
+        },
+        "findingCount": { "type": "number", "minimum": 0 },
+        "interpretation": { "type": "string" }
+      }
+    },
+    "toolSurfaceFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "kind",
+        "title",
+        "summary",
+        "evidence",
+        "omittedEvidenceCount",
+        "remediation"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "category": {
+          "enum": [
+            "availability",
+            "context-cost",
+            "ambiguity",
+            "description-quality",
+            "schema-quality",
+            "capability-risk",
+            "prompt-like-description"
+          ]
+        },
+        "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+        "kind": {
+          "enum": ["measurement", "quality-signal", "capability-signal", "review-signal"]
+        },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/toolSurfaceEvidence" }
+        },
+        "omittedEvidenceCount": { "type": "integer", "minimum": 0 },
+        "remediation": { "type": "string" }
+      }
+    },
+    "toolSurfaceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "path", "detail"],
+      "properties": {
+        "tool": { "type": "string" },
+        "path": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    },
+    "oauthTrace": {
+      "type": "object",
+      "required": ["version", "traceId", "targetFingerprint", "targetUrl", "startedAt", "events"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "traceId": { "type": "string", "minLength": 1 },
+        "targetFingerprint": { "type": "string", "minLength": 1 },
+        "targetUrl": { "type": "string", "minLength": 1 },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/oauthTraceEvent" }
+        }
+      }
+    },
+    "oauthTraceEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "type",
+        "outcome",
+        "timestamp",
+        "provenance",
+        "route",
+        "explanation"
+      ],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "type": {
+          "enum": [
+            "target_challenge",
+            "protected_resource_metadata",
+            "authorization_server_metadata",
+            "cimd",
+            "dynamic_client_registration",
+            "pre_registered_client",
+            "pkce",
+            "authorization_redirect",
+            "callback",
+            "token_exchange",
+            "refresh",
+            "mcp_retry",
+            "terminal_outcome"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "started",
+            "challenged",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "required",
+            "redirected",
+            "skipped"
+          ]
+        },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "provenance": {
+          "enum": [
+            "direct_target",
+            "authenticated_proxy",
+            "authorization_server",
+            "browser_callback",
+            "oauth_client"
+          ]
+        },
+        "route": { "enum": ["direct", "proxy", "browser", "client"] },
+        "explanation": { "type": "string" },
+        "request": { "$ref": "#/$defs/oauthTraceRequest" },
+        "response": { "$ref": "#/$defs/oauthTraceResponse" },
+        "timing": { "$ref": "#/$defs/oauthTraceTiming" }
+      }
+    },
+    "oauthTraceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "url"],
+      "properties": {
+        "method": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "oauthTraceResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "number" },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "oauthTraceTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startedAt"],
+      "properties": {
+        "startedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["era"],
+      "properties": {
+        "era": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "timings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checks"],
+      "properties": {
+        "negotiationMs": {
+          "description": "A duration explicitly identified by the evaluator as protocol negotiation time.",
+          "type": "number",
+          "minimum": 0
+        },
+        "connectionSetupMs": {
+          "description": "End-to-end endpoint selection and MCP connection setup duration, including era negotiation.",
+          "type": "number",
+          "minimum": 0
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "durationMs"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "durationMs": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "sectionScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["earned", "maximum"],
+      "properties": {
+        "earned": { "type": ["number", "null"], "minimum": 0 },
+        "maximum": { "type": "number", "minimum": 0 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message"],
+      "properties": {
+        "message": { "type": "string" },
+        "context": { "type": "string" },
+        "metadata": {}
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description", "status", "score", "evidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "status": { "enum": ["evaluated", "partial", "failed", "skipped", "prerequisite"] },
+        "score": { "$ref": "#/$defs/sectionScore" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "evaluated" }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "score": {
+                "properties": { "earned": { "type": "number" } },
+                "required": ["earned"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["failed", "skipped", "prerequisite"] }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "score": {
+                "properties": { "earned": { "type": "null" } },
+                "required": ["earned"]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

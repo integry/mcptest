@@ -2,6 +2,7 @@ import {
   TOOL_SURFACE_ANALYSIS_VERSION,
   type ToolSurfaceAnalysisV1,
   type ToolSurfaceAnalyzerInput,
+  type ToolSurfaceDiscoveryCapability,
   type ToolSurfaceEvidenceV1,
   type ToolSurfaceFindingCategory,
   type ToolSurfaceFindingKind,
@@ -820,15 +821,27 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
   status: 'present' | 'empty' | 'missing' | 'malformed';
   resourceCount: number;
   promptCount: number;
-  hasNextPage: boolean;
+  incompleteDiscovery: readonly ToolSurfaceDiscoveryCapability[];
 } => {
+  const incompleteDiscovery = isRecord(input) && Array.isArray(input.incompleteDiscovery)
+    ? [...new Set(input.incompleteDiscovery.filter(
+        (capability): capability is ToolSurfaceDiscoveryCapability => (
+          capability === 'tools' || capability === 'resources' || capability === 'prompts'
+        )
+      ))]
+    : [];
+  if (isRecord(input) && typeof input.nextCursor === 'string' && input.nextCursor.length > 0
+      && !incompleteDiscovery.includes('tools')) {
+    incompleteDiscovery.push('tools');
+  }
+
   if (Array.isArray(input)) {
     return {
       tools: input,
       status: input.length > 0 ? 'present' : 'empty',
       resourceCount: 0,
       promptCount: 0,
-      hasNextPage: false,
+      incompleteDiscovery: [],
     };
   }
 
@@ -838,7 +851,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
       status: 'missing',
       resourceCount: isRecord(input) && Array.isArray(input.resources) ? input.resources.length : 0,
       promptCount: isRecord(input) && Array.isArray(input.prompts) ? input.prompts.length : 0,
-      hasNextPage: isRecord(input) && typeof input.nextCursor === 'string' && input.nextCursor.length > 0,
+      incompleteDiscovery,
     };
   }
 
@@ -848,7 +861,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
       status: 'malformed',
       resourceCount: Array.isArray(input.resources) ? input.resources.length : 0,
       promptCount: Array.isArray(input.prompts) ? input.prompts.length : 0,
-      hasNextPage: typeof input.nextCursor === 'string' && input.nextCursor.length > 0,
+      incompleteDiscovery,
     };
   }
 
@@ -857,7 +870,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
     status: input.tools.length > 0 ? 'present' : 'empty',
     resourceCount: Array.isArray(input.resources) ? input.resources.length : 0,
     promptCount: Array.isArray(input.prompts) ? input.prompts.length : 0,
-    hasNextPage: typeof input.nextCursor === 'string' && input.nextCursor.length > 0,
+    incompleteDiscovery,
   };
 };
 
@@ -1639,20 +1652,21 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     });
   }
 
-  if (extracted.hasNextPage) {
+  if (extracted.incompleteDiscovery.length > 0) {
+    const incompleteLabels = extracted.incompleteDiscovery.map((capability) => `${capability}/list`);
     addFinding(findings, {
       id: 'analysis.incomplete-pagination',
       category: 'availability',
       severity: 'medium',
       kind: 'review-signal',
-      title: 'Tool list has additional pages',
-      summary: 'The tools/list result includes a nextCursor, so metrics and the fingerprint cover this page only, not the complete tool surface.',
-      evidence: [evidence(
+      title: 'Discovery pagination is incomplete',
+      summary: `Pagination did not complete for ${incompleteLabels.join(', ')}, so retained metrics and the fingerprint describe a partial discovery snapshot only.`,
+      evidence: extracted.incompleteDiscovery.map((capability) => evidence(
         '<surface>',
-        '$.nextCursor',
-        'A non-empty nextCursor indicates that additional tool definitions are available.'
-      )],
-      remediation: 'Fetch every tools/list page, combine the tool definitions, and analyze the complete result.',
+        `$.${capability}`,
+        `${capability}/list pagination did not complete; its retained count is partial or unknown.`
+      )),
+      remediation: 'Fetch every discovery page for tools, resources, and prompts, then analyze the complete combined snapshot.',
     });
   }
 

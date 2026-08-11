@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import OAuthConfig from './OAuthConfig';
 import ReportAuthorizationGate from './ReportAuthorizationGate';
+import ReleaseReadinessReport from './ReleaseReadinessReport';
 import {
   beginOAuthFlow,
   getOAuthPrerequisite,
@@ -13,11 +14,9 @@ import {
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
-  getEvaluationMaxScore,
-  getEvaluationPercentage,
   isAuthenticationRequired,
-  isLegacySkippedEvaluationSection,
   resolveEvaluationOutcome,
+  type EvaluationAuthorizationContext,
   type EvaluationReport,
 } from '../utils/evaluation';
 import {
@@ -26,21 +25,99 @@ import {
   type TestedServerHistoryEntry,
   upsertTestedServerHistoryEntry,
 } from '../utils/reportPresentation';
+import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
+import { createObservedServerFacts } from '../utils/releaseReadiness';
 
-// Helper functions for score display
-const getScoreColor = (score: number): string => {
-  if (score >= 90) return 'success';
-  if (score >= 70) return 'warning';
-  if (score >= 50) return 'info';
-  return 'danger';
+type StaticAuthorizationScheme = 'bearer' | 'api-key';
+
+export const getAuthorizationGateOptions = (
+  report: EvaluationReport,
+  trace?: OAuthTraceV1
+): {
+  offersOAuth: boolean;
+  staticSchemes: StaticAuthorizationScheme[];
+  isUnknown: boolean;
+} => {
+  const schemes = createObservedServerFacts(report, trace).authorization.schemes.value;
+  if (schemes === 'unknown' || schemes.length === 0) {
+    return { offersOAuth: false, staticSchemes: [], isUnknown: true };
+  }
+  return {
+    offersOAuth: schemes.includes('oauth'),
+    staticSchemes: schemes.filter((scheme): scheme is StaticAuthorizationScheme => (
+      scheme === 'bearer' || scheme === 'api-key'
+    )),
+    isUnknown: false,
+  };
 };
 
-const getScoreGrade = (score: number): string => {
-  if (score >= 90) return 'A';
-  if (score >= 80) return 'B';
-  if (score >= 70) return 'C';
-  if (score >= 60) return 'D';
-  return 'F';
+const targetAuthenticateChallenge = (report: EvaluationReport): string | undefined => (
+  Object.values(report.sections).flatMap((section) => section.details)
+    .map((detail) => detail.metadata)
+    .filter((metadata): metadata is Record<string, unknown> => (
+      Boolean(metadata) && typeof metadata === 'object' && !Array.isArray(metadata)
+    ))
+    .filter((metadata) => metadata.authenticationSource !== 'proxy')
+    .flatMap((metadata) => {
+      const headers = metadata.responseHeaders;
+      if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return [];
+      const challenge = Object.entries(headers).find(([name, value]) => (
+        name.toLowerCase() === 'www-authenticate' && typeof value === 'string'
+      ))?.[1];
+      return typeof challenge === 'string' ? [challenge] : [];
+    })[0]
+);
+
+export const getStaticCredentialHeaders = (
+  report: EvaluationReport,
+  scheme: 'bearer' | 'api-key',
+  credential: string,
+  apiKeyHeader?: 'x-api-key' | 'api-key' | 'authorization'
+): Record<string, string> => {
+  const trimmedCredential = credential.trim();
+  if (scheme === 'bearer') {
+    return {
+      Authorization: /^Bearer\s/i.test(trimmedCredential)
+        ? trimmedCredential
+        : `Bearer ${trimmedCredential}`,
+    };
+  }
+
+  if (apiKeyHeader === 'authorization') {
+    return {
+      Authorization: /^ApiKey\s/i.test(trimmedCredential)
+        ? trimmedCredential
+        : `ApiKey ${trimmedCredential}`,
+    };
+  }
+  if (apiKeyHeader) return { [apiKeyHeader]: trimmedCredential };
+
+  const apiKeyScheme = targetAuthenticateChallenge(report)
+    ?.match(/(?:^|,\s*)(ApiKey|Api-Key|x-api-key)(?=\s|,|$)/i)?.[1];
+  if (apiKeyScheme && apiKeyScheme.toLowerCase() !== 'x-api-key') {
+    return {
+      Authorization: new RegExp(`^${apiKeyScheme}\\s`, 'i').test(trimmedCredential)
+        ? trimmedCredential
+        : `${apiKeyScheme} ${trimmedCredential}`,
+    };
+  }
+
+  return { 'x-api-key': trimmedCredential };
+};
+
+export const getOAuthTraceForEvaluation = (
+  report: EvaluationReport,
+  evaluationStartedAt: number,
+  storage: Pick<Storage, 'getItem' | 'setItem'>
+): OAuthTraceV1 | undefined => {
+  const targetUrls = [...new Set([report.authenticationUrl, report.serverUrl].filter(
+    (value): value is string => Boolean(value)
+  ))];
+  return targetUrls
+    .map((targetUrl) => getStoredOAuthTrace(targetUrl, storage))
+    .find((trace) => trace?.events.some((event) => (
+      Date.parse(event.timestamp) >= evaluationStartedAt
+    )));
 };
 
 const ReportView: React.FC = () => {
@@ -77,6 +154,13 @@ const ReportView: React.FC = () => {
   const [oauthPrerequisite, setOAuthPrerequisite] = useState<OAuthPrerequisite | null>(null);
   const [oauthAction, setOAuthAction] = useState<'authorize' | 'configure' | null>(null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [staticCredential, setStaticCredential] = useState('');
+  const [staticCredentialError, setStaticCredentialError] = useState<string | null>(null);
+  const [staticAuthorizationScheme, setStaticAuthorizationScheme] = useState<StaticAuthorizationScheme>('bearer');
+  const [unknownAuthorizationScheme, setUnknownAuthorizationScheme] = useState<'bearer' | 'api-key'>('bearer');
+  const [apiKeyHeader, setApiKeyHeader] = useState<'x-api-key' | 'api-key' | 'authorization'>('x-api-key');
+  const [oauthTrace, setOAuthTrace] = useState<OAuthTraceV1 | undefined>();
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -89,7 +173,11 @@ const ReportView: React.FC = () => {
   } | null>(null);
   
   // Store handleRunReport in a ref to avoid dependency issues
-  const handleRunReportRef = useRef<((urlToTest: string) => Promise<void>) | null>(null);
+  const handleRunReportRef = useRef<((
+    urlToTest: string,
+    targetHeaders?: Record<string, string>,
+    authorizationContext?: EvaluationAuthorizationContext
+  ) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
   useEffect(() => {
@@ -236,7 +324,11 @@ const ReportView: React.FC = () => {
     localStorage.setItem('mcpTestedServers', JSON.stringify(updatedServers));
   }, [testedServers]);
 
-  const handleRunReport = useCallback(async (urlToTest: string) => {
+  const handleRunReport = useCallback(async (
+    urlToTest: string,
+    targetHeaders?: Record<string, string>,
+    authorizationContext?: EvaluationAuthorizationContext
+  ) => {
     if (!currentUser) {
       alert('Please login to run a report.');
       return;
@@ -249,8 +341,14 @@ const ReportView: React.FC = () => {
     setIsRunning(true);
     isRunningRef.current = true;
     setOAuthError(null);
+    setReportError(null);
+    if (!targetHeaders) {
+      setStaticCredential('');
+      setStaticCredentialError(null);
+    }
     setProgress(['Starting evaluation...']);
     setReport(null);
+    setOAuthTrace(undefined);
     oauthChallengeRef.current = null;
     
     // Only navigate if we're not already on the correct URL
@@ -271,7 +369,15 @@ const ReportView: React.FC = () => {
     };
     
     try {
-      const reportData = await evaluateServer(urlToTest, token, onProgress, oauthAccessToken);
+      const evaluationStartedAt = Date.now();
+      const reportData = await evaluateServer(
+        urlToTest,
+        token,
+        onProgress,
+        oauthAccessToken,
+        targetHeaders,
+        authorizationContext
+      );
       if (isAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
           authenticationUrl: reportData.authenticationUrl || reportData.serverUrl,
@@ -282,15 +388,37 @@ const ReportView: React.FC = () => {
         };
       }
       setReport(reportData);
+      if (typeof sessionStorage !== 'undefined') {
+        setOAuthTrace(getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage));
+      }
       
       addOrUpdateServer(reportData);
       
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
-        setProgress(prev => [...prev, 'OAuth authorization is required before this server can be scored.']);
+        const options = getAuthorizationGateOptions(reportData);
+        const requirements = [
+          options.offersOAuth ? 'OAuth authorization' : undefined,
+          options.staticSchemes.includes('bearer') ? 'a bearer token' : undefined,
+          options.staticSchemes.includes('api-key') ? 'an API key' : undefined,
+        ].filter((value): value is string => Boolean(value));
+        const requirement = requirements.length > 0
+          ? requirements.join(' or ')
+          : 'Target authorization';
+        setProgress(prev => [...prev, `${requirement} is required before this server can be scored.`]);
+        if (targetHeaders) {
+          setStaticCredentialError(
+            'The target credential was rejected. Check it and retry.'
+          );
+        }
+      } else if (targetHeaders) {
+        setStaticCredential('');
+        setStaticCredentialError(null);
       }
     } catch (error) {
       console.error('Report error:', error);
-      setProgress(prev => [...prev, `Error: ${(error as Error).message}`]);
+      const message = (error as Error).message;
+      setProgress(prev => [...prev, `Error: ${message}`]);
+      setReportError(message);
       setReport(null);
     } finally {
       setIsRunning(false);
@@ -400,16 +528,44 @@ const ReportView: React.FC = () => {
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required';
-  const reportIsScored = reportOutcome === 'scored';
-  const visibleSections = report && !reportRequiresAuthorization
-    ? Object.entries(report.sections).filter(([key]) => key !== 'auth')
-    : [];
-  const reportMaxScore = report && reportIsScored ? getEvaluationMaxScore(report) : 0;
-  const reportPercentage = report && reportIsScored ? getEvaluationPercentage(report) : 0;
+  const authorizationGateOptions = report
+    ? getAuthorizationGateOptions(report, oauthTrace)
+    : { offersOAuth: false, staticSchemes: [], isUnknown: true };
+  const selectedStaticAuthorizationScheme = authorizationGateOptions.staticSchemes.includes(
+    staticAuthorizationScheme
+  )
+    ? staticAuthorizationScheme
+    : authorizationGateOptions.staticSchemes[0];
+
+  const retryWithStaticCredential = async (
+    scheme: 'bearer' | 'api-key',
+    selectedApiKeyHeader?: 'x-api-key' | 'api-key' | 'authorization'
+  ) => {
+    if (!report) return;
+    const credential = staticCredential.trim();
+    if (!credential) {
+      setStaticCredentialError(
+        `Enter ${scheme === 'bearer' ? 'a bearer token' : 'an API key'} before retrying.`
+      );
+      return;
+    }
+    const targetUrl = report.authenticationUrl || report.serverUrl;
+    setStaticCredentialError(null);
+    await handleRunReport(
+      targetUrl,
+      getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader),
+      {
+        priorChallenge: {
+          outcome: 'challenged',
+          provenance: 'direct_target',
+        },
+      }
+    );
+  };
 
   return (
     <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
-      <h2 className="mb-3">MCP Server Report Card</h2>
+      <h2 className="mb-3">MCP release-readiness report</h2>
       <div className="input-group mb-3">
         <input
           type="text"
@@ -468,20 +624,34 @@ const ReportView: React.FC = () => {
       )}
 
       {isRunning && (
-        <div className="progress mb-3">
-          <div
-            className="progress-bar progress-bar-striped progress-bar-animated"
-            role="progressbar"
-            aria-label="Report progress"
-            aria-valuenow={Math.min(progress.length * 10, 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            style={{ width: `${Math.min(progress.length * 10, 100)}%` }}
-          />
+        <div className="report-state report-state-loading mb-3" role="status" aria-live="polite">
+          <div className="d-flex align-items-center gap-2 mb-2">
+            <span className="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            <strong>Building release-readiness report</strong>
+          </div>
+          <div className="progress">
+            <div
+              className="progress-bar progress-bar-striped progress-bar-animated"
+              role="progressbar"
+              aria-label="Report progress"
+              aria-valuenow={Math.min(progress.length * 10, 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              style={{ width: `${Math.min(progress.length * 10, 100)}%` }}
+            />
+          </div>
+          <span className="visually-hidden">{progress[progress.length - 1] || 'Starting evaluation'}</span>
         </div>
       )}
 
-      {progress.length > 0 && !report && (
+      {reportError && !isRunning && (
+        <div className="report-state report-state-failure mb-3" role="alert">
+          <h3>Report could not be completed</h3>
+          <p className="mb-0">{reportError}</p>
+        </div>
+      )}
+
+      {progress.length > 0 && !report && !reportError && (
         <div className="card mb-3">
           <div className="card-header">Progress</div>
           <ul className="list-group list-group-flush">
@@ -490,30 +660,29 @@ const ReportView: React.FC = () => {
         </div>
       )}
 
+      {!isRunning && !report && progress.length === 0 && !reportError && (
+        <section className="report-state report-state-empty mb-3" aria-labelledby="empty-report-title">
+          <i className="bi bi-clipboard2-check" aria-hidden="true"></i>
+          <div>
+            <h3 id="empty-report-title">No report yet</h3>
+            <p className="mb-0">Enter an MCP server URL to check shipping blockers, client compatibility, OAuth, and tool risk.</p>
+          </div>
+        </section>
+      )}
+
       {report && (
         <div className="card mb-4">
           <div className="card-header">
-            <h4>Report for: {report.serverUrl}</h4>
-            {reportIsScored && (
-              <>
-                <h3 className={`text-${getScoreColor(reportPercentage)}`}>
-                  Final Score: {report.finalScore} / {reportMaxScore} ({Math.round(reportPercentage)}%, grade {getScoreGrade(reportPercentage)})
-                </h3>
-                {!report.sections.security && (
-                  <small className="text-muted">
-                    OAuth security metadata was not included in this run; the base report is scored out of {reportMaxScore} points.
-                  </small>
-                )}
-              </>
-            )}
-            {!reportRequiresAuthorization && !reportIsScored && (
-              <h3 className="text-muted">
-                {reportOutcome === 'partial' ? 'Partial evaluation' : 'Evaluation failed'} — not scored
-              </h3>
-            )}
+            <h4 className="report-target-title mb-0">Report for: {report.serverUrl}</h4>
           </div>
           <div className="card-body">
-            {reportRequiresAuthorization ? (
+            <ReleaseReadinessReport
+              report={report}
+              oauthTrace={oauthTrace}
+              expandedItems={expandedItems}
+              onToggleItem={toggleItemExpanded}
+            />
+            {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
               <ReportAuthorizationGate
                 serverUrl={report.serverUrl}
                 error={oauthError}
@@ -522,102 +691,169 @@ const ReportView: React.FC = () => {
                 onAuthorize={() => startOAuth(report.authenticationUrl || report.serverUrl)}
                 onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
               />
-            ) : (
-              <div className="row g-3">
-              {visibleSections.map(([key, section]) => {
-                const sectionPercentage = section.maxScore > 0
-                  ? section.score / section.maxScore * 100
-                  : 0;
-                const sectionWasScored = section.status !== 'failed'
-                  && section.status !== 'skipped'
-                  && !(!section.status && isLegacySkippedEvaluationSection(section));
-
-                return (
-                <div key={key} className="col-12">
-                  <div className="card h-100 shadow-sm">
-                    <div className="card-header">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <h5 className="mb-0">{section.name}</h5>
-                        {sectionWasScored ? <div className="d-flex align-items-center gap-2">
-                          <span className={`text-${getScoreColor(sectionPercentage)} fw-bold`}>
-                            {section.score} / {section.maxScore} points
-                          </span>
-                          <span className={`badge bg-${getScoreColor(sectionPercentage)}`}>
-                            {Math.round(sectionPercentage)}%
-                          </span>
-                        </div> : <span className="text-muted fw-bold">Not scored</span>}
-                      </div>
-                      <small className="text-muted d-block">{section.description}</small>
+            )}
+            {reportRequiresAuthorization
+              && selectedStaticAuthorizationScheme && (
+              <section className="report-auth-gate" aria-labelledby="report-static-auth-title">
+                <div className="report-auth-heading">
+                  <div className="report-auth-icon" aria-hidden="true">
+                    <i className="bi bi-key-fill"></i>
+                  </div>
+                  <div>
+                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                      <h3 id="report-static-auth-title" className="mb-0">
+                        {authorizationGateOptions.staticSchemes.length > 1
+                          ? 'Choose a target credential'
+                          : `${selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'} required`}
+                      </h3>
+                      <span className="badge text-bg-warning">Not scored</span>
                     </div>
-                    <div className="card-body">
-                      {section.details && (
-                        <div>
-                          {section.details.map((detail: any, i: number) => {
-                            const detailText = typeof detail === 'string' ? detail : detail.text;
-                            const detailContext = typeof detail === 'object' ? detail.context : null;
-                            const detailMetadata = typeof detail === 'object' ? detail.metadata : null;
-                            const isSuccess = detailText.startsWith('✓');
-                            const isError = detailText.startsWith('✗');
-                            const isWarning = detailText.startsWith('⚠');
-                            const itemKey = `${key}-${i}`;
-                            const isExpanded = expandedItems.has(itemKey);
-                            const hasMoreInfo = detailContext || detailMetadata;
-                            
-                            return (
-                              <div key={i} className="mb-3">
-                                <div className={`d-flex align-items-start ${isSuccess ? 'text-success' : isError ? 'text-danger' : 'text-warning'}`}>
-                                  <span style={{ marginRight: '10px', marginTop: '2px' }}>{isSuccess ? '✓' : isError ? '✗' : '⚠'}</span>
-                                  <div className="flex-grow-1">
-                                    {hasMoreInfo ? (
-                                      <button
-                                        type="button"
-                                        className="d-flex align-items-center w-100 text-start border-0 bg-transparent rounded px-1"
-                                        onClick={() => toggleItemExpanded(itemKey)}
-                                        aria-expanded={isExpanded}
-                                        aria-controls={`${itemKey}-details`}
-                                      >
-                                        <span className="flex-grow-1">{detailText.substring(2)}</span>
-                                        <span 
-                                          className="text-muted ms-2" 
-                                          style={{ fontSize: '0.875rem' }}
-                                          aria-hidden="true"
-                                        >
-                                          {isExpanded ? '▼' : '▶'}
-                                        </span>
-                                      </button>
-                                    ) : (
-                                      <div className="px-1">{detailText.substring(2)}</div>
-                                    )}
-                                    {isExpanded && (
-                                      <div id={`${itemKey}-details`} className="mt-2" style={{ marginLeft: '20px' }}>
-                                        {detailContext && (
-                                          <div className="text-muted mb-2" style={{ fontSize: '0.875rem' }}>
-                                            {detailContext}
-                                          </div>
-                                        )}
-                                        {detailMetadata && (
-                                          <div className="bg-light rounded p-2" style={{ fontSize: '0.813rem' }}>
-                                            <strong className="text-muted">Request Details:</strong>
-                                            <pre className="mb-0 mt-1" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                              {JSON.stringify(detailMetadata, null, 2)}
-                                            </pre>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                    <p className="mb-0">
+                      Enter the target credential to retry this report. It is kept only in this
+                      page&apos;s memory and is not saved, logged, or added to the URL.
+                    </p>
                   </div>
                 </div>
-                );
-              })}
-              </div>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void retryWithStaticCredential(selectedStaticAuthorizationScheme);
+                  }}
+                >
+                  {authorizationGateOptions.staticSchemes.length > 1 && (
+                    <>
+                      <label className="form-label" htmlFor="report-static-auth-scheme">
+                        Authentication type
+                      </label>
+                      <select
+                        id="report-static-auth-scheme"
+                        className="form-select mb-3"
+                        value={selectedStaticAuthorizationScheme}
+                        onChange={(event) => {
+                          setStaticAuthorizationScheme(event.target.value as StaticAuthorizationScheme);
+                          setStaticCredentialError(null);
+                        }}
+                        disabled={isRunning}
+                      >
+                        {authorizationGateOptions.staticSchemes.map((scheme) => (
+                          <option key={scheme} value={scheme}>
+                            {scheme === 'bearer' ? 'Bearer token' : 'API key'}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  <label className="form-label" htmlFor="report-static-credential">
+                    {selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
+                  </label>
+                  <input
+                    id="report-static-credential"
+                    className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
+                    type="password"
+                    value={staticCredential}
+                    onChange={(event) => {
+                      setStaticCredential(event.target.value);
+                      setStaticCredentialError(null);
+                    }}
+                    disabled={isRunning}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    aria-describedby={staticCredentialError ? 'report-static-credential-error' : undefined}
+                  />
+                  {staticCredentialError && (
+                    <div id="report-static-credential-error" className="invalid-feedback">
+                      {staticCredentialError}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    className="btn btn-primary mt-3"
+                    disabled={isRunning}
+                  >
+                    {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                  </button>
+                </form>
+              </section>
+            )}
+            {reportRequiresAuthorization && authorizationGateOptions.isUnknown && (
+              <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
+                <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
+                <p>
+                  Choose the target&apos;s credential type and retry. The credential is kept only
+                  in this page&apos;s memory and is not saved, logged, or added to the URL.
+                </p>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void retryWithStaticCredential(
+                      unknownAuthorizationScheme,
+                      unknownAuthorizationScheme === 'api-key' ? apiKeyHeader : undefined
+                    );
+                  }}
+                >
+                  <label className="form-label" htmlFor="report-unknown-auth-scheme">
+                    Authentication type
+                  </label>
+                  <select
+                    id="report-unknown-auth-scheme"
+                    className="form-select mb-3"
+                    value={unknownAuthorizationScheme}
+                    onChange={(event) => {
+                      setUnknownAuthorizationScheme(event.target.value as 'bearer' | 'api-key');
+                      setStaticCredentialError(null);
+                    }}
+                    disabled={isRunning}
+                  >
+                    <option value="bearer">Bearer token</option>
+                    <option value="api-key">API key</option>
+                  </select>
+                  {unknownAuthorizationScheme === 'api-key' && (
+                    <>
+                      <label className="form-label" htmlFor="report-api-key-header">
+                        API-key header
+                      </label>
+                      <select
+                        id="report-api-key-header"
+                        className="form-select mb-3"
+                        value={apiKeyHeader}
+                        onChange={(event) => setApiKeyHeader(
+                          event.target.value as 'x-api-key' | 'api-key' | 'authorization'
+                        )}
+                        disabled={isRunning}
+                      >
+                        <option value="x-api-key">x-api-key</option>
+                        <option value="api-key">api-key</option>
+                        <option value="authorization">Authorization (ApiKey value)</option>
+                      </select>
+                    </>
+                  )}
+                  <label className="form-label" htmlFor="report-unknown-static-credential">
+                    {unknownAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
+                  </label>
+                  <input
+                    id="report-unknown-static-credential"
+                    className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
+                    type="password"
+                    value={staticCredential}
+                    onChange={(event) => {
+                      setStaticCredential(event.target.value);
+                      setStaticCredentialError(null);
+                    }}
+                    disabled={isRunning}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    aria-describedby={staticCredentialError ? 'report-unknown-static-credential-error' : undefined}
+                  />
+                  {staticCredentialError && (
+                    <div id="report-unknown-static-credential-error" className="invalid-feedback">
+                      {staticCredentialError}
+                    </div>
+                  )}
+                  <button type="submit" className="btn btn-primary mt-3" disabled={isRunning}>
+                    {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                  </button>
+                </form>
+              </section>
             )}
           </div>
         </div>

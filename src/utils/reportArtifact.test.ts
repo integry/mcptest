@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import publicJsonSchema from '../../public/schemas/report/v1.schema.json';
+import legacyPublicJsonSchema from '../../public/schemas/report/v1.schema.json';
+import publicJsonSchema from '../../public/schemas/report/v2.schema.json';
 import type { EvaluationReport, EvaluationSection } from './evaluation';
 import {
   REPORT_SCHEMA_URL,
@@ -18,6 +19,7 @@ import {
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 const validatePublishedSchema = ajv.compile(publicJsonSchema);
+const validateLegacyPublishedSchema = ajv.compile(legacyPublicJsonSchema);
 
 const FIXED_OPTIONS = {
   generatedAt: '2026-08-11T12:44:04.000Z',
@@ -250,6 +252,102 @@ const GOLDEN_REPORTS: Record<string, () => EvaluationReport> = {
   failed: failedReport,
 };
 
+const expandedPublicArtifact = (): Record<string, any> => ({
+  ...createPublicReport(publicReport(), FIXED_OPTIONS),
+  compatibility: {
+    schemaVersion: '1.0',
+    assessments: {
+      chatgpt: {
+        schemaVersion: '1.0',
+        profileId: 'chatgpt',
+        profileVersion: '2026-08-11',
+        status: 'compatible',
+        findings: [{
+          schemaVersion: '1.0',
+          ruleId: 'transport.streamable-http',
+          scope: 'target-server',
+          outcome: 'pass',
+          severity: 'info',
+          summary: 'Compatible.',
+          detail: 'Required behavior was observed.',
+          evidence: [{
+            schemaVersion: '1.0',
+            source: 'target-server',
+            description: 'Streamable HTTP completed successfully.',
+          }],
+          remediation: {
+            schemaVersion: '1.0',
+            kind: 'server-change',
+            action: 'No remediation is required.',
+          },
+        }],
+      },
+    },
+  },
+  toolSurfaceAnalysis: {
+    version: '1.0.0',
+    metrics: {
+      toolCount: 1,
+      resourceCount: 0,
+      promptCount: 0,
+      estimatedContextTokens: 12,
+    },
+    fingerprint: { algorithm: 'fnv1a-64-v1', value: 'abc123' },
+    findings: {
+      critical: [],
+      high: [],
+      medium: [],
+      low: [],
+      info: [{
+        id: 'availability.measured-surface',
+        category: 'availability',
+        severity: 'info',
+        kind: 'measurement',
+        title: 'Measured surface',
+        summary: 'One tool was measured.',
+        evidence: [{
+          tool: 'get_weather',
+          path: '$.tools[0]',
+          detail: 'The tool definition was included in the measurement.',
+        }],
+        omittedEvidenceCount: 0,
+        remediation: 'No remediation is required.',
+      }],
+    },
+    findingCount: 1,
+    interpretation: 'Observed signals only.',
+  },
+  oauthTrace: {
+    version: 1,
+    traceId: 'trace-1',
+    targetFingerprint: 'target-1',
+    targetUrl: 'https://public.example/mcp',
+    startedAt: '2026-08-11T12:44:04.000Z',
+    events: [{
+      sequence: 1,
+      type: 'target_challenge',
+      outcome: 'challenged',
+      timestamp: '2026-08-11T12:44:04.000Z',
+      provenance: 'direct_target',
+      route: 'direct',
+      explanation: 'The target requested authentication.',
+      request: {
+        method: 'POST',
+        url: 'https://public.example/mcp',
+      },
+      response: {
+        status: 401,
+        headers: { 'www-authenticate': 'Bearer' },
+        metadata: { challengeObserved: true },
+      },
+      timing: {
+        startedAt: '2026-08-11T12:44:04.000Z',
+        durationMs: 12,
+      },
+    }],
+  },
+});
+
 describe('versioned public report artifacts', () => {
   it.each(Object.entries(GOLDEN_REPORTS))('matches the %s JSON and Markdown golden', (name, makeReport) => {
     const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
@@ -274,7 +372,7 @@ describe('versioned public report artifacts', () => {
 
     expect(parsePublicReportJson(serialized)).toEqual(artifact);
     expect(validatePublicReport(artifact)).toEqual(artifact);
-    expect(safeParsePublicReport({ ...artifact, schemaVersion: '2.0.0' }).success).toBe(false);
+    expect(safeParsePublicReport({ ...artifact, schemaVersion: '1.0.0' }).success).toBe(false);
     expect(safeParsePublicReport({ ...artifact, score: null }).success).toBe(false);
     expect(safeParsePublicReport({
       ...artifact,
@@ -285,7 +383,97 @@ describe('versioned public report artifacts', () => {
 
   it('publishes a matching versioned JSON Schema identifier', () => {
     expect(publicJsonSchema.$id).toBe(REPORT_SCHEMA_URL);
-    expect(publicJsonSchema.properties.schemaVersion.const).toBe('1.0.0');
+    expect(publicJsonSchema.properties.schemaVersion.const).toBe('2.0.0');
+  });
+
+  it('rejects malformed nested release-readiness values in both report contracts', () => {
+    const cases: Array<[string, (artifact: Record<string, any>) => void]> = [
+      ['compatibility finding', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].outcome = 'maybe';
+      }],
+      ['compatibility remediation', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].remediation.action = 42;
+      }],
+      ['compatibility finding scope', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].scope = 'somewhere';
+      }],
+      ['compatibility evidence', (artifact) => {
+        artifact.compatibility.assessments.chatgpt.findings[0].evidence[0].source = 'guess';
+      }],
+      ['tool metric', (artifact) => {
+        artifact.toolSurfaceAnalysis.metrics.toolCount = 'one';
+      }],
+      ['tool fingerprint', (artifact) => {
+        artifact.toolSurfaceAnalysis.fingerprint.value = 42;
+      }],
+      ['tool finding', (artifact) => {
+        artifact.toolSurfaceAnalysis.findings.info[0].summary = false;
+      }],
+      ['tool finding category', (artifact) => {
+        artifact.toolSurfaceAnalysis.findings.info[0].category = 'other';
+      }],
+      ['tool finding evidence', (artifact) => {
+        artifact.toolSurfaceAnalysis.findings.info[0].evidence[0].detail = false;
+      }],
+      ['OAuth event', (artifact) => {
+        artifact.oauthTrace.events[0].sequence = 0;
+      }],
+      ['OAuth event type', (artifact) => {
+        artifact.oauthTrace.events[0].type = 'unknown_event';
+      }],
+      ['OAuth event request', (artifact) => {
+        artifact.oauthTrace.events[0].request.method = 42;
+      }],
+      ['OAuth event response', (artifact) => {
+        artifact.oauthTrace.events[0].response.status = '401';
+      }],
+      ['OAuth event timing', (artifact) => {
+        artifact.oauthTrace.events[0].timing.durationMs = -1;
+      }],
+    ];
+
+    const valid = expandedPublicArtifact();
+    expect(safeParsePublicReport(valid).success).toBe(true);
+    expect(validatePublishedSchema(valid), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+
+    for (const [name, mutate] of cases) {
+      const malformed = expandedPublicArtifact();
+      mutate(malformed);
+
+      expect(safeParsePublicReport(malformed).success, name).toBe(false);
+      expect(
+        validatePublishedSchema(malformed),
+        `${name}: ${JSON.stringify(validatePublishedSchema.errors)}`
+      ).toBe(false);
+    }
+  });
+
+  it('preserves the closed v1 contract while publishing expanded artifacts as v2', () => {
+    const artifact = createPublicReport(publicReport(), {
+      ...FIXED_OPTIONS,
+      releaseDecision: {
+        status: 'ready',
+        answer: 'Yes.',
+        summary: 'Ready.',
+        priorities: [],
+      },
+    });
+    const {
+      $schema: _currentSchema,
+      schemaVersion: _currentVersion,
+      releaseDecision,
+      ...sharedFields
+    } = artifact;
+    const legacyArtifact = {
+      ...sharedFields,
+      $schema: legacyPublicJsonSchema.$id,
+      schemaVersion: '1.0.0',
+    };
+
+    expect(validatePublishedSchema(artifact), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+    expect(validateLegacyPublishedSchema(legacyArtifact), JSON.stringify(validateLegacyPublishedSchema.errors)).toBe(true);
+    expect(validateLegacyPublishedSchema({ ...legacyArtifact, releaseDecision })).toBe(false);
+    expect(legacyPublicJsonSchema.properties).not.toHaveProperty('releaseDecision');
   });
 
   it('labels the performance baseline as connection setup and reserves negotiation for explicit metadata', () => {

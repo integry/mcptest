@@ -3,7 +3,7 @@
 exports[`versioned public report artifacts > matches the failed JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -29,7 +29,7 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
     "proxyUsed": true,
     "route": "authenticated-proxy"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": null,
   "sections": [
     {
@@ -129,7 +129,7 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://failed.example/mcp?api\\_key=%5BREDACTED%5D
@@ -227,7 +227,7 @@ Performance description
 exports[`versioned public report artifacts > matches the legacy-partial-without-status JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -247,7 +247,7 @@ exports[`versioned public report artifacts > matches the legacy-partial-without-
     "proxyUsed": false,
     "route": "direct"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": null,
   "sections": [
     {
@@ -296,7 +296,7 @@ exports[`versioned public report artifacts > matches the legacy-partial-without-
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://legacy-partial.example/mcp
@@ -361,7 +361,7 @@ Capabilities description
 exports[`versioned public report artifacts > matches the legacy-sse JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -381,7 +381,7 @@ exports[`versioned public report artifacts > matches the legacy-sse JSON and Mar
     "proxyUsed": false,
     "route": "direct"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": {
     "earned": 51,
     "maximum": 70,
@@ -509,7 +509,7 @@ exports[`versioned public report artifacts > matches the legacy-sse JSON and Mar
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://legacy.example/events
@@ -644,7 +644,7 @@ Performance description
 exports[`versioned public report artifacts > matches the oauth-required-unscored JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -665,7 +665,7 @@ exports[`versioned public report artifacts > matches the oauth-required-unscored
     "proxyUsed": false,
     "route": "direct"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": null,
   "sections": [
     {
@@ -699,7 +699,7 @@ exports[`versioned public report artifacts > matches the oauth-required-unscored
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://protected.example/mcp?access\\_token=%5BREDACTED%5D
@@ -753,7 +753,7 @@ OAuth authorization is required before evaluation
 exports[`versioned public report artifacts > matches the partial JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -773,7 +773,7 @@ exports[`versioned public report artifacts > matches the partial JSON and Markdo
     "proxyUsed": false,
     "route": "direct"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": null,
   "sections": [
     {
@@ -822,7 +822,7 @@ exports[`versioned public report artifacts > matches the partial JSON and Markdo
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://partial.example/mcp
@@ -887,7 +887,7 @@ Capabilities description
 exports[`versioned public report artifacts > matches the public JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -907,7 +907,7 @@ exports[`versioned public report artifacts > matches the public JSON and Markdow
     "proxyUsed": false,
     "route": "direct"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": {
     "earned": 55,
     "maximum": 55,
@@ -1019,7 +1019,7 @@ exports[`versioned public report artifacts > matches the public JSON and Markdow
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://public.example/mcp?tenant=demo
@@ -1139,7 +1139,7 @@ Performance description
 exports[`versioned public report artifacts > matches the stateful JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -1159,7 +1159,7 @@ exports[`versioned public report artifacts > matches the stateful JSON and Markd
     "proxyUsed": true,
     "route": "authenticated-proxy"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": {
     "earned": 45,
     "maximum": 70,
@@ -1292,7 +1292,7 @@ exports[`versioned public report artifacts > matches the stateful JSON and Markd
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://stateful.example/mcp
@@ -1432,7 +1432,7 @@ Performance description
 exports[`versioned public report artifacts > matches the stateless JSON and Markdown golden 1`] = `
 {
   "json": "{
-  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "$schema": "https://mcptest.io/schemas/report/v2.schema.json",
   "artifactType": "mcptest.report",
   "generatedAt": "2026-08-11T12:44:04.000Z",
   "generator": {
@@ -1452,7 +1452,7 @@ exports[`versioned public report artifacts > matches the stateless JSON and Mark
     "proxyUsed": false,
     "route": "direct"
   },
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "score": {
     "earned": 70,
     "maximum": 70,
@@ -1588,7 +1588,7 @@ exports[`versioned public report artifacts > matches the stateless JSON and Mark
 ",
   "markdown": "# mcptest Evaluation Report
 
-- Schema: 1.0.0
+- Schema: 2.0.0
 - Generated: 2026-08-11T12:44:04.000Z
 - Generator: mcptest 1.2.3 (0123456789abcdef)
 - Tested endpoint: https://stateless.example/mcp

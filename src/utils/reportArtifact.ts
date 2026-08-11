@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import packageJson from '../../package.json';
+import type { CompatibilityMatrixV1 } from '../compatibility';
+import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
 import {
   getEvaluationMaxScore,
   hasLegacyIncompleteEvaluationEvidence,
@@ -9,10 +11,12 @@ import {
   type EvaluationReport,
   type EvaluationSection,
 } from './evaluation';
+import type { OAuthTraceV1 } from './oauthTrace';
+import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
 
-export const REPORT_SCHEMA_VERSION = '1.0.0' as const;
-export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v1.schema.json' as const;
+export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
+export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
 export const REDACTED_VALUE = '[REDACTED]' as const;
 
 const SCORE_PERCENTAGE_TOLERANCE = 1e-9;
@@ -29,6 +33,181 @@ const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.array(JsonValueSchema),
   z.record(z.string(), JsonValueSchema),
 ]));
+
+const StructuredJsonSchema = JsonValueSchema.refine((value) => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+), 'Expected a JSON object.');
+
+const ReleaseDecisionSchema = z.object({
+  status: z.enum(['ready', 'blocked', 'review', 'authorization-required', 'unknown']),
+  answer: z.string().min(1),
+  summary: z.string().min(1),
+  priorities: z.array(z.object({
+    id: z.string().min(1),
+    severity: z.enum(['critical', 'high', 'medium', 'unknown']),
+    title: z.string().min(1),
+    detail: z.string(),
+    remediation: z.string().min(1),
+    source: z.enum(['Host compatibility', 'Tool surface', 'Evaluation']),
+  }).strict()),
+}).strict();
+
+const CompatibilityEvidenceArtifactSchema = z.object({
+  schemaVersion: z.literal('1.0'),
+  source: z.enum([
+    'target-server',
+    'authorization-server',
+    'browser',
+    'proxy',
+    'configuration',
+    'host-profile',
+  ]),
+  description: z.string(),
+  location: z.string().optional(),
+}).strict();
+
+const CompatibilityRemediationArtifactSchema = z.object({
+  schemaVersion: z.literal('1.0'),
+  kind: z.enum([
+    'server-change',
+    'authorization-server-change',
+    'client-configuration',
+    'observation-needed',
+  ]),
+  action: z.string().min(1),
+  documentationUrl: z.string().optional(),
+}).strict();
+
+const CompatibilityFindingArtifactSchema = z.object({
+  schemaVersion: z.literal('1.0'),
+  ruleId: z.string().min(1),
+  scope: z.enum(['target-server', 'authorization-server', 'client-environment']),
+  outcome: z.enum(['pass', 'caveat', 'fail', 'unknown']),
+  severity: z.enum(['info', 'warning', 'error']),
+  summary: z.string(),
+  detail: z.string(),
+  evidence: z.array(CompatibilityEvidenceArtifactSchema),
+  remediation: CompatibilityRemediationArtifactSchema.optional(),
+}).strict();
+
+const CompatibilityArtifactSchema = z.object({
+  schemaVersion: z.string().min(1),
+  assessments: z.record(z.string(), z.object({
+    schemaVersion: z.string().min(1),
+    profileId: z.string().min(1),
+    profileVersion: z.string().min(1),
+    status: z.enum(['compatible', 'compatible-with-caveats', 'incompatible', 'unknown']),
+    findings: z.array(CompatibilityFindingArtifactSchema),
+  }).passthrough()),
+}).passthrough();
+
+const ToolSurfaceEvidenceArtifactSchema = z.object({
+  tool: z.string(),
+  path: z.string(),
+  detail: z.string(),
+}).strict();
+
+const ToolSurfaceFindingArtifactSchema = z.object({
+  id: z.string().min(1),
+  category: z.enum([
+    'availability',
+    'context-cost',
+    'ambiguity',
+    'description-quality',
+    'schema-quality',
+    'capability-risk',
+    'prompt-like-description',
+  ]),
+  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
+  kind: z.enum(['measurement', 'quality-signal', 'capability-signal', 'review-signal']),
+  title: z.string(),
+  summary: z.string(),
+  evidence: z.array(ToolSurfaceEvidenceArtifactSchema),
+  omittedEvidenceCount: z.number().int().nonnegative(),
+  remediation: z.string(),
+}).strict();
+
+const ToolSurfaceArtifactSchema = z.object({
+  version: z.string().min(1),
+  metrics: z.object({
+    toolCount: z.number().nonnegative(),
+    resourceCount: z.number().nonnegative(),
+    promptCount: z.number().nonnegative(),
+    estimatedContextTokens: z.number().nonnegative(),
+  }).passthrough(),
+  fingerprint: z.object({
+    algorithm: z.string().min(1),
+    value: z.string().min(1),
+  }).passthrough(),
+  findings: z.object({
+    critical: z.array(ToolSurfaceFindingArtifactSchema),
+    high: z.array(ToolSurfaceFindingArtifactSchema),
+    medium: z.array(ToolSurfaceFindingArtifactSchema),
+    low: z.array(ToolSurfaceFindingArtifactSchema),
+    info: z.array(ToolSurfaceFindingArtifactSchema),
+  }).strict(),
+  findingCount: z.number().nonnegative(),
+  interpretation: z.string(),
+}).passthrough();
+
+const OAuthTraceArtifactSchema = z.object({
+  version: z.number().int().positive(),
+  traceId: z.string().min(1),
+  targetFingerprint: z.string().min(1),
+  targetUrl: z.string().min(1),
+  startedAt: z.string().datetime({ offset: true }),
+  events: z.array(z.object({
+    sequence: z.number().int().positive(),
+    type: z.enum([
+      'target_challenge',
+      'protected_resource_metadata',
+      'authorization_server_metadata',
+      'cimd',
+      'dynamic_client_registration',
+      'pre_registered_client',
+      'pkce',
+      'authorization_redirect',
+      'callback',
+      'token_exchange',
+      'refresh',
+      'mcp_retry',
+      'terminal_outcome',
+    ]),
+    outcome: z.enum([
+      'started',
+      'challenged',
+      'succeeded',
+      'failed',
+      'cancelled',
+      'required',
+      'redirected',
+      'skipped',
+    ]),
+    timestamp: z.string().datetime({ offset: true }),
+    provenance: z.enum([
+      'direct_target',
+      'authenticated_proxy',
+      'authorization_server',
+      'browser_callback',
+      'oauth_client',
+    ]),
+    route: z.enum(['direct', 'proxy', 'browser', 'client']),
+    explanation: z.string(),
+    request: z.object({
+      method: z.string(),
+      url: z.string(),
+    }).strict().optional(),
+    response: z.object({
+      status: z.number().optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      metadata: z.record(z.string(), JsonValueSchema).optional(),
+    }).strict().optional(),
+    timing: z.object({
+      startedAt: z.string().datetime({ offset: true }),
+      durationMs: z.number().nonnegative().optional(),
+    }).strict().optional(),
+  }).strict()),
+}).passthrough();
 
 const SectionScoreSchema = z.object({
   earned: z.number().nonnegative().nullable(),
@@ -102,6 +281,10 @@ const PublicReportObjectSchema = z.object({
       durationMs: z.number().nonnegative(),
     }).strict()),
   }).strict().optional(),
+  releaseDecision: ReleaseDecisionSchema.optional(),
+  compatibility: CompatibilityArtifactSchema.optional(),
+  toolSurfaceAnalysis: ToolSurfaceArtifactSchema.optional(),
+  oauthTrace: OAuthTraceArtifactSchema.optional(),
   sections: z.array(ReportSectionSchema),
 }).strict();
 
@@ -235,6 +418,10 @@ export interface CreatePublicReportOptions {
   generatedAt?: string | Date;
   toolVersion?: string;
   toolCommit?: string;
+  releaseDecision?: ReleaseDecision;
+  compatibilityMatrix?: CompatibilityMatrixV1;
+  toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
+  oauthTrace?: OAuthTraceV1;
 }
 
 const EXACT_SENSITIVE_KEYS = new Set([
@@ -307,6 +494,7 @@ const SENSITIVE_KEY_COMPONENTS = new Set([
 
 const NON_SENSITIVE_COMPOUND_KEYS = new Set([
   'codechallengemethodssupported',
+  'estimatedcontexttokens',
 ]);
 
 const WRAPPED_CREDENTIAL_KEY = /(?:api|private)key(?:value|header)$/;
@@ -888,6 +1076,7 @@ export const createPublicReport = (
   const generatorCommit = options.toolCommit ?? (
     VERSION_INFO.commitHash && VERSION_INFO.commitHash !== 'unknown' ? VERSION_INFO.commitHash : undefined
   );
+  const toolSurfaceAnalysis = options.toolSurfaceAnalysis ?? report.toolSurfaceAnalysis;
 
   const artifact: PublicReport = {
     $schema: REPORT_SCHEMA_URL,
@@ -942,6 +1131,16 @@ export const createPublicReport = (
         ...(connectionSetupMs !== undefined ? { connectionSetupMs } : {}),
         checks,
       },
+    } : {}),
+    ...(options.releaseDecision ? { releaseDecision: options.releaseDecision } : {}),
+    ...(options.compatibilityMatrix ? {
+      compatibility: options.compatibilityMatrix as unknown as NonNullable<PublicReport['compatibility']>,
+    } : {}),
+    ...(toolSurfaceAnalysis ? {
+      toolSurfaceAnalysis: toolSurfaceAnalysis as unknown as NonNullable<PublicReport['toolSurfaceAnalysis']>,
+    } : {}),
+    ...(options.oauthTrace ? {
+      oauthTrace: options.oauthTrace as unknown as NonNullable<PublicReport['oauthTrace']>,
     } : {}),
     sections: Object.entries(report.sections).map(([id, section]) => {
       const status = sectionStatus(id, section, outcome, report.outcome === undefined);
@@ -1068,6 +1267,77 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     for (const check of value.timings.checks) {
       lines.push(`- ${markdownInline(check.name)}: ${check.durationMs} ms`);
     }
+    lines.push('');
+  }
+
+  if (value.releaseDecision) {
+    lines.push(
+      '## Release readiness',
+      '',
+      `**${markdownInline(value.releaseDecision.status)}** — ${markdownInline(value.releaseDecision.answer)}`,
+      '',
+      markdownInline(value.releaseDecision.summary),
+      ''
+    );
+    for (const priority of value.releaseDecision.priorities) {
+      lines.push(
+        `- [${priority.severity}] ${markdownInline(priority.title)} (${markdownInline(priority.source)})`,
+        `  - ${markdownInline(priority.detail)}`,
+        `  - Remediation: ${markdownInline(priority.remediation)}`
+      );
+    }
+    if (value.releaseDecision.priorities.length > 0) lines.push('');
+  }
+
+  if (value.compatibility) {
+    const compatibility = value.compatibility as unknown as CompatibilityMatrixV1;
+    lines.push('## Host compatibility', '');
+    for (const assessment of Object.values(compatibility.assessments || {})) {
+      lines.push(`- ${markdownInline(assessment.profileId)}: ${markdownInline(assessment.status)}`);
+      for (const finding of assessment.findings.filter((item) => item.outcome !== 'pass')) {
+        lines.push(`  - ${markdownInline(finding.summary)}: ${markdownInline(finding.detail)}`);
+        if (finding.remediation) {
+          lines.push(`    - Remediation: ${markdownInline(finding.remediation.action)}`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  if (value.toolSurfaceAnalysis) {
+    const analysis = value.toolSurfaceAnalysis as unknown as ToolSurfaceAnalysisV1;
+    lines.push(
+      '## Tool surface analysis',
+      '',
+      `- Tools: ${analysis.metrics.toolCount}`,
+      `- Resources: ${analysis.metrics.resourceCount}`,
+      `- Prompts: ${analysis.metrics.promptCount}`,
+      `- Estimated context tokens: ${analysis.metrics.estimatedContextTokens}`,
+      `- Fingerprint: ${markdownInline(analysis.fingerprint.algorithm)}:${markdownInline(analysis.fingerprint.value)}`,
+      ''
+    );
+    for (const severity of ['critical', 'high', 'medium', 'low', 'info'] as const) {
+      for (const finding of analysis.findings[severity]) {
+        lines.push(
+          `- [${severity}] ${markdownInline(finding.title)}`,
+          `  - ${markdownInline(finding.summary)}`,
+          `  - Remediation: ${markdownInline(finding.remediation)}`
+        );
+      }
+    }
+    if (analysis.findingCount > 0) lines.push('');
+  }
+
+  if (value.oauthTrace) {
+    const trace = value.oauthTrace as unknown as OAuthTraceV1;
+    lines.push('## OAuth trace (redacted)', '');
+    for (const event of trace.events) {
+      lines.push(
+        `- ${event.sequence}. ${markdownInline(event.type)} — ${markdownInline(event.outcome)} (${markdownInline(event.provenance)})`,
+        `  - ${markdownInline(event.explanation)}`
+      );
+    }
+    if (trace.events.length === 0) lines.push('- No trace events were recorded.');
     lines.push('');
   }
 
