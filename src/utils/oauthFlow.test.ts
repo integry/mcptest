@@ -1051,7 +1051,11 @@ describe('OAuth flight recorder integration', () => {
 describe('OAuth provider interoperability matrix', () => {
   const authorizationMetadata = (
     issuer: string,
-    capabilities: { cimd?: boolean; registrationEndpoint?: string } = {}
+    capabilities: {
+      cimd?: boolean;
+      registrationEndpoint?: string;
+      tokenEndpointAuthMethods?: string[];
+    } = {}
   ) => ({
     issuer,
     authorization_endpoint: `${issuer.replace(/\/$/, '')}/authorize`,
@@ -1059,6 +1063,9 @@ describe('OAuth provider interoperability matrix', () => {
     response_types_supported: ['code'],
     code_challenge_methods_supported: ['S256'],
     client_id_metadata_document_supported: capabilities.cimd || false,
+    ...(capabilities.tokenEndpointAuthMethods
+      ? { token_endpoint_auth_methods_supported: capabilities.tokenEndpointAuthMethods }
+      : {}),
     ...(capabilities.registrationEndpoint
       ? { registration_endpoint: capabilities.registrationEndpoint }
       : {}),
@@ -1265,10 +1272,57 @@ describe('OAuth provider interoperability matrix', () => {
       providerName: 'Slack',
       canConfigureClient: true,
       requiredScopes: ['channels:read', 'chat:write'],
-      publicClientSecretSupported: false,
+      publicClientSecretSupported: 'unknown',
     });
     expect(getStoredOAuthTrace(target, sessionStorage)?.outcome?.status)
       .toBe('pre_registered_client_required');
+  });
+
+  it.each([
+    [
+      'Slack',
+      'https://mcp.slack.com/mcp',
+      'https://slack.com',
+      ['none'],
+      true,
+    ],
+    [
+      'Figma',
+      'https://mcp.figma.com/mcp',
+      'https://api.figma.com',
+      ['client_secret_post'],
+      false,
+    ],
+  ])('uses %s token endpoint auth metadata instead of conflicting host guidance', async (
+    providerName,
+    target,
+    issuer,
+    tokenEndpointAuthMethods,
+    expectedSupport
+  ) => {
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, { tokenEndpointAuthMethods }));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      providerName,
+      kind: 'pre_registered_client_required',
+      publicClientSecretSupported: expectedSupport,
+    });
   });
 
   it('preserves GitHub /mcp/ identity and proxies only non-CORS metadata discovery', async () => {

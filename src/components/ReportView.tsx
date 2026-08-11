@@ -8,13 +8,13 @@ import {
   getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
-  prepareManualOAuthClient,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
   getEvaluationMaxScore,
   getEvaluationPercentage,
+  isAuthenticationRequired,
   isLegacySkippedEvaluationSection,
   resolveEvaluationOutcome,
   type EvaluationReport,
@@ -354,6 +354,12 @@ const ReportView: React.FC = () => {
   const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('configure');
     setOAuthError(null);
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'report',
+      serverUrl: authenticationUrl,
+      timestamp: Date.now()
+    }));
+
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
       const discoveryProxyToken = proxyUrl && currentUser
@@ -362,10 +368,11 @@ const ReportView: React.FC = () => {
       const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
         ? oauthChallengeRef.current
         : undefined;
-      await prepareManualOAuthClient(authenticationUrl, {
+      const result = await beginOAuthFlow(authenticationUrl, {
         ...(challenge?.resourceMetadataUrl
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
+        ...(challenge?.scope ? { scope: challenge.scope } : {}),
         ...(proxyUrl && discoveryProxyToken
           ? {
               discoveryProxy: {
@@ -374,10 +381,18 @@ const ReportView: React.FC = () => {
               },
             }
           : {}),
+        deferAuthorizedTraceOutcome: true,
       });
-      setOAuthConfigServerUrl(authenticationUrl);
-      setOAuthPrerequisite(null);
+      if (result === 'AUTHORIZED') {
+        await handleRunReportRef.current?.(authenticationUrl);
+      }
     } catch (error) {
+      const prerequisite = getOAuthPrerequisite(error);
+      if (isOAuthClientConfigurationRequired(error) || prerequisite) {
+        setOAuthConfigServerUrl(authenticationUrl);
+        setOAuthPrerequisite(prerequisite || null);
+        return;
+      }
       const message = error instanceof Error ? error.message : 'Unknown OAuth discovery error';
       setOAuthError(`OAuth provider discovery failed: ${message}`);
     } finally {

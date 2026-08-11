@@ -48,6 +48,7 @@ vi.mock('../utils/evaluation', async (importOriginal) => {
 });
 
 import ReportView from './ReportView';
+import { OAuthPrerequisiteError, type OAuthPrerequisite } from '../utils/oauthFlow';
 
 beforeAll(() => {
   (
@@ -232,6 +233,10 @@ describe('ReportView OAuth discovery', () => {
       }
       return new Response('Not found', { status: 404 });
     }));
+    const { beginOAuthFlow: actualBeginOAuthFlow } = await vi.importActual<
+      typeof import('../utils/oauthFlow')
+    >('../utils/oauthFlow');
+    oauthMocks.begin.mockImplementationOnce(actualBeginOAuthFlow);
 
     const container = document.createElement('div');
     root = createRoot(container);
@@ -257,5 +262,71 @@ describe('ReportView OAuth discovery', () => {
     expect(proxyTargets).toEqual([authorizationMetadataUrl]);
     expect(container.textContent).toContain('Configure an existing client');
     expect(container.querySelector('#clientId')).not.toBeNull();
+  });
+
+  it('shows provider-approval guidance instead of client fields when Figma rejects registration', async () => {
+    const target = 'https://mcp.figma.com/mcp';
+    const resourceMetadataUrl = 'https://mcp.figma.com/.well-known/oauth-protected-resource';
+    const prerequisite: OAuthPrerequisite = {
+      kind: 'provider_approval_required',
+      serverUrl: target,
+      providerName: 'Figma',
+      explanation: 'Figma requires provider approval before mcptest.io can continue.',
+      issuer: 'https://api.figma.com',
+      registrationEndpoint: 'https://api.figma.com/v1/oauth/mcp/register',
+      documentationUrl: 'https://developers.figma.com/docs/figma-mcp-server/',
+      requiredScopes: ['file_content:read'],
+      pkceS256: true,
+      publicClientSecretSupported: 'unknown',
+      canConfigureClient: false,
+      failedStage: 'dynamic client registration',
+      httpStatus: 403,
+    };
+    evaluationMocks.evaluate.mockResolvedValueOnce({
+      serverUrl: target,
+      authenticationUrl: target,
+      resourceMetadataUrl,
+      scope: 'file_content:read',
+      outcome: 'authorization-required',
+      finalScore: 0,
+      sections: {
+        auth: {
+          name: 'Authorization Required',
+          description: 'OAuth authorization is required',
+          score: 0,
+          maxScore: 0,
+          details: [],
+        },
+      },
+    });
+    oauthMocks.begin.mockRejectedValueOnce(new OAuthPrerequisiteError(prerequisite));
+
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+    const configureButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Enter client credentials')
+    );
+    await act(async () => {
+      configureButton?.click();
+    });
+
+    expect(oauthMocks.begin).toHaveBeenCalledWith(target, expect.objectContaining({
+      resourceMetadataUrl,
+      scope: 'file_content:read',
+      deferAuthorizedTraceOutcome: true,
+    }));
+    expect(container.textContent).toContain('Figma approval is required');
+    expect(container.textContent).toContain('Supplying arbitrary client credentials is not expected');
+    expect(container.querySelector('#clientId')).toBeNull();
   });
 });

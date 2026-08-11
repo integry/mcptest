@@ -196,7 +196,6 @@ const providerGuidance = (serverUrl: string, issuer?: string): {
   name: string;
   documentationUrl?: string;
   registrationUrl?: string;
-  publicClientSecretSupported?: boolean;
 } => {
   // These entries affect explanatory copy and outbound documentation links
   // only. Discovery, capability ordering, and outcome classification remain
@@ -209,7 +208,6 @@ const providerGuidance = (serverUrl: string, issuer?: string): {
     return {
       name: 'Figma',
       documentationUrl: 'https://developers.figma.com/docs/figma-mcp-server/',
-      publicClientSecretSupported: true,
     };
   }
   if (hosts.some((host) => host === 'mcp.slack.com' || host.endsWith('.slack.com'))) {
@@ -217,7 +215,6 @@ const providerGuidance = (serverUrl: string, issuer?: string): {
       name: 'Slack',
       documentationUrl: 'https://api.slack.com/authentication/oauth-v2',
       registrationUrl: 'https://api.slack.com/apps',
-      publicClientSecretSupported: false,
     };
   }
   if (hosts.some((host) => host === 'github.com' || host.endsWith('.github.com'))) {
@@ -225,7 +222,6 @@ const providerGuidance = (serverUrl: string, issuer?: string): {
       name: 'GitHub',
       documentationUrl: 'https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app',
       registrationUrl: 'https://github.com/settings/applications/new',
-      publicClientSecretSupported: false,
     };
   }
   return {
@@ -349,8 +345,11 @@ const buildOAuthPrerequisite = (
     ...(requestedScope?.split(/\s+/).filter(Boolean) || []),
   ]));
   const authMethods = metadata?.token_endpoint_auth_methods_supported;
-  const publicClientSecretSupported: boolean | 'unknown' = guidance.publicClientSecretSupported
-    ?? (authMethods?.includes('none') ? true : authMethods?.length ? false : 'unknown');
+  const publicClientSecretSupported: boolean | 'unknown' = authMethods?.includes('none')
+    ? true
+    : authMethods?.length
+      ? false
+      : 'unknown';
   const failedStage = discoveryStage(trace);
   const base = {
     kind,
