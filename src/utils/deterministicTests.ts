@@ -1,3 +1,4 @@
+import { CallToolResultSchema } from '@modelcontextprotocol/core';
 import type {
   AssertionEvidence,
   DeterministicAssertion,
@@ -33,9 +34,12 @@ export interface DeterministicToolClient {
 }
 
 const WRITE_ACTIONS = new Set([
-  'add', 'archive', 'cancel', 'create', 'delete', 'disable', 'edit', 'install', 'invite', 'move',
-  'publish', 'remove', 'rename', 'reset', 'revoke', 'run', 'send', 'set', 'submit', 'terminate',
-  'transfer', 'truncate', 'uninstall', 'update', 'upload', 'wipe', 'write',
+  'add', 'append', 'archive', 'assign', 'cancel', 'charge', 'commit', 'configure', 'create',
+  'delete', 'deploy', 'disable', 'edit', 'enable', 'execute', 'import', 'insert', 'install',
+  'invite', 'issue', 'merge', 'modify', 'move', 'patch', 'pay', 'post', 'provision', 'publish',
+  'purchase', 'remove', 'rename', 'replace', 'reset', 'restore', 'revoke', 'run', 'schedule',
+  'send', 'set', 'start', 'stop', 'submit', 'sync', 'terminate', 'transfer', 'truncate',
+  'uninstall', 'update', 'upload', 'wipe', 'write',
 ]);
 const DESTRUCTIVE_ACTIONS = new Set([
   'archive', 'cancel', 'delete', 'disable', 'remove', 'reset', 'revoke', 'terminate', 'transfer',
@@ -70,10 +74,9 @@ const containsAction = (text: string, actions: Set<string>): boolean => {
   return [...actions].some(action => actionForms(action).some(form => tokens.includes(form)));
 };
 
-const slug = (value: string): string => value
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '') || 'tool';
+const caseIdPrefix = (value: string): string => (
+  [...value].map(character => character.codePointAt(0)?.toString(16)).join('-') || 'empty'
+);
 
 const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
   if (!isRecord(schema)) return undefined;
@@ -151,7 +154,7 @@ const defaultCase = (
   assertions: DeterministicAssertion[],
   expectedError?: DeterministicErrorType
 ): DeterministicTestCaseV1 => ({
-  id: `${slug(tool.name)}--${kind}`,
+  id: `tool-${caseIdPrefix(tool.name)}--${kind}`,
   toolName: tool.name,
   name: kind.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join(' '),
   kind,
@@ -219,9 +222,26 @@ export const generateDeterministicTestPlan = (
 
 export const redactTestData = (value: unknown, seen = new WeakSet<object>()): unknown => {
   if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if ((trimmed.startsWith('{') || trimmed.startsWith('['))) {
+      try {
+        const parsed: unknown = JSON.parse(value);
+        if (parsed !== null && typeof parsed === 'object') {
+          return JSON.stringify(redactTestData(parsed));
+        }
+      } catch {
+        // Continue with text-oriented credential redaction for non-JSON content.
+      }
+    }
+    const sensitiveName = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|password|passwd|secret|client[_ -]?secret)';
     return value
+      .replace(new RegExp(`(\\b${sensitiveName}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')
       .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
-      .replace(/([?&](?:token|api[_-]?key|secret|password)=)[^&#\s]+/gi, '$1[REDACTED]');
+      .replace(/\bBasic\s+[A-Za-z0-9+/]+=*/gi, 'Basic [REDACTED]')
+      .replace(/([?&](?:token|api[_-]?key|secret|password)=)[^&#\s]+/gi, '$1[REDACTED]')
+      .replace(new RegExp(`("${sensitiveName}"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi'), '$1"[REDACTED]"')
+      .replace(new RegExp(`('${sensitiveName}'\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'gi'), "$1'[REDACTED]'")
+      .replace(new RegExp(`(\\b${sensitiveName}\\b\\s*[:=]\\s*)(?!\\[REDACTED\\])[^\\s,;}]+`, 'gi'), '$1[REDACTED]');
   }
   if (value === null || typeof value !== 'object') return value;
   if (seen.has(value)) return '[Circular]';
@@ -303,7 +323,7 @@ const responseError = (response: unknown): NormalizedTestError | undefined => {
 
 const malformedResponseError = (response: unknown): NormalizedTestError | undefined => {
   if (!isRecord(response) || !Array.isArray(response.content)
-    || response.content.some(item => !isRecord(item) || typeof item.type !== 'string' || !item.type)) {
+    || !CallToolResultSchema.safeParse(response).success) {
     return {
       type: 'malformed-response',
       code: 'INVALID_TOOL_RESULT',
@@ -381,7 +401,9 @@ export const runDeterministicCase = async (
   if (externalSignal?.aborted) relayAbort();
   let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
   if (testCase.cancelAfterMs !== undefined) {
-    cancellationTimer = setTimeout(() => controller.abort('Fixture cancellation'), testCase.cancelAfterMs);
+    cancellationTimer = setTimeout(() => {
+      controller.abort(new DOMException('Fixture cancelled', 'AbortError'));
+    }, testCase.cancelAfterMs);
   }
   const request = { name: testCase.toolName, arguments: testCase.arguments };
   let response: unknown;
@@ -393,7 +415,7 @@ export const runDeterministicCase = async (
       timeout: testCase.timeoutMs,
       maxTotalTimeout: testCase.timeoutMs,
     });
-    error = responseError(response) || malformedResponseError(response);
+    error = malformedResponseError(response) || responseError(response);
     assertionEvidence = error ? [] : evaluateAssertions(response, testCase.assertions);
   } catch (cause) {
     error = normalizeTestError(cause);
@@ -432,6 +454,7 @@ export const runDeterministicPlan = async (
     onResult?: (result: DeterministicCaseResult) => void;
   } = {}
 ): Promise<DeterministicCaseResult[]> => {
+  validateDeterministicTestPlan(plan);
   const selected = new Set(options.caseIds || plan.tools.flatMap(tool => tool.cases.filter(item => item.selected).map(item => item.id)));
   const confirmed = new Set(options.confirmedUnsafeToolNames || []);
   const independentlyUnsafe = new Set(options.unsafeToolNames || []);
@@ -478,18 +501,40 @@ export const runDeterministicPlan = async (
   return results;
 };
 
-export const parseDeterministicTestPlan = (text: string): DeterministicTestPlanV1 => {
-  const parsed: unknown = JSON.parse(text);
-  if (!isRecord(parsed) || parsed.version !== DETERMINISTIC_TEST_PLAN_VERSION) {
+export function validateDeterministicAssertions(
+  assertions: unknown,
+  caseId = 'fixture',
+): asserts assertions is DeterministicAssertion[] {
+  if (!Array.isArray(assertions)) throw new Error('Assertions must be a JSON array.');
+  for (const assertion of assertions) {
+    if (!isRecord(assertion) || typeof assertion.path !== 'string'
+      || !['exists', 'not-exists', 'type', 'equals', 'length', 'min-length', 'max-length'].includes(String(assertion.operator))) {
+      throw new Error(`Case ${caseId} contains a malformed structural assertion.`);
+    }
+    if (assertion.operator === 'type' && !['array', 'object', 'string', 'number', 'boolean', 'null'].includes(String(assertion.value))) {
+      throw new Error(`Case ${caseId} contains an invalid type assertion.`);
+    }
+    if (assertion.operator === 'equals' && !Object.prototype.hasOwnProperty.call(assertion, 'value')) {
+      throw new Error(`Case ${caseId} contains an equals assertion without a value.`);
+    }
+    if (['length', 'min-length', 'max-length'].includes(String(assertion.operator))
+      && (typeof assertion.value !== 'number' || !Number.isFinite(assertion.value) || assertion.value < 0)) {
+      throw new Error(`Case ${caseId} contains an invalid length assertion.`);
+    }
+  }
+}
+
+export function validateDeterministicTestPlan(plan: unknown): asserts plan is DeterministicTestPlanV1 {
+  if (!isRecord(plan) || plan.version !== DETERMINISTIC_TEST_PLAN_VERSION) {
     throw new Error(`Unsupported test plan version. Expected ${DETERMINISTIC_TEST_PLAN_VERSION}.`);
   }
-  if (typeof parsed.name !== 'string' || typeof parsed.serverUrl !== 'string' || typeof parsed.generatedAt !== 'string' || !Array.isArray(parsed.tools)) {
+  if (typeof plan.name !== 'string' || typeof plan.serverUrl !== 'string' || typeof plan.generatedAt !== 'string' || !Array.isArray(plan.tools)) {
     throw new Error('Test plan metadata is malformed.');
   }
   const caseIds = new Set<string>();
   const validKinds: DeterministicCaseKind[] = ['happy-path', 'validation', 'empty-result', 'upstream-error', 'timeout', 'output-shape', 'cancellation'];
   const validErrors: DeterministicErrorType[] = ['authorization', 'validation', 'missing-resource', 'upstream', 'timeout', 'cancelled', 'malformed-response', 'unknown'];
-  for (const tool of parsed.tools) {
+  for (const tool of plan.tools) {
     if (!isRecord(tool) || typeof tool.toolName !== 'string' || !isRecord(tool.safety) || !Array.isArray(tool.cases)
       || typeof tool.safety.writeCapable !== 'boolean' || typeof tool.safety.destructive !== 'boolean'
       || !Array.isArray(tool.safety.reasons) || !tool.safety.reasons.every(reason => typeof reason === 'string')) {
@@ -510,24 +555,18 @@ export const parseDeterministicTestPlan = (text: string): DeterministicTestPlanV
       if (testCase.toolName !== tool.toolName) {
         throw new Error(`Case ${testCase.id} must target its containing tool ${tool.toolName}.`);
       }
-      for (const assertion of testCase.assertions) {
-        if (!isRecord(assertion) || typeof assertion.path !== 'string'
-          || !['exists', 'not-exists', 'type', 'equals', 'length', 'min-length', 'max-length'].includes(String(assertion.operator))) {
-          throw new Error(`Case ${testCase.id} contains a malformed structural assertion.`);
-        }
-        if (assertion.operator === 'type' && !['array', 'object', 'string', 'number', 'boolean', 'null'].includes(String(assertion.value))) {
-          throw new Error(`Case ${testCase.id} contains an invalid type assertion.`);
-        }
-        if (['length', 'min-length', 'max-length'].includes(String(assertion.operator))
-          && (typeof assertion.value !== 'number' || !Number.isFinite(assertion.value) || assertion.value < 0)) {
-          throw new Error(`Case ${testCase.id} contains an invalid length assertion.`);
-        }
-      }
+      validateDeterministicAssertions(testCase.assertions, testCase.id);
     }
   }
-  return parsed as unknown as DeterministicTestPlanV1;
+}
+
+export const parseDeterministicTestPlan = (text: string): DeterministicTestPlanV1 => {
+  const parsed: unknown = JSON.parse(text);
+  validateDeterministicTestPlan(parsed);
+  return parsed;
 };
 
-export const serializeDeterministicTestPlan = (plan: DeterministicTestPlanV1): string => (
-  `${JSON.stringify(plan, null, 2)}\n`
-);
+export const serializeDeterministicTestPlan = (plan: DeterministicTestPlanV1): string => {
+  validateDeterministicTestPlan(plan);
+  return `${JSON.stringify(plan, null, 2)}\n`;
+};

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Client } from '@modelcontextprotocol/client';
 import type { Tool } from '../types';
 import type {
-  DeterministicAssertion,
   DeterministicCaseResult,
   DeterministicTestCaseV1,
   DeterministicTestPlanV1,
@@ -13,6 +12,7 @@ import {
   parseDeterministicTestPlan,
   runDeterministicPlan,
   serializeDeterministicTestPlan,
+  validateDeterministicAssertions,
 } from '../utils/deterministicTests';
 
 interface DeterministicTestPanelProps {
@@ -24,7 +24,12 @@ interface DeterministicTestPanelProps {
   connectionSummary: string;
 }
 
-type JsonDraft = { arguments: string; assertions: string; error?: string };
+type JsonDraft = {
+  arguments: string;
+  assertions: string;
+  argumentsError?: string;
+  assertionsError?: string;
+};
 
 const createDrafts = (plan: DeterministicTestPlanV1): Record<string, JsonDraft> => Object.fromEntries(
   plan.tools.flatMap(tool => tool.cases.map(testCase => [testCase.id, {
@@ -62,7 +67,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   const [drafts, setDrafts] = useState<Record<string, JsonDraft>>({});
   const [results, setResults] = useState<DeterministicCaseResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [unsafeConfirmed, setUnsafeConfirmed] = useState(false);
+  const [confirmedUnsafeFixtureSignature, setConfirmedUnsafeFixtureSignature] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -77,7 +82,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     setPlan(generated);
     setDrafts(createDrafts(generated));
     setResults([]);
-    setUnsafeConfirmed(false);
+    setConfirmedUnsafeFixtureSignature(null);
     // Plan changes are intentionally driven by connection/tool identity, not case edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serverUrl, toolNames, tools]);
@@ -86,20 +91,31 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     tool.cases.filter(testCase => testCase.selected).map(testCase => ({ tool, testCase }))
   )) || [], [plan]);
   const discoveredSafety = useMemo(() => new Map(tools.map(tool => [tool.name, inferToolSafety(tool)])), [tools]);
-  const selectedUnsafeTools = useMemo(() => [...new Set(selectedCases
+  const selectedUnsafeCases = useMemo(() => selectedCases
     .filter(({ tool, testCase }) => {
       const actual = discoveredSafety.get(testCase.toolName);
       return tool.safety.writeCapable || tool.safety.destructive || actual?.writeCapable || actual?.destructive;
-    })
-    .map(({ tool }) => tool.toolName))], [discoveredSafety, selectedCases]);
-  const unsafeSelectionSignature = selectedUnsafeTools.join('\u0000');
+    }), [discoveredSafety, selectedCases]);
+  const selectedUnsafeTools = useMemo(() => [...new Set(selectedUnsafeCases
+    .map(({ tool }) => tool.toolName))], [selectedUnsafeCases]);
+  const unsafeFixtureSignature = useMemo(() => selectedUnsafeCases
+    .map(({ testCase }) => JSON.stringify({ id: testCase.id, fixture: testCase }))
+    .join('\u0000'), [selectedUnsafeCases]);
+  const unsafeConfirmed = unsafeFixtureSignature.length > 0
+    && confirmedUnsafeFixtureSignature === unsafeFixtureSignature;
 
   useEffect(() => {
-    setUnsafeConfirmed(false);
-  }, [unsafeSelectionSignature]);
-  const hasDraftErrors = selectedCases.some(({ testCase }) => drafts[testCase.id]?.error);
+    setConfirmedUnsafeFixtureSignature(null);
+  }, [unsafeFixtureSignature]);
+
+  useEffect(() => {
+    setConfirmedUnsafeFixtureSignature(null);
+  }, [open, client, serverUrl, connectionSummary]);
+
+  const hasDraftErrors = Object.values(drafts).some(draft => draft.argumentsError || draft.assertionsError);
 
   const updateCase = (caseId: string, update: Partial<DeterministicTestCaseV1>) => {
+    setConfirmedUnsafeFixtureSignature(null);
     setPlan(current => current ? {
       ...current,
       tools: current.tools.map(tool => ({
@@ -117,17 +133,19 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
       if (field === 'arguments' && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) {
         throw new Error('Arguments must be a JSON object.');
       }
-      if (field === 'assertions' && !Array.isArray(parsed)) throw new Error('Assertions must be a JSON array.');
+      if (field === 'assertions') validateDeterministicAssertions(parsed, testCase.id);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
     }
+    setConfirmedUnsafeFixtureSignature(null);
+    const errorKey = field === 'arguments' ? 'argumentsError' : 'assertionsError';
     setDrafts(current => ({
       ...current,
-      [testCase.id]: { ...current[testCase.id], [field]: value, error },
+      [testCase.id]: { ...current[testCase.id], [field]: value, [errorKey]: error },
     }));
     if (!error) updateCase(testCase.id, field === 'arguments'
       ? { arguments: parsed as Record<string, unknown> }
-      : { assertions: parsed as DeterministicAssertion[] });
+      : { assertions: parsed as DeterministicTestCaseV1['assertions'] });
   };
 
   const handleRun = async () => {
@@ -147,9 +165,21 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
         signal: controller.signal,
         onResult: result => setResults(current => [...current, result]),
       });
+    } catch (cause) {
+      setNotice(`Run failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     } finally {
       abortRef.current = null;
       setIsRunning(false);
+      setConfirmedUnsafeFixtureSignature(null);
+    }
+  };
+
+  const handleExport = () => {
+    if (!plan || hasDraftErrors) return;
+    try {
+      downloadPlan(plan);
+    } catch (cause) {
+      setNotice(`Export failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
   };
 
@@ -177,7 +207,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
       setPlan(imported);
       setDrafts(createDrafts(imported));
       setResults([]);
-      setUnsafeConfirmed(false);
+      setConfirmedUnsafeFixtureSignature(null);
       setNotice(`Imported ${imported.tools.length} tool plans from ${file.name}.`);
     } catch (cause) {
       setNotice(`Import failed: ${cause instanceof Error ? cause.message : String(cause)}`);
@@ -194,20 +224,23 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
             <h2 id="deterministic-tests-title">Deterministic tool tests</h2>
             <p>{connectionSummary}. Runs use this connected session and require no model or API key.</p>
           </div>
-          <button className="btn btn-sm btn-outline-secondary" onClick={onClose} disabled={isRunning} aria-label="Close deterministic tests">
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => {
+            setConfirmedUnsafeFixtureSignature(null);
+            onClose();
+          }} disabled={isRunning} aria-label="Close deterministic tests">
             <i className="bi bi-x-lg" aria-hidden="true" />
           </button>
         </header>
 
         <div className="deterministic-tests-toolbar">
           <button className="btn btn-sm btn-outline-secondary" onClick={() => importRef.current?.click()} disabled={isRunning}>Import JSON</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => plan && downloadPlan(plan)} disabled={!plan || isRunning}>Export JSON</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={handleExport} disabled={!plan || isRunning || hasDraftErrors}>Export JSON</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => {
             const generated = generateDeterministicTestPlan(tools, serverUrl);
             setPlan(generated);
             setDrafts(createDrafts(generated));
             setResults([]);
-            setUnsafeConfirmed(false);
+            setConfirmedUnsafeFixtureSignature(null);
             setNotice('Generated a fresh plan from the discovered tool surface.');
           }} disabled={isRunning}>Regenerate</button>
           <input ref={importRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImport} />
@@ -267,11 +300,12 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
                               Fixture arguments
                               <textarea className="form-control font-monospace" rows={7} value={draft.arguments} onChange={event => updateJsonDraft(testCase, 'arguments', event.target.value)} />
                             </label>
+                            {draft.argumentsError && <p className="test-json-error">Invalid fixture arguments: {draft.argumentsError}</p>}
                             <label className="test-json-field">
                               Structural assertions
                               <textarea className="form-control font-monospace" rows={7} value={draft.assertions} onChange={event => updateJsonDraft(testCase, 'assertions', event.target.value)} />
                             </label>
-                            {draft.error && <p className="test-json-error">Invalid JSON: {draft.error}</p>}
+                            {draft.assertionsError && <p className="test-json-error">Invalid structural assertions: {draft.assertionsError}</p>}
                           </div>
                         )}
                       </article>
@@ -320,11 +354,16 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
           <div>
             {selectedUnsafeTools.length > 0 && (
               <label className="unsafe-confirmation">
-                <input type="checkbox" checked={unsafeConfirmed} onChange={event => setUnsafeConfirmed(event.target.checked)} disabled={isRunning} />
+                <input
+                  type="checkbox"
+                  checked={unsafeConfirmed}
+                  onChange={event => setConfirmedUnsafeFixtureSignature(event.target.checked ? unsafeFixtureSignature : null)}
+                  disabled={isRunning}
+                />
                 I explicitly confirm running write-capable or destructive fixtures for {selectedUnsafeTools.join(', ')}.
               </label>
             )}
-            {hasDraftErrors && <span className="test-json-error">Fix invalid JSON before running.</span>}
+            {hasDraftErrors && <span className="test-json-error">Fix invalid fixture JSON or assertions before running or exporting.</span>}
           </div>
           <div className="d-flex gap-2">
             {isRunning && <button className="btn btn-outline-danger" onClick={() => abortRef.current?.abort()}>Cancel run</button>}

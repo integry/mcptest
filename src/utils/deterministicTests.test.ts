@@ -60,6 +60,11 @@ describe('deterministic test plans', () => {
       { name: 'custom', annotations: { destructiveHint: true } },
       { name: 'permanentlyDeleteAccount' },
       { name: 'records', description: 'Deleting stale records.' },
+      { name: 'modify_user' },
+      { name: 'insert_record' },
+      { name: 'post_message' },
+      { name: 'charge_card' },
+      { name: 'deploy_app' },
     ], 'https://example.test', '2026-08-11T00:00:00.000Z');
 
     expect(plan.tools.map(tool => tool.safety)).toMatchObject([
@@ -69,7 +74,24 @@ describe('deterministic test plans', () => {
       { writeCapable: true, destructive: true },
       { writeCapable: true, destructive: true },
       { writeCapable: true, destructive: true },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
     ]);
+  });
+
+  it('generates collision-free case IDs from exact tool identities', () => {
+    const plan = generateDeterministicTestPlan([
+      { name: 'foo.bar' },
+      { name: 'foo-bar' },
+    ], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const ids = plan.tools.flatMap(tool => tool.cases.map(testCase => testCase.id));
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(plan.tools[0].cases[0].id).not.toBe(plan.tools[1].cases[0].id);
+    expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
   });
 
   it('round-trips versioned JSON and rejects cross-tool imported cases', () => {
@@ -77,6 +99,15 @@ describe('deterministic test plans', () => {
     expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
     plan.tools[0].cases[0].toolName = 'delete_everything';
     expect(() => parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toThrow(/containing tool/);
+  });
+
+  it('validates edited structural assertions before export and round-trips valid edits', () => {
+    const plan = generateDeterministicTestPlan([{ name: 'lookup' }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    plan.tools[0].cases[0].assertions = [{ path: '$.content', operator: 'min-length', value: 2 }];
+    expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
+
+    plan.tools[0].cases[0].assertions = [{ path: '$.content', operator: 'subjective' } as any];
+    expect(() => serializeDeterministicTestPlan(plan)).toThrow(/malformed structural assertion/);
   });
 });
 
@@ -124,6 +155,20 @@ describe('deterministic runner safety and evidence', () => {
     });
   });
 
+  it('redacts secrets embedded in MCP text blocks and credential headers', () => {
+    expect(redactTestData({
+      content: [
+        { type: 'text', text: '{"api_key":"secret","nested":{"clientSecret":"also-secret"}}' },
+        { type: 'text', text: 'Authorization: Basic dXNlcjpwYXNz\nX-API-Key: header-secret' },
+      ],
+    })).toEqual({
+      content: [
+        { type: 'text', text: '{"api_key":"[REDACTED]","nested":{"clientSecret":"[REDACTED]"}}' },
+        { type: 'text', text: 'Authorization: [REDACTED]\nX-API-Key: [REDACTED]' },
+      ],
+    });
+  });
+
   it('reports malformed responses and preserves reproducible case data', async () => {
     const result = await runDeterministicCase(
       { callTool: vi.fn().mockResolvedValue({ unexpected: true }) },
@@ -137,6 +182,18 @@ describe('deterministic runner safety and evidence', () => {
   it('supports fixture cancellation using an abort signal', async () => {
     const callTool = vi.fn((_request, options) => new Promise((_resolve, reject) => {
       options?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    }));
+    const result = await runDeterministicCase(
+      { callTool },
+      fixtureCase({ kind: 'cancellation', expectedError: 'cancelled', cancelAfterMs: 1 }),
+    );
+    expect(result.status).toBe('passed');
+    expect(result.error?.type).toBe('cancelled');
+  });
+
+  it('classifies fixture cancellation when the client propagates signal.reason', async () => {
+    const callTool = vi.fn((_request, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true });
     }));
     const result = await runDeterministicCase(
       { callTool },
@@ -161,6 +218,28 @@ describe('deterministic runner safety and evidence', () => {
       fixtureCase(),
     );
     expect(result.error?.type).toBe('malformed-response');
+  });
+
+  it.each([
+    { content: [{ type: 'unknown', value: 'anything' }] },
+    { content: [{ type: 'text' }] },
+    { content: [{ type: 'image', data: 'abc' }] },
+    { content: [{ type: 'resource', resource: { uri: 'file:///fixture' } }] },
+  ])('rejects invalid content-block unions: %j', async response => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue(response) },
+      fixtureCase(),
+    );
+    expect(result.error?.type).toBe('malformed-response');
+  });
+
+  it('validates malformed error envelopes before interpreting isError', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ isError: true, content: [{ type: 'text' }] }) },
+      fixtureCase({ expectedError: 'upstream' }),
+    );
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({ type: 'malformed-response', code: 'INVALID_TOOL_RESULT' });
   });
 });
 
