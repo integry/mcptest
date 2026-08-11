@@ -30,6 +30,7 @@ import { useConnection } from './useConnection';
 import { BrowserOAuthProvider, completeOAuthFlow } from '../utils/oauthFlow';
 import {
   getStoredOAuthTrace,
+  OAUTH_TRACE_STORAGE_PREFIX,
   recordOAuthAuthenticationChallenge,
 } from '../utils/oauthTrace';
 import {
@@ -86,6 +87,7 @@ describe('connection URL finalization', () => {
     vi.clearAllTimers();
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it.each([
@@ -279,6 +281,88 @@ describe('connection URL finalization', () => {
       type: 'terminal_outcome',
       outcome: 'succeeded',
     });
+    view.unmount();
+  });
+
+  it('retries with the OAuth token when trace persistence is unavailable', async () => {
+    const endpoint = 'https://trace-storage.example/mcp';
+    const issuer = 'https://auth-trace-storage.example/';
+    const nativeSetItem = Storage.prototype.setItem;
+    const rejectedTraceWrites: string[] = [];
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (this === sessionStorage && key.startsWith(OAUTH_TRACE_STORAGE_PREFIX)) {
+        rejectedTraceWrites.push(key);
+        throw new DOMException('Trace storage quota exceeded', 'QuotaExceededError');
+      }
+      nativeSetItem.call(this, key, value);
+    });
+    oauthMocks.begin.mockImplementationOnce(async (serverUrl, options) => (
+      oauthMocks.actualBegin?.(serverUrl, {
+        ...options,
+        fetchFn: vi.fn().mockResolvedValue(new Response('{}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })),
+        authenticate: async (provider: BrowserOAuthProvider) => {
+          provider.saveDiscoveryState({
+            authorizationServerUrl: issuer,
+            authorizationServerMetadata: {
+              issuer,
+              authorization_endpoint: `${issuer}authorize`,
+              token_endpoint: `${issuer}token`,
+              response_types_supported: ['code'],
+            },
+          });
+          provider.saveTokens(
+            { access_token: 'quota-safe-token', token_type: 'Bearer', issuer },
+            { issuer }
+          );
+          return 'AUTHORIZED';
+        },
+      })
+    ));
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([
+        new ProxiedAuthenticationError(
+          401,
+          'target',
+          new Error('Authorization required'),
+          { method: 'POST', url: endpoint }
+        ),
+      ]))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: endpoint,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
+    const view = renderConnectionHook();
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(rejectedTraceWrites.length).toBeGreaterThan(0);
+    expect(sessionStorage.getItem(
+      `mcp_oauth_v2:${encodeURIComponent(new URL(endpoint).toString())}`
+    )).not.toBeNull();
+    expect(connectionMocks.attempt).toHaveBeenLastCalledWith(
+      endpoint,
+      expect.anything(),
+      'quota-safe-token',
+      undefined,
+      false,
+      undefined,
+      expect.any(Function)
+    );
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(view.connection.connectionStatus).toBe('Connected');
+    expect(view.connection.connectionError).toBeNull();
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)).toBeUndefined();
     view.unmount();
   });
 

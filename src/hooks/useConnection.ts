@@ -651,9 +651,6 @@ export const useConnection = (
               operation: 'connection',
               startedAt: connectionAttemptStartedAt,
             });
-            if (!pendingOAuthRetry) {
-              throw new Error('OAuth completed without preserving the authenticated MCP retry.');
-            }
 
             setIsAuthFlowActive(false);
             setOauthProgress(null);
@@ -662,7 +659,10 @@ export const useConnection = (
               type: 'info',
               data: '✅ OAuth authorization found. Retrying the MCP connection.'
             });
-            oauthRetryPending = true;
+            // Trace persistence is best-effort. OAuth may have completed even
+            // when storage is unavailable, so continue the authenticated MCP
+            // retry and only enable retry tracing when its recorder was restored.
+            oauthRetryPending = Boolean(pendingOAuthRetry);
           } catch (oauthError) {
             oauthTrace = reloadLatestOAuthTrace();
             setIsAuthFlowActive(false);
