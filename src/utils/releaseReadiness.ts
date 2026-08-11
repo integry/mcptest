@@ -225,6 +225,7 @@ export const createObservedServerFacts = (
   const transportType = firstString(records, 'transportType');
   const protocolVersion = firstString(records, 'protocolVersion');
   const route = firstString(records, 'route');
+  const evaluationRuntime = firstString(records, 'evaluationRuntime');
   const outcome = resolveEvaluationOutcome(report);
   const schemes = inferAuthorizationSchemes(report, trace);
   const oauthApplies = schemes !== 'unknown' && schemes.includes('oauth');
@@ -279,6 +280,18 @@ export const createObservedServerFacts = (
   const directBrowserPassed = report.sections.cors?.details.some((detail) => (
     /Direct browser MCP negotiation succeeded/i.test(detail.text)
   ));
+  const isHeadless = evaluationRuntime === 'headless';
+  const directAccessDescription = directBrowserPassed
+    ? 'Direct browser negotiation succeeded.'
+    : direct
+      ? isHeadless
+        ? 'Direct MCP negotiation succeeded from the headless evaluator.'
+        : 'Direct MCP negotiation succeeded.'
+      : proxy
+        ? isHeadless
+          ? 'The direct route failed and the configured proxy completed negotiation.'
+          : 'The browser required the authenticated proxy route.'
+        : 'Direct access was not established.';
 
   return {
     schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
@@ -386,9 +399,15 @@ export const createObservedServerFacts = (
     },
     environment: {
       directAccess: observed(direct || directBrowserPassed ? 'reachable' : proxy ? 'blocked' : 'unknown',
-        direct || directBrowserPassed ? 'Direct browser negotiation succeeded.' : proxy ? 'The browser required the authenticated proxy route.' : 'Direct access was not established.', 'browser'),
+        directAccessDescription, isHeadless ? 'target-server' : 'browser'),
       cors: observed(directBrowserPassed ? 'allowed' : proxy ? 'blocked' : 'unknown',
-        directBrowserPassed ? 'The browser read MCP responses directly.' : proxy ? 'Direct browser access failed and the proxy was used.' : 'Browser CORS behavior was not established.', 'browser'),
+        directBrowserPassed
+          ? 'The browser read MCP responses directly.'
+          : isHeadless
+            ? 'Browser CORS behavior is not observable from the headless runtime.'
+            : proxy
+              ? 'Direct browser access failed and the proxy was used.'
+              : 'Browser CORS behavior was not established.', 'browser'),
       proxyRoute: observed(direct ? 'not-used' : proxy ? 'used' : 'unknown',
         direct ? 'No proxy was used.' : proxy ? 'The authenticated proxy completed negotiation.' : 'Proxy use was not established.', 'configuration'),
     },

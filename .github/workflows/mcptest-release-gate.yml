@@ -1,0 +1,119 @@
+name: mcptest release gate
+
+on:
+  workflow_call:
+    inputs:
+      endpoints:
+        description: Newline-delimited remote MCP endpoint URLs
+        required: true
+        type: string
+      credential_mode:
+        description: public, bearer, or api-key
+        required: false
+        default: public
+        type: string
+      fail_on_result:
+        description: Comma-separated release results, or none
+        required: false
+        default: blocked,unknown
+        type: string
+      fail_on_severity:
+        description: critical, high, medium, unknown, or none
+        required: false
+        default: high
+        type: string
+    secrets:
+      MCPTEST_BEARER_TOKEN:
+        required: false
+      MCPTEST_API_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      endpoints:
+        description: Newline-delimited remote MCP endpoint URLs
+        required: true
+        type: string
+      credential_mode:
+        description: public, bearer, or api-key
+        required: false
+        default: public
+        type: choice
+        options:
+          - public
+          - bearer
+          - api-key
+      fail_on_result:
+        description: Comma-separated release results, or none
+        required: false
+        default: blocked,unknown
+        type: string
+      fail_on_severity:
+        description: critical, high, medium, unknown, or none
+        required: false
+        default: high
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - unknown
+          - none
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MCPTEST_ENDPOINTS: ${{ inputs.endpoints }}
+      MCPTEST_CREDENTIAL_MODE: ${{ inputs.credential_mode }}
+      MCPTEST_FAIL_RESULTS: ${{ inputs.fail_on_result }}
+      MCPTEST_FAIL_SEVERITY: ${{ inputs.fail_on_severity }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate credential mode
+        shell: bash
+        run: |
+          case "$MCPTEST_CREDENTIAL_MODE" in
+            public|bearer|api-key) ;;
+            *) echo "credential_mode must be public, bearer, or api-key" >&2; exit 3 ;;
+          esac
+      - name: Evaluate public endpoints
+        if: inputs.credential_mode == 'public'
+        run: >-
+          npm run mcptest --
+          --endpoints-env MCPTEST_ENDPOINTS
+          --fail-on-result "$MCPTEST_FAIL_RESULTS"
+          --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
+      - name: Evaluate with bearer token
+        if: inputs.credential_mode == 'bearer'
+        env:
+          MCPTEST_BEARER_TOKEN: ${{ secrets.MCPTEST_BEARER_TOKEN }}
+        run: >-
+          npm run mcptest --
+          --endpoints-env MCPTEST_ENDPOINTS
+          --bearer-token-env MCPTEST_BEARER_TOKEN
+          --fail-on-result "$MCPTEST_FAIL_RESULTS"
+          --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
+      - name: Evaluate with API key
+        if: inputs.credential_mode == 'api-key'
+        env:
+          MCPTEST_API_KEY: ${{ secrets.MCPTEST_API_KEY }}
+        run: >-
+          npm run mcptest --
+          --endpoints-env MCPTEST_ENDPOINTS
+          --api-key-env MCPTEST_API_KEY
+          --fail-on-result "$MCPTEST_FAIL_RESULTS"
+          --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcptest-reports
+          path: mcptest-reports/
+          if-no-files-found: ignore
