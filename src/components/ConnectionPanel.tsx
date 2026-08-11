@@ -43,6 +43,7 @@ interface ConnectionPanelProps {
   credentialValue?: string;
   setCredentialValue?: (value: string) => void;
   credentialInputId?: string;
+  autoFocusUrl?: boolean;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -74,6 +75,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   credentialValue = '',
   setCredentialValue,
   credentialInputId = 'catalog-credential',
+  autoFocusUrl = false,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -251,6 +253,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               disabled={isConnecting || isConnected}
               list={isConnected ? undefined : "recentServersList"}
               readOnly={isConnected}
+              autoFocus={autoFocusUrl}
             />
             {isConnected ? (
                <button
@@ -279,16 +282,6 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   <option key={url} value={url} />
                 ))}
               </datalist>
-              <div className="form-text connection-help">
-                <span className="connection-help-label">Connection sequence</span>
-                <ol className="connection-route" aria-label="Automatic connection negotiation sequence">
-                  <li>Exact endpoint</li>
-                  <li>2026 stateless discovery</li>
-                  <li>2025 stateful fallback</li>
-                  <li>OAuth discovery after a verified authorization challenge</li>
-                </ol>
-                <span className="connection-example">For example, https://{placeholder}/ or http://localhost:3001</span>
-              </div>
             </>
           )}
           {isConnecting && (
@@ -300,31 +293,6 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               >
                 Abort connection
               </button>
-            </div>
-          )}
-          {import.meta.env.VITE_PROXY_URL && !isConnected && setUseProxy && (
-            <div className={`mt-2 proxy-setting ${!currentUser ? 'proxy-setting-locked' : ''}`}>
-              <div className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="proxyFallbackCheck"
-                  checked={Boolean(currentUser && (useProxy !== undefined ? useProxy : true))}
-                  onChange={(e) => setUseProxy(e.target.checked)}
-                  disabled={isConnecting || !currentUser}
-                  aria-describedby={!currentUser ? 'proxyFallbackHelp' : undefined}
-                />
-                <label className="form-check-label" htmlFor="proxyFallbackCheck">
-                  Automatically use proxy for CORS errors
-                  {!currentUser && <span className="text-muted ms-1">(login required)</span>}
-                </label>
-              </div>
-              {!currentUser && (
-                <small id="proxyFallbackHelp" className="text-muted d-block mt-1">
-                  <i className="bi bi-lock-fill me-1" aria-hidden="true"></i>
-                  Sign in with Google to enable proxy fallback.
-                </small>
-              )}
             </div>
           )}
           {!isConnected && requiresCatalogCredential && credentialHeader && setCredentialValue && (
@@ -348,6 +316,51 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                 Kept only in this tab's memory. It is not saved, synced, logged, or added to the URL.
               </div>
             </div>
+          )}
+          {!isConnected && (
+            <details className="connection-advanced mt-3">
+              <summary>
+                <i className="bi bi-gear me-2" aria-hidden="true"></i>
+                Advanced options
+              </summary>
+              <div className="connection-advanced-body">
+                <div className="form-text connection-help">
+                  <span className="connection-help-label">Connection sequence</span>
+                  <ol className="connection-route" aria-label="Automatic connection negotiation sequence">
+                    <li>Exact endpoint</li>
+                    <li>2026 stateless discovery</li>
+                    <li>2025 stateful fallback</li>
+                    <li>OAuth discovery after a verified authorization challenge</li>
+                  </ol>
+                  <span className="connection-example">For example, https://{placeholder}/ or http://localhost:3001</span>
+                </div>
+                {import.meta.env.VITE_PROXY_URL && setUseProxy && (
+                  <div className={`mt-3 proxy-setting ${!currentUser ? 'proxy-setting-locked' : ''}`}>
+                    <div className="form-check">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        id="proxyFallbackCheck"
+                        checked={Boolean(currentUser && (useProxy !== undefined ? useProxy : true))}
+                        onChange={(e) => setUseProxy(e.target.checked)}
+                        disabled={isConnecting || !currentUser}
+                        aria-describedby={!currentUser ? 'proxyFallbackHelp' : undefined}
+                      />
+                      <label className="form-check-label" htmlFor="proxyFallbackCheck">
+                        Automatically use proxy for CORS errors
+                        {!currentUser && <span className="text-muted ms-1">(login required)</span>}
+                      </label>
+                    </div>
+                    {!currentUser && (
+                      <small id="proxyFallbackHelp" className="text-muted d-block mt-1">
+                        <i className="bi bi-lock-fill me-1" aria-hidden="true"></i>
+                        Sign in with Google to enable proxy fallback.
+                      </small>
+                    )}
+                  </div>
+                )}
+              </div>
+            </details>
           )}
         </div>
         

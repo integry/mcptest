@@ -61,7 +61,7 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
             </button>
             <button
               type="button"
-              className="btn btn-sm btn-outline-danger recent-server-remove"
+              className="btn btn-sm btn-outline-secondary recent-server-remove"
               onClick={() => removeRecentServer(url)}
               title={`Remove ${url} from recent connections`}
               aria-label={`Remove ${url} from recent connections`}

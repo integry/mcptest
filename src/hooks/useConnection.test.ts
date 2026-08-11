@@ -74,6 +74,14 @@ describe('connection URL finalization', () => {
     vi.useRealTimers();
   });
 
+  it('starts a first connection with a blank endpoint', () => {
+    const view = renderConnectionHook();
+
+    expect(view.connection.serverUrl).toBe('');
+    expect(view.connection.recentServers).toEqual([]);
+    view.unmount();
+  });
+
   it.each([
     ['URL-valued', 'https://tenant.example/account'],
     ['ordinary', 'production'],

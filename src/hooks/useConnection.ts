@@ -87,7 +87,7 @@ export const useConnection = (
   requestHeaders?: Record<string, string>
 ) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
-  const [serverUrl, setServerUrl] = useState<string>(recentServers[0] || 'http://localhost:3033/mcp');
+  const [serverUrl, setServerUrl] = useState<string>('');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [transportType, setTransportType] = useState<TransportType | null>(null);
   const [protocolEra, setProtocolEra] = useState<ProtocolEra | null>(null);
@@ -684,7 +684,7 @@ export const useConnection = (
       saveRecentServers(updatedServers); // Save to localStorage (outside state update)
       // If the removed server was the currently selected one, reset to default or next available
       if (serverUrl === urlToRemove) {
-        setServerUrl(updatedServers[0] || 'http://localhost:3033/mcp');
+        setServerUrl(updatedServers[0] || '');
       }
     },
   };

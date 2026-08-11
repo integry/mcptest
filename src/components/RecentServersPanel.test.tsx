@@ -26,5 +26,7 @@ describe('RecentServersPanel actions', () => {
     expect(reconnect?.textContent).toContain(url);
     expect(remove?.getAttribute('aria-label')).toBe(`Remove ${url} from recent connections`);
     expect(remove?.querySelector('.bi-x-lg')).not.toBeNull();
+    expect(remove?.classList.contains('btn-outline-secondary')).toBe(true);
+    expect(remove?.classList.contains('btn-outline-danger')).toBe(false);
   });
 });

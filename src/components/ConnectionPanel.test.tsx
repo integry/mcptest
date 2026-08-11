@@ -81,4 +81,15 @@ describe('ConnectionPanel landing-page states', () => {
     expect(route?.querySelector('.badge')).toBeNull();
     expect(panel.textContent).not.toContain('Use OAuth Authentication');
   });
+
+  it('hides connection negotiation and proxy controls behind advanced options', () => {
+    const panel = renderPanel();
+    const advanced = panel.querySelector<HTMLDetailsElement>('.connection-advanced');
+
+    expect(advanced).not.toBeNull();
+    expect(advanced?.open).toBe(false);
+    expect(advanced?.querySelector('summary')?.textContent).toContain('Advanced options');
+    expect(advanced?.querySelector('#proxyFallbackCheck')).not.toBeNull();
+    expect(advanced?.querySelector('.connection-route')).not.toBeNull();
+  });
 });

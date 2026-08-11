@@ -10,6 +10,7 @@ import { SuggestedServersPanel } from './SuggestedServersPanel';
 import ParamsPanel from './ParamsPanel';
 import OutputPanel from './OutputPanel';
 import OAuthConfig from './OAuthConfig';
+import { AwaitingConnectionPanel, FirstConnectionOnboarding } from './FirstConnectionOnboarding';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
@@ -69,6 +70,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
   const [lastResult, setLastResult] = useState<LogEntry | null>(null);
   const [catalogCredential, setCatalogCredential] = useState('');
+  const [hasStartedFirstConnection, setHasStartedFirstConnection] = useState(() => Boolean(
+    tab.serverUrl || tab.autoConnect || tab.resultShareData
+  ));
   const credentialHeader = useMemo(() => {
     if (tab.catalogAuthType !== 'api-key' && tab.catalogAuthType !== 'bearer-token') {
       return undefined;
@@ -798,6 +802,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Determine button disabled states
   const isConnected = connectionStatus === 'Connected';
   const isDisconnected = connectionStatus === 'Disconnected';
+  const isFirstConnection = recentServers.length === 0
+    && !serverUrl.trim()
+    && isDisconnected
+    && !connectionError
+    && !isAuthFlowActive;
+  const showFirstConnectionOnboarding = isFirstConnection && !hasStartedFirstConnection;
 
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
@@ -824,7 +834,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         flexDirection: 'column'
       }}
     >
-      <ConnectionPanel
+      {showFirstConnectionOnboarding ? (
+        <FirstConnectionOnboarding onConnectFirstServer={() => setHasStartedFirstConnection(true)} />
+      ) : (
+        <ConnectionPanel
             serverUrl={serverUrl}
             setServerUrl={handleServerUrlChange}
             connectionStatus={connectionStatus}
@@ -853,32 +866,51 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             credentialValue={catalogCredential}
             setCredentialValue={setCatalogCredential}
             credentialInputId={`${tab.id}-catalog-credential`}
+            autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
           />
+      )}
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
-          <div className="w-100">
-            <div className="row g-3">
-              {recentServers.length > 0 && (
-                <div className="col-md-6">
-                  <RecentServersPanel
-                    recentServers={recentServers}
+          <div className="w-100 idle-onboarding-layout">
+            {showFirstConnectionOnboarding && (
+              <div className="suggested-servers-intro">
+                <h2>See mcptest.io in action</h2>
+                <p>Don&apos;t have a server yet? Try a public endpoint and start inspecting in one click.</p>
+              </div>
+            )}
+            {!showFirstConnectionOnboarding && <AwaitingConnectionPanel />}
+            {isFirstConnection ? (
+              <SuggestedServersPanel
+                setServerUrl={handleServerUrlChange}
+                handleConnect={handleConnectWrapper}
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+              />
+            ) : (
+              <div className="row g-3">
+                {recentServers.length > 0 && (
+                  <div className="col-md-6">
+                    <RecentServersPanel
+                      recentServers={recentServers}
+                      setServerUrl={handleServerUrlChange}
+                      handleConnect={handleConnectWrapper}
+                      removeRecentServer={removeRecentServer}
+                      isConnected={isConnected}
+                      isConnecting={isConnecting}
+                    />
+                  </div>
+                )}
+                <div className={recentServers.length > 0 ? 'col-md-6' : 'col-12'}>
+                  <SuggestedServersPanel
                     setServerUrl={handleServerUrlChange}
                     handleConnect={handleConnectWrapper}
-                    removeRecentServer={removeRecentServer}
                     isConnected={isConnected}
                     isConnecting={isConnecting}
                   />
                 </div>
-              )}
-              <div className={recentServers.length > 0 ? 'col-md-6' : 'col-12'}>
-                <SuggestedServersPanel
-                  setServerUrl={handleServerUrlChange}
-                  handleConnect={handleConnectWrapper}
-                  isConnected={isConnected}
-                  isConnecting={isConnecting}
-                />
               </div>
-            </div>
+            )}
+            {showFirstConnectionOnboarding && <AwaitingConnectionPanel />}
           </div>
         )}
         {isConnected && (
