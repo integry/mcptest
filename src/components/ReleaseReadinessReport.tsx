@@ -8,6 +8,7 @@ import {
 import {
   getEvaluationMaxScore,
   getEvaluationPercentage,
+  isLegacySkippedEvaluationSection,
   resolveEvaluationOutcome,
   type EvaluationReport,
 } from '../utils/evaluation';
@@ -371,7 +372,11 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
             <section className="protocol-section" key={key}>
               <div className="protocol-section-heading">
                 <div><h4>{section.name}</h4><p>{section.description}</p></div>
-                <span>{section.status === 'skipped' || section.status === 'failed' ? 'Not scored' : `${section.score} / ${section.maxScore} points`}</span>
+                <span>{section.status === 'skipped'
+                  || section.status === 'failed'
+                  || (!section.status && isLegacySkippedEvaluationSection(section))
+                  ? 'Not scored'
+                  : `${section.score} / ${section.maxScore} points`}</span>
               </div>
               {section.details.map((detail, index) => {
                 const detailKey = `protocol-${key}-${index}`;

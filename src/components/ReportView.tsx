@@ -16,6 +16,7 @@ import {
   evaluateServer,
   isAuthenticationRequired,
   resolveEvaluationOutcome,
+  type EvaluationAuthorizationContext,
   type EvaluationReport,
 } from '../utils/evaluation';
 import {
@@ -174,7 +175,8 @@ const ReportView: React.FC = () => {
   // Store handleRunReport in a ref to avoid dependency issues
   const handleRunReportRef = useRef<((
     urlToTest: string,
-    targetHeaders?: Record<string, string>
+    targetHeaders?: Record<string, string>,
+    authorizationContext?: EvaluationAuthorizationContext
   ) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
@@ -324,7 +326,8 @@ const ReportView: React.FC = () => {
 
   const handleRunReport = useCallback(async (
     urlToTest: string,
-    targetHeaders?: Record<string, string>
+    targetHeaders?: Record<string, string>,
+    authorizationContext?: EvaluationAuthorizationContext
   ) => {
     if (!currentUser) {
       alert('Please login to run a report.');
@@ -372,7 +375,8 @@ const ReportView: React.FC = () => {
         token,
         onProgress,
         oauthAccessToken,
-        targetHeaders
+        targetHeaders,
+        authorizationContext
       );
       if (isAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
@@ -549,7 +553,13 @@ const ReportView: React.FC = () => {
     setStaticCredentialError(null);
     await handleRunReport(
       targetUrl,
-      getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader)
+      getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader),
+      {
+        priorChallenge: {
+          outcome: 'challenged',
+          provenance: 'direct_target',
+        },
+      }
     );
   };
 

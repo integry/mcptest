@@ -231,11 +231,19 @@ export const createObservedServerFacts = (
   const unauthenticatedTargetRequestSucceeded = records.some(
     (record) => record.unauthenticatedTargetRequestSucceeded === true
   );
+  const hasCarriedTargetChallenge = records.some((record) => {
+    const challenge = record.authorizationChallenge;
+    return Boolean(challenge)
+      && typeof challenge === 'object'
+      && !Array.isArray(challenge)
+      && (challenge as Record<string, unknown>).outcome === 'challenged'
+      && (challenge as Record<string, unknown>).provenance === 'direct_target';
+  });
   // Explicit current unauthenticated success takes precedence over a target
   // challenge from unrelated session history.
-  const hasTargetChallenge = targetChallengeEvents(
-    unauthenticatedTargetRequestSucceeded ? undefined : trace
-  ).length > 0;
+  const hasTargetChallenge = !unauthenticatedTargetRequestSucceeded && (
+    hasCarriedTargetChallenge || targetChallengeEvents(trace).length > 0
+  );
   const protectedResourceMetadata = oauthBooleanObservation(
     report,
     trace,

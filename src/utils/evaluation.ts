@@ -139,6 +139,13 @@ export interface EvaluationReport {
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
 }
 
+export interface EvaluationAuthorizationContext {
+  priorChallenge?: {
+    outcome: 'challenged';
+    provenance: 'direct_target';
+  };
+}
+
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
 );
@@ -1065,7 +1072,8 @@ const performanceSection = (durationMs: number): EvaluationSection => {
 
 const evaluationAuthorizationEvidence = (
   oauthToken: string | null,
-  targetHeaders?: HeadersInit
+  targetHeaders?: HeadersInit,
+  authorizationContext?: EvaluationAuthorizationContext
 ): Record<string, unknown> => {
   const schemes = new Set<'oauth' | 'bearer' | 'api-key'>();
   const credentialProvenance: string[] = [];
@@ -1090,9 +1098,19 @@ const evaluationAuthorizationEvidence = (
     return { unauthenticatedTargetRequestSucceeded: true };
   }
 
+  const priorChallenge = authorizationContext?.priorChallenge;
   return {
     authorizationSchemes: [...schemes],
     authorizationCredentialProvenance: credentialProvenance,
+    ...(priorChallenge?.outcome === 'challenged'
+      && priorChallenge.provenance === 'direct_target'
+      ? {
+          authorizationChallenge: {
+            outcome: 'challenged',
+            provenance: 'direct_target',
+          },
+        }
+      : {}),
   };
 };
 
@@ -1101,7 +1119,8 @@ export async function evaluateServer(
   firebaseToken: string,
   onProgress: (message: string) => void,
   oauthAccessToken?: string | null,
-  targetHeaders?: HeadersInit
+  targetHeaders?: HeadersInit,
+  authorizationContext?: EvaluationAuthorizationContext
 ): Promise<EvaluationReport> {
   const serverUrl = normalizeServerUrl(inputUrl);
   // An explicitly entered bearer or API-key credential is the selected target
@@ -1267,7 +1286,7 @@ export async function evaluateServer(
             protocolVersion: connection.protocolVersion,
             endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
             route: connection.usedProxy ? 'authenticated proxy' : 'direct',
-            ...evaluationAuthorizationEvidence(oauthToken, targetHeaders),
+            ...evaluationAuthorizationEvidence(oauthToken, targetHeaders, authorizationContext),
           },
         },
         {
