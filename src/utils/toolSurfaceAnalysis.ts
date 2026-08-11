@@ -494,6 +494,7 @@ const canonicalStringify = (
 interface CanonicallyOrderedValue {
   value: unknown;
   orderKey: string;
+  tieKeys?: string[];
 }
 
 const canonicalOrderKey = (value: unknown): string => canonicalStringify(
@@ -502,10 +503,51 @@ const canonicalOrderKey = (value: unknown): string => canonicalStringify(
   CANONICAL_ORDER_BYTE_LIMIT
 ).serialized;
 
+const canonicalOrderTieValue = (value: unknown, index: number): unknown => {
+  if (!isRecord(value)) return index === 0 ? value : null;
+  switch (index) {
+    case 0: return value.name;
+    case 1: return value.description;
+    case 2: return value.inputSchema;
+    case 3: return value.outputSchema;
+    case 4: return value.annotations;
+    case 5: return value;
+    default: return null;
+  }
+};
+
+const canonicalOrderTieKey = (entry: CanonicallyOrderedValue, index: number): string => {
+  entry.tieKeys ||= [];
+  if (entry.tieKeys[index] === undefined) {
+    // Compute complete keys lazily and compare analysis-relevant fields first.
+    // The final raw-value key covers every remaining field that can affect the
+    // serialized-size metrics, while avoiding full serialization when an
+    // earlier field already resolves the bounded-key tie.
+    entry.tieKeys[index] = canonicalStringify(
+      canonicalOrderTieValue(entry.value, index),
+      Number.MAX_SAFE_INTEGER,
+      Number.MAX_SAFE_INTEGER
+    ).serialized;
+  }
+  return entry.tieKeys[index];
+};
+
 const compareCanonicallyOrderedValues = (
   left: CanonicallyOrderedValue,
   right: CanonicallyOrderedValue
-): number => compareText(left.orderKey, right.orderKey);
+): number => {
+  const boundedComparison = compareText(left.orderKey, right.orderKey);
+  if (boundedComparison !== 0) return boundedComparison;
+  const tieKeyCount = isRecord(left.value) && isRecord(right.value) ? 6 : 1;
+  for (let index = 0; index < tieKeyCount; index += 1) {
+    const comparison = compareText(
+      canonicalOrderTieKey(left, index),
+      canonicalOrderTieKey(right, index)
+    );
+    if (comparison !== 0) return comparison;
+  }
+  return 0;
+};
 
 const orderCanonicalValues = (values: readonly unknown[]): CanonicallyOrderedValue[] => values
   .map((value) => ({ value, orderKey: canonicalOrderKey(value) }))
@@ -695,6 +737,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
   status: 'present' | 'empty' | 'missing' | 'malformed';
   resourceCount: number;
   promptCount: number;
+  hasNextPage: boolean;
 } => {
   if (Array.isArray(input)) {
     return {
@@ -702,6 +745,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
       status: input.length > 0 ? 'present' : 'empty',
       resourceCount: 0,
       promptCount: 0,
+      hasNextPage: false,
     };
   }
 
@@ -711,6 +755,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
       status: 'missing',
       resourceCount: isRecord(input) && Array.isArray(input.resources) ? input.resources.length : 0,
       promptCount: isRecord(input) && Array.isArray(input.prompts) ? input.prompts.length : 0,
+      hasNextPage: isRecord(input) && typeof input.nextCursor === 'string' && input.nextCursor.length > 0,
     };
   }
 
@@ -720,6 +765,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
       status: 'malformed',
       resourceCount: Array.isArray(input.resources) ? input.resources.length : 0,
       promptCount: Array.isArray(input.prompts) ? input.prompts.length : 0,
+      hasNextPage: typeof input.nextCursor === 'string' && input.nextCursor.length > 0,
     };
   }
 
@@ -728,6 +774,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
     status: input.tools.length > 0 ? 'present' : 'empty',
     resourceCount: Array.isArray(input.resources) ? input.resources.length : 0,
     promptCount: Array.isArray(input.prompts) ? input.prompts.length : 0,
+    hasNextPage: typeof input.nextCursor === 'string' && input.nextCursor.length > 0,
   };
 };
 
@@ -1491,6 +1538,23 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       summary: 'The tools field is present but is not an array, so definitions could not be analyzed.',
       evidence: [evidence('<surface>', '$.tools', 'Expected an array of MCP tool definitions.')],
       remediation: 'Return a tools/list result whose tools field is an array, including an empty array when no tools are exposed.',
+    });
+  }
+
+  if (extracted.hasNextPage) {
+    addFinding(findings, {
+      id: 'analysis.incomplete-pagination',
+      category: 'availability',
+      severity: 'medium',
+      kind: 'review-signal',
+      title: 'Tool list has additional pages',
+      summary: 'The tools/list result includes a nextCursor, so metrics and the fingerprint cover this page only, not the complete tool surface.',
+      evidence: [evidence(
+        '<surface>',
+        '$.nextCursor',
+        'A non-empty nextCursor indicates that additional tool definitions are available.'
+      )],
+      remediation: 'Fetch every tools/list page, combine the tool definitions, and analyze the complete result.',
     });
   }
 

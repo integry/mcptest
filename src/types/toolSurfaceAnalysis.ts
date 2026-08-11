@@ -122,6 +122,7 @@ export type ToolSurfaceAnalyzerInput =
       tools?: unknown;
       resources?: unknown;
       prompts?: unknown;
+      nextCursor?: string;
     }
   | null
   | undefined;

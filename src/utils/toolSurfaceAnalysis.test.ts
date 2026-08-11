@@ -150,6 +150,29 @@ describe('analyzeToolSurface', () => {
     expect(empty.fingerprint).toEqual(missing.fingerprint);
   });
 
+  it('reports a paginated tools/list result as incomplete', () => {
+    const analysis = analyzeToolSurface({
+      tools: [{
+        name: 'read_first_page_item',
+        description: 'Reads an item returned on the first page without changing state.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      }],
+      nextCursor: 'page-2',
+    });
+    const paginationFinding = finding(analysis, 'analysis.incomplete-pagination');
+
+    expect(analysis.metrics.toolCount).toBe(1);
+    expect(paginationFinding).toMatchObject({
+      severity: 'medium',
+      kind: 'review-signal',
+      summary: expect.stringContaining('fingerprint cover this page only'),
+    });
+    expect(paginationFinding?.evidence).toContainEqual(expect.objectContaining({
+      path: '$.nextCursor',
+      detail: expect.stringContaining('additional tool definitions'),
+    }));
+  });
+
   it('flags a large serialized tool surface and caps but accounts for evidence', () => {
     const tools = Array.from({ length: 105 }, (_, index) => ({
       name: `read_metric_${index}`,
@@ -558,6 +581,24 @@ describe('analyzeToolSurface', () => {
     expect(reversed).toEqual(forward);
     expect(permuted).toEqual(forward);
     expect(forward.metrics.toolCount).toBe(2_003);
+    expect(finding(forward, 'analysis.incomplete-budget')?.evidence).toContainEqual(
+      expect.objectContaining({ detail: expect.stringContaining('tool limit of 2000') })
+    );
+  });
+
+  it('orders over-limit tools deterministically when definitions differ beyond the ordering-key limit', () => {
+    const sharedDescription = 'x'.repeat(32_100);
+    const tools = Array.from({ length: 2_001 }, (_, index) => ({
+      name: `inspect_tied_record_${String(index).padStart(4, '0')}`,
+      description: sharedDescription,
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    }));
+
+    const forward = analyzeToolSurface(tools);
+    const reversed = analyzeToolSurface([...tools].reverse());
+
+    expect(reversed).toEqual(forward);
+    expect(forward.metrics.toolCount).toBe(2_001);
     expect(finding(forward, 'analysis.incomplete-budget')?.evidence).toContainEqual(
       expect.objectContaining({ detail: expect.stringContaining('tool limit of 2000') })
     );
