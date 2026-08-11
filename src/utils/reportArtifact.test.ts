@@ -47,6 +47,7 @@ const publicReport = (): EvaluationReport => ({
       protocolVersion: '2026-07-28',
       endpoint: 'https://public.example/mcp?tenant=demo',
       route: 'direct',
+      optionalDetail: undefined,
     }),
     capabilities: section('Capabilities', 10, 10, {
       method: 'tools/list',

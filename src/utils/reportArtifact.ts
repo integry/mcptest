@@ -229,14 +229,17 @@ export const redactReportString = (value: string): string => {
 /** Recursively redacts sensitive keys and values while retaining JSON-safe evidence. */
 export const redactReportValue = (value: unknown, key?: string): unknown => {
   if (key && isSensitiveKey(key)) return REDACTED_VALUE;
+  if (value === undefined) return undefined;
   if (typeof value === 'string') return redactReportString(value);
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
   if (Array.isArray(value)) return value.map((item) => redactReportValue(item));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
-      childKey,
-      redactReportValue(childValue, childKey),
-    ]));
+    return Object.fromEntries(Object.entries(value)
+      .filter(([, childValue]) => childValue !== undefined)
+      .map(([childKey, childValue]) => [
+        childKey,
+        redactReportValue(childValue, childKey),
+      ]));
   }
   return String(value);
 };
