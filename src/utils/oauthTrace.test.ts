@@ -148,6 +148,53 @@ describe('OAuth flight recorder core', () => {
     expect(getStoredOAuthTrace(target, sessionStorage)?.targetUrl).not.toContain('target-secret');
   });
 
+  it('keys and validates traces by the exact target without exposing sensitive query values', () => {
+    const firstTarget = `${TARGET_URL}?state=first-secret&tenant=acme`;
+    const secondTarget = `${TARGET_URL}?state=second-secret&tenant=acme`;
+    const first = createOAuthFlightRecorder({
+      targetUrl: firstTarget,
+      storage: sessionStorage,
+      traceId: 'first-trace',
+    });
+    first.setAuthenticatedMcpRetryState('pending');
+    createOAuthFlightRecorder({
+      targetUrl: secondTarget,
+      storage: sessionStorage,
+      traceId: 'second-trace',
+    });
+
+    expect(getStoredOAuthTrace(firstTarget, sessionStorage)?.traceId).toBe('first-trace');
+    expect(getStoredOAuthTrace(secondTarget, sessionStorage)?.traceId).toBe('second-trace');
+    expect(resumePendingAuthenticatedMcpRetry({
+      targetUrl: secondTarget,
+      storage: sessionStorage,
+      operation: 'wrong target',
+    })).toBeUndefined();
+    expect(Object.keys(sessionStorage).join(' ')).not.toContain('first-secret');
+    expect(Object.keys(sessionStorage).join(' ')).not.toContain('second-secret');
+    expect(JSON.stringify(getStoredOAuthTrace(firstTarget, sessionStorage))).not.toContain('first-secret');
+  });
+
+  it('stores only allowlisted sanitized challenge response metadata', () => {
+    const recorder = recordOAuthAuthenticationChallenge({
+      targetUrl: TARGET_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      responseHeaders: {
+        'www-authenticate': 'Bearer realm="mcp", resource_metadata="https://auth.example/metadata?token=%5BREDACTED%5D"',
+        'set-cookie': 'session=must-not-be-stored',
+      },
+    });
+
+    expect(recorder.snapshot().events[0].response?.headers).toEqual({
+      'www-authenticate': expect.stringContaining('resource_metadata='),
+    });
+    expect(recorder.serialize()).toContain('auth.example/metadata');
+    expect(recorder.serialize()).not.toContain('must-not-be-stored');
+    expect(recorder.serialize()).toMatch(/(?:\[REDACTED\]|%5BREDACTED%5D)/i);
+  });
+
   it('redacts sensitive assignments nested in decoded, encoded, and header-style text', () => {
     const callback = new URL('https://mcptest.io/oauth/callback');
     callback.searchParams.set(
@@ -295,6 +342,11 @@ describe('OAuth flight recorder core', () => {
       storage: sessionStorage,
       operation: 'test operation',
     });
+    const competingRetry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: TARGET_URL,
+      storage: sessionStorage,
+      operation: 'competing operation',
+    });
     const request = {
       method: 'POST',
       url: `${TARGET_URL}?operation=initialize`,
@@ -313,6 +365,15 @@ describe('OAuth flight recorder core', () => {
         observedRequests: [request],
       },
     })).toBe(true);
+    expect(competingRetry?.succeed({
+      route: 'direct',
+      result: {
+        url: TARGET_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        observedRequests: [request],
+      },
+    })).toBe(false);
 
     const stored = getStoredOAuthTrace(TARGET_URL, sessionStorage);
     expect(stored).toMatchObject({
@@ -327,6 +388,8 @@ describe('OAuth flight recorder core', () => {
       })]),
     });
     expect(stored?.authenticatedMcpRetry).toBeUndefined();
+    expect(stored?.events.filter(({ type }) => type === 'mcp_retry')).toHaveLength(1);
+    expect(stored?.events.filter(({ type }) => type === 'terminal_outcome')).toHaveLength(1);
   });
 
   it('keeps a pending authenticated retry open across a retryable failure that later succeeds', () => {

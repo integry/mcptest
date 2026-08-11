@@ -1417,6 +1417,7 @@ function App() {
               storage: sessionStorage,
               method: authenticationChallenge.method,
               requestUrl: authenticationChallenge.requestUrl,
+              responseHeaders: authenticationChallenge.responseHeaders,
               timing: {
                 startedAt: authenticationChallenge.startedAt
                   || new Date(cardAttemptStartedAt).toISOString(),

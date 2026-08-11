@@ -86,6 +86,7 @@ export interface OAuthTraceTerminalOutcome {
 export interface OAuthTraceV1 {
   version: typeof OAUTH_TRACE_VERSION;
   traceId: string;
+  targetFingerprint: string;
   targetUrl: string;
   startedAt: string;
   events: OAuthTraceEventV1[];
@@ -145,8 +146,89 @@ const KEY_SEPARATOR = '[-_]?';
 const SENSITIVE_TEXT_KEY = `(?:authorization|proxy${KEY_SEPARATOR}authorization|x${KEY_SEPARATOR}mcp${KEY_SEPARATOR}authorization|dpop|cookie|set${KEY_SEPARATOR}cookie|x${KEY_SEPARATOR}api${KEY_SEPARATOR}key|api${KEY_SEPARATOR}key|key|code|authorization${KEY_SEPARATOR}code|device${KEY_SEPARATOR}code|user${KEY_SEPARATOR}code|access${KEY_SEPARATOR}token|refresh${KEY_SEPARATOR}token|id${KEY_SEPARATOR}token(?:${KEY_SEPARATOR}hint)?|registration${KEY_SEPARATOR}access${KEY_SEPARATOR}token|token|client${KEY_SEPARATOR}secret|code${KEY_SEPARATOR}verifier|verifier|state|nonce|csrf|session(?:${KEY_SEPARATOR}id)?|credential|assertion|client${KEY_SEPARATOR}assertion|request(?:${KEY_SEPARATOR}uri)?|password|secret)`;
 export const OAUTH_TRACE_REDACTED = '[REDACTED]';
 
+const normalizeOAuthTraceTarget = (targetUrl: string): string => new URL(targetUrl).toString();
+
+// A synchronous SHA-256 implementation keeps trace lookup synchronous for
+// sessionStorage while ensuring the full target never appears in the key.
+const sha256 = (value: string): string => {
+  const bytes = new TextEncoder().encode(value);
+  const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
+  const padded = new Uint8Array(paddedLength);
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  const view = new DataView(padded.buffer);
+  const bitLength = bytes.length * 8;
+  view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000));
+  view.setUint32(paddedLength - 4, bitLength >>> 0);
+
+  const constants = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ]);
+  const hash = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ]);
+  const words = new Uint32Array(64);
+  const rotateRight = (word: number, bits: number): number => (
+    (word >>> bits) | (word << (32 - bits))
+  );
+
+  for (let offset = 0; offset < paddedLength; offset += 64) {
+    for (let index = 0; index < 16; index += 1) {
+      words[index] = view.getUint32(offset + index * 4);
+    }
+    for (let index = 16; index < 64; index += 1) {
+      const left = words[index - 15];
+      const right = words[index - 2];
+      const sigma0 = rotateRight(left, 7) ^ rotateRight(left, 18) ^ (left >>> 3);
+      const sigma1 = rotateRight(right, 17) ^ rotateRight(right, 19) ^ (right >>> 10);
+      words[index] = (words[index - 16] + sigma0 + words[index - 7] + sigma1) >>> 0;
+    }
+
+    let [a, b, c, d, e, f, g, h] = hash;
+    for (let index = 0; index < 64; index += 1) {
+      const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+      const choice = (e & f) ^ (~e & g);
+      const temp1 = (h + sum1 + choice + constants[index] + words[index]) >>> 0;
+      const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+      const majority = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (sum0 + majority) >>> 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temp1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) >>> 0;
+    }
+    hash[0] = (hash[0] + a) >>> 0;
+    hash[1] = (hash[1] + b) >>> 0;
+    hash[2] = (hash[2] + c) >>> 0;
+    hash[3] = (hash[3] + d) >>> 0;
+    hash[4] = (hash[4] + e) >>> 0;
+    hash[5] = (hash[5] + f) >>> 0;
+    hash[6] = (hash[6] + g) >>> 0;
+    hash[7] = (hash[7] + h) >>> 0;
+  }
+
+  return [...hash].map((word) => word.toString(16).padStart(8, '0')).join('');
+};
+
+const fingerprintTarget = (targetUrl: string): string => sha256(normalizeOAuthTraceTarget(targetUrl));
+
 const storageKeyForTarget = (targetUrl: string): string => (
-  `${OAUTH_TRACE_STORAGE_PREFIX}${encodeURIComponent(sanitizeOAuthTraceUrl(new URL(targetUrl).toString()))}`
+  `${OAUTH_TRACE_STORAGE_PREFIX}${fingerprintTarget(targetUrl)}`
 );
 
 const makeTraceId = (): string => {
@@ -190,7 +272,10 @@ const redactTextPatterns = (value: string): string => {
       .replace(decodedAssignment, redactAssignment)
       .replace(colonAssignment, redactAssignment)
       .replace(encodedAssignment, redactAssignment)
-      .replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, `$1 ${OAUTH_TRACE_REDACTED}`);
+      .replace(
+        /\b(Bearer|Basic)\s+(?![a-z][a-z0-9_-]*\s*=)[^\s,;]+/gi,
+        `$1 ${OAUTH_TRACE_REDACTED}`
+      );
     if (next === redacted) break;
     redacted = next;
   }
@@ -268,6 +353,18 @@ const safeResponseHeaders = (response: Response, secrets: ReadonlySet<string>): 
   if (location) headers.location = sanitizeOAuthTraceUrl(location, secrets);
   if (authenticate) headers['www-authenticate'] = sanitizeText(authenticate, secrets);
   return headers;
+};
+
+const safeChallengeResponseHeaders = (
+  headers: Record<string, string>,
+  secrets: ReadonlySet<string>
+): Record<string, string> => {
+  const authenticate = Object.entries(headers).find(
+    ([key]) => key.toLowerCase() === 'www-authenticate'
+  )?.[1];
+  return authenticate
+    ? { 'www-authenticate': sanitizeText(authenticate, secrets) }
+    : {};
 };
 
 const requestDetails = async (
@@ -537,6 +634,7 @@ export interface RecordOAuthAuthenticationChallengeOptions {
   storage?: OAuthStorage;
   method?: string;
   requestUrl?: string;
+  responseHeaders?: Record<string, string>;
   timing?: OAuthTraceTiming;
 }
 
@@ -545,13 +643,17 @@ export const createOAuthFlightRecorder = ({
   storage,
   traceId = makeTraceId(),
   startedAt = new Date().toISOString(),
-}: CreateOAuthFlightRecorderOptions): OAuthFlightRecorder => new OAuthFlightRecorder({
-  version: OAUTH_TRACE_VERSION,
-  traceId,
-  targetUrl: sanitizeOAuthTraceUrl(new URL(targetUrl).toString()),
-  startedAt,
-  events: [],
-}, storage);
+}: CreateOAuthFlightRecorderOptions): OAuthFlightRecorder => {
+  const normalizedTarget = normalizeOAuthTraceTarget(targetUrl);
+  return new OAuthFlightRecorder({
+    version: OAUTH_TRACE_VERSION,
+    traceId,
+    targetFingerprint: fingerprintTarget(normalizedTarget),
+    targetUrl: sanitizeOAuthTraceUrl(normalizedTarget),
+    startedAt,
+    events: [],
+  }, storage, storageKeyForTarget(normalizedTarget));
+};
 
 /** Starts a trace at the point an HTTP authentication challenge is actually observed. */
 export const recordOAuthAuthenticationChallenge = ({
@@ -562,6 +664,7 @@ export const recordOAuthAuthenticationChallenge = ({
   storage,
   method,
   requestUrl,
+  responseHeaders,
   timing,
 }: RecordOAuthAuthenticationChallengeOptions): OAuthFlightRecorder => {
   const existing = storage
@@ -583,7 +686,10 @@ export const recordOAuthAuthenticationChallenge = ({
       ? `The MCP target returned the expected HTTP ${status} authentication challenge.`
       : `The authenticated proxy returned HTTP ${status}; this is not an OAuth challenge from the MCP target.`,
     ...(method && requestUrl ? { request: { method, url: requestUrl } } : {}),
-    response: { status },
+    response: {
+      status,
+      ...(responseHeaders ? { headers: safeChallengeResponseHeaders(responseHeaders, new Set()) } : {}),
+    },
     ...(timing ? { timing } : {}),
   });
   return recorder;
@@ -597,7 +703,9 @@ export const getStoredOAuthTrace = (
     const value = storage.getItem(storageKeyForTarget(targetUrl));
     if (!value) return undefined;
     const trace = JSON.parse(value) as OAuthTraceV1;
-    return trace.version === OAUTH_TRACE_VERSION && Array.isArray(trace.events)
+    return trace.version === OAUTH_TRACE_VERSION
+      && trace.targetFingerprint === fingerprintTarget(targetUrl)
+      && Array.isArray(trace.events)
       ? trace
       : undefined;
   } catch {
@@ -610,7 +718,9 @@ export const resumeOAuthFlightRecorder = (
   storage: OAuthStorage
 ): OAuthFlightRecorder | undefined => {
   const trace = getStoredOAuthTrace(targetUrl, storage);
-  return trace ? new OAuthFlightRecorder(trace, storage) : undefined;
+  return trace
+    ? new OAuthFlightRecorder(trace, storage, storageKeyForTarget(targetUrl))
+    : undefined;
 };
 
 export interface AuthenticatedMcpRetryResult {
@@ -729,7 +839,7 @@ export class PendingAuthenticatedMcpRetry {
       route: options.route,
       explanation: outcome === 'succeeded'
         ? `The authenticated MCP retry for ${this.operation} succeeded on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}.`
-        : `The authenticated MCP retry for ${this.operation} failed on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`,
+        : `The authenticated MCP retry failed for ${this.operation} on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`,
       ...(method && requestUrl ? { request: { method, url: requestUrl } } : {}),
       response: {
         ...(status !== undefined ? { status } : {}),
@@ -750,14 +860,14 @@ export class PendingAuthenticatedMcpRetry {
       outcome === 'succeeded' ? 'authorized' : 'failed',
       outcome === 'succeeded'
         ? `OAuth authorization and the authenticated MCP retry for ${this.operation} completed successfully.`
-        : `OAuth authorization completed, but the authenticated MCP retry for ${this.operation} failed${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`
+        : `OAuth authorization completed, but the authenticated MCP retry failed for ${this.operation}${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`
     );
     this.finalized = true;
     return true;
   }
 }
 
-/** Resumes only the pending retry stored under this exact sanitized target. */
+/** Resumes only the pending retry stored under this exact target fingerprint. */
 export const resumePendingAuthenticatedMcpRetry = ({
   targetUrl,
   storage,
@@ -767,7 +877,7 @@ export const resumePendingAuthenticatedMcpRetry = ({
 }: PendingAuthenticatedMcpRetryOptions): PendingAuthenticatedMcpRetry | undefined => {
   const recorder = resumeOAuthFlightRecorder(targetUrl, storage);
   if (!recorder?.hasPendingAuthenticatedMcpRetry()) return undefined;
-  if (recorder.snapshot().targetUrl !== sanitizeOAuthTraceUrl(new URL(targetUrl).toString())) {
+  if (recorder.snapshot().targetFingerprint !== fingerprintTarget(targetUrl)) {
     return undefined;
   }
   return new PendingAuthenticatedMcpRetry(

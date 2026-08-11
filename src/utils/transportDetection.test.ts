@@ -399,6 +399,9 @@ describe('transport candidate generation', () => {
   it('retains direct target provenance for requests made after connection', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
       status: 403,
+      headers: {
+        'WWW-Authenticate': 'Bearer realm="mcp", resource_metadata="https://auth.example/metadata?token=header-secret", access_token="raw-secret"',
+      },
     })));
 
     const connection = await attemptParallelConnections('https://example.com/custom');
@@ -407,12 +410,18 @@ describe('transport candidate generation', () => {
     };
     await mockTransport.fetch?.(connection.url);
 
-    expect(connection.takeAuthenticationChallenge()).toMatchObject({
+    const challenge = connection.takeAuthenticationChallenge();
+    expect(challenge).toMatchObject({
       status: 403,
       source: 'target',
       method: 'GET',
       requestUrl: 'https://example.com/custom',
+      responseHeaders: {
+        'www-authenticate': expect.stringContaining('resource_metadata='),
+      },
     });
+    expect(JSON.stringify(challenge)).not.toContain('header-secret');
+    expect(JSON.stringify(challenge)).not.toContain('raw-secret');
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
   });
 

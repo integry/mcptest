@@ -302,11 +302,16 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
   tokens(ctx?: OAuthClientInformationContext): StoredOAuthTokens | undefined {
     const state = this.readState();
-    if (ctx?.issuer) return state.tokens?.[ctx.issuer];
-    if (state.latestIssuer) return state.tokens?.[state.latestIssuer];
-
     const storedTokens = Object.values(state.tokens || {});
-    return storedTokens.length === 1 ? storedTokens[0] : undefined;
+    const tokens = ctx?.issuer
+      ? state.tokens?.[ctx.issuer]
+      : state.latestIssuer
+        ? state.tokens?.[state.latestIssuer]
+        : storedTokens.length === 1
+          ? storedTokens[0]
+          : undefined;
+    this.trace?.registerSecret(tokens?.access_token, tokens?.refresh_token);
+    return tokens;
   }
 
   saveTokens(tokens: StoredOAuthTokens, ctx?: OAuthClientInformationContext): void {
@@ -584,9 +589,19 @@ export const beginOAuthFlow = async (
   const storage = options.storage || getSessionStorage();
   storage.setItem(OAUTH_SERVER_URL_KEY, normalizedServerUrl);
   const pendingTrace = options.trace || resumeOAuthFlightRecorder(normalizedServerUrl, storage);
+  const carriesChallengeDrivenRetry = Boolean(
+    pendingTrace?.hasAuthenticatedMcpRetryState()
+    || (
+      pendingTrace?.snapshot().outcome?.status === 'manual_client_required'
+      && pendingTrace.hasEvent('target_challenge')
+    )
+  );
   const trace = pendingTrace && !pendingTrace.snapshot().outcome
     ? pendingTrace
     : createOAuthFlightRecorder({ targetUrl: normalizedServerUrl, storage });
+  if (trace !== pendingTrace && carriesChallengeDrivenRetry) {
+    trace.setAuthenticatedMcpRetryState('awaiting_callback');
+  }
   const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...options, trace });
   provider.invalidateCredentials('verifier');
   const authenticate = options.authenticate || auth;
@@ -600,13 +615,16 @@ export const beginOAuthFlow = async (
     });
     if (result === 'AUTHORIZED') {
       provider.syncLegacyTokens();
-      if (options.deferAuthorizedTraceOutcome && trace.hasEvent('target_challenge')) {
+      if (
+        options.deferAuthorizedTraceOutcome
+        && (trace.hasEvent('target_challenge') || trace.hasAuthenticatedMcpRetryState())
+      ) {
         trace.setAuthenticatedMcpRetryState('pending');
       } else if (!options.deferAuthorizedTraceOutcome) {
         trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
       }
     } else {
-      if (trace.hasEvent('target_challenge')) {
+      if (trace.hasEvent('target_challenge') || trace.hasAuthenticatedMcpRetryState()) {
         trace.setAuthenticatedMcpRetryState('awaiting_callback');
       } else {
         trace.terminal('redirected', 'OAuth authorization is awaiting the browser callback.');
@@ -716,7 +734,7 @@ export const completeOAuthFlow = async (
     });
     provider.invalidateCredentials('verifier');
     storage.setItem('oauth_completed_time', Date.now().toString());
-    if (trace.hasEvent('target_challenge')) {
+    if (trace.hasEvent('target_challenge') || trace.hasAuthenticatedMcpRetryState()) {
       trace.setAuthenticatedMcpRetryState('pending');
     } else {
       trace.terminal('authorized', 'OAuth authorization completed successfully.');

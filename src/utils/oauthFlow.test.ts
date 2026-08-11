@@ -14,8 +14,10 @@ import {
   saveManualOAuthClient,
 } from './oauthFlow';
 import {
+  OAUTH_TRACE_REDACTED,
   getStoredOAuthTrace,
   recordOAuthAuthenticationChallenge,
+  resumePendingAuthenticatedMcpRetry,
 } from './oauthTrace';
 
 const SERVER_URL = 'https://mcp.example/mcp';
@@ -506,6 +508,71 @@ describe('OAuth flight recorder integration', () => {
     expect(serialized).not.toContain('manual-client-secret');
   });
 
+  it('carries challenge retry ownership through manual client continuation and callback', async () => {
+    recordOAuthAuthenticationChallenge({
+      targetUrl: SERVER_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn().mockRejectedValue(
+        new Error('Authorization server does not support dynamic client registration')
+      ),
+      deferAuthorizedTraceOutcome: true,
+    })).rejects.toThrow();
+
+    let state = '';
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+        state = await provider.state();
+        return 'REDIRECT' as const;
+      }),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('REDIRECT');
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      authenticatedMcpRetry: { phase: 'awaiting_callback' },
+    });
+
+    await completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=manual-code&state=${state}`,
+      {
+        authenticate: vi.fn(async (provider: OAuthClientProvider) => {
+          await provider.saveTokens({
+            access_token: 'manual-access-token',
+            token_type: 'Bearer',
+            issuer: ISSUER_A,
+          }, { issuer: ISSUER_A });
+          return 'AUTHORIZED' as const;
+        }),
+      }
+    );
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: SERVER_URL,
+      storage: sessionStorage,
+      operation: 'manual client continuation',
+    });
+    expect(retry?.succeed({
+      route: 'direct',
+      result: {
+        url: SERVER_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      },
+    })).toBe(true);
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      outcome: { status: 'authorized' },
+      events: expect.arrayContaining([
+        expect.objectContaining({ type: 'mcp_retry', outcome: 'succeeded' }),
+      ]),
+    });
+  });
+
   it('records refresh without serializing old or new tokens', async () => {
     const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
     provider.saveDiscoveryState({
@@ -533,6 +600,10 @@ describe('OAuth flight recorder integration', () => {
         access_token: 'new-access-secret',
         refresh_token: 'new-refresh-secret',
         token_type: 'Bearer',
+      }, {
+        headers: {
+          'WWW-Authenticate': 'Bearer realm="The previous credential was old-access-secret"',
+        },
       });
     });
 
@@ -551,6 +622,9 @@ describe('OAuth flight recorder integration', () => {
     expect(serialized).not.toContain('old-refresh-secret');
     expect(serialized).not.toContain('new-access-secret');
     expect(serialized).not.toContain('new-refresh-secret');
+    expect(trace?.events.find(({ type }) => type === 'refresh')?.response?.headers).toMatchObject({
+      'www-authenticate': expect.stringContaining(OAUTH_TRACE_REDACTED),
+    });
   });
 
   it('records callback validation failure without exposing code or state', async () => {

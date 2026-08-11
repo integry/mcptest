@@ -37,6 +37,7 @@ export type ProxyAuthenticationSource = 'proxy' | 'target';
 export interface ObservedAuthenticationChallenge {
   status: 401 | 403;
   source: ProxyAuthenticationSource;
+  responseHeaders?: Record<string, string>;
   method?: string;
   requestUrl?: string;
   startedAt?: string;
@@ -61,7 +62,8 @@ export class ProxiedAuthenticationError extends Error {
     readonly status: 401 | 403,
     readonly responseSource: ProxyAuthenticationSource,
     cause: unknown,
-    request?: ObservedTransportRequest
+    request?: ObservedTransportRequest,
+    readonly responseHeaders?: Record<string, string>
   ) {
     super(
       responseSource === 'target'
@@ -93,6 +95,7 @@ export const getObservedAuthenticationChallenge = (
     return {
       status: error.status,
       source: error.responseSource,
+      ...(error.responseHeaders ? { responseHeaders: error.responseHeaders } : {}),
       ...(error.method ? { method: error.method } : {}),
       ...(error.requestUrl ? { requestUrl: error.requestUrl } : {}),
       ...(error.startedAt ? { startedAt: error.startedAt } : {}),
@@ -122,6 +125,65 @@ export const getObservedAuthenticationChallenge = (
 };
 
 const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+
+const sanitizeChallengeMetadataUrl = (value: string): string => {
+  try {
+    const url = new URL(value);
+    if (url.username) url.username = '[REDACTED]';
+    if (url.password) url.password = '[REDACTED]';
+    url.hash = '';
+    for (const [key] of url.searchParams) {
+      const canonicalKey = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+      if (/^(?:authorization|token|accesstoken|refreshtoken|idtoken|code|state|nonce|apikey|key|clientsecret|verifier|assertion|credential|password|secret|session)$/.test(canonicalKey)) {
+        url.searchParams.set(key, '[REDACTED]');
+      }
+    }
+    return url.toString();
+  } catch {
+    return '[REDACTED]';
+  }
+};
+
+const sanitizeAuthenticationChallenge = (value: string): string => {
+  const withoutControls = value.replace(/[\r\n\0]/g, ' ');
+  const scheme = withoutControls.match(/^\s*([a-z][a-z0-9_-]*)/i)?.[1];
+  if (!scheme) return '[REDACTED]';
+
+  const parameters: string[] = [];
+  const parameterPattern = /([a-z][a-z0-9_-]*)\s*=\s*("(?:[^"\\]|\\.)*"|[^,\s]+)/gi;
+  for (const match of withoutControls.matchAll(parameterPattern)) {
+    const [, rawKey, rawValue] = match;
+    const key = rawKey.toLowerCase();
+    const unquoted = rawValue.startsWith('"')
+      ? rawValue.slice(1, -1).replace(/\\"/g, '"')
+      : rawValue;
+    if (['resource_metadata', 'authorization_uri', 'issuer'].includes(key)) {
+      parameters.push(`${rawKey}="${sanitizeChallengeMetadataUrl(unquoted)}"`);
+    } else if (key === 'error' && [
+      'invalid_request',
+      'invalid_token',
+      'insufficient_scope',
+      'use_dpop_nonce',
+    ].includes(unquoted)) {
+      parameters.push(`${rawKey}="${unquoted}"`);
+    } else {
+      // Preserve the shape and parameter name, but not arbitrary values such
+      // as realms, scopes, token68 credentials, or extension parameters.
+      parameters.push(`${rawKey}="[REDACTED]"`);
+    }
+  }
+
+  return parameters.length > 0
+    ? `${scheme} ${parameters.join(', ')}`
+    : `${scheme} [REDACTED]`;
+};
+
+const authenticationChallengeHeaders = (response: Response): Record<string, string> | undefined => {
+  const authenticate = response.headers.get('www-authenticate');
+  return authenticate
+    ? { 'www-authenticate': sanitizeAuthenticationChallenge(authenticate) }
+    : undefined;
+};
 
 const observeAuthenticationResponses = (
   usesProxy: boolean,
@@ -159,9 +221,11 @@ const observeAuthenticationResponses = (
       : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
         ? 'target'
         : 'proxy';
+    const responseHeaders = authenticationChallengeHeaders(response);
     onChallenge({
       status: response.status,
       source: responseSource,
+      ...(responseHeaders ? { responseHeaders } : {}),
       method: attemptedRequest.method,
       requestUrl: attemptedRequest.url,
       startedAt: attemptedRequest.startedAt,
@@ -416,7 +480,8 @@ export async function attemptParallelConnections(
                 startedAt: authenticationChallenge.startedAt,
                 durationMs: authenticationChallenge.durationMs,
               }
-            : undefined
+            : undefined,
+          authenticationChallenge.responseHeaders
         );
       }
       throw error;

@@ -56,6 +56,7 @@ const recordEvaluationAuthenticationChallenge = (
     storage: sessionStorage,
     method: failure.method,
     requestUrl: failure.requestUrl,
+    responseHeaders: failure.responseHeaders,
     timing: failure.timing,
   });
 };
@@ -315,6 +316,7 @@ interface EvaluationRouteFailure {
   candidateUrl?: string;
   method?: string;
   requestUrl?: string;
+  responseHeaders?: Record<string, string>;
   timing?: {
     startedAt: string;
     durationMs?: number;
@@ -387,6 +389,7 @@ const makeRouteFailure = (
       : undefined,
     method: authenticationChallenge?.method,
     requestUrl: authenticationChallenge?.requestUrl || failedCandidateUrl,
+    responseHeaders: authenticationChallenge?.responseHeaders,
     timing: {
       startedAt: authenticationChallenge?.startedAt
         || new Date(attemptStartedAtMs ?? Date.now()).toISOString(),
