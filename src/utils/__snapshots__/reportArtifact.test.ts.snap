@@ -37,7 +37,7 @@ exports[`versioned public report artifacts > matches the failed JSON and Markdow
       "evidence": [
         {
           "context": "Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3D%255BREDACTED%255D",
-          "message": "⚠ MCP negotiation failed: Authorization: Bearer [REDACTED]",
+          "message": "⚠ MCP negotiation failed: Authorization: [REDACTED]",
           "metadata": {
             "route": "authenticated proxy",
             "routeFailures": [
@@ -160,7 +160,7 @@ Score: Not scored (maximum 15)
 
 Core Protocol description
 
-- ⚠ MCP negotiation failed: Authorization: Bearer \\[REDACTED\\]
+- ⚠ MCP negotiation failed: Authorization: \\[REDACTED\\]
   - Context: Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3D%255BREDACTED%255D
   - Metadata:
 

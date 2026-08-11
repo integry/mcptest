@@ -380,6 +380,24 @@ describe('versioned public report artifacts', () => {
     ).toBe(false);
   });
 
+  it.each(['partial', 'failed'] as const)(
+    'rejects a null-earned evaluated section in a %s artifact in both schemas',
+    (status) => {
+      const invalid = structuredClone(createPublicReport(
+        status === 'partial' ? partialReport() : failedReport(),
+        FIXED_OPTIONS
+      ));
+      invalid.sections[0].status = 'evaluated';
+      invalid.sections[0].score.earned = null;
+
+      expect(safeParsePublicReport(invalid).success).toBe(false);
+      expect(
+        validatePublishedSchema(invalid),
+        JSON.stringify(validatePublishedSchema.errors)
+      ).toBe(false);
+    }
+  );
+
   it.each([
     ['direct', false],
     ['authenticated-proxy', true],
@@ -493,6 +511,40 @@ describe('versioned public report artifacts', () => {
     });
   });
 
+  it('redacts JSON-shaped credentials and complete authorization and cookie headers in every export path', () => {
+    const jsonShaped = '{"access_token":"json-report-secret"}';
+    const authorization = 'Authorization: ApiKey authorization-report-secret';
+    const cookies = 'Cookie: a=cookie-one-secret; b=cookie-two-secret';
+
+    expect(redactReportString(jsonShaped)).toBe('{"access_token":"[REDACTED]"}');
+    expect(redactReportString(authorization)).toBe('Authorization: [REDACTED]');
+    expect(redactReportString(cookies)).toBe('Cookie: [REDACTED]');
+    expect(redactReportValue({ jsonShaped, authorizationHeader: authorization, cookieHeader: cookies })).toEqual({
+      jsonShaped: '{"access_token":"[REDACTED]"}',
+      authorizationHeader: 'Authorization: [REDACTED]',
+      cookieHeader: 'Cookie: [REDACTED]',
+    });
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: jsonShaped,
+      context: authorization,
+      metadata: { jsonShaped, authorizationHeader: authorization, cookieHeader: cookies },
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    for (const secret of [
+      'json-report-secret',
+      'authorization-report-secret',
+      'cookie-one-secret',
+      'cookie-two-secret',
+    ]) {
+      expect(json).not.toContain(secret);
+      expect(markdown).not.toContain(secret);
+    }
+  });
+
   it('redacts nested sensitive assignments to a bounded fixed point in every export path', () => {
     const plaintext = 'error_description=access_token=report-secret';
     const quoted = 'message="client_secret=report-secret"';
@@ -526,6 +578,35 @@ describe('versioned public report artifacts', () => {
     expect(json).not.toContain(encodeURIComponent('report-secret'));
     expect(markdown).not.toContain(encodeURIComponent('report-secret'));
     expect(`${json}${markdown}`).toContain('access_token%3D%5BREDACTED%5D');
+  });
+
+  it('redacts repeatedly encoded query credentials with a deterministic fail-closed bound', () => {
+    const encodedUrl = 'https://x.example/?error_description=access_token%253Dencoded-report-secret';
+    expect(redactReportString(encodedUrl)).toBe(
+      'https://x.example/?error_description=access_token%253D%255BREDACTED%255D'
+    );
+    expect(redactReportValue({ callback: encodedUrl })).toEqual({
+      callback: 'https://x.example/?error_description=access_token%253D%255BREDACTED%255D',
+    });
+
+    let overBoundValue = 'access_token=bounded-report-secret';
+    for (let layer = 0; layer < 10; layer += 1) overBoundValue = encodeURIComponent(overBoundValue);
+    const overBoundUrl = `https://x.example/?error_description=${overBoundValue}`;
+    expect(redactReportString(overBoundUrl)).toBe(
+      'https://x.example/?error_description=%5BREDACTED%5D'
+    );
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: encodedUrl,
+      metadata: { callback: encodedUrl, bounded: overBoundUrl },
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+    for (const secret of ['encoded-report-secret', 'bounded-report-secret']) {
+      expect(json).not.toContain(secret);
+      expect(markdown).not.toContain(secret);
+    }
   });
 
   it('redacts state, nonce, and csrf across endpoints, nested URLs, metadata, and serialization', () => {

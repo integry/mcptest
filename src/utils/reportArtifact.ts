@@ -16,6 +16,7 @@ export const REDACTED_VALUE = '[REDACTED]' as const;
 const SCORE_PERCENTAGE_TOLERANCE = 1e-9;
 const MAX_REDACTION_PASSES = 8;
 const MAX_URL_REDACTION_DEPTH = 4;
+const MAX_QUERY_VALUE_DECODE_PASSES = 4;
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
@@ -173,6 +174,13 @@ export const PublicReportSchema = PublicReportObjectSchema.superRefine((report, 
     }
   }
   for (const [index, section] of report.sections.entries()) {
+    if (section.status === 'evaluated' && section.score.earned === null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['sections', index, 'score', 'earned'],
+        message: 'An evaluated section must include an earned score.',
+      });
+    }
     if ((section.status === 'skipped' || section.status === 'failed' || section.status === 'prerequisite')
         && section.score.earned !== null) {
       context.addIssue({
@@ -253,25 +261,29 @@ const isSensitiveKey = (key: string): boolean => {
 };
 
 const redactSensitiveAssignments = (value: string): string => {
-  const matches: Array<{ start: number; end: number; key: string }> = [];
-  const assignmentStart = /\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*/g;
+  const matches: Array<{ start: number; end: number; replacement: string }> = [];
+  const assignmentStart = /(?:(['"])([A-Za-z][A-Za-z0-9_-]*)\1|\b([A-Za-z][A-Za-z0-9_-]*)\b)\s*([:=])\s*/g;
   let match: RegExpExecArray | null;
 
   while ((match = assignmentStart.exec(value)) !== null) {
-    const key = match[1];
+    const keyQuote = match[1];
+    const key = match[2] || match[3];
+    const delimiter = match[4];
     if (!isSensitiveKey(key)) continue;
 
     const assignmentStartIndex = match.index;
     const valueStart = assignmentStartIndex + match[0].length;
     let valueEnd = valueStart;
     const quote = value[valueStart];
-    const authorizationValue = value.slice(valueStart).match(
-      /^(?:Bearer|Basic)\s+(?:[A-Za-z0-9._~+/=-]+|\[REDACTED\])/i
-    );
-    if (authorizationValue) {
-      continue;
-    }
-    if (quote === '"' || quote === "'") {
+    const isSensitiveHeader = !keyQuote
+      && delimiter === ':'
+      && ['authorization', 'proxyauthorization', 'xmcpauthorization', 'cookie', 'setcookie', 'cookies']
+        .includes(canonicalKey(key));
+    let replacement = `${match[0]}${REDACTED_VALUE}`;
+
+    if (isSensitiveHeader) {
+      while (valueEnd < value.length && !/[\r\n]/.test(value[valueEnd])) valueEnd += 1;
+    } else if (quote === '"' || quote === "'") {
       valueEnd += 1;
       while (valueEnd < value.length) {
         if (value[valueEnd] === '\\') {
@@ -283,19 +295,57 @@ const redactSensitiveAssignments = (value: string): string => {
           valueEnd += 1;
         }
       }
+      replacement = keyQuote
+        ? `${match[0]}${quote}${REDACTED_VALUE}${quote}`
+        : `${match[0]}${REDACTED_VALUE}`;
     } else {
       while (valueEnd < value.length && !/[\s,;&"']/.test(value[valueEnd])) valueEnd += 1;
     }
     if (!matches.some((assignment) => (
       assignment.start <= assignmentStartIndex && assignment.end >= valueEnd
     ))) {
-      matches.push({ start: assignmentStartIndex, end: valueEnd, key });
+      matches.push({ start: assignmentStartIndex, end: valueEnd, replacement });
     }
   }
 
   return matches.reduceRight((redacted, assignment) => (
-    `${redacted.slice(0, assignment.start)}${assignment.key}=${REDACTED_VALUE}${redacted.slice(assignment.end)}`
+    `${redacted.slice(0, assignment.start)}${assignment.replacement}${redacted.slice(assignment.end)}`
   ), value);
+};
+
+const redactEncodedQueryValue = (value: string, depth: number): string => {
+  let decoded = value;
+  let decodedLayers = 0;
+
+  for (let pass = 0; pass <= MAX_QUERY_VALUE_DECODE_PASSES; pass += 1) {
+    const redacted = redactReportStringAtDepth(decoded, depth);
+    if (redacted !== decoded) {
+      let reencoded = redacted;
+      for (let layer = 0; layer < decodedLayers; layer += 1) {
+        reencoded = encodeURIComponent(reencoded);
+      }
+      return reencoded;
+    }
+
+    try {
+      if (/^https?:$/.test(new URL(decoded).protocol)) return value;
+    } catch {
+      // Continue decoding non-URL query values.
+    }
+
+    let next: string;
+    try {
+      next = decodeURIComponent(decoded);
+    } catch {
+      return value;
+    }
+    if (next === decoded) return value;
+    if (pass === MAX_QUERY_VALUE_DECODE_PASSES) return REDACTED_VALUE;
+    decoded = next;
+    decodedLayers += 1;
+  }
+
+  return REDACTED_VALUE;
 };
 
 const redactUrl = (value: string, depth = 0): string => {
@@ -314,7 +364,7 @@ const redactUrl = (value: string, depth = 0): string => {
     if (isSensitiveKey(key)) {
       url.searchParams.set(key, REDACTED_VALUE);
     } else {
-      const redactedQueryValue = redactReportStringAtDepth(queryValue, depth + 1);
+      const redactedQueryValue = redactEncodedQueryValue(queryValue, depth + 1);
       if (redactedQueryValue !== queryValue) {
         url.searchParams.set(key, redactedQueryValue);
       }

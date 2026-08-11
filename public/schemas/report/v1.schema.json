@@ -258,6 +258,22 @@
         {
           "if": {
             "properties": {
+              "status": { "const": "evaluated" }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "score": {
+                "properties": { "earned": { "type": "number" } },
+                "required": ["earned"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
               "status": { "enum": ["failed", "skipped", "prerequisite"] }
             },
             "required": ["status"]
