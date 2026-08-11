@@ -75,8 +75,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: integry/mcptest
+          ref: ${{ github.workflow_sha }}
           path: mcptest
       - uses: actions/setup-node@v4
         with:

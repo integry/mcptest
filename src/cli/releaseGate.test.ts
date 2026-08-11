@@ -144,6 +144,29 @@ describe('headless release gate', () => {
     expect(result.targets[0].markdown).not.toContain(secret);
   });
 
+  it('scrubs a credential echoed by the server as a structural protocol field', async () => {
+    const secret = 'server-echoed-protocol-secret';
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { Authorization: `Bearer ${secret}` },
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, {
+      evaluate: async () => {
+        const report = evaluatedReport();
+        report.sections.protocol.details[0].metadata = {
+          ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
+          protocolVersion: secret,
+        };
+        return report;
+      },
+    });
+
+    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.pass);
+    expect(result.targets[0].report?.protocol?.version).toBe(REDACTED_VALUE);
+    expect(result.targets[0].json).not.toContain(secret);
+    expect(result.targets[0].markdown).not.toContain(secret);
+  });
+
   it.each(['direct', 'scored'])('keeps gate semantics intact when the credential is %s', async (credential) => {
     const generatedAt = '2026-08-11T23:30:00.000Z';
     const evaluate = async () => {

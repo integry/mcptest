@@ -99,68 +99,93 @@ const redactKnownCredentialString = (value: string, credentials: readonly string
   ))
 );
 
-const STRUCTURAL_ARTIFACT_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
-  generator: new Set(['name', 'version', 'commit']),
-  provenance: new Set(['route', 'result']),
-  outcome: new Set(['status', 'state']),
-  protocol: new Set(['era', 'version']),
-  transport: new Set(['type']),
-  timings: new Set(['name']),
-  releaseDecision: new Set(['status', 'id', 'severity', 'source']),
-  compatibility: new Set([
-    'schemaVersion', 'profileId', 'profileVersion', 'status', 'ruleId', 'scope',
-    'outcome', 'severity', 'kind',
+interface SchemaConstant {
+  path: readonly string[];
+  values: ReadonlySet<string>;
+}
+
+const schemaConstant = (path: string, values: readonly string[]): SchemaConstant => ({
+  path: path.split('.'),
+  values: new Set(values),
+});
+
+// These values are generated locally and must remain unchanged for PublicReportSchema validity.
+// Every open-ended or server-influenced string, including metadata, identifiers, protocol data,
+// and tool names, is intentionally excluded.
+const LOCAL_SCHEMA_CONSTANTS: readonly SchemaConstant[] = [
+  schemaConstant('$schema', ['https://mcptest.io/schemas/report/v2.schema.json']),
+  schemaConstant('artifactType', ['mcptest.report']),
+  schemaConstant('schemaVersion', ['2.0.0']),
+  schemaConstant('generator.name', ['mcptest']),
+  schemaConstant('provenance.route', ['direct', 'authenticated-proxy', 'unknown']),
+  schemaConstant('provenance.attempts.*.route', ['direct', 'authenticated-proxy']),
+  schemaConstant('provenance.attempts.*.result', ['failed']),
+  schemaConstant('outcome.status', ['scored', 'authorization-required', 'partial', 'failed']),
+  schemaConstant('outcome.authorizationPrerequisite.state', ['authorization-required']),
+  schemaConstant('releaseDecision.status', [
+    'ready', 'blocked', 'review', 'authorization-required', 'unknown',
   ]),
-  toolSurfaceAnalysis: new Set([
-    'version', 'algorithm', 'value', 'id', 'category', 'severity', 'kind', 'tool', 'path',
+  schemaConstant('releaseDecision.priorities.*.severity', [
+    'critical', 'high', 'medium', 'unknown',
   ]),
-  oauthTrace: new Set([
-    'traceId', 'targetFingerprint', 'startedAt', 'type', 'outcome', 'timestamp',
-    'provenance', 'route', 'method',
+  schemaConstant('releaseDecision.priorities.*.source', [
+    'Host compatibility', 'Tool surface', 'Evaluation',
   ]),
-  sections: new Set(['id', 'status']),
-};
+  schemaConstant('compatibility.assessments.*.status', [
+    'compatible', 'compatible-with-caveats', 'incompatible', 'unknown',
+  ]),
+  schemaConstant('compatibility.assessments.*.findings.*.schemaVersion', ['1.0']),
+  schemaConstant('compatibility.assessments.*.findings.*.scope', [
+    'target-server', 'authorization-server', 'client-environment',
+  ]),
+  schemaConstant('compatibility.assessments.*.findings.*.outcome', [
+    'pass', 'caveat', 'fail', 'unknown',
+  ]),
+  schemaConstant('compatibility.assessments.*.findings.*.severity', [
+    'info', 'warning', 'error',
+  ]),
+  schemaConstant('compatibility.assessments.*.findings.*.evidence.*.schemaVersion', ['1.0']),
+  schemaConstant('compatibility.assessments.*.findings.*.evidence.*.source', [
+    'target-server', 'authorization-server', 'browser', 'proxy', 'configuration', 'host-profile',
+  ]),
+  schemaConstant('compatibility.assessments.*.findings.*.remediation.schemaVersion', ['1.0']),
+  schemaConstant('compatibility.assessments.*.findings.*.remediation.kind', [
+    'server-change', 'authorization-server-change', 'client-configuration', 'observation-needed',
+  ]),
+  schemaConstant('toolSurfaceAnalysis.findings.*.*.category', [
+    'availability', 'context-cost', 'ambiguity', 'description-quality', 'schema-quality',
+    'capability-risk', 'prompt-like-description',
+  ]),
+  schemaConstant('toolSurfaceAnalysis.findings.*.*.severity', [
+    'critical', 'high', 'medium', 'low', 'info',
+  ]),
+  schemaConstant('toolSurfaceAnalysis.findings.*.*.kind', [
+    'measurement', 'quality-signal', 'capability-signal', 'review-signal',
+  ]),
+  schemaConstant('oauthTrace.events.*.type', [
+    'target_challenge', 'protected_resource_metadata', 'authorization_server_metadata', 'cimd',
+    'dynamic_client_registration', 'pre_registered_client', 'pkce', 'authorization_redirect',
+    'callback', 'token_exchange', 'refresh', 'mcp_retry', 'terminal_outcome',
+  ]),
+  schemaConstant('oauthTrace.events.*.outcome', [
+    'started', 'challenged', 'succeeded', 'failed', 'cancelled', 'required', 'redirected', 'skipped',
+  ]),
+  schemaConstant('oauthTrace.events.*.provenance', [
+    'direct_target', 'authenticated_proxy', 'authorization_server', 'browser_callback', 'oauth_client',
+  ]),
+  schemaConstant('oauthTrace.events.*.route', ['direct', 'proxy', 'browser', 'client']),
+  schemaConstant('sections.*.status', [
+    'evaluated', 'partial', 'failed', 'skipped', 'prerequisite',
+  ]),
+];
 
-const STRUCTURAL_METADATA_FIELDS = new Set([
-  'authenticationSource',
-  'authorizationCredentialProvenance',
-  'authorizationSchemes',
-  'category',
-  'evaluationRuntime',
-  'method',
-  'outcome',
-  'paginationComplete',
-  'protocolEra',
-  'protocolVersion',
-  'provenance',
-  'requiredHeaders',
-  'requiredMethod',
-  'route',
-  'scopesSupported',
-  'severity',
-  'source',
-  'status',
-  'supportedGrantTypes',
-  'supportedMethods',
-  'transportType',
-  'type',
-]);
-
-const isStructuralArtifactString = (path: readonly string[]): boolean => {
-  const root = path[0];
-  const field = path[path.length - 1];
-  if (!root || !field) return false;
-  if (['$schema', 'artifactType', 'schemaVersion', 'generatedAt'].includes(field)) return true;
-
-  const metadataIndex = path.lastIndexOf('metadata');
-  if (metadataIndex >= 0) {
-    const metadataField = [...path.slice(metadataIndex + 1)].reverse()
-      .find((part) => !/^\d+$/.test(part));
-    return metadataField !== undefined && STRUCTURAL_METADATA_FIELDS.has(metadataField);
-  }
-
-  return STRUCTURAL_ARTIFACT_FIELDS[root]?.has(field) ?? false;
-};
+const isLocalSchemaConstant = (path: readonly string[], value: string): boolean => (
+  LOCAL_SCHEMA_CONSTANTS.some((constant) => (
+    constant.path.length === path.length
+    && constant.path.every((part, index) => part === '*' || part === path[index])
+    && constant.values.has(value)
+  ))
+);
 
 const redactPublicArtifactCredentials = (
   value: unknown,
@@ -168,7 +193,7 @@ const redactPublicArtifactCredentials = (
   path: readonly string[] = []
 ): unknown => {
   if (typeof value === 'string') {
-    return isStructuralArtifactString(path)
+    return isLocalSchemaConstant(path, value)
       ? value
       : redactKnownCredentialString(value, credentials);
   }
