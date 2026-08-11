@@ -67,4 +67,49 @@ describe('SideNav dashboard rows', () => {
     container.remove();
     style.remove();
   });
+
+  it('presents section labels in natural case without micro-label typography', () => {
+    const sidebarCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <SideNav
+          activeView="playground"
+          spaces={[]}
+          selectedSpaceId={null}
+          handleSelectSpace={vi.fn()}
+          handleCreateSpace={vi.fn()}
+          handleReorderDashboards={vi.fn()}
+          getSpaceHealthStatus={() => ({ loading: false, successCount: 0, totalCount: 0 })}
+          getSpaceHealthColor={() => 'gray'}
+          performAllDashboardsHealthCheck={vi.fn().mockResolvedValue(undefined)}
+          onMoveCard={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+
+    expect(
+      Array.from(container.querySelectorAll('.sidenav-section-label'), (label) => label.textContent)
+    ).toEqual(['Dashboards', 'Documentation']);
+    expect(sidebarCss).not.toMatch(/text-transform:\s*uppercase/i);
+
+    const labelSelectors = [
+      '.sidenav-section-label',
+      '.server-signal-label',
+      '.server-endpoint-box span',
+      '.catalog-filters .form-label',
+      '.docs-toc-title',
+    ];
+
+    labelSelectors.forEach((selector) => {
+      const ruleStart = sidebarCss.indexOf(`${selector} {`);
+      const ruleEnd = sidebarCss.indexOf('}', ruleStart);
+      const rule = sidebarCss.slice(ruleStart, ruleEnd);
+
+      expect(ruleStart, `${selector} should have a style rule`).toBeGreaterThan(-1);
+      expect(rule).toMatch(/font-size:\s*0\.8(?:2)?rem/);
+      expect(rule).toMatch(/letter-spacing:\s*0/);
+    });
+  });
 });
