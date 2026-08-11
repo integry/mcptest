@@ -282,6 +282,39 @@ const isSensitiveQueryKey = (key: string): boolean => {
   return true;
 };
 
+const balancedAssignmentValueEnd = (value: string, start: number): number | undefined => {
+  const opening = value[start];
+  if (opening !== '{' && opening !== '[') return undefined;
+
+  const stack = [opening];
+  let quote: '"' | "'" | undefined;
+
+  for (let index = start + 1; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote) {
+      if (character === '\\') {
+        index += 1;
+      } else if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '{' || character === '[') {
+      stack.push(character);
+    } else if (character === '}' || character === ']') {
+      const expectedOpening = character === '}' ? '{' : '[';
+      if (stack[stack.length - 1] !== expectedOpening) return undefined;
+      stack.pop();
+      if (stack.length === 0) return index + 1;
+    }
+  }
+
+  return undefined;
+};
+
 const redactSensitiveAssignments = (value: string): string => {
   const matches: Array<{ start: number; end: number; replacement: string }> = [];
   const assignmentStart = /(?:(['"])([A-Za-z][A-Za-z0-9_-]*)\1|\b([A-Za-z][A-Za-z0-9_-]*)\b)\s*([:=])\s*/g;
@@ -320,6 +353,12 @@ const redactSensitiveAssignments = (value: string): string => {
       replacement = keyQuote
         ? `${match[0]}${quote}${REDACTED_VALUE}${quote}`
         : `${match[0]}${REDACTED_VALUE}`;
+    } else if (quote === '{' || quote === '[') {
+      valueEnd = balancedAssignmentValueEnd(value, valueStart) ?? valueStart;
+      if (valueEnd === valueStart) {
+        while (valueEnd < value.length && !/[\r\n]/.test(value[valueEnd])) valueEnd += 1;
+      }
+      if (keyQuote) replacement = `${match[0]}${keyQuote}${REDACTED_VALUE}${keyQuote}`;
     } else {
       while (valueEnd < value.length && !/[\s,;&"']/.test(value[valueEnd])) valueEnd += 1;
     }

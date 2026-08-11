@@ -673,6 +673,35 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts credential objects and arrays embedded within surrounding evidence text', () => {
+    const objectValue = 'error body: {"credentials":{"value":"embedded-object-secret"}} after response';
+    const arrayValue = 'error body: {"credentials":[{"value":"embedded-array-secret"}]} after response';
+
+    expect(redactReportString(objectValue)).toBe(
+      'error body: {"credentials":"[REDACTED]"} after response'
+    );
+    expect(redactReportString(arrayValue)).toBe(
+      'error body: {"credentials":"[REDACTED]"} after response'
+    );
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0] = {
+      message: objectValue,
+      context: arrayValue,
+      metadata: { objectValue, arrayValue },
+    };
+
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ]) {
+      expect(output).not.toContain('embedded-object-secret');
+      expect(output).not.toContain('embedded-array-secret');
+      expect(output).toContain('after response');
+      expect(output).toContain('[REDACTED]');
+    }
+  });
+
   it('redacts complete unquoted authorization assignments in every export path', () => {
     const assignments = [
       'authorization=Bearer bearer-assignment-secret',
