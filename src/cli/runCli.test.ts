@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ReleaseGateConfigurationError,
   parseReleaseGateArgs,
   releaseGateHelp,
+  runCli,
 } from './runCli';
+import { RELEASE_GATE_EXIT_CODES } from './releaseGate';
 
 describe('release gate CLI configuration', () => {
   it('reads multiple endpoints and bearer credentials without putting the secret in arguments', () => {
@@ -45,6 +47,31 @@ describe('release gate CLI configuration', () => {
     expect(() => parseReleaseGateArgs(argv, environment)).toThrowError(
       expect.objectContaining<Partial<ReleaseGateConfigurationError>>({ message: expect.stringContaining(message) })
     );
+  });
+
+  it.each([
+    ['bearer', '--bearer-token-env', 'MCP_BEARER'],
+    ['API key', '--api-key-env', 'MCP_API_KEY'],
+  ])('does not expose a malformed %s value in stderr', async (_label, option, name) => {
+    const credential = 'malformed\r\ncredential-fragment';
+    let stderr = '';
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk);
+      return true;
+    });
+
+    try {
+      const exitCode = await runCli([
+        option, name, 'https://fixture.example/mcp',
+      ], { [name]: credential });
+
+      expect(exitCode).toBe(RELEASE_GATE_EXIT_CODES.invalidConfiguration);
+      expect(stderr).toContain(`Environment variable ${name} contains an invalid HTTP credential.`);
+      expect(stderr).not.toContain(credential);
+      expect(stderr).not.toContain('credential-fragment');
+    } finally {
+      write.mockRestore();
+    }
   });
 
   it('documents all stable exit codes and the non-interactive OAuth outcome', () => {

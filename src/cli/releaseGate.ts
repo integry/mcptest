@@ -104,9 +104,19 @@ interface SchemaConstant {
   values: ReadonlySet<string>;
 }
 
+interface SchemaKeys {
+  path: readonly string[];
+  keys: ReadonlySet<string>;
+}
+
 const schemaConstant = (path: string, values: readonly string[]): SchemaConstant => ({
   path: path.split('.'),
   values: new Set(values),
+});
+
+const schemaKeys = (path: string, keys: readonly string[]): SchemaKeys => ({
+  path: path ? path.split('.') : [],
+  keys: new Set(keys),
 });
 
 // These values are generated locally and must remain unchanged for PublicReportSchema validity.
@@ -179,12 +189,85 @@ const LOCAL_SCHEMA_CONSTANTS: readonly SchemaConstant[] = [
   ]),
 ];
 
+// Keys owned by PublicReportSchema must remain intact even when a supplied credential happens to
+// equal one of them. All other keys are open-ended data and may have come from the target server.
+const LOCAL_SCHEMA_KEYS: readonly SchemaKeys[] = [
+  schemaKeys('', [
+    '$schema', 'artifactType', 'schemaVersion', 'generatedAt', 'generator', 'target',
+    'provenance', 'outcome', 'score', 'protocol', 'transport', 'timings', 'releaseDecision',
+    'compatibility', 'toolSurfaceAnalysis', 'oauthTrace', 'sections',
+  ]),
+  schemaKeys('generator', ['name', 'version', 'commit']),
+  schemaKeys('target', ['testedEndpoint', 'authenticationEndpoint', 'negotiatedEndpoint']),
+  schemaKeys('provenance', ['route', 'proxyUsed', 'attempts']),
+  schemaKeys('provenance.attempts.*', ['route', 'result']),
+  schemaKeys('outcome', ['status', 'summary', 'authorizationPrerequisite']),
+  schemaKeys('outcome.authorizationPrerequisite', ['required', 'state', 'message']),
+  schemaKeys('score', ['earned', 'maximum', 'percentage']),
+  schemaKeys('protocol', ['era', 'version']),
+  schemaKeys('transport', ['type']),
+  schemaKeys('timings', ['negotiationMs', 'connectionSetupMs', 'checks']),
+  schemaKeys('timings.checks.*', ['name', 'durationMs']),
+  schemaKeys('releaseDecision', ['status', 'answer', 'summary', 'priorities']),
+  schemaKeys('releaseDecision.priorities.*', [
+    'id', 'severity', 'title', 'detail', 'remediation', 'source',
+  ]),
+  schemaKeys('compatibility', ['schemaVersion', 'assessments']),
+  schemaKeys('compatibility.assessments.*', [
+    'schemaVersion', 'profileId', 'profileVersion', 'status', 'findings',
+  ]),
+  schemaKeys('compatibility.assessments.*.findings.*', [
+    'schemaVersion', 'ruleId', 'scope', 'outcome', 'severity', 'summary', 'detail',
+    'evidence', 'remediation',
+  ]),
+  schemaKeys('compatibility.assessments.*.findings.*.evidence.*', [
+    'schemaVersion', 'source', 'description', 'location',
+  ]),
+  schemaKeys('compatibility.assessments.*.findings.*.remediation', [
+    'schemaVersion', 'kind', 'action', 'documentationUrl',
+  ]),
+  schemaKeys('toolSurfaceAnalysis', [
+    'version', 'metrics', 'fingerprint', 'findings', 'findingCount', 'interpretation',
+  ]),
+  schemaKeys('toolSurfaceAnalysis.metrics', [
+    'toolCount', 'resourceCount', 'promptCount', 'estimatedContextTokens',
+  ]),
+  schemaKeys('toolSurfaceAnalysis.fingerprint', ['algorithm', 'value']),
+  schemaKeys('toolSurfaceAnalysis.findings', ['critical', 'high', 'medium', 'low', 'info']),
+  schemaKeys('toolSurfaceAnalysis.findings.*.*', [
+    'id', 'category', 'severity', 'kind', 'title', 'summary', 'evidence',
+    'omittedEvidenceCount', 'remediation',
+  ]),
+  schemaKeys('toolSurfaceAnalysis.findings.*.*.evidence.*', ['tool', 'path', 'detail']),
+  schemaKeys('oauthTrace', [
+    'version', 'traceId', 'targetFingerprint', 'targetUrl', 'startedAt', 'events',
+  ]),
+  schemaKeys('oauthTrace.events.*', [
+    'sequence', 'type', 'outcome', 'timestamp', 'provenance', 'route', 'explanation',
+    'request', 'response', 'timing',
+  ]),
+  schemaKeys('oauthTrace.events.*.request', ['method', 'url']),
+  schemaKeys('oauthTrace.events.*.response', ['status', 'headers', 'metadata']),
+  schemaKeys('oauthTrace.events.*.timing', ['startedAt', 'durationMs']),
+  schemaKeys('sections.*', ['id', 'name', 'description', 'status', 'score', 'evidence']),
+  schemaKeys('sections.*.score', ['earned', 'maximum']),
+  schemaKeys('sections.*.evidence.*', ['message', 'context', 'metadata']),
+];
+
+const pathMatches = (pattern: readonly string[], path: readonly string[]): boolean => (
+  pattern.length === path.length
+  && pattern.every((part, index) => part === '*' || part === path[index])
+);
+
 const isLocalSchemaConstant = (path: readonly string[], value: string): boolean => (
   LOCAL_SCHEMA_CONSTANTS.some((constant) => (
-    constant.path.length === path.length
-    && constant.path.every((part, index) => part === '*' || part === path[index])
+    pathMatches(constant.path, path)
     && constant.values.has(value)
   ))
+);
+
+const localSchemaKeys = (path: readonly string[]): ReadonlySet<string> => (
+  LOCAL_SCHEMA_KEYS.find((schema) => pathMatches(schema.path, path))?.keys ?? new Set()
 );
 
 const redactPublicArtifactCredentials = (
@@ -205,10 +288,24 @@ const redactPublicArtifactCredentials = (
       [...path, String(index)]
     ));
   }
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
-    key,
-    redactPublicArtifactCredentials(child, credentials, [...path, key]),
-  ]));
+  const structuralKeys = localSchemaKeys(path);
+  const usedKeys = new Set<string>();
+  return Object.fromEntries(Object.entries(value)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([key, child]) => {
+      const redactedKey = structuralKeys.has(key)
+        ? key
+        : redactKnownCredentialString(key, credentials);
+      let uniqueKey = redactedKey;
+      for (let collision = 2; usedKeys.has(uniqueKey); collision += 1) {
+        uniqueKey = `${redactedKey}#${collision}`;
+      }
+      usedKeys.add(uniqueKey);
+      return [
+        uniqueKey,
+        redactPublicArtifactCredentials(child, credentials, [...path, key]),
+      ];
+    }));
 };
 
 const safeFilenameHost = (endpoint: string): string => {

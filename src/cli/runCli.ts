@@ -212,9 +212,15 @@ export const parseReleaseGateArgs = (
     if (!credential) {
       throw new ReleaseGateConfigurationError(`Environment variable ${name} is empty or missing.`);
     }
-    headers = new Headers(bearerEnvironment
-      ? { Authorization: `Bearer ${credential}` }
-      : { 'X-API-Key': credential });
+    try {
+      headers = new Headers(bearerEnvironment
+        ? { Authorization: `Bearer ${credential}` }
+        : { 'X-API-Key': credential });
+    } catch {
+      throw new ReleaseGateConfigurationError(
+        `Environment variable ${name} contains an invalid HTTP credential.`
+      );
+    }
     consumedSecretEnvironmentVariables.push(name);
   }
 

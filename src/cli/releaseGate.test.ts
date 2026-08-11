@@ -144,6 +144,34 @@ describe('headless release gate', () => {
     expect(result.targets[0].markdown).not.toContain(secret);
   });
 
+  it('scrubs credentials from evaluator evidence property names without losing collisions', async () => {
+    const secret = 'opaque-evidence-marker';
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { Authorization: `Bearer ${secret}` },
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, {
+      evaluate: async () => {
+        const report = evaluatedReport();
+        report.sections.protocol.details[0].metadata = {
+          [REDACTED_VALUE]: 'existing redaction marker',
+          [secret]: 'credential key',
+          [`prefix-${secret}`]: 'embedded credential key',
+        };
+        return report;
+      },
+    });
+
+    const metadata = result.targets[0].report?.sections[0].evidence[0].metadata;
+    expect(metadata).toEqual({
+      [REDACTED_VALUE]: 'existing redaction marker',
+      [`${REDACTED_VALUE}#2`]: 'credential key',
+      [`prefix-${REDACTED_VALUE}`]: 'embedded credential key',
+    });
+    expect(result.targets[0].json).not.toContain(secret);
+    expect(result.targets[0].markdown).not.toContain(secret);
+  });
+
   it('scrubs a credential echoed by the server as a structural protocol field', async () => {
     const secret = 'server-echoed-protocol-secret';
     const result = await runReleaseGate({
