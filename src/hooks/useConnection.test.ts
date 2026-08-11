@@ -358,6 +358,50 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
+  it('finalizes a user-aborted authenticated retry as cancelled', async () => {
+    const endpoint = 'https://retry-cancelled.example/mcp';
+    const issuer = 'https://auth-retry-cancelled.example/';
+    const provider = new BrowserOAuthProvider(endpoint);
+    provider.saveDiscoveryState({
+      authorizationServerUrl: issuer,
+      authorizationServerMetadata: {
+        issuer,
+        authorization_endpoint: `${issuer}authorize`,
+        token_endpoint: `${issuer}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    provider.saveTokens(
+      { access_token: 'cancelled-retry-token', token_type: 'Bearer', issuer },
+      { issuer }
+    );
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: endpoint,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    connectionMocks.attempt.mockRejectedValueOnce(new Error('Connection aborted by user'));
+    const view = renderConnectionHook();
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    const completedTrace = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(completedTrace?.authenticatedMcpRetry).toBeUndefined();
+    expect(completedTrace?.outcome?.status).toBe('cancelled');
+    expect(completedTrace?.events.filter(({ type }) => type === 'mcp_retry')).toEqual([
+      expect.objectContaining({ outcome: 'cancelled' }),
+    ]);
+    expect(completedTrace?.events.filter(({ type }) => type === 'terminal_outcome')).toEqual([
+      expect.objectContaining({ outcome: 'cancelled' }),
+    ]);
+    view.unmount();
+  });
+
   it('keeps an authenticated retry pending when direct failure falls back to proxy success', async () => {
     const endpoint = 'https://retry-proxy-fallback.example/mcp';
     const issuer = 'https://auth-retry-proxy-fallback.example/';

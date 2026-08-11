@@ -434,7 +434,7 @@ export const useConnection = (
     };
 
     const finalizeOAuthRetry = (
-      outcome: 'succeeded' | 'failed',
+      outcome: 'succeeded' | 'failed' | 'cancelled',
       route: 'direct' | 'proxy',
       options: {
         error?: unknown;
@@ -450,7 +450,9 @@ export const useConnection = (
       if (!oauthRetryPending || !pendingOAuthRetry) return false;
       const finalized = outcome === 'succeeded'
         ? pendingOAuthRetry.succeed({ route, ...(options.result ? { result: options.result } : {}) })
-        : pendingOAuthRetry.fail({ route, ...options });
+        : outcome === 'cancelled'
+          ? pendingOAuthRetry.cancel({ route, ...options })
+          : pendingOAuthRetry.fail({ route, ...options });
       if (finalized) oauthTrace = resumeOAuthFlightRecorder(targetUrl, sessionStorage);
       return finalized;
     };
@@ -747,11 +749,11 @@ export const useConnection = (
         }
 
     } catch (error: any) {
+        const isUserAborted = error.message && error.message.includes('Connection aborted by user');
         if (oauthRetryPending) {
-          finalizeOAuthRetry('failed', connectionRoute, { error });
+          finalizeOAuthRetry(isUserAborted ? 'cancelled' : 'failed', connectionRoute, { error });
           oauthRetryPending = false;
         }
-        const isUserAborted = error.message && error.message.includes('Connection aborted by user');
         if (!isUserAborted) {
             // Handle all other errors normally
             logEvent('connect_failure');

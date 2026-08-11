@@ -40,6 +40,7 @@ export type OAuthTraceEventOutcome =
   | 'challenged'
   | 'succeeded'
   | 'failed'
+  | 'cancelled'
   | 'required'
   | 'redirected'
   | 'skipped';
@@ -435,9 +436,14 @@ export class OAuthFlightRecorder {
   }
 
   registerSecret(...values: Array<string | null | undefined>): void {
+    let added = false;
     for (const value of values) {
-      if (value) this.secrets.add(value);
+      if (value && !this.secrets.has(value)) {
+        this.secrets.add(value);
+        added = true;
+      }
     }
+    if (added) this.persist();
   }
 
   record(event: OAuthTraceEventInput): OAuthTraceEventV1 {
@@ -579,7 +585,9 @@ export class OAuthFlightRecorder {
           ? 'redirected'
           : status === 'manual_client_required'
             ? 'required'
-            : 'failed',
+            : status === 'cancelled'
+              ? 'cancelled'
+              : 'failed',
       provenance: 'oauth_client',
       route: 'client',
       explanation: outcome.explanation,
@@ -765,6 +773,10 @@ export class PendingAuthenticatedMcpRetry {
     return this.finalize('failed', options);
   }
 
+  cancel(options: FinalizeAuthenticatedMcpRetryOptions): boolean {
+    return this.finalize('cancelled', options);
+  }
+
   private latestRecorder(): OAuthFlightRecorder | undefined {
     const stored = resumeOAuthFlightRecorder(this.targetUrl, this.storage);
     if (!stored?.hasPendingAuthenticatedMcpRetry()) return undefined;
@@ -797,7 +809,7 @@ export class PendingAuthenticatedMcpRetry {
   }
 
   private finalize(
-    outcome: 'succeeded' | 'failed',
+    outcome: 'succeeded' | 'failed' | 'cancelled',
     options: FinalizeAuthenticatedMcpRetryOptions
   ): boolean {
     if (this.finalized) return false;
@@ -828,7 +840,9 @@ export class PendingAuthenticatedMcpRetry {
       route: options.route,
       explanation: outcome === 'succeeded'
         ? `The authenticated MCP retry for ${this.operation} succeeded on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}.`
-        : `The authenticated MCP retry failed for ${this.operation} on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`,
+        : outcome === 'cancelled'
+          ? `The authenticated MCP retry for ${this.operation} was cancelled by the user on the ${options.route} route.`
+          : `The authenticated MCP retry failed for ${this.operation} on the ${options.route} route${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`,
       ...(method && requestUrl ? { request: { method, url: requestUrl } } : {}),
       response: {
         ...(status !== undefined ? { status } : {}),
@@ -846,10 +860,12 @@ export class PendingAuthenticatedMcpRetry {
       timing: { startedAt, durationMs },
     });
     recorder.terminal(
-      outcome === 'succeeded' ? 'authorized' : 'failed',
+      outcome === 'succeeded' ? 'authorized' : outcome,
       outcome === 'succeeded'
         ? `OAuth authorization and the authenticated MCP retry for ${this.operation} completed successfully.`
-        : `OAuth authorization completed, but the authenticated MCP retry failed for ${this.operation}${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`
+        : outcome === 'cancelled'
+          ? `The authenticated MCP retry for ${this.operation} was cancelled by the user.`
+          : `OAuth authorization completed, but the authenticated MCP retry failed for ${this.operation}${status !== undefined ? ` with HTTP ${status}` : ''}${errorType ? ` during ${errorType}` : ''}.`
     );
     this.finalized = true;
     return true;

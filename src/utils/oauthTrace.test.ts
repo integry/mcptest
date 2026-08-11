@@ -131,6 +131,27 @@ describe('OAuth flight recorder core', () => {
     expect(json).toContain(OAUTH_TRACE_REDACTED);
   });
 
+  it('rewrites persisted events when a value is registered as secret after recording', () => {
+    const lateSecret = 'opaque-late-bound-value-7f6d4a';
+    const recorder = createOAuthFlightRecorder({
+      targetUrl: TARGET_URL,
+      storage: sessionStorage,
+    });
+    recorder.record({
+      type: 'callback',
+      outcome: 'failed',
+      provenance: 'browser_callback',
+      route: 'browser',
+      explanation: `The callback response included ${lateSecret}.`,
+    });
+
+    recorder.registerSecret(lateSecret);
+
+    const persisted = JSON.stringify(getStoredOAuthTrace(TARGET_URL, sessionStorage));
+    expect(persisted).not.toContain(lateSecret);
+    expect(persisted).toContain(OAUTH_TRACE_REDACTED);
+  });
+
   it('sanitizes nested proxy targets without losing route context', () => {
     const target = 'https://mcp.example/mcp?access_token=target-secret&custom_secret=custom-secret&tenant=acme&operation=initialize';
     const proxy = `https://proxy.example/?target=${encodeURIComponent(target)}&state=proxy-secret&signed_request=signed-secret&login_hint=alice%40example.com&x-amz-signature=aws-secret`;
@@ -458,6 +479,37 @@ describe('OAuth flight recorder core', () => {
         }),
       ]),
     });
+  });
+
+  it('finalizes a cancelled authenticated retry without recording a failure', () => {
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: TARGET_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: TARGET_URL,
+      storage: sessionStorage,
+      operation: 'connection',
+    });
+
+    expect(retry?.cancel({
+      route: 'direct',
+      error: new Error('Connection aborted by user'),
+    })).toBe(true);
+
+    const stored = getStoredOAuthTrace(TARGET_URL, sessionStorage);
+    expect(stored?.authenticatedMcpRetry).toBeUndefined();
+    expect(stored?.outcome?.status).toBe('cancelled');
+    expect(stored?.events.filter(({ type }) => type === 'mcp_retry')).toEqual([
+      expect.objectContaining({ outcome: 'cancelled' }),
+    ]);
+    expect(stored?.events.filter(({ type }) => type === 'terminal_outcome')).toEqual([
+      expect.objectContaining({ outcome: 'cancelled' }),
+    ]);
   });
 
   it('keeps recording in memory when trace persistence fails', () => {
