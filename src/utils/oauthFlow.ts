@@ -138,6 +138,10 @@ export interface CompletedOAuthFlow {
 export interface PrepareManualOAuthClientOptions extends BrowserOAuthProviderOptions {
   discover?: typeof discoverOAuthServerInfo;
   fetchFn?: FetchLike;
+  /** Exact RFC 9728 location observed in the target's WWW-Authenticate challenge. */
+  resourceMetadataUrl?: string | URL;
+  /** Authenticated proxy used only after a browser CORS failure on safe discovery GETs. */
+  discoveryProxy?: OAuthDiscoveryProxyOptions;
 }
 
 export interface OAuthAuthorization {
@@ -265,18 +269,31 @@ const registrationFailureCategory = (
   if (error.status === 429) return 'rate_limited';
   if (error.status >= 500) return 'server_error';
 
-  const responseText = Object.values(details)
-    .filter((value): value is string => typeof value === 'string')
-    .join(' ')
-    .replace(/[-_]+/g, ' ');
-  if (/(?:\b(?:provider\s+)?approval\s+(?:is\s+)?required\b|\brequires?\s+(?:provider\s+)?approval\b|\bnot\s+approved\b|\bunapproved\s+software\s+statement\b|\bnot\s+(?:on|in)\s+(?:the\s+)?(?:allow|white)\s*list\b|\b(?:allow|white)\s*list\s+access\s+(?:is\s+)?required\b)/i.test(responseText)) {
-    return 'approval_policy';
-  }
-
-  const errorCode = typeof details.error === 'string' ? details.error : '';
+  const errorCode = typeof details.error === 'string'
+    ? details.error.toLowerCase()
+    : '';
   if (['invalid_client_metadata', 'invalid_redirect_uri', 'invalid_software_statement'].includes(errorCode)) {
     return 'invalid_metadata';
   }
+
+  const responseText = ['error_description', 'message', 'detail']
+    .map((field) => details[field])
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .replace(/[-_]+/g, ' ');
+  if (
+    /\bredirect\s+uris?\b/i.test(responseText)
+    && /\b(?:invalid|not\s+approved|not\s+registered|not\s+(?:on|in)\s+(?:the\s+)?(?:allow|white)\s*list)\b/i.test(responseText)
+  ) {
+    return 'invalid_metadata';
+  }
+
+  const approvalCode = errorCode.replace(/[-_]+/g, ' ');
+  const hasExplicitApprovalEvidence = /(?:\b(?:the\s+|this\s+)?(?:client|software)(?:\s+(?:application|statement))?\s+(?:approval\s+(?:is\s+)?required|requires?\s+(?:provider\s+)?approval|(?:is\s+)?not\s+approved)\b|\b(?:provider\s+)?approval\s+(?:is\s+)?required\s+for\s+(?:the\s+|this\s+)?(?:client|software)\b|\bunapproved\s+(?:client|software(?:\s+statement)?)\b|\bnot\s+(?:on|in)\s+(?:the\s+)?(?:allow|white)\s*list\b|\b(?:allow|white)\s*list\s+access\s+(?:is\s+)?required\b)/i;
+  if (hasExplicitApprovalEvidence.test(responseText) || hasExplicitApprovalEvidence.test(approvalCode)) {
+    return 'approval_policy';
+  }
+
   if (details.responseFormat === 'non-json') return 'malformed_response';
   return 'rejected';
 };
@@ -1059,15 +1076,47 @@ export const prepareManualOAuthClient = async (
   const trace = options.trace
     || resumeOAuthFlightRecorder(normalizedServerUrl, storage)
     || createOAuthFlightRecorder({ targetUrl: normalizedServerUrl, storage });
-  const { discover, fetchFn, ...providerOptions } = options;
+  const {
+    discover,
+    fetchFn,
+    resourceMetadataUrl: resourceMetadataUrlOption,
+    discoveryProxy,
+    ...providerOptions
+  } = options;
   const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...providerOptions, storage, trace });
+  const resourceMetadataUrl = resourceMetadataUrlOption
+    ? new URL(resourceMetadataUrlOption).toString()
+    : undefined;
+  if (
+    resourceMetadataUrl
+    && provider.discoveryState()?.resourceMetadataUrl !== resourceMetadataUrl
+  ) {
+    provider.invalidateCredentials('discovery');
+  }
+  provider.setResourceMetadataUrlOverride(resourceMetadataUrl);
+  if (resourceMetadataUrl) trace.trackResourceMetadataUrl(resourceMetadataUrl);
+  const discoveryFetch = createOAuthTraceFetch(
+    trace,
+    createCorsFallbackDiscoveryFetch(trace, fetchFn || fetch, discoveryProxy)
+  );
   try {
     const discovery = provider.discoveryState() || (discover
-      ? await discover(normalizedServerUrl)
+      ? await discover(normalizedServerUrl, {
+        fetchFn: discoveryFetch,
+        ...(resourceMetadataUrl
+          ? { resourceMetadataUrl: new URL(resourceMetadataUrl) }
+          : {}),
+      })
       : await discoverOAuthServerInfo(normalizedServerUrl, {
-        fetchFn: createOAuthTraceFetch(trace, fetchFn || fetch),
+        fetchFn: discoveryFetch,
+        ...(resourceMetadataUrl
+          ? { resourceMetadataUrl: new URL(resourceMetadataUrl) }
+          : {}),
       }));
-    provider.saveDiscoveryState(discovery);
+    provider.saveDiscoveryState({
+      ...discovery,
+      ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
+    });
   } catch (error) {
     trace.settleLatestProvisionalOAuthResponse('failed');
     trace.terminal('failed', 'OAuth metadata discovery failed while preparing manual client registration.');

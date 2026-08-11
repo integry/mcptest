@@ -233,7 +233,10 @@ describe('BrowserOAuthProvider', () => {
     saveManualOAuthClient(SERVER_URL, 'manual-client');
 
     const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
-    expect(discover).toHaveBeenCalledWith(SERVER_URL);
+    expect(discover).toHaveBeenCalledWith(
+      SERVER_URL,
+      expect.objectContaining({ fetchFn: expect.any(Function) })
+    );
     expect(provider.clientInformation({ issuer: ISSUER_A })).toMatchObject({
       client_id: 'manual-client',
       issuer: ISSUER_A,
@@ -1011,8 +1014,8 @@ describe('OAuth provider interoperability matrix', () => {
       }
       if (url === registrationEndpoint && init?.method === 'POST') {
         return jsonResponse({
-          error: 'invalid_client_metadata',
-          error_description: 'client_uri is not approved',
+          error: 'access_denied',
+          error_description: 'This software requires provider approval',
         }, { status: 403 });
       }
       return new Response('Not found', { status: 404 });
@@ -1048,7 +1051,7 @@ describe('OAuth provider interoperability matrix', () => {
         outcome: 'failed',
         response: expect.objectContaining({
           status: 403,
-          metadata: expect.objectContaining({ error: 'invalid_client_metadata' }),
+          metadata: expect.objectContaining({ error: 'access_denied' }),
         }),
       }),
     ]));
@@ -1071,6 +1074,18 @@ describe('OAuth provider interoperability matrix', () => {
       'invalid-metadata',
       400,
       { error: 'invalid_client_metadata', error_description: 'redirect_uris must contain one entry' },
+      'rejected the submitted dynamic client metadata',
+    ],
+    [
+      'ambiguous-invalid-client-metadata',
+      400,
+      { error: 'invalid_client_metadata', error_description: 'client_uri is not approved' },
+      'rejected the submitted dynamic client metadata',
+    ],
+    [
+      'ambiguous-redirect-rejection',
+      400,
+      { error: 'invalid_redirect_uri', error_description: 'redirect URI is not approved' },
       'rejected the submitted dynamic client metadata',
     ],
     [

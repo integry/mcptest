@@ -85,6 +85,7 @@ describe('ReportView OAuth discovery', () => {
     if (root) act(() => root?.unmount());
     root = undefined;
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -175,5 +176,86 @@ describe('ReportView OAuth discovery', () => {
       const key = sessionStorage.key(index) || '';
       return `${key}:${sessionStorage.getItem(key) || ''}`;
     }).join('\n')).not.toContain('challenge-secret');
+  });
+
+  it('uses challenge metadata and authenticated proxy fallback before showing registered-client fields', async () => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const metadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
+    const issuer = 'https://github.com/login/oauth';
+    const authorizationMetadataUrl = 'https://github.com/.well-known/oauth-authorization-server/login/oauth';
+    const directCalls: string[] = [];
+    const proxyTargets: string[] = [];
+    evaluationMocks.evaluate.mockResolvedValueOnce({
+      serverUrl: target,
+      authenticationUrl: target,
+      resourceMetadataUrl: metadataUrl,
+      outcome: 'authorization-required',
+      finalScore: 0,
+      sections: {
+        auth: {
+          name: 'Authorization Required',
+          description: 'OAuth authorization is required',
+          score: 0,
+          maxScore: 0,
+          details: [],
+        },
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('https://proxy.mcptest.test/')) {
+        const proxyUrl = new URL(url);
+        proxyTargets.push(proxyUrl.searchParams.get('target') || '');
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer firebase-session-token');
+        return new Response(JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-MCP-Proxy-Response-Source': 'target',
+          },
+        });
+      }
+      directCalls.push(url);
+      if (url === metadataUrl) {
+        return new Response(JSON.stringify({
+          resource: target,
+          authorization_servers: [issuer],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url === authorizationMetadataUrl) {
+        throw new TypeError('Direct browser CORS failure');
+      }
+      return new Response('Not found', { status: 404 });
+    }));
+
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+    const configureButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Enter client credentials')
+    );
+    await act(async () => {
+      configureButton?.click();
+    });
+
+    expect(directCalls).toContain(metadataUrl);
+    expect(directCalls).toContain(authorizationMetadataUrl);
+    expect(proxyTargets).toEqual([authorizationMetadataUrl]);
+    expect(container.textContent).toContain('Configure an existing client');
+    expect(container.querySelector('#clientId')).not.toBeNull();
   });
 });

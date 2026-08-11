@@ -354,7 +354,26 @@ const ReportView: React.FC = () => {
     setOAuthAction('configure');
     setOAuthError(null);
     try {
-      await prepareManualOAuthClient(authenticationUrl);
+      const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+      const discoveryProxyToken = proxyUrl && currentUser
+        ? await currentUser.getIdToken()
+        : undefined;
+      const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
+        ? oauthChallengeRef.current
+        : undefined;
+      await prepareManualOAuthClient(authenticationUrl, {
+        ...(challenge?.resourceMetadataUrl
+          ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
+          : {}),
+        ...(proxyUrl && discoveryProxyToken
+          ? {
+              discoveryProxy: {
+                url: proxyUrl,
+                authorizationToken: discoveryProxyToken,
+              },
+            }
+          : {}),
+      });
       setOAuthConfigServerUrl(authenticationUrl);
       setOAuthPrerequisite(null);
     } catch (error) {
@@ -363,7 +382,7 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, []);
+  }, [currentUser]);
 
   const reportRequiresAuthorization = report ? isAuthenticationRequired(report) : false;
   const scoredSections = report && !reportRequiresAuthorization
