@@ -126,6 +126,18 @@ export const PublicReportSchema = PublicReportObjectSchema.superRefine((report, 
       message: 'Only an authorization-required report may describe an authorization prerequisite.',
     });
   }
+  const expectedProxyUsed = report.provenance.route === 'direct'
+    ? false
+    : report.provenance.route === 'authenticated-proxy'
+      ? true
+      : null;
+  if (report.provenance.proxyUsed !== expectedProxyUsed) {
+    context.addIssue({
+      code: 'custom',
+      path: ['provenance', 'proxyUsed'],
+      message: `proxyUsed must be ${String(expectedProxyUsed)} when route is ${report.provenance.route}.`,
+    });
+  }
   if (report.score && report.score.earned > report.score.maximum) {
     context.addIssue({
       code: 'custom',
@@ -189,6 +201,10 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'accesstoken',
   'refreshtoken',
   'idtoken',
+  'idtokenhint',
+  'clientassertion',
+  'devicecode',
+  'usercode',
   'apikey',
   'xapikey',
   'authorizationcode',
@@ -254,7 +270,7 @@ export const redactReportString = (value: string): string => {
   return redactedUrls
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`)
     .replace(
-      /\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*([^\s,;&]+)/g,
+      /\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/g,
       (assignment, key: string) => (
         isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : assignment
       )
@@ -319,22 +335,6 @@ const metadataString = (
   return undefined;
 };
 
-const resolveOutcome = (report: EvaluationReport): PublicReportOutcome => {
-  if (isAuthenticationRequired(report)) return 'authorization-required';
-  if (report.outcome === 'failed' || report.outcome === 'partial') return report.outcome;
-
-  const sections = Object.values(report.sections);
-  const explicitlyIncomplete = sections.some((section) => (
-    section.status === 'partial' || section.status === 'failed' || section.status === 'skipped'
-  ));
-  const negotiationFailed = report.sections.protocol?.details.some((detail) => (
-    /negotiation failed|no MCP connection/i.test(`${detail.text} ${detail.context || ''}`)
-  ));
-  if (negotiationFailed) return 'failed';
-  if (explicitlyIncomplete) return 'partial';
-  return 'scored';
-};
-
 const isLegacySkippedSection = (section: EvaluationSection): boolean => (
   section.details.length > 0
   && section.details.every((detail) => /^⚠/.test(detail.text))
@@ -342,6 +342,25 @@ const isLegacySkippedSection = (section: EvaluationSection): boolean => (
     `${detail.text} ${detail.context || ''}`
   ))
 );
+
+const resolveOutcome = (report: EvaluationReport): PublicReportOutcome => {
+  if (isAuthenticationRequired(report)) return 'authorization-required';
+  if (report.outcome === 'failed' || report.outcome === 'partial') return report.outcome;
+
+  const sections = Object.values(report.sections);
+  const incomplete = sections.some((section) => (
+    section.status === 'partial'
+    || section.status === 'failed'
+    || section.status === 'skipped'
+    || (!section.status && isLegacySkippedSection(section))
+  ));
+  const negotiationFailed = report.sections.protocol?.details.some((detail) => (
+    /negotiation failed|no MCP connection/i.test(`${detail.text} ${detail.context || ''}`)
+  ));
+  if (negotiationFailed) return 'failed';
+  if (incomplete) return 'partial';
+  return 'scored';
+};
 
 const sectionStatus = (
   id: string,

@@ -189,6 +189,22 @@ const partialReport = (): EvaluationReport => ({
   },
 });
 
+const legacyPartialReport = (): EvaluationReport => ({
+  serverUrl: 'https://legacy-partial.example/mcp',
+  finalScore: 15,
+  sections: {
+    protocol: section('Core Protocol', 15, 15, {
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+      endpoint: 'https://legacy-partial.example/mcp',
+      route: 'direct',
+    }),
+    capabilities: section('Capabilities', 0, 10, {}, {
+      details: [{ text: '⚠ Capability checks were skipped after the connection closed.' }],
+    }),
+  },
+});
+
 const failedReport = (): EvaluationReport => ({
   serverUrl: 'https://failed.example/mcp?api_key=do-not-export',
   outcome: 'failed',
@@ -230,6 +246,7 @@ const GOLDEN_REPORTS: Record<string, () => EvaluationReport> = {
   stateless: statelessReport,
   'legacy-sse': legacySseReport,
   partial: partialReport,
+  'legacy-partial-without-status': legacyPartialReport,
   failed: failedReport,
 };
 
@@ -320,6 +337,39 @@ describe('versioned public report artifacts', () => {
     }
   );
 
+  it.each([
+    ['direct', false],
+    ['authenticated-proxy', true],
+    ['unknown', null],
+  ] as const)('accepts the consistent %s provenance pair in both schemas', (route, proxyUsed) => {
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    const candidate = { ...artifact, provenance: { route, proxyUsed } };
+
+    expect(safeParsePublicReport(candidate).success).toBe(true);
+    expect(
+      validatePublishedSchema(candidate),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(true);
+  });
+
+  it.each([
+    ['direct', true],
+    ['direct', null],
+    ['authenticated-proxy', false],
+    ['authenticated-proxy', null],
+    ['unknown', false],
+    ['unknown', true],
+  ] as const)('rejects the contradictory %s/%s provenance pair in both schemas', (route, proxyUsed) => {
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    const contradictory = { ...artifact, provenance: { route, proxyUsed } };
+
+    expect(safeParsePublicReport(contradictory).success).toBe(false);
+    expect(
+      validatePublishedSchema(contradictory),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(false);
+  });
+
   it('validates percentage consistency with an explicit numerical tolerance', () => {
     const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
     const withinTolerance = structuredClone(artifact);
@@ -356,6 +406,66 @@ describe('versioned public report artifacts', () => {
       safe: 'visible',
       code_challenge_methods_supported: ['S256'],
     });
+  });
+
+  it('redacts OAuth credential parameters from URLs using canonicalized names', () => {
+    const output = redactReportString(
+      'https://client.example/authorize?id_token_hint=url-id-secret&client-assertion=url-assertion-secret&deviceCode=url-device-secret&user_code=url-user-secret&display=visible'
+    );
+
+    for (const secret of ['url-id-secret', 'url-assertion-secret', 'url-device-secret', 'url-user-secret']) {
+      expect(output).not.toContain(secret);
+    }
+    expect(output).toContain('display=visible');
+  });
+
+  it('redacts OAuth credential parameters from plain-text assignments', () => {
+    const output = redactReportString(
+      'id_token_hint=plain-id-secret client-assertion=plain-assertion-secret deviceCode=plain-device-secret user_code=plain-user-secret'
+    );
+
+    for (const secret of [
+      'plain-id-secret',
+      'plain-assertion-secret',
+      'plain-device-secret',
+      'plain-user-secret',
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+  });
+
+  it('redacts OAuth credential parameters from structured metadata', () => {
+    expect(redactReportValue({
+      id_token_hint: 'metadata-id-secret',
+      'client-assertion': 'metadata-assertion-secret',
+      deviceCode: 'metadata-device-secret',
+      user_code: 'metadata-user-secret',
+      display: 'visible',
+    })).toEqual({
+      id_token_hint: '[REDACTED]',
+      'client-assertion': '[REDACTED]',
+      deviceCode: '[REDACTED]',
+      user_code: '[REDACTED]',
+      display: 'visible',
+    });
+  });
+
+  it('consumes complete quoted secret assignments containing spaces', () => {
+    const redacted = redactReportString(
+      `password="prefix actual-password" client_secret='prefix actual-secret' safe="visible value"`
+    );
+
+    expect(redacted).toBe(
+      'password=[REDACTED] client_secret=[REDACTED] safe="visible value"'
+    );
+
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence[0].message = 'password="prefix serialized-password"';
+    artifact.sections[0].evidence[0].context = "client_assertion='prefix serialized-assertion'";
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(output).not.toContain('serialized-password');
+    expect(output).not.toContain('serialized-assertion');
   });
 
   it('closes plain-text, camel-case URL, OAuth state, and deep nested URL bypasses', () => {

@@ -103,7 +103,27 @@
       "properties": {
         "route": { "enum": ["direct", "authenticated-proxy", "unknown"] },
         "proxyUsed": { "type": ["boolean", "null"] }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "route": { "const": "direct" },
+            "proxyUsed": { "const": false }
+          }
+        },
+        {
+          "properties": {
+            "route": { "const": "authenticated-proxy" },
+            "proxyUsed": { "const": true }
+          }
+        },
+        {
+          "properties": {
+            "route": { "const": "unknown" },
+            "proxyUsed": { "type": "null" }
+          }
+        }
+      ]
     },
     "outcome": {
       "type": "object",

@@ -212,6 +212,140 @@ Performance description
 }
 `;
 
+exports[`versioned public report artifacts > matches the legacy-partial-without-status JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "status": "partial",
+    "summary": "The run was only partially evaluated and no overall grade was assigned."
+  },
+  "protocol": {
+    "era": "modern",
+    "version": "2026-07-28"
+  },
+  "provenance": {
+    "proxyUsed": false,
+    "route": "direct"
+  },
+  "schemaVersion": "1.0.0",
+  "score": null,
+  "sections": [
+    {
+      "description": "Core Protocol description",
+      "evidence": [
+        {
+          "context": "Core Protocol context",
+          "message": "✓ Core Protocol evidence",
+          "metadata": {
+            "endpoint": "https://legacy-partial.example/mcp",
+            "protocolEra": "modern",
+            "protocolVersion": "2026-07-28",
+            "route": "direct"
+          }
+        }
+      ],
+      "id": "protocol",
+      "name": "Core Protocol",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Capabilities description",
+      "evidence": [
+        {
+          "message": "⚠ Capability checks were skipped after the connection closed."
+        }
+      ],
+      "id": "capabilities",
+      "name": "Capabilities",
+      "score": {
+        "earned": null,
+        "maximum": 10
+      },
+      "status": "skipped"
+    }
+  ],
+  "target": {
+    "negotiatedEndpoint": "https://legacy-partial.example/mcp",
+    "testedEndpoint": "https://legacy-partial.example/mcp"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://legacy-partial.example/mcp
+
+## Outcome
+
+**partial** — The run was only partially evaluated and no overall grade was assigned.
+
+## Score
+
+Not scored.
+
+## Endpoint and provenance
+
+- Tested endpoint: https://legacy-partial.example/mcp
+- Negotiated endpoint: https://legacy-partial.example/mcp
+- Route: direct
+- Proxy used: no
+
+## Protocol and transport
+
+- Protocol era: modern
+- Protocol version: 2026-07-28
+
+## Sections
+
+### Core Protocol
+
+Status: evaluated
+
+Score: 15 / 15
+
+Core Protocol description
+
+- ✓ Core Protocol evidence
+  - Context: Core Protocol context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://legacy-partial.example/mcp",
+      "protocolEra": "modern",
+      "protocolVersion": "2026-07-28",
+      "route": "direct"
+    }
+    \`\`\`
+
+### Capabilities
+
+Status: skipped
+
+Score: Not scored (maximum 10)
+
+Capabilities description
+
+- ⚠ Capability checks were skipped after the connection closed.
+",
+  "name": "legacy-partial-without-status",
+}
+`;
+
 exports[`versioned public report artifacts > matches the legacy-sse JSON and Markdown golden 1`] = `
 {
   "json": "{
