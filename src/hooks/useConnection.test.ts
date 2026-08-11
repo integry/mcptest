@@ -23,6 +23,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
 
 import { useConnection } from './useConnection';
 import { BrowserOAuthProvider } from '../utils/oauthFlow';
+import { getStoredOAuthTrace } from '../utils/oauthTrace';
 import {
   ProxiedAuthenticationError,
   TransportConnectionError,
@@ -104,6 +105,7 @@ describe('connection URL finalization', () => {
     expect(connectionMocks.attempt.mock.calls[0][4]).toBe(false);
     expect(view.connection.serverUrl).toBe(endpoint.toString());
     expect(view.connection.connectionStatus).toBe('Connected');
+    expect(getStoredOAuthTrace(endpoint.toString(), sessionStorage)).toBeUndefined();
     expect(JSON.parse(localStorage.getItem('mcpRecentServers') || '[]')).toContainEqual({
       url: endpoint.toString(),
     });
@@ -180,6 +182,90 @@ describe('connection URL finalization', () => {
       undefined
     );
     expect(view.connection.connectionStatus).toBe('Connected');
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'target_challenge',
+        provenance: 'direct_target',
+        response: { status: 401 },
+      }),
+      expect.objectContaining({
+        type: 'mcp_retry',
+        outcome: 'succeeded',
+        response: expect.objectContaining({
+          metadata: expect.objectContaining({
+            protocolEra: 'modern',
+            protocolEraHint: 'automatic',
+          }),
+        }),
+      }),
+    ]));
+    view.unmount();
+  });
+
+  it('keeps the stateful retry hint after challenge-driven OAuth', async () => {
+    const endpoint = 'https://stateful.example/mcp';
+    oauthMocks.begin.mockImplementationOnce(async () => {
+      const issuer = 'https://auth-stateful.example/';
+      const provider = new BrowserOAuthProvider(endpoint);
+      provider.saveDiscoveryState({
+        authorizationServerUrl: issuer,
+        authorizationServerMetadata: {
+          issuer,
+          authorization_endpoint: `${issuer}authorize`,
+          token_endpoint: `${issuer}token`,
+          response_types_supported: ['code'],
+        },
+      });
+      provider.saveTokens(
+        { access_token: 'stateful-token', token_type: 'Bearer', issuer },
+        { issuer }
+      );
+      return 'AUTHORIZED';
+    });
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([
+        new ProxiedAuthenticationError(401, 'target', new Error('Authorization required')),
+      ]))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: endpoint,
+        transportType: 'streamable-http',
+        protocolEra: 'stateful',
+        protocolVersion: '2025-11-25',
+      });
+    const view = renderConnectionHook();
+
+    await act(async () => {
+      await view.connection.handleConnect(
+        vi.fn(),
+        vi.fn(),
+        vi.fn(),
+        endpoint,
+        undefined,
+        'stateful'
+      );
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenLastCalledWith(
+      endpoint,
+      expect.anything(),
+      'stateful-token',
+      undefined,
+      false,
+      'stateful'
+    );
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'mcp_retry',
+        outcome: 'succeeded',
+        response: expect.objectContaining({
+          metadata: expect.objectContaining({
+            protocolEra: 'stateful',
+            protocolEraHint: 'stateful',
+          }),
+        }),
+      }),
+    ]));
     view.unmount();
   });
 
@@ -227,6 +313,14 @@ describe('connection URL finalization', () => {
     expect(oauthMocks.begin).not.toHaveBeenCalled();
     expect(view.connection.needsOAuthConfig).toBe(false);
     expect(view.connection.connectionError).not.toBeNull();
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)).toMatchObject({
+      outcome: { status: 'failed' },
+      events: expect.arrayContaining([expect.objectContaining({
+        type: 'target_challenge',
+        provenance: 'authenticated_proxy',
+        route: 'proxy',
+      })]),
+    });
     view.unmount();
   });
 

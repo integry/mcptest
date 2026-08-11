@@ -13,6 +13,7 @@ import {
   type ProxyAuthenticationSource,
   type TransportCandidateFailure,
 } from './transportDetection';
+import { recordOAuthAuthenticationChallenge } from './oauthTrace';
 import type { TransportType } from '../types';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
@@ -29,6 +30,26 @@ const isConfiguredProxyTarget = (value: string, proxyUrl: string): boolean => {
 const normalizeServerUrl = (value: string): string => {
   const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
   return new URL(withProtocol).toString();
+};
+
+const recordEvaluationAuthenticationChallenge = (
+  targetUrl: string,
+  failure: EvaluationRouteFailure
+): void => {
+  if (
+    typeof sessionStorage === 'undefined'
+    || (failure.httpStatus !== 401 && failure.httpStatus !== 403)
+    || failure.authenticationSource !== 'target'
+  ) return;
+
+  recordOAuthAuthenticationChallenge({
+    targetUrl,
+    status: failure.httpStatus,
+    source: 'target',
+    route: failure.route,
+    storage: sessionStorage,
+    requestUrl: failure.candidateUrl || targetUrl,
+  });
 };
 
 export const getEvaluationTargetUrl = (
@@ -748,6 +769,7 @@ export async function evaluateServer(
     if (targetAuthFailure) {
       report.outcome = 'authorization-required';
       report.authenticationUrl = targetAuthFailure.candidateUrl || serverUrl;
+      recordEvaluationAuthenticationChallenge(report.authenticationUrl, targetAuthFailure);
       report.sections.auth = {
         name: 'Authorization Required',
         description: 'OAuth authorization is required before this server can be evaluated',
@@ -840,6 +862,10 @@ export async function evaluateServer(
       report.outcome = 'authorization-required';
       report.authenticationUrl = capabilityEvaluation.targetAuthenticationFailures[0].candidateUrl
         || getEvaluationTargetUrl(connection.url, connection.usedProxy);
+      recordEvaluationAuthenticationChallenge(
+        report.authenticationUrl,
+        capabilityEvaluation.targetAuthenticationFailures[0]
+      );
       report.sections = { auth: {
         name: 'Authorization Required',
         description: 'OAuth authorization is required before this server can be evaluated',

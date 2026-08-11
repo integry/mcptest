@@ -62,6 +62,7 @@ import {
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
 } from './utils/oauthFlow';
+import { recordOAuthAuthenticationChallenge } from './utils/oauthTrace';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -1369,6 +1370,21 @@ function App() {
           );
           const isTargetAuthError = authenticationChallenge?.source === 'target';
           const isProxyAuthError = authenticationChallenge?.source === 'proxy';
+          if (authenticationChallenge) {
+            const trace = recordOAuthAuthenticationChallenge({
+              targetUrl: card.serverUrl,
+              status: authenticationChallenge.status,
+              source: authenticationChallenge.source,
+              route: shouldUseProxy ? 'proxy' : 'direct',
+              storage: sessionStorage,
+            });
+            if (isProxyAuthError) {
+              trace.terminal(
+                'failed',
+                'The saved-card request stopped at authenticated proxy access; target OAuth discovery was not started.'
+              );
+            }
+          }
           
           // Use enhanced error formatting for better debugging information
           const errorDetails = formatErrorForDisplay(err, {

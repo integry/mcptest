@@ -13,6 +13,11 @@ import {
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
 } from '../utils/oauthFlow';
+import {
+  OAuthFlightRecorder,
+  recordOAuthAuthenticationChallenge,
+  resumeOAuthFlightRecorder,
+} from '../utils/oauthTrace';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -381,6 +386,10 @@ export const useConnection = (
     let finalProtocolVersion: string | null = null;
     let finalUrl: string | null = null;
     let finalUsedProxy = false;
+    let connectionRoute: 'direct' | 'proxy' = 'direct';
+    let oauthTrace: OAuthFlightRecorder | undefined;
+    let oauthRetryPending = false;
+    let connectionAttemptStartedAt = Date.now();
     const withConnectionTimeout = async <T,>(attempt: Promise<T>): Promise<T> => {
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
@@ -399,6 +408,8 @@ export const useConnection = (
 
     // Helper function to attempt direct connection
     const connectDirectly = async () => {
+      connectionRoute = 'direct';
+      connectionAttemptStartedAt = Date.now();
       setIsProxied(false);
       addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
       // Set OAuth connection flag based on whether we have an access token
@@ -419,6 +430,8 @@ export const useConnection = (
 
     // Helper function to attempt proxy connection
     const connectViaProxy = async () => {
+      connectionRoute = 'proxy';
+      connectionAttemptStartedAt = Date.now();
       if (!import.meta.env.VITE_PROXY_URL) {
         return Promise.reject(new Error("Proxy not configured."));
       }
@@ -496,6 +509,20 @@ export const useConnection = (
           finalUrl = result.url;
           finalUsedProxy = usedProxy;
           connectionSuccess = true;
+          if (oauthRetryPending) {
+            oauthTrace?.enrichLast('mcp_retry', {
+              outcome: 'succeeded',
+              explanation: `The authenticated MCP retry succeeded using the ${result.protocolEra} protocol path.`,
+              response: {
+                metadata: {
+                  transportType: result.transportType,
+                  protocolEra: result.protocolEra,
+                  protocolVersion: result.protocolVersion,
+                },
+              },
+            });
+            oauthRetryPending = false;
+          }
           addLogEntry({
             type: 'info',
             data: `${usedProxy ? 'Proxy connection' : 'Connection'} successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}`
@@ -506,7 +533,29 @@ export const useConnection = (
             && !attemptedAutomaticOAuth
             && !hasExplicitTargetCredential;
 
-          if (!shouldDiscoverOAuth) throw error;
+          if (challenge) {
+            oauthTrace = oauthTrace || recordOAuthAuthenticationChallenge({
+              targetUrl,
+              status: challenge.status,
+              source: challenge.source,
+              route: challenge.source === 'proxy' ? 'proxy' : connectionRoute,
+              storage: sessionStorage,
+              timing: {
+                startedAt: new Date(connectionAttemptStartedAt).toISOString(),
+                durationMs: Math.max(0, Date.now() - connectionAttemptStartedAt),
+              },
+            });
+          }
+
+          if (!shouldDiscoverOAuth) {
+            oauthTrace?.terminal(
+              'failed',
+              challenge?.source === 'proxy'
+                ? 'The connection stopped at authenticated proxy access; target OAuth discovery was not started.'
+                : 'The target authentication challenge was not converted into automatic OAuth discovery.'
+            );
+            throw error;
+          }
           attemptedAutomaticOAuth = true;
 
           addLogEntry({
@@ -545,6 +594,17 @@ export const useConnection = (
               type: 'info',
               data: '✅ OAuth authorization found. Retrying the MCP connection.'
             });
+            oauthTrace = oauthTrace || resumeOAuthFlightRecorder(targetUrl, sessionStorage);
+            oauthTrace?.record({
+              type: 'mcp_retry',
+              outcome: 'started',
+              provenance: 'direct_target',
+              route: connectionRoute,
+              explanation: `Retrying the MCP connection with OAuth credentials using the ${protocolEraHint || 'negotiated'} protocol path.`,
+              request: { method: 'POST', url: targetUrl },
+              response: { metadata: { protocolEraHint: protocolEraHint || 'automatic' } },
+            });
+            oauthRetryPending = true;
           } catch (oauthError) {
             setIsAuthFlowActive(false);
             setOauthProgress(null);

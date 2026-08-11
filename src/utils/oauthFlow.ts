@@ -4,6 +4,7 @@ import {
   RegistrationRejectedError,
   type AuthOptions,
   type AuthResult,
+  type FetchLike,
   type OAuthClientInformationContext,
   type OAuthClientMetadata,
   type OAuthClientProvider,
@@ -11,6 +12,28 @@ import {
   type StoredOAuthClientInformation,
   type StoredOAuthTokens,
 } from '@modelcontextprotocol/client';
+import {
+  OAuthFlightRecorder,
+  createOAuthFlightRecorder,
+  createOAuthTraceFetch,
+  resumeOAuthFlightRecorder,
+  sanitizeOAuthTraceUrl,
+} from './oauthTrace';
+
+export {
+  OAUTH_TRACE_VERSION,
+  OAuthFlightRecorder,
+  createOAuthFlightRecorder,
+  getStoredOAuthTrace,
+  recordOAuthAuthenticationChallenge,
+  sanitizeOAuthTraceUrl,
+  serializeOAuthTrace,
+} from './oauthTrace';
+export type {
+  OAuthTraceEventV1,
+  OAuthTraceEventType,
+  OAuthTraceV1,
+} from './oauthTrace';
 
 const PRODUCTION_ORIGIN = 'https://mcptest.io';
 export const OAUTH_CALLBACK_PATH = '/oauth/callback';
@@ -52,10 +75,12 @@ export interface BrowserOAuthProviderOptions {
   redirectUrl?: string;
   clientMetadataUrl?: string;
   redirect?: (authorizationUrl: URL) => void | Promise<void>;
+  trace?: OAuthFlightRecorder;
 }
 
 export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
   authenticate?: (provider: OAuthClientProvider, options: AuthOptions) => Promise<AuthResult>;
+  fetchFn?: FetchLike;
   forceReauthorization?: boolean;
   scope?: string;
 }
@@ -67,6 +92,7 @@ export interface CompletedOAuthFlow {
 
 export interface PrepareManualOAuthClientOptions extends BrowserOAuthProviderOptions {
   discover?: typeof discoverOAuthServerInfo;
+  fetchFn?: FetchLike;
 }
 
 export interface OAuthAuthorization {
@@ -153,6 +179,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   private readonly storage: OAuthStorage;
   private readonly storeKey: string;
   private readonly redirect: (authorizationUrl: URL) => void | Promise<void>;
+  private readonly trace?: OAuthFlightRecorder;
 
   constructor(
     readonly serverUrl: string,
@@ -163,6 +190,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     this.storeKey = storageKeyForServer(this.serverUrl);
     this.redirectUrl = options.redirectUrl || defaultRedirectUrl();
     this.redirect = options.redirect || defaultRedirect;
+    this.trace = options.trace;
 
     const productionCallback = `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`;
     this.clientMetadataUrl = options.clientMetadataUrl ?? (
@@ -204,6 +232,17 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
     const manualClient = this.readManualClient(ctx.issuer);
     if (manualClient) {
+      this.trace?.registerSecret(manualClient.clientSecret);
+      if (!this.trace?.hasEvent('pre_registered_client', 'succeeded')) {
+        this.trace?.record({
+          type: 'pre_registered_client',
+          outcome: 'succeeded',
+          provenance: 'oauth_client',
+          route: 'client',
+          explanation: 'Using the pre-registered OAuth client configured for this authorization server.',
+          response: { metadata: { issuer: ctx.issuer, hasClientSecret: Boolean(manualClient.clientSecret) } },
+        });
+      }
       return {
         client_id: manualClient.clientId,
         ...(manualClient.clientSecret ? { client_secret: manualClient.clientSecret } : {}),
@@ -212,6 +251,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     }
 
     const storedClient = this.readState().clients?.[ctx.issuer];
+    if (storedClient?.client_secret) this.trace?.registerSecret(storedClient.client_secret);
     return storedClient?.registeredManually ? undefined : storedClient;
   }
 
@@ -228,12 +268,32 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   ): void {
     const issuer = ctx?.issuer || clientInformation.issuer;
     if (!issuer) throw new Error('Cannot store OAuth client information without an issuer.');
+    this.trace?.registerSecret(clientInformation.client_secret);
 
     const state = this.readState();
     this.writeState({
       ...state,
       clients: { ...state.clients, [issuer]: clientInformation },
     });
+    if (!clientInformation.registeredManually) {
+      const response = {
+        metadata: { issuer, clientIdAssigned: Boolean(clientInformation.client_id) },
+      };
+      if (!this.trace?.enrichLast('dynamic_client_registration', {
+        outcome: 'succeeded',
+        explanation: 'Dynamic client registration succeeded and the client information was stored.',
+        response,
+      })) {
+        this.trace?.record({
+          type: 'dynamic_client_registration',
+          outcome: 'succeeded',
+          provenance: 'authorization_server',
+          route: 'direct',
+          explanation: 'Dynamic client registration succeeded and the client information was stored.',
+          response,
+        });
+      }
+    }
   }
 
   tokens(ctx?: OAuthClientInformationContext): StoredOAuthTokens | undefined {
@@ -248,6 +308,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   saveTokens(tokens: StoredOAuthTokens, ctx?: OAuthClientInformationContext): void {
     const issuer = ctx?.issuer || tokens.issuer;
     if (!issuer) throw new Error('Cannot store OAuth tokens without an issuer.');
+    this.trace?.registerSecret(tokens.access_token, tokens.refresh_token);
 
     const state = this.readState();
     this.writeState({
@@ -267,21 +328,112 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   redirectToAuthorization(authorizationUrl: URL): void | Promise<void> {
+    const selectedClientId = authorizationUrl.searchParams.get('client_id');
+    if (this.clientMetadataUrl && selectedClientId === this.clientMetadataUrl) {
+      this.trace?.record({
+        type: 'cimd',
+        outcome: 'succeeded',
+        provenance: 'oauth_client',
+        route: 'client',
+        explanation: 'The authorization server advertised Client ID Metadata Documents, so the published client metadata URL was selected.',
+        request: { method: 'GET', url: sanitizeOAuthTraceUrl(this.clientMetadataUrl) },
+      });
+    }
+    this.trace?.record({
+      type: 'authorization_redirect',
+      outcome: 'redirected',
+      provenance: 'authorization_server',
+      route: 'browser',
+      explanation: 'Redirecting the browser to the authorization endpoint.',
+      request: { method: 'GET', url: sanitizeOAuthTraceUrl(authorizationUrl) },
+    });
     return this.redirect(authorizationUrl);
   }
 
   saveCodeVerifier(codeVerifier: string): void {
+    this.trace?.registerSecret(codeVerifier);
     this.updateState({ codeVerifier });
+    this.trace?.record({
+      type: 'pkce',
+      outcome: 'succeeded',
+      provenance: 'oauth_client',
+      route: 'client',
+      explanation: 'Generated and stored a PKCE verifier for the authorization-code flow.',
+      response: { metadata: { method: 'S256' } },
+    });
   }
 
   codeVerifier(): string {
     const codeVerifier = this.readState().codeVerifier;
     if (!codeVerifier) throw new Error('OAuth PKCE verifier is missing. Start authentication again.');
+    this.trace?.registerSecret(codeVerifier);
     return codeVerifier;
   }
 
   saveDiscoveryState(discovery: OAuthDiscoveryState): void {
     this.updateState({ discovery });
+    const resourceResponse = {
+      metadata: {
+        resource: discovery.resourceMetadata?.resource,
+        authorizationServers: discovery.resourceMetadata?.authorization_servers,
+        resourceMetadataUrl: discovery.resourceMetadataUrl,
+      },
+    };
+    if (discovery.resourceMetadata) {
+      if (!this.trace?.enrichLast('protected_resource_metadata', {
+        outcome: 'succeeded',
+        explanation: 'Protected-resource metadata identified the authorization server for this MCP target.',
+        response: resourceResponse,
+      })) {
+        this.trace?.record({
+          type: 'protected_resource_metadata',
+          outcome: 'succeeded',
+          provenance: 'direct_target',
+          route: 'direct',
+          explanation: 'Protected-resource metadata identified the authorization server for this MCP target.',
+          response: resourceResponse,
+        });
+      }
+    } else if (!this.trace?.hasEvent('protected_resource_metadata')) {
+      this.trace?.record({
+        type: 'protected_resource_metadata',
+        outcome: 'skipped',
+        provenance: 'direct_target',
+        route: 'direct',
+        explanation: 'Protected-resource metadata was unavailable, so OAuth discovery used the target URL fallback.',
+        response: resourceResponse,
+      });
+    }
+
+    const metadata = discovery.authorizationServerMetadata;
+    const serverResponse = {
+      metadata: {
+        issuer: metadata?.issuer || discovery.authorizationServerUrl,
+        authorizationEndpoint: metadata?.authorization_endpoint,
+        tokenEndpoint: metadata?.token_endpoint,
+        registrationEndpoint: metadata?.registration_endpoint,
+        codeChallengeMethodsSupported: metadata?.code_challenge_methods_supported,
+        clientIdMetadataDocumentSupported: metadata?.client_id_metadata_document_supported,
+      },
+    };
+    const outcome = metadata ? 'succeeded' : 'failed';
+    const explanation = metadata
+      ? 'Authorization-server metadata was discovered and validated.'
+      : 'Authorization-server metadata was not available.';
+    if (!this.trace?.enrichLast('authorization_server_metadata', {
+      outcome,
+      explanation,
+      response: serverResponse,
+    })) {
+      this.trace?.record({
+        type: 'authorization_server_metadata',
+        outcome,
+        provenance: 'authorization_server',
+        route: 'direct',
+        explanation,
+        response: serverResponse,
+      });
+    }
   }
 
   discoveryState(): OAuthDiscoveryState | undefined {
@@ -423,17 +575,49 @@ export const beginOAuthFlow = async (
   const normalizedServerUrl = normalizeOAuthServerUrl(serverUrl);
   const storage = options.storage || getSessionStorage();
   storage.setItem(OAUTH_SERVER_URL_KEY, normalizedServerUrl);
-
-  const provider = new BrowserOAuthProvider(normalizedServerUrl, options);
+  const pendingTrace = options.trace || resumeOAuthFlightRecorder(normalizedServerUrl, storage);
+  const trace = pendingTrace && !pendingTrace.snapshot().outcome
+    ? pendingTrace
+    : createOAuthFlightRecorder({ targetUrl: normalizedServerUrl, storage });
+  const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...options, trace });
   provider.invalidateCredentials('verifier');
   const authenticate = options.authenticate || auth;
-  const result = await authenticate(provider, {
-    serverUrl: normalizedServerUrl,
-    ...(options.scope ? { scope: options.scope } : {}),
-    ...(options.forceReauthorization ? { forceReauthorization: true } : {}),
-  });
-  if (result === 'AUTHORIZED') provider.syncLegacyTokens();
-  return result;
+  const fetchFn = createOAuthTraceFetch(trace, options.fetchFn || fetch);
+  try {
+    const result = await authenticate(provider, {
+      serverUrl: normalizedServerUrl,
+      fetchFn,
+      ...(options.scope ? { scope: options.scope } : {}),
+      ...(options.forceReauthorization ? { forceReauthorization: true } : {}),
+    });
+    if (result === 'AUTHORIZED') {
+      provider.syncLegacyTokens();
+      trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
+    } else {
+      trace.terminal('redirected', 'OAuth authorization is awaiting the browser callback.');
+    }
+    return result;
+  } catch (error) {
+    if (isOAuthClientConfigurationRequired(error)) {
+      trace.record({
+        type: 'pre_registered_client',
+        outcome: 'required',
+        provenance: 'oauth_client',
+        route: 'client',
+        explanation: 'CIMD and dynamic registration were unavailable; a pre-registered OAuth client is required.',
+      });
+      trace.terminal(
+        'manual_client_required',
+        'OAuth discovery completed, but the authorization server requires a pre-registered client.'
+      );
+    } else {
+      trace.terminal(
+        'failed',
+        `OAuth authorization failed${error instanceof Error ? ` during ${error.name}` : ''}.`
+      );
+    }
+    throw error;
+  }
 };
 
 export const prepareManualOAuthClient = async (
@@ -441,10 +625,23 @@ export const prepareManualOAuthClient = async (
   options: PrepareManualOAuthClientOptions = {}
 ): Promise<void> => {
   const normalizedServerUrl = normalizeOAuthServerUrl(serverUrl);
-  const { discover = discoverOAuthServerInfo, ...providerOptions } = options;
-  const provider = new BrowserOAuthProvider(normalizedServerUrl, providerOptions);
-  const discovery = provider.discoveryState() || await discover(normalizedServerUrl);
-  provider.saveDiscoveryState(discovery);
+  const storage = options.storage || getSessionStorage();
+  const trace = options.trace
+    || resumeOAuthFlightRecorder(normalizedServerUrl, storage)
+    || createOAuthFlightRecorder({ targetUrl: normalizedServerUrl, storage });
+  const { discover, fetchFn, ...providerOptions } = options;
+  const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...providerOptions, storage, trace });
+  try {
+    const discovery = provider.discoveryState() || (discover
+      ? await discover(normalizedServerUrl)
+      : await discoverOAuthServerInfo(normalizedServerUrl, {
+        fetchFn: createOAuthTraceFetch(trace, fetchFn || fetch),
+      }));
+    provider.saveDiscoveryState(discovery);
+  } catch (error) {
+    trace.terminal('failed', 'OAuth metadata discovery failed while preparing manual client registration.');
+    throw error;
+  }
 };
 
 export const completeOAuthFlow = async (
@@ -456,32 +653,67 @@ export const completeOAuthFlow = async (
   if (!serverUrl) throw new Error('OAuth server context is missing. Start authentication again.');
 
   const callback = callbackUrl instanceof URL ? callbackUrl : new URL(callbackUrl);
-  const provider = new BrowserOAuthProvider(serverUrl, options);
-  provider.assertState(callback.searchParams.get('state'));
-
-  const responseError = callback.searchParams.get('error');
-  if (responseError) {
-    throw new OAuthAuthorizationResponseError(
-      responseError,
-      callback.searchParams.get('error_description')
-    );
-  }
-
+  const trace = options.trace
+    || resumeOAuthFlightRecorder(serverUrl, storage)
+    || createOAuthFlightRecorder({ targetUrl: serverUrl, storage });
   const authorizationCode = callback.searchParams.get('code');
-  if (!authorizationCode) throw new Error('OAuth callback did not include an authorization code.');
-
-  const issuer = callback.searchParams.get('iss') || undefined;
-  const authenticate = options.authenticate || auth;
-  const result = await authenticate(provider, {
-    serverUrl,
-    authorizationCode,
-    ...(issuer ? { iss: issuer } : {}),
+  const callbackState = callback.searchParams.get('state');
+  trace.registerSecret(authorizationCode, callbackState);
+  trace.record({
+    type: 'callback',
+    outcome: 'started',
+    provenance: 'browser_callback',
+    route: 'browser',
+    explanation: 'Received the browser authorization callback and began validating it.',
+    request: { method: 'GET', url: sanitizeOAuthTraceUrl(callback) },
   });
-  if (result !== 'AUTHORIZED') throw new Error('OAuth callback did not complete authorization.');
 
-  provider.invalidateCredentials('verifier');
-  storage.setItem('oauth_completed_time', Date.now().toString());
-  return { serverUrl, issuer };
+  const provider = new BrowserOAuthProvider(serverUrl, { ...options, trace });
+  try {
+    provider.assertState(callbackState);
+
+    const responseError = callback.searchParams.get('error');
+    if (responseError) {
+      throw new OAuthAuthorizationResponseError(
+        responseError,
+        callback.searchParams.get('error_description')
+      );
+    }
+
+    if (!authorizationCode) throw new Error('OAuth callback did not include an authorization code.');
+
+    const issuer = callback.searchParams.get('iss') || undefined;
+    const authenticate = options.authenticate || auth;
+    const result = await authenticate(provider, {
+      serverUrl,
+      authorizationCode,
+      fetchFn: createOAuthTraceFetch(trace, options.fetchFn || fetch),
+      ...(issuer ? { iss: issuer } : {}),
+    });
+    if (result !== 'AUTHORIZED') throw new Error('OAuth callback did not complete authorization.');
+
+    trace.enrichLast('callback', {
+      outcome: 'succeeded',
+      explanation: 'The browser callback was valid and the authorization code was exchanged successfully.',
+    });
+    provider.invalidateCredentials('verifier');
+    storage.setItem('oauth_completed_time', Date.now().toString());
+    trace.terminal('authorized', 'OAuth authorization completed successfully.');
+    return { serverUrl, issuer };
+  } catch (error) {
+    trace.enrichLast('callback', {
+      outcome: 'failed',
+      explanation: error instanceof OAuthStateMismatchError
+        ? 'The browser callback failed state validation before token exchange.'
+        : error instanceof OAuthAuthorizationResponseError
+          ? 'The authorization server returned an error in the browser callback.'
+          : !authorizationCode
+            ? 'The browser callback did not contain an authorization code.'
+            : 'The browser callback could not complete OAuth authorization.',
+    });
+    trace.terminal('failed', 'OAuth authorization failed while processing the browser callback.');
+    throw error;
+  }
 };
 
 export const clearOAuthTokens = (
