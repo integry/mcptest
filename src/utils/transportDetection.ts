@@ -1,4 +1,9 @@
-import type { Client, FetchLike, ProtocolEra } from '@modelcontextprotocol/client';
+import {
+  extractWWWAuthenticateParams,
+  type Client,
+  type FetchLike,
+  type ProtocolEra,
+} from '@modelcontextprotocol/client';
 import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
@@ -38,6 +43,9 @@ export interface ObservedAuthenticationChallenge {
   status: 401 | 403;
   source: ProxyAuthenticationSource;
   responseHeaders?: Record<string, string>;
+  /** Exact, ephemeral RFC 9728 location used by discovery; never persisted in raw form. */
+  resourceMetadataUrl?: string;
+  scope?: string;
   method?: string;
   requestUrl?: string;
   startedAt?: string;
@@ -57,13 +65,17 @@ export interface ObservedTransportRequest {
 
 export class ProxiedAuthenticationError extends Error {
   readonly cause: unknown;
+  readonly resourceMetadataUrl?: string;
+  readonly scope?: string;
 
   constructor(
     readonly status: 401 | 403,
     readonly responseSource: ProxyAuthenticationSource,
     cause: unknown,
     request?: ObservedTransportRequest,
-    readonly responseHeaders?: Record<string, string>
+    readonly responseHeaders?: Record<string, string>,
+    resourceMetadataUrl?: string,
+    scope?: string
   ) {
     super(
       responseSource === 'target'
@@ -76,6 +88,10 @@ export class ProxiedAuthenticationError extends Error {
     this.requestUrl = request?.url;
     this.startedAt = request?.startedAt;
     this.durationMs = request?.durationMs;
+    if (resourceMetadataUrl) {
+      Object.defineProperty(this, 'resourceMetadataUrl', { value: resourceMetadataUrl });
+    }
+    if (scope) Object.defineProperty(this, 'scope', { value: scope });
   }
 
   readonly method?: string;
@@ -83,6 +99,22 @@ export class ProxiedAuthenticationError extends Error {
   readonly startedAt?: string;
   readonly durationMs?: number;
 }
+
+const attachEphemeralChallengeParameters = <T extends ObservedAuthenticationChallenge>(
+  challenge: T,
+  parameters: Pick<ObservedAuthenticationChallenge, 'resourceMetadataUrl' | 'scope'>
+): T => {
+  if (parameters.resourceMetadataUrl) {
+    Object.defineProperty(challenge, 'resourceMetadataUrl', {
+      value: parameters.resourceMetadataUrl,
+      enumerable: false,
+    });
+  }
+  if (parameters.scope) {
+    Object.defineProperty(challenge, 'scope', { value: parameters.scope, enumerable: false });
+  }
+  return challenge;
+};
 
 export const getObservedAuthenticationChallenge = (
   error: unknown,
@@ -92,7 +124,7 @@ export const getObservedAuthenticationChallenge = (
   seen.add(error);
 
   if (error instanceof ProxiedAuthenticationError) {
-    return {
+    return attachEphemeralChallengeParameters({
       status: error.status,
       source: error.responseSource,
       ...(error.responseHeaders ? { responseHeaders: error.responseHeaders } : {}),
@@ -100,7 +132,7 @@ export const getObservedAuthenticationChallenge = (
       ...(error.requestUrl ? { requestUrl: error.requestUrl } : {}),
       ...(error.startedAt ? { startedAt: error.startedAt } : {}),
       ...(error.durationMs !== undefined ? { durationMs: error.durationMs } : {}),
-    };
+    }, error);
   }
 
   const nestedErrors = error instanceof TransportConnectionError
@@ -334,6 +366,24 @@ const authenticationChallengeHeaders = (response: Response): Record<string, stri
     : undefined;
 };
 
+const authenticationChallengeParameters = (response: Response): {
+  resourceMetadataUrl?: string;
+  scope?: string;
+} => {
+  try {
+    const parameters = extractWWWAuthenticateParams(response);
+    return {
+      ...(parameters.resourceMetadataUrl
+        ? { resourceMetadataUrl: parameters.resourceMetadataUrl.toString() }
+        : {}),
+      ...(parameters.scope ? { scope: parameters.scope } : {}),
+    };
+  } catch {
+    // An invalid challenge is still recorded, but cannot steer discovery.
+    return {};
+  }
+};
+
 const observeAuthenticationResponses = (
   usesProxy: boolean,
   onChallenge: (challenge: ObservedAuthenticationChallenge) => void,
@@ -371,7 +421,8 @@ const observeAuthenticationResponses = (
         ? 'target'
         : 'proxy';
     const responseHeaders = authenticationChallengeHeaders(response);
-    onChallenge({
+    const challengeParameters = authenticationChallengeParameters(response);
+    onChallenge(attachEphemeralChallengeParameters({
       status: response.status,
       source: responseSource,
       ...(responseHeaders ? { responseHeaders } : {}),
@@ -379,7 +430,7 @@ const observeAuthenticationResponses = (
       requestUrl: attemptedRequest.url,
       startedAt: attemptedRequest.startedAt,
       durationMs: attemptedRequest.durationMs,
-    });
+    }, challengeParameters));
   }
   return response;
 };
@@ -630,7 +681,9 @@ export async function attemptParallelConnections(
                 durationMs: authenticationChallenge.durationMs,
               }
             : undefined,
-          authenticationChallenge.responseHeaders
+          authenticationChallenge.responseHeaders,
+          authenticationChallenge.resourceMetadataUrl,
+          authenticationChallenge.scope
         );
       }
       throw error;

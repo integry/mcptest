@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  attachSavedCardOAuthChallenge,
+  beginSavedCardOAuthFlow,
   classifySavedCardAuthenticationFailure,
   resumeSavedCardAuthenticatedMcpRetry,
 } from './App';
@@ -7,6 +9,10 @@ import {
   ProxiedAuthenticationError,
   TransportConnectionError,
 } from './utils/transportDetection';
+import {
+  beginOAuthFlow,
+  getOAuthPrerequisite,
+} from './utils/oauthFlow';
 import {
   getStoredOAuthTrace,
   recordOAuthAuthenticationChallenge,
@@ -16,6 +22,96 @@ describe('saved card authentication failures', () => {
   beforeEach(() => {
     sessionStorage.clear();
   });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('uses the saved GitHub challenge and authenticated proxy after direct discovery is blocked by CORS', async () => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const resourceMetadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
+    const issuer = 'https://github.com/login/oauth';
+    const authorizationMetadataUrl = 'https://github.com/.well-known/oauth-authorization-server/login/oauth';
+    const directCalls: string[] = [];
+    const proxyTargets: string[] = [];
+    const getIdToken = vi.fn().mockResolvedValue('firebase-session-token');
+    const startFlow = vi.fn((serverUrl, options) => beginOAuthFlow(serverUrl, options));
+    const savedError = attachSavedCardOAuthChallenge({
+      authenticationSource: 'target',
+    }, {
+      resourceMetadataUrl,
+      scope: 'repo read:user',
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('https://proxy.mcptest.test/')) {
+        const proxyRequest = new URL(url);
+        proxyTargets.push(proxyRequest.searchParams.get('target') || '');
+        expect(new Headers(init?.headers).get('authorization')).toBe(
+          'Bearer firebase-session-token'
+        );
+        return new Response(JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-MCP-Proxy-Response-Source': 'target',
+          },
+        });
+      }
+
+      directCalls.push(url);
+      if (url === resourceMetadataUrl) {
+        return new Response(JSON.stringify({
+          resource: target,
+          authorization_servers: [issuer],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url === authorizationMetadataUrl) {
+        throw new TypeError('Failed to fetch');
+      }
+      return new Response('Not found', { status: 404 });
+    }));
+
+    let caught: unknown;
+    try {
+      await beginSavedCardOAuthFlow({
+        serverUrl: target,
+        challenge: savedError,
+        proxyUrl: 'https://proxy.mcptest.test/',
+        currentUser: { getIdToken },
+        discoveryProxyApplicable: true,
+        startFlow,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getIdToken).toHaveBeenCalledOnce();
+    expect(startFlow).toHaveBeenCalledWith(target, expect.objectContaining({
+      resourceMetadataUrl,
+      scope: 'repo read:user',
+      discoveryProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-session-token',
+      },
+    }));
+    expect(directCalls).toContain(resourceMetadataUrl);
+    expect(directCalls).toContain(authorizationMetadataUrl);
+    expect(proxyTargets).toEqual([authorizationMetadataUrl]);
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'pre_registered_client_required',
+      providerName: 'GitHub',
+    });
+    expect(JSON.stringify(savedError)).not.toContain(resourceMetadataUrl);
+  });
+
   it('does not request OAuth for a direct JSON-RPC Forbidden application error', () => {
     const error = new Error('MCP error -32000: Forbidden operation');
 

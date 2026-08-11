@@ -932,6 +932,62 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
+  it('passes exact challenge metadata and scope into OAuth discovery without serializing them', async () => {
+    const endpoint = 'https://challenge.example/mcp/';
+    const metadataUrl = 'https://challenge.example/.well-known/oauth-protected-resource/mcp/?token=challenge-secret';
+    oauthMocks.begin.mockResolvedValueOnce('REDIRECT');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        401,
+        'target',
+        new Error('Authorization required'),
+        { method: 'POST', url: endpoint },
+        { 'www-authenticate': 'Bearer resource_metadata="[sanitized]"' },
+        metadataUrl,
+        'channels:read chat:write'
+      ),
+    ]));
+    const view = renderConnectionHook();
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.objectContaining({
+      resourceMetadataUrl: metadataUrl,
+      scope: 'channels:read chat:write',
+    }));
+    const trace = getStoredOAuthTrace(endpoint, sessionStorage);
+    expect(JSON.stringify(trace)).not.toContain('challenge-secret');
+    view.unmount();
+  });
+
+  it('does not acquire or supply a discovery proxy when proxy fallback is disabled', async () => {
+    const endpoint = 'https://direct-discovery.example/mcp';
+    const getIdToken = vi.fn().mockResolvedValue('proxy-session-token');
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    authMocks.currentUser = { getIdToken };
+    oauthMocks.begin.mockResolvedValueOnce('REDIRECT');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        401,
+        'target',
+        new Error('Authorization required')
+      ),
+    ]));
+    const view = renderConnectionHook(undefined, false);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(getIdToken).not.toHaveBeenCalled();
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
+      discoveryProxy: expect.anything(),
+    }));
+    view.unmount();
+  });
+
   it('does not launch target OAuth for a proxy-owned authentication failure', async () => {
     const endpoint = 'https://public.example/mcp';
     connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([

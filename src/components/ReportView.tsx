@@ -6,12 +6,15 @@ import ReportAuthorizationGate from './ReportAuthorizationGate';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
 import {
   beginOAuthFlow,
+  getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   prepareManualOAuthClient,
+  type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
+  isAuthenticationRequired,
   resolveEvaluationOutcome,
   type EvaluationReport,
 } from '../utils/evaluation';
@@ -147,6 +150,7 @@ const ReportView: React.FC = () => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [testedServers, setTestedServers] = useState<TestedServerHistoryEntry[]>([]);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
+  const [oauthPrerequisite, setOAuthPrerequisite] = useState<OAuthPrerequisite | null>(null);
   const [oauthAction, setOAuthAction] = useState<'authorize' | 'configure' | null>(null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -161,6 +165,11 @@ const ReportView: React.FC = () => {
   const [hasInitialized, setHasInitialized] = useState(false);
   const isRunningRef = useRef(false);
   const hasProcessedOAuthReturn = useRef(false);
+  const oauthChallengeRef = useRef<{
+    authenticationUrl: string;
+    resourceMetadataUrl?: string;
+    scope?: string;
+  } | null>(null);
   
   // Store handleRunReport in a ref to avoid dependency issues
   const handleRunReportRef = useRef<((
@@ -337,6 +346,7 @@ const ReportView: React.FC = () => {
     setProgress(['Starting evaluation...']);
     setReport(null);
     setOAuthTrace(undefined);
+    oauthChallengeRef.current = null;
     
     // Only navigate if we're not already on the correct URL
     const currentReportUrl = urlParam ? decodeURIComponent(urlParam) : '';
@@ -364,6 +374,15 @@ const ReportView: React.FC = () => {
         oauthAccessToken,
         targetHeaders
       );
+      if (isAuthenticationRequired(reportData)) {
+        oauthChallengeRef.current = {
+          authenticationUrl: reportData.authenticationUrl || reportData.serverUrl,
+          ...(reportData.resourceMetadataUrl
+            ? { resourceMetadataUrl: reportData.resourceMetadataUrl }
+            : {}),
+          ...(reportData.scope ? { scope: reportData.scope } : {}),
+        };
+      }
       setReport(reportData);
       if (typeof sessionStorage !== 'undefined') {
         setOAuthTrace(getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage));
@@ -418,15 +437,36 @@ const ReportView: React.FC = () => {
     }));
 
     try {
+      const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+      const discoveryProxyToken = proxyUrl && currentUser
+        ? await currentUser.getIdToken()
+        : undefined;
+      const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
+        ? oauthChallengeRef.current
+        : undefined;
       const result = await beginOAuthFlow(authenticationUrl, {
+        ...(challenge?.resourceMetadataUrl
+          ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
+          : {}),
+        ...(challenge?.scope ? { scope: challenge.scope } : {}),
+        ...(proxyUrl && discoveryProxyToken
+          ? {
+              discoveryProxy: {
+                url: proxyUrl,
+                authorizationToken: discoveryProxyToken,
+              },
+            }
+          : {}),
         deferAuthorizedTraceOutcome: true,
       });
       if (result === 'AUTHORIZED') {
         await handleRunReportRef.current?.(authenticationUrl);
       }
     } catch (error) {
-      if (isOAuthClientConfigurationRequired(error)) {
+      const prerequisite = getOAuthPrerequisite(error);
+      if (isOAuthClientConfigurationRequired(error) || prerequisite) {
         setOAuthConfigServerUrl(authenticationUrl);
+        setOAuthPrerequisite(prerequisite || null);
         return;
       }
       const message = error instanceof Error ? error.message : 'Unknown OAuth error';
@@ -434,21 +474,53 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, []);
+  }, [currentUser]);
 
   const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('configure');
     setOAuthError(null);
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'report',
+      serverUrl: authenticationUrl,
+      timestamp: Date.now()
+    }));
+
     try {
-      await prepareManualOAuthClient(authenticationUrl);
+      const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+      const discoveryProxyToken = proxyUrl && currentUser
+        ? await currentUser.getIdToken()
+        : undefined;
+      const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
+        ? oauthChallengeRef.current
+        : undefined;
+      await prepareManualOAuthClient(authenticationUrl, {
+        ...(challenge?.resourceMetadataUrl
+          ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
+          : {}),
+        ...(proxyUrl && discoveryProxyToken
+          ? {
+              discoveryProxy: {
+                url: proxyUrl,
+                authorizationToken: discoveryProxyToken,
+              },
+            }
+          : {}),
+      });
       setOAuthConfigServerUrl(authenticationUrl);
+      setOAuthPrerequisite(null);
     } catch (error) {
+      const prerequisite = getOAuthPrerequisite(error);
+      if (isOAuthClientConfigurationRequired(error) || prerequisite) {
+        setOAuthConfigServerUrl(authenticationUrl);
+        setOAuthPrerequisite(prerequisite || null);
+        return;
+      }
       const message = error instanceof Error ? error.message : 'Unknown OAuth discovery error';
       setOAuthError(`OAuth provider discovery failed: ${message}`);
     } finally {
       setOAuthAction(null);
     }
-  }, []);
+  }, [currentUser]);
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required';
@@ -779,12 +851,17 @@ const ReportView: React.FC = () => {
       {oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
             await startOAuth(configuredServerUrl);
           }}
-          onCancel={() => setOAuthConfigServerUrl(null)}
+          onCancel={() => {
+            setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
+          }}
         />
       )}
     </div>

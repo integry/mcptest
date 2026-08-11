@@ -8,6 +8,7 @@ import {
   beginOAuthFlow,
   clearOAuthTokens,
   completeOAuthFlow,
+  getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   prepareManualOAuthClient,
@@ -232,7 +233,10 @@ describe('BrowserOAuthProvider', () => {
     saveManualOAuthClient(SERVER_URL, 'manual-client');
 
     const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
-    expect(discover).toHaveBeenCalledWith(SERVER_URL);
+    expect(discover).toHaveBeenCalledWith(
+      SERVER_URL,
+      expect.objectContaining({ fetchFn: expect.any(Function) })
+    );
     expect(provider.clientInformation({ issuer: ISSUER_A })).toMatchObject({
       client_id: 'manual-client',
       issuer: ISSUER_A,
@@ -284,6 +288,30 @@ describe('BrowserOAuthProvider', () => {
     expect(restored.discoveryState()?.authorizationServerUrl).toBe(ISSUER_A);
     expect(() => restored.assertState(state)).not.toThrow();
     expect(() => restored.assertState('wrong-state')).toThrow(OAuthStateMismatchError);
+  });
+
+  it('keeps an exact challenge metadata URL only on the current provider instance', () => {
+    const challengeSecret = 'challenge-secret';
+    const resourceMetadataUrl = `https://mcp.example/.well-known/oauth-protected-resource?token=${challengeSecret}`;
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      resourceMetadataUrl,
+      resourceMetadata: {
+        resource: SERVER_URL,
+        authorization_servers: [ISSUER_A],
+      },
+    });
+
+    expect(provider.discoveryState()?.resourceMetadataUrl).toBe(resourceMetadataUrl);
+    expect(new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() })
+      .discoveryState()?.resourceMetadataUrl).toBeUndefined();
+    const allSessionStorage = Array.from({ length: sessionStorage.length }, (_, index) => {
+      const key = sessionStorage.key(index) || '';
+      return `${key}:${sessionStorage.getItem(key) || ''}`;
+    }).join('\n');
+    expect(allSessionStorage).not.toContain(challengeSecret);
   });
 
   it('publishes CIMD only for the exact production callback', () => {
@@ -526,6 +554,77 @@ describe('OAuth flight recorder integration', () => {
     expect(trace?.outcome?.status).toBe('redirected');
   });
 
+  it('preserves a redirect callback failure after successful discovery', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const redirectError = new Error('Redirect callback failed');
+    let caught: unknown;
+
+    try {
+      await beginOAuthFlow(SERVER_URL, {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        redirect: vi.fn(() => { throw redirectError; }),
+        fetchFn: oauthFetch({ supportsCimd: true, supportsDcr: true, calls }),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(redirectError);
+    expect(getOAuthPrerequisite(caught)).toBeUndefined();
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      outcome: { status: 'failed' },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'authorization_server_metadata',
+          outcome: 'succeeded',
+        }),
+        expect.objectContaining({
+          type: 'authorization_redirect',
+          outcome: 'redirected',
+        }),
+      ]),
+    });
+  });
+
+  it('preserves a storage failure after successful discovery', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const storageError = new Error('Discovery storage failed');
+    const storage = {
+      getItem: (key: string) => sessionStorage.getItem(key),
+      setItem: (key: string, value: string) => {
+        if (key.startsWith('mcp_oauth_v2:') && value.includes('"discovery"')) {
+          throw storageError;
+        }
+        sessionStorage.setItem(key, value);
+      },
+      removeItem: (key: string) => sessionStorage.removeItem(key),
+    };
+    let caught: unknown;
+
+    try {
+      await beginOAuthFlow(SERVER_URL, {
+        storage,
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        redirect: vi.fn(),
+        fetchFn: oauthFetch({ supportsCimd: true, supportsDcr: true, calls }),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(storageError);
+    expect(getOAuthPrerequisite(caught)).toBeUndefined();
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      outcome: { status: 'failed' },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'authorization_server_metadata',
+          outcome: 'succeeded',
+        }),
+      ]),
+    });
+  });
+
   it('supersedes a redirected terminal outcome when the callback resumes the trace', async () => {
     let state = '';
     await beginOAuthFlow(SERVER_URL, {
@@ -588,7 +687,7 @@ describe('OAuth flight recorder integration', () => {
 
     await expect(beginOAuthFlow(SERVER_URL, flowOptions)).rejects.toBeTruthy();
     expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
-      outcome: { status: 'manual_client_required' },
+      outcome: { status: 'pre_registered_client_required' },
       events: expect.arrayContaining([
         expect.objectContaining({ type: 'pre_registered_client', outcome: 'required' }),
       ]),
@@ -632,7 +731,7 @@ describe('OAuth flight recorder integration', () => {
     const manualRequiredTrace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
     expect(manualRequiredTrace).toMatchObject({
       traceId,
-      outcome: { status: 'manual_client_required' },
+      outcome: { status: 'pre_registered_client_required' },
       events: expect.arrayContaining([
         expect.objectContaining({ type: 'target_challenge', outcome: 'challenged' }),
         expect.objectContaining({ type: 'dynamic_client_registration', outcome: 'failed' }),
@@ -905,7 +1004,7 @@ describe('OAuth flight recorder integration', () => {
     })).rejects.toBeTruthy();
 
     const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
-    expect(trace?.outcome?.status).toBe('failed');
+    expect(trace?.outcome?.status).toBe('discovery_blocked_invalid');
     expect(trace?.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: 'authorization_server_metadata',
@@ -945,6 +1044,535 @@ describe('OAuth flight recorder integration', () => {
         explanation: expect.stringContaining('rejected the response'),
       }),
     ]));
-    expect(trace?.outcome?.status).toBe('failed');
+    expect(trace?.outcome?.status).toBe('discovery_blocked_invalid');
+  });
+});
+
+describe('OAuth provider interoperability matrix', () => {
+  const authorizationMetadata = (
+    issuer: string,
+    capabilities: {
+      cimd?: boolean;
+      registrationEndpoint?: string;
+      tokenEndpointAuthMethods?: string[];
+    } = {}
+  ) => ({
+    issuer,
+    authorization_endpoint: `${issuer.replace(/\/$/, '')}/authorize`,
+    token_endpoint: `${issuer.replace(/\/$/, '')}/token`,
+    response_types_supported: ['code'],
+    code_challenge_methods_supported: ['S256'],
+    client_id_metadata_document_supported: capabilities.cimd || false,
+    ...(capabilities.tokenEndpointAuthMethods
+      ? { token_endpoint_auth_methods_supported: capabilities.tokenEndpointAuthMethods }
+      : {}),
+    ...(capabilities.registrationEndpoint
+      ? { registration_endpoint: capabilities.registrationEndpoint }
+      : {}),
+  });
+
+  it('classifies explicit Figma approval evidence ahead of an invalid-client-metadata code', async () => {
+    const target = 'https://mcp.figma.com/mcp';
+    const resourceMetadataUrl = 'https://mcp.figma.com/.well-known/oauth-protected-resource';
+    const issuer = 'https://api.figma.com';
+    const registrationEndpoint = 'https://api.figma.com/v1/oauth/mcp/register';
+    const calls: string[] = [];
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      calls.push(`${init?.method || 'GET'} ${url}`);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({
+          resource: target,
+          authorization_servers: [issuer],
+          scopes_supported: ['file_content:read'],
+        });
+      }
+      if (url === 'https://api.figma.com/.well-known/oauth-authorization-server') {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return jsonResponse({
+          error: 'invalid_client_metadata',
+          error_description: 'This software requires provider approval',
+        }, { status: 403 });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn,
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(calls).toContain(`GET ${resourceMetadataUrl}`);
+    expect(calls).toContain(`POST ${registrationEndpoint}`);
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'provider_approval_required',
+      providerName: 'Figma',
+      canConfigureClient: false,
+      documentationUrl: 'https://developers.figma.com/docs/figma-mcp-server/',
+      httpStatus: 403,
+    });
+    expect(isOAuthClientConfigurationRequired(caught)).toBe(false);
+    const trace = getStoredOAuthTrace(target, sessionStorage);
+    expect(trace?.outcome?.status).toBe('provider_approval_required');
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'dynamic_client_registration',
+        outcome: 'failed',
+        response: expect.objectContaining({
+          status: 403,
+          metadata: expect.objectContaining({ error: 'invalid_client_metadata' }),
+        }),
+      }),
+    ]));
+  });
+
+  it.each([
+    [
+      'rate-limited',
+      429,
+      { error: 'temporarily_unavailable', error_description: 'Too many registration requests' },
+      'rate-limited dynamic client registration',
+    ],
+    [
+      'server-error',
+      503,
+      { error: 'temporarily_unavailable', error_description: 'Registration service unavailable' },
+      'server error HTTP 503',
+    ],
+    [
+      'invalid-metadata',
+      400,
+      { error: 'invalid_client_metadata', error_description: 'redirect_uris must contain one entry' },
+      'rejected the submitted dynamic client metadata',
+    ],
+    [
+      'ambiguous-invalid-client-metadata',
+      400,
+      { error: 'invalid_client_metadata', error_description: 'client_uri is not approved' },
+      'rejected the submitted dynamic client metadata',
+    ],
+    [
+      'ambiguous-redirect-rejection',
+      400,
+      { error: 'invalid_redirect_uri', error_description: 'redirect URI is not approved' },
+      'rejected the submitted dynamic client metadata',
+    ],
+    [
+      'malformed-response',
+      400,
+      'not-json',
+      'malformed error response',
+    ],
+    [
+      'generic-rejection',
+      401,
+      { error: 'access_denied', error_description: 'Registration request rejected' },
+      'did not indicate a provider approval or allow-list policy',
+    ],
+  ])('does not classify a %s DCR failure as provider approval', async (
+    slug,
+    status,
+    registrationBody,
+    expectedExplanation
+  ) => {
+    const target = `https://mcp-${slug}.example/mcp`;
+    const resourceMetadataUrl = `https://mcp-${slug}.example/.well-known/oauth-protected-resource`;
+    const issuer = `https://issuer-${slug}.example`;
+    const registrationEndpoint = `${issuer}/register`;
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return typeof registrationBody === 'string'
+          ? new Response(registrationBody, { status })
+          : jsonResponse(registrationBody, { status });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        fetchFn,
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      canConfigureClient: true,
+      httpStatus: status,
+      explanation: expect.stringContaining(expectedExplanation),
+    });
+    expect(getStoredOAuthTrace(target, sessionStorage)).toMatchObject({
+      outcome: { status: 'discovery_blocked_invalid' },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'dynamic_client_registration',
+          outcome: 'failed',
+          response: expect.objectContaining({ status }),
+        }),
+      ]),
+    });
+  });
+
+  it('falls Slack protected-resource discovery back from the MCP path to root', async () => {
+    const target = 'https://mcp.slack.com/mcp';
+    const issuer = 'https://slack.com';
+    const calls: string[] = [];
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://mcp.slack.com/.well-known/oauth-protected-resource/mcp') {
+        return new Response('Not found', { status: 404 });
+      }
+      if (url === 'https://mcp.slack.com/.well-known/oauth-protected-resource') {
+        return jsonResponse({
+          resource: target,
+          authorization_servers: [issuer],
+          scopes_supported: ['channels:read', 'chat:write'],
+        });
+      }
+      if (url === 'https://slack.com/.well-known/oauth-authorization-server') {
+        return jsonResponse(authorizationMetadata(issuer));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(calls.slice(0, 2)).toEqual([
+      'https://mcp.slack.com/.well-known/oauth-protected-resource/mcp',
+      'https://mcp.slack.com/.well-known/oauth-protected-resource',
+    ]);
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'pre_registered_client_required',
+      providerName: 'Slack',
+      canConfigureClient: true,
+      requiredScopes: ['channels:read', 'chat:write'],
+      publicClientSecretSupported: 'unknown',
+    });
+    expect(getStoredOAuthTrace(target, sessionStorage)?.outcome?.status)
+      .toBe('pre_registered_client_required');
+  });
+
+  it.each([
+    [
+      'Slack',
+      'https://mcp.slack.com/mcp',
+      'https://slack.com',
+      ['none'],
+      true,
+    ],
+    [
+      'Figma',
+      'https://mcp.figma.com/mcp',
+      'https://api.figma.com',
+      ['client_secret_post'],
+      false,
+    ],
+  ])('uses %s token endpoint auth metadata instead of conflicting host guidance', async (
+    providerName,
+    target,
+    issuer,
+    tokenEndpointAuthMethods,
+    expectedSupport
+  ) => {
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, { tokenEndpointAuthMethods }));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      providerName,
+      kind: 'pre_registered_client_required',
+      publicClientSecretSupported: expectedSupport,
+    });
+  });
+
+  it('preserves GitHub /mcp/ identity and proxies only non-CORS metadata discovery', async () => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const resourceMetadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
+    const issuer = 'https://github.com/login/oauth';
+    const authorizationMetadataUrl = 'https://github.com/.well-known/oauth-authorization-server/login/oauth';
+    const directCalls: string[] = [];
+    const proxyCalls: string[] = [];
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      directCalls.push(url);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === authorizationMetadataUrl) throw new TypeError('Failed to fetch');
+      return new Response('Not found', { status: 404 });
+    };
+    const proxyFetch: FetchLike = async (input, init) => {
+      const proxyUrl = new URL(String(input));
+      proxyCalls.push(proxyUrl.searchParams.get('target') || '');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer firebase-token');
+      return jsonResponse(authorizationMetadata(issuer), {
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        fetchFn: directFetch,
+        discoveryProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'firebase-token',
+          fetchFn: proxyFetch,
+        },
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(directCalls).toContain(resourceMetadataUrl);
+    expect(proxyCalls).toEqual([authorizationMetadataUrl]);
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'pre_registered_client_required',
+      providerName: 'GitHub',
+      canConfigureClient: true,
+    });
+    const trace = getStoredOAuthTrace(target, sessionStorage);
+    expect(trace?.targetUrl).toBe(target);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'failed',
+        route: 'direct',
+        request: { method: 'GET', url: authorizationMetadataUrl },
+      }),
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        route: 'proxy',
+        request: { method: 'GET', url: authorizationMetadataUrl },
+      }),
+    ]));
+  });
+
+  it('sanitizes a query-bearing challenge URL after the direct CORS failure', async () => {
+    const target = 'https://challenge-query.example/mcp';
+    const challengeSecret = 'challenge-secret';
+    const resourceMetadataUrl = `https://challenge-query.example/.well-known/oauth-protected-resource?token=${challengeSecret}&tenant=acme`;
+    const issuer = 'https://issuer.challenge-query.example';
+    const proxyTargets: string[] = [];
+    recordOAuthAuthenticationChallenge({
+      targetUrl: target,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+      method: 'POST',
+      requestUrl: target,
+      responseHeaders: {
+        'www-authenticate': `Bearer resource_metadata="${resourceMetadataUrl}"`,
+      },
+    });
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) throw new TypeError('Failed to fetch');
+      if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+        return jsonResponse(authorizationMetadata(issuer));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const proxyFetch: FetchLike = async (input) => {
+      const proxyUrl = new URL(String(input));
+      proxyTargets.push(proxyUrl.searchParams.get('target') || '');
+      return jsonResponse({ resource: target, authorization_servers: [issuer] }, {
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    };
+
+    await expect(beginOAuthFlow(target, {
+      resourceMetadataUrl,
+      fetchFn: directFetch,
+      discoveryProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-token',
+        fetchFn: proxyFetch,
+      },
+      redirect: vi.fn(),
+    })).rejects.toBeTruthy();
+
+    expect(proxyTargets).toEqual([resourceMetadataUrl]);
+    const trace = getStoredOAuthTrace(target, sessionStorage);
+    const directFailure = trace?.events.find((event) => (
+      event.type === 'protected_resource_metadata'
+      && event.outcome === 'failed'
+      && event.route === 'direct'
+    ));
+    expect(new URL(directFailure?.request?.url || '').searchParams.get('token'))
+      .toBe(OAUTH_TRACE_REDACTED);
+    expect(new URL(directFailure?.request?.url || '').searchParams.get('tenant')).toBe('acme');
+    expect(JSON.stringify(trace)).not.toContain(challengeSecret);
+    const allSessionStorage = Array.from({ length: sessionStorage.length }, (_, index) => {
+      const key = sessionStorage.key(index) || '';
+      return `${key}:${sessionStorage.getItem(key) || ''}`;
+    }).join('\n');
+    expect(allSessionStorage).not.toContain(challengeSecret);
+  });
+
+  it('records a rejected proxy fetch with proxy provenance and no duplicate direct failure', async () => {
+    const target = 'https://proxy-transport.example/mcp';
+    const resourceMetadataUrl = 'https://proxy-transport.example/.well-known/oauth-protected-resource';
+    const issuer = 'https://issuer.proxy-transport.example';
+    const authorizationMetadataUrl = `${issuer}/.well-known/oauth-authorization-server`;
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === authorizationMetadataUrl) throw new TypeError('Direct CORS failure');
+      return new Response('Not found', { status: 404 });
+    };
+    const proxyFetch: FetchLike = async () => {
+      throw new TypeError('Proxy transport failure');
+    };
+
+    await expect(beginOAuthFlow(target, {
+      resourceMetadataUrl,
+      fetchFn: directFetch,
+      discoveryProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-token',
+        fetchFn: proxyFetch,
+      },
+      redirect: vi.fn(),
+    })).rejects.toBeTruthy();
+
+    const failures = getStoredOAuthTrace(target, sessionStorage)?.events.filter((event) => (
+      event.type === 'authorization_server_metadata' && event.outcome === 'failed'
+    ));
+    expect(failures).toHaveLength(2);
+    expect(failures).toEqual([
+      expect.objectContaining({
+        provenance: 'authorization_server',
+        route: 'direct',
+        request: { method: 'GET', url: authorizationMetadataUrl },
+      }),
+      expect.objectContaining({
+        provenance: 'authenticated_proxy',
+        route: 'proxy',
+        request: { method: 'GET', url: authorizationMetadataUrl },
+      }),
+    ]);
+  });
+
+  it('stops at a proxy-owned discovery response instead of treating it as provider metadata', async () => {
+    const target = 'https://noncors.example/mcp';
+    const resourceMetadataUrl = 'https://noncors.example/.well-known/oauth-protected-resource';
+    const issuer = 'https://issuer.noncors.example';
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      throw new TypeError('Failed to fetch');
+    };
+    const proxyFetch: FetchLike = async () => new Response('Proxy session expired', {
+      status: 401,
+      headers: { 'X-MCP-Proxy-Response-Source': 'proxy' },
+    });
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        fetchFn: directFetch,
+        discoveryProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'expired-firebase-token',
+          fetchFn: proxyFetch,
+        },
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      failedStage: 'authorization server metadata',
+    });
+    expect(getStoredOAuthTrace(target, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'failed',
+        provenance: 'authenticated_proxy',
+        route: 'proxy',
+        response: expect.objectContaining({ status: 401 }),
+      }),
+    ]));
+  });
+
+  it.each([
+    ['Linear', 'https://mcp.linear.app/mcp', 'https://linear.app'],
+    ['Notion', 'https://mcp.notion.com/mcp', 'https://mcp.notion.com'],
+    ['Atlassian', 'https://mcp.atlassian.com/v1/mcp/authv2', 'https://auth.atlassian.com'],
+  ])('keeps %s on automatic CIMD authorization', async (_name, target, issuer) => {
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, { cimd: true }));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const redirect = vi.fn();
+
+    await expect(beginOAuthFlow(target, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn,
+      redirect,
+    })).resolves.toBe('REDIRECT');
+
+    expect(redirect).toHaveBeenCalledOnce();
+    expect(getStoredOAuthTrace(target, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'cimd', outcome: 'succeeded' }),
+      expect.objectContaining({ type: 'authorization_redirect', outcome: 'redirected' }),
+    ]));
   });
 });

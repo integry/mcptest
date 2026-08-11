@@ -77,6 +77,10 @@ export interface OAuthTraceEventV1 {
 export type OAuthTraceTerminalStatus =
   | 'authorized'
   | 'redirected'
+  | 'pre_registered_client_required'
+  | 'provider_approval_required'
+  | 'discovery_blocked_invalid'
+  /** @deprecated retained for traces written before provider outcome classification. */
   | 'manual_client_required'
   | 'failed'
   | 'cancelled';
@@ -610,7 +614,10 @@ export class OAuthFlightRecorder {
   }
 
   continueAfterManualClientRequired(): boolean {
-    if (this.trace.outcome?.status !== 'manual_client_required') return false;
+    if (
+      this.trace.outcome?.status !== 'manual_client_required'
+      && this.trace.outcome?.status !== 'pre_registered_client_required'
+    ) return false;
 
     delete this.trace.outcome;
     const provisionalTerminal = [...this.trace.events].reverse().find((event) => (
@@ -642,6 +649,8 @@ export class OAuthFlightRecorder {
         : status === 'redirected'
           ? 'redirected'
           : status === 'manual_client_required'
+            || status === 'pre_registered_client_required'
+            || status === 'provider_approval_required'
             ? 'required'
             : status === 'cancelled'
               ? 'cancelled'
@@ -724,6 +733,36 @@ export const createOAuthFlightRecorder = ({
     startedAt,
     events: [],
   }, storage, storageKeyForTarget(normalizedTarget));
+};
+
+type OAuthTraceResponseOrigin = {
+  route: 'direct' | 'proxy';
+  source: 'target' | 'proxy';
+};
+
+const oauthTraceResponseOrigins = new WeakMap<Response, OAuthTraceResponseOrigin>();
+const oauthTraceErrorOrigins = new WeakMap<object, OAuthTraceResponseOrigin>();
+
+class ProxyOwnedOAuthDiscoveryResponseError extends Error {}
+
+/** Attaches ephemeral proxy provenance to a response without modifying persisted data. */
+export const markOAuthTraceResponseOrigin = (
+  response: Response,
+  origin: OAuthTraceResponseOrigin
+): Response => {
+  oauthTraceResponseOrigins.set(response, origin);
+  return response;
+};
+
+/** Attaches ephemeral proxy provenance to a thrown fetch error. */
+export const markOAuthTraceErrorOrigin = <T,>(
+  error: T,
+  origin: OAuthTraceResponseOrigin
+): T => {
+  if ((typeof error === 'object' && error !== null) || typeof error === 'function') {
+    oauthTraceErrorOrigins.set(error as object, origin);
+  }
+  return error;
 };
 
 /** Starts a trace at the point an HTTP authentication challenge is actually observed. */
@@ -1020,17 +1059,23 @@ export const createOAuthTraceFetch = (
   const startedAt = new Date(startedAtMs).toISOString();
   try {
     const response = await fetchFn(input, init);
+    const responseOrigin = oauthTraceResponseOrigins.get(response) || {
+      route: 'direct' as const,
+      source: 'target' as const,
+    };
     const durationMs = Math.max(0, Date.now() - startedAtMs);
     recorder.record({
       type,
       outcome: response.ok ? 'started' : 'failed',
-      provenance: type === 'protected_resource_metadata'
-        ? 'direct_target'
-        : 'authorization_server',
-      route: 'direct',
+      provenance: responseOrigin.source === 'proxy'
+        ? 'authenticated_proxy'
+        : type === 'protected_resource_metadata'
+          ? 'direct_target'
+          : 'authorization_server',
+      route: responseOrigin.route,
       explanation: response.ok
-        ? `${oauthRequestLabel(type)} received HTTP ${response.status}; awaiting SDK parsing and validation.`
-        : explanationForRequest(type, false, response.status),
+        ? `${oauthRequestLabel(type)} received HTTP ${response.status} via ${responseOrigin.route} discovery; awaiting SDK parsing and validation.`
+        : `${explanationForRequest(type, false, response.status)} The response was ${responseOrigin.source}-owned and used ${responseOrigin.route} discovery.`,
       request: {
         method: details.method,
         url: sanitizeOAuthTraceUrl(details.url),
@@ -1041,16 +1086,35 @@ export const createOAuthTraceFetch = (
       },
       timing: { startedAt, durationMs },
     });
+    if (responseOrigin.source === 'proxy') {
+      throw new ProxyOwnedOAuthDiscoveryResponseError(
+        `Authenticated proxy returned its own HTTP ${response.status} response during OAuth discovery.`
+      );
+    }
     return response;
   } catch (error) {
+    if (error instanceof ProxyOwnedOAuthDiscoveryResponseError) throw error;
+    const traceableError = (
+      (typeof error === 'object' && error !== null) || typeof error === 'function'
+    ) ? error as object : undefined;
+    const errorOrigin = traceableError
+      ? oauthTraceErrorOrigins.get(traceableError)
+      : undefined;
+    if (traceableError) oauthTraceErrorOrigins.delete(traceableError);
+    const origin = errorOrigin || {
+      route: 'direct' as const,
+      source: 'target' as const,
+    };
     recorder.record({
       type,
       outcome: 'failed',
-      provenance: type === 'protected_resource_metadata'
-        ? 'direct_target'
-        : 'authorization_server',
-      route: 'direct',
-      explanation: `${explanationForRequest(type, false)} The request did not receive an HTTP response.`,
+      provenance: origin.source === 'proxy'
+        ? 'authenticated_proxy'
+        : type === 'protected_resource_metadata'
+          ? 'direct_target'
+          : 'authorization_server',
+      route: origin.route,
+      explanation: `${explanationForRequest(type, false)} The ${origin.route} request did not receive an HTTP response.`,
       request: {
         method: details.method,
         url: sanitizeOAuthTraceUrl(details.url),

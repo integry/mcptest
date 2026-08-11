@@ -11,8 +11,10 @@ import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import {
   beginOAuthFlow,
+  getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
+  type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
   OAuthFlightRecorder,
@@ -111,6 +113,7 @@ export const useConnection = (
   const [oauthProgress, setOauthProgress] = useState<string | null>(null);
   const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
+  const [oauthPrerequisite, setOAuthPrerequisite] = useState<OAuthPrerequisite | null>(null);
   const [oauthUserInfo, setOauthUserInfo] = useState<any>(null);
   const [isOAuthConnection, setIsOAuthConnection] = useState(false); // Track if current connection uses OAuth
 
@@ -264,6 +267,7 @@ export const useConnection = (
     setOauthProgress(null);
     setNeedsOAuthConfig(false);
     setOAuthConfigServerUrl(null);
+    setOAuthPrerequisite(null);
     setOauthUserInfo(null);
     setIsOAuthConnection(false);
     
@@ -338,10 +342,14 @@ export const useConnection = (
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
     logEvent('connect_attempt');
 
     // Clear any previous connection error
     setConnectionError(null);
+    setNeedsOAuthConfig(false);
+    setOAuthConfigServerUrl(null);
+    setOAuthPrerequisite(null);
 
     // Allow connect attempt even if already connected, but not if currently connecting or no target URL
     if (!targetUrl || isConnecting) {
@@ -530,9 +538,6 @@ export const useConnection = (
           (error.message?.toLowerCase().includes('failed to fetch') &&
             !error.message?.toLowerCase().includes('network'));
 
-        // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
-        const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
-
         if (isCorsError && shouldUseProxy && currentUser) {
           const result = await withConnectionTimeout(connectViaProxy());
           return { result, usedProxy: true };
@@ -623,8 +628,24 @@ export const useConnection = (
           if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
 
           try {
+            const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+            const discoveryProxyToken = shouldUseProxy && proxyUrl && currentUser
+              ? await currentUser.getIdToken()
+              : undefined;
             const result = await beginOAuthFlow(targetUrl, {
               ...(latestAccessToken ? { forceReauthorization: true } : {}),
+              ...(challenge.resourceMetadataUrl
+                ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
+                : {}),
+              ...(challenge.scope ? { scope: challenge.scope } : {}),
+              ...(shouldUseProxy && proxyUrl && discoveryProxyToken
+                ? {
+                    discoveryProxy: {
+                      url: proxyUrl,
+                      authorizationToken: discoveryProxyToken,
+                    },
+                  }
+                : {}),
               trace: oauthTrace,
               deferAuthorizedTraceOutcome: true,
             });
@@ -672,12 +693,26 @@ export const useConnection = (
             abortControllerRef.current = null;
 
             if (isOAuthClientConfigurationRequired(oauthError)) {
+              setOAuthPrerequisite(getOAuthPrerequisite(oauthError) || null);
               setNeedsOAuthConfig(true);
               setOAuthConfigServerUrl(targetUrl);
               setConnectionStatus('Authorization required');
               addLogEntry({
                 type: 'warning',
                 data: '⚠️ Automatic OAuth discovery completed, but this provider requires a pre-registered client.'
+              });
+              return;
+            }
+
+            const prerequisite = getOAuthPrerequisite(oauthError);
+            if (prerequisite) {
+              setOAuthPrerequisite(prerequisite);
+              setNeedsOAuthConfig(true);
+              setOAuthConfigServerUrl(targetUrl);
+              setConnectionStatus('Authorization prerequisite');
+              addLogEntry({
+                type: 'warning',
+                data: prerequisite.explanation,
               });
               return;
             }
@@ -803,9 +838,11 @@ export const useConnection = (
     isOAuthConnection, // Expose if current connection uses OAuth
     needsOAuthConfig, // Expose if OAuth config is needed
     oauthConfigServerUrl, // Expose the server URL that needs config
+    oauthPrerequisite,
     clearOAuthConfigNeed: () => {
       setNeedsOAuthConfig(false);
       setOAuthConfigServerUrl(null);
+      setOAuthPrerequisite(null);
     }, // Function to clear OAuth config need
     // Function to remove a server from the recent list
     removeRecentServer: (urlToRemove: string) => {

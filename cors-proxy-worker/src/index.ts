@@ -205,7 +205,7 @@ export default {
     } catch (error) {
       console.error('Proxy error:', error);
       if (error instanceof Response) {
-        return error;
+        return withCorsResponseHeaders(error, 'proxy');
       }
       return new Response('Error: Could not complete the proxy request.', { 
         status: 502,
@@ -292,6 +292,7 @@ function getCorsHeaders(
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': allowedHeaders,
+    'Access-Control-Expose-Headers': PROXY_RESPONSE_SOURCE_HEADER,
     [PROXY_RESPONSE_SOURCE_HEADER]: source,
   };
 }
