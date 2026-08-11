@@ -528,6 +528,7 @@ const ReportView: React.FC = () => {
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required';
+  const reportRequiresProxyAuthentication = report?.authenticationRequirement?.kind === 'proxy';
   const authorizationGateOptions = report
     ? getAuthorizationGateOptions(report, oauthTrace)
     : { offersOAuth: false, staticSchemes: [], isUnknown: true };
@@ -682,7 +683,30 @@ const ReportView: React.FC = () => {
               expandedItems={expandedItems}
               onToggleItem={toggleItemExpanded}
             />
-            {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
+            {reportRequiresProxyAuthentication && (
+              <section className="report-auth-gate" aria-labelledby="report-proxy-auth-title">
+                <div className="report-auth-heading">
+                  <div className="report-auth-icon" aria-hidden="true">
+                    <i className="bi bi-person-lock"></i>
+                  </div>
+                  <div>
+                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                      <h3 id="report-proxy-auth-title" className="mb-0">mcptest login required</h3>
+                      <span className="badge text-bg-warning">Not scored</span>
+                    </div>
+                    <p className="mb-0">
+                      The authenticated proxy requested a valid mcptest login before it could return
+                      target evidence. This is not target OAuth and is not an MCP server failure.
+                    </p>
+                  </div>
+                </div>
+                <div className="report-auth-note">
+                  Sign in again and retry the report. Target OAuth will only be offered if the MCP
+                  target subsequently returns its own authentication challenge.
+                </div>
+              </section>
+            )}
+            {reportRequiresAuthorization && !reportRequiresProxyAuthentication && authorizationGateOptions.offersOAuth && (
               <ReportAuthorizationGate
                 serverUrl={report.serverUrl}
                 error={oauthError}
@@ -692,7 +716,7 @@ const ReportView: React.FC = () => {
                 onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
               />
             )}
-            {reportRequiresAuthorization
+            {reportRequiresAuthorization && !reportRequiresProxyAuthentication
               && selectedStaticAuthorizationScheme && (
               <section className="report-auth-gate" aria-labelledby="report-static-auth-title">
                 <div className="report-auth-heading">
@@ -775,7 +799,7 @@ const ReportView: React.FC = () => {
                 </form>
               </section>
             )}
-            {reportRequiresAuthorization && authorizationGateOptions.isUnknown && (
+            {reportRequiresAuthorization && !reportRequiresProxyAuthentication && authorizationGateOptions.isUnknown && (
               <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
                 <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
                 <p>
@@ -862,6 +886,16 @@ const ReportView: React.FC = () => {
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
           prerequisite={oauthPrerequisite || undefined}
+          onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
+            const configuredServerUrl = oauthConfigServerUrl;
+            setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
+            await handleRunReport(
+              configuredServerUrl,
+              { Authorization: `Bearer ${token}` },
+              { priorChallenge: { outcome: 'challenged', provenance: 'direct_target' } }
+            );
+          } : undefined}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);

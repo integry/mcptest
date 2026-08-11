@@ -1004,10 +1004,13 @@ describe('connection URL finalization', () => {
     });
 
     expect(oauthMocks.begin).not.toHaveBeenCalled();
-    expect(view.connection.needsOAuthConfig).toBe(false);
-    expect(view.connection.connectionError).not.toBeNull();
+    expect(view.connection.needsOAuthConfig).toBe(true);
+    expect(view.connection.oauthPrerequisite).toMatchObject({
+      kind: 'proxy_authentication_required',
+    });
+    expect(view.connection.connectionError).toBeNull();
     expect(getStoredOAuthTrace(endpoint, sessionStorage)).toMatchObject({
-      outcome: { status: 'failed' },
+      outcome: { status: 'proxy_authentication_required' },
       events: expect.arrayContaining([expect.objectContaining({
         type: 'target_challenge',
         provenance: 'authenticated_proxy',

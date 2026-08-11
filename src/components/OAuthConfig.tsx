@@ -11,6 +11,7 @@ interface OAuthConfigProps {
   onConfigured: () => void;
   onCancel: () => void;
   prerequisite?: OAuthPrerequisite;
+  onBearerToken?: (token: string) => void | Promise<void>;
 }
 
 const OAuthConfig: React.FC<OAuthConfigProps> = ({
@@ -18,29 +19,33 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   onConfigured,
   onCancel,
   prerequisite,
+  onBearerToken,
 }) => {
   const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [showSecret, setShowSecret] = useState(false);
+  const [bearerToken, setBearerToken] = useState('');
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const serviceDomain = new URL(serverUrl).host;
   const callbackUrl = getOAuthCallbackUrl();
   const canConfigureClient = prerequisite?.canConfigureClient ?? true;
   const title = prerequisite?.kind === 'provider_approval_required'
     ? `${prerequisite.providerName} approval is required`
+    : prerequisite?.kind === 'proxy_authentication_required'
+      ? 'mcptest proxy authentication required'
+      : prerequisite?.kind === 'transient_discovery_failure'
+        ? 'OAuth discovery is temporarily unavailable'
     : prerequisite?.kind === 'discovery_blocked_invalid'
       ? 'OAuth discovery could not be completed'
+      : prerequisite?.configurationMode === 'operator-confidential'
+        ? `${prerequisite.providerName} host application required`
       : `Register an OAuth application for ${prerequisite?.providerName || serviceDomain}`;
 
   useEffect(() => {
     setClientId('');
-    setClientSecret('');
 
     // Only load credentials bound to the authorization server discovered for this resource.
     const storedClient = loadManualOAuthClient(serverUrl);
     if (storedClient) {
       setClientId(storedClient.clientId);
-      setClientSecret(storedClient.clientSecret || '');
     }
   }, [serverUrl]);
 
@@ -51,7 +56,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
     }
     
     try {
-      saveManualOAuthClient(serverUrl, clientId, clientSecret || undefined);
+      saveManualOAuthClient(serverUrl, clientId);
       setConfigurationError(null);
       onConfigured();
     } catch (error) {
@@ -75,16 +80,68 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
         </div>
 
         <p>
-          mcptest.io connected without credentials first and only opened this panel after the MCP
-          target returned an HTTP authentication challenge.
+          {prerequisite?.kind === 'proxy_authentication_required'
+            ? 'mcptest.io opened this prerequisite only after the proxy returned its own authentication response. Target OAuth discovery has not started.'
+            : 'mcptest.io connected without credentials first and only opened this panel after the MCP target returned an HTTP authentication challenge.'}
         </p>
 
         {prerequisite?.kind === 'provider_approval_required' && (
           <p>
             The advertised registration endpoint was attempted and returned
             {prerequisite.httpStatus ? ` HTTP ${prerequisite.httpStatus}` : ' a rejection'}.
-            Supplying arbitrary client credentials is not expected to bypass provider approval.
+            Supplying arbitrary ordinary OAuth credentials is not expected to bypass the provider&apos;s
+            catalog approval. An approved client configuration must be explicitly provisioned by the
+            mcptest operator before it can be used here.
           </p>
+        )}
+
+        {prerequisite?.configurationMode === 'operator-confidential' && (
+          <div className="alert alert-info" role="note">
+            This provider requires a fixed confidential host application. Its client secret and token
+            exchange belong in operator-controlled server configuration; mcptest will not ask you to
+            paste that secret into the browser or save it in browser storage.
+          </div>
+        )}
+
+        {prerequisite?.supportsBearerToken && (
+          <div className="oauth-bearer-option mb-4">
+            <h6>Use a {prerequisite.bearerTokenName || 'bearer token'}</h6>
+            <p className="mb-0">
+              This provider supports a bearer token on the MCP request. The token stays in memory
+              for the request and is not added to the URL or OAuth client storage.
+            </p>
+            {onBearerToken ? (
+              <form
+                className="mt-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const token = bearerToken.trim();
+                  if (token) void onBearerToken(token);
+                }}
+              >
+                <label className="form-label" htmlFor="oauth-prerequisite-bearer-token">
+                  {prerequisite.bearerTokenName || 'Bearer token'}
+                </label>
+                <input
+                  id="oauth-prerequisite-bearer-token"
+                  className="form-control"
+                  type="password"
+                  value={bearerToken}
+                  onChange={(event) => setBearerToken(event.target.value)}
+                  autoComplete="new-password"
+                  spellCheck={false}
+                />
+                <button className="btn btn-primary mt-3" type="submit" disabled={!bearerToken.trim()}>
+                  Retry with bearer token
+                </button>
+              </form>
+            ) : (
+              <p className="mt-2 mb-0">
+                Use the target <code>Authorization: Bearer …</code> credential option in Playground
+                or Report.
+              </p>
+            )}
+          </div>
         )}
 
         {prerequisite?.kind === 'discovery_blocked_invalid' && (
@@ -94,7 +151,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           </p>
         )}
 
-        {prerequisite && (
+        {prerequisite && prerequisite.kind !== 'proxy_authentication_required' && (
           <div className="oauth-prerequisite-details mb-4">
             <p className="mb-2"><strong>Redirect URI:</strong> <code>{callbackUrl}</code></p>
             <p className="mb-2">
@@ -126,7 +183,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           )}
           {prerequisite?.documentationUrl && (
             <a className="btn btn-outline-secondary" href={prerequisite.documentationUrl} target="_blank" rel="noreferrer">
-              Read provider documentation
+              {prerequisite.kind === 'provider_approval_required'
+                ? 'Read catalog and approval documentation'
+                : 'Read provider documentation'}
             </a>
           )}
         </div>
@@ -140,7 +199,8 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
             <h6>Configure an existing client</h6>
             <p className="text-muted">
               Register <code>{callbackUrl}</code>, use Authorization Code with PKCE, and enter the
-              resulting client information. It remains bound to this exact MCP resource and issuer.
+              public client ID. It remains bound to this exact MCP resource and issuer. Confidential
+              clients must be configured by the operator instead.
             </p>
 
             <div className="mb-3">
@@ -156,37 +216,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
               />
             </div>
             
-            <div className="mb-3">
-              <label htmlFor="clientSecret" className="form-label">
-                OAuth Client Secret 
-                <span className="text-muted ms-2">(optional for public clients)</span>
-              </label>
-              <div className="input-group">
-                <input
-                  type={showSecret ? "text" : "password"}
-                  className="form-control font-monospace"
-                  id="clientSecret"
-                  value={clientSecret}
-                  onChange={(e) => setClientSecret(e.target.value)}
-                  placeholder="Enter your OAuth client secret"
-                  autoComplete="off"
-                />
-                <button
-                  className="btn btn-outline-secondary"
-                  type="button"
-                  onClick={() => setShowSecret(!showSecret)}
-                >
-                  <i className={`bi bi-eye${showSecret ? '-slash' : ''}`}></i>
-                </button>
-              </div>
-              <small className="text-muted">
-                Leave this empty only when the provider supports a secretless public client.
-              </small>
-            </div>
-
             <p className="text-muted small">
-              Client information is stored only in this tab&apos;s session storage. A secret placed in
-              browser storage is not confidential; do not use a production confidential-client secret.
+              The public client ID is stored only in this tab&apos;s session storage. Client secrets are
+              never accepted or persisted by this browser flow.
             </p>
 
             <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!clientId}>

@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   beginOAuthFlow,
   getOAuthPrerequisite,
+  getProxyAuthenticationPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   type OAuthPrerequisite,
@@ -605,6 +606,19 @@ export const useConnection = (
           }
 
           if (!shouldDiscoverOAuth) {
+            if (challenge?.source === 'proxy' && !suppressOAuthDiscovery) {
+              const prerequisite = getProxyAuthenticationPrerequisite(targetUrl);
+              oauthTrace?.terminal('proxy_authentication_required', prerequisite.explanation);
+              setOAuthPrerequisite(prerequisite);
+              setNeedsOAuthConfig(true);
+              setOAuthConfigServerUrl(targetUrl);
+              setConnectionStatus('Proxy authentication required');
+              setIsConnecting(false);
+              setConnectionStartTime(null);
+              abortControllerRef.current = null;
+              addLogEntry({ type: 'warning', data: prerequisite.explanation });
+              return;
+            }
             if (!suppressOAuthDiscovery) oauthTrace?.terminal(
               'failed',
               challenge?.source === 'proxy'

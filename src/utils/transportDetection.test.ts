@@ -64,6 +64,12 @@ afterEach(() => {
 });
 
 describe('transport candidate generation', () => {
+  it('uses only Streamable HTTP candidates for Slack MCP', () => {
+    expect(getTransportCandidates('https://mcp.slack.com/mcp')).toEqual([
+      { url: 'https://mcp.slack.com/mcp', transportType: 'streamable-http' },
+      { url: 'https://mcp.slack.com/mcp/', transportType: 'streamable-http' },
+    ]);
+  });
   it('strictly redacts challenge parameters and credential variants in metadata URLs', () => {
     const sanitized = sanitizeAuthenticationChallenge(
       'Bearer realm="private-tenant", error="invalid_token", error_description="token rejected for alice@example.com", '

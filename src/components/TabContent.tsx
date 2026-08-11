@@ -70,6 +70,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
   const [lastResult, setLastResult] = useState<LogEntry | null>(null);
   const [catalogCredential, setCatalogCredential] = useState('');
+  const [prerequisiteBearerToken, setPrerequisiteBearerToken] = useState('');
   const [hasStartedFirstConnection, setHasStartedFirstConnection] = useState(() => Boolean(
     tab.serverUrl || tab.autoConnect || tab.resultShareData
   ));
@@ -83,6 +84,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       || (tab.catalogAuthType === 'bearer-token' ? 'Authorization' : 'x-api-key');
   }, [tab.catalogAuthType, tab.catalogRequiredHeaders]);
   const requestHeaders = useMemo(() => {
+    if (prerequisiteBearerToken) {
+      return { Authorization: `Bearer ${prerequisiteBearerToken}` };
+    }
     const credential = catalogCredential.trim();
     if (!credentialHeader || !credential) return undefined;
 
@@ -93,7 +97,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         : credential;
 
     return { [credentialHeader]: value };
-  }, [catalogCredential, credentialHeader, tab.catalogAuthType]);
+  }, [catalogCredential, credentialHeader, prerequisiteBearerToken, tab.catalogAuthType]);
   
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
@@ -987,6 +991,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
           prerequisite={oauthPrerequisite || undefined}
+          onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
+            setPrerequisiteBearerToken(token);
+            clearOAuthConfigNeed();
+            // Let React publish the in-memory request header before reconnecting.
+            setTimeout(() => handleConnectWrapper(), 0);
+          } : undefined}
           onConfigured={async () => {
             clearOAuthConfigNeed();
             try {

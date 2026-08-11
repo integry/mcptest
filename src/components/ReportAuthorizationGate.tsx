@@ -76,8 +76,9 @@ const ReportAuthorizationGate: React.FC<ReportAuthorizationGateProps> = ({
         <div>
           <h4>Use a registered OAuth client</h4>
           <p>
-            Choose this when the provider gave you a client ID, or when it does not allow
-            automatic client registration. Client credentials stay in this browser tab.
+            Choose this when the provider gave you a public client ID, or when it does not allow
+            automatic client registration. Confidential clients must be configured by the mcptest
+            operator; client secrets are never accepted into browser storage.
           </p>
         </div>
         <button
