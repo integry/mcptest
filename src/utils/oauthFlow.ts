@@ -192,6 +192,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     this.redirectUrl = options.redirectUrl || defaultRedirectUrl();
     this.redirect = options.redirect || defaultRedirect;
     this.trace = options.trace;
+    this.trace?.trackResourceMetadataUrl(this.readState().discovery?.resourceMetadataUrl);
 
     const productionCallback = `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`;
     this.clientMetadataUrl = options.clientMetadataUrl ?? (
@@ -385,6 +386,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
   saveDiscoveryState(discovery: OAuthDiscoveryState): void {
     this.updateState({ discovery });
+    this.trace?.trackResourceMetadataUrl(discovery.resourceMetadataUrl);
     const resourceResponse = {
       metadata: {
         resource: discovery.resourceMetadata?.resource,
@@ -620,12 +622,9 @@ export const beginOAuthFlow = async (
     });
     if (result === 'AUTHORIZED') {
       provider.syncLegacyTokens();
-      if (
-        options.deferAuthorizedTraceOutcome
-        && (trace.hasEvent('target_challenge') || trace.hasAuthenticatedMcpRetryState())
-      ) {
+      if (options.deferAuthorizedTraceOutcome) {
         trace.setAuthenticatedMcpRetryState('pending');
-      } else if (!options.deferAuthorizedTraceOutcome) {
+      } else {
         trace.terminal('authorized', 'OAuth authorization is available for the MCP target.');
       }
     } else {

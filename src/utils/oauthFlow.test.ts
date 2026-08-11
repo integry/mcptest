@@ -421,6 +421,19 @@ describe('OAuth callback completion', () => {
 });
 
 describe('OAuth flight recorder integration', () => {
+  it('retains pending retry ownership whenever an authorized outcome is deferred', async () => {
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate: vi.fn().mockResolvedValue('AUTHORIZED'),
+      redirect: vi.fn(),
+      deferAuthorizedTraceOutcome: true,
+    })).resolves.toBe('AUTHORIZED');
+
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)).toMatchObject({
+      authenticatedMcpRetry: { phase: 'pending' },
+    });
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.outcome).toBeUndefined();
+  });
+
   it('defers challenge-driven synchronous authorization until the MCP retry completes', async () => {
     recordOAuthAuthenticationChallenge({
       targetUrl: SERVER_URL,

@@ -268,6 +268,30 @@ export const sanitizeOAuthTraceUrl = (
   return sanitizeText(sanitized, secrets);
 };
 
+const sanitizeResponseHeaders = (
+  value: unknown,
+  secrets: ReadonlySet<string>
+): Record<string, string> => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  const sanitized: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof rawValue !== 'string') continue;
+    const key = rawKey.toLowerCase();
+    if (key === 'content-type') {
+      sanitized[key] = sanitizeText(rawValue, secrets);
+    } else if (key === 'location') {
+      sanitized[key] = sanitizeOAuthTraceUrl(rawValue, secrets);
+    } else if (key === 'www-authenticate') {
+      sanitized[key] = sanitizeText(
+        sanitizeAuthenticationChallenge(rawValue),
+        secrets
+      );
+    }
+  }
+  return sanitized;
+};
+
 const sanitizeValue = (
   value: unknown,
   secrets: ReadonlySet<string>,
@@ -275,7 +299,13 @@ const sanitizeValue = (
   seen = new WeakSet<object>()
 ): unknown => {
   if (key && isOAuthSensitiveKey(key)) return OAUTH_TRACE_REDACTED;
+  const normalizedKey = key?.toLowerCase();
+  if (normalizedKey === 'headers') return sanitizeResponseHeaders(value, secrets);
   if (typeof value === 'string') {
+    if (normalizedKey === 'www-authenticate') {
+      return sanitizeText(sanitizeAuthenticationChallenge(value), secrets);
+    }
+    if (normalizedKey === 'location') return sanitizeOAuthTraceUrl(value, secrets);
     if (key && isOAuthTraceUrlKey(key)) {
       return sanitizeOAuthTraceUrl(value, secrets);
     }
@@ -373,7 +403,8 @@ const classifyOAuthRequest = (
   urlValue: string,
   method: string,
   grantType?: string,
-  registrationRequest = false
+  registrationRequest = false,
+  trackedResourceMetadataUrl = false
 ): OAuthTraceEventType | undefined => {
   let pathname = '';
   try {
@@ -381,7 +412,7 @@ const classifyOAuthRequest = (
   } catch {
     pathname = urlValue;
   }
-  if (pathname.includes('/.well-known/oauth-protected-resource')) {
+  if (trackedResourceMetadataUrl || pathname.includes('/.well-known/oauth-protected-resource')) {
     return 'protected_resource_metadata';
   }
   if (
@@ -430,12 +461,14 @@ const PROVISIONAL_OAUTH_HTTP_EVENT_TYPES = new Set<OAuthTraceEventType>([
 
 export class OAuthFlightRecorder {
   private readonly secrets = new Set<string>();
+  private readonly resourceMetadataUrls = new Set<string>();
 
   constructor(
     private trace: OAuthTraceV1,
     private readonly storage?: OAuthStorage,
     private readonly storageKey = storageKeyForTarget(trace.targetUrl)
   ) {
+    for (const event of trace.events) this.captureResourceMetadataUrls(event);
     this.persist();
   }
 
@@ -461,8 +494,29 @@ export class OAuthFlightRecorder {
       sequence: this.trace.events.length + 1,
     };
     this.trace.events.push(recorded);
+    this.captureResourceMetadataUrls(recorded);
     this.persist();
     return recorded;
+  }
+
+  trackResourceMetadataUrl(value?: string | URL): void {
+    if (!value) return;
+    try {
+      this.resourceMetadataUrls.add(sanitizeOAuthTraceUrl(new URL(value), this.secrets));
+    } catch {
+      // RFC 9728 resource-metadata locations are absolute URLs. Invalid
+      // challenge or discovery values must not influence request classification.
+    }
+  }
+
+  isTrackedResourceMetadataUrl(value: string | URL): boolean {
+    try {
+      return this.resourceMetadataUrls.has(
+        sanitizeOAuthTraceUrl(new URL(value), this.secrets)
+      );
+    } catch {
+      return false;
+    }
   }
 
   enrichLast(
@@ -617,6 +671,22 @@ export class OAuthFlightRecorder {
       // Diagnostics are best-effort. Storage can be unavailable or full, but
       // recording must continue in memory without changing the primary flow.
     }
+  }
+
+  private captureResourceMetadataUrls(event: OAuthTraceEventV1): void {
+    if (event.type === 'protected_resource_metadata') {
+      this.trackResourceMetadataUrl(event.request?.url);
+      const metadataUrl = event.response?.metadata?.resourceMetadataUrl;
+      if (typeof metadataUrl === 'string') this.trackResourceMetadataUrl(metadataUrl);
+    }
+
+    const authenticate = Object.entries(event.response?.headers || {}).find(
+      ([key]) => key.toLowerCase() === 'www-authenticate'
+    )?.[1];
+    const resourceMetadataUrl = authenticate?.match(
+      /(?:^|[,\s])resource_metadata\s*=\s*"([^"]+)"/i
+    )?.[1];
+    if (resourceMetadataUrl) this.trackResourceMetadataUrl(resourceMetadataUrl);
   }
 }
 
@@ -909,7 +979,8 @@ export const createOAuthTraceFetch = (
     details.url,
     details.method,
     details.grantType,
-    details.registrationRequest
+    details.registrationRequest,
+    recorder.isTrackedResourceMetadataUrl(details.url)
   );
   if (!type) return fetchFn(input, init);
 

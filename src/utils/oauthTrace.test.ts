@@ -264,6 +264,79 @@ describe('OAuth flight recorder core', () => {
     expect(recorder.serialize()).toMatch(/(?:\[REDACTED\]|%5BREDACTED%5D)/i);
   });
 
+  it('centrally allowlists and sanitizes raw response headers recorded by public producers', () => {
+    const recorder = createOAuthFlightRecorder({ targetUrl: TARGET_URL });
+    recorder.record({
+      type: 'target_challenge',
+      outcome: 'challenged',
+      provenance: 'direct_target',
+      route: 'direct',
+      explanation: 'A producer recorded the raw challenge response.',
+      response: {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          Location: 'https://auth.example/continue?code=location-secret&tenant=acme',
+          'WWW-Authenticate': 'Bearer realm="private-realm", error_description="credential rejected", resource_metadata="https://metadata.example/custom?device_code=challenge-secret&tenant=acme"',
+          'X-Debug-Context': 'unsupported-secret',
+          'Set-Cookie': 'session=cookie-secret',
+        },
+      },
+    });
+
+    const headers = recorder.snapshot().events[0].response?.headers;
+    expect(headers).toEqual({
+      'content-type': 'application/json',
+      location: expect.stringContaining('tenant=acme'),
+      'www-authenticate': expect.stringContaining('resource_metadata='),
+    });
+    const serialized = recorder.serialize();
+    for (const secret of [
+      'location-secret',
+      'private-realm',
+      'credential rejected',
+      'challenge-secret',
+      'unsupported-secret',
+      'cookie-secret',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+  });
+
+  it('records HTTP evidence for a custom resource-metadata URL learned from a challenge', async () => {
+    const metadataUrl = 'https://metadata.example/oauth/resource?tenant=public&device_code=metadata-secret';
+    const recorder = recordOAuthAuthenticationChallenge({
+      targetUrl: TARGET_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      responseHeaders: {
+        'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl}"`,
+      },
+    });
+    const fetchFn = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ resource: TARGET_URL }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    ));
+
+    await createOAuthTraceFetch(recorder, fetchFn)(metadataUrl, { method: 'GET' });
+
+    const event = recorder.snapshot().events.find(
+      ({ type }) => type === 'protected_resource_metadata'
+    );
+    expect(event).toMatchObject({
+      outcome: 'started',
+      provenance: 'direct_target',
+      request: {
+        method: 'GET',
+        url: expect.stringContaining('tenant=public'),
+      },
+      response: { status: 200 },
+      timing: expect.objectContaining({ durationMs: expect.any(Number) }),
+    });
+    expect(recorder.serialize()).not.toContain('metadata-secret');
+  });
+
   it('redacts sensitive assignments nested in decoded, encoded, and header-style text', () => {
     const callback = new URL('https://mcptest.io/oauth/callback');
     callback.searchParams.set(
