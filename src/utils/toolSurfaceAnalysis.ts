@@ -494,14 +494,25 @@ const canonicalStringify = (
 interface CanonicallyOrderedValue {
   value: unknown;
   orderKey: string;
+  orderKeyTruncated: boolean;
   tieKeys?: string[];
+  tieKeyTruncated?: boolean[];
+  requiresBoundedProjection?: boolean;
+  valueWasBounded?: boolean;
 }
 
-const canonicalOrderKey = (value: unknown): string => canonicalStringify(
-  value,
-  CANONICAL_ORDER_NODE_LIMIT,
-  CANONICAL_ORDER_BYTE_LIMIT
-).serialized;
+const canonicallyOrderedValue = (value: unknown): CanonicallyOrderedValue => {
+  const order = canonicalStringify(
+    value,
+    CANONICAL_ORDER_NODE_LIMIT,
+    CANONICAL_ORDER_BYTE_LIMIT
+  );
+  return {
+    value,
+    orderKey: order.serialized,
+    orderKeyTruncated: order.truncationReasons.size > 0,
+  };
+};
 
 const canonicalOrderTieValue = (value: unknown, index: number): unknown => {
   if (!isRecord(value)) return index === 0 ? value : null;
@@ -518,18 +529,59 @@ const canonicalOrderTieValue = (value: unknown, index: number): unknown => {
 
 const canonicalOrderTieKey = (entry: CanonicallyOrderedValue, index: number): string => {
   entry.tieKeys ||= [];
+  entry.tieKeyTruncated ||= [];
   if (entry.tieKeys[index] === undefined) {
-    // Compute complete keys lazily and compare analysis-relevant fields first.
-    // The final raw-value key covers every remaining field that can affect the
-    // serialized-size metrics, while avoiding full serialization when an
-    // earlier field already resolves the bounded-key tie.
-    entry.tieKeys[index] = canonicalStringify(
-      canonicalOrderTieValue(entry.value, index),
-      Number.MAX_SAFE_INTEGER,
-      Number.MAX_SAFE_INTEGER
-    ).serialized;
+    const rawTieValue = canonicalOrderTieValue(entry.value, index);
+    // Preserve the same text prefix used by semantic analysis while ensuring a
+    // single oversized string cannot allocate an unbounded ordering key.
+    const tieValue = typeof rawTieValue === 'string'
+      && rawTieValue.length > TEXT_ANALYSIS_CHARACTER_LIMIT
+      ? `${rawTieValue.slice(0, TEXT_ANALYSIS_CHARACTER_LIMIT)}[Truncated: text-analysis-limit]`
+      : rawTieValue;
+    const result = canonicalStringify(
+      tieValue,
+      CANONICAL_ORDER_NODE_LIMIT,
+      CANONICAL_ORDER_BYTE_LIMIT
+    );
+    entry.tieKeys[index] = result.serialized;
+    entry.tieKeyTruncated[index] = result.truncationReasons.size > 0
+      || tieValue !== rawTieValue;
   }
   return entry.tieKeys[index];
+};
+
+const boundedCanonicalValue = (serialized: string): unknown => {
+  try {
+    return JSON.parse(serialized) as unknown;
+  } catch {
+    // A byte limit can be reached between collection tokens. The serialized
+    // marker remains deterministic even when that partial form is not JSON.
+    return serialized;
+  }
+};
+
+const boundedAnalysisValue = (entry: CanonicallyOrderedValue): unknown => {
+  if (!isRecord(entry.value)) return boundedCanonicalValue(entry.orderKey);
+
+  const rawProjection = boundedCanonicalValue(canonicalOrderTieKey(entry, 5));
+  const projection: Record<string, unknown> = isRecord(rawProjection)
+    ? { ...rawProjection }
+    : {};
+  const fields = ['name', 'description', 'inputSchema', 'outputSchema', 'annotations'] as const;
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    const fieldValue = entry.value[field];
+    if (
+      fieldValue !== undefined
+      && typeof fieldValue !== 'function'
+      && typeof fieldValue !== 'symbol'
+    ) {
+      projection[field] = boundedCanonicalValue(canonicalOrderTieKey(entry, index));
+    } else {
+      delete projection[field];
+    }
+  }
+  return projection;
 };
 
 const compareCanonicallyOrderedValues = (
@@ -546,12 +598,39 @@ const compareCanonicallyOrderedValues = (
     );
     if (comparison !== 0) return comparison;
   }
+  if (
+    left.orderKeyTruncated
+    || right.orderKeyTruncated
+    || left.tieKeyTruncated?.some(Boolean)
+    || right.tieKeyTruncated?.some(Boolean)
+  ) {
+    left.requiresBoundedProjection = true;
+    right.requiresBoundedProjection = true;
+  }
   return 0;
 };
 
-const orderCanonicalValues = (values: readonly unknown[]): CanonicallyOrderedValue[] => values
-  .map((value) => ({ value, orderKey: canonicalOrderKey(value) }))
-  .sort(compareCanonicallyOrderedValues);
+const stabilizeBoundedTies = (
+  entries: CanonicallyOrderedValue[]
+): CanonicallyOrderedValue[] => entries.map((entry) => (
+  entry.requiresBoundedProjection
+    ? {
+      ...entry,
+      value: boundedAnalysisValue(entry),
+      valueWasBounded: true,
+    }
+    : entry
+));
+
+const orderCanonicalValues = (values: readonly unknown[]): CanonicallyOrderedValue[] => {
+  const entries = values
+    .map(canonicallyOrderedValue)
+    .sort(compareCanonicallyOrderedValues);
+  for (let index = 1; index < entries.length; index += 1) {
+    compareCanonicallyOrderedValues(entries[index - 1], entries[index]);
+  }
+  return stabilizeBoundedTies(entries);
+};
 
 const selectCanonicalValues = (
   values: readonly unknown[],
@@ -584,7 +663,7 @@ const selectCanonicalValues = (
   };
 
   for (const value of values) {
-    const candidate = { value, orderKey: canonicalOrderKey(value) };
+    const candidate = canonicallyOrderedValue(value);
     if (selected.length < limit) {
       selected.push(candidate);
       let childIndex = selected.length - 1;
@@ -600,7 +679,11 @@ const selectCanonicalValues = (
     }
   }
 
-  return selected.sort(compareCanonicallyOrderedValues);
+  selected.sort(compareCanonicallyOrderedValues);
+  for (let index = 1; index < selected.length; index += 1) {
+    compareCanonicallyOrderedValues(selected[index - 1], selected[index]);
+  }
+  return stabilizeBoundedTies(selected);
 };
 
 const canonicalizeCollection = (
@@ -1283,16 +1366,7 @@ const actionSignals = (tool: ToolRecord): { write: string[]; destructive: string
     }
   }
 
-  if (tool.readOnlyHint === true && tool.destructiveHint !== true) {
-    write.clear();
-    destructive.clear();
-  } else {
-    if (tool.readOnlyHint === false) write.add('annotation: readOnlyHint=false');
-    if (tool.destructiveHint === false) {
-      for (const action of destructive) write.add(action);
-      destructive.clear();
-    }
-  }
+  if (tool.readOnlyHint === false) write.add('annotation: readOnlyHint=false');
   if (tool.destructiveHint === true) {
     destructive.add('annotation: destructiveHint=true');
     write.add('annotation: destructiveHint=true');
@@ -1334,6 +1408,9 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
   const extracted = extractTools(input);
   const analyzedRawTools = selectCanonicalValues(extracted.tools, TOOL_ANALYSIS_LIMIT);
   const tools = analyzedRawTools.map((entry, index) => normalizeTool(entry.value, index));
+  const boundedCanonicalTieToolCount = analyzedRawTools.filter(
+    (entry) => entry.valueWasBounded
+  ).length;
   const omittedToolCount = extracted.tools.length - analyzedRawTools.length;
   const findings = emptyFindings();
 
@@ -1465,6 +1542,13 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       '<surface>',
       '$.tools[*].name|description',
       `Text analysis used at most ${TEXT_ANALYSIS_CHARACTER_LIMIT} characters for ${truncatedTextCount} tools; canonical serialization retained its independent byte budget.`
+    ));
+  }
+  if (boundedCanonicalTieToolCount > 0) {
+    budgetEvidence.push(evidence(
+      '<surface>',
+      '$.tools',
+      `${boundedCanonicalTieToolCount} tools were indistinguishable after bounded canonical ordering; downstream analysis used their equivalent bounded representation.`
     ));
   }
   const canonicalReasons = new Set([

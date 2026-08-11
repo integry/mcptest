@@ -453,13 +453,48 @@ describe('analyzeToolSurface', () => {
     ]);
 
     expect(analysis.metrics.riskSignals).toMatchObject({
-      writeCapabilityToolCount: 2,
-      destructiveCapabilityToolCount: 1,
+      writeCapabilityToolCount: 3,
+      destructiveCapabilityToolCount: 2,
     });
-    expect(finding(analysis, 'risk.destructive-capabilities')?.evidence[0].tool)
-      .toBe('expire_cached_result');
-    expect(finding(analysis, 'risk.write-capabilities')?.evidence[0].tool)
-      .toBe('remove_cached_result');
+    expect(finding(analysis, 'risk.destructive-capabilities')?.evidence.map((item) => item.tool))
+      .toEqual(['expire_cached_result', 'remove_cached_result']);
+  });
+
+  it('does not let contradictory annotations conceal explicit action signals', () => {
+    const schema = { type: 'object', properties: {}, additionalProperties: false };
+    const analysis = analyzeToolSurface([
+      {
+        name: 'delete_account',
+        description: 'Permanently deletes the selected account.',
+        annotations: { readOnlyHint: true },
+        inputSchema: schema,
+      },
+      {
+        name: 'update_account',
+        description: 'Updates the selected account profile.',
+        annotations: { readOnlyHint: true },
+        inputSchema: schema,
+      },
+      {
+        name: 'remove_cached_result',
+        description: 'Removes the selected cached result.',
+        annotations: { destructiveHint: false },
+        inputSchema: schema,
+      },
+    ]);
+
+    expect(analysis.metrics.riskSignals).toMatchObject({
+      writeCapabilityToolCount: 3,
+      destructiveCapabilityToolCount: 2,
+    });
+    expect(finding(analysis, 'risk.destructive-capabilities')?.evidence.map((item) => item.tool))
+      .toEqual(['delete_account', 'remove_cached_result']);
+    expect(finding(analysis, 'risk.write-capabilities')?.evidence).toContainEqual(
+      expect.objectContaining({
+        tool: 'update_account',
+        detail: expect.stringContaining('update'),
+      })
+    );
   });
 
   it('truncates 5,000-level schemas deterministically without recursive overflow', () => {
@@ -601,6 +636,36 @@ describe('analyzeToolSurface', () => {
     expect(forward.metrics.toolCount).toBe(2_001);
     expect(finding(forward, 'analysis.incomplete-budget')?.evidence).toContainEqual(
       expect.objectContaining({ detail: expect.stringContaining('tool limit of 2000') })
+    );
+  });
+
+  it('bounds canonical ties that share oversized description and schema prefixes', () => {
+    const sharedPrefix = 'x'.repeat(100_000);
+    const sharedSchema = {
+      type: 'object',
+      properties: {
+        payload: {
+          type: 'string',
+          description: sharedPrefix,
+        },
+      },
+    };
+    const tools = Array.from({ length: 2_001 }, (_, index) => ({
+      name: 'inspect_oversized_shared_record',
+      description: sharedPrefix,
+      inputSchema: sharedSchema,
+      zVariantBeyondBoundedPrefix: `variant-${String(index).padStart(4, '0')}`,
+    }));
+
+    const forward = analyzeToolSurface(tools);
+    const reversed = analyzeToolSurface([...tools].reverse());
+
+    expect(reversed).toEqual(forward);
+    expect(forward.metrics.toolCount).toBe(2_001);
+    expect(finding(forward, 'analysis.incomplete-budget')?.evidence).toContainEqual(
+      expect.objectContaining({
+        detail: expect.stringContaining('equivalent bounded representation'),
+      })
     );
   });
 
