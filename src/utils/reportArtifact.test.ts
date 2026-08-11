@@ -468,6 +468,31 @@ describe('versioned public report artifacts', () => {
     );
   });
 
+  it('rejects scored artifacts whose overall totals contradict their sections', () => {
+    const earnedMismatch = structuredClone(createPublicReport(publicReport(), FIXED_OPTIONS));
+    earnedMismatch.score!.earned = 54;
+    earnedMismatch.score!.percentage = 54 / 55 * 100;
+
+    const maximumMismatch = structuredClone(createPublicReport(publicReport(), FIXED_OPTIONS));
+    maximumMismatch.score!.maximum = 56;
+    maximumMismatch.score!.percentage = 55 / 56 * 100;
+
+    expect(safeParsePublicReport(earnedMismatch).success).toBe(false);
+    expect(() => parsePublicReportJson(JSON.stringify(earnedMismatch))).toThrow(
+      'The overall earned score must equal the sum of the section earned scores.'
+    );
+    expect(safeParsePublicReport(maximumMismatch).success).toBe(false);
+    expect(() => validatePublicReport(maximumMismatch)).toThrow(
+      'The overall maximum score must equal the sum of the section maximum scores.'
+    );
+
+    const inconsistentEvaluation = publicReport();
+    inconsistentEvaluation.finalScore = 54;
+    expect(() => createPublicReport(inconsistentEvaluation, FIXED_OPTIONS)).toThrow(
+      'The overall earned score must equal the sum of the section earned scores.'
+    );
+  });
+
   it('redacts secrets recursively, including embedded and nested URL values', () => {
     const artifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
     const failedArtifact = createPublicReport(failedReport(), FIXED_OPTIONS);
@@ -582,6 +607,35 @@ describe('versioned public report artifacts', () => {
     ]) {
       expect(output).not.toContain(secret);
     }
+  });
+
+  it('redacts compound and form-encoded secret names through both serializers', () => {
+    const secretsByKey = {
+      secret_key: 'compound-secret-value',
+      token_value: 'compound-token-value',
+      'x-amz-signature': 'compound-signature-value',
+      'access%5Ftoken': 'encoded-form-token-value',
+    };
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      text: Object.entries(secretsByKey).map(([key, secret]) => `${key}=${secret}`).join(' '),
+      metadata: secretsByKey,
+    };
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    for (const secret of Object.values(secretsByKey)) {
+      expect(json).not.toContain(secret);
+      expect(markdown).not.toContain(secret);
+    }
+    expect(artifact.sections[0].evidence[0].metadata).toEqual({
+      secret_key: '[REDACTED]',
+      token_value: '[REDACTED]',
+      'x-amz-signature': '[REDACTED]',
+      'access%5Ftoken': '[REDACTED]',
+    });
   });
 
   it('redacts OAuth credential parameters from structured metadata', () => {
@@ -737,22 +791,26 @@ describe('versioned public report artifacts', () => {
     }
   });
 
-  it('round-trips numeric protocol codes without exposing authorization codes', () => {
+  it('redacts generic numeric codes while preserving an explicit JSON-RPC code field', () => {
     const report = publicReport();
     report.sections.protocol.details[0].metadata = {
       ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
-      code: -32601,
-      authorizationCode: 123456,
+      code: 123456,
+      jsonRpcCode: -32601,
     };
 
     const artifact = createPublicReport(report, FIXED_OPTIONS);
     const roundTripped = parsePublicReportJson(serializePublicReportJson(artifact));
     const metadata = roundTripped.sections[0].evidence[0].metadata as Record<string, unknown>;
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
 
-    expect(metadata.code).toBe(-32601);
-    expect(typeof metadata.code).toBe('number');
-    expect(metadata.authorizationCode).toBe('[REDACTED]');
-    expect(serializePublicReportMarkdown(artifact)).toContain('"code": -32601');
+    expect(metadata.code).toBe('[REDACTED]');
+    expect(metadata.jsonRpcCode).toBe(-32601);
+    for (const output of [json, markdown]) {
+      expect(output).not.toContain('"code": 123456');
+      expect(output).toContain('"jsonRpcCode": -32601');
+    }
   });
 
   it('redacts nested sensitive assignments to a bounded fixed point in every export path', () => {

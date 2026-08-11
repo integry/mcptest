@@ -13,8 +13,8 @@ import {
   evaluateServer,
   getEvaluationMaxScore,
   getEvaluationPercentage,
-  isAuthenticationRequired,
-  isScoredEvaluation,
+  isLegacySkippedEvaluationSection,
+  resolveEvaluationOutcome,
   type EvaluationReport,
 } from '../utils/evaluation';
 import {
@@ -266,7 +266,7 @@ const ReportView: React.FC = () => {
       
       addOrUpdateServer(reportData);
       
-      if (isAuthenticationRequired(reportData)) {
+      if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
         setProgress(prev => [...prev, 'OAuth authorization is required before this server can be scored.']);
       }
     } catch (error) {
@@ -324,8 +324,9 @@ const ReportView: React.FC = () => {
     }
   }, []);
 
-  const reportRequiresAuthorization = report ? isAuthenticationRequired(report) : false;
-  const reportIsScored = report ? isScoredEvaluation(report) : false;
+  const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
+  const reportRequiresAuthorization = reportOutcome === 'authorization-required';
+  const reportIsScored = reportOutcome === 'scored';
   const visibleSections = report && !reportRequiresAuthorization
     ? Object.entries(report.sections).filter(([key]) => key !== 'auth')
     : [];
@@ -433,7 +434,7 @@ const ReportView: React.FC = () => {
             )}
             {!reportRequiresAuthorization && !reportIsScored && (
               <h3 className="text-muted">
-                {report.outcome === 'partial' ? 'Partial evaluation' : 'Evaluation failed'} — not scored
+                {reportOutcome === 'partial' ? 'Partial evaluation' : 'Evaluation failed'} — not scored
               </h3>
             )}
           </div>
@@ -453,7 +454,9 @@ const ReportView: React.FC = () => {
                 const sectionPercentage = section.maxScore > 0
                   ? section.score / section.maxScore * 100
                   : 0;
-                const sectionWasScored = section.status !== 'failed' && section.status !== 'skipped';
+                const sectionWasScored = section.status !== 'failed'
+                  && section.status !== 'skipped'
+                  && !(!section.status && isLegacySkippedEvaluationSection(section));
 
                 return (
                 <div key={key} className="col-12">

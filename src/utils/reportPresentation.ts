@@ -1,7 +1,6 @@
 import {
   getEvaluationPercentage,
-  isAuthenticationRequired,
-  isScoredEvaluation,
+  resolveEvaluationOutcome,
   type EvaluationReport,
 } from './evaluation';
 
@@ -28,21 +27,13 @@ export const createTestedServerHistoryEntry = (
   report: EvaluationReport,
   timestamp = Date.now()
 ): TestedServerHistoryEntry => {
-  if (isAuthenticationRequired(report)) {
+  const outcome = resolveEvaluationOutcome(report);
+  if (outcome !== 'scored') {
     return {
       url: report.serverUrl,
       score: null,
       timestamp,
-      outcome: 'authorization-required',
-    };
-  }
-
-  if (!isScoredEvaluation(report)) {
-    return {
-      url: report.serverUrl,
-      score: null,
-      timestamp,
-      outcome: report.outcome,
+      outcome,
     };
   }
 

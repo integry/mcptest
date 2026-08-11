@@ -18,6 +18,7 @@ import {
   getEvaluationTransportProbeUrl,
   isAuthenticationRequired,
   isScoredEvaluation,
+  resolveEvaluationOutcome,
 } from './evaluation';
 import {
   ProxiedAuthenticationError,
@@ -588,5 +589,52 @@ describe('dual-era server evaluation', () => {
 
     expect(getEvaluationMaxScore(report)).toBe(55);
     expect(getEvaluationPercentage(report)).toBe(100);
+  });
+
+  it('resolves legacy outcomes from whether their sections were actually evaluated', () => {
+    const evaluatedReport = {
+      serverUrl: 'https://legacy.example/mcp',
+      finalScore: 15,
+      sections: {
+        protocol: {
+          name: 'Protocol',
+          description: '',
+          score: 15,
+          maxScore: 15,
+          details: [{ text: '✓ MCP negotiation completed.' }],
+        },
+      },
+    };
+    const partialReport = {
+      ...evaluatedReport,
+      sections: {
+        ...evaluatedReport.sections,
+        capabilities: {
+          name: 'Capabilities',
+          description: '',
+          score: 0,
+          maxScore: 10,
+          details: [{ text: '⚠ Capability checks were skipped after the connection closed.' }],
+        },
+      },
+    };
+    const failedReport = {
+      ...evaluatedReport,
+      finalScore: 0,
+      sections: {
+        protocol: {
+          ...evaluatedReport.sections.protocol,
+          score: 0,
+          details: [{ text: '⚠ MCP negotiation failed: no MCP connection.' }],
+        },
+      },
+    };
+
+    expect(resolveEvaluationOutcome(evaluatedReport)).toBe('scored');
+    expect(isScoredEvaluation(evaluatedReport)).toBe(true);
+    expect(resolveEvaluationOutcome(partialReport)).toBe('partial');
+    expect(isScoredEvaluation(partialReport)).toBe(false);
+    expect(resolveEvaluationOutcome(failedReport)).toBe('failed');
+    expect(isScoredEvaluation(failedReport)).toBe(false);
   });
 });

@@ -100,10 +100,45 @@ export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
 );
 
-/** Legacy reports without an outcome are scored; every explicit incomplete outcome is unscored. */
+export const isLegacySkippedEvaluationSection = (section: EvaluationSection): boolean => (
+  section.details.length > 0
+  && section.details.every((detail) => /^⚠/.test(detail.text))
+  && section.details.some((detail) => /skipped|not scored|no standard MCP transport|could not be isolated|negotiation failed/i.test(
+    `${detail.text} ${detail.context || ''}`
+  ))
+);
+
+/** Resolves explicit and legacy reports to one outcome for artifacts and presentation. */
+export const resolveEvaluationOutcome = (
+  report: EvaluationReport
+): NonNullable<EvaluationReport['outcome']> => {
+  if (isAuthenticationRequired(report)) return 'authorization-required';
+  if (report.outcome === 'failed' || report.outcome === 'partial') return report.outcome;
+
+  const sections = Object.values(report.sections);
+  const incomplete = sections.some((section) => (
+    section.status === 'partial'
+    || section.status === 'failed'
+    || section.status === 'skipped'
+    || (!section.status && isLegacySkippedEvaluationSection(section))
+  ));
+  const protocolSection = report.sections.protocol;
+  const protocolIncomplete = protocolSection && (
+    protocolSection.status === 'failed'
+    || protocolSection.status === 'skipped'
+    || (!protocolSection.status && isLegacySkippedEvaluationSection(protocolSection))
+  );
+  const negotiationFailed = protocolIncomplete && protocolSection.details.some((detail) => (
+    /negotiation failed|no MCP connection/i.test(`${detail.text} ${detail.context || ''}`)
+  ));
+
+  if (negotiationFailed) return 'failed';
+  if (incomplete) return 'partial';
+  return 'scored';
+};
+
 export const isScoredEvaluation = (report: EvaluationReport): boolean => (
-  !isAuthenticationRequired(report)
-  && (report.outcome === undefined || report.outcome === 'scored')
+  resolveEvaluationOutcome(report) === 'scored'
 );
 
 export const getEvaluationMaxScore = (report: EvaluationReport): number => (

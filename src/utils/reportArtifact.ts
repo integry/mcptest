@@ -2,7 +2,8 @@ import { z } from 'zod';
 import packageJson from '../../package.json';
 import {
   getEvaluationMaxScore,
-  isAuthenticationRequired,
+  isLegacySkippedEvaluationSection,
+  resolveEvaluationOutcome,
   type DetailItem,
   type EvaluationReport,
   type EvaluationSection,
@@ -163,6 +164,30 @@ export const PublicReportSchema = PublicReportObjectSchema.superRefine((report, 
       });
     }
   }
+  if (isScored && report.score) {
+    const sectionEarnedTotal = report.sections.reduce(
+      (total, section) => total + (section.score.earned ?? 0),
+      0
+    );
+    const sectionMaximumTotal = report.sections.reduce(
+      (total, section) => total + section.score.maximum,
+      0
+    );
+    if (Math.abs(report.score.earned - sectionEarnedTotal) > SCORE_PERCENTAGE_TOLERANCE) {
+      context.addIssue({
+        code: 'custom',
+        path: ['score', 'earned'],
+        message: 'The overall earned score must equal the sum of the section earned scores.',
+      });
+    }
+    if (Math.abs(report.score.maximum - sectionMaximumTotal) > SCORE_PERCENTAGE_TOLERANCE) {
+      context.addIssue({
+        code: 'custom',
+        path: ['score', 'maximum'],
+        message: 'The overall maximum score must equal the sum of the section maximum scores.',
+      });
+    }
+  }
   if (isScored) {
     for (const [index, section] of report.sections.entries()) {
       if (section.status !== 'evaluated' || section.score.earned === null) {
@@ -256,11 +281,33 @@ const canonicalKey = (key: string): string => (
   key.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
 );
 
+const SENSITIVE_KEY_COMPONENTS = new Set([
+  'secret',
+  'secrets',
+  'token',
+  'tokens',
+  'signature',
+]);
+
+const keyComponents = (key: string): string[] => key
+  .trim()
+  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  .toLowerCase()
+  .split(/[^a-z0-9]+/)
+  .filter(Boolean);
+
 const isSensitiveKey = (key: string): boolean => {
+  if (keyComponents(key).some((component) => SENSITIVE_KEY_COMPONENTS.has(component))) {
+    return true;
+  }
   const canonical = canonicalKey(key);
   return EXACT_SENSITIVE_KEYS.has(canonical)
     || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical);
 };
+
+const decodeFormComponent = (value: string): string => (
+  decodeURIComponent(value.replace(/\+/g, ' '))
+);
 
 const isSensitiveQueryKey = (key: string): boolean => {
   let decoded = key;
@@ -270,7 +317,7 @@ const isSensitiveQueryKey = (key: string): boolean => {
 
     let next: string;
     try {
-      next = decodeURIComponent(decoded);
+      next = decodeFormComponent(decoded);
     } catch {
       return false;
     }
@@ -317,13 +364,13 @@ const balancedAssignmentValueEnd = (value: string, start: number): number | unde
 
 const redactSensitiveAssignments = (value: string): string => {
   const matches: Array<{ start: number; end: number; replacement: string }> = [];
-  const assignmentStart = /(?:(['"])([A-Za-z][A-Za-z0-9_-]*)\1|\b([A-Za-z][A-Za-z0-9_-]*)\b)\s*([:=])\s*/g;
+  const assignmentStart = /(?:(['"])([A-Za-z](?:[A-Za-z0-9_+-]|%[A-Fa-f0-9]{2})*)\1|\b([A-Za-z](?:[A-Za-z0-9_+-]|%[A-Fa-f0-9]{2})*)\b)\s*([:=])\s*/g;
   let match: RegExpExecArray | null;
 
   while ((match = assignmentStart.exec(value)) !== null) {
     const keyQuote = match[1];
     const key = match[2] || match[3];
-    if (!isSensitiveKey(key)) continue;
+    if (!isSensitiveQueryKey(key)) continue;
 
     const assignmentStartIndex = match.index;
     const valueStart = assignmentStartIndex + match[0].length;
@@ -495,10 +542,7 @@ const redactReportValueAtPath = (
   key: string | undefined,
   path: readonly string[]
 ): unknown => {
-  if (key && canonicalKey(key) === 'code' && typeof value === 'number') {
-    return value;
-  }
-  if (key && isSensitiveKey(key) && !isAuthorizationPrerequisiteState(path)) {
+  if (key && isSensitiveQueryKey(key) && !isAuthorizationPrerequisiteState(path)) {
     return REDACTED_VALUE;
   }
   if (value === undefined) return undefined;
@@ -574,39 +618,6 @@ const failedRouteAttempts = (
     : []
 ));
 
-const isLegacySkippedSection = (section: EvaluationSection): boolean => (
-  section.details.length > 0
-  && section.details.every((detail) => /^⚠/.test(detail.text))
-  && section.details.some((detail) => /skipped|not scored|no standard MCP transport|could not be isolated|negotiation failed/i.test(
-    `${detail.text} ${detail.context || ''}`
-  ))
-);
-
-const resolveOutcome = (report: EvaluationReport): PublicReportOutcome => {
-  if (isAuthenticationRequired(report)) return 'authorization-required';
-  if (report.outcome === 'failed' || report.outcome === 'partial') return report.outcome;
-
-  const sections = Object.values(report.sections);
-  const incomplete = sections.some((section) => (
-    section.status === 'partial'
-    || section.status === 'failed'
-    || section.status === 'skipped'
-    || (!section.status && isLegacySkippedSection(section))
-  ));
-  const protocolSection = report.sections.protocol;
-  const protocolIncomplete = protocolSection && (
-    protocolSection.status === 'failed'
-    || protocolSection.status === 'skipped'
-    || (!protocolSection.status && isLegacySkippedSection(protocolSection))
-  );
-  const negotiationFailed = protocolIncomplete && protocolSection.details.some((detail) => (
-    /negotiation failed|no MCP connection/i.test(`${detail.text} ${detail.context || ''}`)
-  ));
-  if (negotiationFailed) return 'failed';
-  if (incomplete) return 'partial';
-  return 'scored';
-};
-
 const sectionStatus = (
   id: string,
   section: EvaluationSection,
@@ -614,7 +625,7 @@ const sectionStatus = (
 ): PublicReport['sections'][number]['status'] => {
   if (id === 'auth') return 'prerequisite';
   if (section.status) return section.status;
-  if (isLegacySkippedSection(section)) return outcome === 'failed' && id === 'protocol'
+  if (isLegacySkippedEvaluationSection(section)) return outcome === 'failed' && id === 'protocol'
     ? 'failed'
     : 'skipped';
   return 'evaluated';
@@ -653,7 +664,7 @@ export const createPublicReport = (
   report: EvaluationReport,
   options: CreatePublicReportOptions = {}
 ): PublicReport => {
-  const outcome = resolveOutcome(report);
+  const outcome = resolveEvaluationOutcome(report);
   const metadata = metadataRecords(report);
   const routeValue = metadataString(metadata, 'route');
   const route = publicRoute(routeValue);

@@ -98,6 +98,46 @@ describe('report presentation', () => {
     expect(entry).toMatchObject({ score: 50, outcome: 'scored' });
   });
 
+  it.each([
+    [
+      'partial',
+      'Capabilities',
+      '⚠ Capability checks were skipped after the connection closed.',
+      'Partial evaluation - not scored',
+    ],
+    [
+      'failed',
+      'Protocol',
+      '⚠ MCP negotiation failed: no MCP connection.',
+      'Evaluation failed - not scored',
+    ],
+  ] as const)(
+    'stores a legacy %s report consistently as not scored',
+    (outcome, sectionName, detail, label) => {
+      const entry = createTestedServerHistoryEntry({
+        serverUrl: 'https://legacy-incomplete.example/mcp',
+        finalScore: 15,
+        sections: {
+          protocol: {
+            name: sectionName,
+            description: '',
+            score: 15,
+            maxScore: 15,
+            details: [{ text: detail }],
+          },
+        },
+      }, 1000);
+
+      expect(entry).toEqual({
+        url: 'https://legacy-incomplete.example/mcp',
+        score: null,
+        timestamp: 1000,
+        outcome,
+      });
+      expect(getTestedServerResultLabel(entry)).toBe(label);
+    }
+  );
+
   it('replaces legacy raw URLs with the normalized authorization-required entry', () => {
     const legacyEntry = {
       url: 'mcp.example',
