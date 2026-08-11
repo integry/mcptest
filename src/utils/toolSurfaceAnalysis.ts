@@ -379,7 +379,7 @@ const extractTools = (input: ToolSurfaceAnalyzerInput): {
     };
   }
 
-  if (!isRecord(input) || !Object.prototype.hasOwnProperty.call(input, 'tools')) {
+  if (!isRecord(input) || input.tools === undefined) {
     return {
       tools: [],
       status: 'missing',

@@ -121,6 +121,11 @@ describe('analyzeToolSurface', () => {
       resources: [{ uri: 'file:///example.txt' }],
       prompts: [{ name: 'summarize' }],
     });
+    const resourcesOnlyWithUndefinedTools = analyzeToolSurface({
+      tools: undefined,
+      resources: [{ uri: 'file:///example.txt' }],
+      prompts: [{ name: 'summarize' }],
+    });
     const malformed = analyzeToolSurface({ tools: { name: 'not-an-array' } });
 
     expect(empty.metrics.toolListStatus).toBe('empty');
@@ -133,6 +138,13 @@ describe('analyzeToolSurface', () => {
       promptCount: 1,
     });
     expect(finding(resourcesOnly, 'availability.no-tools')?.summary).toContain('1 resources and 1 prompts');
+    expect(resourcesOnlyWithUndefinedTools.metrics).toMatchObject({
+      toolListStatus: 'missing',
+      toolCount: 0,
+      resourceCount: 1,
+      promptCount: 1,
+    });
+    expect(finding(resourcesOnlyWithUndefinedTools, 'availability.no-tools')?.severity).toBe('info');
     expect(malformed.metrics.toolListStatus).toBe('malformed');
     expect(finding(malformed, 'availability.malformed-tool-list')?.severity).toBe('high');
     expect(empty.fingerprint).toEqual(missing.fingerprint);
