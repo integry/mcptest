@@ -1,0 +1,1553 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`versioned public report artifacts > matches the failed JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "status": "failed",
+    "summary": "The evaluation did not complete and no overall grade was assigned."
+  },
+  "provenance": {
+    "proxyUsed": null,
+    "route": "unknown"
+  },
+  "schemaVersion": "1.0.0",
+  "score": null,
+  "sections": [
+    {
+      "description": "Core Protocol description",
+      "evidence": [
+        {
+          "context": "Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3D%255BREDACTED%255D",
+          "message": "⚠ MCP negotiation failed: Authorization: Bearer [REDACTED]"
+        }
+      ],
+      "id": "protocol",
+      "name": "Core Protocol",
+      "score": {
+        "earned": null,
+        "maximum": 15
+      },
+      "status": "failed"
+    },
+    {
+      "description": "Capabilities description",
+      "evidence": [
+        {
+          "message": "⚠ Capability checks were skipped because no MCP connection was established."
+        }
+      ],
+      "id": "capabilities",
+      "name": "Capabilities",
+      "score": {
+        "earned": null,
+        "maximum": 10
+      },
+      "status": "skipped"
+    },
+    {
+      "description": "Transport description",
+      "evidence": [
+        {
+          "message": "⚠ No standard MCP transport completed negotiation."
+        }
+      ],
+      "id": "transport",
+      "name": "Transport",
+      "score": {
+        "earned": null,
+        "maximum": 15
+      },
+      "status": "skipped"
+    },
+    {
+      "description": "Browser Accessibility description",
+      "evidence": [
+        {
+          "message": "⚠ Browser accessibility could not be isolated."
+        }
+      ],
+      "id": "cors",
+      "name": "Browser Accessibility",
+      "score": {
+        "earned": null,
+        "maximum": 15
+      },
+      "status": "skipped"
+    },
+    {
+      "description": "Performance description",
+      "evidence": [
+        {
+          "message": "⚠ Performance was not scored because negotiation failed."
+        }
+      ],
+      "id": "performance",
+      "name": "Performance",
+      "score": {
+        "earned": null,
+        "maximum": 15
+      },
+      "status": "skipped"
+    }
+  ],
+  "target": {
+    "testedEndpoint": "https://failed.example/mcp?api_key=[REDACTED]"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://failed.example/mcp?api\\_key=\\[REDACTED\\]
+
+## Outcome
+
+**failed** — The evaluation did not complete and no overall grade was assigned.
+
+## Score
+
+Not scored.
+
+## Endpoint and provenance
+
+- Tested endpoint: https://failed.example/mcp?api\\_key=\\[REDACTED\\]
+- Route: unknown
+- Proxy used: unknown
+
+## Sections
+
+### Core Protocol
+
+Status: failed
+
+Score: Not scored (maximum 15)
+
+Core Protocol description
+
+- ⚠ MCP negotiation failed: Authorization: Bearer \\[REDACTED\\]
+  - Context: Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3D%255BREDACTED%255D
+
+### Capabilities
+
+Status: skipped
+
+Score: Not scored (maximum 10)
+
+Capabilities description
+
+- ⚠ Capability checks were skipped because no MCP connection was established.
+
+### Transport
+
+Status: skipped
+
+Score: Not scored (maximum 15)
+
+Transport description
+
+- ⚠ No standard MCP transport completed negotiation.
+
+### Browser Accessibility
+
+Status: skipped
+
+Score: Not scored (maximum 15)
+
+Browser Accessibility description
+
+- ⚠ Browser accessibility could not be isolated.
+
+### Performance
+
+Status: skipped
+
+Score: Not scored (maximum 15)
+
+Performance description
+
+- ⚠ Performance was not scored because negotiation failed.
+",
+  "name": "failed",
+}
+`;
+
+exports[`versioned public report artifacts > matches the legacy-sse JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "status": "scored",
+    "summary": "The evaluation completed and was scored."
+  },
+  "protocol": {
+    "era": "legacy",
+    "version": "2025-03-26"
+  },
+  "provenance": {
+    "proxyUsed": false,
+    "route": "direct"
+  },
+  "schemaVersion": "1.0.0",
+  "score": {
+    "earned": 51,
+    "maximum": 70,
+    "percentage": 72.85714285714285
+  },
+  "sections": [
+    {
+      "description": "Core Protocol description",
+      "evidence": [
+        {
+          "context": "Core Protocol context",
+          "message": "✓ Core Protocol evidence",
+          "metadata": {
+            "endpoint": "https://legacy.example/events",
+            "protocolEra": "legacy",
+            "protocolVersion": "2025-03-26",
+            "route": "direct"
+          }
+        }
+      ],
+      "id": "protocol",
+      "name": "Core Protocol",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Capabilities description",
+      "evidence": [
+        {
+          "context": "Capabilities context",
+          "message": "✓ Capabilities evidence",
+          "metadata": {
+            "durationMs": 52,
+            "method": "prompts/list"
+          }
+        }
+      ],
+      "id": "capabilities",
+      "name": "Capabilities",
+      "score": {
+        "earned": 10,
+        "maximum": 10
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Transport description",
+      "evidence": [
+        {
+          "context": "Transport context",
+          "message": "✓ Transport evidence",
+          "metadata": {
+            "endpoint": "https://legacy.example/events",
+            "protocolEra": "legacy",
+            "transportType": "legacy-sse"
+          }
+        }
+      ],
+      "id": "transport",
+      "name": "Transport",
+      "score": {
+        "earned": 6,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Browser Accessibility description",
+      "evidence": [
+        {
+          "context": "Browser Accessibility context",
+          "message": "✓ Browser Accessibility evidence",
+          "metadata": {}
+        }
+      ],
+      "id": "cors",
+      "name": "Browser Accessibility",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Performance description",
+      "evidence": [
+        {
+          "context": "Performance context",
+          "message": "✓ Performance evidence",
+          "metadata": {
+            "category": "slow",
+            "durationMs": 2800
+          }
+        }
+      ],
+      "id": "performance",
+      "name": "Performance",
+      "score": {
+        "earned": 5,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    }
+  ],
+  "target": {
+    "negotiatedEndpoint": "https://legacy.example/events",
+    "testedEndpoint": "https://legacy.example/events"
+  },
+  "timings": {
+    "checks": [
+      {
+        "durationMs": 52,
+        "name": "prompts/list"
+      }
+    ],
+    "negotiationMs": 2800
+  },
+  "transport": {
+    "type": "legacy-sse"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://legacy.example/events
+
+## Outcome
+
+**scored** — The evaluation completed and was scored.
+
+## Score
+
+51 / 70 (72.86%)
+
+## Endpoint and provenance
+
+- Tested endpoint: https://legacy.example/events
+- Negotiated endpoint: https://legacy.example/events
+- Route: direct
+- Proxy used: no
+
+## Protocol and transport
+
+- Protocol era: legacy
+- Protocol version: 2025-03-26
+- Transport: legacy-sse
+
+## Timings
+
+- Negotiation: 2800 ms
+- prompts/list: 52 ms
+
+## Sections
+
+### Core Protocol
+
+Status: evaluated
+
+Score: 15 / 15
+
+Core Protocol description
+
+- ✓ Core Protocol evidence
+  - Context: Core Protocol context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://legacy.example/events",
+      "protocolEra": "legacy",
+      "protocolVersion": "2025-03-26",
+      "route": "direct"
+    }
+    \`\`\`
+
+### Capabilities
+
+Status: evaluated
+
+Score: 10 / 10
+
+Capabilities description
+
+- ✓ Capabilities evidence
+  - Context: Capabilities context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "durationMs": 52,
+      "method": "prompts/list"
+    }
+    \`\`\`
+
+### Transport
+
+Status: evaluated
+
+Score: 6 / 15
+
+Transport description
+
+- ✓ Transport evidence
+  - Context: Transport context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://legacy.example/events",
+      "protocolEra": "legacy",
+      "transportType": "legacy-sse"
+    }
+    \`\`\`
+
+### Browser Accessibility
+
+Status: evaluated
+
+Score: 15 / 15
+
+Browser Accessibility description
+
+- ✓ Browser Accessibility evidence
+  - Context: Browser Accessibility context
+  - Metadata:
+
+    \`\`\`json
+    {}
+    \`\`\`
+
+### Performance
+
+Status: evaluated
+
+Score: 5 / 15
+
+Performance description
+
+- ✓ Performance evidence
+  - Context: Performance context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "category": "slow",
+      "durationMs": 2800
+    }
+    \`\`\`
+",
+  "name": "legacy-sse",
+}
+`;
+
+exports[`versioned public report artifacts > matches the oauth-required-unscored JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "authorizationPrerequisite": {
+      "message": "Authorize access to the MCP server, then run the evaluation again.",
+      "required": true,
+      "state": "authorization-required"
+    },
+    "status": "authorization-required",
+    "summary": "Authorization is a prerequisite; this run was not scored."
+  },
+  "provenance": {
+    "proxyUsed": false,
+    "route": "direct"
+  },
+  "schemaVersion": "1.0.0",
+  "score": null,
+  "sections": [
+    {
+      "description": "OAuth authorization is required before evaluation",
+      "evidence": [
+        {
+          "context": "The endpoint returned 401 with Bearer [REDACTED]",
+          "message": "⚠ Authorize before running the report; access_token=[REDACTED]",
+          "metadata": {
+            "authorization": "[REDACTED]",
+            "endpoint": "https://protected.example/mcp?access_token=[REDACTED]",
+            "route": "direct",
+            "status": 401
+          }
+        }
+      ],
+      "id": "auth",
+      "name": "Authorization Required",
+      "score": {
+        "earned": null,
+        "maximum": 0
+      },
+      "status": "prerequisite"
+    }
+  ],
+  "target": {
+    "authenticationEndpoint": "https://protected.example/mcp?code=%5BREDACTED%5D",
+    "testedEndpoint": "https://protected.example/mcp?access_token=[REDACTED]"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://protected.example/mcp?access\\_token=\\[REDACTED\\]
+
+## Outcome
+
+**authorization-required** — Authorization is a prerequisite; this run was not scored.
+
+> Authorization is a prerequisite, not a failed 0% grade. This run was not scored.
+
+Authorize access to the MCP server, then run the evaluation again.
+
+## Score
+
+Not scored.
+
+## Endpoint and provenance
+
+- Tested endpoint: https://protected.example/mcp?access\\_token=\\[REDACTED\\]
+- Authorization endpoint: https://protected.example/mcp?code=%5BREDACTED%5D
+- Route: direct
+- Proxy used: no
+
+## Sections
+
+### Authorization Required
+
+Status: prerequisite
+
+Score: Not scored (maximum 0)
+
+OAuth authorization is required before evaluation
+
+- ⚠ Authorize before running the report; access\\_token=\\[REDACTED\\]
+  - Context: The endpoint returned 401 with Bearer \\[REDACTED\\]
+  - Metadata:
+
+    \`\`\`json
+    {
+      "authorization": "[REDACTED]",
+      "endpoint": "https://protected.example/mcp?access_token=[REDACTED]",
+      "route": "direct",
+      "status": 401
+    }
+    \`\`\`
+",
+  "name": "oauth-required-unscored",
+}
+`;
+
+exports[`versioned public report artifacts > matches the partial JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "status": "partial",
+    "summary": "The run was only partially evaluated and no overall grade was assigned."
+  },
+  "protocol": {
+    "era": "modern",
+    "version": "2026-07-28"
+  },
+  "provenance": {
+    "proxyUsed": false,
+    "route": "direct"
+  },
+  "schemaVersion": "1.0.0",
+  "score": null,
+  "sections": [
+    {
+      "description": "Core Protocol description",
+      "evidence": [
+        {
+          "context": "Core Protocol context",
+          "message": "✓ Core Protocol evidence",
+          "metadata": {
+            "endpoint": "https://partial.example/mcp",
+            "protocolEra": "modern",
+            "protocolVersion": "2026-07-28",
+            "route": "direct"
+          }
+        }
+      ],
+      "id": "protocol",
+      "name": "Core Protocol",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Capabilities description",
+      "evidence": [
+        {
+          "message": "⚠ Capability checks were skipped after the connection closed."
+        }
+      ],
+      "id": "capabilities",
+      "name": "Capabilities",
+      "score": {
+        "earned": null,
+        "maximum": 10
+      },
+      "status": "skipped"
+    }
+  ],
+  "target": {
+    "negotiatedEndpoint": "https://partial.example/mcp",
+    "testedEndpoint": "https://partial.example/mcp"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://partial.example/mcp
+
+## Outcome
+
+**partial** — The run was only partially evaluated and no overall grade was assigned.
+
+## Score
+
+Not scored.
+
+## Endpoint and provenance
+
+- Tested endpoint: https://partial.example/mcp
+- Negotiated endpoint: https://partial.example/mcp
+- Route: direct
+- Proxy used: no
+
+## Protocol and transport
+
+- Protocol era: modern
+- Protocol version: 2026-07-28
+
+## Sections
+
+### Core Protocol
+
+Status: evaluated
+
+Score: 15 / 15
+
+Core Protocol description
+
+- ✓ Core Protocol evidence
+  - Context: Core Protocol context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://partial.example/mcp",
+      "protocolEra": "modern",
+      "protocolVersion": "2026-07-28",
+      "route": "direct"
+    }
+    \`\`\`
+
+### Capabilities
+
+Status: skipped
+
+Score: Not scored (maximum 10)
+
+Capabilities description
+
+- ⚠ Capability checks were skipped after the connection closed.
+",
+  "name": "partial",
+}
+`;
+
+exports[`versioned public report artifacts > matches the public JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "status": "scored",
+    "summary": "The evaluation completed and was scored."
+  },
+  "protocol": {
+    "era": "modern",
+    "version": "2026-07-28"
+  },
+  "provenance": {
+    "proxyUsed": false,
+    "route": "direct"
+  },
+  "schemaVersion": "1.0.0",
+  "score": {
+    "earned": 55,
+    "maximum": 55,
+    "percentage": 100
+  },
+  "sections": [
+    {
+      "description": "Core Protocol description",
+      "evidence": [
+        {
+          "context": "Core Protocol context",
+          "message": "✓ Core Protocol evidence",
+          "metadata": {
+            "endpoint": "https://public.example/mcp?tenant=demo",
+            "protocolEra": "modern",
+            "protocolVersion": "2026-07-28",
+            "route": "direct"
+          }
+        }
+      ],
+      "id": "protocol",
+      "name": "Core Protocol",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Capabilities description",
+      "evidence": [
+        {
+          "context": "Capabilities context",
+          "message": "✓ Capabilities evidence",
+          "metadata": {
+            "durationMs": 18,
+            "itemCount": 2,
+            "method": "tools/list"
+          }
+        }
+      ],
+      "id": "capabilities",
+      "name": "Capabilities",
+      "score": {
+        "earned": 10,
+        "maximum": 10
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Transport description",
+      "evidence": [
+        {
+          "context": "Transport context",
+          "message": "✓ Transport evidence",
+          "metadata": {
+            "endpoint": "https://public.example/mcp?tenant=demo",
+            "protocolEra": "modern",
+            "transportType": "streamable-http"
+          }
+        }
+      ],
+      "id": "transport",
+      "name": "Transport",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Performance description",
+      "evidence": [
+        {
+          "context": "Performance context",
+          "message": "✓ Performance evidence",
+          "metadata": {
+            "category": "excellent",
+            "durationMs": 240
+          }
+        }
+      ],
+      "id": "performance",
+      "name": "Performance",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    }
+  ],
+  "target": {
+    "negotiatedEndpoint": "https://public.example/mcp?tenant=demo",
+    "testedEndpoint": "https://public.example/mcp?tenant=demo"
+  },
+  "timings": {
+    "checks": [
+      {
+        "durationMs": 18,
+        "name": "tools/list"
+      }
+    ],
+    "negotiationMs": 240
+  },
+  "transport": {
+    "type": "streamable-http"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://public.example/mcp?tenant=demo
+
+## Outcome
+
+**scored** — The evaluation completed and was scored.
+
+## Score
+
+55 / 55 (100.00%)
+
+## Endpoint and provenance
+
+- Tested endpoint: https://public.example/mcp?tenant=demo
+- Negotiated endpoint: https://public.example/mcp?tenant=demo
+- Route: direct
+- Proxy used: no
+
+## Protocol and transport
+
+- Protocol era: modern
+- Protocol version: 2026-07-28
+- Transport: streamable-http
+
+## Timings
+
+- Negotiation: 240 ms
+- tools/list: 18 ms
+
+## Sections
+
+### Core Protocol
+
+Status: evaluated
+
+Score: 15 / 15
+
+Core Protocol description
+
+- ✓ Core Protocol evidence
+  - Context: Core Protocol context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://public.example/mcp?tenant=demo",
+      "protocolEra": "modern",
+      "protocolVersion": "2026-07-28",
+      "route": "direct"
+    }
+    \`\`\`
+
+### Capabilities
+
+Status: evaluated
+
+Score: 10 / 10
+
+Capabilities description
+
+- ✓ Capabilities evidence
+  - Context: Capabilities context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "durationMs": 18,
+      "itemCount": 2,
+      "method": "tools/list"
+    }
+    \`\`\`
+
+### Transport
+
+Status: evaluated
+
+Score: 15 / 15
+
+Transport description
+
+- ✓ Transport evidence
+  - Context: Transport context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://public.example/mcp?tenant=demo",
+      "protocolEra": "modern",
+      "transportType": "streamable-http"
+    }
+    \`\`\`
+
+### Performance
+
+Status: evaluated
+
+Score: 15 / 15
+
+Performance description
+
+- ✓ Performance evidence
+  - Context: Performance context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "category": "excellent",
+      "durationMs": 240
+    }
+    \`\`\`
+",
+  "name": "public",
+}
+`;
+
+exports[`versioned public report artifacts > matches the stateful JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "status": "scored",
+    "summary": "The evaluation completed and was scored."
+  },
+  "protocol": {
+    "era": "legacy",
+    "version": "2025-11-25"
+  },
+  "provenance": {
+    "proxyUsed": true,
+    "route": "authenticated-proxy"
+  },
+  "schemaVersion": "1.0.0",
+  "score": {
+    "earned": 45,
+    "maximum": 70,
+    "percentage": 64.28571428571429
+  },
+  "sections": [
+    {
+      "description": "Core Protocol description",
+      "evidence": [
+        {
+          "context": "Core Protocol context",
+          "message": "✓ Core Protocol evidence",
+          "metadata": {
+            "endpoint": "https://stateful.example/mcp",
+            "protocolEra": "legacy",
+            "protocolVersion": "2025-11-25",
+            "route": "authenticated proxy"
+          }
+        }
+      ],
+      "id": "protocol",
+      "name": "Core Protocol",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Capabilities description",
+      "evidence": [
+        {
+          "context": "Capabilities context",
+          "message": "✓ Capabilities evidence",
+          "metadata": {
+            "durationMs": 35,
+            "method": "resources/list"
+          }
+        }
+      ],
+      "id": "capabilities",
+      "name": "Capabilities",
+      "score": {
+        "earned": 10,
+        "maximum": 10
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Transport description",
+      "evidence": [
+        {
+          "context": "Transport context",
+          "message": "✓ Transport evidence",
+          "metadata": {
+            "endpoint": "https://stateful.example/mcp",
+            "protocolEra": "legacy",
+            "transportType": "streamable-http"
+          }
+        }
+      ],
+      "id": "transport",
+      "name": "Transport",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Browser Accessibility description",
+      "evidence": [
+        {
+          "context": "Browser Accessibility context",
+          "message": "✓ Browser Accessibility evidence",
+          "metadata": {
+            "endpoint": "https://stateful.example/mcp",
+            "requiredHeaders": [
+              "mcp-session-id"
+            ]
+          }
+        }
+      ],
+      "id": "cors",
+      "name": "Browser Accessibility",
+      "score": {
+        "earned": 0,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Performance description",
+      "evidence": [
+        {
+          "context": "Performance context",
+          "message": "✓ Performance evidence",
+          "metadata": {
+            "category": "slow",
+            "durationMs": 3200
+          }
+        }
+      ],
+      "id": "performance",
+      "name": "Performance",
+      "score": {
+        "earned": 5,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    }
+  ],
+  "target": {
+    "negotiatedEndpoint": "https://stateful.example/mcp",
+    "testedEndpoint": "https://stateful.example/mcp"
+  },
+  "timings": {
+    "checks": [
+      {
+        "durationMs": 35,
+        "name": "resources/list"
+      }
+    ],
+    "negotiationMs": 3200
+  },
+  "transport": {
+    "type": "streamable-http"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://stateful.example/mcp
+
+## Outcome
+
+**scored** — The evaluation completed and was scored.
+
+## Score
+
+45 / 70 (64.29%)
+
+## Endpoint and provenance
+
+- Tested endpoint: https://stateful.example/mcp
+- Negotiated endpoint: https://stateful.example/mcp
+- Route: authenticated-proxy
+- Proxy used: yes
+
+## Protocol and transport
+
+- Protocol era: legacy
+- Protocol version: 2025-11-25
+- Transport: streamable-http
+
+## Timings
+
+- Negotiation: 3200 ms
+- resources/list: 35 ms
+
+## Sections
+
+### Core Protocol
+
+Status: evaluated
+
+Score: 15 / 15
+
+Core Protocol description
+
+- ✓ Core Protocol evidence
+  - Context: Core Protocol context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://stateful.example/mcp",
+      "protocolEra": "legacy",
+      "protocolVersion": "2025-11-25",
+      "route": "authenticated proxy"
+    }
+    \`\`\`
+
+### Capabilities
+
+Status: evaluated
+
+Score: 10 / 10
+
+Capabilities description
+
+- ✓ Capabilities evidence
+  - Context: Capabilities context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "durationMs": 35,
+      "method": "resources/list"
+    }
+    \`\`\`
+
+### Transport
+
+Status: evaluated
+
+Score: 15 / 15
+
+Transport description
+
+- ✓ Transport evidence
+  - Context: Transport context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://stateful.example/mcp",
+      "protocolEra": "legacy",
+      "transportType": "streamable-http"
+    }
+    \`\`\`
+
+### Browser Accessibility
+
+Status: evaluated
+
+Score: 0 / 15
+
+Browser Accessibility description
+
+- ✓ Browser Accessibility evidence
+  - Context: Browser Accessibility context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://stateful.example/mcp",
+      "requiredHeaders": [
+        "mcp-session-id"
+      ]
+    }
+    \`\`\`
+
+### Performance
+
+Status: evaluated
+
+Score: 5 / 15
+
+Performance description
+
+- ✓ Performance evidence
+  - Context: Performance context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "category": "slow",
+      "durationMs": 3200
+    }
+    \`\`\`
+",
+  "name": "stateful",
+}
+`;
+
+exports[`versioned public report artifacts > matches the stateless JSON and Markdown golden 1`] = `
+{
+  "json": "{
+  "$schema": "https://mcptest.io/schemas/report/v1.schema.json",
+  "artifactType": "mcptest.report",
+  "generatedAt": "2026-08-11T12:44:04.000Z",
+  "generator": {
+    "commit": "0123456789abcdef",
+    "name": "mcptest",
+    "version": "1.2.3"
+  },
+  "outcome": {
+    "status": "scored",
+    "summary": "The evaluation completed and was scored."
+  },
+  "protocol": {
+    "era": "modern",
+    "version": "2026-07-28"
+  },
+  "provenance": {
+    "proxyUsed": false,
+    "route": "direct"
+  },
+  "schemaVersion": "1.0.0",
+  "score": {
+    "earned": 70,
+    "maximum": 70,
+    "percentage": 100
+  },
+  "sections": [
+    {
+      "description": "Core Protocol description",
+      "evidence": [
+        {
+          "context": "Core Protocol context",
+          "message": "✓ Core Protocol evidence",
+          "metadata": {
+            "endpoint": "https://stateless.example/mcp",
+            "protocolEra": "modern",
+            "protocolVersion": "2026-07-28",
+            "route": "direct"
+          }
+        }
+      ],
+      "id": "protocol",
+      "name": "Core Protocol",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Capabilities description",
+      "evidence": [
+        {
+          "context": "Capabilities context",
+          "message": "✓ Capabilities evidence",
+          "metadata": {
+            "durationMs": 18,
+            "itemCount": 2,
+            "method": "tools/list"
+          }
+        }
+      ],
+      "id": "capabilities",
+      "name": "Capabilities",
+      "score": {
+        "earned": 10,
+        "maximum": 10
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Transport description",
+      "evidence": [
+        {
+          "context": "Transport context",
+          "message": "✓ Transport evidence",
+          "metadata": {
+            "endpoint": "https://stateless.example/mcp",
+            "protocolEra": "modern",
+            "transportType": "streamable-http"
+          }
+        }
+      ],
+      "id": "transport",
+      "name": "Transport",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Performance description",
+      "evidence": [
+        {
+          "context": "Performance context",
+          "message": "✓ Performance evidence",
+          "metadata": {
+            "category": "excellent",
+            "durationMs": 240
+          }
+        }
+      ],
+      "id": "performance",
+      "name": "Performance",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    },
+    {
+      "description": "Browser Accessibility description",
+      "evidence": [
+        {
+          "context": "Browser Accessibility context",
+          "message": "✓ Browser Accessibility evidence",
+          "metadata": {
+            "endpoint": "https://stateless.example/mcp",
+            "requiredHeaders": [
+              "mcp-protocol-version",
+              "mcp-method",
+              "mcp-name"
+            ]
+          }
+        }
+      ],
+      "id": "cors",
+      "name": "Browser Accessibility",
+      "score": {
+        "earned": 15,
+        "maximum": 15
+      },
+      "status": "evaluated"
+    }
+  ],
+  "target": {
+    "negotiatedEndpoint": "https://stateless.example/mcp",
+    "testedEndpoint": "https://stateless.example/mcp"
+  },
+  "timings": {
+    "checks": [
+      {
+        "durationMs": 18,
+        "name": "tools/list"
+      }
+    ],
+    "negotiationMs": 240
+  },
+  "transport": {
+    "type": "streamable-http"
+  }
+}
+",
+  "markdown": "# mcptest Evaluation Report
+
+- Schema: 1.0.0
+- Generated: 2026-08-11T12:44:04.000Z
+- Generator: mcptest 1.2.3 (0123456789abcdef)
+- Tested endpoint: https://stateless.example/mcp
+
+## Outcome
+
+**scored** — The evaluation completed and was scored.
+
+## Score
+
+70 / 70 (100.00%)
+
+## Endpoint and provenance
+
+- Tested endpoint: https://stateless.example/mcp
+- Negotiated endpoint: https://stateless.example/mcp
+- Route: direct
+- Proxy used: no
+
+## Protocol and transport
+
+- Protocol era: modern
+- Protocol version: 2026-07-28
+- Transport: streamable-http
+
+## Timings
+
+- Negotiation: 240 ms
+- tools/list: 18 ms
+
+## Sections
+
+### Core Protocol
+
+Status: evaluated
+
+Score: 15 / 15
+
+Core Protocol description
+
+- ✓ Core Protocol evidence
+  - Context: Core Protocol context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://stateless.example/mcp",
+      "protocolEra": "modern",
+      "protocolVersion": "2026-07-28",
+      "route": "direct"
+    }
+    \`\`\`
+
+### Capabilities
+
+Status: evaluated
+
+Score: 10 / 10
+
+Capabilities description
+
+- ✓ Capabilities evidence
+  - Context: Capabilities context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "durationMs": 18,
+      "itemCount": 2,
+      "method": "tools/list"
+    }
+    \`\`\`
+
+### Transport
+
+Status: evaluated
+
+Score: 15 / 15
+
+Transport description
+
+- ✓ Transport evidence
+  - Context: Transport context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://stateless.example/mcp",
+      "protocolEra": "modern",
+      "transportType": "streamable-http"
+    }
+    \`\`\`
+
+### Performance
+
+Status: evaluated
+
+Score: 15 / 15
+
+Performance description
+
+- ✓ Performance evidence
+  - Context: Performance context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "category": "excellent",
+      "durationMs": 240
+    }
+    \`\`\`
+
+### Browser Accessibility
+
+Status: evaluated
+
+Score: 15 / 15
+
+Browser Accessibility description
+
+- ✓ Browser Accessibility evidence
+  - Context: Browser Accessibility context
+  - Metadata:
+
+    \`\`\`json
+    {
+      "endpoint": "https://stateless.example/mcp",
+      "requiredHeaders": [
+        "mcp-protocol-version",
+        "mcp-method",
+        "mcp-name"
+      ]
+    }
+    \`\`\`
+",
+  "name": "stateless",
+}
+`;

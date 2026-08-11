@@ -1,0 +1,311 @@
+import { describe, expect, it } from 'vitest';
+import publicJsonSchema from '../../public/schemas/report/v1.schema.json';
+import type { EvaluationReport, EvaluationSection } from './evaluation';
+import {
+  REPORT_SCHEMA_URL,
+  createPublicReport,
+  parsePublicReportJson,
+  redactReportValue,
+  safeParsePublicReport,
+  serializePublicReportJson,
+  serializePublicReportMarkdown,
+  validatePublicReport,
+} from './reportArtifact';
+
+const FIXED_OPTIONS = {
+  generatedAt: '2026-08-11T12:44:04.000Z',
+  toolVersion: '1.2.3',
+  toolCommit: '0123456789abcdef',
+};
+
+const section = (
+  name: string,
+  score: number,
+  maxScore: number,
+  metadata: Record<string, unknown> = {},
+  overrides: Partial<EvaluationSection> = {}
+): EvaluationSection => ({
+  name,
+  description: `${name} description`,
+  score,
+  maxScore,
+  details: [{
+    text: `✓ ${name} evidence`,
+    context: `${name} context`,
+    metadata,
+  }],
+  ...overrides,
+});
+
+const publicReport = (): EvaluationReport => ({
+  serverUrl: 'https://public.example/mcp?tenant=demo',
+  outcome: 'scored',
+  finalScore: 55,
+  sections: {
+    protocol: section('Core Protocol', 15, 15, {
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+      endpoint: 'https://public.example/mcp?tenant=demo',
+      route: 'direct',
+    }),
+    capabilities: section('Capabilities', 10, 10, {
+      method: 'tools/list',
+      itemCount: 2,
+      durationMs: 18,
+    }),
+    transport: section('Transport', 15, 15, {
+      transportType: 'streamable-http',
+      endpoint: 'https://public.example/mcp?tenant=demo',
+      protocolEra: 'modern',
+    }),
+    performance: section('Performance', 15, 15, {
+      durationMs: 240,
+      category: 'excellent',
+    }),
+  },
+});
+
+const authorizationRequiredReport = (): EvaluationReport => ({
+  serverUrl: 'https://protected.example/mcp?access_token=target-token',
+  authenticationUrl: 'https://protected.example/mcp?code=authorization-code',
+  outcome: 'authorization-required',
+  finalScore: 0,
+  sections: {
+    auth: section('Authorization Required', 0, 0, {
+      route: 'direct',
+      status: 401,
+      endpoint: 'https://protected.example/mcp?access_token=target-token',
+      authorization: 'Bearer secret-access-token',
+    }, {
+      description: 'OAuth authorization is required before evaluation',
+      details: [{
+        text: '⚠ Authorize before running the report; access_token=secret-access-token',
+        context: 'The endpoint returned 401 with Bearer secret-access-token.',
+        metadata: {
+          route: 'direct',
+          status: 401,
+          endpoint: 'https://protected.example/mcp?access_token=target-token',
+          authorization: 'Bearer secret-access-token',
+        },
+      }],
+    }),
+  },
+});
+
+const statefulReport = (): EvaluationReport => ({
+  serverUrl: 'https://stateful.example/mcp',
+  outcome: 'scored',
+  finalScore: 45,
+  sections: {
+    protocol: section('Core Protocol', 15, 15, {
+      protocolEra: 'legacy',
+      protocolVersion: '2025-11-25',
+      endpoint: 'https://stateful.example/mcp',
+      route: 'authenticated proxy',
+    }),
+    capabilities: section('Capabilities', 10, 10, { method: 'resources/list', durationMs: 35 }),
+    transport: section('Transport', 15, 15, {
+      transportType: 'streamable-http',
+      protocolEra: 'legacy',
+      endpoint: 'https://stateful.example/mcp',
+    }),
+    cors: section('Browser Accessibility', 0, 15, {
+      endpoint: 'https://stateful.example/mcp',
+      requiredHeaders: ['mcp-session-id'],
+    }),
+    performance: section('Performance', 5, 15, { durationMs: 3200, category: 'slow' }),
+  },
+});
+
+const statelessReport = (): EvaluationReport => ({
+  ...publicReport(),
+  serverUrl: 'https://stateless.example/mcp',
+  finalScore: 70,
+  sections: {
+    ...publicReport().sections,
+    protocol: section('Core Protocol', 15, 15, {
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+      endpoint: 'https://stateless.example/mcp',
+      route: 'direct',
+    }),
+    transport: section('Transport', 15, 15, {
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+      endpoint: 'https://stateless.example/mcp',
+    }),
+    cors: section('Browser Accessibility', 15, 15, {
+      endpoint: 'https://stateless.example/mcp',
+      requiredHeaders: ['mcp-protocol-version', 'mcp-method', 'mcp-name'],
+    }),
+  },
+});
+
+const legacySseReport = (): EvaluationReport => ({
+  serverUrl: 'https://legacy.example/events',
+  outcome: 'scored',
+  finalScore: 51,
+  sections: {
+    protocol: section('Core Protocol', 15, 15, {
+      protocolEra: 'legacy',
+      protocolVersion: '2025-03-26',
+      endpoint: 'https://legacy.example/events',
+      route: 'direct',
+    }),
+    capabilities: section('Capabilities', 10, 10, { method: 'prompts/list', durationMs: 52 }),
+    transport: section('Transport', 6, 15, {
+      transportType: 'legacy-sse',
+      protocolEra: 'legacy',
+      endpoint: 'https://legacy.example/events',
+    }),
+    cors: section('Browser Accessibility', 15, 15),
+    performance: section('Performance', 5, 15, { durationMs: 2800, category: 'slow' }),
+  },
+});
+
+const partialReport = (): EvaluationReport => ({
+  serverUrl: 'https://partial.example/mcp',
+  outcome: 'partial',
+  finalScore: 15,
+  sections: {
+    protocol: section('Core Protocol', 15, 15, {
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+      endpoint: 'https://partial.example/mcp',
+      route: 'direct',
+    }),
+    capabilities: section('Capabilities', 0, 10, {}, {
+      status: 'skipped',
+      details: [{ text: '⚠ Capability checks were skipped after the connection closed.' }],
+    }),
+  },
+});
+
+const failedReport = (): EvaluationReport => ({
+  serverUrl: 'https://failed.example/mcp?api_key=do-not-export',
+  outcome: 'scored',
+  finalScore: 0,
+  sections: {
+    protocol: section('Core Protocol', 0, 15, {}, {
+      details: [{
+        text: '⚠ MCP negotiation failed: Authorization: Bearer super-secret',
+        context: 'Direct target failed; proxy URL https://proxy.example/?target=https%3A%2F%2Ffailed.example%2Fmcp%3Ftoken%3Dnested-secret',
+      }],
+    }),
+    capabilities: section('Capabilities', 0, 10, {}, {
+      details: [{ text: '⚠ Capability checks were skipped because no MCP connection was established.' }],
+    }),
+    transport: section('Transport', 0, 15, {}, {
+      details: [{ text: '⚠ No standard MCP transport completed negotiation.' }],
+    }),
+    cors: section('Browser Accessibility', 0, 15, {}, {
+      details: [{ text: '⚠ Browser accessibility could not be isolated.' }],
+    }),
+    performance: section('Performance', 0, 15, {}, {
+      details: [{ text: '⚠ Performance was not scored because negotiation failed.' }],
+    }),
+  },
+});
+
+const GOLDEN_REPORTS: Record<string, () => EvaluationReport> = {
+  public: publicReport,
+  'oauth-required-unscored': authorizationRequiredReport,
+  stateful: statefulReport,
+  stateless: statelessReport,
+  'legacy-sse': legacySseReport,
+  partial: partialReport,
+  failed: failedReport,
+};
+
+describe('versioned public report artifacts', () => {
+  it.each(Object.entries(GOLDEN_REPORTS))('matches the %s JSON and Markdown golden', (name, makeReport) => {
+    const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
+    expect({
+      name,
+      json: serializePublicReportJson(artifact),
+      markdown: serializePublicReportMarkdown(artifact),
+    }).toMatchSnapshot();
+  });
+
+  it('is deterministic with injected generation and tool metadata', () => {
+    const first = createPublicReport(publicReport(), FIXED_OPTIONS);
+    const second = createPublicReport(publicReport(), FIXED_OPTIONS);
+
+    expect(serializePublicReportJson(first)).toBe(serializePublicReportJson(second));
+    expect(serializePublicReportMarkdown(first)).toBe(serializePublicReportMarkdown(second));
+  });
+
+  it('parses and validates supported artifacts for future CI consumers', () => {
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    const serialized = serializePublicReportJson(artifact);
+
+    expect(parsePublicReportJson(serialized)).toEqual(artifact);
+    expect(validatePublicReport(artifact)).toEqual(artifact);
+    expect(safeParsePublicReport({ ...artifact, schemaVersion: '2.0.0' }).success).toBe(false);
+    expect(safeParsePublicReport({ ...artifact, score: null }).success).toBe(false);
+    expect(safeParsePublicReport({
+      ...artifact,
+      outcome: { status: 'failed', summary: 'Failed.' },
+    }).success).toBe(false);
+    expect(() => parsePublicReportJson('{"not":"a report"}')).toThrow();
+  });
+
+  it('publishes a matching versioned JSON Schema identifier', () => {
+    expect(publicJsonSchema.$id).toBe(REPORT_SCHEMA_URL);
+    expect(publicJsonSchema.properties.schemaVersion.const).toBe('1.0.0');
+  });
+
+  it('redacts secrets recursively, including embedded and nested URL values', () => {
+    const artifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
+    const failedArtifact = createPublicReport(failedReport(), FIXED_OPTIONS);
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}${serializePublicReportJson(failedArtifact)}`;
+
+    expect(output).not.toContain('secret-access-token');
+    expect(output).not.toContain('authorization-code');
+    expect(output).not.toContain('do-not-export');
+    expect(output).not.toContain('nested-secret');
+    expect(output).not.toContain('super-secret');
+    expect(output).toContain('%5BREDACTED%5D');
+    expect(redactReportValue({
+      client_secret: 'client-value',
+      cookie: 'session=value',
+      safe: 'visible',
+      code_challenge_methods_supported: ['S256'],
+    })).toEqual({
+      client_secret: '[REDACTED]',
+      cookie: '[REDACTED]',
+      safe: 'visible',
+      code_challenge_methods_supported: ['S256'],
+    });
+  });
+
+  it('redacts again at serialization as a defense for directly constructed artifacts', () => {
+    const artifact = createPublicReport(publicReport(), FIXED_OPTIONS);
+    artifact.sections[0].evidence.push({
+      message: 'Observed Bearer serializer-secret',
+      metadata: {
+        accessToken: 'metadata-secret',
+        callback: 'https://client.example/callback?authorization_code=url-secret',
+      },
+    });
+
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+    expect(output).not.toContain('serializer-secret');
+    expect(output).not.toContain('metadata-secret');
+    expect(output).not.toContain('url-secret');
+  });
+
+  it('never turns authorization, partial, or failed outcomes into a zero grade', () => {
+    for (const makeReport of [authorizationRequiredReport, partialReport, failedReport]) {
+      const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
+      expect(artifact.score).toBeNull();
+      expect(serializePublicReportMarkdown(artifact)).toContain('Not scored.');
+    }
+
+    const authorizationArtifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
+    expect(authorizationArtifact.outcome.authorizationPrerequisite).toMatchObject({ required: true });
+    expect(serializePublicReportMarkdown(authorizationArtifact)).toContain(
+      'Authorization is a prerequisite, not a failed 0% grade.'
+    );
+  });
+});

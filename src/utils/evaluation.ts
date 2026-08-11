@@ -72,24 +72,26 @@ export function getEvaluationTransportProbeUrl(
   return outerUrl.toString();
 }
 
-interface DetailItem {
+export interface DetailItem {
   text: string;
   context?: string;
   metadata?: unknown;
 }
 
-interface EvaluationSection {
+export interface EvaluationSection {
   name: string;
   description: string;
   score: number;
   maxScore: number;
   details: DetailItem[];
+  /** Optional export hint for reports that could not evaluate every section. */
+  status?: 'evaluated' | 'partial' | 'failed' | 'skipped';
 }
 
 export interface EvaluationReport {
   serverUrl: string;
   authenticationUrl?: string;
-  outcome?: 'scored' | 'authorization-required';
+  outcome?: 'scored' | 'authorization-required' | 'partial' | 'failed';
   finalScore: number;
   sections: Record<string, EvaluationSection>;
 }
