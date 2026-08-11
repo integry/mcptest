@@ -348,7 +348,7 @@ const isSensitiveQueryKey = (key: string): boolean => {
     try {
       next = decodeFormComponent(decoded);
     } catch {
-      return false;
+      return true;
     }
     if (next === decoded) return false;
     if (pass === MAX_URL_COMPONENT_DECODE_PASSES) return true;

@@ -700,6 +700,28 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('fails closed for malformed encoded query names during creation and serialization', () => {
+    const malformedTokenUrl = 'https://example.test/?access_token%ZZ=malformed-token-secret';
+    const malformedSecretUrl = 'https://example.test/?client_secret%=malformed-client-secret';
+    const report = publicReport();
+    report.serverUrl = malformedTokenUrl;
+    report.sections.protocol.details[0].context = malformedSecretUrl;
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    expect(artifact.target.testedEndpoint).toBe(
+      'https://example.test/?access_token%25ZZ=%5BREDACTED%5D'
+    );
+    expect(JSON.stringify(artifact)).not.toMatch(/malformed-token-secret|malformed-client-secret/);
+
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ]) {
+      expect(output).toContain('%5BREDACTED%5D');
+      expect(output).not.toMatch(/malformed-token-secret|malformed-client-secret/);
+    }
+  });
+
   it('redacts singly and repeatedly encoded path credentials during creation and serialization', () => {
     const singlyEncodedUrl = 'https://example.test/access_token%3Dsingle-path-secret';
     const repeatedlyEncodedUrl = 'https://example.test/client_secret%253Drepeated-path-secret';
