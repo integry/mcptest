@@ -834,6 +834,52 @@ describe('versioned public report artifacts', () => {
     }
   });
 
+  it('redacts session credential aliases during creation and both serializers', () => {
+    const sessionSecrets = {
+      session: 'structured-session-secret',
+      session_key: 'structured-session-key-secret',
+      sessionToken: 'structured-session-token-secret',
+      mcpSessionId: 'structured-mcp-session-secret',
+      phpsessid: 'structured-php-session-secret',
+      sid: 'structured-sid-secret',
+    };
+    const report = publicReport();
+    report.serverUrl = (
+      'https://target.example/mcp?session=live-session-secret&session_key=url-session-key-secret&visible=yes'
+    );
+    report.sections.protocol.details[0].metadata = sessionSecrets;
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    expect(JSON.stringify(artifact)).not.toMatch(/live-session-secret|url-session-key-secret/);
+    expect(artifact.sections[0].evidence[0].metadata).toEqual({
+      mcpSessionId: '[REDACTED]',
+      phpsessid: '[REDACTED]',
+      session: '[REDACTED]',
+      sessionToken: '[REDACTED]',
+      session_key: '[REDACTED]',
+      sid: '[REDACTED]',
+    });
+
+    const directlyConstructed = createPublicReport(publicReport(), FIXED_OPTIONS);
+    directlyConstructed.target.testedEndpoint = (
+      'https://target.example/mcp?session=serializer-session-secret&connect.sid=serializer-sid-secret&visible=yes'
+    );
+    directlyConstructed.sections[0].evidence[0].metadata = sessionSecrets;
+
+    for (const output of [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+      serializePublicReportJson(directlyConstructed),
+      serializePublicReportMarkdown(directlyConstructed),
+    ]) {
+      expect(output).not.toMatch(
+        /live-session-secret|url-session-key-secret|serializer-(?:session|sid)-secret|structured-(?:session|session-key|session-token|mcp-session|php-session|sid)-secret/
+      );
+      expect(output).toContain('[REDACTED]');
+      expect(output).toContain('visible=yes');
+    }
+  });
+
   it('preserves non-secret authorization prerequisite and PKCE capability fields', () => {
     const artifact = createPublicReport(authorizationRequiredReport(), FIXED_OPTIONS);
     artifact.sections[0].evidence[0].metadata = {
