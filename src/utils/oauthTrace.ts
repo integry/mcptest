@@ -255,6 +255,10 @@ const sanitizeText = (value: string, secrets: ReadonlySet<string>): string => {
   return sanitized;
 };
 
+const isOAuthTraceUrlKey = (key: string): boolean =>
+  /url|uri|endpoint|issuer|resource/i.test(key)
+  || key.replace(/[-_]/g, '').toLowerCase() === 'authorizationservers';
+
 /** Removes credentials, fragments, and sensitive query values from a trace URL. */
 export const sanitizeOAuthTraceUrl = (
   value: string | URL,
@@ -272,7 +276,7 @@ const sanitizeValue = (
 ): unknown => {
   if (key && isOAuthSensitiveKey(key)) return OAUTH_TRACE_REDACTED;
   if (typeof value === 'string') {
-    if (key && /url|uri|endpoint|issuer|resource/i.test(key)) {
+    if (key && isOAuthTraceUrlKey(key)) {
       return sanitizeOAuthTraceUrl(value, secrets);
     }
     return sanitizeText(value, secrets);

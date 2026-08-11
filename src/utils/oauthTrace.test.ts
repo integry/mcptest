@@ -339,6 +339,44 @@ describe('OAuth flight recorder core', () => {
     );
   });
 
+  it('sanitizes query values in authorization server URL arrays before persistence', () => {
+    const secrets = ['login-hint-secret', 'signed-request-secret', 'aws-signature-secret'];
+    const authorizationServer = new URL('https://auth.example/authorize');
+    authorizationServer.searchParams.set('tenant', 'acme');
+    authorizationServer.searchParams.set('login_hint', secrets[0]);
+    authorizationServer.searchParams.set('signed_request', secrets[1]);
+    authorizationServer.searchParams.set('x-amz-signature', secrets[2]);
+    const recorder = createOAuthFlightRecorder({ targetUrl: TARGET_URL, storage: sessionStorage });
+
+    recorder.record({
+      type: 'protected_resource_metadata',
+      outcome: 'succeeded',
+      provenance: 'direct_target',
+      route: 'direct',
+      explanation: 'Protected-resource metadata returned authorization servers.',
+      response: {
+        metadata: { authorizationServers: [authorizationServer.toString()] },
+      },
+    });
+
+    const snapshotUrl = new URL(
+      (recorder.snapshot().events[0].response?.metadata?.authorizationServers as string[])[0]
+    );
+    expect(snapshotUrl.searchParams.get('tenant')).toBe('acme');
+    expect(snapshotUrl.searchParams.get('login_hint')).toBe(OAUTH_TRACE_REDACTED);
+    expect(snapshotUrl.searchParams.get('signed_request')).toBe(OAUTH_TRACE_REDACTED);
+    expect(snapshotUrl.searchParams.get('x-amz-signature')).toBe(OAUTH_TRACE_REDACTED);
+
+    const evidence = [
+      JSON.stringify(recorder.snapshot()),
+      JSON.stringify(getStoredOAuthTrace(TARGET_URL, sessionStorage)),
+      recorder.serialize(),
+    ];
+    for (const secret of secrets) {
+      for (const value of evidence) expect(value).not.toContain(secret);
+    }
+  });
+
   it('redacts credentials in nested assignments from ordinary and persisted trace evidence', () => {
     const nestedSecrets = [
       'plain-secret-exact',
