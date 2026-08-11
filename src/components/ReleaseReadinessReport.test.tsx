@@ -70,4 +70,34 @@ describe('ReleaseReadinessReport', () => {
     expect(markup).not.toContain('OAuth error');
     expect(markup).toContain('View raw trace (redacted)');
   });
+
+  it('does not present an authenticated-proxy challenge as a required OAuth step', () => {
+    const markup = renderToStaticMarkup(
+      <ReleaseReadinessReport
+        report={{ ...authorizationReport, outcome: 'failed' }}
+        expandedItems={new Set()}
+        onToggleItem={() => undefined}
+        oauthTrace={{
+          version: 1,
+          traceId: 'trace-proxy',
+          targetFingerprint: 'fingerprint',
+          targetUrl: authorizationReport.serverUrl,
+          startedAt: '2026-08-11T20:02:00.000Z',
+          events: [{
+            sequence: 1,
+            type: 'target_challenge',
+            outcome: 'challenged',
+            timestamp: '2026-08-11T20:02:00.000Z',
+            provenance: 'authenticated_proxy',
+            route: 'proxy',
+            explanation: 'The proxy requested access.',
+          }],
+        }}
+      />
+    );
+
+    expect(markup).toContain('Authenticated proxy requested access');
+    expect(markup).toContain('Proxy access required');
+    expect(markup).not.toContain('Required step');
+  });
 });

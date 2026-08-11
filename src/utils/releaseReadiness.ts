@@ -38,11 +38,6 @@ const firstString = (records: Record<string, unknown>[], key: string): string | 
   records.map((record) => record[key]).find((value): value is string => typeof value === 'string')
 );
 
-const detailsText = (report: EvaluationReport): string => Object.values(report.sections)
-  .flatMap((section) => section.details)
-  .map((detail) => `${detail.text} ${detail.context || ''}`)
-  .join('\n');
-
 const capabilityFact = (
   report: EvaluationReport,
   method: string
@@ -73,18 +68,100 @@ const traceHas = (
   trace: OAuthTraceV1 | undefined,
   type: OAuthTraceV1['events'][number]['type'],
   outcomes: readonly string[] = ['succeeded']
-): boolean => trace?.events.some((event) => event.type === type && outcomes.includes(event.outcome)) || false;
+): boolean => trace?.events.some((event) => (
+  event.provenance !== 'authenticated_proxy'
+  && event.type === type
+  && outcomes.includes(event.outcome)
+)) || false;
+
+const targetChallengeEvents = (trace: OAuthTraceV1 | undefined) => (
+  trace?.events.filter((event) => (
+    event.type === 'target_challenge' && event.provenance === 'direct_target'
+  )) || []
+);
+
+const challengeSchemes = (value: string): AuthorizationScheme[] => {
+  const schemes: AuthorizationScheme[] = [];
+  for (const challenge of value.split(/,(?=\s*[A-Za-z][A-Za-z0-9_-]*\s)/)) {
+    const scheme = challenge.trim().match(/^([A-Za-z][A-Za-z0-9_-]*)/)?.[1]?.toLowerCase();
+    if (!scheme) continue;
+    if (scheme === 'apikey' || scheme === 'api-key' || scheme === 'x-api-key') {
+      schemes.push('api-key');
+    } else if (scheme === 'bearer') {
+      schemes.push(/\bresource_metadata\s*=/i.test(challenge) ? 'oauth' : 'bearer');
+    } else if (scheme === 'oauth' || scheme === 'oauth2') {
+      schemes.push('oauth');
+    }
+  }
+  return schemes;
+};
+
+const configuredSchemes = (report: EvaluationReport): AuthorizationScheme[] => {
+  const records = metadataRecords(report);
+  const values = records.flatMap((record) => {
+    const configured = record.authorizationSchemes ?? record.authorizationScheme;
+    return Array.isArray(configured) ? configured : [configured];
+  });
+  const schemes = values.filter((value): value is AuthorizationScheme => (
+    value === 'oauth' || value === 'bearer' || value === 'api-key'
+  ));
+  for (const record of records) {
+    if (record.authenticationSource === 'proxy') continue;
+    const responseHeaders = record.responseHeaders;
+    if (!responseHeaders || typeof responseHeaders !== 'object' || Array.isArray(responseHeaders)) continue;
+    const authenticate = Object.entries(responseHeaders).find(
+      ([key, value]) => key.toLowerCase() === 'www-authenticate' && typeof value === 'string'
+    )?.[1];
+    if (typeof authenticate === 'string') schemes.push(...challengeSchemes(authenticate));
+  }
+  const authText = report.sections.auth?.details
+    .map((detail) => `${detail.text} ${detail.context || ''}`)
+    .join('\n') || '';
+  if (/\bOAuth\b/i.test(authText)) schemes.push('oauth');
+  if (/\bBearer\b/i.test(authText)) schemes.push('bearer');
+  if (/\bAPI[-_ ]?key\b/i.test(authText)) schemes.push('api-key');
+  return schemes;
+};
+
+const traceOAuthEvidence = (trace: OAuthTraceV1 | undefined): boolean => (
+  trace?.events.some((event) => (
+    event.provenance !== 'authenticated_proxy'
+    && event.type !== 'target_challenge'
+    && event.type !== 'terminal_outcome'
+  )) || false
+);
 
 const inferAuthorizationSchemes = (
   report: EvaluationReport,
   trace: OAuthTraceV1 | undefined
 ): Known<readonly AuthorizationScheme[]> => {
-  const text = detailsText(report);
-  if (/api[-_ ]?key/i.test(text)) return ['api-key'];
-  if (trace || report.sections.security || /\boauth\b/i.test(text)) return ['oauth'];
-  if (/\bbearer\b/i.test(text)) return ['bearer'];
-  if (report.outcome === 'authorization-required') return ['oauth'];
+  const schemes = [
+    ...configuredSchemes(report),
+    ...targetChallengeEvents(trace).flatMap((event) => {
+      const authenticate = Object.entries(event.response?.headers || {}).find(
+        ([key]) => key.toLowerCase() === 'www-authenticate'
+      )?.[1];
+      return authenticate ? challengeSchemes(authenticate) : [];
+    }),
+  ];
+  if (report.sections.security || traceOAuthEvidence(trace)) schemes.push('oauth');
+  if (schemes.length > 0) return [...new Set(schemes)];
   if (resolveEvaluationOutcome(report) === 'scored') return [];
+  return 'unknown';
+};
+
+const oauthBooleanObservation = (
+  report: EvaluationReport,
+  trace: OAuthTraceV1 | undefined,
+  type: OAuthTraceV1['events'][number]['type'],
+  successPattern: RegExp,
+  failurePattern: RegExp
+): Known<boolean> => {
+  const securityDetails = report.sections.security?.details || [];
+  if (securityDetails.some((detail) => successPattern.test(`${detail.text} ${detail.context || ''}`))
+      || traceHas(trace, type, ['succeeded'])) return true;
+  if (securityDetails.some((detail) => failurePattern.test(`${detail.text} ${detail.context || ''}`))
+      || traceHas(trace, type, ['failed'])) return false;
   return 'unknown';
 };
 
@@ -101,13 +178,28 @@ export const createObservedServerFacts = (
   const outcome = resolveEvaluationOutcome(report);
   const schemes = inferAuthorizationSchemes(report, trace);
   const oauthApplies = schemes !== 'unknown' && schemes.includes('oauth');
-  const hasProtectedMetadata = report.sections.security?.details.some((detail) => (
-    /protected-resource metadata available/i.test(detail.text)
-  ));
-  const hasAuthorizationMetadata = report.sections.security?.details.some((detail) => (
-    /authorization-server metadata available/i.test(detail.text)
-  ));
-  const pkce = report.sections.security?.details.some((detail) => /PKCE support enabled/i.test(detail.text));
+  const hasTargetChallenge = targetChallengeEvents(trace).length > 0;
+  const protectedResourceMetadata = oauthBooleanObservation(
+    report,
+    trace,
+    'protected_resource_metadata',
+    /protected-resource metadata available/i,
+    /protected-resource metadata not available/i
+  );
+  const authorizationServerMetadata = oauthBooleanObservation(
+    report,
+    trace,
+    'authorization_server_metadata',
+    /authorization-server metadata available/i,
+    /authorization-server metadata not available/i
+  );
+  const pkceS256 = oauthBooleanObservation(
+    report,
+    trace,
+    'pkce',
+    /PKCE support enabled/i,
+    /PKCE S256 support not advertised/i
+  );
   const registrationModes: OAuthRegistrationMode[] = [];
   if (traceHas(trace, 'cimd')) registrationModes.push('client-id-metadata-document');
   if (traceHas(trace, 'dynamic_client_registration')) registrationModes.push('dynamic-client-registration');
@@ -149,7 +241,7 @@ export const createObservedServerFacts = (
     },
     authorization: {
       requirement: observed(
-        outcome === 'authorization-required' || trace
+        outcome === 'authorization-required' || hasTargetChallenge
           ? 'required'
           : outcome === 'scored' && oauthApplies
             ? 'optional'
@@ -158,8 +250,8 @@ export const createObservedServerFacts = (
               : 'unknown',
         outcome === 'authorization-required'
           ? 'The target returned an authentication challenge before evaluation could continue.'
-          : trace
-            ? 'An OAuth trace exists for the target and the authenticated retry was evaluated.'
+          : hasTargetChallenge
+            ? 'A direct target authentication challenge was observed and the authenticated retry was evaluated.'
             : outcome === 'scored' && oauthApplies
               ? 'The server completed an unauthenticated evaluation while also advertising OAuth metadata.'
             : outcome === 'scored'
@@ -171,13 +263,21 @@ export const createObservedServerFacts = (
         : schemes.length ? `Observed authorization: ${schemes.join(', ')}.` : 'No authorization challenge was observed.'),
       oauth: {
         protectedResourceMetadata: observed(
-          oauthApplies ? Boolean(hasProtectedMetadata || traceHas(trace, 'protected_resource_metadata')) : 'unknown',
-          oauthApplies ? 'Protected-resource metadata discovery was checked.' : 'OAuth does not apply to this observation.',
+          oauthApplies ? protectedResourceMetadata : 'unknown',
+          !oauthApplies
+            ? 'OAuth does not apply to this observation.'
+            : protectedResourceMetadata === 'unknown'
+              ? 'Protected-resource metadata discovery was not completed conclusively.'
+              : 'Protected-resource metadata discovery completed.',
           'authorization-server'
         ),
         authorizationServerMetadata: observed(
-          oauthApplies ? Boolean(hasAuthorizationMetadata || traceHas(trace, 'authorization_server_metadata')) : 'unknown',
-          oauthApplies ? 'Authorization-server metadata discovery was checked.' : 'OAuth does not apply to this observation.',
+          oauthApplies ? authorizationServerMetadata : 'unknown',
+          !oauthApplies
+            ? 'OAuth does not apply to this observation.'
+            : authorizationServerMetadata === 'unknown'
+              ? 'Authorization-server metadata discovery was not completed conclusively.'
+              : 'Authorization-server metadata discovery completed.',
           'authorization-server'
         ),
         registrationModes: observed(
@@ -188,8 +288,12 @@ export const createObservedServerFacts = (
           'authorization-server'
         ),
         pkceS256: observed(
-          oauthApplies ? Boolean(pkce || traceHas(trace, 'pkce')) : 'unknown',
-          oauthApplies ? 'S256 PKCE support was checked.' : 'OAuth does not apply to this observation.',
+          oauthApplies ? pkceS256 : 'unknown',
+          !oauthApplies
+            ? 'OAuth does not apply to this observation.'
+            : pkceS256 === 'unknown'
+              ? 'S256 PKCE support was not checked conclusively.'
+              : 'S256 PKCE support was checked.',
           'authorization-server'
         ),
         refreshTokens: observed(
@@ -260,20 +364,30 @@ const severityOrder: Record<ReleasePriority['severity'], number> = {
 export const createReleaseDecision = (
   report: EvaluationReport,
   matrix: CompatibilityMatrixV1,
-  toolSurface: ToolSurfaceAnalysisV1 | undefined = report.toolSurfaceAnalysis
+  toolSurface: ToolSurfaceAnalysisV1 | undefined = report.toolSurfaceAnalysis,
+  trace?: OAuthTraceV1
 ): ReleaseDecision => {
   const outcome = resolveEvaluationOutcome(report);
   if (outcome === 'authorization-required') {
+    const schemes = inferAuthorizationSchemes(report, trace);
+    const scheme = schemes === 'unknown' || schemes.length === 0 ? undefined : schemes[0];
+    const remediation = scheme === 'oauth'
+      ? 'Complete the guided OAuth flow or configure a registered OAuth client, then rerun the report.'
+      : scheme === 'bearer'
+        ? 'Supply a valid bearer token for the MCP target, then rerun the report.'
+        : scheme === 'api-key'
+          ? 'Configure the API key required by the MCP target, then rerun the report.'
+          : 'Inspect the target WWW-Authenticate challenge or authorization configuration, provide the required credential, then rerun the report.';
     return {
       status: 'authorization-required',
       answer: 'Not yet — authorization is required',
-      summary: 'Authorize access, then run the report again before making a release decision.',
+      summary: `${scheme === 'oauth' ? 'OAuth' : scheme === 'bearer' ? 'Bearer-token' : scheme === 'api-key' ? 'API-key' : 'Target'} authorization must complete before a release decision can be made.`,
       priorities: [{
         id: 'evaluation.authorization',
         severity: 'high',
         title: 'Complete server authorization',
         detail: 'The server challenged the evaluation before its protocol and capabilities could be assessed.',
-        remediation: 'Use the guided OAuth flow or configure a registered client, then rerun the report.',
+        remediation,
         source: 'Evaluation',
       }],
     };
@@ -281,12 +395,23 @@ export const createReleaseDecision = (
 
   const priorities: ReleasePriority[] = [];
   if (outcome === 'failed') {
+    const proxyAuthenticationFailed = metadataRecords(report).some((record) => (
+      record.authenticationSource === 'proxy'
+      || Array.isArray(record.routeFailures) && record.routeFailures.some((failure) => (
+        Boolean(failure) && typeof failure === 'object'
+        && (failure as Record<string, unknown>).authenticationSource === 'proxy'
+      ))
+    ));
     priorities.push({
       id: 'evaluation.negotiation-failed',
       severity: 'high',
-      title: 'Restore MCP negotiation',
-      detail: 'The evaluator could not establish a complete MCP connection.',
-      remediation: 'Verify the published endpoint, transport response, protocol lifecycle, and proxy route, then rerun the full report.',
+      title: proxyAuthenticationFailed ? 'Restore authenticated proxy access' : 'Restore MCP negotiation',
+      detail: proxyAuthenticationFailed
+        ? 'The mcptest proxy rejected or could not validate its own authentication before the target could be evaluated.'
+        : 'The evaluator could not establish a complete MCP connection.',
+      remediation: proxyAuthenticationFailed
+        ? 'Refresh the mcptest session or proxy credential, confirm proxy access, and rerun without treating the proxy challenge as target OAuth.'
+        : 'Verify the published endpoint, transport response, protocol lifecycle, and proxy route, then rerun the full report.',
       source: 'Evaluation',
     });
   } else if (outcome === 'partial') {

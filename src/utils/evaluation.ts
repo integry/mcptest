@@ -550,6 +550,90 @@ interface CapabilityEvaluation {
   toolSurfaceAnalysis: ToolSurfaceAnalysisV1;
 }
 
+const DISCOVERY_PAGE_LIMIT = 64;
+
+class IncompleteDiscoveryPaginationError extends Error {
+  constructor(
+    readonly result: Record<string, unknown>,
+    readonly nextCursor: string,
+    readonly cause: unknown
+  ) {
+    super(`Discovery pagination stopped before cursor ${nextCursor}: ${errorMessage(cause)}`);
+    this.name = 'IncompleteDiscoveryPaginationError';
+  }
+}
+
+const isDiscoveryPaginationFailure = (error: unknown, seen = new Set<object>()): boolean => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return false;
+  seen.add(error);
+  const value = error as { code?: unknown; message?: unknown; cause?: unknown };
+  return value.code === 'LIST_PAGINATION_EXCEEDED'
+    || typeof value.message === 'string' && /pagination.+(?:limit|page|cursor)|LIST_PAGINATION_EXCEEDED/i.test(value.message)
+    || isDiscoveryPaginationFailure(value.cause, seen);
+};
+
+const aggregateDiscoveryPages = async (
+  firstPage: unknown,
+  itemKey: 'tools' | 'resources' | 'prompts',
+  fetchPage: (cursor: string) => Promise<unknown>
+): Promise<Record<string, unknown>> => {
+  if (!firstPage || typeof firstPage !== 'object' || Array.isArray(firstPage)) {
+    return { [itemKey]: undefined };
+  }
+  const initial = firstPage as Record<string, unknown>;
+  const initialItems = initial[itemKey];
+  if (!Array.isArray(initialItems)) return initial;
+
+  const items = [...initialItems];
+  let nextCursor = typeof initial.nextCursor === 'string' && initial.nextCursor
+    ? initial.nextCursor
+    : undefined;
+  const seenCursors = new Set<string>();
+  let pageCount = 1;
+
+  while (nextCursor) {
+    if (seenCursors.has(nextCursor) || pageCount >= DISCOVERY_PAGE_LIMIT) {
+      const partial = { ...initial, [itemKey]: items, nextCursor };
+      throw new IncompleteDiscoveryPaginationError(
+        partial,
+        nextCursor,
+        seenCursors.has(nextCursor)
+          ? new Error('The server repeated a discovery cursor.')
+          : new Error(`The ${DISCOVERY_PAGE_LIMIT}-page discovery safety limit was reached.`)
+      );
+    }
+    seenCursors.add(nextCursor);
+
+    let page: unknown;
+    try {
+      page = await fetchPage(nextCursor);
+    } catch (error) {
+      throw new IncompleteDiscoveryPaginationError(
+        { ...initial, [itemKey]: items, nextCursor },
+        nextCursor,
+        error
+      );
+    }
+    if (!page || typeof page !== 'object' || Array.isArray(page)
+        || !Array.isArray((page as Record<string, unknown>)[itemKey])) {
+      throw new IncompleteDiscoveryPaginationError(
+        { ...initial, [itemKey]: items, nextCursor },
+        nextCursor,
+        new Error(`The ${itemKey} discovery page was malformed.`)
+      );
+    }
+    items.push(...(page as Record<string, unknown>)[itemKey] as unknown[]);
+    nextCursor = typeof (page as Record<string, unknown>).nextCursor === 'string'
+      && (page as Record<string, unknown>).nextCursor
+      ? (page as Record<string, unknown>).nextCursor as string
+      : undefined;
+    pageCount += 1;
+  }
+
+  const { nextCursor: _discardedCursor, ...result } = initial;
+  return { ...result, [itemKey]: items };
+};
+
 const evaluateCapabilities = async (
   connection: ConnectedEvaluation
 ): Promise<CapabilityEvaluation> => {
@@ -567,6 +651,7 @@ const evaluateCapabilities = async (
     method: string;
     points: number;
     run: () => Promise<unknown>;
+    runPage: (cursor: string) => Promise<unknown>;
     count: (result: any) => number;
   }> = [
     {
@@ -574,6 +659,7 @@ const evaluateCapabilities = async (
       method: 'tools/list',
       points: 4,
       run: () => connection.client.listTools(),
+      runPage: (cursor) => connection.client.listTools({ cursor }),
       count: (result) => Array.isArray(result?.tools) ? result.tools.length : 0,
     },
     {
@@ -581,6 +667,7 @@ const evaluateCapabilities = async (
       method: 'resources/list',
       points: 3,
       run: () => connection.client.listResources(),
+      runPage: (cursor) => connection.client.listResources({ cursor }),
       count: (result) => Array.isArray(result?.resources) ? result.resources.length : 0,
     },
     {
@@ -588,6 +675,7 @@ const evaluateCapabilities = async (
       method: 'prompts/list',
       points: 3,
       run: () => connection.client.listPrompts(),
+      runPage: (cursor) => connection.client.listPrompts({ cursor }),
       count: (result) => Array.isArray(result?.prompts) ? result.prompts.length : 0,
     },
   ];
@@ -597,7 +685,12 @@ const evaluateCapabilities = async (
     connection.takeAuthenticationChallenge?.();
     const startedAt = Date.now();
     try {
-      const result = await check.run();
+      const firstPage = await check.run();
+      const result = await aggregateDiscoveryPages(
+        firstPage,
+        check.name as 'tools' | 'resources' | 'prompts',
+        check.runPage
+      );
       const durationMs = Date.now() - startedAt;
       const itemCount = check.count(result);
       if (check.name === 'tools') discovered.tools = (result as { tools?: unknown })?.tools;
@@ -623,6 +716,45 @@ const evaluateCapabilities = async (
         && failure.authenticationSource === 'target'
       ) {
         targetAuthenticationFailures.push({ ...failure, method: check.method });
+      }
+      if (error instanceof IncompleteDiscoveryPaginationError) {
+        const itemCount = check.count(error.result);
+        if (check.name === 'tools') discovered.tools = error.result.tools;
+        if (check.name === 'resources') discovered.resources = error.result.resources;
+        if (check.name === 'prompts') discovered.prompts = error.result.prompts;
+        if (check.name === 'tools') {
+          (discovered as Record<string, unknown>).nextCursor = error.nextCursor;
+        }
+        section.status = 'partial';
+        section.details.push({
+          text: `⚠ ${check.method} pagination was incomplete (${itemCount} ${check.name} retained)`,
+          context: failure.message,
+          metadata: {
+            method: check.method,
+            itemCount,
+            durationMs: Date.now() - startedAt,
+            paginationComplete: false,
+            nextCursor: error.nextCursor,
+            ...(failure.httpStatus ? { status: failure.httpStatus } : {}),
+            ...(failure.authenticationSource
+              ? { authenticationSource: failure.authenticationSource, route: failure.route }
+              : {}),
+          },
+        });
+        continue;
+      }
+      if (isDiscoveryPaginationFailure(error)) {
+        section.status = 'partial';
+        section.details.push({
+          text: `⚠ ${check.method} pagination did not complete`,
+          context: failure.message,
+          metadata: {
+            method: check.method,
+            durationMs: Date.now() - startedAt,
+            paginationComplete: false,
+          },
+        });
+        continue;
       }
       const methodNotFound = isMethodNotFound(error);
       section.details.push({
@@ -928,7 +1060,7 @@ export async function evaluateServer(
       }
       report.sections.auth = {
         name: 'Authorization Required',
-        description: 'OAuth authorization is required before this server can be evaluated',
+        description: 'Target authorization is required before this server can be evaluated',
         score: 0,
         maxScore: 0,
         details: [{
@@ -938,10 +1070,13 @@ export async function evaluateServer(
             route: targetAuthFailure.route,
             status: targetAuthFailure.httpStatus,
             endpoint: report.authenticationUrl,
+            ...(targetAuthFailure.responseHeaders
+              ? { responseHeaders: targetAuthFailure.responseHeaders }
+              : {}),
           },
         }],
       };
-      onProgress('OAuth authorization is required before evaluation can continue.');
+      onProgress('Target authorization is required before evaluation can continue.');
       return report;
     }
     if (proxyAuthFailure && !finalizedPendingRetry) {
@@ -1058,7 +1193,7 @@ export async function evaluateServer(
       }
       report.sections = { auth: {
         name: 'Authorization Required',
-        description: 'OAuth authorization is required before this server can be evaluated',
+        description: 'Target authorization is required before this server can be evaluated',
         score: 0,
         maxScore: 0,
         details: capabilityEvaluation.targetAuthenticationFailures.map((failure) => ({
@@ -1070,14 +1205,18 @@ export async function evaluateServer(
             status: failure.httpStatus,
             authenticationSource: failure.authenticationSource,
             endpoint: failure.candidateUrl || report.authenticationUrl,
+            ...(failure.responseHeaders ? { responseHeaders: failure.responseHeaders } : {}),
           },
         })),
       } };
       report.finalScore = 0;
-      onProgress('OAuth authorization is required before evaluation can continue.');
+      onProgress('Target authorization is required before evaluation can continue.');
       return report;
     }
     report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
+    if (capabilityEvaluation.section.status === 'partial') {
+      report.outcome = 'partial';
+    }
 
     const modernTransport = connection.transportType === 'streamable-http';
     report.sections.transport = {

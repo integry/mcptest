@@ -1,5 +1,10 @@
 import React, { useMemo } from 'react';
-import { HOST_PROFILES, type CompatibilityStatus } from '../compatibility';
+import {
+  HOST_PROFILES,
+  type AuthorizationScheme,
+  type CompatibilityStatus,
+  type Known,
+} from '../compatibility';
 import {
   getEvaluationMaxScore,
   getEvaluationPercentage,
@@ -9,6 +14,7 @@ import {
 import type { OAuthTraceEventV1, OAuthTraceV1 } from '../utils/oauthTrace';
 import {
   createCompatibilityMatrix,
+  createObservedServerFacts,
   createReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
@@ -35,7 +41,7 @@ const statusIcon: Record<CompatibilityStatus, string> = {
   unknown: 'bi-question-circle-fill',
 };
 
-const traceEventTitle: Record<OAuthTraceEventV1['type'], string> = {
+const traceEventTitles: Record<OAuthTraceEventV1['type'], string> = {
   target_challenge: 'Server requested authorization',
   protected_resource_metadata: 'Protected resource discovered',
   authorization_server_metadata: 'Authorization server discovered',
@@ -51,15 +57,40 @@ const traceEventTitle: Record<OAuthTraceEventV1['type'], string> = {
   terminal_outcome: 'OAuth flight completed',
 };
 
-const expectedOAuthStep = (event: OAuthTraceEventV1): boolean => (
-  event.type === 'target_challenge'
-  || event.outcome === 'challenged'
-  || event.outcome === 'required'
-  || event.outcome === 'redirected'
+const traceEventTitle = (event: OAuthTraceEventV1): string => (
+  event.type === 'target_challenge' && event.provenance === 'authenticated_proxy'
+    ? 'Authenticated proxy requested access'
+    : traceEventTitles[event.type]
 );
 
-const traceStepState = (event: OAuthTraceEventV1): string => {
-  if (expectedOAuthStep(event)) return 'Required step';
+const expectedOAuthStep = (
+  event: OAuthTraceEventV1,
+  schemes: Known<readonly AuthorizationScheme[]>
+): boolean => (
+  schemes !== 'unknown'
+  && schemes.includes('oauth')
+  && event.provenance !== 'authenticated_proxy'
+  && (
+    event.type === 'target_challenge'
+    || event.outcome === 'challenged'
+    || event.outcome === 'required'
+    || event.outcome === 'redirected'
+  )
+);
+
+const traceStepState = (
+  event: OAuthTraceEventV1,
+  schemes: Known<readonly AuthorizationScheme[]>
+): string => {
+  if (expectedOAuthStep(event, schemes)) return 'Required step';
+  if (event.type === 'target_challenge' && event.provenance === 'authenticated_proxy') {
+    return 'Proxy access required';
+  }
+  if (event.type === 'target_challenge' && event.provenance === 'direct_target') {
+    if (schemes !== 'unknown' && schemes.includes('bearer')) return 'Bearer token required';
+    if (schemes !== 'unknown' && schemes.includes('api-key')) return 'API key required';
+    return 'Authorization required';
+  }
   if (event.outcome === 'failed' || event.outcome === 'cancelled') return 'Needs attention';
   if (event.outcome === 'succeeded') return 'Complete';
   return event.outcome.charAt(0).toUpperCase() + event.outcome.slice(1);
@@ -87,12 +118,15 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
   expandedItems,
   onToggleItem,
 }) => {
+  const facts = useMemo(() => createObservedServerFacts(report, oauthTrace), [report, oauthTrace]);
   const matrix = useMemo(() => createCompatibilityMatrix(report, oauthTrace), [report, oauthTrace]);
   const decision = useMemo(
-    () => createReleaseDecision(report, matrix),
-    [report, matrix]
+    () => createReleaseDecision(report, matrix, report.toolSurfaceAnalysis, oauthTrace),
+    [report, matrix, oauthTrace]
   );
   const toolSurface = report.toolSurfaceAnalysis;
+  const authorizationSchemes = facts.authorization.schemes.value;
+  const oauthApplies = authorizationSchemes !== 'unknown' && authorizationSchemes.includes('oauth');
   const reportIsScored = resolveEvaluationOutcome(report) === 'scored';
   const reportMaximum = reportIsScored ? getEvaluationMaxScore(report) : 0;
   const reportPercentage = reportIsScored ? getEvaluationPercentage(report) : 0;
@@ -107,7 +141,12 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
     : [];
 
   const download = (format: 'json' | 'markdown') => {
-    saveReportDownload(createReportDownload(report, format));
+    saveReportDownload(createReportDownload(report, format, undefined, {
+      releaseDecision: decision,
+      compatibilityMatrix: matrix,
+      toolSurfaceAnalysis: toolSurface,
+      oauthTrace,
+    }));
   };
 
   return (
@@ -235,8 +274,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
       <section className="release-section" aria-labelledby="oauth-timeline-title">
         <div className="release-section-heading">
           <div>
-            <h3 id="oauth-timeline-title">OAuth flight recorder</h3>
-            <p>Expected authorization challenges are shown as guided steps. Stored protocol data is always redacted.</p>
+            <h3 id="oauth-timeline-title">{oauthApplies ? 'OAuth' : 'Authentication'} flight recorder</h3>
+            <p>{oauthApplies
+              ? 'Expected direct-target OAuth challenges are shown as guided steps. Stored protocol data is always redacted.'
+              : 'Target credentials and authenticated-proxy challenges retain their observed scheme and provenance. Stored protocol data is always redacted.'}</p>
           </div>
         </div>
         {!oauthTrace ? (
@@ -248,12 +289,12 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           <>
             <ol className="oauth-timeline" aria-label="Guided OAuth timeline">
               {oauthTrace.events.map((event) => (
-                <li className={event.outcome === 'failed' ? 'oauth-step-failed' : expectedOAuthStep(event) ? 'oauth-step-expected' : ''} key={event.sequence}>
+                <li className={event.outcome === 'failed' ? 'oauth-step-failed' : expectedOAuthStep(event, authorizationSchemes) ? 'oauth-step-expected' : ''} key={event.sequence}>
                   <span className="oauth-step-marker" aria-hidden="true">{event.sequence}</span>
                   <div>
                     <div className="oauth-step-heading">
-                      <h4>{traceEventTitle[event.type]}</h4>
-                      <span>{traceStepState(event)}</span>
+                      <h4>{traceEventTitle(event)}</h4>
+                      <span>{traceStepState(event, authorizationSchemes)}</span>
                     </div>
                     <p>{event.explanation}</p>
                     {event.timing?.durationMs !== undefined && <span className="oauth-step-time">{event.timing.durationMs} ms</span>}

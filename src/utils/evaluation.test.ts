@@ -713,6 +713,91 @@ describe('dual-era server evaluation', () => {
     expect(Object.keys(report.sections)).toEqual(['auth']);
   });
 
+  it('aggregates every discovery page before tool-surface analysis', async () => {
+    const client = createClient();
+    client.listTools
+      .mockResolvedValueOnce({
+        tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      })
+      .mockResolvedValueOnce({
+        tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+      });
+    client.listResources
+      .mockResolvedValueOnce({ resources: [{ uri: 'test://one', name: 'one' }], nextCursor: 'resources-2' })
+      .mockResolvedValueOnce({ resources: [{ uri: 'test://two', name: 'two' }] });
+    client.listPrompts
+      .mockResolvedValueOnce({ prompts: [{ name: 'one' }], nextCursor: 'prompts-2' })
+      .mockResolvedValueOnce({ prompts: [{ name: 'two' }] });
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('scored');
+    expect(report.toolSurfaceAnalysis?.metrics).toMatchObject({
+      toolCount: 2,
+      resourceCount: 2,
+      promptCount: 2,
+    });
+    expect(client.listTools).toHaveBeenNthCalledWith(2, { cursor: 'tools-2' });
+    expect(client.listResources).toHaveBeenNthCalledWith(2, { cursor: 'resources-2' });
+    expect(client.listPrompts).toHaveBeenNthCalledWith(2, { cursor: 'prompts-2' });
+  });
+
+  it('marks the report partial when discovery pagination cannot complete', async () => {
+    const client = createClient();
+    client.listTools
+      .mockResolvedValueOnce({
+        tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      })
+      .mockRejectedValueOnce(new Error('page two unavailable'));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('partial');
+    expect(report.sections.capabilities.status).toBe('partial');
+    expect(report.sections.capabilities.details[0]).toMatchObject({
+      metadata: { paginationComplete: false, nextCursor: 'tools-2' },
+    });
+    expect(report.toolSurfaceAnalysis?.findings.medium).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'analysis.incomplete-pagination' }),
+    ]));
+  });
+
+  it('marks SDK pagination-limit failures partial instead of producing a definitive score', async () => {
+    const client = createClient();
+    client.listTools.mockRejectedValueOnce(Object.assign(
+      new Error('Automatic list pagination exceeded the configured page limit.'),
+      { code: 'LIST_PAGINATION_EXCEEDED' }
+    ));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('partial');
+    expect(report.sections.capabilities.status).toBe('partial');
+    expect(report.sections.capabilities.details[0]).toMatchObject({
+      metadata: { method: 'tools/list', paginationComplete: false },
+    });
+  });
+
   it('includes OAuth security posture when protected-resource metadata is supported', async () => {
     const client = createClient();
     connectionMocks.attempt.mockResolvedValueOnce({
