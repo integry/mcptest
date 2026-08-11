@@ -7,6 +7,7 @@ import {
   evaluateCondition,
   legacySseServerFixture,
   oauthProtectedServerFixture,
+  optionalOAuthServerFixture,
   observedFact,
   publicServerFixture,
   statefulStreamableHttpServerFixture,
@@ -78,6 +79,15 @@ describe('host compatibility evaluator', () => {
       ruleId: 'authorization.scheme',
       outcome: 'pass',
     }));
+  });
+
+  it('does not make an anonymously usable server incompatible when optional OAuth is unavailable', () => {
+    const matrix = assessCompatibilityMatrix(optionalOAuthServerFixture);
+
+    for (const assessment of Object.values(matrix.assessments)) {
+      expect(assessment.status).not.toBe('incompatible');
+      expect(assessment.findings.some(({ ruleId }) => ruleId.startsWith('authorization.oauth.'))).toBe(false);
+    }
   });
 
   it('distinguishes stateful and stateless Streamable HTTP behavior', () => {
@@ -178,6 +188,50 @@ describe('host compatibility evaluator', () => {
     expect(assessHostCompatibility(facts, 'cursor').status).toBe('compatible');
     expect(assessHostCompatibility(facts, 'vscode-copilot').status).toBe('compatible');
     expect(assessHostCompatibility(facts, 'generic-sdk').status).toBe('compatible');
+  });
+
+  it.each(['chatgpt', 'cursor', 'vscode-copilot'] as const)(
+    'returns unknown for an exact-match redirect policy when %s has no verified callback URI',
+    (profileId) => {
+      const facts = cloneFacts(oauthProtectedServerFixture);
+      facts.authorization.oauth.dynamicRedirectRegistration = observedFact(
+        false,
+        'Redirects cannot be added during registration.'
+      );
+      facts.authorization.oauth.redirectPolicy = observedFact(
+        'exact-match',
+        'Only pre-registered exact callback URIs are accepted.'
+      );
+
+      const assessment = assessHostCompatibility(facts, profileId);
+
+      expect(assessment.status).toBe('unknown');
+      expect(assessment.findings).toContainEqual(expect.objectContaining({
+        ruleId: 'authorization.oauth.redirects',
+        outcome: 'unknown',
+      }));
+      expect(assessment.findings.some(({ outcome }) => outcome === 'fail')).toBe(false);
+    }
+  );
+
+  it('passes an exact-match redirect policy when the verified callback URI is registered', () => {
+    const facts = cloneFacts(oauthProtectedServerFixture);
+    facts.authorization.oauth.dynamicRedirectRegistration = observedFact(
+      false,
+      'Redirects cannot be added during registration.'
+    );
+    facts.authorization.oauth.registeredRedirectUris = observedFact(
+      ['https://claude.ai/api/mcp/auth_callback'],
+      'The verified Claude callback URI is pre-registered.'
+    );
+
+    const assessment = assessHostCompatibility(facts, 'claude');
+
+    expect(assessment.status).toBe('compatible');
+    expect(assessment.findings).toContainEqual(expect.objectContaining({
+      ruleId: 'authorization.oauth.redirects',
+      outcome: 'pass',
+    }));
   });
 
   it('makes missing refresh support a caveat rather than an OAuth failure', () => {

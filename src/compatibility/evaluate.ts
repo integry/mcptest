@@ -115,6 +115,7 @@ const collectEvidence = (
     ...rule.evidenceFacts,
     ...factPathsInCondition(rule.passWhen),
     ...(rule.appliesWhen ? factPathsInCondition(rule.appliesWhen) : []),
+    ...(rule.unknownWhen ? factPathsInCondition(rule.unknownWhen) : []),
   ]);
   const serverEvidence = [...paths].flatMap((path) => getFact(facts, path).evidence);
   const assumptionEvidence: CompatibilityEvidenceV1[] = rule.assumptionSourceIds.flatMap((sourceId) => {
@@ -188,7 +189,9 @@ export const assessHostCompatibility = (
     // must not multiply unknowns or fail closed.
     if (rule.appliesWhen && evaluateCondition(rule.appliesWhen, facts) !== true) continue;
 
-    const outcome = evaluateCondition(rule.passWhen, facts);
+    const explicitlyUnknown = rule.unknownWhen
+      && evaluateCondition(rule.unknownWhen, facts) === true;
+    const outcome = explicitlyUnknown ? 'unknown' : evaluateCondition(rule.passWhen, facts);
     const definition = outcome === true
       ? rule.onPass
       : outcome === false

@@ -102,6 +102,22 @@ export const oauthProtectedServerFixture: ObservedServerFactsV1 = {
   },
 };
 
+export const optionalOAuthServerFixture: ObservedServerFactsV1 = {
+  ...publicServerFixture,
+  serverUrl: 'https://optional-oauth.example/mcp',
+  authorization: {
+    requirement: observedFact('optional', 'The target accepted an unauthenticated initialize request.'),
+    schemes: observedFact<readonly ['oauth']>(['oauth'], 'The target optionally advertises OAuth authorization.'),
+    oauth: {
+      ...unusedOAuth(),
+      protectedResourceMetadata: observedFact(
+        false,
+        'Protected resource metadata was conclusively unavailable.'
+      ),
+    },
+  },
+};
+
 export const statefulStreamableHttpServerFixture: ObservedServerFactsV1 = {
   ...publicServerFixture,
   serverUrl: 'https://stateful.example/mcp',
@@ -133,6 +149,7 @@ export const legacySseServerFixture: ObservedServerFactsV1 = {
 export const compatibilityFixtures = Object.freeze({
   public: publicServerFixture,
   oauthProtected: oauthProtectedServerFixture,
+  optionalOAuth: optionalOAuthServerFixture,
   statefulStreamableHttp: statefulStreamableHttpServerFixture,
   statelessStreamableHttp: statelessStreamableHttpServerFixture,
   legacySse: legacySseServerFixture,

@@ -153,6 +153,7 @@ export interface CompatibilityRuleV1 {
   id: string;
   scope: FindingScope;
   appliesWhen?: CompatibilityConditionV1;
+  unknownWhen?: CompatibilityConditionV1;
   passWhen: CompatibilityConditionV1;
   onPass: RuleResultDefinitionV1;
   onFail: RuleResultDefinitionV1;

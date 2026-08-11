@@ -94,7 +94,7 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       ? ['unrestricted', 'loopback-only']
       : ['unrestricted', 'https-only', 'loopback-only', 'exact-match'];
   const oauthApplies = all(
-    { fact: 'authorization.requirement', operator: 'not-equals', value: 'none' },
+    observed('authorization.requirement', 'required'),
     condition('authorization.schemes', 'contains-any', ['oauth'])
   );
 
@@ -321,6 +321,14 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       id: 'authorization.oauth.redirects',
       scope: 'authorization-server',
       appliesWhen: oauthApplies,
+      ...(profile.callbackUris.length === 0 && profile.callbackKind !== 'flexible'
+        ? {
+            unknownWhen: all(
+              observed('authorization.oauth.dynamicRedirectRegistration', false),
+              observed('authorization.oauth.redirectPolicy', 'exact-match')
+            ),
+          }
+        : {}),
       passWhen: any(
         observed('authorization.oauth.dynamicRedirectRegistration', true),
         condition('authorization.oauth.redirectPolicy', 'one-of', callbackPolicies),
@@ -344,8 +352,15 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       onUnknown: result(
         'unknown',
         'OAuth redirect compatibility is unknown',
-        'The authorization server redirect policy was not established.',
-        remediation('observation-needed', 'Record accepted redirect URI classes or the exact registered callbacks.')
+        profile.callbackUris.length === 0 && profile.callbackKind !== 'flexible'
+          ? `No verified ${profile.name} callback URI is available to compare with the authorization server's exact-match policy.`
+          : 'The available redirect evidence does not establish whether the authorization server accepts the host callback URI.',
+        remediation(
+          'observation-needed',
+          profile.callbackUris.length === 0 && profile.callbackKind !== 'flexible'
+            ? `Verify ${profile.name}'s exact callback URI and compare it with the registered redirect URIs.`
+            : 'Record accepted redirect URI classes or the exact registered callbacks.'
+        )
       ),
       evidenceFacts: [
         'authorization.oauth.dynamicRedirectRegistration',
