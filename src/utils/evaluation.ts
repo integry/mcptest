@@ -45,13 +45,13 @@ const recordEvaluationAuthenticationChallenge = (
   if (
     typeof sessionStorage === 'undefined'
     || (failure.httpStatus !== 401 && failure.httpStatus !== 403)
-    || failure.authenticationSource !== 'target'
+    || (failure.authenticationSource !== 'target' && failure.authenticationSource !== 'proxy')
   ) return;
 
-  recordOAuthAuthenticationChallenge({
+  const recorder = recordOAuthAuthenticationChallenge({
     targetUrl,
     status: failure.httpStatus,
-    source: 'target',
+    source: failure.authenticationSource,
     route: failure.route,
     storage: sessionStorage,
     method: failure.method,
@@ -59,6 +59,12 @@ const recordEvaluationAuthenticationChallenge = (
     responseHeaders: failure.responseHeaders,
     timing: failure.timing,
   });
+  if (failure.authenticationSource === 'proxy') {
+    recorder.terminal(
+      'failed',
+      'The server report evaluation stopped at authenticated proxy access; target OAuth discovery was not started.'
+    );
+  }
 };
 
 export const getEvaluationTargetUrl = (
@@ -818,6 +824,10 @@ export async function evaluateServer(
       (failure.httpStatus === 401 || failure.httpStatus === 403)
       && failure.authenticationSource === 'target'
     ));
+    const proxyAuthFailure = failures.find((failure) => (
+      (failure.httpStatus === 401 || failure.httpStatus === 403)
+      && failure.authenticationSource === 'proxy'
+    ));
     const terminalFailure = failures[failures.length - 1];
     const finalizedPendingRetry = pendingRetry?.fail({
       route: terminalFailure?.route || 'direct',
@@ -856,6 +866,9 @@ export async function evaluateServer(
       };
       onProgress('OAuth authorization is required before evaluation can continue.');
       return report;
+    }
+    if (proxyAuthFailure && !finalizedPendingRetry) {
+      recordEvaluationAuthenticationChallenge(serverUrl, proxyAuthFailure);
     }
 
     report.sections.protocol = makeSkippedSection(

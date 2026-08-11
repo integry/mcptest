@@ -859,27 +859,48 @@ export class PendingAuthenticatedMcpRetry {
     return stored;
   }
 
-  private selectRequest({
-    route,
-    error,
-    result,
-    observedRequest,
-  }: FinalizeAuthenticatedMcpRetryOptions): ObservedTransportRequest | undefined {
-    if (observedRequest) return observedRequest;
+  private selectRequest(
+    outcome: 'succeeded' | 'failed' | 'cancelled',
+    {
+      route,
+      error,
+      result,
+      observedRequest,
+    }: FinalizeAuthenticatedMcpRetryOptions
+  ): ObservedTransportRequest | undefined {
     const challenge = error ? getObservedAuthenticationChallenge(error) : undefined;
-    const requests = result?.observedRequests?.length
-      ? [...result.observedRequests]
-      : this.observedRequests
-        .filter((entry) => entry.route === route)
-        .map(({ request }) => request);
+    const requests = observedRequest
+      ? [observedRequest]
+      : result?.observedRequests?.length
+        ? [...result.observedRequests]
+        : this.observedRequests
+          .filter((entry) => entry.route === route)
+          .map(({ request }) => request);
     if (challenge?.method && challenge.requestUrl) {
       const matchingChallenge = [...requests].reverse().find((request) => (
         request.method === challenge.method && request.url === challenge.requestUrl
       ));
-      if (matchingChallenge) return matchingChallenge;
+      if (matchingChallenge) {
+        return outcome === 'failed'
+          ? { ...matchingChallenge, status: challenge.status }
+          : matchingChallenge;
+      }
     }
-    return [...requests].reverse().find((request) => request.outcome !== 'started')
-      || [...requests].reverse()[0];
+    if (outcome === 'succeeded' || outcome === 'failed') {
+      const matchingOutcome = [...requests].reverse().find((request) => (
+        request.outcome === outcome
+      ));
+      if (matchingOutcome) return matchingOutcome;
+
+      if (challenge) return undefined;
+      const outcomeUnknown = [...requests].reverse().find((request) => (
+        request.outcome === undefined
+      ));
+      return outcomeUnknown
+        ? { ...outcomeUnknown, status: undefined }
+        : undefined;
+    }
+    return [...requests].reverse().find((request) => request.outcome !== 'started');
   }
 
   private finalize(
@@ -893,7 +914,7 @@ export class PendingAuthenticatedMcpRetry {
     const challenge = options.error
       ? getObservedAuthenticationChallenge(options.error)
       : undefined;
-    const request = this.selectRequest(options);
+    const request = this.selectRequest(outcome, options);
     const method = request?.method || challenge?.method;
     const requestUrl = request?.url || challenge?.requestUrl;
     const status = request?.status ?? challenge?.status;

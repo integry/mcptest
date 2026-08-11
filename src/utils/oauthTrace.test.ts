@@ -627,6 +627,56 @@ describe('OAuth flight recorder core', () => {
     });
   });
 
+  it('uses failed request evidence when a retry is finalized as failed', () => {
+    const trace = recordOAuthAuthenticationChallenge({
+      targetUrl: TARGET_URL,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+    });
+    trace.setAuthenticatedMcpRetryState('pending');
+    const retry = resumePendingAuthenticatedMcpRetry({
+      targetUrl: TARGET_URL,
+      storage: sessionStorage,
+      operation: 'server report evaluation',
+    });
+    const failedRequest = {
+      method: 'POST',
+      url: `${TARGET_URL}?operation=tools-list`,
+      status: 500,
+      outcome: 'failed' as const,
+    };
+    const laterSuccessfulRequest = {
+      method: 'POST',
+      url: `${TARGET_URL}?operation=resources-list`,
+      status: 200,
+      outcome: 'succeeded' as const,
+    };
+
+    retry?.fail({
+      route: 'direct',
+      error: new Error('Capability evaluation failed'),
+      result: {
+        url: TARGET_URL,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+        observedRequests: [failedRequest, laterSuccessfulRequest],
+      },
+    });
+
+    expect(getStoredOAuthTrace(TARGET_URL, sessionStorage)?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'mcp_retry',
+          outcome: 'failed',
+          request: { method: 'POST', url: failedRequest.url },
+          response: expect.objectContaining({ status: 500 }),
+        }),
+      ])
+    );
+  });
+
   it('finalizes a cancelled authenticated retry without recording a failure', () => {
     const trace = recordOAuthAuthenticationChallenge({
       targetUrl: TARGET_URL,
