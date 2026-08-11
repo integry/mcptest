@@ -136,6 +136,71 @@ export const resumeSavedCardAuthenticatedMcpRetry = (
     })
   : undefined;
 
+type SavedCardOAuthUser = {
+  getIdToken: () => Promise<string>;
+};
+
+type SavedCardOAuthChallenge = Pick<
+  ObservedAuthenticationChallenge,
+  'resourceMetadataUrl' | 'scope'
+>;
+
+export const attachSavedCardOAuthChallenge = <T extends object>(
+  value: T,
+  challenge?: SavedCardOAuthChallenge
+): T & SavedCardOAuthChallenge => {
+  if (challenge?.resourceMetadataUrl) {
+    Object.defineProperty(value, 'resourceMetadataUrl', {
+      value: challenge.resourceMetadataUrl,
+      enumerable: false,
+    });
+  }
+  if (challenge?.scope) {
+    Object.defineProperty(value, 'scope', {
+      value: challenge.scope,
+      enumerable: false,
+    });
+  }
+  return value;
+};
+
+export const beginSavedCardOAuthFlow = async ({
+  serverUrl,
+  challenge,
+  proxyUrl,
+  currentUser,
+  discoveryProxyApplicable,
+  startFlow = beginOAuthFlow,
+}: {
+  serverUrl: string;
+  challenge?: SavedCardOAuthChallenge;
+  proxyUrl?: string;
+  currentUser?: SavedCardOAuthUser | null;
+  discoveryProxyApplicable: boolean;
+  startFlow?: typeof beginOAuthFlow;
+}) => {
+  const discoveryProxyToken = discoveryProxyApplicable && proxyUrl && currentUser
+    ? await currentUser.getIdToken()
+    : undefined;
+
+  return startFlow(serverUrl, {
+    forceReauthorization: true,
+    ...(challenge?.resourceMetadataUrl
+      ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
+      : {}),
+    ...(challenge?.scope ? { scope: challenge.scope } : {}),
+    ...(discoveryProxyApplicable && proxyUrl && discoveryProxyToken
+      ? {
+          discoveryProxy: {
+            url: proxyUrl,
+            authorizationToken: discoveryProxyToken,
+          },
+        }
+      : {}),
+    deferAuthorizedTraceOutcome: true,
+  });
+};
+
 // Helper function to get the initial theme
 const getInitialTheme = (): 'light' | 'dark' => {
   // 1. Check for a saved theme in localStorage
@@ -1443,7 +1508,7 @@ function App() {
           });
           
           // Mark error with auth information for UI handling
-          const errorWithAuthInfo = err instanceof SavedResourceCardMigrationError
+          let errorWithAuthInfo = err instanceof SavedResourceCardMigrationError
             ? errorDetails
             : isProxyAuthError
             ? {
@@ -1467,6 +1532,16 @@ function App() {
                 serverUrl: card.serverUrl,
                 isProxied: shouldUseProxy
               };
+          if (
+            isTargetAuthError
+            && typeof errorWithAuthInfo === 'object'
+            && errorWithAuthInfo
+          ) {
+            errorWithAuthInfo = attachSavedCardOAuthChallenge(
+              errorWithAuthInfo,
+              authenticationChallenge
+            );
+          }
           
           setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
           break; // Exit the loop
@@ -1497,6 +1572,17 @@ function App() {
   const handleReauthorizeCard = async (spaceId: string, cardId: string, serverUrl: string) => {
     if (!serverUrl) return;
 
+    const card = spaces
+      .find(space => space.id === spaceId)
+      ?.cards.find(savedCard => savedCard.id === cardId);
+    const challenge = card?.error
+      && typeof card.error === 'object'
+      && card.error.authenticationSource === 'target'
+      ? card.error as SavedCardOAuthChallenge
+      : undefined;
+    const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+    const discoveryProxyApplicable = card?.useProxy !== false;
+
     clearOAuthTokens(serverUrl);
     sessionStorage.setItem('oauth_cards_to_refresh', JSON.stringify([{ spaceId, cardId }]));
     const activeTabs = localStorage.getItem(TABS_KEY);
@@ -1511,9 +1597,12 @@ function App() {
     }));
 
     try {
-      const result = await beginOAuthFlow(serverUrl, {
-        forceReauthorization: true,
-        deferAuthorizedTraceOutcome: true,
+      const result = await beginSavedCardOAuthFlow({
+        serverUrl,
+        challenge,
+        proxyUrl,
+        currentUser,
+        discoveryProxyApplicable,
       });
       if (result === 'AUTHORIZED') await handleExecuteCard(spaceId, cardId);
     } catch (error) {
