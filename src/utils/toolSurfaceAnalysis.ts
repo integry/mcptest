@@ -950,6 +950,24 @@ type SchemaWorkItem =
   | { kind: 'visit'; schema: unknown; path: string; depth: number }
   | { kind: 'exit'; schema: object };
 
+const markSchemaNodeLimit = (
+  accumulator: SchemaAccumulator,
+  tool: ToolRecord,
+  path: string
+): void => {
+  if (!accumulator.nodeLimitReached) {
+    retainSchemaEvidence(
+      accumulator.budgetEvidence,
+      evidence(
+        tool.displayName,
+        displayPath(path),
+        `Schema traversal stopped after ${SCHEMA_NODE_LIMIT} schema visits.`
+      )
+    );
+  }
+  accumulator.nodeLimitReached = true;
+};
+
 const visitSchema = (
   schema: unknown,
   tool: ToolRecord,
@@ -960,19 +978,6 @@ const visitSchema = (
   const ancestors = new Set<object>();
   const work: SchemaWorkItem[] = [{ kind: 'visit', schema, path, depth }];
   let scheduledVisitCount = 1;
-  const markNodeLimit = (budgetTool: ToolRecord, budgetPath: string): void => {
-    if (!accumulator.nodeLimitReached) {
-      retainSchemaEvidence(
-        accumulator.budgetEvidence,
-        evidence(
-          budgetTool.displayName,
-          displayPath(budgetPath),
-          `Schema traversal stopped after ${SCHEMA_NODE_LIMIT} schema visits.`
-        )
-      );
-    }
-    accumulator.nodeLimitReached = true;
-  };
 
   while (work.length > 0) {
     const item = work.pop() as SchemaWorkItem;
@@ -983,7 +988,7 @@ const visitSchema = (
     scheduledVisitCount -= 1;
 
     if (accumulator.schemaNodeCount >= SCHEMA_NODE_LIMIT) {
-      markNodeLimit(tool, item.path);
+      markSchemaNodeLimit(accumulator, tool, item.path);
       continue;
     }
     accumulator.schemaNodeCount += 1;
@@ -1026,7 +1031,7 @@ const visitSchema = (
     );
     const addChild = (child: { schema: unknown; path: string }): void => {
       if (childrenToVisit.length >= maximumChildren) {
-        markNodeLimit(tool, child.path);
+        markSchemaNodeLimit(accumulator, tool, child.path);
         return;
       }
       childrenToVisit.push(child);
@@ -1059,7 +1064,9 @@ const visitSchema = (
     if (isRecord(properties)) {
       const boundedProperties = boundedOwnKeys(properties, maximumChildren);
       propertyNames = boundedProperties.keys;
-      if (boundedProperties.truncated) markNodeLimit(tool, `${item.path}.properties`);
+      if (boundedProperties.truncated) {
+        markSchemaNodeLimit(accumulator, tool, `${item.path}.properties`);
+      }
       const width = propertyNames.length;
       if (width > accumulator.maximumWidth) {
         accumulator.maximumWidth = width;
@@ -1182,7 +1189,7 @@ const visitSchema = (
         });
       }
       if (retainedLength < keywordChildren.length) {
-        markNodeLimit(tool, `${item.path}.${keyword}[${retainedLength}]`);
+        markSchemaNodeLimit(accumulator, tool, `${item.path}.${keyword}[${retainedLength}]`);
       }
     }
 
@@ -1203,7 +1210,9 @@ const visitSchema = (
           path: `${item.path}.${keyword}.${schemaPathSegment(key)}`,
         });
       }
-      if (boundedChildren.truncated) markNodeLimit(tool, `${item.path}.${keyword}`);
+      if (boundedChildren.truncated) {
+        markSchemaNodeLimit(accumulator, tool, `${item.path}.${keyword}`);
+      }
     }
 
     work.push({ kind: 'exit', schema: current });
@@ -1495,7 +1504,10 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
   };
 
   for (const tool of tools) {
-    if (schemaAccumulator.schemaNodeCount >= SCHEMA_NODE_LIMIT) break;
+    if (schemaAccumulator.schemaNodeCount >= SCHEMA_NODE_LIMIT) {
+      markSchemaNodeLimit(schemaAccumulator, tool, '$.inputSchema');
+      break;
+    }
     if (!isRecord(tool.inputSchema)) {
       schemaAccumulator.malformedToolIndexes.add(tool.index);
       continue;

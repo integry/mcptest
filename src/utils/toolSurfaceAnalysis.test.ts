@@ -548,6 +548,33 @@ describe('analyzeToolSurface', () => {
     expect(() => JSON.stringify(analysis)).not.toThrow();
   });
 
+  it('reports schema node exhaustion when an exact-limit schema leaves tools unprocessed', () => {
+    const analysis = analyzeToolSurface([
+      {
+        name: 'inspect_exact_limit_schema',
+        description: 'A Inspects a schema that consumes the exact traversal budget.',
+        inputSchema: {
+          type: 'object',
+          anyOf: Array.from({ length: 49_999 }, () => true),
+        },
+      },
+      {
+        name: 'inspect_unprocessed_schema',
+        description: 'Z Inspects a schema that remains after the traversal budget is exhausted.',
+        inputSchema: { type: 'object', properties: {} },
+      },
+    ]);
+
+    expect(analysis.metrics.schemas.schemaNodeCount).toBe(50_000);
+    expect(finding(analysis, 'analysis.incomplete-budget')?.evidence).toContainEqual(
+      expect.objectContaining({
+        tool: 'inspect_unprocessed_schema',
+        path: '$.inputSchema',
+        detail: expect.stringContaining('after 50000 schema visits'),
+      })
+    );
+  });
+
   it('bounds comparisons and retained overlap pairs on a 2,000-tool surface', () => {
     const tools = Array.from({ length: 2_000 }, (_, index) => ({
       name: `inspect_customer_record_${index}`,
