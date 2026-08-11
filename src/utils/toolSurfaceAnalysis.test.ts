@@ -460,7 +460,7 @@ describe('analyzeToolSurface', () => {
 
     expect(analysis.metrics.schemas).toMatchObject({
       maximumDepth: 64,
-      schemaNodeCount: 64,
+      schemaNodeCount: 65,
     });
     expect(budgetFinding?.summary).toContain('deterministic safety budgets');
     expect(budgetFinding?.evidence.some((item) => item.detail.includes('depth limit of 64')))
@@ -483,7 +483,7 @@ describe('analyzeToolSurface', () => {
     const budgetFinding = finding(analysis, 'analysis.incomplete-budget');
 
     expect(analysis.metrics.schemas.schemaNodeCount).toBe(50_000);
-    expect(budgetFinding?.evidence.some((item) => item.detail.includes('after 50000 schema nodes')))
+    expect(budgetFinding?.evidence.some((item) => item.detail.includes('after 50000 schema visits')))
       .toBe(true);
     expect(budgetFinding?.evidence.some((item) => item.detail.includes('100000 nodes')))
       .toBe(true);
@@ -515,7 +515,7 @@ describe('analyzeToolSurface', () => {
   it('reports tool-count and serialized-size budget exhaustion', () => {
     const tools = Array.from({ length: 2_001 }, (_, index) => ({
       name: `read_item_${index}`,
-      description: index === 0 ? 'x'.repeat(2_000_001) : 'Reads one item without changing state.',
+      description: index === 0 ? `A${'x'.repeat(2_000_000)}` : 'z Reads one item without changing state.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     }));
 
@@ -528,6 +528,93 @@ describe('analyzeToolSurface', () => {
       .toBe(true);
     expect(budgetFinding?.evidence.some((item) => item.detail.includes('2000000 bytes')))
       .toBe(true);
+  });
+
+  it('selects the same over-limit tool subset in forward, reverse, and shuffled order', () => {
+    const tools = Array.from({ length: 2_003 }, (_, index) => ({
+      name: 'lookup_shared_record',
+      description: 'Looks up a shared record using the supplied stable identifier.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            const: `schema-${String(index).padStart(4, '0')}`,
+            description: 'Stable record identifier.',
+          },
+        },
+        required: ['id'],
+      },
+    }));
+    const shuffled = [
+      ...tools.filter((_, index) => index % 2 === 1).reverse(),
+      ...tools.filter((_, index) => index % 2 === 0),
+    ];
+
+    const forward = analyzeToolSurface(tools);
+    const reversed = analyzeToolSurface([...tools].reverse());
+    const permuted = analyzeToolSurface(shuffled);
+
+    expect(reversed).toEqual(forward);
+    expect(permuted).toEqual(forward);
+    expect(forward.metrics.toolCount).toBe(2_003);
+    expect(finding(forward, 'analysis.incomplete-budget')?.evidence).toContainEqual(
+      expect.objectContaining({ detail: expect.stringContaining('tool limit of 2000') })
+    );
+  });
+
+  it('canonicalizes oversized object keys independently of insertion order', () => {
+    const makeProperties = (reverse: boolean): Record<string, boolean> => {
+      const properties: Record<string, boolean> = {};
+      const indexes = Array.from({ length: 100_100 }, (_, index) => index);
+      if (reverse) indexes.reverse();
+      for (const index of indexes) {
+        properties[`field_${String(index).padStart(6, '0')}`] = true;
+      }
+      return properties;
+    };
+    const makeTool = (reverse: boolean) => ({
+      name: 'inspect_oversized_object',
+      description: 'Inspects a caller-provided object with a very broad deterministic schema.',
+      inputSchema: {
+        type: 'object',
+        properties: makeProperties(reverse),
+      },
+    });
+
+    const forward = analyzeToolSurface([makeTool(false)]);
+    const reversed = analyzeToolSurface([makeTool(true)]);
+
+    expect(reversed).toEqual(forward);
+    expect(forward.metrics.schemas.schemaNodeCount).toBe(50_000);
+    expect(finding(forward, 'analysis.incomplete-budget')?.evidence).toContainEqual(
+      expect.objectContaining({ detail: expect.stringContaining('100000 nodes') })
+    );
+  });
+
+  it('globally bounds malformed schema visits and retained evidence across tools', () => {
+    const tools = Array.from({ length: 200 }, (_, index) => ({
+      name: `inspect_invalid_schema_${String(index).padStart(3, '0')}`,
+      description: `Inspects invalid schema fixture ${index} without changing external state.`,
+      inputSchema: {
+        type: 'object',
+        anyOf: Array.from({ length: 400 }, (_, childIndex) => childIndex),
+      },
+    }));
+    const startedAt = Date.now();
+
+    const analysis = analyzeToolSurface(tools);
+    const elapsedMilliseconds = Date.now() - startedAt;
+    const malformedFinding = finding(analysis, 'schema.malformed-definitions');
+
+    expect(analysis.metrics.schemas.schemaNodeCount).toBe(50_000);
+    expect(malformedFinding?.evidence).toHaveLength(12);
+    expect(malformedFinding?.omittedEvidenceCount).toBeGreaterThan(40_000);
+    expect(finding(analysis, 'analysis.incomplete-budget')?.evidence).toContainEqual(
+      expect.objectContaining({ detail: expect.stringContaining('after 50000 schema visits') })
+    );
+    expect(elapsedMilliseconds).toBeLessThan(10_000);
+    expect(JSON.stringify(analysis).length).toBeLessThan(100_000);
   });
 
   it('flags strong prompt-like text for review while allowing ordinary usage guidance', () => {

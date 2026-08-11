@@ -20,8 +20,11 @@ const TOOL_ANALYSIS_LIMIT = 2_000;
 const CANONICAL_DEPTH_LIMIT = 64;
 const CANONICAL_NODE_LIMIT = 100_000;
 const CANONICAL_BYTE_LIMIT = 2_000_000;
+const CANONICAL_ORDER_NODE_LIMIT = 4_096;
+const CANONICAL_ORDER_BYTE_LIMIT = 32_000;
 const SCHEMA_DEPTH_LIMIT = 64;
 const SCHEMA_NODE_LIMIT = 50_000;
+const SCHEMA_EVIDENCE_RETENTION_LIMIT = EVIDENCE_LIMIT;
 const SIMILARITY_COMPARISON_LIMIT = 50_000;
 const OVERLAP_PAIR_RETENTION_LIMIT = EVIDENCE_LIMIT;
 
@@ -256,6 +259,7 @@ interface SchemaAccumulator {
   maximumWidth: number;
   malformedToolIndexes: Set<number>;
   malformedEvidence: ToolSurfaceEvidenceV1[];
+  malformedEvidenceCount: number;
   unconstrainedEvidence: ToolSurfaceEvidenceV1[];
   missingDescriptionEvidence: ToolSurfaceEvidenceV1[];
   depthEvidence: ToolSurfaceEvidenceV1[];
@@ -296,17 +300,46 @@ const boundedOwnKeys = (
   include: (key: string) => boolean = () => true
 ): { keys: string[]; truncated: boolean } => {
   const keys: string[] = [];
-  let truncated = false;
+  let matchingKeyCount = 0;
+
+  const restoreMaximumHeap = (startIndex: number): void => {
+    let parentIndex = startIndex;
+    while (true) {
+      const leftIndex = parentIndex * 2 + 1;
+      const rightIndex = leftIndex + 1;
+      let maximumIndex = parentIndex;
+      if (leftIndex < keys.length && compareText(keys[leftIndex], keys[maximumIndex]) > 0) {
+        maximumIndex = leftIndex;
+      }
+      if (rightIndex < keys.length && compareText(keys[rightIndex], keys[maximumIndex]) > 0) {
+        maximumIndex = rightIndex;
+      }
+      if (maximumIndex === parentIndex) return;
+      [keys[parentIndex], keys[maximumIndex]] = [keys[maximumIndex], keys[parentIndex]];
+      parentIndex = maximumIndex;
+    }
+  };
+
   for (const key in value) {
     if (!Object.prototype.hasOwnProperty.call(value, key) || !include(key)) continue;
-    if (keys.length >= maximumKeys) {
-      truncated = true;
-      break;
+    matchingKeyCount += 1;
+    if (maximumKeys <= 0) continue;
+    if (keys.length < maximumKeys) {
+      keys.push(key);
+      let childIndex = keys.length - 1;
+      while (childIndex > 0) {
+        const parentIndex = Math.floor((childIndex - 1) / 2);
+        if (compareText(keys[parentIndex], keys[childIndex]) >= 0) break;
+        [keys[parentIndex], keys[childIndex]] = [keys[childIndex], keys[parentIndex]];
+        childIndex = parentIndex;
+      }
+    } else if (compareText(key, keys[0]) < 0) {
+      keys[0] = key;
+      restoreMaximumHeap(0);
     }
-    keys.push(key);
   }
   keys.sort(compareText);
-  return { keys, truncated };
+  return { keys, truncated: matchingKeyCount > keys.length };
 };
 
 const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).length;
@@ -458,24 +491,95 @@ const canonicalStringify = (
   return { serialized: output.join(''), nodeCount, truncationReasons };
 };
 
+interface CanonicallyOrderedValue {
+  value: unknown;
+  orderKey: string;
+}
+
+const canonicalOrderKey = (value: unknown): string => canonicalStringify(
+  value,
+  CANONICAL_ORDER_NODE_LIMIT,
+  CANONICAL_ORDER_BYTE_LIMIT
+).serialized;
+
+const compareCanonicallyOrderedValues = (
+  left: CanonicallyOrderedValue,
+  right: CanonicallyOrderedValue
+): number => compareText(left.orderKey, right.orderKey);
+
+const orderCanonicalValues = (values: readonly unknown[]): CanonicallyOrderedValue[] => values
+  .map((value) => ({ value, orderKey: canonicalOrderKey(value) }))
+  .sort(compareCanonicallyOrderedValues);
+
+const selectCanonicalValues = (
+  values: readonly unknown[],
+  limit: number
+): CanonicallyOrderedValue[] => {
+  const selected: CanonicallyOrderedValue[] = [];
+
+  const restoreMaximumHeap = (startIndex: number): void => {
+    let parentIndex = startIndex;
+    while (true) {
+      const leftIndex = parentIndex * 2 + 1;
+      const rightIndex = leftIndex + 1;
+      let maximumIndex = parentIndex;
+      if (
+        leftIndex < selected.length
+        && compareCanonicallyOrderedValues(selected[leftIndex], selected[maximumIndex]) > 0
+      ) {
+        maximumIndex = leftIndex;
+      }
+      if (
+        rightIndex < selected.length
+        && compareCanonicallyOrderedValues(selected[rightIndex], selected[maximumIndex]) > 0
+      ) {
+        maximumIndex = rightIndex;
+      }
+      if (maximumIndex === parentIndex) return;
+      [selected[parentIndex], selected[maximumIndex]] = [selected[maximumIndex], selected[parentIndex]];
+      parentIndex = maximumIndex;
+    }
+  };
+
+  for (const value of values) {
+    const candidate = { value, orderKey: canonicalOrderKey(value) };
+    if (selected.length < limit) {
+      selected.push(candidate);
+      let childIndex = selected.length - 1;
+      while (childIndex > 0) {
+        const parentIndex = Math.floor((childIndex - 1) / 2);
+        if (compareCanonicallyOrderedValues(selected[parentIndex], selected[childIndex]) >= 0) break;
+        [selected[parentIndex], selected[childIndex]] = [selected[childIndex], selected[parentIndex]];
+        childIndex = parentIndex;
+      }
+    } else if (limit > 0 && compareCanonicallyOrderedValues(candidate, selected[0]) < 0) {
+      selected[0] = candidate;
+      restoreMaximumHeap(0);
+    }
+  }
+
+  return selected.sort(compareCanonicallyOrderedValues);
+};
+
 const canonicalizeCollection = (
   values: readonly unknown[],
   emptyValue: string
 ): CanonicalCollectionResult => {
+  const orderedValues = orderCanonicalValues(values);
   const entries: string[] = [];
   const truncationReasons = new Set<'depth' | 'nodes' | 'bytes'>();
   let remainingNodes = CANONICAL_NODE_LIMIT;
   let remainingBytes = CANONICAL_BYTE_LIMIT;
   let omittedValueCount = 0;
 
-  for (let index = 0; index < values.length; index += 1) {
+  for (let index = 0; index < orderedValues.length; index += 1) {
     if (remainingNodes <= 0 || remainingBytes <= 0) {
-      omittedValueCount = values.length - index;
+      omittedValueCount = orderedValues.length - index;
       if (remainingNodes <= 0) truncationReasons.add('nodes');
       if (remainingBytes <= 0) truncationReasons.add('bytes');
       break;
     }
-    const result = canonicalStringify(values[index], remainingNodes, remainingBytes);
+    const result = canonicalStringify(orderedValues[index].value, remainingNodes, remainingBytes);
     entries.push(result.serialized);
     remainingNodes -= result.nodeCount;
     remainingBytes -= Math.min(remainingBytes, utf8ByteLength(result.serialized));
@@ -485,7 +589,7 @@ const canonicalizeCollection = (
   if (omittedValueCount > 0) {
     entries.push(JSON.stringify(`[Truncated: ${omittedValueCount} canonical values omitted]`));
   }
-  if (values.length === 0) return { serialized: emptyValue, truncationReasons, omittedValueCount };
+  if (orderedValues.length === 0) return { serialized: emptyValue, truncationReasons, omittedValueCount };
   return {
     serialized: `[${entries.sort(compareText).join(',')}]`,
     truncationReasons,
@@ -552,6 +656,13 @@ const evidence = (tool: string, path: string, detail: string): ToolSurfaceEviden
   path: boundedLabel(path, EVIDENCE_FIELD_CHARACTER_LIMIT),
   detail: boundedLabel(detail, EVIDENCE_FIELD_CHARACTER_LIMIT),
 });
+
+const retainSchemaEvidence = (
+  target: ToolSurfaceEvidenceV1[],
+  item: ToolSurfaceEvidenceV1
+): void => {
+  if (target.length < SCHEMA_EVIDENCE_RETENTION_LIMIT) target.push(item);
+};
 
 const emptyFindings = (): ToolSurfaceFindingsBySeverityV1 => ({
   critical: [],
@@ -677,7 +788,11 @@ const markMalformedSchema = (
   detail: string
 ): void => {
   accumulator.malformedToolIndexes.add(tool.index);
-  accumulator.malformedEvidence.push(evidence(tool.displayName, displayPath(path), detail));
+  accumulator.malformedEvidenceCount += 1;
+  retainSchemaEvidence(
+    accumulator.malformedEvidence,
+    evidence(tool.displayName, displayPath(path), detail)
+  );
 };
 
 const recordSchemaDepth = (
@@ -694,11 +809,10 @@ const recordSchemaDepth = (
       `Schema reaches depth ${depth}.`
     )];
   } else if (depth === accumulator.maximumDepth) {
-    accumulator.depthEvidence.push(evidence(
-      tool.displayName,
-      displayPath(path),
-      `Schema reaches depth ${depth}.`
-    ));
+    retainSchemaEvidence(
+      accumulator.depthEvidence,
+      evidence(tool.displayName, displayPath(path), `Schema reaches depth ${depth}.`)
+    );
   }
 };
 
@@ -718,11 +832,14 @@ const visitSchema = (
   let scheduledVisitCount = 1;
   const markNodeLimit = (budgetTool: ToolRecord, budgetPath: string): void => {
     if (!accumulator.nodeLimitReached) {
-      accumulator.budgetEvidence.push(evidence(
-        budgetTool.displayName,
-        displayPath(budgetPath),
-        `Schema traversal stopped after ${SCHEMA_NODE_LIMIT} schema nodes.`
-      ));
+      retainSchemaEvidence(
+        accumulator.budgetEvidence,
+        evidence(
+          budgetTool.displayName,
+          displayPath(budgetPath),
+          `Schema traversal stopped after ${SCHEMA_NODE_LIMIT} schema visits.`
+        )
+      );
     }
     accumulator.nodeLimitReached = true;
   };
@@ -735,24 +852,28 @@ const visitSchema = (
     }
     scheduledVisitCount -= 1;
 
-    if (item.depth > SCHEMA_DEPTH_LIMIT) {
-      if (!accumulator.depthLimitReached) {
-        accumulator.budgetEvidence.push(evidence(
-          tool.displayName,
-          displayPath(item.path),
-          `Schema traversal stopped at the deterministic depth limit of ${SCHEMA_DEPTH_LIMIT}.`
-        ));
-      }
-      accumulator.depthLimitReached = true;
-      continue;
-    }
     if (accumulator.schemaNodeCount >= SCHEMA_NODE_LIMIT) {
       markNodeLimit(tool, item.path);
       continue;
     }
+    accumulator.schemaNodeCount += 1;
+
+    if (item.depth > SCHEMA_DEPTH_LIMIT) {
+      if (!accumulator.depthLimitReached) {
+        retainSchemaEvidence(
+          accumulator.budgetEvidence,
+          evidence(
+            tool.displayName,
+            displayPath(item.path),
+            `Schema traversal stopped at the deterministic depth limit of ${SCHEMA_DEPTH_LIMIT}.`
+          )
+        );
+      }
+      accumulator.depthLimitReached = true;
+      continue;
+    }
 
     if (typeof item.schema === 'boolean') {
-      accumulator.schemaNodeCount += 1;
       recordSchemaDepth(accumulator, tool, item.path, item.depth);
       continue;
     }
@@ -767,7 +888,6 @@ const visitSchema = (
 
     const current = item.schema;
     ancestors.add(current);
-    accumulator.schemaNodeCount += 1;
     recordSchemaDepth(accumulator, tool, item.path, item.depth);
     const childrenToVisit: Array<{ schema: unknown; path: string }> = [];
     const maximumChildren = Math.max(
@@ -811,13 +931,18 @@ const visitSchema = (
       propertyNames = boundedProperties.keys;
       if (boundedProperties.truncated) markNodeLimit(tool, `${item.path}.properties`);
       const width = propertyNames.length;
-      accumulator.maximumWidth = Math.max(accumulator.maximumWidth, width);
-      if (width > 0) {
-        accumulator.widthEvidence.push(evidence(
+      if (width > accumulator.maximumWidth) {
+        accumulator.maximumWidth = width;
+        accumulator.widthEvidence = [evidence(
           tool.displayName,
           displayPath(item.path),
           `Object declares ${width} properties.`
-        ));
+        )];
+      } else if (width > 0 && width === accumulator.maximumWidth) {
+        retainSchemaEvidence(
+          accumulator.widthEvidence,
+          evidence(tool.displayName, displayPath(item.path), `Object declares ${width} properties.`)
+        );
       }
       accumulator.propertyCount += width;
 
@@ -838,11 +963,14 @@ const visitSchema = (
         else accumulator.optionalPropertyCount += 1;
         if (!isRecord(propertySchema) || typeof propertySchema.description !== 'string' || !propertySchema.description.trim()) {
           accumulator.propertiesMissingDescriptions += 1;
-          accumulator.missingDescriptionEvidence.push(evidence(
-            tool.displayName,
-            `${item.path}.properties.${schemaPathSegment(propertyName)}`,
-            `Property "${schemaPathSegment(propertyName)}" has no description.`
-          ));
+          retainSchemaEvidence(
+            accumulator.missingDescriptionEvidence,
+            evidence(
+              tool.displayName,
+              `${item.path}.properties.${schemaPathSegment(propertyName)}`,
+              `Property "${schemaPathSegment(propertyName)}" has no description.`
+            )
+          );
         }
         addChild({
           schema: propertySchema,
@@ -864,22 +992,28 @@ const visitSchema = (
       ].some((key) => current[key] !== undefined);
       if (!hasConstraint) {
         accumulator.unconstrainedStringCount += 1;
-        accumulator.unconstrainedEvidence.push(evidence(
-          tool.displayName,
-          displayPath(item.path),
-          'String accepts arbitrary text without a format, pattern, length, enum, or const constraint.'
-        ));
+        retainSchemaEvidence(
+          accumulator.unconstrainedEvidence,
+          evidence(
+            tool.displayName,
+            displayPath(item.path),
+            'String accepts arbitrary text without a format, pattern, length, enum, or const constraint.'
+          )
+        );
       }
     }
 
     if (objectLike && (!isRecord(properties) || propertyNames.length === 0)) {
       if (current.additionalProperties !== false) {
         accumulator.unconstrainedObjectCount += 1;
-        accumulator.unconstrainedEvidence.push(evidence(
-          tool.displayName,
-          displayPath(item.path),
-          'Object accepts unspecified fields and declares no properties.'
-        ));
+        retainSchemaEvidence(
+          accumulator.unconstrainedEvidence,
+          evidence(
+            tool.displayName,
+            displayPath(item.path),
+            'Object accepts unspecified fields and declares no properties.'
+          )
+        );
       }
     }
 
@@ -1151,8 +1285,8 @@ const contextSeverity = (toolCount: number, tokenCount: number): ToolSurfaceSeve
  */
 export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurfaceAnalysisV1 {
   const extracted = extractTools(input);
-  const analyzedRawTools = extracted.tools.slice(0, TOOL_ANALYSIS_LIMIT);
-  const tools = analyzedRawTools.map(normalizeTool);
+  const analyzedRawTools = selectCanonicalValues(extracted.tools, TOOL_ANALYSIS_LIMIT);
+  const tools = analyzedRawTools.map((entry, index) => normalizeTool(entry.value, index));
   const omittedToolCount = extracted.tools.length - analyzedRawTools.length;
   const findings = emptyFindings();
 
@@ -1226,6 +1360,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     maximumWidth: 0,
     malformedToolIndexes: new Set(),
     malformedEvidence: [],
+    malformedEvidenceCount: 0,
     unconstrainedEvidence: [],
     missingDescriptionEvidence: [],
     depthEvidence: [],
@@ -1236,6 +1371,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
   };
 
   for (const tool of tools) {
+    if (schemaAccumulator.schemaNodeCount >= SCHEMA_NODE_LIMIT) break;
     if (!isRecord(tool.inputSchema)) {
       schemaAccumulator.malformedToolIndexes.add(tool.index);
       continue;
@@ -1380,6 +1516,8 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       title: 'Malformed tool definitions or schemas',
       summary: `${tools.filter((tool) => !tool.valid).length} tool definitions are missing required fields; ${schemaAccumulator.malformedToolIndexes.size} input schemas contain structural problems.`,
       evidence: [...malformedToolEvidence, ...schemaAccumulator.malformedEvidence],
+      omittedEvidenceCount: schemaAccumulator.malformedEvidenceCount
+        - schemaAccumulator.malformedEvidence.length,
       remediation: 'Validate every tool against the MCP Tool schema and each inputSchema against JSON Schema before publishing tools/list.',
     });
   }
@@ -1491,6 +1629,9 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       title: 'Inputs accept unconstrained values',
       summary: `${schemaAccumulator.unconstrainedStringCount} strings and ${schemaAccumulator.unconstrainedObjectCount} objects lack structural constraints.`,
       evidence: schemaAccumulator.unconstrainedEvidence,
+      omittedEvidenceCount: schemaAccumulator.unconstrainedStringCount
+        + schemaAccumulator.unconstrainedObjectCount
+        - schemaAccumulator.unconstrainedEvidence.length,
       remediation: 'Add enums, formats, patterns, length limits, declared properties, and additionalProperties: false where the contract permits.',
     });
   }
@@ -1504,6 +1645,8 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       title: 'Input properties lack descriptions',
       summary: `${schemaAccumulator.propertiesMissingDescriptions} of ${schemaAccumulator.propertyCount} declared properties have no description.`,
       evidence: schemaAccumulator.missingDescriptionEvidence,
+      omittedEvidenceCount: schemaAccumulator.propertiesMissingDescriptions
+        - schemaAccumulator.missingDescriptionEvidence.length,
       remediation: 'Document the meaning, accepted units or format, and effect of each input property.',
     });
   }
