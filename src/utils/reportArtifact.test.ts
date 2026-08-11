@@ -503,6 +503,42 @@ describe('versioned public report artifacts', () => {
     expect(output).toContain('display=visible');
   });
 
+  it('redacts JWT keys and standalone JWT values from every report path', () => {
+    const standaloneJwt = [
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+      'eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkphbmUgRG9lIn0',
+      'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+    ].join('.');
+    const jwtUrl = 'https://example.test/?jwt=url-jwt-secret&visible=yes';
+
+    expect(redactReportString(`Rejected JWT ${standaloneJwt}`)).toBe(
+      'Rejected JWT [REDACTED]'
+    );
+    expect(redactReportString(jwtUrl)).toBe(
+      'https://example.test/?jwt=%5BREDACTED%5D&visible=yes'
+    );
+    expect(redactReportValue({ jwt: 'structured-jwt-secret' })).toEqual({
+      jwt: '[REDACTED]',
+    });
+
+    const report = publicReport();
+    report.sections.protocol.details[0] = {
+      text: `Rejected JWT ${standaloneJwt}`,
+      context: jwtUrl,
+      metadata: { jwt: 'evidence-jwt-secret' },
+    };
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    for (const output of [json, markdown]) {
+      expect(output).not.toContain(standaloneJwt);
+      expect(output).not.toContain('url-jwt-secret');
+      expect(output).not.toContain('evidence-jwt-secret');
+      expect(output).toContain('[REDACTED]');
+    }
+  });
+
   it('redacts encoded sensitive query names through both serializers and fails closed at the decode bound', () => {
     const singlyEncodedUrl = 'https://client.example/?access%5Ftoken=single-name-secret';
     const repeatedlyEncodedUrl = 'https://client.example/?access%255Ftoken=repeated-name-secret';

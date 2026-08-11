@@ -227,6 +227,7 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'accesstoken',
   'refreshtoken',
   'idtoken',
+  'jwt',
   'idtokenhint',
   'clientassertion',
   'devicecode',
@@ -404,12 +405,18 @@ const redactUrlsInText = (value: string, depth: number): string => value.replace
   }
 );
 
+const redactStandaloneJwtValues = (value: string): string => value.replace(
+  /(^|[^A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=$|[^A-Za-z0-9_-])/g,
+  `$1${REDACTED_VALUE}`
+);
+
 const redactReportStringAtDepth = (value: string, urlDepth: number): string => {
   let redacted = value;
   for (let pass = 0; pass < MAX_REDACTION_PASSES; pass += 1) {
     const redactedAssignments = redactSensitiveAssignments(redacted)
       .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_VALUE}`);
-    const next = redactUrlsInText(redactedAssignments, urlDepth);
+    const redactedCredentials = redactStandaloneJwtValues(redactedAssignments);
+    const next = redactUrlsInText(redactedCredentials, urlDepth);
     if (next === redacted) break;
     redacted = next;
   }
