@@ -11,6 +11,7 @@ import ParamsPanel from './ParamsPanel';
 import OutputPanel from './OutputPanel';
 import OAuthConfig from './OAuthConfig';
 import { AwaitingConnectionPanel, FirstConnectionOnboarding } from './FirstConnectionOnboarding';
+import DeterministicTestPanel from './DeterministicTestPanel';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
@@ -98,6 +99,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionStartTime, setExecutionStartTime] = useState<number | null>(null);
+  const [showDeterministicTests, setShowDeterministicTests] = useState(false);
 
   // Custom Hooks for this tab
   const {
@@ -933,6 +935,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               connectionStatus={connectionStatus}
               onRefreshLists={handleRefreshAllLists}
               isConnecting={isConnecting}
+              onOpenTestPlan={() => setShowDeterministicTests(true)}
             />
             </section>
             <section className="workbench-pane workbench-request" aria-label="Request builder">
@@ -981,6 +984,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           </>
         )}
       </div>
+
+      <DeterministicTestPanel
+        open={showDeterministicTests}
+        onClose={() => setShowDeterministicTests(false)}
+        tools={tools}
+        client={client}
+        serverUrl={tab.serverUrl || serverUrl}
+        connectionSummary={`${transportType === 'legacy-sse' ? 'Legacy SSE' : 'Streamable HTTP'} · ${protocolEra || 'negotiated session'}${isOAuthConnection ? ' · OAuth' : ''}${isProxied ? ' · proxy' : ''}`}
+      />
       
       {/* OAuth authorization prerequisite */}
       {needsOAuthConfig && oauthConfigServerUrl && (

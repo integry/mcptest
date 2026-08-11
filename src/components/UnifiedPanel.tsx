@@ -17,6 +17,7 @@ interface UnifiedPanelProps {
   connectionStatus: string;
   onRefreshLists: () => void; // Add prop for refresh handler
   isConnecting: boolean; // Add isConnecting prop
+  onOpenTestPlan?: () => void;
 }
 
 // Helper to truncate description
@@ -41,6 +42,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   connectionStatus,
   onRefreshLists, // Destructure the new prop
   isConnecting, // Destructure isConnecting
+  onOpenTestPlan,
 }) => {
   const [filterText, setFilterText] = useState('');
   const [expandedCategories, setExpandedCategories] = useState({
@@ -148,15 +150,28 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         <div>
           <h5 className="mb-0">Capabilities</h5>
         </div>
-        <button
-          className="btn btn-sm btn-outline-secondary refresh-button"
-          onClick={onRefreshLists}
-          disabled={!isConnected || isConnecting} // Disable if not connected or connecting
-          title="Refresh Tools, Resources, and Prompts"
-        >
-          <i className="bi bi-arrow-clockwise" aria-hidden="true"></i>
-          <span className="visually-hidden">Refresh capabilities</span>
-        </button>
+        <div className="d-flex gap-1">
+          {onOpenTestPlan && (
+            <button
+              className="btn btn-sm btn-outline-primary test-plan-button"
+              onClick={onOpenTestPlan}
+              disabled={!isConnected || isConnecting || tools.length === 0}
+              title="Create and run deterministic tool tests"
+            >
+              <i className="bi bi-clipboard-check" aria-hidden="true"></i>
+              <span>Test tools</span>
+            </button>
+          )}
+          <button
+            className="btn btn-sm btn-outline-secondary refresh-button"
+            onClick={onRefreshLists}
+            disabled={!isConnected || isConnecting}
+            title="Refresh Tools, Resources, and Prompts"
+          >
+            <i className="bi bi-arrow-clockwise" aria-hidden="true"></i>
+            <span className="visually-hidden">Refresh capabilities</span>
+          </button>
+        </div>
       </div>
       <input
         type="text"
