@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  getOAuthCallbackUrl,
   loadManualOAuthClient,
   saveManualOAuthClient,
   type OAuthPrerequisite,
@@ -23,7 +24,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   const [showSecret, setShowSecret] = useState(false);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const serviceDomain = new URL(serverUrl).host;
-  const callbackUrl = 'https://mcptest.io/oauth/callback';
+  const callbackUrl = getOAuthCallbackUrl();
   const canConfigureClient = prerequisite?.canConfigureClient ?? true;
   const title = prerequisite?.kind === 'provider_approval_required'
     ? `${prerequisite.providerName} approval is required`

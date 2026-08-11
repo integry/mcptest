@@ -473,7 +473,7 @@ const randomState = (): string => {
     .replace(/=+$/, '');
 };
 
-const defaultRedirectUrl = (): string => {
+export const getOAuthCallbackUrl = (): string => {
   if (typeof window === 'undefined') {
     return `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`;
   }
@@ -500,7 +500,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     this.serverUrl = normalizeOAuthServerUrl(serverUrl);
     this.storage = options.storage || getSessionStorage();
     this.storeKey = storageKeyForServer(this.serverUrl);
-    this.redirectUrl = options.redirectUrl || defaultRedirectUrl();
+    this.redirectUrl = options.redirectUrl || getOAuthCallbackUrl();
     this.redirect = options.redirect || defaultRedirect;
     this.trace = options.trace;
     this.trace?.trackResourceMetadataUrl(this.readState().discovery?.resourceMetadataUrl);

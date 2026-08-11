@@ -296,7 +296,19 @@ const ReportView: React.FC = () => {
     }));
 
     try {
+      const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+      const discoveryProxyToken = proxyUrl && currentUser
+        ? await currentUser.getIdToken()
+        : undefined;
       const result = await beginOAuthFlow(authenticationUrl, {
+        ...(proxyUrl && discoveryProxyToken
+          ? {
+              discoveryProxy: {
+                url: proxyUrl,
+                authorizationToken: discoveryProxyToken,
+              },
+            }
+          : {}),
         deferAuthorizedTraceOutcome: true,
       });
       if (result === 'AUTHORIZED') {
@@ -314,7 +326,7 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, []);
+  }, [currentUser]);
 
   const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('configure');

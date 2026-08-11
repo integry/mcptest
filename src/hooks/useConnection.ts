@@ -342,6 +342,7 @@ export const useConnection = (
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
     logEvent('connect_attempt');
 
     // Clear any previous connection error
@@ -537,9 +538,6 @@ export const useConnection = (
           (error.message?.toLowerCase().includes('failed to fetch') &&
             !error.message?.toLowerCase().includes('network'));
 
-        // Use forceUseProxy if provided, otherwise fall back to the hook's useProxy value
-        const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
-
         if (isCorsError && shouldUseProxy && currentUser) {
           const result = await withConnectionTimeout(connectViaProxy());
           return { result, usedProxy: true };
@@ -631,7 +629,7 @@ export const useConnection = (
 
           try {
             const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
-            const discoveryProxyToken = proxyUrl && currentUser
+            const discoveryProxyToken = shouldUseProxy && proxyUrl && currentUser
               ? await currentUser.getIdToken()
               : undefined;
             const result = await beginOAuthFlow(targetUrl, {
@@ -640,7 +638,7 @@ export const useConnection = (
                 ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
                 : {}),
               ...(challenge.scope ? { scope: challenge.scope } : {}),
-              ...(proxyUrl && discoveryProxyToken
+              ...(shouldUseProxy && proxyUrl && discoveryProxyToken
                 ? {
                     discoveryProxy: {
                       url: proxyUrl,

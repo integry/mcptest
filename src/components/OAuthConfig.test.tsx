@@ -57,7 +57,7 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('.oauth-prerequisite-panel')).not.toBeNull();
     expect(view.textContent).toContain('Figma approval is required');
     expect(view.textContent).toContain('Supplying arbitrary client credentials is not expected');
-    expect(view.textContent).toContain('https://mcptest.io/oauth/callback');
+    expect(view.textContent).toContain(`${window.location.origin}/oauth/callback`);
     expect(view.querySelector('#clientId')).toBeNull();
     expect(view.querySelector('a[href="https://developers.figma.com/docs/figma-mcp-server/"]'))
       .not.toBeNull();

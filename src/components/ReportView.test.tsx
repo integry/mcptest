@@ -1,0 +1,123 @@
+import React, { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const authMocks = vi.hoisted(() => ({
+  getIdToken: vi.fn(),
+}));
+const oauthMocks = vi.hoisted(() => ({
+  begin: vi.fn(),
+}));
+const evaluationMocks = vi.hoisted(() => ({
+  evaluate: vi.fn(),
+}));
+
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return {
+    ...actual,
+    useNavigate: () => vi.fn(),
+    useLocation: () => ({
+      pathname: `/report/${encodeURIComponent('https://api.githubcopilot.com/mcp/')}`,
+      state: null,
+    }),
+  };
+});
+
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    currentUser: { getIdToken: authMocks.getIdToken },
+    loading: false,
+  }),
+}));
+
+vi.mock('../utils/oauthFlow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/oauthFlow')>();
+  return {
+    ...actual,
+    beginOAuthFlow: oauthMocks.begin,
+  };
+});
+
+vi.mock('../utils/evaluation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/evaluation')>();
+  return {
+    ...actual,
+    evaluateServer: evaluationMocks.evaluate,
+  };
+});
+
+import ReportView from './ReportView';
+
+beforeAll(() => {
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+});
+
+let root: Root | undefined;
+
+describe('ReportView OAuth discovery', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    authMocks.getIdToken.mockReset().mockResolvedValue('firebase-session-token');
+    oauthMocks.begin.mockReset().mockResolvedValue('REDIRECT');
+    evaluationMocks.evaluate.mockReset().mockResolvedValue({
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      authenticationUrl: 'https://api.githubcopilot.com/mcp/',
+      outcome: 'authorization-required',
+      finalScore: 0,
+      sections: {
+        auth: {
+          name: 'Authorization Required',
+          description: 'OAuth authorization is required',
+          score: 0,
+          maxScore: 0,
+          details: [],
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    if (root) act(() => root?.unmount());
+    root = undefined;
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('supplies the authenticated proxy to report OAuth discovery when fallback is configured', async () => {
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+
+    const authorizeButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Authorize and run report')
+    );
+    await act(async () => {
+      authorizeButton?.click();
+    });
+
+    expect(oauthMocks.begin).toHaveBeenCalledWith(
+      'https://api.githubcopilot.com/mcp/',
+      expect.objectContaining({
+        discoveryProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'firebase-session-token',
+        },
+        deferAuthorizedTraceOutcome: true,
+      })
+    );
+  });
+});

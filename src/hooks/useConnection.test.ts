@@ -962,6 +962,32 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
+  it('does not acquire or supply a discovery proxy when proxy fallback is disabled', async () => {
+    const endpoint = 'https://direct-discovery.example/mcp';
+    const getIdToken = vi.fn().mockResolvedValue('proxy-session-token');
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    authMocks.currentUser = { getIdToken };
+    oauthMocks.begin.mockResolvedValueOnce('REDIRECT');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        401,
+        'target',
+        new Error('Authorization required')
+      ),
+    ]));
+    const view = renderConnectionHook(undefined, false);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(getIdToken).not.toHaveBeenCalled();
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
+      discoveryProxy: expect.anything(),
+    }));
+    view.unmount();
+  });
+
   it('does not launch target OAuth for a proxy-owned authentication failure', async () => {
     const endpoint = 'https://public.example/mcp';
     connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
