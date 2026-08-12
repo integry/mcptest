@@ -148,11 +148,13 @@ const validationArguments = (tool: DiscoveredTool): Record<string, unknown> => {
 export const inferToolSafety = (tool: DiscoveredTool): DeterministicToolPlanV1['safety'] => {
   const searchable = `${tool.name} ${tool.description || ''}`;
   const reasons: string[] = [];
-  const annotatedWrite = tool.annotations?.readOnlyHint === false;
+  const explicitlyReadOnly = tool.annotations?.readOnlyHint === true;
+  const annotatedWrite = !explicitlyReadOnly;
   const annotatedDestructive = tool.annotations?.destructiveHint === true;
   const inferredWrite = containsAction(searchable, WRITE_ACTIONS);
   const inferredDestructive = containsAction(searchable, DESTRUCTIVE_ACTIONS);
-  if (annotatedWrite) reasons.push('Tool declares readOnlyHint=false.');
+  if (tool.annotations?.readOnlyHint === false) reasons.push('Tool declares readOnlyHint=false.');
+  else if (!explicitlyReadOnly) reasons.push('Tool does not explicitly declare readOnlyHint=true.');
   if (annotatedDestructive) reasons.push('Tool declares destructiveHint=true.');
   if (inferredDestructive) reasons.push('Name or description contains a destructive action.');
   else if (inferredWrite) reasons.push('Name or description contains a write action.');
@@ -296,25 +298,59 @@ const errorMessage = (value: unknown): string => {
   return typeof value === 'string' ? value : 'Unknown tool error';
 };
 
+const errorTypeFromCode = (code: string | number | undefined): DeterministicErrorType | undefined => {
+  if (code === undefined) return undefined;
+  const normalized = String(code).trim().toLowerCase();
+  if (/^-?\d+$/.test(normalized)) {
+    const numeric = Number(normalized);
+    if (numeric === 401 || numeric === 403) return 'authorization';
+    if (numeric === 400 || numeric === 422 || numeric === -32602) return 'validation';
+    if (numeric === 404) return 'missing-resource';
+    if (numeric === 429 || (numeric >= 500 && numeric <= 599)) return 'upstream';
+    if (numeric === -32001) return 'timeout';
+  }
+
+  const symbolic = normalized.replace(/[\s._-]+/g, '');
+  if (['requesttimeout', 'timeout', 'etimedout'].includes(symbolic)) return 'timeout';
+  if (['aborterror', 'aborted', 'cancelled', 'canceled'].includes(symbolic)) return 'cancelled';
+  if ([
+    'authorization', 'authentication', 'unauthorized', 'unauthorised', 'forbidden',
+    'permissiondenied', 'insufficientscope', 'invalidtoken', 'expiredtoken',
+  ].includes(symbolic)) return 'authorization';
+  if (['notfound', 'missingresource', 'resourcenotfound'].includes(symbolic)) return 'missing-resource';
+  if ([
+    'badrequest', 'unprocessableentity', 'invalidparams', 'validation', 'validationerror',
+  ].includes(symbolic)) return 'validation';
+  if ([
+    'upstream', 'badgateway', 'serviceunavailable', 'ratelimit', 'ratelimited', 'toomanyrequests',
+  ].includes(symbolic)) return 'upstream';
+  if (['malformed', 'parseerror', 'invalidresponse', 'unexpectedformat'].includes(symbolic)) {
+    return 'malformed-response';
+  }
+  return undefined;
+};
+
 export const normalizeTestError = (value: unknown): NormalizedTestError => {
   const message = errorMessage(value);
   const code = findErrorCode(value);
-  const searchable = `${String(code ?? '')} ${message}`.toLowerCase();
-  let type: DeterministicErrorType = 'unknown';
-  if ((typeof DOMException !== 'undefined' && value instanceof DOMException && value.name === 'AbortError') || /\babort(?:ed)?\b|cancel(?:led|ed)/.test(searchable)) type = 'cancelled';
-  else if (/requesttimeout|timed?\s*out|timeout|-32001/.test(searchable)) type = 'timeout';
-  else if (/\b401\b|\b403\b|authori[sz]ation|authentication|unauthori[sz]ed|forbidden|permission|insufficient.scope|invalid.token|expired.token/.test(searchable)) type = 'authorization';
-  else if (/\b404\b|not.found|missing.resource|resource.not.found/.test(searchable)) type = 'missing-resource';
-  else if (/\b400\b|\b422\b|-32602|invalid.params|validation|required/.test(searchable)) type = 'validation';
-  else if (/\b429\b|\b5\d\d\b|upstream|bad.gateway|service.unavailable|rate.limit/.test(searchable)) type = 'upstream';
-  else if (/malformed|parse.error|invalid.response|unexpected.format/.test(searchable)) type = 'malformed-response';
+  const searchable = message.toLowerCase();
+  let type: DeterministicErrorType = errorTypeFromCode(code) || 'unknown';
+  if (type === 'unknown') {
+    if ((typeof DOMException !== 'undefined' && value instanceof DOMException && value.name === 'AbortError') || /\babort(?:ed)?\b|cancel(?:led|ed)/.test(searchable)) type = 'cancelled';
+    else if (/requesttimeout|timed?\s*out|timeout|-32001/.test(searchable)) type = 'timeout';
+    else if (/\b401\b|\b403\b|authori[sz]ation|authentication|unauthori[sz]ed|forbidden|permission|insufficient.scope|invalid.token|expired.token/.test(searchable)) type = 'authorization';
+    else if (/\b404\b|not.found|missing.resource|resource.not.found/.test(searchable)) type = 'missing-resource';
+    else if (/\b400\b|\b422\b|-32602|invalid.params|validation|required/.test(searchable)) type = 'validation';
+    else if (/\b429\b|\b5\d\d\b|upstream|bad.gateway|service.unavailable|rate.limit/.test(searchable)) type = 'upstream';
+    else if (/malformed|parse.error|invalid.response|unexpected.format/.test(searchable)) type = 'malformed-response';
+  }
   const identifiers: Record<string, string> = {};
   collectIdentifiers(value, identifiers);
   return {
     type,
     ...(code !== undefined ? { code } : {}),
     message,
-    retryable: type === 'timeout' || type === 'upstream' || /\b429\b/.test(searchable),
+    retryable: type === 'timeout' || type === 'upstream',
     identifiers,
   };
 };
@@ -494,7 +530,13 @@ export const runDeterministicPlan = async (
       if (!selected.has(testCase.id)) continue;
       let result: DeterministicCaseResult;
       const executionToolName = testCase.toolName;
-      const planInference = inferToolSafety({ name: executionToolName, description: tool.description });
+      const planInference = inferToolSafety({
+        name: executionToolName,
+        description: tool.description,
+        // The plan safety snapshot already records annotation-based classification.
+        // This second pass independently preserves name/description write inference.
+        annotations: { readOnlyHint: true },
+      });
       const unsafe = tool.safety.writeCapable || tool.safety.destructive
         || planInference.writeCapable || planInference.destructive
         || independentlyUnsafe.has(tool.toolName) || independentlyUnsafe.has(executionToolName);

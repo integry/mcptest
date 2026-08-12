@@ -27,6 +27,7 @@ describe('deterministic test plans', () => {
   it('generates every required case deterministically and derives fixtures from schemas', () => {
     const tools = [{
       name: 'lookup',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: { query: { type: 'string' }, limit: { type: 'integer', default: 3 } },
@@ -76,7 +77,7 @@ describe('deterministic test plans', () => {
     },
   ])('derives fixtures from legacy input definitions: $schema', ({ schema, expectedHappy, expectedValidation }) => {
     const plan = generateDeterministicTestPlan([
-      { name: 'legacy_lookup', ...schema },
+      { name: 'legacy_lookup', annotations: { readOnlyHint: true }, ...schema },
     ], 'https://example.test', '2026-08-11T00:00:00.000Z');
 
     expect(plan.tools[0].cases.find(item => item.kind === 'happy-path')?.arguments).toEqual(expectedHappy);
@@ -113,6 +114,20 @@ describe('deterministic test plans', () => {
     ]);
   });
 
+  it.each([
+    { name: 'lookup' },
+    { name: 'lookup', annotations: { destructiveHint: false } },
+    { name: 'lookup', annotations: { readOnlyHint: false } },
+  ])('requires confirmation unless a tool explicitly declares readOnlyHint=true: %j', tool => {
+    const plan = generateDeterministicTestPlan(
+      [tool],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true });
+  });
+
   it('generates collision-free case IDs from exact tool identities', () => {
     const plan = generateDeterministicTestPlan([
       { name: 'foo.bar' },
@@ -126,14 +141,22 @@ describe('deterministic test plans', () => {
   });
 
   it('round-trips versioned JSON and rejects cross-tool imported cases', () => {
-    const plan = generateDeterministicTestPlan([{ name: 'lookup' }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'lookup', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
     expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
     plan.tools[0].cases[0].toolName = 'delete_everything';
     expect(() => parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toThrow(/containing tool/);
   });
 
   it('validates edited structural assertions before export and round-trips valid edits', () => {
-    const plan = generateDeterministicTestPlan([{ name: 'lookup' }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'lookup', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
     plan.tools[0].cases[0].assertions = [{ path: '$.content', operator: 'min-length', value: 2 }];
     expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
 
@@ -143,6 +166,24 @@ describe('deterministic test plans', () => {
 });
 
 describe('deterministic runner safety and evidence', () => {
+  it.each([
+    { name: 'lookup' },
+    { name: 'lookup', annotations: { destructiveHint: false } },
+  ])('blocks an ambiguously annotated tool without explicit confirmation: %j', async tool => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan([tool], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const results = await runDeterministicPlan({ callTool }, plan, {
+      caseIds: [plan.tools[0].cases[0].id],
+    });
+
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results[0]).toMatchObject({
+      status: 'blocked',
+      error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
+    });
+  });
+
   it('blocks inferred unsafe tools without explicit confirmation, including imported safety downgrades', async () => {
     const callTool = vi.fn().mockResolvedValue({ content: [] });
     const plan = generateDeterministicTestPlan([{ name: 'delete_user' }], 'https://example.test', '2026-08-11T00:00:00.000Z');
@@ -384,6 +425,21 @@ describe('structural assertions and machine-readable errors', () => {
     [{ code: 'RequestTimeout', message: 'Timed out' }, 'timeout', true],
   ])('normalizes %j', (error, type, retryable) => {
     expect(normalizeTestError(error)).toMatchObject({ type, retryable });
+  });
+
+  it.each([
+    [{ status: 401, message: 'Authentication timed out' }, 'authorization'],
+    [{ status: 403, message: 'Validation failed' }, 'authorization'],
+    [{ status: 400, message: 'Upstream service unavailable' }, 'validation'],
+    [{ status: 422, message: 'Request timed out' }, 'validation'],
+    [{ status: 404, message: 'Authentication required' }, 'missing-resource'],
+    [{ status: 429, message: 'Validation failed' }, 'upstream'],
+    [{ status: 500, message: 'Invalid params' }, 'upstream'],
+    [{ status: 503, message: 'Validation failed upstream' }, 'upstream'],
+    [{ code: 'RequestTimeout', message: 'Unauthorized' }, 'timeout'],
+    [{ code: 'INVALID_PARAMS', message: 'Service unavailable' }, 'validation'],
+  ])('prioritizes machine-readable code in %j', (error, type) => {
+    expect(normalizeTestError(error).type).toBe(type);
   });
 
   it('captures actionable identifiers', () => {

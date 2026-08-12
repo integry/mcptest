@@ -27,19 +27,26 @@ describe('DeterministicTestPanel', () => {
     container.remove();
   });
 
-  const renderPanel = async (toolName: string, callTool = vi.fn().mockResolvedValue({ content: [] })) => {
+  const renderConnection = async (tools: any[], client: { callTool: ReturnType<typeof vi.fn> }) => {
     await act(async () => {
       root.render(
         <DeterministicTestPanel
           open
           onClose={vi.fn()}
-          tools={[{ name: toolName, inputSchema: { type: 'object' } }]}
-          client={{ callTool } as any}
+          tools={tools}
+          client={client as any}
           serverUrl="https://mcp.example.test/mcp"
           connectionSummary="Streamable HTTP · modern session"
         />
       );
     });
+  };
+
+  const renderPanel = async (toolName: string, callTool = vi.fn().mockResolvedValue({ content: [] })) => {
+    await renderConnection(
+      [{ name: toolName, inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }],
+      { callTool },
+    );
     return callTool;
   };
 
@@ -142,6 +149,82 @@ describe('DeterministicTestPanel', () => {
     expect(confirmation.checked).toBe(false);
   });
 
+  it('regenerates drafts and clears results when the connected client changes', async () => {
+    const tools = [{
+      name: 'lookup',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: ['query'],
+      },
+      annotations: { readOnlyHint: true },
+    }];
+    const firstClient = { callTool: vi.fn().mockResolvedValue({ content: [] }) };
+    await renderConnection(tools, firstClient);
+
+    await act(async () => container.querySelector<HTMLButtonElement>('.test-case-heading .btn-link')?.click());
+    await changeText(container.querySelector<HTMLTextAreaElement>('.test-case-editor textarea')!, '{"query":"edited"}');
+    await act(async () => container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary')?.click());
+    expect(container.querySelectorAll('.test-result')).toHaveLength(2);
+
+    const secondClient = { callTool: vi.fn().mockResolvedValue({ content: [] }) };
+    await renderConnection(tools, secondClient);
+
+    expect(container.querySelectorAll('.test-result')).toHaveLength(0);
+    await act(async () => container.querySelector<HTMLButtonElement>('.test-case-heading .btn-link')?.click());
+    expect(container.querySelector<HTMLTextAreaElement>('.test-case-editor textarea')?.value)
+      .toBe('{\n  "query": "fixture"\n}');
+    expect(secondClient.callTool).not.toHaveBeenCalled();
+  });
+
+  it('clears the plan and execution state when the discovered surface becomes empty', async () => {
+    const client = { callTool: vi.fn().mockResolvedValue({ content: [] }) };
+    await renderConnection(
+      [{ name: 'lookup', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }],
+      client,
+    );
+    await act(async () => container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary')?.click());
+    expect(container.querySelectorAll('.test-result')).toHaveLength(2);
+
+    await renderConnection([], client);
+
+    expect(container.querySelector('.test-tool')).toBeNull();
+    expect(container.querySelectorAll('.test-result')).toHaveLength(0);
+    expect(container.textContent).toContain('No discovered tools are available for a test plan.');
+    expect(container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary')?.disabled).toBe(true);
+  });
+
+  it('regenerates fixtures when schema metadata changes without a name or URL change', async () => {
+    const client = { callTool: vi.fn().mockResolvedValue({ content: [] }) };
+    const tool = (property: string) => ({
+      name: 'lookup',
+      inputSchema: {
+        type: 'object',
+        properties: { [property]: { type: 'string' } },
+        required: [property],
+      },
+      annotations: { readOnlyHint: true },
+    });
+    await renderConnection([tool('first')], client);
+    await renderConnection([tool('second')], client);
+
+    await act(async () => container.querySelector<HTMLButtonElement>('.test-case-heading .btn-link')?.click());
+    expect(container.querySelector<HTMLTextAreaElement>('.test-case-editor textarea')?.value)
+      .toBe('{\n  "second": "fixture"\n}');
+  });
+
+  it('revalidates safety when annotations change without a name or URL change', async () => {
+    const client = { callTool: vi.fn().mockResolvedValue({ content: [] }) };
+    const baseTool = { name: 'lookup', inputSchema: { type: 'object' } };
+    await renderConnection([{ ...baseTool, annotations: { readOnlyHint: true } }], client);
+    expect(container.querySelector('.unsafe-confirmation')).toBeNull();
+
+    await renderConnection([{ ...baseTool, annotations: { destructiveHint: false } }], client);
+
+    expect(container.querySelector('.unsafe-confirmation')).not.toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary')?.disabled).toBe(true);
+  });
+
   it('keeps argument and assertion draft errors independent and blocks run and export', async () => {
     await renderPanel('lookup');
     await act(async () => container.querySelector<HTMLButtonElement>('.test-case-heading .btn-link')?.click());
@@ -187,6 +270,7 @@ describe('DeterministicTestPanel', () => {
     const callTool = await renderPanel('lookup');
     const runButton = container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary');
 
+    expect(runButton?.disabled).toBe(false);
     await act(async () => runButton?.click());
 
     expect(callTool).toHaveBeenCalledTimes(2);

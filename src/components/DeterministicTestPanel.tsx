@@ -72,20 +72,42 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const toolNames = tools.map(tool => tool.name).join('\u0000');
+  const runGenerationRef = useRef(0);
+  const planBindingRef = useRef<{
+    client: Client;
+    serverUrl: string;
+    toolSurfaceSignature: string;
+  } | null>(null);
+  const toolSurfaceSignature = JSON.stringify(tools);
+  const planIsCurrent = planBindingRef.current?.client === client
+    && planBindingRef.current.serverUrl === serverUrl
+    && planBindingRef.current.toolSurfaceSignature === toolSurfaceSignature;
 
   useEffect(() => {
-    if (!open || tools.length === 0) return;
-    if (plan && plan.serverUrl === serverUrl
-      && plan.tools.map(tool => tool.toolName).join('\u0000') === toolNames) return;
-    const generated = generateDeterministicTestPlan(tools, serverUrl);
-    setPlan(generated);
-    setDrafts(createDrafts(generated));
+    if (!open) return;
+    runGenerationRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsRunning(false);
     setResults([]);
     setConfirmedUnsafeFixtureSignature(null);
-    // Plan changes are intentionally driven by connection/tool identity, not case edits.
+    setExpandedCase(null);
+    setNotice('');
+
+    if (!client || tools.length === 0) {
+      planBindingRef.current = null;
+      setPlan(null);
+      setDrafts({});
+      return;
+    }
+
+    const generated = generateDeterministicTestPlan(tools, serverUrl);
+    planBindingRef.current = { client, serverUrl, toolSurfaceSignature };
+    setPlan(generated);
+    setDrafts(createDrafts(generated));
+    // The serialized signature intentionally covers schemas, descriptions, and annotations.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, serverUrl, toolNames, tools]);
+  }, [open, client, serverUrl, toolSurfaceSignature]);
 
   const selectedCases = useMemo(() => plan?.tools.flatMap(tool => (
     tool.cases.filter(testCase => testCase.selected).map(testCase => ({ tool, testCase }))
@@ -149,7 +171,9 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   };
 
   const handleRun = async () => {
-    if (!client || !plan || selectedCases.length === 0 || hasDraftErrors) return;
+    if (!client || !plan || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors) return;
+    const runGeneration = runGenerationRef.current + 1;
+    runGenerationRef.current = runGeneration;
     setIsRunning(true);
     setResults([]);
     setNotice('');
@@ -163,19 +187,27 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
           .filter(([, safety]) => safety.writeCapable || safety.destructive)
           .map(([name]) => name),
         signal: controller.signal,
-        onResult: result => setResults(current => [...current, result]),
+        onResult: result => {
+          if (runGenerationRef.current === runGeneration) {
+            setResults(current => [...current, result]);
+          }
+        },
       });
     } catch (cause) {
-      setNotice(`Run failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+      if (runGenerationRef.current === runGeneration) {
+        setNotice(`Run failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
     } finally {
-      abortRef.current = null;
-      setIsRunning(false);
-      setConfirmedUnsafeFixtureSignature(null);
+      if (runGenerationRef.current === runGeneration) {
+        abortRef.current = null;
+        setIsRunning(false);
+        setConfirmedUnsafeFixtureSignature(null);
+      }
     }
   };
 
   const handleExport = () => {
-    if (!plan || hasDraftErrors) return;
+    if (!plan || !planIsCurrent || hasDraftErrors) return;
     try {
       downloadPlan(plan);
     } catch (cause) {
@@ -240,7 +272,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
 
         <div className="deterministic-tests-toolbar">
           <button className="btn btn-sm btn-outline-secondary" onClick={() => importRef.current?.click()} disabled={isRunning}>Import JSON</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={handleExport} disabled={!plan || isRunning || hasDraftErrors}>Export JSON</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={handleExport} disabled={!plan || !planIsCurrent || isRunning || hasDraftErrors}>Export JSON</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => {
             const generated = generateDeterministicTestPlan(tools, serverUrl);
             setPlan(generated);
@@ -248,7 +280,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
             setResults([]);
             setConfirmedUnsafeFixtureSignature(null);
             setNotice('Generated a fresh plan from the discovered tool surface.');
-          }} disabled={isRunning}>Regenerate</button>
+          }} disabled={isRunning || !client || tools.length === 0}>Regenerate</button>
           <input ref={importRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImport} />
           <span className="text-muted">Plan version {plan?.version || '—'}</span>
         </div>
@@ -376,7 +408,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
             <button
               className="btn btn-primary"
               onClick={handleRun}
-              disabled={isRunning || !client || selectedCases.length === 0 || hasDraftErrors || (selectedUnsafeTools.length > 0 && !unsafeConfirmed)}
+              disabled={isRunning || !client || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors || (selectedUnsafeTools.length > 0 && !unsafeConfirmed)}
             >
               {isRunning ? 'Running…' : `Run ${selectedCases.length} selected ${selectedCases.length === 1 ? 'case' : 'cases'}`}
             </button>
