@@ -11,8 +11,12 @@
 - **Authentication:** supports OAuth 2.1 with PKCE, bearer tokens, and API keys. Target credentials remain separate from Firebase credentials when the optional CORS proxy is used.
 - **Server catalog:** ships a validated catalog of public remote servers, authentication and protocol badges, and indexable server report pages included in the sitemap.
 - **Evaluation:** creates shareable server reports and reusable tool-call dashboards.
+- **Headless release gate:** evaluates remote endpoints in CI and emits the same versioned JSON and Markdown report semantics as the web app.
 
 The exact URL entered by a user or supplied by the catalog is tried first. Conventional `/mcp` and `/sse` paths are compatibility fallbacks; they do not replace an explicit custom endpoint.
+
+For command-line and GitHub Actions usage, credential handling, thresholds, and
+stable exit codes, see the [headless release gate guide](docs/headless-release-gate.md).
 
 ## Protocol negotiation
 
