@@ -187,25 +187,27 @@ describe('headless release gate', () => {
     expect(result.targets[0].markdown).not.toContain(secret);
   });
 
-  it('scrubs a credential echoed by the server as a structural protocol field', async () => {
-    const secret = 'server-echoed-protocol-secret';
+  it('scrubs a protocol-version credential without changing compatibility or gate semantics', async () => {
+    const secret = '2026-07-28';
+    const evaluate = async () => evaluatedReport();
+    const baseline = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+    }, { evaluate });
     const result = await runReleaseGate({
       endpoints: ['https://fixture.example/mcp'],
       headers: { Authorization: `Bearer ${secret}` },
-      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
-    }, {
-      evaluate: async () => {
-        const report = evaluatedReport();
-        report.sections.protocol.details[0].metadata = {
-          ...report.sections.protocol.details[0].metadata as Record<string, unknown>,
-          protocolVersion: secret,
-        };
-        return report;
-      },
-    });
+    }, { evaluate });
 
-    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.pass);
+    expect(result.exitCode).toBe(baseline.exitCode);
+    expect(result.targets[0].thresholdReasons).toEqual(baseline.targets[0].thresholdReasons);
+    expect(result.targets[0].releaseDecision?.status)
+      .toBe(baseline.targets[0].releaseDecision?.status);
+    expect(Object.values(result.targets[0].report?.compatibility?.assessments || {})
+      .map((assessment) => assessment.status))
+      .toEqual(Object.values(baseline.targets[0].report?.compatibility?.assessments || {})
+        .map((assessment) => assessment.status));
     expect(result.targets[0].report?.protocol?.version).toBe(REDACTED_VALUE);
+    expect(JSON.stringify(result.targets[0])).not.toContain(secret);
     expect(result.targets[0].json).not.toContain(secret);
     expect(result.targets[0].markdown).not.toContain(secret);
   });

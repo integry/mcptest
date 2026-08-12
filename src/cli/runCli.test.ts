@@ -113,6 +113,28 @@ describe('release gate CLI configuration', () => {
     }
   });
 
+  it.each([
+    ['bearer', '--bearer-token-env', 'MCP_BEARER', '   '],
+    ['API key', '--api-key-env', 'MCP_API_KEY', '\t  '],
+  ])('returns invalid configuration for a blank %s value', async (_label, option, name, credential) => {
+    let stderr = '';
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk);
+      return true;
+    });
+
+    try {
+      const exitCode = await runCli([
+        option, name, 'https://fixture.example/mcp',
+      ], { [name]: credential });
+
+      expect(exitCode).toBe(RELEASE_GATE_EXIT_CODES.invalidConfiguration);
+      expect(stderr).toContain(`Environment variable ${name} is empty or missing.`);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it('documents all stable exit codes and the non-interactive OAuth outcome', () => {
     expect(releaseGateHelp).toContain('0 pass');
     expect(releaseGateHelp).toContain('1 configured threshold failed');

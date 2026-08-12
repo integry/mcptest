@@ -77,10 +77,44 @@ jobs:
       run:
         working-directory: mcptest
     steps:
+      - name: Select and validate mcptest ref
+        id: mcptest_ref
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          MCPTEST_REQUESTED_REF: ${{ inputs.mcptest_ref }}
+          MCPTEST_CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          MCPTEST_JOB_WORKFLOW_REF: ${{ job.workflow_ref }}
+          MCPTEST_JOB_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          MCPTEST_DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$MCPTEST_JOB_WORKFLOW_REF" != "$MCPTEST_CALLER_WORKFLOW_REF" ]]; then
+            ref="$MCPTEST_REQUESTED_REF"
+            expected_workflow_ref="integry/mcptest/.github/workflows/mcptest-release-gate.yml@$ref"
+            if [[ ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "mcptest_ref must be the exact 40-character commit SHA used by the reusable workflow caller" >&2
+              exit 3
+            fi
+            if [[ "$MCPTEST_JOB_WORKFLOW_REF" != "$expected_workflow_ref" ]]; then
+              echo "mcptest_ref must match the commit SHA pinned in the reusable workflow uses value" >&2
+              exit 3
+            fi
+            if [[ -n "$MCPTEST_JOB_WORKFLOW_SHA" && "$ref" != "$MCPTEST_JOB_WORKFLOW_SHA" ]]; then
+              echo "mcptest_ref does not resolve to the invoked reusable workflow commit" >&2
+              exit 3
+            fi
+          else
+            ref="${MCPTEST_JOB_WORKFLOW_SHA:-$MCPTEST_DISPATCH_SHA}"
+            if [[ ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Could not determine the exact mcptest commit for workflow_dispatch" >&2
+              exit 3
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           repository: integry/mcptest
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ steps.mcptest_ref.outputs.ref }}
           path: mcptest
       - uses: actions/setup-node@v4
         with:

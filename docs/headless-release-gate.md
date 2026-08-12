@@ -165,4 +165,5 @@ jobs:
 Public callers omit `secrets`. API-key callers set `credential_mode: api-key`
 and pass `MCPTEST_API_KEY`. Cross-repository callers must pin `uses` to a commit
 SHA and pass that same SHA as `mcptest_ref`, so the workflow checks out the exact
-mcptest commit that contains the invoked reusable workflow.
+mcptest commit that contains the invoked reusable workflow. The workflow rejects
+a non-SHA `mcptest_ref` or a value that differs from the SHA pinned in `uses`.

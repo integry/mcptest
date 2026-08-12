@@ -211,7 +211,7 @@ export const parseReleaseGateArgs = (
   if (bearerEnvironment || apiKeyEnvironment) {
     const name = bearerEnvironment || apiKeyEnvironment as string;
     const credential = environment[name];
-    if (!credential) {
+    if (!credential || credential.trim().length === 0) {
       throw new ReleaseGateConfigurationError(`Environment variable ${name} is empty or missing.`);
     }
     try {

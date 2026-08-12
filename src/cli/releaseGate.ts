@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { CompatibilityMatrixV1 } from '../compatibility';
 import type { EvaluationReport } from '../utils/evaluation';
 import { evaluateServer } from '../utils/evaluation';
 import {
@@ -255,6 +256,69 @@ const redactEvaluationCredentials = (
   };
 };
 
+const redactCompatibilityCredentials = (
+  matrix: CompatibilityMatrixV1,
+  credentials: readonly string[]
+): CompatibilityMatrixV1 => ({
+  schemaVersion: matrix.schemaVersion,
+  assessments: Object.fromEntries(Object.entries(matrix.assessments).map(([id, assessment]) => [
+    id,
+    {
+      schemaVersion: assessment.schemaVersion,
+      profileId: assessment.profileId,
+      profileVersion: assessment.profileVersion,
+      status: assessment.status,
+      findings: assessment.findings.map((finding) => ({
+        schemaVersion: finding.schemaVersion,
+        ruleId: finding.ruleId,
+        scope: finding.scope,
+        outcome: finding.outcome,
+        severity: finding.severity,
+        summary: redactKnownCredentialString(finding.summary, credentials),
+        detail: redactKnownCredentialString(finding.detail, credentials),
+        evidence: finding.evidence.map((evidence) => ({
+          schemaVersion: evidence.schemaVersion,
+          source: evidence.source,
+          description: redactKnownCredentialString(evidence.description, credentials),
+          ...(evidence.location ? {
+            location: redactKnownCredentialString(evidence.location, credentials),
+          } : {}),
+        })),
+        ...(finding.remediation ? {
+          remediation: {
+            schemaVersion: finding.remediation.schemaVersion,
+            kind: finding.remediation.kind,
+            action: redactKnownCredentialString(finding.remediation.action, credentials),
+            ...(finding.remediation.documentationUrl ? {
+              documentationUrl: redactKnownCredentialString(
+                finding.remediation.documentationUrl,
+                credentials
+              ),
+            } : {}),
+          },
+        } : {}),
+      })),
+    },
+  ])) as unknown as CompatibilityMatrixV1['assessments'],
+});
+
+const redactReleaseDecisionCredentials = (
+  decision: ReleaseDecision,
+  credentials: readonly string[]
+): ReleaseDecision => ({
+  status: decision.status,
+  answer: redactKnownCredentialString(decision.answer, credentials),
+  summary: redactKnownCredentialString(decision.summary, credentials),
+  priorities: decision.priorities.map((priority) => ({
+    id: redactKnownCredentialString(priority.id, credentials),
+    severity: priority.severity,
+    title: redactKnownCredentialString(priority.title, credentials),
+    detail: redactKnownCredentialString(priority.detail, credentials),
+    remediation: redactKnownCredentialString(priority.remediation, credentials),
+    source: priority.source,
+  })),
+});
+
 const safeFilenameHost = (endpoint: string): string => {
   try {
     const hostname = new URL(endpoint).hostname
@@ -307,17 +371,17 @@ const createReleaseArtifact = (
   generatedAt: string | Date | undefined,
   credentials: readonly string[]
 ): { decision: ReleaseDecision; report: PublicReport } => {
-  const publicEvaluation = redactEvaluationCredentials(evaluation, endpoint, credentials);
-  const compatibilityMatrix = createCompatibilityMatrix(publicEvaluation);
+  const compatibilityMatrix = createCompatibilityMatrix(evaluation);
   const decision = createReleaseDecision(
-    publicEvaluation,
+    evaluation,
     compatibilityMatrix,
-    publicEvaluation.toolSurfaceAnalysis
+    evaluation.toolSurfaceAnalysis
   );
+  const publicEvaluation = redactEvaluationCredentials(evaluation, endpoint, credentials);
   const report = createPublicReport(publicEvaluation, {
     generatedAt,
-    compatibilityMatrix,
-    releaseDecision: decision,
+    compatibilityMatrix: redactCompatibilityCredentials(compatibilityMatrix, credentials),
+    releaseDecision: redactReleaseDecisionCredentials(decision, credentials),
     toolSurfaceAnalysis: publicEvaluation.toolSurfaceAnalysis,
   });
   return { decision, report };
@@ -374,7 +438,8 @@ export const runReleaseGate = async (
           ? []
           : getReleaseGateThresholdReasons(decision, policy)
             .map((reason) => redactKnownCredentialString(reason, credentials)),
-        releaseDecision: report.releaseDecision || decision,
+        releaseDecision: report.releaseDecision
+          || redactReleaseDecisionCredentials(decision, credentials),
         report,
         json: serializePublicReportJson(report),
         markdown: serializePublicReportMarkdown(report),
