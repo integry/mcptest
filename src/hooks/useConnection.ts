@@ -23,7 +23,10 @@ import {
   resumeOAuthFlightRecorder,
   resumePendingAuthenticatedMcpRetry,
 } from '../utils/oauthTrace';
-import { loadHostedOAuthAuthorization } from '../utils/hostedOAuth';
+import {
+  clearHostedOAuthAuthorization,
+  loadHostedOAuthAuthorization,
+} from '../utils/hostedOAuth';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -52,6 +55,12 @@ const hasReadableHttpResponse = (error: unknown, seen = new Set<object>()): bool
 const endedWithoutReadableHttpResponse = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
   return !/connection aborted by user/i.test(message) && !hasReadableHttpResponse(error);
+};
+
+const isHostedGrantRejection = (error: unknown): boolean => {
+  const challenge = getObservedAuthenticationChallenge(error);
+  return challenge?.source === 'proxy'
+    && /^HostedGrant\b/i.test(challenge.responseHeaders?.['www-authenticate'] || '');
 };
 
 const getConnectedServerUrl = (
@@ -627,6 +636,17 @@ export const useConnection = (
           });
         } catch (error) {
           const challenge = getObservedAuthenticationChallenge(error);
+          if (latestHostedGrant && isHostedGrantRejection(error)) {
+            clearHostedOAuthAuthorization(targetUrl);
+            latestHostedGrant = undefined;
+            setHostedGrant(null);
+            setIsOAuthConnection(false);
+            addLogEntry({
+              type: 'warning',
+              data: 'The stored hosted OAuth authorization is no longer valid. Starting authorization again.',
+            });
+            continue;
+          }
           // A pending authenticated retry suppresses recursive discovery, but
           // terminalization belongs to the outer connection-attempt boundary.
           const suppressOAuthDiscovery = oauthRetryPending;

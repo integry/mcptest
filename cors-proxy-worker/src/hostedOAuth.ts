@@ -76,6 +76,15 @@ const GRANT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REFRESH_SKEW_MS = 60 * 1000;
 const OPAQUE_VALUE = /^[A-Za-z0-9_-]{43}$/;
 const SCOPE_VALUE = /^[A-Za-z0-9:._/-]{1,128}$/;
+const HOSTED_GRANT_REJECTION_REASONS = new Set([
+  'invalid_grant_reference',
+  'unknown_grant',
+  'grant_expired',
+  'grant_binding_mismatch',
+  'provider_token_expired',
+  'provider_token_rejected',
+  'grant_unusable',
+]);
 
 interface TransactionRecord {
   kind: 'transaction';
@@ -135,6 +144,18 @@ const json = (body: unknown, status = 200): Response => new Response(JSON.string
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store',
     'Referrer-Policy': 'no-referrer',
+  },
+});
+
+const hostedGrantRejection = (reason: string): Response => new Response(JSON.stringify({
+  error: 'hosted_grant_rejected',
+  reason,
+}), {
+  status: reason === 'grant_binding_mismatch' ? 403 : 401,
+  headers: {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'WWW-Authenticate': 'HostedGrant error="invalid_token"',
   },
 });
 
@@ -263,7 +284,11 @@ const parseTokenResponse = async (response: Response): Promise<ProviderTokens> =
     : undefined;
   const errorCode = typeof body.error === 'string' ? body.error : undefined;
   if (!response.ok || body.ok === false || errorCode) {
-    throw new Error(`Provider token request was rejected${errorCode ? ` (${errorCode})` : ''}.`);
+    const error = new Error(`Provider token request was rejected${errorCode ? ` (${errorCode})` : ''}.`);
+    if (response.status < 500) {
+      error.name = 'ProviderTokenRejectedError';
+    }
+    throw error;
   }
   const accessToken = typeof body.access_token === 'string'
     ? body.access_token
@@ -441,6 +466,7 @@ export const handleHostedOAuthRequest = async (
       authorizationUrl.searchParams.set('state', record.state);
       authorizationUrl.searchParams.set('code_challenge', await pkceChallenge(record.verifier));
       authorizationUrl.searchParams.set('code_challenge_method', 'S256');
+      authorizationUrl.searchParams.set('resource', record.resource);
       authorizationUrl.searchParams.set(
         'scope',
         record.scope.split(/\s+/).filter(Boolean).join(provider.scopeSeparator)
@@ -497,9 +523,16 @@ export const resolveHostedGrant = async (
   uid: string,
   target: string
 ): Promise<string> => {
-  if (!OPAQUE_VALUE.test(grant)) throw new Error('Invalid hosted OAuth grant.');
+  if (!OPAQUE_VALUE.test(grant)) throw hostedGrantRejection('invalid_grant_reference');
   const response = await stubFetch(env, grant, '/grant/resolve', { uid, target: normalizeTarget(target) });
-  if (!response.ok) throw new Error('Hosted OAuth grant is invalid, expired, or not valid for this target.');
+  if (!response.ok) {
+    const body = await response.clone().json().catch(() => undefined) as { error?: unknown } | undefined;
+    const reason = typeof body?.error === 'string' ? body.error : undefined;
+    if (reason && HOSTED_GRANT_REJECTION_REASONS.has(reason)) {
+      throw hostedGrantRejection(reason);
+    }
+    throw new Error('Hosted OAuth grant could not be resolved.');
+  }
   const body = await response.json() as { authorization: string };
   return body.authorization;
 };
@@ -574,6 +607,7 @@ export class HostedOAuthBroker {
           const tokens = await requestProviderTokens(provider, this.env, {
             grant_type: 'authorization_code', code: record.code,
             redirect_uri: record.redirectUri, code_verifier: record.verifier,
+            resource: record.resource,
           });
           const grant = randomOpaque();
           const storedGrant: StoredGrant = {
@@ -639,12 +673,26 @@ export class HostedOAuthBroker {
         if (!grant || grant.kind !== 'grant') return json({ error: 'unknown_grant' }, 404);
         if (grant.expiresAt <= Date.now()) return json({ error: 'grant_expired' }, 410);
         if (grant.uid !== input.uid || grant.target !== input.target) return json({ error: 'grant_binding_mismatch' }, 403);
-        let tokens = await decryptTokens(grant.encryptedTokens, this.env);
+        let tokens: ProviderTokens;
+        try {
+          tokens = await decryptTokens(grant.encryptedTokens, this.env);
+        } catch {
+          return json({ error: 'grant_unusable' }, 401);
+        }
         if (tokens.expiresAt && tokens.expiresAt <= Date.now() + REFRESH_SKEW_MS) {
           if (!tokens.refreshToken) return json({ error: 'provider_token_expired' }, 401);
-          const refreshed = await requestProviderTokens(providerById(grant.provider), this.env, {
-            grant_type: 'refresh_token', refresh_token: tokens.refreshToken,
-          });
+          let refreshed: ProviderTokens;
+          try {
+            refreshed = await requestProviderTokens(providerById(grant.provider), this.env, {
+              grant_type: 'refresh_token', refresh_token: tokens.refreshToken,
+              resource: grant.resource,
+            });
+          } catch (error) {
+            if (error instanceof Error && error.name === 'ProviderTokenRejectedError') {
+              return json({ error: 'provider_token_rejected' }, 401);
+            }
+            throw error;
+          }
           tokens = { ...refreshed, refreshToken: refreshed.refreshToken || tokens.refreshToken };
           await this.state.storage.put('record', {
             ...grant, encryptedTokens: await encryptTokens(tokens, this.env),

@@ -27,7 +27,11 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
 });
 
 import { useConnection } from './useConnection';
-import { BrowserOAuthProvider, completeOAuthFlow } from '../utils/oauthFlow';
+import {
+  BrowserOAuthProvider,
+  completeOAuthFlow,
+  OAuthPrerequisiteError,
+} from '../utils/oauthFlow';
 import {
   getStoredOAuthTrace,
   OAUTH_TRACE_STORAGE_PREFIX,
@@ -37,6 +41,7 @@ import {
   ProxiedAuthenticationError,
   TransportConnectionError,
 } from '../utils/transportDetection';
+import { loadHostedOAuthAuthorization } from '../utils/hostedOAuth';
 
 beforeAll(() => {
   (
@@ -71,6 +76,16 @@ const renderConnectionHook = (
       act(() => root.unmount());
     },
   };
+};
+
+const storeHostedGrant = (serverUrl: string, grant = 'stored-hosted-grant'): void => {
+  const url = new URL(serverUrl);
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  const resource = `${url.origin}${url.pathname}`;
+  sessionStorage.setItem(
+    `mcp_hosted_oauth_v1:${encodeURIComponent(resource)}`,
+    JSON.stringify({ grant, issuer: 'https://mcp.slack.com' })
+  );
 };
 
 describe('connection URL finalization', () => {
@@ -1017,6 +1032,76 @@ describe('connection URL finalization', () => {
         route: 'proxy',
       })]),
     });
+    view.unmount();
+  });
+
+  it.each([
+    ['an expired grant', 401],
+    ['a grant bound to the previous Firebase user in the same tab', 403],
+  ] as const)('clears %s and surfaces hosted authorization again', async (_, rejectionStatus) => {
+    const endpoint = 'https://mcp.slack.com/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const grant = 'stored-hosted-grant';
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    authMocks.currentUser = { getIdToken: vi.fn().mockResolvedValue('new-user-firebase-token') };
+    storeHostedGrant(endpoint, grant);
+    oauthMocks.begin.mockRejectedValueOnce(new OAuthPrerequisiteError({
+      kind: 'pre_registered_client_required',
+      serverUrl: endpoint,
+      providerName: 'Slack',
+      explanation: 'Slack requires the operator-owned confidential OAuth client.',
+      issuer: 'https://mcp.slack.com',
+      requiredScopes: ['channels:read'],
+      pkceS256: true,
+      publicClientSecretSupported: false,
+      canConfigureClient: false,
+      configurationMode: 'operator-confidential',
+      hostedProvider: 'slack',
+      hostedScope: 'channels:read',
+    }));
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([
+        new ProxiedAuthenticationError(
+          rejectionStatus,
+          'proxy',
+          new Error('Hosted grant rejected'),
+          undefined,
+          { 'www-authenticate': 'HostedGrant error="invalid_token"' }
+        ),
+      ]))
+      .mockRejectedValueOnce(new TransportConnectionError([
+        new ProxiedAuthenticationError(
+          401,
+          'target',
+          new Error('Slack authorization required')
+        ),
+      ]));
+    const view = renderConnectionHook(undefined, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[0]).toEqual(expect.arrayContaining([
+      `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+      expect.anything(),
+      'new-user-firebase-token',
+      expect.objectContaining({ 'X-MCP-Hosted-Grant': grant }),
+      true,
+    ]));
+    expect(connectionMocks.attempt.mock.calls[1][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[1][3]).toBeUndefined();
+    expect(loadHostedOAuthAuthorization(endpoint, sessionStorage)).toBeUndefined();
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.objectContaining({
+      deferAuthorizedTraceOutcome: true,
+    }));
+    expect(view.connection.needsOAuthConfig).toBe(true);
+    expect(view.connection.oauthPrerequisite).toMatchObject({
+      hostedProvider: 'slack',
+      configurationMode: 'operator-confidential',
+    });
+    expect(view.connection.connectionStatus).toBe('Authorization prerequisite');
     view.unmount();
   });
 

@@ -110,6 +110,16 @@ const exchange = async (env: HostedOAuthEnv, result: string, uid = 'user-1') => 
   }), env, uid))!
 );
 
+const rejectedGrantResponse = async (attempt: Promise<string>): Promise<Response> => {
+  try {
+    await attempt;
+  } catch (error) {
+    expect(error).toBeInstanceOf(Response);
+    return error as Response;
+  }
+  throw new Error('Expected the hosted grant to be rejected.');
+};
+
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -153,10 +163,14 @@ describe('hosted provider authorization transactions', () => {
     ), env, null);
     expect(authorization?.status).toBe(302);
     const location = authorization?.headers.get('location') || '';
+    const expectedResource = provider === 'slack'
+      ? 'https://mcp.slack.com'
+      : 'https://api.githubcopilot.com/mcp';
     expect(location).not.toContain(provider === 'slack' ? 'slack-client-secret' : 'github-client-secret');
     expect(location).not.toContain('provider-code');
     expect(new URL(location).searchParams.get('scope'))
       .toBe(provider === 'slack' ? 'channels:read' : 'repo');
+    expect(new URL(location).searchParams.get('resource')).toBe(expectedResource);
 
     const completion = readCompletion(await callback(env, transaction));
     expect(completion).not.toBe(transaction);
@@ -167,6 +181,14 @@ describe('hosted provider authorization transactions', () => {
     expect(JSON.stringify(result)).not.toContain('refresh');
     expect(await resolveHostedGrant(env, result.grant, 'user-1', result.serverUrl))
       .toBe(provider === 'slack' ? 'Bearer slack-refreshed' : 'Bearer github-access');
+    const tokenEndpoint = provider === 'slack'
+      ? 'https://slack.com/api/oauth.v2.user.access'
+      : 'https://github.com/login/oauth/access_token';
+    const tokenRequests = vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === tokenEndpoint);
+    expect(tokenRequests.length).toBeGreaterThan(0);
+    for (const [, init] of tokenRequests) {
+      expect(new URLSearchParams(String(init?.body)).get('resource')).toBe(expectedResource);
+    }
   });
 
   it('accepts the trailing-slash GitHub metadata URL observed by browser discovery', async () => {
@@ -226,8 +248,51 @@ describe('hosted provider authorization transactions', () => {
     const transaction = await readTransaction(await start(env));
     const completion = readCompletion(await callback(env, transaction));
     const result = await (await exchange(env, completion))!.json() as { grant: string };
-    await expect(resolveHostedGrant(env, result.grant, 'user-1', 'https://attacker.example/mcp'))
-      .rejects.toThrow('invalid, expired, or not valid');
+    const response = await rejectedGrantResponse(
+      resolveHostedGrant(env, result.grant, 'user-1', 'https://attacker.example/mcp')
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: 'hosted_grant_rejected',
+      reason: 'grant_binding_mismatch',
+    });
+    expect(response.headers.get('www-authenticate')).toBe('HostedGrant error="invalid_token"');
+  });
+
+  it('returns an identifiable rejection for an expired hosted grant', async () => {
+    const env = makeEnv();
+    const transaction = await readTransaction(await start(env));
+    const completion = readCompletion(await callback(env, transaction));
+    const result = await (await exchange(env, completion)).json() as { grant: string; serverUrl: string };
+    const namespace = env.HOSTED_OAUTH_BROKER as unknown as MemoryNamespace;
+    const store = namespace.stores.get(result.grant)!;
+    const record = store.values.get('record') as Record<string, unknown>;
+    store.values.set('record', { ...record, expiresAt: Date.now() - 1 });
+
+    const response = await rejectedGrantResponse(
+      resolveHostedGrant(env, result.grant, 'user-1', result.serverUrl)
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: 'hosted_grant_rejected',
+      reason: 'grant_expired',
+    });
+  });
+
+  it('returns an identifiable rejection when another Firebase user presents the grant', async () => {
+    const env = makeEnv();
+    const transaction = await readTransaction(await start(env));
+    const completion = readCompletion(await callback(env, transaction));
+    const result = await (await exchange(env, completion)).json() as { grant: string; serverUrl: string };
+
+    const response = await rejectedGrantResponse(
+      resolveHostedGrant(env, result.grant, 'different-user', result.serverUrl)
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: 'hosted_grant_rejected',
+      reason: 'grant_binding_mismatch',
+    });
   });
 
   it('binds completion to the signed-in user and makes exchange one-time', async () => {
