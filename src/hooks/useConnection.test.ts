@@ -1004,16 +1004,96 @@ describe('connection URL finalization', () => {
     });
 
     expect(oauthMocks.begin).not.toHaveBeenCalled();
-    expect(view.connection.needsOAuthConfig).toBe(false);
-    expect(view.connection.connectionError).not.toBeNull();
+    expect(view.connection.needsOAuthConfig).toBe(true);
+    expect(view.connection.oauthPrerequisite).toMatchObject({
+      kind: 'proxy_authentication_required',
+    });
+    expect(view.connection.connectionError).toBeNull();
     expect(getStoredOAuthTrace(endpoint, sessionStorage)).toMatchObject({
-      outcome: { status: 'failed' },
+      outcome: { status: 'proxy_authentication_required' },
       events: expect.arrayContaining([expect.objectContaining({
         type: 'target_challenge',
         provenance: 'authenticated_proxy',
         route: 'proxy',
       })]),
     });
+    view.unmount();
+  });
+
+  it('honors proxy opt-out after a clean-browser Slack CORS failure', async () => {
+    const endpoint = 'https://mcp.slack.com/mcp';
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new TypeError('Failed to fetch'),
+    ]));
+    const view = renderConnectionHook(undefined, false);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(view.connection.needsOAuthConfig).toBe(false);
+    expect(view.connection.oauthPrerequisite).toBeNull();
+    expect(view.connection.connectionError).not.toBeNull();
+    view.unmount();
+  });
+
+  it('shows the proxy-login prerequisite when fallback is enabled without a login', async () => {
+    const endpoint = 'https://mcp.slack.com/mcp';
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new TypeError('Failed to fetch'),
+    ]));
+    const view = renderConnectionHook(undefined, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(view.connection.needsOAuthConfig).toBe(true);
+    expect(view.connection.oauthPrerequisite).toMatchObject({
+      kind: 'proxy_authentication_required',
+    });
+    expect(view.connection.connectionStatus).toBe('Proxy authentication required');
+    expect(view.connection.connectionError).toBeNull();
+    view.unmount();
+  });
+
+  it('uses the authenticated proxy after Slack direct attempts receive no HTTP response', async () => {
+    const endpoint = 'https://mcp.slack.com/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const getIdToken = vi.fn().mockResolvedValue('firebase-session-token');
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    authMocks.currentUser = { getIdToken };
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
+    const view = renderConnectionHook(undefined, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[1]).toEqual(expect.arrayContaining([
+      `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+      expect.anything(),
+      'firebase-session-token',
+      expect.any(Object),
+      true,
+    ]));
+    expect(getIdToken).toHaveBeenCalledOnce();
+    expect(view.connection.connectionStatus).toBe('Connected');
+    expect(view.connection.connectionError).toBeNull();
     view.unmount();
   });
 

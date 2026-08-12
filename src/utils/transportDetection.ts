@@ -7,6 +7,7 @@ import {
 import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
+import { isAuthoritativeStreamableHttpOnlyProvider } from './oauthProviderPolicy';
 import {
   createLegacyMcpClient,
   createNegotiatingMcpClient,
@@ -471,14 +472,22 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
   };
   const normalizedPath = endpoint.pathname.replace(/\/+$/, '');
 
+  const streamableHttpOnly = isAuthoritativeStreamableHttpOnlyProvider(endpoint.toString());
+
   if (normalizedPath.endsWith('/sse')) {
-    add(endpoint, 'legacy-sse');
     const httpSibling = siblingEndpoint(endpoint, 'sse', 'mcp');
-    if (httpSibling) add(httpSibling, 'streamable-http');
+    if (streamableHttpOnly) {
+      if (httpSibling) add(httpSibling, 'streamable-http');
+    } else {
+      add(endpoint, 'legacy-sse');
+      if (httpSibling) add(httpSibling, 'streamable-http');
+    }
   } else if (normalizedPath.endsWith('/mcp')) {
     add(endpoint, 'streamable-http');
-    const sseSibling = siblingEndpoint(endpoint, 'mcp', 'sse');
-    if (sseSibling) add(sseSibling, 'legacy-sse');
+    if (!streamableHttpOnly) {
+      const sseSibling = siblingEndpoint(endpoint, 'mcp', 'sse');
+      if (sseSibling) add(sseSibling, 'legacy-sse');
+    }
   } else if (!normalizedPath) {
     // Some publishers serve MCP directly at the origin, while others use the
     // conventional /mcp or /sse paths. Preserve both possibilities.
@@ -486,15 +495,17 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
     const httpEndpoint = new URL(endpoint);
     httpEndpoint.pathname = '/mcp';
     add(httpEndpoint, 'streamable-http');
-    add(endpoint, 'legacy-sse');
-    const sseEndpoint = new URL(endpoint);
-    sseEndpoint.pathname = '/sse';
-    add(sseEndpoint, 'legacy-sse');
+    if (!streamableHttpOnly) {
+      add(endpoint, 'legacy-sse');
+      const sseEndpoint = new URL(endpoint);
+      sseEndpoint.pathname = '/sse';
+      add(sseEndpoint, 'legacy-sse');
+    }
   } else {
     // A non-standard path is an endpoint, not a base URL. Never append a
     // transport path to it; try both transports at the exact location.
     add(endpoint, 'streamable-http');
-    add(endpoint, 'legacy-sse');
+    if (!streamableHttpOnly) add(endpoint, 'legacy-sse');
   }
 
   return candidates;

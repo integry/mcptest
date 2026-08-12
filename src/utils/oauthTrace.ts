@@ -79,6 +79,8 @@ export type OAuthTraceTerminalStatus =
   | 'redirected'
   | 'pre_registered_client_required'
   | 'provider_approval_required'
+  | 'proxy_authentication_required'
+  | 'transient_discovery_failure'
   | 'discovery_blocked_invalid'
   /** @deprecated retained for traces written before provider outcome classification. */
   | 'manual_client_required'

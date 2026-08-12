@@ -21,6 +21,12 @@ import {
   resumeOAuthFlightRecorder,
   sanitizeOAuthTraceUrl,
 } from './oauthTrace';
+import {
+  getOAuthProviderPolicy,
+  isPolicyRegistrationApprovalRejection,
+  providerForbidsDynamicRegistration,
+  type OAuthProviderPolicy,
+} from './oauthProviderPolicy';
 
 export {
   OAUTH_TRACE_VERSION,
@@ -68,7 +74,6 @@ type PersistedOAuthClientInformation = StoredOAuthClientInformation & {
 
 export interface ManualOAuthClient {
   clientId: string;
-  clientSecret?: string;
   issuer: string;
 }
 
@@ -101,6 +106,8 @@ export interface OAuthDiscoveryProxyOptions {
 export type OAuthPrerequisiteKind =
   | 'pre_registered_client_required'
   | 'provider_approval_required'
+  | 'proxy_authentication_required'
+  | 'transient_discovery_failure'
   | 'discovery_blocked_invalid';
 
 export interface OAuthPrerequisite {
@@ -116,6 +123,9 @@ export interface OAuthPrerequisite {
   pkceS256: boolean;
   publicClientSecretSupported: boolean | 'unknown';
   canConfigureClient: boolean;
+  configurationMode?: 'browser-public' | 'operator-confidential' | 'provider-approved';
+  supportsBearerToken?: boolean;
+  bearerTokenName?: string;
   failedStage?: string;
   httpStatus?: number;
 }
@@ -196,32 +206,15 @@ const providerGuidance = (serverUrl: string, issuer?: string): {
   name: string;
   documentationUrl?: string;
   registrationUrl?: string;
+  policy?: OAuthProviderPolicy;
 } => {
-  // These entries affect explanatory copy and outbound documentation links
-  // only. Discovery, capability ordering, and outcome classification remain
-  // entirely challenge/metadata driven.
-  const hosts = [serverUrl, issuer].flatMap((value) => {
-    if (!value) return [];
-    try { return [new URL(value).hostname.toLowerCase()]; } catch { return []; }
-  });
-  if (hosts.some((host) => host === 'mcp.figma.com' || host === 'api.figma.com')) {
+  const policy = getOAuthProviderPolicy(serverUrl, issuer);
+  if (policy) {
     return {
-      name: 'Figma',
-      documentationUrl: 'https://developers.figma.com/docs/figma-mcp-server/',
-    };
-  }
-  if (hosts.some((host) => host === 'mcp.slack.com' || host.endsWith('.slack.com'))) {
-    return {
-      name: 'Slack',
-      documentationUrl: 'https://api.slack.com/authentication/oauth-v2',
-      registrationUrl: 'https://api.slack.com/apps',
-    };
-  }
-  if (hosts.some((host) => host === 'github.com' || host.endsWith('.github.com'))) {
-    return {
-      name: 'GitHub',
-      documentationUrl: 'https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app',
-      registrationUrl: 'https://github.com/settings/applications/new',
+      name: policy.name,
+      documentationUrl: policy.documentationUrl,
+      registrationUrl: policy.registrationUrl,
+      policy,
     };
   }
   return {
@@ -248,6 +241,33 @@ const latestFailureIsDiscovery = (trace: OAuthFlightRecorder): boolean => {
     );
 };
 
+const latestFailedEvent = (trace: OAuthFlightRecorder) => (
+  [...trace.snapshot().events].reverse().find((event) => event.outcome === 'failed')
+);
+
+const latestFailureIsProxyAuthentication = (trace: OAuthFlightRecorder): boolean => {
+  const event = latestFailedEvent(trace);
+  const authenticationSource = event?.response?.metadata?.authenticationSource;
+  const responseSource = event?.response?.headers?.['x-mcp-proxy-response-source'];
+  const recordsProxyOwnedResponse = authenticationSource === 'proxy'
+    || responseSource?.toLowerCase() === 'proxy'
+    || event?.explanation.includes('response was proxy-owned');
+  return event?.provenance === 'authenticated_proxy'
+    && recordsProxyOwnedResponse
+    && (event.response?.status === 401 || event.response?.status === 403);
+};
+
+const latestFailureIsTransientDiscovery = (trace: OAuthFlightRecorder): boolean => {
+  const event = latestFailedEvent(trace);
+  if (!event || ![
+    'protected_resource_metadata',
+    'authorization_server_metadata',
+  ].includes(event.type)) return false;
+  const status = event.response?.status;
+  return status === 408 || status === 425 || status === 429
+    || (typeof status === 'number' && status >= 500);
+};
+
 const registrationFailureDetails = (error: RegistrationRejectedError): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(error.body) as Record<string, unknown>;
@@ -270,7 +290,9 @@ type RegistrationFailureCategory =
 
 const registrationFailureCategory = (
   error: RegistrationRejectedError,
-  details = registrationFailureDetails(error)
+  details = registrationFailureDetails(error),
+  policy?: OAuthProviderPolicy,
+  registrationEndpoint?: string
 ): RegistrationFailureCategory => {
   if (error.status === 429) return 'rate_limited';
   if (error.status >= 500) return 'server_error';
@@ -300,7 +322,14 @@ const registrationFailureCategory = (
     return 'invalid_metadata';
   }
 
-  if (details.responseFormat === 'non-json') return 'malformed_response';
+  if (details.responseFormat === 'non-json') {
+    return isPolicyRegistrationApprovalRejection(
+      policy,
+      registrationEndpoint,
+      error.status,
+      true
+    ) ? 'approval_policy' : 'malformed_response';
+  }
   return 'rejected';
 };
 
@@ -339,6 +368,7 @@ const buildOAuthPrerequisite = (
   const metadata = discovery?.authorizationServerMetadata;
   const issuer = issuerForDiscovery(discovery);
   const guidance = providerGuidance(serverUrl, issuer);
+  const policy = guidance.policy;
   const resourceScopes = discovery?.resourceMetadata?.scopes_supported || [];
   const requiredScopes = Array.from(new Set([
     ...resourceScopes,
@@ -351,6 +381,22 @@ const buildOAuthPrerequisite = (
       ? false
       : 'unknown';
   const failedStage = discoveryStage(trace);
+
+  if (kind === 'proxy_authentication_required') {
+    return {
+      kind,
+      serverUrl,
+      providerName: 'mcptest proxy',
+      explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry discovery.',
+      requiredScopes: [],
+      pkceS256: false,
+      publicClientSecretSupported: 'unknown',
+      canConfigureClient: false,
+      failedStage,
+      ...(error instanceof RegistrationRejectedError ? { httpStatus: error.status } : {}),
+    };
+  }
+
   const base = {
     kind,
     serverUrl,
@@ -362,6 +408,13 @@ const buildOAuthPrerequisite = (
     requiredScopes,
     pkceS256: Boolean(metadata?.code_challenge_methods_supported?.includes('S256')),
     publicClientSecretSupported,
+    ...(policy ? {
+      configurationMode: policy.registrationMode === 'operator-confidential'
+        ? 'operator-confidential' as const
+        : 'provider-approved' as const,
+      supportsBearerToken: policy.supportsBearerToken,
+      bearerTokenName: policy.bearerTokenName,
+    } : { configurationMode: 'browser-public' as const }),
     failedStage,
     ...(error instanceof RegistrationRejectedError ? { httpStatus: error.status } : {}),
   };
@@ -370,22 +423,71 @@ const buildOAuthPrerequisite = (
     return {
       ...base,
       canConfigureClient: false,
-      explanation: `${guidance.name} advertises automatic client registration, but rejected this client. Provider approval or allow-list access is required before mcptest.io can continue.`,
+      explanation: policy?.id === 'figma'
+        ? 'mcptest.io is not yet an approved Figma MCP client. Figma only permits clients accepted into its MCP Catalog; client developers must use Figma\'s published approval and waitlist process.'
+        : `${guidance.name} advertises automatic client registration, but rejected this client. Provider approval or allow-list access is required before mcptest.io can continue.`,
     };
   }
   if (kind === 'pre_registered_client_required') {
+    if (policy?.registrationMode === 'operator-confidential') {
+      const credentialAlternative = policy.supportsBearerToken
+        ? ` Alternatively, use a valid ${policy.bearerTokenName || 'bearer token'} as the target Authorization credential.`
+        : '';
+      const operatorRequirement = policy.id === 'slack'
+        ? 'Slack MCP requires a fixed registered Slack app with a client ID and client secret. The app must be directory-published or internal, and its secret and token exchange must be configured by the mcptest operator rather than in the browser.'
+        : policy.id === 'github'
+          ? 'GitHub Remote MCP does not support Dynamic Client Registration. The host must configure a GitHub App or OAuth App; its confidential configuration and token exchange must remain in the mcptest operator service.'
+          : `${guidance.name} does not support Dynamic Client Registration. Its OAuth path requires a fixed provider application and confidential client secret configured by the mcptest operator; that secret and token exchange cannot run in browser storage.`;
+      return {
+        ...base,
+        canConfigureClient: false,
+        explanation: `${operatorRequirement}${credentialAlternative}`,
+      };
+    }
     return {
       ...base,
       canConfigureClient: true,
       explanation: `${guidance.name} advertises neither Client ID Metadata Documents nor Dynamic Client Registration. Use an OAuth application registered with the provider.`,
     };
   }
+  if (kind === 'transient_discovery_failure') {
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: `OAuth discovery was temporarily unavailable at the ${failedStage} stage. Retry after the network or provider service recovers.`,
+    };
+  }
   if (error instanceof RegistrationRejectedError) {
-    const category = registrationFailureCategory(error);
+    const category = registrationFailureCategory(
+      error,
+      undefined,
+      policy,
+      metadata?.registration_endpoint
+    );
     return {
       ...base,
       canConfigureClient: true,
       explanation: registrationFailureExplanation(category, guidance.name, error.status),
+    };
+  }
+  const failedEvent = latestFailedEvent(trace);
+  if (
+    failedEvent
+    && latestFailureIsDiscovery(trace)
+    && failedEvent.response?.status === undefined
+  ) {
+    const directDiscoveryAlsoFailed = trace.snapshot().events.some((event) => (
+      event.type === failedEvent.type
+      && event.outcome === 'failed'
+      && event.route === 'direct'
+      && event.response?.status === undefined
+    ));
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: failedEvent.route === 'direct'
+        ? `The browser did not receive a readable HTTP response during ${failedStage}. Browser access or CORS may be blocking discovery; this does not establish a provider outage. Sign in and retry with the authenticated proxy fallback where available, then inspect the exact request in the OAuth flight recorder if it still fails.`
+        : `${directDiscoveryAlsoFailed ? `Direct browser ${failedStage} did not receive a readable response, which may indicate a browser access or CORS limitation, and the authenticated proxy fallback also failed before receiving HTTP. ` : `The authenticated proxy did not receive an HTTP response during ${failedStage}. `}This does not establish a provider outage. Verify proxy authentication and connectivity, then inspect both routes in the OAuth flight recorder.`,
     };
   }
   return {
@@ -393,6 +495,33 @@ const buildOAuthPrerequisite = (
     canConfigureClient: false,
     explanation: `OAuth discovery could not be completed at the ${failedStage} stage. Check the exact discovery request in the OAuth flight recorder.`,
   };
+};
+
+const createProviderPolicyFetch = (
+  serverUrl: string,
+  provider: BrowserOAuthProvider,
+  fetchFn: FetchLike
+): FetchLike => async (input, init) => {
+  const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
+  const method = (init?.method || request?.method || 'GET').toUpperCase();
+  const requestUrl = request?.url || String(input);
+  const discovery = provider.discoveryState();
+  const issuer = issuerForDiscovery(discovery);
+  if (method === 'POST' && providerForbidsDynamicRegistration(serverUrl, issuer)) {
+    let isRegistrationRequest = false;
+    try {
+      const parsed = new URL(requestUrl);
+      const advertised = discovery?.authorizationServerMetadata?.registration_endpoint;
+      isRegistrationRequest = /\/register\/?$/i.test(parsed.pathname)
+        || (advertised ? parsed.toString() === new URL(advertised).toString() : false);
+    } catch {
+      isRegistrationRequest = false;
+    }
+    if (isRegistrationRequest) {
+      throw new Error('Authorization server does not support dynamic client registration');
+    }
+  }
+  return fetchFn(input, init);
 };
 
 const isSafeDiscoveryGet = (
@@ -530,7 +659,27 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     this.redirectUrl = options.redirectUrl || getOAuthCallbackUrl();
     this.redirect = options.redirect || defaultRedirect;
     this.trace = options.trace;
-    const persistedState = this.readState();
+    let persistedState = this.readState();
+    const clientsWithSecrets = Object.entries(persistedState.clients || {}).filter(
+      ([, client]) => Boolean(client.client_secret)
+    );
+    if (clientsWithSecrets.length > 0) {
+      persistedState = {
+        ...persistedState,
+        clients: Object.fromEntries(Object.entries(persistedState.clients || {}).map(
+          ([issuer, client]) => {
+            const { client_secret: _discardedSecret, ...publicClient } = client;
+            return [issuer, publicClient];
+          }
+        )),
+      };
+      this.writeState(persistedState);
+    }
+    // Older releases accepted confidential client secrets in a host-only key.
+    // Remove that unsafe legacy record during migration rather than loading it.
+    const legacyClientKey = `oauth_client_${legacyHostForServer(this.serverUrl)}`;
+    const legacyClient = parseJson<LegacyOAuthClient>(this.storage.getItem(legacyClientKey));
+    if (legacyClient?.clientSecret) this.storage.removeItem(legacyClientKey);
     this.trace?.trackResourceMetadataUrl(persistedState.discovery?.resourceMetadataUrl);
     if (persistedState.discovery?.resourceMetadataUrl) {
       this.writeState(persistedState);
@@ -579,7 +728,6 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
     const manualClient = this.readManualClient(ctx.issuer);
     if (manualClient) {
-      this.trace?.registerSecret(manualClient.clientSecret);
       if (!this.trace?.hasEvent('pre_registered_client', 'succeeded')) {
         this.trace?.record({
           type: 'pre_registered_client',
@@ -587,19 +735,20 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
           provenance: 'oauth_client',
           route: 'client',
           explanation: 'Using the pre-registered OAuth client configured for this authorization server.',
-          response: { metadata: { issuer: ctx.issuer, hasClientSecret: Boolean(manualClient.clientSecret) } },
+          response: { metadata: { issuer: ctx.issuer, clientType: 'public' } },
         });
       }
       return {
         client_id: manualClient.clientId,
-        ...(manualClient.clientSecret ? { client_secret: manualClient.clientSecret } : {}),
         issuer: manualClient.issuer,
       };
     }
 
     const storedClient = this.readState().clients?.[ctx.issuer];
-    if (storedClient?.client_secret) this.trace?.registerSecret(storedClient.client_secret);
-    return storedClient?.registeredManually ? undefined : storedClient;
+    if (storedClient?.registeredManually) return undefined;
+    if (!storedClient) return undefined;
+    const { client_secret: _discardedSecret, ...publicClient } = storedClient;
+    return publicClient;
   }
 
   manualClientInformation(): ManualOAuthClient | undefined {
@@ -615,7 +764,12 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   ): void {
     const issuer = ctx?.issuer || clientInformation.issuer;
     if (!issuer) throw new Error('Cannot store OAuth client information without an issuer.');
-    this.trace?.registerSecret(clientInformation.client_secret);
+    if (clientInformation.client_secret) {
+      this.trace?.registerSecret(clientInformation.client_secret);
+      throw new Error(
+        'A confidential OAuth client secret cannot be used or persisted by the browser flow. Configure this client in the operator OAuth service.'
+      );
+    }
 
     const state = this.readState();
     this.writeState({
@@ -857,6 +1011,10 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     const value = parseJson<LegacyOAuthClient>(
       this.storage.getItem(`oauth_client_${legacyHostForServer(this.serverUrl)}`)
     );
+    if (value?.clientSecret) {
+      this.storage.removeItem(`oauth_client_${legacyHostForServer(this.serverUrl)}`);
+      return undefined;
+    }
     return value?.registeredManually && issuer && value.issuer === issuer ? value : undefined;
   }
 
@@ -869,7 +1027,6 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     ) {
       return {
         clientId: storedClient.client_id,
-        ...(storedClient.client_secret ? { clientSecret: storedClient.client_secret } : {}),
         issuer,
       };
     }
@@ -878,7 +1035,6 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     if (!legacyClient?.clientId || legacyClient.issuer !== issuer) return undefined;
     return {
       clientId: legacyClient.clientId,
-      ...(legacyClient.clientSecret ? { clientSecret: legacyClient.clientSecret } : {}),
       issuer,
     };
   }
@@ -987,7 +1143,10 @@ export const beginOAuthFlow = async (
     options.fetchFn || fetch,
     options.discoveryProxy
   );
-  const fetchFn = createOAuthTraceFetch(trace, discoveryFetch);
+  const fetchFn = createOAuthTraceFetch(
+    trace,
+    createProviderPolicyFetch(normalizedServerUrl, provider, discoveryFetch)
+  );
   try {
     const result = await authenticate(provider, {
       serverUrl: normalizedServerUrl,
@@ -1022,8 +1181,13 @@ export const beginOAuthFlow = async (
     let prerequisite: OAuthPrerequisite | undefined;
     if (error instanceof RegistrationRejectedError) {
       const details = registrationFailureDetails(error);
-      const category = registrationFailureCategory(error, details);
       const guidance = providerGuidance(normalizedServerUrl, issuerForDiscovery(provider.discoveryState()));
+      const category = registrationFailureCategory(
+        error,
+        details,
+        guidance.policy,
+        provider.discoveryState()?.authorizationServerMetadata?.registration_endpoint
+      );
       const explanation = registrationFailureExplanation(category, guidance.name, error.status);
       trace.enrichLast('dynamic_client_registration', {
         outcome: 'failed',
@@ -1061,16 +1225,28 @@ export const beginOAuthFlow = async (
         options.scope
       );
       trace.terminal('pre_registered_client_required', prerequisite.explanation);
-    } else if (latestFailureIsDiscovery(trace)) {
+    } else if (latestFailureIsProxyAuthentication(trace)) {
       prerequisite = buildOAuthPrerequisite(
-        'discovery_blocked_invalid',
+        'proxy_authentication_required',
         normalizedServerUrl,
         provider,
         trace,
         error,
         options.scope
       );
-      trace.terminal('discovery_blocked_invalid', prerequisite.explanation);
+      trace.terminal('proxy_authentication_required', prerequisite.explanation);
+    } else if (latestFailureIsDiscovery(trace)) {
+      prerequisite = buildOAuthPrerequisite(
+        latestFailureIsTransientDiscovery(trace)
+          ? 'transient_discovery_failure'
+          : 'discovery_blocked_invalid',
+        normalizedServerUrl,
+        provider,
+        trace,
+        error,
+        options.scope
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
     } else {
       trace.terminal(
         'failed',
@@ -1132,9 +1308,47 @@ export const prepareManualOAuthClient = async (
       ...discovery,
       ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
     });
+    const issuer = issuerForDiscovery(provider.discoveryState());
+    if (providerForbidsDynamicRegistration(normalizedServerUrl, issuer)) {
+      trace.record({
+        type: 'pre_registered_client',
+        outcome: 'required',
+        provenance: 'oauth_client',
+        route: 'client',
+        explanation: 'Provider policy requires an operator-owned confidential OAuth application.',
+      });
+      const prerequisite = buildOAuthPrerequisite(
+        'pre_registered_client_required',
+        normalizedServerUrl,
+        provider,
+        trace,
+        new Error('Authorization server does not support dynamic client registration')
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+      throw new OAuthPrerequisiteError(prerequisite);
+    }
   } catch (error) {
+    if (error instanceof OAuthPrerequisiteError) throw error;
     trace.settleLatestProvisionalOAuthResponse('failed');
-    trace.terminal('failed', 'OAuth metadata discovery failed while preparing manual client registration.');
+    const prerequisiteKind: OAuthPrerequisiteKind | undefined = latestFailureIsProxyAuthentication(trace)
+      ? 'proxy_authentication_required'
+      : latestFailureIsDiscovery(trace)
+        ? latestFailureIsTransientDiscovery(trace)
+          ? 'transient_discovery_failure'
+          : 'discovery_blocked_invalid'
+        : undefined;
+    if (prerequisiteKind) {
+      const prerequisite = buildOAuthPrerequisite(
+        prerequisiteKind,
+        normalizedServerUrl,
+        provider,
+        trace,
+        error
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+      throw new OAuthPrerequisiteError(prerequisite, { cause: error });
+    }
+    trace.terminal('failed', 'OAuth metadata discovery failed while preparing public client registration.');
     throw error;
   }
 };
@@ -1230,6 +1444,11 @@ export const saveManualOAuthClient = (
   clientSecret?: string,
   storage: OAuthStorage = getSessionStorage()
 ): void => {
+  if (clientSecret) {
+    throw new Error(
+      'Confidential OAuth client secrets must be configured by the mcptest operator and cannot be saved in browser storage.'
+    );
+  }
   const provider = new BrowserOAuthProvider(serverUrl, { storage });
   const discovery = provider.discoveryState();
   const issuer = discovery?.authorizationServerMetadata?.issuer
@@ -1266,6 +1485,17 @@ const isPreRegisteredClientRequired = (error: unknown): boolean => (
 export const getOAuthPrerequisite = (error: unknown): OAuthPrerequisite | undefined => (
   error instanceof OAuthPrerequisiteError ? error.prerequisite : undefined
 );
+
+export const getProxyAuthenticationPrerequisite = (serverUrl: string): OAuthPrerequisite => ({
+  kind: 'proxy_authentication_required',
+  serverUrl: normalizeOAuthServerUrl(serverUrl),
+  providerName: 'mcptest proxy',
+  explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry.',
+  requiredScopes: [],
+  pkceS256: false,
+  publicClientSecretSupported: 'unknown',
+  canConfigureClient: false,
+});
 
 export const isOAuthClientConfigurationRequired = (error: unknown): boolean => {
   const prerequisite = getOAuthPrerequisite(error);

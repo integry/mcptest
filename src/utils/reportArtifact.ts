@@ -257,7 +257,7 @@ const PublicReportObjectSchema = z.object({
     summary: z.string().min(1),
     authorizationPrerequisite: z.object({
       required: z.literal(true),
-      state: z.literal('authorization-required'),
+      state: z.enum(['authorization-required', 'proxy-authentication-required']),
       message: z.string().min(1),
     }).strict().optional(),
   }).strict(),
@@ -1026,10 +1026,15 @@ const normalizeGeneratedAt = (generatedAt: string | Date | undefined): string =>
   return value.toISOString();
 };
 
-const outcomeSummary = (outcome: PublicReportOutcome): string => {
+const outcomeSummary = (
+  outcome: PublicReportOutcome,
+  proxyAuthenticationRequired = false
+): string => {
   switch (outcome) {
     case 'authorization-required':
-      return 'Authorization is a prerequisite; this run was not scored.';
+      return proxyAuthenticationRequired
+        ? 'A valid mcptest login is a prerequisite for proxy access; this run was not scored.'
+        : 'Authorization is a prerequisite; this run was not scored.';
     case 'partial':
       return 'The run was only partially evaluated and no overall grade was assigned.';
     case 'failed':
@@ -1044,6 +1049,7 @@ export const createPublicReport = (
   options: CreatePublicReportOptions = {}
 ): PublicReport => {
   const outcome = resolveEvaluationOutcome(report);
+  const proxyAuthenticationRequired = report.authenticationRequirement?.kind === 'proxy';
   const metadata = metadataRecords(report);
   const routeValue = metadataString(metadata, 'route');
   const route = publicRoute(routeValue);
@@ -1104,12 +1110,16 @@ export const createPublicReport = (
     },
     outcome: {
       status: outcome,
-      summary: outcomeSummary(outcome),
+      summary: outcomeSummary(outcome, proxyAuthenticationRequired),
       ...(outcome === 'authorization-required' ? {
         authorizationPrerequisite: {
           required: true,
-          state: 'authorization-required',
-          message: 'Authorize access to the MCP server, then run the evaluation again.',
+          state: proxyAuthenticationRequired
+            ? 'proxy-authentication-required' as const
+            : 'authorization-required' as const,
+          message: proxyAuthenticationRequired
+            ? 'Sign in to mcptest again, then rerun the evaluation. Target OAuth has not started.'
+            : 'Authorize access to the MCP server, then run the evaluation again.',
         },
       } : {}),
     },
@@ -1213,8 +1223,12 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
   ];
 
   if (value.outcome.authorizationPrerequisite) {
+    const proxyAuthenticationRequired = value.outcome.authorizationPrerequisite.state
+      === 'proxy-authentication-required';
     lines.push(
-      '> Authorization is a prerequisite, not a failed 0% grade. This run was not scored.',
+      proxyAuthenticationRequired
+        ? '> A valid mcptest login is a proxy prerequisite, not a target authorization failure. This run was not scored.'
+        : '> Authorization is a prerequisite, not a failed 0% grade. This run was not scored.',
       '',
       markdownInline(value.outcome.authorizationPrerequisite.message),
       ''
