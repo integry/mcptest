@@ -11,8 +11,10 @@ export interface HostedOAuthEnv {
   PUBLIC_APP_ORIGIN?: string;
   SLACK_OAUTH_CLIENT_ID?: string;
   SLACK_OAUTH_CLIENT_SECRET?: string;
+  SLACK_OAUTH_SCOPES?: string;
   GITHUB_OAUTH_CLIENT_ID?: string;
   GITHUB_OAUTH_CLIENT_SECRET?: string;
+  GITHUB_OAUTH_SCOPES?: string;
 }
 
 type ProviderId = 'slack' | 'github';
@@ -30,6 +32,8 @@ interface ProviderDefinition {
   tokenEndpoint: string;
   clientIdBinding: 'SLACK_OAUTH_CLIENT_ID' | 'GITHUB_OAUTH_CLIENT_ID';
   clientSecretBinding: 'SLACK_OAUTH_CLIENT_SECRET' | 'GITHUB_OAUTH_CLIENT_SECRET';
+  scopeBinding: 'SLACK_OAUTH_SCOPES' | 'GITHUB_OAUTH_SCOPES';
+  scopeSeparator: ' ' | ',';
   documentationUrl: string;
 }
 
@@ -46,6 +50,8 @@ const PROVIDERS: readonly ProviderDefinition[] = [{
   tokenEndpoint: 'https://slack.com/api/oauth.v2.user.access',
   clientIdBinding: 'SLACK_OAUTH_CLIENT_ID',
   clientSecretBinding: 'SLACK_OAUTH_CLIENT_SECRET',
+  scopeBinding: 'SLACK_OAUTH_SCOPES',
+  scopeSeparator: ',',
   documentationUrl: 'https://docs.slack.dev/ai/slack-mcp-server/',
 }, {
   id: 'github',
@@ -60,6 +66,8 @@ const PROVIDERS: readonly ProviderDefinition[] = [{
   tokenEndpoint: 'https://github.com/login/oauth/access_token',
   clientIdBinding: 'GITHUB_OAUTH_CLIENT_ID',
   clientSecretBinding: 'GITHUB_OAUTH_CLIENT_SECRET',
+  scopeBinding: 'GITHUB_OAUTH_SCOPES',
+  scopeSeparator: ' ',
   documentationUrl: 'https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp-in-your-ide/set-up-the-github-mcp-server',
 }];
 
@@ -67,6 +75,7 @@ const TRANSACTION_TTL_MS = 10 * 60 * 1000;
 const GRANT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REFRESH_SKEW_MS = 60 * 1000;
 const OPAQUE_VALUE = /^[A-Za-z0-9_-]{43}$/;
+const SCOPE_VALUE = /^[A-Za-z0-9:._/-]{1,128}$/;
 
 interface TransactionRecord {
   kind: 'transaction';
@@ -198,6 +207,25 @@ const configuredClient = (provider: ProviderDefinition, env: HostedOAuthEnv): {
   return { clientId, clientSecret };
 };
 
+const configuredScopes = (provider: ProviderDefinition, env: HostedOAuthEnv): string[] => {
+  const value = env[provider.scopeBinding];
+  const scopes = typeof value === 'string'
+    ? Array.from(new Set(value.split(/[\s,]+/).filter(Boolean)))
+    : [];
+  if (
+    !scopes.length
+    || scopes.some(scope => !SCOPE_VALUE.test(scope))
+    || scopes.join(' ').length > 2048
+  ) {
+    const error = new Error(
+      `${provider.name} hosted OAuth requires an explicit, valid operator scope policy in ${provider.scopeBinding}.`
+    );
+    error.name = 'ProviderNotConfiguredError';
+    throw error;
+  }
+  return scopes;
+};
+
 const encryptionKey = async (env: HostedOAuthEnv): Promise<CryptoKey> => {
   if (!env.HOSTED_OAUTH_ENCRYPTION_KEY) throw new Error('Hosted OAuth encryption is not configured.');
   const raw = decodeBase64Url(env.HOSTED_OAUTH_ENCRYPTION_KEY);
@@ -278,7 +306,7 @@ const requestProviderTokens = async (
 const verifyProviderMetadata = async (
   provider: ProviderDefinition,
   requestedResourceMetadataUrl?: string,
-  requestedScope = ''
+  policyScopes: readonly string[] = []
 ): Promise<void> => {
   const canonicalResourceMetadataUrl = (value: string): string => {
     const url = new URL(value);
@@ -307,8 +335,12 @@ const verifyProviderMetadata = async (
   const supportedScopes = Array.isArray(resource.scopes_supported)
     ? resource.scopes_supported.filter((scope): scope is string => typeof scope === 'string')
     : [];
-  if (requestedScope.split(/\s+/).filter(Boolean).some(scope => !supportedScopes.includes(scope))) {
-    throw new Error('The requested scope was not advertised by the trusted MCP resource.');
+  if (policyScopes.some(scope => !supportedScopes.includes(scope))) {
+    const error = new Error(
+      `${provider.name} hosted OAuth scope policy contains a scope not advertised by the trusted MCP resource.`
+    );
+    error.name = 'ProviderNotConfiguredError';
+    throw error;
   }
 
   const authorizationResponse = await fetch(provider.authorizationMetadataUrl, {
@@ -361,18 +393,22 @@ export const handleHostedOAuthRequest = async (
       const provider = providerForPair(target, issuer);
       if (!provider) return json({ error: 'unsupported_provider_target' }, 400);
       configuredClient(provider, env);
+      const policyScopes = configuredScopes(provider, env);
       callbackUrl(env);
       await encryptionKey(env);
       const requestedScope = typeof input.scope === 'string' ? input.scope.trim() : '';
+      const requestedScopes = requestedScope.split(/\s+/).filter(Boolean);
       if (
         requestedScope.length > 2048
-        || requestedScope.split(/\s+/).filter(Boolean).some(scope => !/^[A-Za-z0-9:._/-]{1,128}$/.test(scope))
+        || requestedScopes.some(scope => !SCOPE_VALUE.test(scope))
+        || requestedScopes.some(scope => !policyScopes.includes(scope))
       ) return json({ error: 'invalid_scope' }, 400);
       await verifyProviderMetadata(
         provider,
         typeof input.resourceMetadataUrl === 'string' ? input.resourceMetadataUrl : undefined,
-        requestedScope
+        policyScopes
       );
+      const scopes = requestedScopes.length ? Array.from(new Set(requestedScopes)) : policyScopes;
 
       const state = randomOpaque();
       const verifier = randomOpaque();
@@ -381,7 +417,7 @@ export const handleHostedOAuthRequest = async (
         provider: provider.id, target, resource: provider.resource,
         resourceMetadataUrl: provider.resourceMetadataUrl, issuer: provider.issuer,
         redirectUri: callbackUrl(env), returnUri: returnUrl(env), verifier, state,
-        scope: requestedScope,
+        scope: scopes.join(' '),
         expiresAt: Date.now() + TRANSACTION_TTL_MS,
       };
       const response = await stubFetch(env, state, '/transaction/init', record);
@@ -405,7 +441,10 @@ export const handleHostedOAuthRequest = async (
       authorizationUrl.searchParams.set('state', record.state);
       authorizationUrl.searchParams.set('code_challenge', await pkceChallenge(record.verifier));
       authorizationUrl.searchParams.set('code_challenge_method', 'S256');
-      if (record.scope) authorizationUrl.searchParams.set('scope', record.scope);
+      authorizationUrl.searchParams.set(
+        'scope',
+        record.scope.split(/\s+/).filter(Boolean).join(provider.scopeSeparator)
+      );
       return new Response(null, {
         status: 302,
         headers: {

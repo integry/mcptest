@@ -16,8 +16,10 @@ interface Env extends HostedOAuthEnv {
   FIGMA_OAUTH_CLIENT_SECRET?: string;
   SLACK_OAUTH_CLIENT_ID?: string;
   SLACK_OAUTH_CLIENT_SECRET?: string;
+  SLACK_OAUTH_SCOPES?: string;
   GITHUB_OAUTH_CLIENT_ID?: string;
   GITHUB_OAUTH_CLIENT_SECRET?: string;
+  GITHUB_OAUTH_SCOPES?: string;
 }
 
 export type OperatorOAuthProvider = 'figma' | 'slack' | 'github';

@@ -110,6 +110,25 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('#clientSecret')).toBeNull();
   });
 
+  it('explains the operator scope policy when a hosted-provider challenge omits scope', () => {
+    const view = renderPanel({
+      kind: 'pre_registered_client_required',
+      serverUrl: 'https://api.githubcopilot.com/mcp',
+      providerName: 'GitHub',
+      explanation: 'GitHub requires a confidential client.',
+      issuer: 'https://github.com/login/oauth',
+      requiredScopes: ['repo', 'read:user', 'workflow'],
+      pkceS256: true,
+      publicClientSecretSupported: false,
+      canConfigureClient: false,
+      hostedProvider: 'github',
+    });
+
+    expect(view.textContent).toContain('explicit operator policy will supply least-privilege scopes');
+    expect(view.textContent).toContain('advertised scopes are not requested automatically');
+    expect(view.textContent).not.toContain('repo, read:user, workflow');
+  });
+
   it('offers GitHub PAT guidance without inventing browser OAuth registration', () => {
     const view = renderPanel({
       kind: 'pre_registered_client_required',

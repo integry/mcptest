@@ -48,8 +48,10 @@ const makeEnv = (): HostedOAuthEnv => {
     HOSTED_OAUTH_ENCRYPTION_KEY: encryptionKey,
     SLACK_OAUTH_CLIENT_ID: 'slack-client-id',
     SLACK_OAUTH_CLIENT_SECRET: 'slack-client-secret',
+    SLACK_OAUTH_SCOPES: 'channels:read chat:write',
     GITHUB_OAUTH_CLIENT_ID: 'github-client-id',
     GITHUB_OAUTH_CLIENT_SECRET: 'github-client-secret',
+    GITHUB_OAUTH_SCOPES: 'repo read:user',
   };
   env.HOSTED_OAUTH_BROKER = new MemoryNamespace(env) as unknown as DurableObjectNamespace;
   return env;
@@ -112,10 +114,10 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === 'https://mcp.slack.com/.well-known/oauth-protected-resource') {
-      return Response.json({ resource: 'https://mcp.slack.com', authorization_servers: ['https://mcp.slack.com'], scopes_supported: ['channels:read'] });
+      return Response.json({ resource: 'https://mcp.slack.com', authorization_servers: ['https://mcp.slack.com'], scopes_supported: ['channels:read', 'chat:write', 'files:read'] });
     }
     if (url === 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp') {
-      return Response.json({ resource: 'https://api.githubcopilot.com/mcp', authorization_servers: ['https://github.com/login/oauth'], scopes_supported: ['repo'] });
+      return Response.json({ resource: 'https://api.githubcopilot.com/mcp', authorization_servers: ['https://github.com/login/oauth'], scopes_supported: ['repo', 'read:user', 'workflow'] });
     }
     if (url === 'https://mcp.slack.com/.well-known/oauth-authorization-server') {
       return Response.json({ issuer: 'https://mcp.slack.com', authorization_endpoint: 'https://slack.com/oauth/v2_user/authorize', token_endpoint: 'https://slack.com/api/oauth.v2.user.access', code_challenge_methods_supported: ['S256'] });
@@ -153,6 +155,8 @@ describe('hosted provider authorization transactions', () => {
     const location = authorization?.headers.get('location') || '';
     expect(location).not.toContain(provider === 'slack' ? 'slack-client-secret' : 'github-client-secret');
     expect(location).not.toContain('provider-code');
+    expect(new URL(location).searchParams.get('scope'))
+      .toBe(provider === 'slack' ? 'channels:read' : 'repo');
 
     const completion = readCompletion(await callback(env, transaction));
     expect(completion).not.toBe(transaction);
@@ -177,6 +181,35 @@ describe('hosted provider authorization transactions', () => {
       'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp'
     );
     expect(fetchedUrls).not.toContain(browserResourceMetadataUrl);
+  });
+
+  it.each([
+    ['slack', 'channels:read,chat:write'],
+    ['github', 'repo read:user'],
+  ] as const)('uses the explicit operator %s scope policy when the challenge has no scope', async (
+    provider,
+    expectedScope
+  ) => {
+    const env = makeEnv();
+    const transaction = await readTransaction(await start(env, provider, 'user-1', {
+      scope: undefined,
+    }));
+    const authorization = await handleHostedOAuthRequest(new Request(
+      `https://proxy.mcptest.io${HOSTED_AUTHORIZE_PATH}?transaction=${transaction}`
+    ), env, null);
+
+    expect(authorization?.status).toBe(302);
+    expect(new URL(authorization!.headers.get('location')!).searchParams.get('scope'))
+      .toBe(expectedScope);
+  });
+
+  it('rejects a challenge scope outside the operator provider policy', async () => {
+    const response = await start(makeEnv(), 'slack', 'user-1', {
+      scope: 'channels:read admin',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid_scope' });
   });
 
   it('rejects unknown targets even when they advertise a trusted issuer', async () => {
@@ -254,5 +287,26 @@ describe('hosted provider authorization transactions', () => {
     const response = await start(env);
     expect(response?.status).toBe(503);
     expect(await response?.json()).toMatchObject({ error: 'provider_not_configured' });
+  });
+
+  it('fails closed when the operator has not configured provider scopes', async () => {
+    const env = makeEnv();
+    delete env.SLACK_OAUTH_SCOPES;
+    const response = await start(env, 'slack', 'user-1', { scope: undefined });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: 'provider_not_configured',
+      message: expect.stringContaining('SLACK_OAUTH_SCOPES'),
+    });
+  });
+
+  it('fails closed when the operator policy includes an unadvertised scope', async () => {
+    const env = makeEnv();
+    env.GITHUB_OAUTH_SCOPES = 'repo delete_repo';
+    const response = await start(env, 'github', 'user-1', { scope: undefined });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: 'provider_not_configured' });
   });
 });

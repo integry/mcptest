@@ -190,9 +190,13 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
                 : 'S256 was not advertised in the readable authorization metadata.'}
             </p>
             <p className="mb-2">
-              <strong>Scopes:</strong> {prerequisite.requiredScopes.length
-                ? prerequisite.requiredScopes.join(', ')
-                : 'The provider will determine the required scopes during authorization.'}
+              <strong>Scopes:</strong> {prerequisite.hostedProvider
+                ? prerequisite.hostedScope
+                  ? prerequisite.hostedScope.split(/\s+/).filter(Boolean).join(', ')
+                  : 'The explicit operator policy will supply least-privilege scopes; advertised scopes are not requested automatically.'
+                : prerequisite.requiredScopes.length
+                  ? prerequisite.requiredScopes.join(', ')
+                  : 'The provider will determine the required scopes during authorization.'}
             </p>
             <p className="mb-0">
               <strong>Browser/public client secret:</strong>{' '}
