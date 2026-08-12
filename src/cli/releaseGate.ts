@@ -1,11 +1,7 @@
-import packageJson from '../../package.json';
-import { COMPATIBILITY_SCHEMA_VERSION } from '../compatibility/types';
-import { TOOL_SURFACE_ANALYSIS_VERSION } from '../types/toolSurfaceAnalysis';
 import type { EvaluationReport } from '../utils/evaluation';
 import { evaluateServer } from '../utils/evaluation';
 import {
   createPublicReport,
-  PublicReportSchema,
   REDACTED_VALUE,
   redactReportString,
   serializePublicReportJson,
@@ -102,214 +98,70 @@ const redactKnownCredentialString = (value: string, credentials: readonly string
   ))
 );
 
-interface SchemaConstant {
-  path: readonly string[];
-  values: ReadonlySet<string>;
-}
-
-interface SchemaKeys {
-  path: readonly string[];
-  keys: ReadonlySet<string>;
-}
-
-const schemaConstant = (path: string, values: readonly string[]): SchemaConstant => ({
-  path: path.split('.'),
-  values: new Set(values),
-});
-
-const schemaKeys = (path: string, keys: readonly string[]): SchemaKeys => ({
-  path: path ? path.split('.') : [],
-  keys: new Set(keys),
-});
-
-// These values are generated locally and must remain unchanged for PublicReportSchema validity.
-// Every open-ended or server-influenced string, including metadata, identifiers, protocol data,
-// and tool names, is intentionally excluded.
-const LOCAL_SCHEMA_CONSTANTS: readonly SchemaConstant[] = [
-  schemaConstant('$schema', ['https://mcptest.io/schemas/report/v2.schema.json']),
-  schemaConstant('artifactType', ['mcptest.report']),
-  schemaConstant('schemaVersion', ['2.0.0']),
-  schemaConstant('generator.name', ['mcptest']),
-  schemaConstant('generator.version', [packageJson.version]),
-  schemaConstant('provenance.route', ['direct', 'authenticated-proxy', 'unknown']),
-  schemaConstant('provenance.attempts.*.route', ['direct', 'authenticated-proxy']),
-  schemaConstant('provenance.attempts.*.result', ['failed']),
-  schemaConstant('outcome.status', ['scored', 'authorization-required', 'partial', 'failed']),
-  schemaConstant('outcome.authorizationPrerequisite.state', ['authorization-required']),
-  schemaConstant('releaseDecision.status', [
-    'ready', 'blocked', 'review', 'authorization-required', 'unknown',
-  ]),
-  schemaConstant('releaseDecision.priorities.*.severity', [
-    'critical', 'high', 'medium', 'unknown',
-  ]),
-  schemaConstant('releaseDecision.priorities.*.source', [
-    'Host compatibility', 'Tool surface', 'Evaluation',
-  ]),
-  schemaConstant('compatibility.schemaVersion', [COMPATIBILITY_SCHEMA_VERSION]),
-  schemaConstant('compatibility.assessments.*.schemaVersion', [COMPATIBILITY_SCHEMA_VERSION]),
-  schemaConstant('compatibility.assessments.*.status', [
-    'compatible', 'compatible-with-caveats', 'incompatible', 'unknown',
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.schemaVersion', [
-    COMPATIBILITY_SCHEMA_VERSION,
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.scope', [
-    'target-server', 'authorization-server', 'client-environment',
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.outcome', [
-    'pass', 'caveat', 'fail', 'unknown',
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.severity', [
-    'info', 'warning', 'error',
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.evidence.*.schemaVersion', [
-    COMPATIBILITY_SCHEMA_VERSION,
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.evidence.*.source', [
-    'target-server', 'authorization-server', 'browser', 'proxy', 'configuration', 'host-profile',
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.remediation.schemaVersion', [
-    COMPATIBILITY_SCHEMA_VERSION,
-  ]),
-  schemaConstant('compatibility.assessments.*.findings.*.remediation.kind', [
-    'server-change', 'authorization-server-change', 'client-configuration', 'observation-needed',
-  ]),
-  schemaConstant('toolSurfaceAnalysis.version', [TOOL_SURFACE_ANALYSIS_VERSION]),
-  schemaConstant('toolSurfaceAnalysis.fingerprint.algorithm', ['fnv1a-64-v1']),
-  schemaConstant('toolSurfaceAnalysis.findings.*.*.category', [
-    'availability', 'context-cost', 'ambiguity', 'description-quality', 'schema-quality',
-    'capability-risk', 'prompt-like-description',
-  ]),
-  schemaConstant('toolSurfaceAnalysis.findings.*.*.severity', [
-    'critical', 'high', 'medium', 'low', 'info',
-  ]),
-  schemaConstant('toolSurfaceAnalysis.findings.*.*.kind', [
-    'measurement', 'quality-signal', 'capability-signal', 'review-signal',
-  ]),
-  schemaConstant('oauthTrace.events.*.type', [
-    'target_challenge', 'protected_resource_metadata', 'authorization_server_metadata', 'cimd',
-    'dynamic_client_registration', 'pre_registered_client', 'pkce', 'authorization_redirect',
-    'callback', 'token_exchange', 'refresh', 'mcp_retry', 'terminal_outcome',
-  ]),
-  schemaConstant('oauthTrace.events.*.outcome', [
-    'started', 'challenged', 'succeeded', 'failed', 'cancelled', 'required', 'redirected', 'skipped',
-  ]),
-  schemaConstant('oauthTrace.events.*.provenance', [
-    'direct_target', 'authenticated_proxy', 'authorization_server', 'browser_callback', 'oauth_client',
-  ]),
-  schemaConstant('oauthTrace.events.*.route', ['direct', 'proxy', 'browser', 'client']),
-  schemaConstant('sections.*.status', [
-    'evaluated', 'partial', 'failed', 'skipped', 'prerequisite',
-  ]),
-];
-
-// Keys owned by PublicReportSchema must remain intact even when a supplied credential happens to
-// equal one of them. All other keys are open-ended data and may have come from the target server.
-const LOCAL_SCHEMA_KEYS: readonly SchemaKeys[] = [
-  schemaKeys('', [
-    '$schema', 'artifactType', 'schemaVersion', 'generatedAt', 'generator', 'target',
-    'provenance', 'outcome', 'score', 'protocol', 'transport', 'timings', 'releaseDecision',
-    'compatibility', 'toolSurfaceAnalysis', 'oauthTrace', 'sections',
-  ]),
-  schemaKeys('generator', ['name', 'version', 'commit']),
-  schemaKeys('target', ['testedEndpoint', 'authenticationEndpoint', 'negotiatedEndpoint']),
-  schemaKeys('provenance', ['route', 'proxyUsed', 'attempts']),
-  schemaKeys('provenance.attempts.*', ['route', 'result']),
-  schemaKeys('outcome', ['status', 'summary', 'authorizationPrerequisite']),
-  schemaKeys('outcome.authorizationPrerequisite', ['required', 'state', 'message']),
-  schemaKeys('score', ['earned', 'maximum', 'percentage']),
-  schemaKeys('protocol', ['era', 'version']),
-  schemaKeys('transport', ['type']),
-  schemaKeys('timings', ['negotiationMs', 'connectionSetupMs', 'checks']),
-  schemaKeys('timings.checks.*', ['name', 'durationMs']),
-  schemaKeys('releaseDecision', ['status', 'answer', 'summary', 'priorities']),
-  schemaKeys('releaseDecision.priorities.*', [
-    'id', 'severity', 'title', 'detail', 'remediation', 'source',
-  ]),
-  schemaKeys('compatibility', ['schemaVersion', 'assessments']),
-  schemaKeys('compatibility.assessments.*', [
-    'schemaVersion', 'profileId', 'profileVersion', 'status', 'findings',
-  ]),
-  schemaKeys('compatibility.assessments.*.findings.*', [
-    'schemaVersion', 'ruleId', 'scope', 'outcome', 'severity', 'summary', 'detail',
-    'evidence', 'remediation',
-  ]),
-  schemaKeys('compatibility.assessments.*.findings.*.evidence.*', [
-    'schemaVersion', 'source', 'description', 'location',
-  ]),
-  schemaKeys('compatibility.assessments.*.findings.*.remediation', [
-    'schemaVersion', 'kind', 'action', 'documentationUrl',
-  ]),
-  schemaKeys('toolSurfaceAnalysis', [
-    'version', 'metrics', 'fingerprint', 'findings', 'findingCount', 'interpretation',
-  ]),
-  schemaKeys('toolSurfaceAnalysis.metrics', [
-    'toolCount', 'resourceCount', 'promptCount', 'estimatedContextTokens',
-  ]),
-  schemaKeys('toolSurfaceAnalysis.fingerprint', ['algorithm', 'value']),
-  schemaKeys('toolSurfaceAnalysis.findings', ['critical', 'high', 'medium', 'low', 'info']),
-  schemaKeys('toolSurfaceAnalysis.findings.*.*', [
-    'id', 'category', 'severity', 'kind', 'title', 'summary', 'evidence',
-    'omittedEvidenceCount', 'remediation',
-  ]),
-  schemaKeys('toolSurfaceAnalysis.findings.*.*.evidence.*', ['tool', 'path', 'detail']),
-  schemaKeys('oauthTrace', [
-    'version', 'traceId', 'targetFingerprint', 'targetUrl', 'startedAt', 'events',
-  ]),
-  schemaKeys('oauthTrace.events.*', [
-    'sequence', 'type', 'outcome', 'timestamp', 'provenance', 'route', 'explanation',
-    'request', 'response', 'timing',
-  ]),
-  schemaKeys('oauthTrace.events.*.request', ['method', 'url']),
-  schemaKeys('oauthTrace.events.*.response', ['status', 'headers', 'metadata']),
-  schemaKeys('oauthTrace.events.*.timing', ['startedAt', 'durationMs']),
-  schemaKeys('sections.*', ['id', 'name', 'description', 'status', 'score', 'evidence']),
-  schemaKeys('sections.*.score', ['earned', 'maximum']),
-  schemaKeys('sections.*.evidence.*', ['message', 'context', 'metadata']),
-];
-
 const pathMatches = (pattern: readonly string[], path: readonly string[]): boolean => (
   pattern.length === path.length
   && pattern.every((part, index) => part === '*' || part === path[index])
 );
 
-const isLocalSchemaConstant = (path: readonly string[], value: string): boolean => (
-  LOCAL_SCHEMA_CONSTANTS.some((constant) => (
-    pathMatches(constant.path, path)
-    && constant.values.has(value)
-  ))
+const LOCAL_METADATA_KEYS = new Set([
+  'authenticationSource', 'authorizationChallenge', 'authorizationScheme',
+  'authorizationSchemes', 'durationMs', 'endpoint', 'evaluationRuntime', 'method',
+  'outcome', 'protocolEra', 'protocolVersion', 'provenance', 'responseHeaders',
+  'result', 'route', 'routeFailures', 'transportType',
+  'unauthenticatedTargetRequestSucceeded',
+]);
+
+const LOCAL_METADATA_VALUE_KEYS = new Set([
+  'authenticationSource', 'authorizationScheme', 'authorizationSchemes',
+  'evaluationRuntime', 'method', 'outcome', 'protocolEra', 'provenance', 'result',
+  'route', 'transportType',
+]);
+
+const isLocalToolAnalysisString = (path: readonly string[]): boolean => (
+  pathMatches(['version'], path)
+  || pathMatches(['fingerprint', 'algorithm'], path)
+  || pathMatches(['fingerprint', 'value'], path)
+  || pathMatches(['findings', '*', '*', 'id'], path)
+  || pathMatches(['findings', '*', '*', 'category'], path)
+  || pathMatches(['findings', '*', '*', 'severity'], path)
+  || pathMatches(['findings', '*', '*', 'kind'], path)
 );
 
-const localSchemaKeys = (path: readonly string[]): ReadonlySet<string> => (
-  LOCAL_SCHEMA_KEYS.find((schema) => pathMatches(schema.path, path))?.keys ?? new Set()
-);
-
-const redactPublicArtifactCredentials = (
+const redactStructuredCredentials = (
   value: unknown,
   credentials: readonly string[],
-  path: readonly string[] = []
+  options: {
+    localKeys?: ReadonlySet<string>;
+    localString?: (path: readonly string[]) => boolean;
+    localStringKeys?: ReadonlySet<string>;
+    preserveKeys?: boolean;
+    trustedStrings?: ReadonlySet<string>;
+  } = {},
+  path: readonly string[] = [],
+  sourceKey?: string
 ): unknown => {
   if (typeof value === 'string') {
-    // createPublicReport owns this timestamp. Credential collisions must not turn its valid
-    // date-time into an invalid report before schema validation.
-    return pathMatches(['generatedAt'], path) || isLocalSchemaConstant(path, value)
+    return options.trustedStrings?.has(value)
+      || (sourceKey !== undefined && options.localStringKeys?.has(sourceKey))
+      || options.localString?.(path)
       ? value
       : redactKnownCredentialString(value, credentials);
   }
   if (!value || typeof value !== 'object') return value;
   if (Array.isArray(value)) {
-    return value.map((item, index) => redactPublicArtifactCredentials(
+    return value.map((item, index) => redactStructuredCredentials(
       item,
       credentials,
-      [...path, String(index)]
+      options,
+      [...path, String(index)],
+      sourceKey
     ));
   }
-  const structuralKeys = localSchemaKeys(path);
   const usedKeys = new Set<string>();
   return Object.fromEntries(Object.entries(value)
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
     .map(([key, child]) => {
-      const redactedKey = structuralKeys.has(key)
+      const redactedKey = options.preserveKeys || options.localKeys?.has(key)
         ? key
         : redactKnownCredentialString(key, credentials);
       let uniqueKey = redactedKey;
@@ -319,9 +171,71 @@ const redactPublicArtifactCredentials = (
       usedKeys.add(uniqueKey);
       return [
         uniqueKey,
-        redactPublicArtifactCredentials(child, credentials, [...path, key]),
+        redactStructuredCredentials(child, credentials, options, [...path, key], key),
       ];
     }));
+};
+
+const redactEvaluationCredentials = (
+  evaluation: EvaluationReport,
+  endpoint: string,
+  credentials: readonly string[]
+): EvaluationReport => {
+  // serverUrl and matching negotiation endpoints are derived from the validated CLI target, not
+  // from the credential. Preserve those configuration-owned strings while scrubbing target
+  // evidence before it can influence compatibility or release-decision construction.
+  const trustedEndpoint = new Set([endpoint, evaluation.serverUrl]);
+  return {
+    serverUrl: evaluation.serverUrl,
+    ...(evaluation.authenticationUrl ? {
+      authenticationUrl: redactStructuredCredentials(
+        evaluation.authenticationUrl,
+        credentials,
+        { trustedStrings: trustedEndpoint }
+      ) as string,
+    } : {}),
+    ...(evaluation.resourceMetadataUrl ? {
+      resourceMetadataUrl: redactStructuredCredentials(
+        evaluation.resourceMetadataUrl,
+        credentials,
+        { trustedStrings: trustedEndpoint }
+      ) as string,
+    } : {}),
+    ...(evaluation.scope ? {
+      scope: redactKnownCredentialString(evaluation.scope, credentials),
+    } : {}),
+    ...(evaluation.outcome ? { outcome: evaluation.outcome } : {}),
+    finalScore: evaluation.finalScore,
+    sections: Object.fromEntries(Object.entries(evaluation.sections).map(([id, section]) => [
+      id,
+      {
+        ...section,
+        name: redactKnownCredentialString(section.name, credentials),
+        description: redactKnownCredentialString(section.description, credentials),
+        details: section.details.map((detail) => ({
+          ...detail,
+          text: redactKnownCredentialString(detail.text, credentials),
+          ...(detail.context ? {
+            context: redactKnownCredentialString(detail.context, credentials),
+          } : {}),
+          ...(detail.metadata !== undefined ? {
+            metadata: redactStructuredCredentials(detail.metadata, credentials, {
+              localKeys: LOCAL_METADATA_KEYS,
+              localStringKeys: LOCAL_METADATA_VALUE_KEYS,
+              trustedStrings: trustedEndpoint,
+            }),
+          } : {}),
+        })),
+      },
+    ])),
+    ...(evaluation.toolSurfaceAnalysis ? {
+      toolSurfaceAnalysis: redactStructuredCredentials(
+        evaluation.toolSurfaceAnalysis,
+        credentials,
+        { preserveKeys: true, localString: isLocalToolAnalysisString }
+      ) as EvaluationReport['toolSurfaceAnalysis'],
+    } : {}),
+  };
 };
 
 const safeFilenameHost = (endpoint: string): string => {
@@ -365,22 +279,23 @@ export const getReleaseGateThresholdReasons = (
 
 const createReleaseArtifact = (
   evaluation: EvaluationReport,
+  endpoint: string,
   generatedAt: string | Date | undefined,
   credentials: readonly string[]
 ): { decision: ReleaseDecision; report: PublicReport } => {
-  const compatibilityMatrix = createCompatibilityMatrix(evaluation);
+  const publicEvaluation = redactEvaluationCredentials(evaluation, endpoint, credentials);
+  const compatibilityMatrix = createCompatibilityMatrix(publicEvaluation);
   const decision = createReleaseDecision(
-    evaluation,
+    publicEvaluation,
     compatibilityMatrix,
-    evaluation.toolSurfaceAnalysis
+    publicEvaluation.toolSurfaceAnalysis
   );
-  const artifact = createPublicReport(evaluation, {
+  const report = createPublicReport(publicEvaluation, {
     generatedAt,
     compatibilityMatrix,
     releaseDecision: decision,
-    toolSurfaceAnalysis: evaluation.toolSurfaceAnalysis,
+    toolSurfaceAnalysis: publicEvaluation.toolSurfaceAnalysis,
   });
-  const report = PublicReportSchema.parse(redactPublicArtifactCredentials(artifact, credentials));
   return { decision, report };
 };
 
@@ -415,6 +330,7 @@ export const runReleaseGate = async (
       );
       const { decision, report } = createReleaseArtifact(
         evaluation,
+        endpoint,
         options.generatedAt,
         credentials
       );

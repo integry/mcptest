@@ -270,6 +270,53 @@ describe('headless release gate', () => {
       .toEqual(result.targets[0].report);
   });
 
+  it('preserves a configured endpoint when a credential matches a hostname component', async () => {
+    const endpoint = 'https://credential-collision.example/mcp';
+    const credential = 'credential-collision';
+    const result = await runReleaseGate({
+      endpoints: [endpoint],
+      headers: { Authorization: `Bearer ${credential}` },
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, {
+      evaluate: async () => {
+        const report = evaluatedReport(endpoint);
+        report.sections.protocol.details[0].context = `Server echoed ${credential}`;
+        return report;
+      },
+    });
+
+    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.pass);
+    expect(result.targets[0].report?.target.testedEndpoint).toBe(endpoint);
+    expect(result.targets[0].report?.target.negotiatedEndpoint).toBe(endpoint);
+    expect(result.targets[0].report?.sections[0].evidence[0].context)
+      .toBe(`Server echoed ${REDACTED_VALUE}`);
+    expect(() => new URL(result.targets[0].report?.target.testedEndpoint || '')).not.toThrow();
+    expect(PublicReportSchema.parse(JSON.parse(result.targets[0].json || '')))
+      .toEqual(result.targets[0].report);
+  });
+
+  it('preserves locally generated host-profile identifiers that collide with credentials', async () => {
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { Authorization: 'Bearer chatgpt' },
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, {
+      evaluate: async () => {
+        const report = evaluatedReport();
+        report.sections.protocol.details[0].context = 'Server echoed chatgpt';
+        return report;
+      },
+    });
+
+    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.pass);
+    expect(result.targets[0].report?.compatibility?.assessments.chatgpt?.profileId)
+      .toBe('chatgpt');
+    expect(result.targets[0].report?.sections[0].evidence[0].context)
+      .toBe(`Server echoed ${REDACTED_VALUE}`);
+    expect(PublicReportSchema.parse(JSON.parse(result.targets[0].json || '')))
+      .toEqual(result.targets[0].report);
+  });
+
   it('applies overall and severity thresholds without redefining release semantics', () => {
     const decision: ReleaseDecision = {
       status: 'review',

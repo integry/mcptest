@@ -149,8 +149,10 @@ Endpoints are newline-delimited and `credential_mode` is `public`, `bearer`, or
 ```yaml
 jobs:
   gate:
-    uses: integry/mcptest/.github/workflows/mcptest-release-gate.yml@master
+    # Replace this example SHA in both places with the mcptest commit to run.
+    uses: integry/mcptest/.github/workflows/mcptest-release-gate.yml@0123456789abcdef0123456789abcdef01234567
     with:
+      mcptest_ref: 0123456789abcdef0123456789abcdef01234567
       endpoints: |
         https://protected.example/mcp
       credential_mode: bearer
@@ -161,7 +163,6 @@ jobs:
 ```
 
 Public callers omit `secrets`. API-key callers set `credential_mode: api-key`
-and pass `MCPTEST_API_KEY`. The workflow checks out the exact mcptest commit
-that contains the invoked reusable workflow, including for cross-repository
-callers. Pin the `uses` value to a commit SHA when the calling repository
-requires immutable third-party workflow dependencies.
+and pass `MCPTEST_API_KEY`. Cross-repository callers must pin `uses` to a commit
+SHA and pass that same SHA as `mcptest_ref`, so the workflow checks out the exact
+mcptest commit that contains the invoked reusable workflow.

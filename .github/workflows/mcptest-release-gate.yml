@@ -3,6 +3,10 @@ name: mcptest release gate
 on:
   workflow_call:
     inputs:
+      mcptest_ref:
+        description: Exact integry/mcptest commit SHA used in the calling job's uses value
+        required: true
+        type: string
       endpoints:
         description: Newline-delimited remote MCP endpoint URLs
         required: true
@@ -75,8 +79,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: integry/mcptest
+          ref: ${{ inputs.mcptest_ref || github.sha }}
           path: mcptest
       - uses: actions/setup-node@v4
         with:
