@@ -34,7 +34,10 @@ const report = (serverUrl = 'https://history.example/mcp'): EvaluationReport => 
     inputSchema: {
       type: 'object',
       properties: {
-        access_token: { type: 'string', default: 'schema-secret' },
+        access_token: { $ref: '#/$defs/public' },
+      },
+      $defs: {
+        public: { type: 'string', const: 'schema-secret' },
       },
     },
   }]),
@@ -81,6 +84,9 @@ describe('report snapshot history', () => {
     expect(loaded[0].report.toolSurfaceAnalysis?.toolDefinitions?.tools[0].inputSchema).toEqual({
       properties: {
         access_token: '[REDACTED]',
+      },
+      $defs: {
+        public: '[REDACTED]',
       },
       type: 'object',
     });

@@ -426,12 +426,22 @@ const schemaChanges = (
   if (changes.length > enumChangeStart) reportedHandledKeys.add('enum');
 
   const additionalPropertiesChangeStart = changes.length;
-  if (before.additionalProperties !== false && after.additionalProperties === false) {
+  if (!sameAdditionalPropertiesKeyword(before.additionalProperties, after.additionalProperties)
+      && (beforeAdditionalProperties.status === 'malformed'
+        || afterAdditionalProperties.status === 'malformed')) {
+    changes.push(makeChange(
+      'unknown', 'tools', `${path}.additionalProperties`,
+      `${toolName} extra-input behavior could not be compared`,
+      'At least one additionalProperties declaration is malformed.'
+    ));
+  } else if (beforeAdditionalProperties.status !== 'reject'
+      && afterAdditionalProperties.status === 'reject') {
     changes.push(makeChange(
       'breaking', 'tools', `${path}.additionalProperties`, `${toolName} stopped accepting extra inputs`,
       'Callers sending undeclared inputs may now fail validation.'
     ));
-  } else if (before.additionalProperties === false && after.additionalProperties !== false) {
+  } else if (beforeAdditionalProperties.status === 'reject'
+      && afterAdditionalProperties.status !== 'reject') {
     changes.push(makeChange(
       'change', 'tools', `${path}.additionalProperties`, `${toolName} now accepts extra inputs`,
       'The input contract was relaxed.'

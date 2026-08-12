@@ -1423,12 +1423,16 @@ const promptLikeSignals = (description: string | null): string[] => {
 const createToolDefinitionSnapshot = (
   tools: readonly ToolRecord[],
   expectedToolCount: number,
-  discoveryIncomplete: boolean
+  discoveryIncomplete: boolean,
+  toolListStatus: 'present' | 'empty' | 'missing' | 'malformed'
 ): ToolDefinitionSnapshotSetV1 => {
   const definitions: ToolDefinitionSnapshotSetV1['tools'] = [];
   const names = new Set<string>();
   let retainedBytes = 0;
-  let complete = !discoveryIncomplete && tools.length === expectedToolCount;
+  const toolListValidated = toolListStatus === 'present' || toolListStatus === 'empty';
+  let complete = toolListValidated
+    && !discoveryIncomplete
+    && tools.length === expectedToolCount;
 
   for (const tool of tools) {
     if (
@@ -1472,7 +1476,7 @@ const createToolDefinitionSnapshot = (
 
   definitions.sort((left, right) => compareText(left.name, right.name));
   return {
-    status: expectedToolCount === 0 && discoveryIncomplete
+    status: !toolListValidated || (expectedToolCount === 0 && discoveryIncomplete)
       ? 'unavailable'
       : complete ? 'complete' : 'partial',
     tools: definitions,
@@ -2080,7 +2084,8 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     toolDefinitions: createToolDefinitionSnapshot(
       tools,
       extracted.tools.length,
-      extracted.incompleteDiscovery.includes('tools')
+      extracted.incompleteDiscovery.includes('tools'),
+      extracted.status
     ),
     findings,
     findingCount,

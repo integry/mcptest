@@ -411,6 +411,31 @@ describe('semantic report drift', () => {
       .toEqual([]);
   });
 
+  it.each([
+    ['closed to malformed', false, 42],
+    ['malformed to closed', 42, false],
+  ])('classifies %s additionalProperties as unknown', (_label, beforeValue, afterValue) => {
+    const schema = (additionalProperties: unknown) => ({
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+      additionalProperties,
+    });
+    const before = artifact({ tools: [tool(schema(beforeValue))] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(schema(afterValue))],
+    });
+    const changes = diffPublicReports(before, after).changes.filter(
+      ({ path }) => path === 'tools.search.inputSchema.additionalProperties'
+    );
+
+    expect(changes).toEqual([expect.objectContaining({
+      classification: 'unknown',
+      breaking: false,
+    })]);
+  });
+
   it('marks description redaction as an uncomparable tool contract', () => {
     const before = artifact({ tools: [{
       ...tool(inputSchema({ query: { type: 'string' } })),
@@ -428,6 +453,29 @@ describe('semantic report drift', () => {
     expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
       path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+    }));
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['malformed', { tools: 42 }],
+  ])('does not infer tool removals from a %s tool-list observation', (_label, input) => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    Object.assign(after, { toolSurfaceAnalysis: analyzeToolSurface(input) });
+
+    const toolChanges = diffPublicReports(before, after).changes.filter(
+      ({ category }) => category === 'tools'
+    );
+
+    expect(after.toolSurfaceAnalysis.toolDefinitions.status).toBe('unavailable');
+    expect(toolChanges).toContainEqual(expect.objectContaining({
+      path: 'toolSurfaceAnalysis.toolDefinitions',
+      classification: 'unknown',
+      breaking: false,
+    }));
+    expect(toolChanges).not.toContainEqual(expect.objectContaining({
+      classification: 'removal',
     }));
   });
 

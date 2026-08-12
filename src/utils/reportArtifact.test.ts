@@ -760,6 +760,48 @@ describe('versioned public report artifacts', () => {
     expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
   });
 
+  it('redacts definitions recursively referenced by sensitive schema properties', () => {
+    const makeArtifact = (opaqueCredential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            access_token: { $ref: '#/$defs/public' },
+          },
+          $defs: {
+            public: { $ref: '#/definitions/shared' },
+          },
+          definitions: {
+            shared: { type: 'string', const: opaqueCredential },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const opaqueCredential = 'cedar-orbit-opaque-58';
+    const artifact = makeArtifact(opaqueCredential);
+    const alternate = makeArtifact('indigo-harbor-opaque-26');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown };
+      $defs: { public: unknown };
+      definitions: { shared: unknown };
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(schema.$defs.public).toBe('[REDACTED]');
+    expect(schema.definitions.shared).toBe('[REDACTED]');
+    expect(json).not.toContain(opaqueCredential);
+    expect(markdown).not.toContain(opaqueCredential);
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
   it('does not retain a low-entropy credential dictionary verifier in the fingerprint', () => {
     const credentialDictionary = ['0000', '0001', '1234', '9999'];
     const analyses = credentialDictionary.map((credential) => analyzeToolSurface([{

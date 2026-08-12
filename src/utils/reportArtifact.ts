@@ -965,10 +965,124 @@ const redactedContractFingerprint = (value: unknown): { value: string; canonical
   };
 };
 
+const localSchemaReferencePath = (reference: string): string[] | undefined => {
+  if (reference === '#') return [];
+  if (!reference.startsWith('#/')) return undefined;
+  try {
+    return decodeURIComponent(reference.slice(2))
+      .split('/')
+      .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
+  } catch {
+    return undefined;
+  }
+};
+
+const schemaValueAtPath = (
+  root: unknown,
+  path: readonly string[]
+): { found: boolean; value?: unknown } => {
+  let current = root;
+  for (const segment of path) {
+    if (Array.isArray(current)) {
+      if (!/^\d+$/.test(segment) || Number(segment) >= current.length) return { found: false };
+      current = current[Number(segment)];
+      continue;
+    }
+    if (!current || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, segment)) {
+      return { found: false };
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return { found: true, value: current };
+};
+
+const collectLocalSchemaReferences = (
+  value: unknown,
+  references: Set<string>,
+  seen: Set<unknown>
+): void => {
+  if (!value || typeof value !== 'object' || seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectLocalSchemaReferences(item, references, seen));
+    return;
+  }
+  for (const [childKey, childValue] of Object.entries(value)) {
+    if (childKey === '$ref' && typeof childValue === 'string' && localSchemaReferencePath(childValue)) {
+      references.add(childValue);
+    }
+    collectLocalSchemaReferences(childValue, references, seen);
+  }
+};
+
+const redactSchemaValuesAtPaths = (
+  value: unknown,
+  redactedPaths: ReadonlySet<string>,
+  path: readonly string[] = []
+): unknown => {
+  if (redactedPaths.has(JSON.stringify(path))) return REDACTED_VALUE;
+  if (Array.isArray(value)) {
+    return value.map((item, index) => redactSchemaValuesAtPaths(
+      item,
+      redactedPaths,
+      [...path, String(index)]
+    ));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      redactSchemaValuesAtPaths(childValue, redactedPaths, [...path, childKey]),
+    ]));
+  }
+  return value;
+};
+
+const redactSensitiveSchemaReferences = (schema: unknown): unknown => {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
+  const pendingReferences = new Set<string>();
+  const seenSchemaNodes = new Set<unknown>();
+
+  const visitProperties = (value: unknown): void => {
+    if (!value || typeof value !== 'object' || seenSchemaNodes.has(value)) return;
+    seenSchemaNodes.add(value);
+    if (Array.isArray(value)) {
+      value.forEach(visitProperties);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)) {
+      for (const [propertyName, declaration] of Object.entries(record.properties)) {
+        if (isSensitiveQueryKey(propertyName)) {
+          collectLocalSchemaReferences(declaration, pendingReferences, new Set());
+        }
+      }
+    }
+    Object.values(record).forEach(visitProperties);
+  };
+  visitProperties(schema);
+
+  const redactedPaths = new Set<string>();
+  for (const reference of pendingReferences) {
+    const referencePath = localSchemaReferencePath(reference);
+    if (!referencePath) continue;
+    const pathKey = JSON.stringify(referencePath);
+    if (redactedPaths.has(pathKey)) continue;
+    const target = schemaValueAtPath(schema, referencePath);
+    if (!target.found) continue;
+    redactedPaths.add(pathKey);
+    collectLocalSchemaReferences(target.value, pendingReferences, new Set());
+  }
+
+  return redactedPaths.size > 0
+    ? redactSchemaValuesAtPaths(schema, redactedPaths)
+    : schema;
+};
+
 const redactReportValueAtPath = (
   value: unknown,
   key: string | undefined,
-  path: readonly string[]
+  path: readonly string[],
+  schemaReferencesRedacted = false
 ): unknown => {
   if (key
       && isSensitiveQueryKey(key)
@@ -982,6 +1096,16 @@ const redactReportValueAtPath = (
     && !isJsonRpcErrorCode(value, key, path)) {
     return REDACTED_VALUE;
   }
+  if (
+    key === 'inputSchema'
+    && path.includes('toolDefinitions')
+    && !schemaReferencesRedacted
+  ) {
+    const redactedReferences = redactSensitiveSchemaReferences(value);
+    if (redactedReferences !== value) {
+      return redactReportValueAtPath(redactedReferences, key, path, true);
+    }
+  }
   if (value === undefined) return undefined;
   if (typeof value === 'string') return redactReportString(value);
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
@@ -989,7 +1113,7 @@ const redactReportValueAtPath = (
     return value.map((item, index) => redactReportValueAtPath(item, undefined, [
       ...path,
       String(index),
-    ]));
+    ], schemaReferencesRedacted));
   }
   if (value && typeof value === 'object') {
     const redactedKeys = new Set<string>();
@@ -1006,7 +1130,12 @@ const redactReportValueAtPath = (
         redactedKeys.add(uniqueKey);
         return [
           uniqueKey,
-          redactReportValueAtPath(childValue, childKey, [...path, childKey]),
+          redactReportValueAtPath(
+            childValue,
+            childKey,
+            [...path, childKey],
+            schemaReferencesRedacted
+          ),
         ];
       }));
     if (
