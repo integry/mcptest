@@ -4,6 +4,7 @@ import {
   ProxiedAuthenticationError,
   TransportConnectionError,
   attemptParallelConnections,
+  getObservedAuthenticationChallenge,
   getRequestHeadersForCandidate,
   getTransportCandidates,
   sanitizeAuthenticationChallenge,
@@ -427,6 +428,36 @@ describe('transport candidate generation', () => {
     expect(findAuthenticationError(connectionError)).toMatchObject({
       status: 401,
       responseSource: 'target',
+    });
+  });
+
+  it.each([
+    ['Streamable HTTP', 'https://example.com/mcp'],
+    ['legacy SSE', 'https://example.com/sse'],
+  ])('preserves a real %s challenge even when the SDK connection stalls', async (
+    _label,
+    endpoint
+  ) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': 'Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+      },
+    })));
+    connectionMocks.connect = async ({ endpoint: candidateEndpoint, fetch }) => {
+      await fetch?.(candidateEndpoint);
+      await new Promise(() => {});
+    };
+
+    const connectionError = await attemptParallelConnections(endpoint).catch((error) => error);
+    const challenge = getObservedAuthenticationChallenge(connectionError);
+
+    expect(challenge).toMatchObject({
+      status: 401,
+      source: 'target',
+      responseHeaders: {
+        'www-authenticate': expect.stringContaining('Bearer'),
+      },
     });
   });
 

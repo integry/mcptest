@@ -82,6 +82,39 @@ describe('release readiness integration', () => {
     expect(facts.environment.directAccess.value).toBe('reachable');
   });
 
+  it('does not claim that a headless direct connection established browser CORS', () => {
+    const report = evaluatedReport();
+    delete report.sections.cors;
+    report.sections.protocol.details[0].metadata = {
+      ...(report.sections.protocol.details[0].metadata as Record<string, unknown>),
+      evaluationRuntime: 'headless',
+    };
+
+    const environment = createObservedServerFacts(report).environment;
+
+    expect(environment.directAccess.value).toBe('reachable');
+    expect(environment.directAccess.evidence[0].description).toContain('headless evaluator');
+    expect(environment.cors.value).toBe('unknown');
+    expect(environment.cors.evidence[0].description).toContain('not observable');
+  });
+
+  it('does not claim that a headless proxy connection established a browser CORS failure', () => {
+    const report = evaluatedReport();
+    delete report.sections.cors;
+    report.sections.protocol.details[0].metadata = {
+      ...(report.sections.protocol.details[0].metadata as Record<string, unknown>),
+      route: 'authenticated proxy',
+      evaluationRuntime: 'headless',
+    };
+
+    const environment = createObservedServerFacts(report).environment;
+
+    expect(environment.directAccess.value).toBe('blocked');
+    expect(environment.cors.value).toBe('unknown');
+    expect(environment.cors.evidence[0].description).toContain('not observable');
+    expect(environment.proxyRoute.value).toBe('used');
+  });
+
   it('marks session behavior stateful from observed MCP-Session-Id evidence', () => {
     const report = evaluatedReport();
     report.sections.protocol.details[0].metadata = {

@@ -110,6 +110,12 @@ describe('rendered anonymous proxy preference', () => {
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(true);
     expect(view.container.textContent).toContain('mcptest proxy authentication required');
     expect(view.container.textContent).not.toContain('MCP Server Connection Failed');
+
+    const connectionPanel = view.container.querySelector('.connection-console');
+    const prerequisitePanel = view.container.querySelector('.oauth-prerequisite-panel');
+    const playgroundLayout = view.container.querySelector('.playground-layout');
+    expect(connectionPanel?.nextElementSibling).toBe(prerequisitePanel);
+    expect(prerequisitePanel?.nextElementSibling).toBe(playgroundLayout);
     view.unmount();
   });
 
