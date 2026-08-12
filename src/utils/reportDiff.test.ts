@@ -177,6 +177,72 @@ describe('semantic report drift', () => {
     }));
   });
 
+  it('ignores representation-only schema changes', () => {
+    const before = artifact({ tools: [tool({
+      type: 'object',
+      properties: {
+        query: { type: 'string', enum: ['public', 'private'] },
+        tenant: { type: 'string' },
+      },
+      required: ['query', 'tenant'],
+    })] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool({
+        type: 'object',
+        properties: {
+          query: { type: 'string', enum: ['private', 'public'] },
+          tenant: { type: 'string' },
+        },
+        required: ['tenant', 'query'],
+        additionalProperties: true,
+      })],
+    });
+
+    expect(diffPublicReports(before, after).changes.filter(({ category }) => category === 'tools'))
+      .toEqual([]);
+  });
+
+  it('marks description redaction as an uncomparable tool contract', () => {
+    const before = artifact({ tools: [{
+      ...tool(inputSchema({ query: { type: 'string' } })),
+      description: 'Authenticate with access_token=quartz-maple-91',
+    }] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [{
+        ...tool(inputSchema({ query: { type: 'string' } })),
+        description: 'Authenticate with access_token=cobalt-river-27',
+      }],
+    });
+
+    expect(before.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+    }));
+  });
+
+  it('marks example-object redaction as an uncomparable tool contract', () => {
+    const withExample = (credential: string) => tool(inputSchema({
+      query: {
+        type: 'string',
+        examples: [{ client_secret: credential }],
+      },
+    }));
+    const before = artifact({ tools: [withExample('quartz-maple-91')] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [withExample('cobalt-river-27')],
+    });
+
+    expect(before.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+    }));
+  });
+
   it('prioritizes transport regressions ahead of score changes', () => {
     const before = artifact();
     const after = artifact({
@@ -225,6 +291,48 @@ describe('semantic report drift', () => {
       category: 'authentication', classification: 'risk',
       title: 'OAuth metadata changed: authorization_server_metadata',
     }));
+  });
+
+  it('classifies OAuth observations missing from a failed run as unknown', () => {
+    const before = artifact({ oauthMetadata: { issuer: 'https://auth.example' } });
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    after.outcome = { status: 'failed', summary: 'The evaluation did not complete.' };
+    after.score = null;
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'oauth.authorization_server_metadata', classification: 'unknown', breaking: false,
+    }));
+  });
+
+  it('classifies capabilities missing from a partial run as unknown', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    const capabilities = after.sections.find(({ id }) => id === 'capabilities')!;
+    capabilities.status = 'partial';
+    capabilities.evidence = [];
+    after.outcome = { status: 'partial', summary: 'The evaluation was partial.' };
+    after.score = null;
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'capabilities.tools/list', classification: 'unknown', breaking: false,
+    }));
+    expect(diffPublicReports(before, after).changes).not.toContainEqual(expect.objectContaining({
+      path: 'capabilities.tools/list', classification: 'removal',
+    }));
+  });
+
+  it('classifies protocol data unavailable after a failed run as unknown', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    delete after.protocol;
+    after.sections.find(({ id }) => id === 'protocol')!.status = 'failed';
+    after.outcome = { status: 'failed', summary: 'The evaluation did not complete.' };
+    after.score = null;
+
+    expect(diffPublicReports(before, after).changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'protocol.era', classification: 'unknown', breaking: false }),
+      expect.objectContaining({ path: 'protocol.version', classification: 'unknown', breaking: false }),
+    ]));
   });
 
   it('compares stateful and stateless protocol results without treating them as unavailable', () => {

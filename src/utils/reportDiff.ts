@@ -101,6 +101,35 @@ const stringSet = (value: unknown): Set<string> => new Set(
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 );
 
+const sameSet = <T>(left: Set<T>, right: Set<T>): boolean => (
+  left.size === right.size && [...left].every((value) => right.has(value))
+);
+
+const sameRequiredKeyword = (left: unknown, right: unknown): boolean => {
+  const normalize = (value: unknown): Set<string> | undefined => {
+    if (value === undefined) return new Set();
+    if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return undefined;
+    return new Set(value);
+  };
+  const normalizedLeft = normalize(left);
+  const normalizedRight = normalize(right);
+  return normalizedLeft !== undefined
+    && normalizedRight !== undefined
+    && sameSet(normalizedLeft, normalizedRight);
+};
+
+const sameEnumKeyword = (left: unknown, right: unknown): boolean => {
+  if (!Array.isArray(left) || !Array.isArray(right)) return same(left, right);
+  const normalizedLeft = left.map(stableString).sort();
+  const normalizedRight = right.map(stableString).sort();
+  return same(normalizedLeft, normalizedRight);
+};
+
+const sameAdditionalPropertiesKeyword = (left: unknown, right: unknown): boolean => same(
+  left === undefined ? true : left,
+  right === undefined ? true : right
+);
+
 const schemaChanges = (
   before: unknown,
   after: unknown,
@@ -172,12 +201,15 @@ const schemaChanges = (
   }
   if (changes.length > propertiesChangeStart || addedRequiredProperty) {
     reportedHandledKeys.add('properties');
+  } else if (isRecord(before.properties) && isRecord(after.properties)) {
+    // Every shared child compared semantically and no property was added or removed.
+    reportedHandledKeys.add('properties');
   }
 
   const beforeEnum = Array.isArray(before.enum) ? before.enum : undefined;
   const afterEnum = Array.isArray(after.enum) ? after.enum : undefined;
   const enumChangeStart = changes.length;
-  if (beforeEnum && afterEnum && !same(beforeEnum, afterEnum)) {
+  if (beforeEnum && afterEnum && !sameEnumKeyword(beforeEnum, afterEnum)) {
     const removed = beforeEnum.filter((value) => !afterEnum.some((candidate) => same(candidate, value)));
     const added = afterEnum.filter((value) => !beforeEnum.some((candidate) => same(candidate, value)));
     if (removed.length) {
@@ -208,7 +240,7 @@ const schemaChanges = (
       'change', 'tools', `${path}.enum`, `${toolName} no longer restricts accepted values`,
       'The input contract was relaxed from an explicit enum to unrestricted values.'
     ));
-  } else if (!same(before.enum, after.enum)) {
+  } else if ((!beforeEnum || !afterEnum) && !same(before.enum, after.enum)) {
     changes.push(makeChange(
       'unknown', 'tools', `${path}.enum`, `${toolName} enum could not be compared`,
       'At least one enum declaration is not an array of literal values.'
@@ -240,7 +272,14 @@ const schemaChanges = (
 
   const handledKeys = new Set(['type', 'required', 'properties', 'enum', 'additionalProperties', 'items']);
   for (const key of handledKeys) {
-    if (same(before[key], after[key]) || reportedHandledKeys.has(key)) continue;
+    const semanticallyEqual = key === 'required'
+      ? sameRequiredKeyword(before[key], after[key])
+      : key === 'enum'
+        ? sameEnumKeyword(before[key], after[key])
+        : key === 'additionalProperties'
+          ? sameAdditionalPropertiesKeyword(before[key], after[key])
+          : same(before[key], after[key]);
+    if (semanticallyEqual || reportedHandledKeys.has(key)) continue;
     changes.push(makeChange(
       'unknown', 'tools', `${path}.${key}`, `${toolName} schema constraint changed`,
       `${key} changed, but the values could not be compared reliably.`
@@ -364,34 +403,51 @@ const securityMetadata = (report: PublicReport): Map<string, unknown> => {
   return metadata;
 };
 
+const hasCompleteRunObservations = (report: PublicReport): boolean => (
+  report.outcome.status !== 'partial' && report.outcome.status !== 'failed'
+);
+
 const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChange[] => {
   const changes: ReportDiffChange[] = [];
-  if (before.outcome.status !== 'authorization-required' && after.outcome.status === 'authorization-required') {
+  if (before.outcome.status === 'scored' && after.outcome.status === 'authorization-required') {
     changes.push(makeChange(
       'breaking', 'authentication', 'outcome.status', 'Server now requires authorization',
       'A previously usable evaluation is now blocked by an authorization prerequisite.'
     ));
-  } else if (before.outcome.status === 'authorization-required' && after.outcome.status !== 'authorization-required') {
+  } else if (before.outcome.status === 'authorization-required' && after.outcome.status === 'scored') {
     changes.push(makeChange(
       'change', 'authentication', 'outcome.status', 'Authorization prerequisite cleared',
       'The latest run progressed beyond the prior authorization gate.'
+    ));
+  } else if (
+    (before.outcome.status === 'authorization-required')
+    !== (after.outcome.status === 'authorization-required')
+  ) {
+    changes.push(makeChange(
+      'unknown', 'authentication', 'outcome.status', 'Authorization requirement is not comparable',
+      'A partial or failed run did not establish whether the authorization prerequisite changed.'
     ));
   }
 
   const beforeSteps = metadataByOAuthStep(before);
   const afterSteps = metadataByOAuthStep(after);
+  const observationsComparable = hasCompleteRunObservations(before)
+    && hasCompleteRunObservations(after);
   for (const type of [...new Set([...beforeSteps.keys(), ...afterSteps.keys()])].sort()) {
     const left = beforeSteps.get(type);
     const right = afterSteps.get(type);
     if (same(left, right)) continue;
-    if (left === undefined || right === undefined) {
+    if (!observationsComparable || right === undefined) {
       changes.push(makeChange(
-        left === undefined ? 'addition' : 'risk', 'authentication', `oauth.${type}`,
-        left === undefined ? `OAuth observation added: ${type}` : `OAuth observation missing: ${type}`,
-        left === undefined
-          ? 'The latest snapshot includes additional OAuth evidence.'
-          : 'Previously observed OAuth metadata was not available in the latest snapshot.',
-        left !== undefined
+        'unknown', 'authentication', `oauth.${type}`,
+        `OAuth observation is not comparable: ${type}`,
+        'One run did not establish this OAuth observation.'
+      ));
+    } else if (left === undefined) {
+      changes.push(makeChange(
+        'addition', 'authentication', `oauth.${type}`,
+        `OAuth observation added: ${type}`,
+        'The latest snapshot includes additional OAuth evidence.'
       ));
     } else {
       changes.push(makeChange(
@@ -407,6 +463,14 @@ const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChan
     const right = afterMetadata.get(key);
     if (same(left, right)) continue;
     const removed = beforeMetadata.has(key) && !afterMetadata.has(key);
+    if (!observationsComparable) {
+      changes.push(makeChange(
+        'unknown', 'authentication', `oauth.metadata.${key}`,
+        `OAuth metadata is not comparable: ${key}`,
+        'A partial or failed run did not establish this authentication metadata.'
+      ));
+      continue;
+    }
     changes.push(makeChange(
       removed ? 'risk' : !beforeMetadata.has(key) ? 'addition' : 'risk',
       'authentication', `oauth.metadata.${key}`,
@@ -421,26 +485,40 @@ const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChan
   return changes;
 };
 
-const capabilityMap = (report: PublicReport): Map<string, unknown> => {
+const capabilityObservation = (report: PublicReport): {
+  status: PublicReport['sections'][number]['status'] | undefined;
+  values: Map<string, unknown>;
+} => {
   const map = new Map<string, unknown>();
   const section = report.sections.find((candidate) => candidate.id === 'capabilities');
   for (const evidence of section?.evidence || []) {
     if (!isRecord(evidence.metadata) || typeof evidence.metadata.method !== 'string') continue;
     map.set(evidence.metadata.method, {
-      status: section?.status,
       itemCount: evidence.metadata.itemCount,
       outcome: evidence.metadata.outcome,
     });
   }
-  return map;
+  return { status: section?.status, values: map };
 };
 
 const compareCapabilities = (before: PublicReport, after: PublicReport): ReportDiffChange[] => {
   const changes: ReportDiffChange[] = [];
-  const left = capabilityMap(before);
-  const right = capabilityMap(after);
+  const beforeObservation = capabilityObservation(before);
+  const afterObservation = capabilityObservation(after);
+  const left = beforeObservation.values;
+  const right = afterObservation.values;
+  const observationsComparable = beforeObservation.status === 'evaluated'
+    && afterObservation.status === 'evaluated';
   for (const method of [...new Set([...left.keys(), ...right.keys()])].sort()) {
     if (same(left.get(method), right.get(method))) continue;
+    if (!observationsComparable) {
+      changes.push(makeChange(
+        'unknown', 'capabilities', `capabilities.${method}`,
+        `Capability is not comparable: ${method}`,
+        'One run did not fully evaluate discovery capabilities.'
+      ));
+      continue;
+    }
     const removed = left.has(method) && !right.has(method);
     changes.push(makeChange(
       removed ? 'removal' : !left.has(method) ? 'addition' : 'change',
@@ -542,6 +620,10 @@ const checkLatencies = (report: PublicReport): Map<string, number> => new Map(
   (report.timings?.checks || []).map((check) => [check.name, check.durationMs])
 );
 
+const sectionWasEvaluated = (report: PublicReport, id: string): boolean => (
+  report.sections.find((section) => section.id === id)?.status === 'evaluated'
+);
+
 export const diffPublicReports = (before: PublicReport, after: PublicReport): ReportDiff => {
   const changes: ReportDiffChange[] = [
     ...compareOAuth(before, after),
@@ -568,14 +650,36 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     breaking: transportRegressed,
   });
 
-  const protocolRegressed = before.protocol?.era === 'modern' && after.protocol?.era === 'legacy';
-  compareScalar(changes, before.protocol?.era, after.protocol?.era, {
-    classification: protocolRegressed ? 'breaking' : 'change', category: 'protocol',
-    path: 'protocol.era', title: 'Protocol lifecycle changed', breaking: protocolRegressed,
+  const protocolSectionsComparable = sectionWasEvaluated(before, 'protocol')
+    && sectionWasEvaluated(after, 'protocol');
+  const beforeProtocolEra = before.protocol?.era;
+  const afterProtocolEra = after.protocol?.era;
+  const protocolEraComparable = protocolSectionsComparable
+    && beforeProtocolEra !== undefined
+    && afterProtocolEra !== undefined;
+  const protocolRegressed = protocolEraComparable
+    && beforeProtocolEra === 'modern'
+    && afterProtocolEra === 'legacy';
+  compareScalar(changes, beforeProtocolEra, afterProtocolEra, {
+    classification: !protocolEraComparable ? 'unknown' : protocolRegressed ? 'breaking' : 'change',
+    category: 'protocol', path: 'protocol.era', title: 'Protocol lifecycle changed',
+    detail: protocolEraComparable
+      ? undefined
+      : 'One run did not establish a comparable protocol lifecycle.',
+    breaking: protocolRegressed,
   });
-  compareScalar(changes, before.protocol?.version, after.protocol?.version, {
-    classification: 'change', category: 'protocol', path: 'protocol.version',
-    title: 'Protocol version changed', breaking: false,
+  const beforeProtocolVersion = before.protocol?.version;
+  const afterProtocolVersion = after.protocol?.version;
+  const protocolVersionComparable = protocolSectionsComparable
+    && beforeProtocolVersion !== undefined
+    && afterProtocolVersion !== undefined;
+  compareScalar(changes, beforeProtocolVersion, afterProtocolVersion, {
+    classification: protocolVersionComparable ? 'change' : 'unknown', category: 'protocol',
+    path: 'protocol.version', title: 'Protocol version changed',
+    detail: protocolVersionComparable
+      ? undefined
+      : 'One run did not establish a comparable protocol version.',
+    breaking: false,
   });
   if (before.provenance.route === 'direct' && after.provenance.route === 'authenticated-proxy') {
     changes.push(makeChange(

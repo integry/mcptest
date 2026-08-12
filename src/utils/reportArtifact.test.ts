@@ -760,6 +760,36 @@ describe('versioned public report artifacts', () => {
     expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
   });
 
+  it('redacts opaque credentials throughout a nested sensitive property schema', () => {
+    const opaqueCredential = 'quartz-maple-91';
+    const report = publicReport();
+    report.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: {
+            type: 'object',
+            properties: {
+              value: { type: 'string', default: opaqueCredential },
+            },
+          },
+        },
+      },
+    }]);
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: { properties: { value: { default: unknown } } } };
+    };
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token.properties.value.default).toBe('[REDACTED]');
+    expect(serializePublicReportJson(artifact)).not.toContain(opaqueCredential);
+    expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
+  });
+
   it('redacts OAuth credential parameters from URLs using canonicalized names', () => {
     const output = redactReportString(
       'https://client.example/authorize?id_token_hint=url-id-secret&client-assertion=url-assertion-secret&deviceCode=url-device-secret&user_code=url-user-secret&display=visible'

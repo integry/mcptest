@@ -921,37 +921,41 @@ const isToolInputSchemaPropertyDeclaration = (
 
 const TOOL_SCHEMA_LITERAL_KEYS = new Set(['const', 'default', 'enum', 'example', 'examples']);
 
+const hasSensitiveToolSchemaPropertyAncestor = (path: readonly string[]): boolean => {
+  if (!path.includes('toolDefinitions') || !path.includes('inputSchema')) return false;
+  return path.some((segment, index) => (
+    segment === 'properties'
+    && index + 1 < path.length
+    && isSensitiveQueryKey(path[index + 1])
+  ));
+};
+
 const isSensitiveToolSchemaLiteral = (
   key: string,
   path: readonly string[]
 ): boolean => {
   if (!TOOL_SCHEMA_LITERAL_KEYS.has(canonicalKey(key))) return false;
-  const propertiesIndex = path.lastIndexOf('properties');
-  const propertyName = propertiesIndex >= 0 ? path[propertiesIndex + 1] : undefined;
-  return Boolean(
-    propertyName
-    && path.includes('toolDefinitions')
-    && path.includes('inputSchema')
-    && isSensitiveQueryKey(propertyName)
-  );
+  return hasSensitiveToolSchemaPropertyAncestor(path);
 };
 
-const containsSensitiveToolSchemaLiteral = (
-  value: unknown,
-  path: readonly string[]
-): boolean => {
-  if (Array.isArray(value)) {
-    return value.some((item, index) => containsSensitiveToolSchemaLiteral(item, [
-      ...path,
-      String(index),
-    ]));
+const sameReportValue = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((item, index) => sameReportValue(item, right[index]));
   }
-  if (!value || typeof value !== 'object') return false;
-  return Object.entries(value).some(([childKey, childValue]) => {
-    const childPath = [...path, childKey];
-    return isSensitiveToolSchemaLiteral(childKey, childPath)
-      || containsSensitiveToolSchemaLiteral(childValue, childPath);
-  });
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((childKey) => (
+      Object.prototype.hasOwnProperty.call(rightRecord, childKey)
+      && sameReportValue(leftRecord[childKey], rightRecord[childKey])
+    ));
 };
 
 const redactReportValueAtPath = (
@@ -997,7 +1001,7 @@ const redactReportValueAtPath = (
     if (
       key === 'toolDefinitions'
       && path.includes('toolSurfaceAnalysis')
-      && containsSensitiveToolSchemaLiteral(value, path)
+      && !sameReportValue(value, redactedObject)
     ) {
       return { ...redactedObject, status: 'partial' };
     }
