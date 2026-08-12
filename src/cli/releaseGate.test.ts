@@ -254,6 +254,22 @@ describe('headless release gate', () => {
     expect(result.targets[0].markdown).not.toContain(REDACTED_VALUE);
   });
 
+  it('preserves the locally generated timestamp when its year matches a credential', async () => {
+    const generatedAt = '2026-08-11T23:30:00.000Z';
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { Authorization: 'Bearer 2026' },
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+      generatedAt,
+    }, { evaluate: async () => evaluatedReport() });
+
+    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.pass);
+    expect(result.targets[0].status).toBe('evaluated');
+    expect(result.targets[0].report?.generatedAt).toBe(generatedAt);
+    expect(PublicReportSchema.parse(JSON.parse(result.targets[0].json || '')))
+      .toEqual(result.targets[0].report);
+  });
+
   it('applies overall and severity thresholds without redefining release semantics', () => {
     const decision: ReleaseDecision = {
       status: 'review',

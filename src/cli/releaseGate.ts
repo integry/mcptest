@@ -290,7 +290,9 @@ const redactPublicArtifactCredentials = (
   path: readonly string[] = []
 ): unknown => {
   if (typeof value === 'string') {
-    return isLocalSchemaConstant(path, value)
+    // createPublicReport owns this timestamp. Credential collisions must not turn its valid
+    // date-time into an invalid report before schema validation.
+    return pathMatches(['generatedAt'], path) || isLocalSchemaConstant(path, value)
       ? value
       : redactKnownCredentialString(value, credentials);
   }
