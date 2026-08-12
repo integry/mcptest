@@ -114,7 +114,10 @@ const credentialScopedFetch = (
   targetOrigin: string,
   fetchFn: typeof fetch
 ): typeof fetch => async (input, init) => {
-  let request = new Request(input, { ...init, redirect: 'manual' });
+  let request = new Request(input, init);
+  if (!hasTargetCredentialHeader(request.headers)) return fetchFn(request);
+
+  request = new Request(request, { redirect: 'manual' });
 
   for (let redirects = 0; redirects <= 20; redirects += 1) {
     const credentialed = hasTargetCredentialHeader(request.headers);

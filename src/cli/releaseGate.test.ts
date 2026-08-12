@@ -203,6 +203,34 @@ describe('headless release gate', () => {
     expect(await requests[1].text()).toBe('{}');
   });
 
+  it('preserves normal redirects for uncredentialed discovery during a credentialed evaluation', async () => {
+    const requests: Request[] = [];
+    const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      return request.redirect === 'follow'
+        ? new Response('{"issuer":"https://fixture.example"}', { status: 200 })
+        : new Response(null, { status: 302, headers: { location: '/oauth-metadata' } });
+    });
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { Authorization: 'Bearer credentialed-evaluation-secret' },
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, {
+      fetch: fetchFn,
+      evaluate: async () => {
+        const response = await fetch('https://fixture.example/.well-known/oauth-protected-resource');
+        expect(response.status).toBe(200);
+        return evaluatedReport();
+      },
+    });
+
+    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.pass);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].redirect).toBe('follow');
+    expect(requests[0].headers.has('authorization')).toBe(false);
+  });
+
   it('scrubs a supplied credential from arbitrary evaluator evidence before both artifacts', async () => {
     const secret = 'arbitrary-evidence-secret';
     const result = await runReleaseGate({
