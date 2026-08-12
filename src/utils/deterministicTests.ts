@@ -45,14 +45,14 @@ const WRITE_ACTIONS = new Set([
   'post', 'provision', 'publish', 'purchase', 'purge', 'remove', 'rename', 'replace', 'reset',
   'restore', 'refund', 'revoke', 'run', 'save', 'schedule',
   'send', 'set', 'start', 'stop', 'submit', 'sync', 'terminate', 'transfer', 'truncate',
-  'uninstall', 'update', 'upload', 'wipe', 'write',
+  'uninstall', 'update', 'upload', 'upsert', 'wipe', 'write',
 ]);
 const DESTRUCTIVE_ACTIONS = new Set([
   'archive', 'ban', 'cancel', 'clear', 'deactivate', 'delete', 'destroy', 'disable', 'drop', 'erase', 'kill',
   'overwrite', 'purge', 'remove', 'reset', 'revoke', 'terminate', 'transfer', 'truncate', 'uninstall',
   'wipe',
 ]);
-const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|password|passwd|secret|client[_ -]?secret)';
+const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|private[_ -]?key|signing[_ -]?key|password|passwd|secret|client[_ -]?secret)';
 const SENSITIVE_TEXT_NAME_PATTERN = `(?:[a-z0-9]+[_-])*${SENSITIVE_NAME_PATTERN}`;
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
@@ -441,6 +441,7 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
       }
     }
     return value
+      .replace(/-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?-----END \1-----/gi, '[REDACTED]')
       .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s\/?#@]+@/gi, '$1[REDACTED]@')
       .replace(new RegExp(`^([ \\t]*${SENSITIVE_TEXT_NAME_PATTERN}[ \\t]*:[ \\t]*)[^\\r\\n]*`, 'gim'), '$1[REDACTED]')
       .replace(new RegExp(`(\\b${SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')

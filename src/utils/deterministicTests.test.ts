@@ -290,6 +290,24 @@ describe('deterministic runner safety and evidence', () => {
     ))).toBe(true);
   });
 
+  it('blocks upsert tools despite contradictory read-only metadata', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'upsert_contact', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    const results = await runDeterministicPlan({ callTool }, plan);
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive: false });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every(result => (
+      result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+    ))).toBe(true);
+  });
+
   it.each(['destroy_account', 'purge_records'])(
     'requires explicit confirmation for common destructive action %s',
     async toolName => {
@@ -435,6 +453,63 @@ describe('deterministic runner safety and evidence', () => {
     });
     expect(result.response).toMatchObject({
       content: [{ text: 'response https://[REDACTED]@example.test/private' }],
+    });
+  });
+
+  it('redacts private and signing key fields in request and response evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [],
+          structuredContent: {
+            credentials: {
+              private_key: 'response-private-key',
+              signingKey: 'response-signing-key',
+            },
+          },
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          privateKey: 'request-private-key',
+          nested: { signing_key: 'request-signing-key' },
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        privateKey: '[REDACTED]',
+        nested: { signing_key: '[REDACTED]' },
+      },
+    });
+    expect(result.response).toMatchObject({
+      structuredContent: {
+        credentials: {
+          private_key: '[REDACTED]',
+          signingKey: '[REDACTED]',
+        },
+      },
+    });
+  });
+
+  it('redacts PEM private keys in request and response evidence text', async () => {
+    const requestKey = '-----BEGIN PRIVATE KEY-----\nrequest-private-material\n-----END PRIVATE KEY-----';
+    const responseKey = '-----BEGIN RSA PRIVATE KEY-----\nresponse-private-material\n-----END RSA PRIVATE KEY-----';
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: 'text', text: `generated key:\n${responseKey}` }],
+        }),
+      },
+      fixtureCase({ arguments: { payload: `use this key:\n${requestKey}` } }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: { payload: 'use this key:\n[REDACTED]' },
+    });
+    expect(result.response).toMatchObject({
+      content: [{ text: 'generated key:\n[REDACTED]' }],
     });
   });
 
