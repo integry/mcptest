@@ -912,6 +912,51 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
           />
       )}
+
+      {/* OAuth authorization prerequisite */}
+      {needsOAuthConfig && oauthConfigServerUrl && (
+        <OAuthConfig
+          serverUrl={oauthConfigServerUrl}
+          prerequisite={oauthPrerequisite || undefined}
+          onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
+            setPrerequisiteBearerCredential({
+              targetUrl: normalizeConnectionTarget(oauthConfigServerUrl),
+              authorization: `Bearer ${token}`,
+              attemptId: ++nextBearerAttemptId.current,
+            });
+            clearOAuthConfigNeed();
+          } : undefined}
+          onConfigured={async () => {
+            clearOAuthConfigNeed();
+            try {
+              const activeTabs = localStorage.getItem('mcpConnectionTabs');
+              if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+              sessionStorage.setItem('oauth_tab_id', tab.id);
+              sessionStorage.setItem('oauth_return_view', JSON.stringify({
+                activeView: 'playground',
+                activeTabId: tab.id,
+                timestamp: Date.now()
+              }));
+
+              addLogEntry({
+                type: 'info',
+                data: '🔐 OAuth client configured. Continuing secure authorization...'
+              });
+              handleConnectWrapper();
+            } catch (error) {
+              console.error('[OAuth Config] Failed to continue auth flow:', error);
+              addLogEntry({
+                type: 'error',
+                data: `Failed to continue OAuth authorization: ${error instanceof Error ? error.message : 'Unknown error'}`
+              });
+            }
+          }}
+          onCancel={() => {
+            clearOAuthConfigNeed();
+          }}
+        />
+      )}
+
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
           <div className="w-100 idle-onboarding-layout">
@@ -1017,50 +1062,6 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           </>
         )}
       </div>
-      
-      {/* OAuth authorization prerequisite */}
-      {needsOAuthConfig && oauthConfigServerUrl && (
-        <OAuthConfig
-          serverUrl={oauthConfigServerUrl}
-          prerequisite={oauthPrerequisite || undefined}
-          onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
-            setPrerequisiteBearerCredential({
-              targetUrl: normalizeConnectionTarget(oauthConfigServerUrl),
-              authorization: `Bearer ${token}`,
-              attemptId: ++nextBearerAttemptId.current,
-            });
-            clearOAuthConfigNeed();
-          } : undefined}
-          onConfigured={async () => {
-            clearOAuthConfigNeed();
-            try {
-              const activeTabs = localStorage.getItem('mcpConnectionTabs');
-              if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
-              sessionStorage.setItem('oauth_tab_id', tab.id);
-              sessionStorage.setItem('oauth_return_view', JSON.stringify({
-                activeView: 'playground',
-                activeTabId: tab.id,
-                timestamp: Date.now()
-              }));
-
-              addLogEntry({
-                type: 'info',
-                data: '🔐 OAuth client configured. Continuing secure authorization...'
-              });
-              handleConnectWrapper();
-            } catch (error) {
-              console.error('[OAuth Config] Failed to continue auth flow:', error);
-              addLogEntry({
-                type: 'error',
-                data: `Failed to continue OAuth authorization: ${error instanceof Error ? error.message : 'Unknown error'}`
-              });
-            }
-          }}
-          onCancel={() => {
-            clearOAuthConfigNeed();
-          }}
-        />
-      )}
     </div>
   );
 };
