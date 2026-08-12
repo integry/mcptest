@@ -189,11 +189,17 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     if (!file) return;
     try {
       const parsed = parseDeterministicTestPlan(await file.text());
+      const undiscoveredToolNames = parsed.tools
+        .map(tool => tool.toolName)
+        .filter(toolName => !discoveredSafety.has(toolName));
+      if (undiscoveredToolNames.length > 0) {
+        throw new Error(`Plan contains tools not advertised by the connected server: ${undiscoveredToolNames.join(', ')}.`);
+      }
       const imported = {
         ...parsed,
         tools: parsed.tools.map(tool => {
           const actual = discoveredSafety.get(tool.toolName);
-          if (!actual) return tool;
+          if (!actual) throw new Error(`Tool ${tool.toolName} is no longer available on the connected server.`);
           return {
             ...tool,
             safety: {

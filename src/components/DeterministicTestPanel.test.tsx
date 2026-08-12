@@ -1,6 +1,7 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { generateDeterministicTestPlan, serializeDeterministicTestPlan } from '../utils/deterministicTests';
 import DeterministicTestPanel from './DeterministicTestPanel';
 
 describe('DeterministicTestPanel', () => {
@@ -47,6 +48,13 @@ describe('DeterministicTestPanel', () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(element, value);
       element.dispatchEvent(new Event('input', { bubbles: true }));
     });
+  };
+
+  const importPlan = async (contents: string, name = 'fixtures.json') => {
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = { name, text: vi.fn().mockResolvedValue(contents) } as unknown as File;
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
   };
 
   it('shows all generated fixture families and explains connected-session execution', async () => {
@@ -158,6 +166,21 @@ describe('DeterministicTestPanel', () => {
     expect(container.textContent).not.toContain('malformed structural assertion');
     expect(runButton.disabled).toBe(false);
     expect(exportButton.disabled).toBe(false);
+  });
+
+  it('rejects an imported plan containing tools outside the discovered surface', async () => {
+    await renderPanel('lookup');
+    const imported = generateDeterministicTestPlan(
+      [{ name: 'undiscovered_tool' }],
+      'https://mcp.example.test/mcp',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    await importPlan(serializeDeterministicTestPlan(imported), 'undiscovered.json');
+
+    expect(container.querySelector('.deterministic-tests-notice')?.textContent)
+      .toContain('Import failed: Plan contains tools not advertised by the connected server: undiscovered_tool.');
+    expect(container.querySelector('.test-tool summary span')?.textContent).toBe('lookup');
   });
 
   it('runs selected read-only fixtures and renders pass/fail evidence', async () => {

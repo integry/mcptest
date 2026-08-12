@@ -179,6 +179,25 @@ describe('deterministic runner safety and evidence', () => {
     },
   );
 
+  it.each(['save_document', 'approve_request', 'refund_payment', 'ban_user'])(
+    'requires explicit confirmation for common write action %s',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan([{ name: toolName }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+      plan.tools[0].safety = { writeCapable: false, destructive: false, reasons: [] };
+
+      const results = await runDeterministicPlan({ callTool }, plan, {
+        caseIds: [plan.tools[0].cases[0].id],
+      });
+
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({
+        status: 'blocked',
+        error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
+      });
+    },
+  );
+
   it('runs confirmed unsafe cases through the supplied stateful client', async () => {
     const callTool = vi.fn().mockResolvedValue({ content: [] });
     const plan = generateDeterministicTestPlan([{ name: 'update_user' }], 'https://example.test', '2026-08-11T00:00:00.000Z');

@@ -37,17 +37,18 @@ export interface DeterministicToolClient {
 }
 
 const WRITE_ACTIONS = new Set([
-  'add', 'append', 'archive', 'assign', 'cancel', 'charge', 'commit', 'configure', 'create',
+  'add', 'append', 'approve', 'archive', 'assign', 'ban', 'cancel', 'charge', 'commit', 'configure', 'create',
   'clear', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
-  'import', 'insert', 'install', 'invite', 'issue', 'merge', 'modify', 'move', 'patch', 'pay',
+  'grant', 'import', 'insert', 'install', 'invite', 'issue', 'merge', 'modify', 'move', 'overwrite', 'patch', 'pay',
   'post', 'provision', 'publish', 'purchase', 'purge', 'remove', 'rename', 'replace', 'reset',
-  'restore', 'revoke', 'run', 'schedule',
+  'restore', 'refund', 'revoke', 'run', 'save', 'schedule',
   'send', 'set', 'start', 'stop', 'submit', 'sync', 'terminate', 'transfer', 'truncate',
   'uninstall', 'update', 'upload', 'wipe', 'write',
 ]);
 const DESTRUCTIVE_ACTIONS = new Set([
-  'archive', 'cancel', 'clear', 'delete', 'destroy', 'disable', 'drop', 'erase', 'purge', 'remove',
-  'reset', 'revoke', 'terminate', 'transfer', 'truncate', 'uninstall', 'wipe',
+  'archive', 'ban', 'cancel', 'clear', 'delete', 'destroy', 'disable', 'drop', 'erase', 'kill',
+  'overwrite', 'purge', 'remove', 'reset', 'revoke', 'terminate', 'transfer', 'truncate', 'uninstall',
+  'wipe',
 ]);
 const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|password|passwd|secret|client[_ -]?secret)';
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
