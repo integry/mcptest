@@ -70,6 +70,60 @@ describe('deterministic test plans', () => {
     expect(outputShape?.arguments).toEqual({ query: 'fix' });
   });
 
+  it('generates schema-valid fixtures for alternatives, patterns, and numeric bounds', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'constrained_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          choice: { oneOf: [{ type: 'number', maximum: -1 }, { type: 'boolean' }] },
+          code: { type: 'string', pattern: '^item-[A-Z]{2}-\\d{3}$' },
+          ratio: { type: 'number', exclusiveMinimum: 2, exclusiveMaximum: 3 },
+          ceiling: { type: 'integer', maximum: -2 },
+          alternative: { anyOf: [{ type: 'integer', minimum: 4 }, { const: 'fallback' }] },
+        },
+        required: ['choice', 'code', 'ratio', 'ceiling', 'alternative'],
+        additionalProperties: false,
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const happyPath = plan.tools[0].cases.find(item => item.kind === 'happy-path');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+    expect(happyPath).toMatchObject({
+      selected: true,
+      arguments: {
+        choice: -1,
+        code: 'item-AA-000',
+        ratio: 2.5,
+        ceiling: -2,
+        alternative: 4,
+      },
+    });
+    expect(outputShape?.selected).toBe(true);
+  });
+
+  it('marks unsynthesizable fixtures for manual input and does not preselect them', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'referenced_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { query: { $ref: '#/$defs/query' } },
+        required: ['query'],
+        $defs: { query: { type: 'string', const: 'from-reference' } },
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const happyPath = plan.tools[0].cases.find(item => item.kind === 'happy-path');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+    expect(happyPath?.selected).toBe(false);
+    expect(happyPath?.arguments).toEqual({});
+    expect(happyPath?.name).toContain('manual fixture required');
+    expect(outputShape).toMatchObject({ selected: false });
+    expect(outputShape?.name).toContain('manual fixture required');
+  });
+
   it.each([
     {
       schema: {
@@ -364,6 +418,26 @@ describe('deterministic runner safety and evidence', () => {
     });
   });
 
+  it('redacts plain and percent-encoded URL authority credentials in request and response evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: 'text', text: 'response https://bob%40team:p%40ss@example.test/private' }],
+        }),
+      },
+      fixtureCase({
+        arguments: { endpoint: 'https://alice:secret@example.test/path?keep=yes' },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: { endpoint: 'https://[REDACTED]@example.test/path?keep=yes' },
+    });
+    expect(result.response).toMatchObject({
+      content: [{ text: 'response https://[REDACTED]@example.test/private' }],
+    });
+  });
+
   it('reports malformed responses and preserves reproducible case data', async () => {
     const result = await runDeterministicCase(
       { callTool: vi.fn().mockResolvedValue({ unexpected: true }) },
@@ -380,7 +454,7 @@ describe('deterministic runner safety and evidence', () => {
     }));
     const result = await runDeterministicCase(
       { callTool },
-      fixtureCase({ kind: 'cancellation', expectedError: 'cancelled', cancelAfterMs: 1 }),
+      fixtureCase({ kind: 'cancellation', expectedError: 'cancelled', cancelAfterMs: 1, assertions: [] }),
     );
     expect(result.status).toBe('passed');
     expect(result.error?.type).toBe('cancelled');
@@ -392,7 +466,7 @@ describe('deterministic runner safety and evidence', () => {
     }));
     const result = await runDeterministicCase(
       { callTool },
-      fixtureCase({ kind: 'cancellation', expectedError: 'cancelled', cancelAfterMs: 1 }),
+      fixtureCase({ kind: 'cancellation', expectedError: 'cancelled', cancelAfterMs: 1, assertions: [] }),
     );
     expect(result.status).toBe('passed');
     expect(result.error?.type).toBe('cancelled');
@@ -401,7 +475,7 @@ describe('deterministic runner safety and evidence', () => {
   it('passes timeout fixtures only for a machine-readable timeout error', async () => {
     const result = await runDeterministicCase(
       { callTool: vi.fn().mockRejectedValue({ code: 'RequestTimeout', message: 'Timed out' }) },
-      fixtureCase({ kind: 'timeout', expectedError: 'timeout', timeoutMs: 5 }),
+      fixtureCase({ kind: 'timeout', expectedError: 'timeout', timeoutMs: 5, assertions: [] }),
     );
     expect(result.status).toBe('passed');
     expect(result.error).toMatchObject({ type: 'timeout', retryable: true });
@@ -435,6 +509,46 @@ describe('deterministic runner safety and evidence', () => {
     );
     expect(result.status).toBe('failed');
     expect(result.error).toMatchObject({ type: 'malformed-response', code: 'INVALID_TOOL_RESULT' });
+  });
+
+  it('requires structural assertions to pass for expected-error responses', async () => {
+    const response = {
+      isError: true,
+      content: [{ type: 'text', text: JSON.stringify({ code: 503, message: 'Unavailable' }) }],
+      structuredContent: { code: 503, items: [] },
+    };
+    const passing = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue(response) },
+      fixtureCase({
+        expectedError: 'upstream',
+        assertions: [{ path: '$.structuredContent.code', operator: 'equals', value: 503 }],
+      }),
+    );
+    const failing = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue(response) },
+      fixtureCase({
+        expectedError: 'upstream',
+        assertions: [{ path: '$.structuredContent.items', operator: 'min-length', value: 1 }],
+      }),
+    );
+
+    expect(passing.status).toBe('passed');
+    expect(passing.assertions).toMatchObject([{ passed: true }]);
+    expect(failing.status).toBe('failed');
+    expect(failing.assertions).toMatchObject([{ passed: false }]);
+  });
+
+  it('fails expected thrown errors when response assertions cannot be satisfied', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockRejectedValue({ status: 503, message: 'Unavailable' }) },
+      fixtureCase({
+        expectedError: 'upstream',
+        assertions: [{ path: '$.structuredContent', operator: 'exists' }],
+      }),
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.assertions).toMatchObject([{ passed: false }]);
   });
 });
 

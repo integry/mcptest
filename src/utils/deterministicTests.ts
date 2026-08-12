@@ -1,4 +1,6 @@
 import { CallToolResultSchema } from '@modelcontextprotocol/core';
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
 import type {
   AssertionEvidence,
   DeterministicAssertion,
@@ -55,6 +57,16 @@ const SENSITIVE_TEXT_NAME_PATTERN = `(?:[a-z0-9]+[_-])*${SENSITIVE_NAME_PATTERN}
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
 const ERROR_CODE_KEYS = ['code', 'errorCode', 'error_code', 'status', 'statusCode'];
+const inputSchemaAjv = new Ajv2020({ addUsedSchema: false, allErrors: true, strict: false });
+addFormats(inputSchemaAjv);
+inputSchemaAjv.addFormat('url', value => {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+});
 
 const isRecord = (value: unknown): value is RecordValue => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -85,13 +97,166 @@ const caseIdPrefix = (value: string): string => (
   [...value].map(character => character.codePointAt(0)?.toString(16)).join('-') || 'empty'
 );
 
+const schemaAccepts = (schema: RecordValue, value: unknown): boolean => {
+  try {
+    return inputSchemaAjv.compile(schema)(value) === true;
+  } catch {
+    return false;
+  }
+};
+
+const patternToken = (pattern: string, offset: number): { value: string; next: number } | undefined => {
+  const character = pattern[offset];
+  if (character === '\\') {
+    const escaped = pattern[offset + 1];
+    if (!escaped) return undefined;
+    if (escaped === 'd') return { value: '0', next: offset + 2 };
+    if (escaped === 'w') return { value: 'a', next: offset + 2 };
+    if (escaped === 's') return { value: ' ', next: offset + 2 };
+    return { value: escaped, next: offset + 2 };
+  }
+  if (character === '[') {
+    let end = offset + 1;
+    let escaped = false;
+    while (end < pattern.length) {
+      if (!escaped && pattern[end] === ']') break;
+      escaped = !escaped && pattern[end] === '\\';
+      if (pattern[end] !== '\\') escaped = false;
+      end += 1;
+    }
+    if (end >= pattern.length) return undefined;
+    const content = pattern.slice(offset + 1, end);
+    if (content.startsWith('^')) {
+      const excluded = new Set(content.slice(1).replace(/\\(.)/g, '$1'));
+      const value = ['a', 'A', '0', '_', '-'].find(candidate => !excluded.has(candidate));
+      return value ? { value, next: end + 1 } : undefined;
+    }
+    const range = content.match(/(?:^|[^\\])([A-Za-z0-9])-([A-Za-z0-9])/);
+    const escapedClass = content.match(/\\([dws])/);
+    const value = range?.[1]
+      || (escapedClass?.[1] === 'd' ? '0' : escapedClass?.[1] === 's' ? ' ' : escapedClass ? 'a' : undefined)
+      || content.replace(/\\(.)/g, '$1')[0];
+    return value ? { value, next: end + 1 } : undefined;
+  }
+  if (character === '.') return { value: 'a', next: offset + 1 };
+  if ('()|'.includes(character)) return undefined;
+  return { value: character, next: offset + 1 };
+};
+
+const patternExample = (schema: RecordValue): string | undefined => {
+  if (typeof schema.pattern !== 'string') return undefined;
+  const source = schema.pattern.replace(/^\^/, '').replace(/\$$/, '');
+  let generated = '';
+  let offset = 0;
+  while (offset < source.length) {
+    const token = patternToken(source, offset);
+    if (!token) break;
+    offset = token.next;
+    let count = 1;
+    if (source[offset] === '?' || source[offset] === '*') {
+      count = 0;
+      offset += 1;
+    } else if (source[offset] === '+') {
+      offset += 1;
+    } else if (source[offset] === '{') {
+      const quantifier = source.slice(offset).match(/^\{(\d+)(?:,(\d*)?)?\}/);
+      if (!quantifier) break;
+      count = Number(quantifier[1]);
+      offset += quantifier[0].length;
+    }
+    generated += token.value.repeat(count);
+  }
+
+  let expression: RegExp;
+  try {
+    expression = new RegExp(schema.pattern);
+  } catch {
+    return undefined;
+  }
+  const candidates = [generated, 'fixture', 'test', 'abc', 'ABC', '123', 'a', '0'];
+  const minLength = typeof schema.minLength === 'number' ? Math.ceil(schema.minLength) : 0;
+  const maxLength = typeof schema.maxLength === 'number' ? Math.floor(schema.maxLength) : Number.POSITIVE_INFINITY;
+  return candidates.find(candidate => (
+    candidate.length >= minLength && candidate.length <= maxLength && expression.test(candidate)
+  ));
+};
+
+const numericExample = (schema: RecordValue, integer: boolean): number | undefined => {
+  const minimum = typeof schema.minimum === 'number' ? schema.minimum : undefined;
+  const maximum = typeof schema.maximum === 'number' ? schema.maximum : undefined;
+  const exclusiveMinimum = typeof schema.exclusiveMinimum === 'number' ? schema.exclusiveMinimum : undefined;
+  const exclusiveMaximum = typeof schema.exclusiveMaximum === 'number' ? schema.exclusiveMaximum : undefined;
+  const lower = exclusiveMinimum ?? minimum;
+  const upper = exclusiveMaximum ?? maximum;
+  const step = integer ? 1 : 0.5;
+  const candidates = [
+    0,
+    minimum,
+    maximum,
+    exclusiveMinimum === undefined ? undefined : exclusiveMinimum + step,
+    exclusiveMaximum === undefined ? undefined : exclusiveMaximum - step,
+    lower !== undefined && upper !== undefined ? lower + ((upper - lower) / 2) : undefined,
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (typeof schema.multipleOf === 'number' && schema.multipleOf > 0) {
+    const start = lower ?? 0;
+    const multiple = schema.multipleOf;
+    candidates.push(Math.ceil(start / multiple) * multiple, Math.floor((upper ?? 0) / multiple) * multiple);
+  }
+  return candidates
+    .map(candidate => integer ? Math.round(candidate) : candidate)
+    .find(candidate => schemaAccepts(schema, candidate));
+};
+
+const mergedSchema = (base: RecordValue, alternative: RecordValue): RecordValue => ({
+  ...base,
+  ...alternative,
+  ...(isRecord(base.properties) || isRecord(alternative.properties) ? {
+    properties: { ...(isRecord(base.properties) ? base.properties : {}), ...(isRecord(alternative.properties) ? alternative.properties : {}) },
+  } : {}),
+  ...(Array.isArray(base.required) || Array.isArray(alternative.required) ? {
+    required: [...new Set([
+      ...(Array.isArray(base.required) ? base.required : []),
+      ...(Array.isArray(alternative.required) ? alternative.required : []),
+    ])],
+  } : {}),
+});
+
 const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
   if (!isRecord(schema)) return undefined;
   if (schema.default !== undefined) return schema.default;
   if (schema.const !== undefined) return schema.const;
   if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
 
+  for (const keyword of ['oneOf', 'anyOf'] as const) {
+    if (!Array.isArray(schema[keyword])) continue;
+    const base = { ...schema };
+    delete base[keyword];
+    for (const alternative of schema[keyword]) {
+      if (!isRecord(alternative)) continue;
+      const candidate = schemaExample(mergedSchema(base, alternative), requiredOnly);
+      if (candidate !== undefined && schemaAccepts(schema, candidate)) return candidate;
+    }
+    return undefined;
+  }
+  if (Array.isArray(schema.allOf)) {
+    const base = { ...schema };
+    delete base.allOf;
+    const combined = schema.allOf.reduce<RecordValue | undefined>((current, item) => (
+      current && isRecord(item) ? mergedSchema(current, item) : undefined
+    ), base);
+    if (!combined) return undefined;
+    const candidate = schemaExample(combined, requiredOnly);
+    return candidate !== undefined && schemaAccepts(schema, candidate) ? candidate : undefined;
+  }
+
   const type = schema.type;
+  if (Array.isArray(type)) {
+    for (const candidateType of type) {
+      const candidate = schemaExample({ ...schema, type: candidateType }, requiredOnly);
+      if (candidate !== undefined && schemaAccepts(schema, candidate)) return candidate;
+    }
+    return undefined;
+  }
   if (type === 'object' || isRecord(schema.properties)) {
     const result: RecordValue = {};
     const required = new Set(Array.isArray(schema.required) ? schema.required.filter(v => typeof v === 'string') : []);
@@ -106,12 +271,16 @@ const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
   }
   if (type === 'array') {
     const item = schemaExample(schema.items, requiredOnly);
-    return item === undefined ? [] : [item];
+    const count = typeof schema.minItems === 'number' ? Math.max(0, Math.ceil(schema.minItems)) : 0;
+    if (count > 0 && item === undefined) return undefined;
+    return Array.from({ length: count }, () => item);
   }
   if (type === 'boolean') return false;
-  if (type === 'integer' || type === 'number') return typeof schema.minimum === 'number' ? schema.minimum : 0;
+  if (type === 'integer' || type === 'number') return numericExample(schema, type === 'integer');
   if (type === 'null') return null;
   if (type === 'string' || type === undefined) {
+    const patterned = patternExample(schema);
+    if (typeof schema.pattern === 'string') return patterned;
     const fixture = schema.format === 'email'
       ? 'fixture@example.com'
       : schema.format === 'uri' || schema.format === 'url'
@@ -130,6 +299,8 @@ const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
 };
 
 const normalizedInputSchema = (tool: DiscoveredTool): RecordValue => {
+  const declaredSchema = tool.inputSchema || tool.input_schema;
+  if (isRecord(declaredSchema)) return declaredSchema;
   const { definitions, required } = getCapabilityInputSpec(tool);
   return {
     type: 'object',
@@ -141,13 +312,16 @@ const normalizedInputSchema = (tool: DiscoveredTool): RecordValue => {
   };
 };
 
-const happyArguments = (tool: DiscoveredTool): Record<string, unknown> => {
-  const generated = schemaExample(normalizedInputSchema(tool), true);
-  return isRecord(generated) ? generated : {};
+const happyArguments = (tool: DiscoveredTool): { arguments: Record<string, unknown>; valid: boolean } => {
+  const schema = normalizedInputSchema(tool);
+  const generated = schemaExample(schema, true);
+  const args = isRecord(generated) ? generated : {};
+  const valid = isRecord(generated) && schemaAccepts(schema, args);
+  return { arguments: valid ? args : {}, valid };
 };
 
 const validationArguments = (tool: DiscoveredTool): Record<string, unknown> => {
-  const args = happyArguments(tool);
+  const args = { ...happyArguments(tool).arguments };
   const { required } = getCapabilityInputSpec(tool);
   if (required[0]) delete args[required[0]];
   else args.__invalid_fixture_argument__ = { unexpected: true };
@@ -179,13 +353,14 @@ const defaultCase = (
   kind: DeterministicCaseKind,
   args: Record<string, unknown>,
   assertions: DeterministicAssertion[],
-  expectedError?: DeterministicErrorType
+  expectedError?: DeterministicErrorType,
+  manualFixtureRequired = false,
 ): DeterministicTestCaseV1 => ({
   id: `tool-${caseIdPrefix(tool.name)}--${kind}`,
   toolName: tool.name,
-  name: kind.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join(' '),
+  name: `${kind.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join(' ')}${manualFixtureRequired ? ' (manual fixture required)' : ''}`,
   kind,
-  selected: kind === 'happy-path' || kind === 'output-shape',
+  selected: !manualFixtureRequired && (kind === 'happy-path' || kind === 'output-shape'),
   arguments: args,
   assertions,
   ...(expectedError ? { expectedError } : {}),
@@ -232,19 +407,21 @@ export const generateDeterministicTestPlan = (
   serverUrl,
   generatedAt,
   tools: tools.map(tool => {
-    const args = happyArguments(tool);
+    const generated = happyArguments(tool);
+    const args = generated.arguments;
+    const manualFixtureRequired = !generated.valid;
     return {
       toolName: tool.name,
       ...(tool.description ? { description: tool.description } : {}),
       safety: inferToolSafety(tool),
       cases: [
-        defaultCase(tool, 'happy-path', args, [{ path: '$.content', operator: 'type', value: 'array' }]),
+        defaultCase(tool, 'happy-path', args, [{ path: '$.content', operator: 'type', value: 'array' }], undefined, manualFixtureRequired),
         defaultCase(tool, 'validation', validationArguments(tool), [], 'validation'),
-        defaultCase(tool, 'empty-result', args, [{ path: '$.content', operator: 'length', value: 0 }]),
-        defaultCase(tool, 'upstream-error', args, [], 'upstream'),
-        defaultCase(tool, 'timeout', args, [], 'timeout'),
-        defaultCase(tool, 'output-shape', args, outputSchemaAssertions(tool)),
-        defaultCase(tool, 'cancellation', args, [], 'cancelled'),
+        defaultCase(tool, 'empty-result', args, [{ path: '$.content', operator: 'length', value: 0 }], undefined, manualFixtureRequired),
+        defaultCase(tool, 'upstream-error', args, [], 'upstream', manualFixtureRequired),
+        defaultCase(tool, 'timeout', args, [], 'timeout', manualFixtureRequired),
+        defaultCase(tool, 'output-shape', args, outputSchemaAssertions(tool), undefined, manualFixtureRequired),
+        defaultCase(tool, 'cancellation', args, [], 'cancelled', manualFixtureRequired),
       ],
     };
   }),
@@ -264,6 +441,7 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
       }
     }
     return value
+      .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s\/?#@]+@/gi, '$1[REDACTED]@')
       .replace(new RegExp(`^([ \\t]*${SENSITIVE_TEXT_NAME_PATTERN}[ \\t]*:[ \\t]*)[^\\r\\n]*`, 'gim'), '$1[REDACTED]')
       .replace(new RegExp(`(\\b${SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')
       .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
@@ -512,6 +690,14 @@ export const evaluateAssertions = (
   };
 });
 
+const unavailableAssertionEvidence = (
+  assertions: readonly DeterministicAssertion[]
+): AssertionEvidence[] => assertions.map(assertion => ({
+  assertion,
+  passed: false,
+  message: `${assertion.path} could not be evaluated because the tool did not return a response.`,
+}));
+
 export const runDeterministicCase = async (
   client: DeterministicToolClient,
   testCase: DeterministicTestCaseV1,
@@ -540,17 +726,19 @@ export const runDeterministicCase = async (
       maxTotalTimeout: testCase.timeoutMs,
     });
     error = malformedResponseError(response) || responseError(response);
-    assertionEvidence = error ? [] : evaluateAssertions(response, testCase.assertions);
+    assertionEvidence = evaluateAssertions(response, testCase.assertions);
   } catch (cause) {
     error = normalizeTestError(cause);
+    assertionEvidence = unavailableAssertionEvidence(testCase.assertions);
   } finally {
     if (cancellationTimer) clearTimeout(cancellationTimer);
     externalSignal?.removeEventListener('abort', relayAbort);
   }
   const expectedErrorMatched = testCase.expectedError !== undefined && error?.type === testCase.expectedError;
+  const assertionsPassed = assertionEvidence.every(assertion => assertion.passed);
   const passed = testCase.expectedError
-    ? expectedErrorMatched
-    : !error && assertionEvidence.every(assertion => assertion.passed);
+    ? expectedErrorMatched && assertionsPassed
+    : !error && assertionsPassed;
   const externallyCancelled = externalSignal?.aborted && error?.type === 'cancelled';
   return {
     caseId: testCase.id,
