@@ -887,10 +887,6 @@ const compareFindings = (before: PublicReport, after: PublicReport): ReportDiffC
   return changes;
 };
 
-const totalLatency = (report: PublicReport): number | undefined => (
-  report.timings?.connectionSetupMs ?? report.timings?.negotiationMs
-);
-
 const checkLatencies = (report: PublicReport): Map<string, number> => new Map(
   (report.timings?.checks || []).map((check) => [check.name, check.durationMs])
 );
@@ -975,19 +971,26 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     });
   }
 
-  const beforeLatency = totalLatency(before);
-  const afterLatency = totalLatency(after);
-  if (beforeLatency !== undefined && afterLatency !== undefined && beforeLatency !== afterLatency) {
+  const connectionTimings = [
+    { key: 'connectionSetupMs', label: 'Connection setup' },
+    { key: 'negotiationMs', label: 'Negotiation' },
+  ] as const;
+  for (const { key, label } of connectionTimings) {
+    const beforeLatency = before.timings?.[key];
+    const afterLatency = after.timings?.[key];
+    if (beforeLatency === afterLatency) continue;
+    if (beforeLatency === undefined || afterLatency === undefined) {
+      changes.push(makeChange(
+        'unknown', 'latency', `timings.${key}`, `${label} latency is not comparable`,
+        'One snapshot does not contain this timing.'
+      ));
+      continue;
+    }
     const regression = afterLatency > beforeLatency + 100 && afterLatency > beforeLatency * 1.25;
     changes.push(makeChange(
-      regression ? 'risk' : 'change', 'latency', 'timings.connection',
-      regression ? 'Connection latency regressed' : 'Connection latency changed',
+      regression ? 'risk' : 'change', 'latency', `timings.${key}`,
+      regression ? `${label} latency regressed` : `${label} latency changed`,
       `Changed from ${beforeLatency} ms to ${afterLatency} ms.`
-    ));
-  } else if (beforeLatency !== afterLatency) {
-    changes.push(makeChange(
-      'unknown', 'latency', 'timings.connection', 'Latency could not be compared',
-      'One snapshot does not contain a comparable connection timing.'
     ));
   }
 
