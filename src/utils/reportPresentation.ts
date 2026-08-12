@@ -9,6 +9,7 @@ export interface TestedServerHistoryEntry {
   score: number | null;
   timestamp: number;
   outcome?: EvaluationReport['outcome'];
+  authenticationRequirement?: EvaluationReport['authenticationRequirement'];
 }
 
 const getServerUrlIdentity = (value: string): string => {
@@ -34,6 +35,9 @@ export const createTestedServerHistoryEntry = (
       score: null,
       timestamp,
       outcome,
+      ...(report.authenticationRequirement
+        ? { authenticationRequirement: report.authenticationRequirement }
+        : {}),
     };
   }
 
@@ -48,6 +52,9 @@ export const createTestedServerHistoryEntry = (
 export const getTestedServerResultLabel = (
   server: TestedServerHistoryEntry
 ): string => {
+  if (server.authenticationRequirement?.kind === 'proxy') {
+    return 'mcptest login required - not scored';
+  }
   if (server.outcome === 'authorization-required') {
     return 'Authorization required - not scored';
   }
