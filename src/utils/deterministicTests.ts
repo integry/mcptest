@@ -38,7 +38,7 @@ export interface DeterministicToolClient {
 
 const WRITE_ACTIONS = new Set([
   'add', 'append', 'approve', 'archive', 'assign', 'ban', 'cancel', 'charge', 'commit', 'configure', 'create',
-  'clear', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
+  'clear', 'deactivate', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
   'grant', 'import', 'insert', 'install', 'invite', 'issue', 'merge', 'modify', 'move', 'overwrite', 'patch', 'pay',
   'post', 'provision', 'publish', 'purchase', 'purge', 'remove', 'rename', 'replace', 'reset',
   'restore', 'refund', 'revoke', 'run', 'save', 'schedule',
@@ -46,7 +46,7 @@ const WRITE_ACTIONS = new Set([
   'uninstall', 'update', 'upload', 'wipe', 'write',
 ]);
 const DESTRUCTIVE_ACTIONS = new Set([
-  'archive', 'ban', 'cancel', 'clear', 'delete', 'destroy', 'disable', 'drop', 'erase', 'kill',
+  'archive', 'ban', 'cancel', 'clear', 'deactivate', 'delete', 'destroy', 'disable', 'drop', 'erase', 'kill',
   'overwrite', 'purge', 'remove', 'reset', 'revoke', 'terminate', 'transfer', 'truncate', 'uninstall',
   'wipe',
 ]);
