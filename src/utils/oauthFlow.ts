@@ -247,11 +247,17 @@ const latestFailedEvent = (trace: OAuthFlightRecorder) => (
 
 const latestFailureIsProxyAuthentication = (trace: OAuthFlightRecorder): boolean => {
   const event = latestFailedEvent(trace);
+  const authenticationSource = event?.response?.metadata?.authenticationSource;
+  const responseSource = event?.response?.headers?.['x-mcp-proxy-response-source'];
+  const recordsProxyOwnedResponse = authenticationSource === 'proxy'
+    || responseSource?.toLowerCase() === 'proxy'
+    || event?.explanation.includes('response was proxy-owned');
   return event?.provenance === 'authenticated_proxy'
+    && recordsProxyOwnedResponse
     && (event.response?.status === 401 || event.response?.status === 403);
 };
 
-const latestFailureIsTransientDiscovery = (trace: OAuthFlightRecorder, error: unknown): boolean => {
+const latestFailureIsTransientDiscovery = (trace: OAuthFlightRecorder): boolean => {
   const event = latestFailedEvent(trace);
   if (!event || ![
     'protected_resource_metadata',
@@ -259,8 +265,7 @@ const latestFailureIsTransientDiscovery = (trace: OAuthFlightRecorder, error: un
   ].includes(event.type)) return false;
   const status = event.response?.status;
   return status === 408 || status === 425 || status === 429
-    || (typeof status === 'number' && status >= 500)
-    || (status === undefined && error instanceof TypeError);
+    || (typeof status === 'number' && status >= 500);
 };
 
 const registrationFailureDetails = (error: RegistrationRejectedError): Record<string, unknown> => {
@@ -454,6 +459,26 @@ const buildOAuthPrerequisite = (
       ...base,
       canConfigureClient: true,
       explanation: registrationFailureExplanation(category, guidance.name, error.status),
+    };
+  }
+  const failedEvent = latestFailedEvent(trace);
+  if (
+    failedEvent
+    && latestFailureIsDiscovery(trace)
+    && failedEvent.response?.status === undefined
+  ) {
+    const directDiscoveryAlsoFailed = trace.snapshot().events.some((event) => (
+      event.type === failedEvent.type
+      && event.outcome === 'failed'
+      && event.route === 'direct'
+      && event.response?.status === undefined
+    ));
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: failedEvent.route === 'direct'
+        ? `The browser did not receive a readable HTTP response during ${failedStage}. Browser access or CORS may be blocking discovery; this does not establish a provider outage. Sign in and retry with the authenticated proxy fallback where available, then inspect the exact request in the OAuth flight recorder if it still fails.`
+        : `${directDiscoveryAlsoFailed ? `Direct browser ${failedStage} did not receive a readable response, which may indicate a browser access or CORS limitation, and the authenticated proxy fallback also failed before receiving HTTP. ` : `The authenticated proxy did not receive an HTTP response during ${failedStage}. `}This does not establish a provider outage. Verify proxy authentication and connectivity, then inspect both routes in the OAuth flight recorder.`,
     };
   }
   return {
@@ -1203,7 +1228,7 @@ export const beginOAuthFlow = async (
       trace.terminal('proxy_authentication_required', prerequisite.explanation);
     } else if (latestFailureIsDiscovery(trace)) {
       prerequisite = buildOAuthPrerequisite(
-        latestFailureIsTransientDiscovery(trace, error)
+        latestFailureIsTransientDiscovery(trace)
           ? 'transient_discovery_failure'
           : 'discovery_blocked_invalid',
         normalizedServerUrl,
@@ -1299,7 +1324,7 @@ export const prepareManualOAuthClient = async (
     const prerequisiteKind: OAuthPrerequisiteKind | undefined = latestFailureIsProxyAuthentication(trace)
       ? 'proxy_authentication_required'
       : latestFailureIsDiscovery(trace)
-        ? latestFailureIsTransientDiscovery(trace, error)
+        ? latestFailureIsTransientDiscovery(trace)
           ? 'transient_discovery_failure'
           : 'discovery_blocked_invalid'
         : undefined;
