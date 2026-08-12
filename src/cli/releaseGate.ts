@@ -73,6 +73,7 @@ export interface RunReleaseGateOptions {
 
 export interface ReleaseGateDependencies {
   evaluate?: typeof evaluateServer;
+  fetch?: typeof fetch;
 }
 
 const severityRank: Record<Exclude<ReleaseGateSeverityThreshold, 'none'>, number> = {
@@ -91,6 +92,86 @@ const credentialValues = (headers: HeadersInit | undefined): string[] => {
     if (bearer) values.add(bearer);
   }
   return [...values].sort((left, right) => right.length - left.length);
+};
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const TARGET_CREDENTIAL_HEADERS = new Set([
+  'authorization', 'x-api-key', 'api-key', 'x-mcp-authorization',
+]);
+
+const hasTargetCredentialHeader = (headers: Headers): boolean => (
+  [...headers.keys()].some((name) => TARGET_CREDENTIAL_HEADERS.has(name.toLowerCase()))
+);
+
+const redirectedMethod = (status: number, method: string): string => (
+  (status === 303 && method !== 'GET' && method !== 'HEAD')
+    || ((status === 301 || status === 302) && method === 'POST')
+    ? 'GET'
+    : method
+);
+
+const credentialScopedFetch = (
+  targetOrigin: string,
+  fetchFn: typeof fetch
+): typeof fetch => async (input, init) => {
+  let request = new Request(input, { ...init, redirect: 'manual' });
+
+  for (let redirects = 0; redirects <= 20; redirects += 1) {
+    const credentialed = hasTargetCredentialHeader(request.headers);
+    const requestUrl = new URL(request.url);
+    if (credentialed && (requestUrl.protocol !== 'https:' || requestUrl.origin !== targetOrigin)) {
+      throw new TypeError('Credentialed request was blocked outside the configured HTTPS origin.');
+    }
+
+    const replayableRequest = request.clone();
+    const response = await fetchFn(request);
+    if (!credentialed || !REDIRECT_STATUSES.has(response.status)) return response;
+
+    const location = response.headers.get('location');
+    if (!location) return response;
+    if (redirects === 20) {
+      throw new TypeError('Credentialed request exceeded the redirect limit.');
+    }
+
+    const destination = new URL(location, request.url);
+    if (destination.protocol !== 'https:' || destination.origin !== targetOrigin) {
+      throw new TypeError('Credentialed request was blocked from redirecting outside the configured HTTPS origin.');
+    }
+
+    const method = redirectedMethod(response.status, request.method);
+    const headers = new Headers(request.headers);
+    if (method === 'GET' || method === 'HEAD') {
+      for (const name of ['content-encoding', 'content-language', 'content-location', 'content-type']) {
+        headers.delete(name);
+      }
+    }
+    request = new Request(destination, {
+      method,
+      headers,
+      body: method === 'GET' || method === 'HEAD'
+        ? undefined
+        : await replayableRequest.arrayBuffer(),
+      signal: request.signal,
+      redirect: 'manual',
+    });
+  }
+
+  throw new TypeError('Credentialed request exceeded the redirect limit.');
+};
+
+const withCredentialScopedFetch = async <T>(
+  targetOrigin: string,
+  fetchFn: typeof fetch,
+  action: () => Promise<T>
+): Promise<T> => {
+  const originalFetch = globalThis.fetch;
+  const scopedFetch = credentialScopedFetch(targetOrigin, fetchFn);
+  globalThis.fetch = scopedFetch;
+  try {
+    return await action();
+  } finally {
+    if (globalThis.fetch === scopedFetch) globalThis.fetch = originalFetch;
+  }
 };
 
 export const credentialedEndpointConfigurationError = (
@@ -399,8 +480,12 @@ export const runReleaseGate = async (
   if (configurationError) throw new TypeError(configurationError);
 
   const evaluator = dependencies.evaluate ?? evaluateServer;
+  const fetchFn = dependencies.fetch ?? globalThis.fetch;
   const policy = options.policy ?? DEFAULT_RELEASE_GATE_POLICY;
   const credentials = credentialValues(options.headers);
+  const credentialedTargetOrigin = credentials.length > 0
+    ? new URL(options.endpoints[0]).origin
+    : undefined;
   const targets: ReleaseGateTargetResult[] = [];
 
   for (const [index, endpoint] of options.endpoints.entries()) {
@@ -413,7 +498,7 @@ export const runReleaseGate = async (
     });
 
     try {
-      const evaluation = await evaluator(
+      const evaluate = () => evaluator(
         endpoint,
         '',
         progress,
@@ -422,6 +507,9 @@ export const runReleaseGate = async (
         undefined,
         { runtime: 'headless' }
       );
+      const evaluation = credentialedTargetOrigin
+        ? await withCredentialScopedFetch(credentialedTargetOrigin, fetchFn, evaluate)
+        : await evaluate();
       const { decision, report } = createReleaseArtifact(
         evaluation,
         endpoint,

@@ -128,6 +128,13 @@ const parseSeverityThreshold = (value: string): ReleaseGateSeverityThreshold => 
   return value as ReleaseGateSeverityThreshold;
 };
 
+const unknownOptionError = (argument: string): ReleaseGateConfigurationError => {
+  const optionName = argument.match(/^(-{1,2}[A-Za-z0-9][A-Za-z0-9-]*)(?:[=:].*)?$/)?.[1];
+  return new ReleaseGateConfigurationError(
+    optionName ? `Unknown option ${optionName}.` : 'Unknown option.'
+  );
+};
+
 export const parseReleaseGateArgs = (
   argv: readonly string[],
   environment: Record<string, string | undefined>
@@ -176,7 +183,7 @@ export const parseReleaseGateArgs = (
       failOnSeverity = parseSeverityThreshold(requireValue(argv, index, argument));
       index += 1;
     } else if (argument.startsWith('-')) {
-      throw new ReleaseGateConfigurationError(`Unknown option ${argument}.`);
+      throw unknownOptionError(argument);
     } else {
       positionalEndpoints.push(argument);
     }

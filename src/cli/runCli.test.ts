@@ -50,6 +50,32 @@ describe('release gate CLI configuration', () => {
   });
 
   it.each([
+    ['--bearer-token=attached-bearer-secret', '--bearer-token', 'attached-bearer-secret'],
+    ['--api-key:attached-api-key-secret', '--api-key', 'attached-api-key-secret'],
+  ])('does not echo an attached credential from unknown option %s', async (
+    argument,
+    optionName,
+    credential
+  ) => {
+    let stderr = '';
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk);
+      return true;
+    });
+
+    try {
+      const exitCode = await runCli([argument, 'https://fixture.example/mcp'], {});
+
+      expect(exitCode).toBe(RELEASE_GATE_EXIT_CODES.invalidConfiguration);
+      expect(stderr).toContain(`Unknown option ${optionName}.`);
+      expect(stderr).not.toContain(credential);
+      expect(stderr).not.toContain(argument);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  it.each([
     [
       ['--bearer-token-env', 'TOKEN', 'http://fixture.example/mcp'],
       { TOKEN: 'fixture-secret' },

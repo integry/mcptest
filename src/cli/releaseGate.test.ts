@@ -140,6 +140,69 @@ describe('headless release gate', () => {
     expect(evaluate).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['another origin', 'https://other.example/mcp'],
+    ['plaintext HTTP', 'http://fixture.example/mcp'],
+  ])('blocks a credentialed redirect to %s before sending the API key', async (
+    _label,
+    location
+  ) => {
+    const requests: Request[] = [];
+    const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      return new Response(null, { status: 302, headers: { location } });
+    });
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { 'X-API-Key': 'redirect-fixture-secret' },
+    }, {
+      fetch: fetchFn,
+      evaluate: async (endpoint, _firebaseToken, _progress, _oauthToken, headers) => {
+        await fetch(endpoint, { method: 'POST', headers, body: '{}' });
+        return evaluatedReport();
+      },
+    });
+
+    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.infrastructureFailure);
+    expect(result.targets[0].error).toContain('blocked from redirecting');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(requests[0].url).toBe('https://fixture.example/mcp');
+    expect(requests[0].redirect).toBe('manual');
+    expect(requests[0].headers.get('x-api-key')).toBe('redirect-fixture-secret');
+    expect(requests.some((request) => request.url === location)).toBe(false);
+  });
+
+  it('follows a same-origin HTTPS redirect with the API key', async () => {
+    const requests: Request[] = [];
+    const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      return request.url.endsWith('/mcp')
+        ? new Response(null, { status: 307, headers: { location: '/redirected' } })
+        : new Response('{}', { status: 200 });
+    });
+    const result = await runReleaseGate({
+      endpoints: ['https://fixture.example/mcp'],
+      headers: { 'X-API-Key': 'same-origin-fixture-secret' },
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, {
+      fetch: fetchFn,
+      evaluate: async (endpoint, _firebaseToken, _progress, _oauthToken, headers) => {
+        await fetch(endpoint, { method: 'POST', headers, body: '{}' });
+        return evaluatedReport();
+      },
+    });
+
+    expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.pass);
+    expect(requests.map((request) => request.url)).toEqual([
+      'https://fixture.example/mcp',
+      'https://fixture.example/redirected',
+    ]);
+    expect(requests[1].headers.get('x-api-key')).toBe('same-origin-fixture-secret');
+    expect(await requests[1].text()).toBe('{}');
+  });
+
   it('scrubs a supplied credential from arbitrary evaluator evidence before both artifacts', async () => {
     const secret = 'arbitrary-evidence-secret';
     const result = await runReleaseGate({
