@@ -34,12 +34,14 @@ describe('proxy target credential forwarding', () => {
     const headers = getTargetRequestHeaders({
       Authorization: 'Bearer firebase-jwt',
       'X-MCP-Authorization': 'Bearer target-token',
+      'X-MCP-Hosted-Grant': 'opaque-hosted-grant',
       'x-api-key': 'target-api-key',
       'CF-Connecting-IP': '192.0.2.1',
     });
 
     expect(headers.get('authorization')).toBe('Bearer target-token');
     expect(headers.get('x-mcp-authorization')).toBeNull();
+    expect(headers.get('x-mcp-hosted-grant')).toBeNull();
     expect(headers.get('x-api-key')).toBe('target-api-key');
     expect(headers.get('cf-connecting-ip')).toBeNull();
   });

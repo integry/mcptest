@@ -4,6 +4,16 @@ compatibility_date = "2024-01-01"
 
 [vars]
 FIREBASE_PROJECT_ID = "mcptest-a530d"
+PUBLIC_APP_ORIGIN = "https://mcptest.io"
+HOSTED_OAUTH_CALLBACK_URL = "https://cors-proxy.mcptest.io/oauth/hosted/callback"
+
+[[durable_objects.bindings]]
+name = "HOSTED_OAUTH_BROKER"
+class_name = "HostedOAuthBroker"
+
+[[migrations]]
+tag = "v1-hosted-oauth"
+new_sqlite_classes = ["HostedOAuthBroker"]
 
 [observability.logs]
 enabled = true

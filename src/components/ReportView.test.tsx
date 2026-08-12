@@ -292,7 +292,7 @@ describe('ReportView OAuth discovery', () => {
     }).join('\n')).not.toContain('challenge-secret');
   });
 
-  it('uses challenge metadata and authenticated proxy fallback before showing registered-client fields', async () => {
+  it('uses challenge metadata and authenticated proxy fallback before showing the hosted GitHub path', async () => {
     const target = 'https://api.githubcopilot.com/mcp/';
     const metadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
     const issuer = 'https://github.com/login/oauth';
@@ -374,8 +374,9 @@ describe('ReportView OAuth discovery', () => {
     expect(directCalls).toContain(authorizationMetadataUrl);
     expect(proxyTargets).toEqual([authorizationMetadataUrl]);
     expect(oauthMocks.begin).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Configure an existing client');
-    expect(container.querySelector('#clientId')).not.toBeNull();
+    expect(container.textContent).toContain('Authorize with GitHub');
+    expect(container.querySelector('#clientId')).toBeNull();
+    expect(container.querySelector('#clientSecret')).toBeNull();
   });
 
   it('does not launch automatic registration or redirect from the registered-client action', async () => {

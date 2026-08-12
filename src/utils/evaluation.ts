@@ -223,7 +223,8 @@ export const getEvaluationPercentage = (report: EvaluationReport): number => {
 export function getEvaluationProxyHeaders(
   requestHeaders: HeadersInit | undefined,
   firebaseToken: string,
-  oauthToken?: string | null
+  oauthToken?: string | null,
+  hostedGrant?: string | null
 ): Headers {
   const headers = new Headers(requestHeaders);
   headers.set('Authorization', `Bearer ${firebaseToken}`);
@@ -231,6 +232,7 @@ export function getEvaluationProxyHeaders(
   if (oauthToken) {
     headers.set('X-MCP-Authorization', `Bearer ${oauthToken}`);
   }
+  if (hostedGrant) headers.set('X-MCP-Hosted-Grant', hostedGrant);
 
   return headers;
 }
@@ -528,10 +530,26 @@ const connectForEvaluation = async (
   oauthToken: string | null,
   targetHeaders: HeadersInit | undefined,
   onProgress: (message: string) => void,
-  pendingRetry?: PendingAuthenticatedMcpRetry
+  pendingRetry?: PendingAuthenticatedMcpRetry,
+  hostedGrant?: string | null
 ): Promise<ConnectedEvaluation> => {
   const abortController = new AbortController();
   const directStartedAt = Date.now();
+
+  if (hostedGrant) {
+    const proxyUrl = getProxyUrl();
+    if (!proxyUrl) throw new Error('Hosted OAuth requires the authenticated proxy.');
+    onProgress('Connecting through the authenticated proxy with the server-side OAuth grant...');
+    const proxyConnectionUrl = new URL(proxyUrl);
+    proxyConnectionUrl.searchParams.set('target', serverUrl);
+    const proxiedTargetHeaders = new Headers(targetHeaders);
+    proxiedTargetHeaders.set('X-MCP-Hosted-Grant', hostedGrant);
+    const proxied = await attemptParallelConnections(
+      proxyConnectionUrl.toString(), abortController.signal, firebaseToken,
+      proxiedTargetHeaders, true, undefined, pendingRetry?.observeRequest('proxy')
+    );
+    return { ...proxied, usedProxy: true };
+  }
 
   try {
     onProgress('Attempting direct MCP negotiation...');
@@ -1120,7 +1138,8 @@ export async function evaluateServer(
   onProgress: (message: string) => void,
   oauthAccessToken?: string | null,
   targetHeaders?: HeadersInit,
-  authorizationContext?: EvaluationAuthorizationContext
+  authorizationContext?: EvaluationAuthorizationContext,
+  hostedGrant?: string | null
 ): Promise<EvaluationReport> {
   const serverUrl = normalizeServerUrl(inputUrl);
   // An explicitly entered bearer or API-key credential is the selected target
@@ -1128,6 +1147,7 @@ export async function evaluateServer(
   const oauthToken = hasExplicitTargetCredential(targetHeaders)
     ? null
     : oauthAccessToken || null;
+  const selectedHostedGrant = hasExplicitTargetCredential(targetHeaders) ? null : hostedGrant;
   const report: EvaluationReport = {
     serverUrl,
     outcome: 'scored',
@@ -1136,7 +1156,7 @@ export async function evaluateServer(
   };
   let connection: ConnectedEvaluation | null = null;
   const connectionStartedAt = Date.now();
-  const pendingRetry = oauthToken && typeof sessionStorage !== 'undefined'
+  const pendingRetry = (oauthToken || selectedHostedGrant) && typeof sessionStorage !== 'undefined'
     ? resumePendingAuthenticatedMcpRetry({
         targetUrl: serverUrl,
         storage: sessionStorage,
@@ -1153,7 +1173,8 @@ export async function evaluateServer(
       oauthToken,
       targetHeaders,
       onProgress,
-      pendingRetry
+      pendingRetry,
+      selectedHostedGrant
     );
   } catch (error) {
     const message = errorMessage(error);

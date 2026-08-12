@@ -21,6 +21,10 @@ import {
   resumeOAuthFlightRecorder,
   sanitizeOAuthTraceUrl,
 } from './oauthTrace';
+import {
+  classifyHostedOAuthProvider,
+  type HostedOAuthProviderId,
+} from './hostedOAuth';
 
 export {
   OAUTH_TRACE_VERSION,
@@ -110,6 +114,7 @@ export interface OAuthPrerequisite {
   explanation: string;
   issuer?: string;
   registrationEndpoint?: string;
+  resourceMetadataUrl?: string;
   documentationUrl?: string;
   registrationUrl?: string;
   requiredScopes: string[];
@@ -118,6 +123,8 @@ export interface OAuthPrerequisite {
   canConfigureClient: boolean;
   failedStage?: string;
   httpStatus?: number;
+  hostedProvider?: HostedOAuthProviderId;
+  hostedScope?: string;
 }
 
 export class OAuthPrerequisiteError extends Error {
@@ -357,6 +364,7 @@ const buildOAuthPrerequisite = (
     providerName: guidance.name,
     issuer,
     registrationEndpoint: metadata?.registration_endpoint,
+    resourceMetadataUrl: discovery?.resourceMetadataUrl,
     documentationUrl: guidance.documentationUrl,
     registrationUrl: guidance.registrationUrl,
     requiredScopes,
@@ -364,6 +372,10 @@ const buildOAuthPrerequisite = (
     publicClientSecretSupported,
     failedStage,
     ...(error instanceof RegistrationRejectedError ? { httpStatus: error.status } : {}),
+    ...(classifyHostedOAuthProvider(serverUrl, issuer)
+      ? { hostedProvider: classifyHostedOAuthProvider(serverUrl, issuer)?.provider }
+      : {}),
+    ...(requestedScope ? { hostedScope: requestedScope } : {}),
   };
 
   if (kind === 'provider_approval_required') {
@@ -374,10 +386,13 @@ const buildOAuthPrerequisite = (
     };
   }
   if (kind === 'pre_registered_client_required') {
+    const hostedProvider = classifyHostedOAuthProvider(serverUrl, issuer);
     return {
       ...base,
-      canConfigureClient: true,
-      explanation: `${guidance.name} advertises neither Client ID Metadata Documents nor Dynamic Client Registration. Use an OAuth application registered with the provider.`,
+      canConfigureClient: !hostedProvider,
+      explanation: hostedProvider
+        ? `${guidance.name} requires a confidential pre-registered client. mcptest.io can use its operator-owned app without exposing the client secret to this browser.`
+        : `${guidance.name} advertises neither Client ID Metadata Documents nor Dynamic Client Registration. Use an OAuth application registered with the provider.`,
     };
   }
   if (error instanceof RegistrationRejectedError) {
@@ -1132,7 +1147,27 @@ export const prepareManualOAuthClient = async (
       ...discovery,
       ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
     });
+    const discoveredIssuer = issuerForDiscovery(provider.discoveryState());
+    if (classifyHostedOAuthProvider(normalizedServerUrl, discoveredIssuer)) {
+      trace.record({
+        type: 'pre_registered_client',
+        outcome: 'required',
+        provenance: 'oauth_client',
+        route: 'client',
+        explanation: 'This trusted provider requires the operator-owned confidential OAuth client.',
+      });
+      const prerequisite = buildOAuthPrerequisite(
+        'pre_registered_client_required',
+        normalizedServerUrl,
+        provider,
+        trace,
+        new Error('A hosted confidential client is required.')
+      );
+      trace.terminal('pre_registered_client_required', prerequisite.explanation);
+      throw new OAuthPrerequisiteError(prerequisite);
+    }
   } catch (error) {
+    if (error instanceof OAuthPrerequisiteError) throw error;
     trace.settleLatestProvisionalOAuthResponse('failed');
     trace.terminal('failed', 'OAuth metadata discovery failed while preparing manual client registration.');
     throw error;

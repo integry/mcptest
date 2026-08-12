@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
 import { logEvent } from '../utils/analytics';
+import { useAuth } from '../context/AuthContext';
 
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
@@ -60,6 +61,7 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace }) => {
+  const { currentUser } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
@@ -986,6 +988,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       {needsOAuthConfig && oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             clearOAuthConfigNeed();

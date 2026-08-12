@@ -27,6 +27,7 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import { loadHostedOAuthAuthorization } from '../utils/hostedOAuth';
 
 type StaticAuthorizationScheme = 'bearer' | 'api-key';
 
@@ -359,6 +360,7 @@ const ReportView: React.FC = () => {
 
     // Get the exact resource's issuer-bound OAuth access token if available.
     const oauthAccessToken = loadOAuthAuthorization(urlToTest)?.accessToken;
+    const hostedGrant = loadHostedOAuthAuthorization(urlToTest)?.grant;
     
     // Get Firebase auth token
     const token = await currentUser.getIdToken();
@@ -376,7 +378,8 @@ const ReportView: React.FC = () => {
         onProgress,
         oauthAccessToken,
         targetHeaders,
-        authorizationContext
+        authorizationContext,
+        hostedGrant
       );
       if (isAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
@@ -861,6 +864,7 @@ const ReportView: React.FC = () => {
       {oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;

@@ -22,6 +22,7 @@ import {
   resumeOAuthFlightRecorder,
   resumePendingAuthenticatedMcpRetry,
 } from '../utils/oauthTrace';
+import { loadHostedOAuthAuthorization } from '../utils/hostedOAuth';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -109,6 +110,7 @@ export const useConnection = (
   const { currentUser } = useAuth();
   const [isProxied, setIsProxied] = useState(false); // State to track if current connection is proxied
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [hostedGrant, setHostedGrant] = useState<string | null>(null);
   const [isAuthFlowActive, setIsAuthFlowActive] = useState(false);
   const [oauthProgress, setOauthProgress] = useState<string | null>(null);
   const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
@@ -130,15 +132,18 @@ export const useConnection = (
     if (!serverUrl) return; // Skip if no serverUrl
     try {
       const storedToken = loadOAuthAuthorization(serverUrl)?.accessToken;
+      const storedHostedGrant = loadHostedOAuthAuthorization(serverUrl)?.grant;
       if (storedToken) {
         setAccessToken(storedToken);
         console.log('[OAuth] Access token found in sessionStorage');
       } else {
         setAccessToken(null);
       }
+      setHostedGrant(storedHostedGrant || null);
     } catch (error) {
       console.warn('[OAuth] Invalid serverUrl for token lookup:', serverUrl, error);
       setAccessToken(null);
+      setHostedGrant(null);
     }
   }, [connectionStatus, serverUrl]); // Re-check when connection status changes
 
@@ -285,6 +290,7 @@ export const useConnection = (
     
     // Clear access token from state
     setAccessToken(null);
+    setHostedGrant(null);
     
     // Abort any ongoing connection attempt
     if (abortControllerRef.current) {
@@ -359,6 +365,15 @@ export const useConnection = (
 
     // Always get the latest access token from sessionStorage
     let latestAccessToken = getLatestAccessToken(targetUrl);
+    let latestHostedGrant = loadHostedOAuthAuthorization(targetUrl)?.grant;
+    const hasExplicitTargetCredential = Object.keys(requestHeaders || {}).some((header) => (
+      ['authorization', 'x-api-key', 'api-key'].includes(header.toLowerCase())
+    ));
+    if (hasExplicitTargetCredential) {
+      latestAccessToken = undefined;
+      latestHostedGrant = undefined;
+    }
+    if ((latestHostedGrant || null) !== hostedGrant) setHostedGrant(latestHostedGrant || null);
 
     setIsConnecting(true);
     setConnectionStatus('Connecting...');
@@ -397,10 +412,10 @@ export const useConnection = (
     let finalUrl: string | null = null;
     let finalUsedProxy = false;
     let connectionRoute: 'direct' | 'proxy' = 'direct';
-    const storedRetryTrace = latestAccessToken
+    const storedRetryTrace = latestAccessToken || latestHostedGrant
       ? resumeOAuthFlightRecorder(targetUrl, sessionStorage)
       : undefined;
-    let pendingOAuthRetry = latestAccessToken
+    let pendingOAuthRetry = latestAccessToken || latestHostedGrant
       ? resumePendingAuthenticatedMcpRetry({
           targetUrl,
           storage: sessionStorage,
@@ -472,7 +487,7 @@ export const useConnection = (
       setIsProxied(false);
       addLogEntry({ type: 'info', data: `Attempting direct connection to ${targetUrl}...` });
       // Set OAuth connection flag based on whether we have an access token
-      setIsOAuthConnection(!!latestAccessToken);
+      setIsOAuthConnection(Boolean(latestAccessToken || latestHostedGrant));
       if (latestAccessToken) {
         console.log('[OAuth] Using access token for connection');
         addLogEntry({ type: 'info', data: `🔐 Using OAuth access token for authenticated connection` });
@@ -510,10 +525,11 @@ export const useConnection = (
         }
       }
       // Set OAuth connection flag based on whether we have an OAuth token
-      setIsOAuthConnection(!!latestAccessToken);
+      setIsOAuthConnection(Boolean(latestAccessToken || latestHostedGrant));
       const targetHeaders = {
         ...requestHeaders,
         ...(latestAccessToken ? { Authorization: `Bearer ${latestAccessToken}` } : {}),
+        ...(latestHostedGrant ? { 'X-MCP-Hosted-Grant': latestHostedGrant } : {}),
       };
       return attemptParallelConnections(
         connectionUrl,
@@ -527,6 +543,12 @@ export const useConnection = (
     };
 
     const connectOnce = async () => {
+      if (latestHostedGrant) {
+        if (!shouldUseProxy || !currentUser) {
+          throw new Error('Hosted OAuth requires the authenticated proxy and a signed-in user.');
+        }
+        return { result: await withConnectionTimeout(connectViaProxy()), usedProxy: true };
+      }
       // Always try the unauthenticated or already-authorized MCP connection
       // before considering a new OAuth flow.
       try {
@@ -549,10 +571,6 @@ export const useConnection = (
         throw error;
       }
     };
-
-    const hasExplicitTargetCredential = Object.keys(requestHeaders || {}).some((header) => (
-      ['authorization', 'x-api-key', 'api-key'].includes(header.toLowerCase())
-    ));
 
     try {
       let attemptedAutomaticOAuth = false;
@@ -806,7 +824,7 @@ export const useConnection = (
         }
         cleanupConnection();
     }
-  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, accessToken, getLatestAccessToken, requestHeaders, onAuthFlowStart]);
+  }, [serverUrl, isConnecting, connectionStatus, recentServers, addLogEntry, cleanupConnection, useProxy, currentUser, accessToken, hostedGrant, getLatestAccessToken, requestHeaders, onAuthFlowStart]);
 
   // Clear connection error on successful connect
   const clearConnectionError = useCallback(() => {

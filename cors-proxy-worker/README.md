@@ -26,6 +26,48 @@ This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP 
    VITE_PROXY_URL=https://mcptest-cors-proxy.your-account.workers.dev
    ```
 
+## Hosted OAuth operator setup
+
+Hosted OAuth is free and is enabled only for these exact provider/target pairs:
+
+- Slack: `https://mcp.slack.com/mcp` with issuer `https://mcp.slack.com`
+- GitHub: `https://api.githubcopilot.com/mcp` with issuer `https://github.com/login/oauth`
+
+Create the provider applications using the official [Slack MCP setup](https://docs.slack.dev/ai/slack-mcp-server/)
+and [GitHub OAuth application setup](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app).
+Both applications must register this exact redirect URI:
+
+```text
+https://cors-proxy.mcptest.io/oauth/hosted/callback
+```
+
+Set the following Worker secrets; never put their values in `wrangler.toml`, Pages variables,
+frontend `.env` files, or build arguments:
+
+```bash
+wrangler secret put SLACK_OAUTH_CLIENT_ID
+wrangler secret put SLACK_OAUTH_CLIENT_SECRET
+wrangler secret put GITHUB_OAUTH_CLIENT_ID
+wrangler secret put GITHUB_OAUTH_CLIENT_SECRET
+wrangler secret put HOSTED_OAUTH_ENCRYPTION_KEY
+```
+
+`HOSTED_OAUTH_ENCRYPTION_KEY` is a base64url-encoded 32-byte random key. Configure
+`HOSTED_OAUTH_CALLBACK_URL` and `PUBLIC_APP_ORIGIN` as non-secret Worker bindings, and keep the
+`HOSTED_OAUTH_BROKER` Durable Object binding and migration from `wrangler.toml`.
+
+Authorization transactions expire after 10 minutes and are single-use. Provider access and refresh
+tokens are AES-256-GCM encrypted in Durable Object storage, never returned to browser code, and
+refreshed server-side 60 seconds before provider expiry. The browser receives only an opaque grant
+reference, kept in `sessionStorage` for the current tab; the reference expires server-side after 30
+days and is valid only for the same Firebase user and exact normalized MCP target. The proxy resolves
+that reference and places the provider access token on the existing isolated target-authorization
+channel. Firebase credentials are never forwarded to the MCP target.
+
+If a provider app or secret is missing, the endpoint returns `provider_not_configured`; the UI does
+not offer a confidential-client form as a fallback. Figma hosted OAuth remains disabled until
+mcptest.io is approved for the Figma MCP Catalog.
+
 ## Usage
 
 The proxy expects:

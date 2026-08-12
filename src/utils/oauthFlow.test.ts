@@ -1371,7 +1371,8 @@ describe('OAuth provider interoperability matrix', () => {
     expect(getOAuthPrerequisite(caught)).toMatchObject({
       kind: 'pre_registered_client_required',
       providerName: 'GitHub',
-      canConfigureClient: true,
+      canConfigureClient: false,
+      hostedProvider: 'github',
     });
     const trace = getStoredOAuthTrace(target, sessionStorage);
     expect(trace?.targetUrl).toBe(target);

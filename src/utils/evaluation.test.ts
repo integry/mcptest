@@ -63,6 +63,13 @@ describe('dual-era server evaluation', () => {
     expect(headers.get('content-type')).toBe('application/json');
   });
 
+  it('keeps a hosted grant on its isolated proxy header', () => {
+    const headers = getEvaluationProxyHeaders(undefined, 'firebase-jwt', null, 'opaque-grant');
+    expect(headers.get('authorization')).toBe('Bearer firebase-jwt');
+    expect(headers.get('x-mcp-hosted-grant')).toBe('opaque-grant');
+    expect(headers.get('x-mcp-authorization')).toBeNull();
+  });
+
   it('tries a direct fetch before falling back to the proxy', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

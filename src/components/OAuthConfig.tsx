@@ -5,12 +5,14 @@ import {
   saveManualOAuthClient,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
+import { beginHostedOAuthFlow } from '../utils/hostedOAuth';
 
 interface OAuthConfigProps {
   serverUrl: string;
   onConfigured: () => void;
   onCancel: () => void;
   prerequisite?: OAuthPrerequisite;
+  currentUser?: { getIdToken: () => Promise<string> } | null;
 }
 
 const OAuthConfig: React.FC<OAuthConfigProps> = ({
@@ -18,11 +20,13 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   onConfigured,
   onCancel,
   prerequisite,
+  currentUser,
 }) => {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
+  const [isStartingHosted, setIsStartingHosted] = useState(false);
   const serviceDomain = new URL(serverUrl).host;
   const callbackUrl = getOAuthCallbackUrl();
   const canConfigureClient = prerequisite?.canConfigureClient ?? true;
@@ -58,6 +62,29 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
       setConfigurationError(
         error instanceof Error ? error.message : 'Could not save the OAuth client configuration.'
       );
+    }
+  };
+
+  const handleHostedAuthorization = async () => {
+    const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+    if (!proxyUrl || !currentUser || !prerequisite?.issuer || !prerequisite.hostedProvider) {
+      setConfigurationError('Sign in and use a deployment with the authenticated proxy configured to continue.');
+      return;
+    }
+    setIsStartingHosted(true);
+    setConfigurationError(null);
+    try {
+      await beginHostedOAuthFlow({
+        serverUrl,
+        issuer: prerequisite.issuer,
+        resourceMetadataUrl: prerequisite.resourceMetadataUrl,
+        scope: prerequisite.hostedScope,
+        proxyUrl,
+        firebaseToken: await currentUser.getIdToken(),
+      });
+    } catch (error) {
+      setConfigurationError(error instanceof Error ? error.message : 'Hosted OAuth could not start.');
+      setIsStartingHosted(false);
     }
   };
 
@@ -133,6 +160,25 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
 
         {configurationError && (
           <div className="alert alert-danger" role="alert">{configurationError}</div>
+        )}
+
+        {prerequisite?.hostedProvider && (
+          <div className="mb-4">
+            <h6>Continue with mcptest.io hosted OAuth</h6>
+            <p className="text-muted">
+              The operator-owned {prerequisite.providerName} client secret stays in the Worker.
+              Provider access and refresh tokens remain server-side and are usable only for this
+              signed-in user and exact MCP target.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleHostedAuthorization()}
+              disabled={isStartingHosted}
+            >
+              {isStartingHosted ? 'Opening provider authorization...' : `Authorize with ${prerequisite.providerName}`}
+            </button>
+          </div>
         )}
 
         {canConfigureClient && (

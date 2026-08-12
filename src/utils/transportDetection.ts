@@ -471,6 +471,13 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
   };
   const normalizedPath = endpoint.pathname.replace(/\/+$/, '');
 
+  // Slack's hosted MCP service explicitly supports Streamable HTTP only. Do
+  // not probe an invented /sse sibling for this trusted provider endpoint.
+  if (endpoint.origin === 'https://mcp.slack.com' && normalizedPath === '/mcp') {
+    add(endpoint, 'streamable-http');
+    return candidates;
+  }
+
   if (normalizedPath.endsWith('/sse')) {
     add(endpoint, 'legacy-sse');
     const httpSibling = siblingEndpoint(endpoint, 'sse', 'mcp');

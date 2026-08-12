@@ -43,6 +43,13 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
 
 3. **Set environment variables**
    - Add `FIREBASE_PROJECT_ID` with your actual Firebase project ID (e.g., `mcp-testing`)
+   - Set `PUBLIC_APP_ORIGIN` and `HOSTED_OAUTH_CALLBACK_URL` to the deployed application and proxy origins.
+   - Add the `HOSTED_OAUTH_BROKER` Durable Object binding and migration from `cors-proxy-worker/wrangler.toml`.
+   - Add `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_ID`,
+     `GITHUB_OAUTH_CLIENT_SECRET`, and `HOSTED_OAUTH_ENCRYPTION_KEY` as encrypted Worker secrets.
+     Do not expose these bindings to the Pages/frontend build.
+   - Register `https://cors-proxy.mcptest.io/oauth/hosted/callback` as the exact redirect URI in
+     both provider applications. See `cors-proxy-worker/README.md` for provider links and token storage details.
 
 4. **Deploy**
    - Cloudflare will automatically deploy when you push to your connected branch

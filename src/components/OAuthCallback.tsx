@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { completeOAuthFlow } from '../utils/oauthFlow';
+import { completeHostedOAuthFlow } from '../utils/hostedOAuth';
 import { getSpaceUrl } from '../utils/urlUtils';
+import { useAuth } from '../context/AuthContext';
 
 interface OAuthReturnView {
   activeView?: string;
@@ -22,6 +24,7 @@ const OAuthCallback: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const processingRef = useRef(false);
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     if (processingRef.current) return;
@@ -47,7 +50,19 @@ const OAuthCallback: React.FC = () => {
           `${location.pathname}${location.search}`,
           window.location.origin
         );
-        const { serverUrl } = await completeOAuthFlow(callbackUrl);
+        const hostedResult = callbackUrl.searchParams.get('hosted_result');
+        let serverUrl: string;
+        if (hostedResult) {
+          const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+          if (!proxyUrl || !currentUser) throw new Error('Sign in again to complete hosted OAuth.');
+          ({ serverUrl } = await completeHostedOAuthFlow({
+            result: hostedResult,
+            proxyUrl,
+            firebaseToken: await currentUser.getIdToken(),
+          }));
+        } else {
+          ({ serverUrl } = await completeOAuthFlow(callbackUrl));
+        }
         addOAuthLog('info', 'OAuth authorization completed successfully.');
 
         let targetPath = '/';
@@ -96,7 +111,7 @@ const OAuthCallback: React.FC = () => {
     };
 
     void handleOAuthCallback();
-  }, [location.pathname, location.search, navigate]);
+  }, [currentUser, location.pathname, location.search, navigate]);
 
   return (
     <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">

@@ -84,4 +84,26 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('#clientId')).not.toBeNull();
     expect(view.querySelector('a[href="https://api.slack.com/apps"]')).not.toBeNull();
   });
+
+  it('offers the hosted operator path without a browser secret form for a classified Slack challenge', () => {
+    const view = renderPanel({
+      kind: 'pre_registered_client_required',
+      serverUrl: 'https://mcp.slack.com/mcp',
+      providerName: 'Slack',
+      explanation: 'Slack requires a confidential client.',
+      issuer: 'https://mcp.slack.com',
+      documentationUrl: 'https://docs.slack.dev/ai/slack-mcp-server/',
+      requiredScopes: ['channels:read'],
+      hostedScope: 'channels:read',
+      pkceS256: true,
+      publicClientSecretSupported: false,
+      canConfigureClient: false,
+      hostedProvider: 'slack',
+    });
+
+    expect(view.textContent).toContain('Authorize with Slack');
+    expect(view.textContent).toContain('client secret stays in the Worker');
+    expect(view.querySelector('#clientId')).toBeNull();
+    expect(view.querySelector('#clientSecret')).toBeNull();
+  });
 });
