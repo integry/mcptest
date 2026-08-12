@@ -1108,8 +1108,100 @@ const redactSchemaValuesAtPaths = (
   return value;
 };
 
+const SCHEMA_VALUE_APPLICATOR_KEYS = new Set([
+  'additionalProperties',
+  'allOf',
+  'anyOf',
+  'contains',
+  'dependentSchemas',
+  'else',
+  'if',
+  'items',
+  'not',
+  'oneOf',
+  'patternProperties',
+  'prefixItems',
+  'then',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+]);
+
+const schemaPatternMentionsSensitiveProperty = (pattern: string): boolean => (
+  isSensitiveQueryKey(pattern)
+);
+
+const schemaNameConstraintMentionsSensitiveProperty = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (typeof record.const === 'string' && isSensitiveQueryKey(record.const)) return true;
+  if (typeof record.pattern === 'string' && schemaPatternMentionsSensitiveProperty(record.pattern)) {
+    return true;
+  }
+  if (
+    Array.isArray(record.enum)
+    && record.enum.some((candidate) => (
+      typeof candidate === 'string' && isSensitiveQueryKey(candidate)
+    ))
+  ) {
+    return true;
+  }
+  return ['allOf', 'anyOf', 'oneOf', 'if', 'then', 'else']
+    .some((keyword) => {
+      const child = record[keyword];
+      return Array.isArray(child)
+        ? child.some(schemaNameConstraintMentionsSensitiveProperty)
+        : schemaNameConstraintMentionsSensitiveProperty(child);
+    });
+};
+
+const hasSchemaValuedApplicator = (record: Record<string, unknown>): boolean => (
+  Object.entries(record).some(([keyword, value]) => (
+    SCHEMA_VALUE_APPLICATOR_KEYS.has(keyword)
+    && value !== null
+    && typeof value === 'object'
+  ))
+);
+
+const hasUntraceableSensitiveSchemaProperty = (
+  value: unknown,
+  seen: Set<unknown> = new Set()
+): boolean => {
+  if (!value || typeof value !== 'object' || seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.some((item) => hasUntraceableSensitiveSchemaProperty(item, seen));
+  }
+  const record = value as Record<string, unknown>;
+  if (schemaNameConstraintMentionsSensitiveProperty(record.propertyNames)) return true;
+  if (
+    record.patternProperties
+    && typeof record.patternProperties === 'object'
+    && !Array.isArray(record.patternProperties)
+    && Object.keys(record.patternProperties).some(schemaPatternMentionsSensitiveProperty)
+  ) {
+    return true;
+  }
+  if (Array.isArray(record.required) && hasSchemaValuedApplicator(record)) {
+    const declaredProperties = record.properties
+      && typeof record.properties === 'object'
+      && !Array.isArray(record.properties)
+      ? record.properties as Record<string, unknown>
+      : undefined;
+    if (record.required.some((propertyName) => (
+      typeof propertyName === 'string'
+      && isSensitiveQueryKey(propertyName)
+      && !Object.prototype.hasOwnProperty.call(declaredProperties ?? {}, propertyName)
+    ))) {
+      return true;
+    }
+  }
+  return Object.values(record)
+    .some((child) => hasUntraceableSensitiveSchemaProperty(child, seen));
+};
+
 const redactSensitiveSchemaReferences = (schema: unknown): unknown => {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
+  if (hasUntraceableSensitiveSchemaProperty(schema)) return REDACTED_VALUE;
   const pendingReferences = new Set<string>();
   const seenSchemaNodes = new Set<unknown>();
   const referenceState = { unsafe: false };

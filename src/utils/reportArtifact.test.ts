@@ -932,6 +932,53 @@ describe('versioned public report artifacts', () => {
       .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
   });
 
+  it.each([
+    {
+      name: 'propertyNames',
+      schema: (credential: string) => ({
+        type: 'object',
+        propertyNames: { const: 'access_token' },
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
+    {
+      name: 'patternProperties',
+      schema: (credential: string) => ({
+        type: 'object',
+        patternProperties: {
+          '^access_token$': { type: 'string', const: credential },
+        },
+      }),
+    },
+    {
+      name: 'required with an applicator schema',
+      schema: (credential: string) => ({
+        type: 'object',
+        required: ['access_token'],
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
+  ])('omits an indirectly declared low-entropy credential schema using $name', ({ schema }) => {
+    const makeArtifact = (credential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: schema(credential),
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact('0000');
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+    expect(output).not.toContain('0000');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
   it('does not retain a low-entropy credential dictionary verifier in the fingerprint', () => {
     const credentialDictionary = ['0000', '0001', '1234', '9999'];
     const analyses = credentialDictionary.map((credential) => analyzeToolSurface([{
