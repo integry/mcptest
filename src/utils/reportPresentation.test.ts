@@ -32,6 +32,27 @@ describe('report presentation', () => {
     expect(getTestedServerResultLabel(entry)).toBe('Authorization required - not scored');
   });
 
+  it('labels proxy login separately from target authorization in history', () => {
+    const entry = createTestedServerHistoryEntry({
+      serverUrl: 'https://mcp.example/mcp',
+      outcome: 'authorization-required',
+      authenticationRequirement: { kind: 'proxy', status: 401 },
+      finalScore: 0,
+      sections: {
+        auth: {
+          name: 'Proxy Authentication Required',
+          description: 'mcptest login required',
+          score: 0,
+          maxScore: 0,
+          details: [],
+        },
+      },
+    }, 124);
+
+    expect(entry.authenticationRequirement).toEqual({ kind: 'proxy', status: 401 });
+    expect(getTestedServerResultLabel(entry)).toBe('mcptest login required - not scored');
+  });
+
   it('keeps a completed evaluation score in history', () => {
     const entry = createTestedServerHistoryEntry({
       serverUrl: 'https://mcp.example/mcp',

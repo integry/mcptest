@@ -15,7 +15,8 @@ import {
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
-  isAuthenticationRequired,
+  isProxyAuthenticationRequired,
+  isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
   type EvaluationAuthorizationContext,
   type EvaluationReport,
@@ -391,7 +392,7 @@ const ReportView: React.FC = () => {
         targetHeaders,
         authorizationContext
       );
-      if (isAuthenticationRequired(reportData)) {
+      if (isTargetAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
           authenticationUrl: reportData.authenticationUrl || reportData.serverUrl,
           ...(reportData.resourceMetadataUrl
@@ -418,6 +419,12 @@ const ReportView: React.FC = () => {
       addOrUpdateServer(reportData);
       
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
+        if (isProxyAuthenticationRequired(reportData)) {
+          setProgress(prev => [...prev,
+            'A valid mcptest login is required before the proxy can observe the target; this run was not scored.'
+          ]);
+          return;
+        }
         const options = getAuthorizationGateOptions(reportData);
         const requirements = [
           options.offersOAuth ? 'OAuth authorization' : undefined,
@@ -550,7 +557,11 @@ const ReportView: React.FC = () => {
   }, [currentUser]);
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
-  const reportRequiresAuthorization = reportOutcome === 'authorization-required';
+  const reportRequiresProxyAuthentication = report
+    ? isProxyAuthenticationRequired(report)
+    : false;
+  const reportRequiresAuthorization = reportOutcome === 'authorization-required'
+    && !reportRequiresProxyAuthentication;
   const authorizationGateOptions = report
     ? getAuthorizationGateOptions(report, oauthTrace)
     : { offersOAuth: false, staticSchemes: [], isUnknown: true };
@@ -721,6 +732,29 @@ const ReportView: React.FC = () => {
               }}
               onExportAll={() => saveReportSnapshotHistoryDownload(reportSnapshots)}
             />
+            {reportRequiresProxyAuthentication && (
+              <section className="report-auth-gate" aria-labelledby="report-proxy-auth-title">
+                <div className="report-auth-heading">
+                  <div className="report-auth-icon" aria-hidden="true">
+                    <i className="bi bi-person-lock"></i>
+                  </div>
+                  <div>
+                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                      <h3 id="report-proxy-auth-title" className="mb-0">mcptest login required</h3>
+                      <span className="badge text-bg-warning">Not scored</span>
+                    </div>
+                    <p className="mb-0">
+                      The authenticated proxy requested a valid mcptest login before it could return
+                      target evidence. This is not target OAuth and is not an MCP server failure.
+                    </p>
+                  </div>
+                </div>
+                <div className="report-auth-note">
+                  Sign in again and retry the report. Target OAuth will only be offered if the MCP
+                  target subsequently returns its own authentication challenge.
+                </div>
+              </section>
+            )}
             {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
               <ReportAuthorizationGate
                 serverUrl={report.serverUrl}
@@ -901,6 +935,17 @@ const ReportView: React.FC = () => {
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
           prerequisite={oauthPrerequisite || undefined}
+          onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
+            const configuredServerUrl = oauthConfigServerUrl;
+            setOAuthConfigServerUrl(null);
+            setOAuthPrerequisite(null);
+            // The prerequisite can follow a target challenge observed through the proxy.
+            // Do not invent direct-target provenance when this continuation has no route context.
+            await handleRunReport(
+              configuredServerUrl,
+              { Authorization: `Bearer ${token}` }
+            );
+          } : undefined}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);
