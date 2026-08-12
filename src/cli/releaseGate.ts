@@ -1,3 +1,6 @@
+import packageJson from '../../package.json';
+import { COMPATIBILITY_SCHEMA_VERSION } from '../compatibility/types';
+import { TOOL_SURFACE_ANALYSIS_VERSION } from '../types/toolSurfaceAnalysis';
 import type { EvaluationReport } from '../utils/evaluation';
 import { evaluateServer } from '../utils/evaluation';
 import {
@@ -127,6 +130,7 @@ const LOCAL_SCHEMA_CONSTANTS: readonly SchemaConstant[] = [
   schemaConstant('artifactType', ['mcptest.report']),
   schemaConstant('schemaVersion', ['2.0.0']),
   schemaConstant('generator.name', ['mcptest']),
+  schemaConstant('generator.version', [packageJson.version]),
   schemaConstant('provenance.route', ['direct', 'authenticated-proxy', 'unknown']),
   schemaConstant('provenance.attempts.*.route', ['direct', 'authenticated-proxy']),
   schemaConstant('provenance.attempts.*.result', ['failed']),
@@ -141,10 +145,14 @@ const LOCAL_SCHEMA_CONSTANTS: readonly SchemaConstant[] = [
   schemaConstant('releaseDecision.priorities.*.source', [
     'Host compatibility', 'Tool surface', 'Evaluation',
   ]),
+  schemaConstant('compatibility.schemaVersion', [COMPATIBILITY_SCHEMA_VERSION]),
+  schemaConstant('compatibility.assessments.*.schemaVersion', [COMPATIBILITY_SCHEMA_VERSION]),
   schemaConstant('compatibility.assessments.*.status', [
     'compatible', 'compatible-with-caveats', 'incompatible', 'unknown',
   ]),
-  schemaConstant('compatibility.assessments.*.findings.*.schemaVersion', ['1.0']),
+  schemaConstant('compatibility.assessments.*.findings.*.schemaVersion', [
+    COMPATIBILITY_SCHEMA_VERSION,
+  ]),
   schemaConstant('compatibility.assessments.*.findings.*.scope', [
     'target-server', 'authorization-server', 'client-environment',
   ]),
@@ -154,14 +162,20 @@ const LOCAL_SCHEMA_CONSTANTS: readonly SchemaConstant[] = [
   schemaConstant('compatibility.assessments.*.findings.*.severity', [
     'info', 'warning', 'error',
   ]),
-  schemaConstant('compatibility.assessments.*.findings.*.evidence.*.schemaVersion', ['1.0']),
+  schemaConstant('compatibility.assessments.*.findings.*.evidence.*.schemaVersion', [
+    COMPATIBILITY_SCHEMA_VERSION,
+  ]),
   schemaConstant('compatibility.assessments.*.findings.*.evidence.*.source', [
     'target-server', 'authorization-server', 'browser', 'proxy', 'configuration', 'host-profile',
   ]),
-  schemaConstant('compatibility.assessments.*.findings.*.remediation.schemaVersion', ['1.0']),
+  schemaConstant('compatibility.assessments.*.findings.*.remediation.schemaVersion', [
+    COMPATIBILITY_SCHEMA_VERSION,
+  ]),
   schemaConstant('compatibility.assessments.*.findings.*.remediation.kind', [
     'server-change', 'authorization-server-change', 'client-configuration', 'observation-needed',
   ]),
+  schemaConstant('toolSurfaceAnalysis.version', [TOOL_SURFACE_ANALYSIS_VERSION]),
+  schemaConstant('toolSurfaceAnalysis.fingerprint.algorithm', ['fnv1a-64-v1']),
   schemaConstant('toolSurfaceAnalysis.findings.*.*.category', [
     'availability', 'context-cost', 'ambiguity', 'description-quality', 'schema-quality',
     'capability-risk', 'prompt-like-description',

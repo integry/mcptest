@@ -80,7 +80,8 @@ const environmentName = (value: string, option: string): string => {
 const normalizeEndpoint = (value: string): string => {
   let endpoint: URL;
   try {
-    endpoint = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+    const hasExplicitScheme = /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
+    endpoint = new URL(hasExplicitScheme ? value : `https://${value}`);
   } catch {
     throw new ReleaseGateConfigurationError('Every endpoint must be a valid HTTP or HTTPS URL.');
   }

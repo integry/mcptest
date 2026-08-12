@@ -49,6 +49,23 @@ describe('release gate CLI configuration', () => {
     );
   });
 
+  it('returns invalid configuration for an explicit non-HTTP endpoint scheme', async () => {
+    let stderr = '';
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk);
+      return true;
+    });
+
+    try {
+      const exitCode = await runCli(['ftp://fixture.example/mcp'], {});
+
+      expect(exitCode).toBe(RELEASE_GATE_EXIT_CODES.invalidConfiguration);
+      expect(stderr).toContain('Every endpoint must use HTTP or HTTPS.');
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it.each([
     ['bearer', '--bearer-token-env', 'MCP_BEARER'],
     ['API key', '--api-key-env', 'MCP_API_KEY'],

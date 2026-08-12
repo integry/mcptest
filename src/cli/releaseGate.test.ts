@@ -225,6 +225,35 @@ describe('headless release gate', () => {
       .toEqual(result.targets[0].report);
   });
 
+  it('preserves compatibility schema versions when the supplied credential is 1.0', async () => {
+    const generatedAt = '2026-08-11T23:30:00.000Z';
+    const options = {
+      endpoints: ['https://fixture.example/mcp'],
+      generatedAt,
+    };
+    const evaluate = async () => evaluatedReport();
+    const baseline = await runReleaseGate(options, { evaluate });
+    const result = await runReleaseGate({
+      ...options,
+      headers: { 'X-API-Key': '1.0' },
+    }, { evaluate });
+
+    expect(result.exitCode).toBe(baseline.exitCode);
+    expect(result.targets[0].status).toBe(baseline.targets[0].status);
+    expect(result.targets[0].thresholdReasons).toEqual(baseline.targets[0].thresholdReasons);
+    expect(result.targets[0].releaseDecision).toEqual(baseline.targets[0].releaseDecision);
+    expect(result.targets[0].report?.compatibility?.schemaVersion).toBe('1.0');
+    const assessments = Object.values(
+      result.targets[0].report?.compatibility?.assessments || {}
+    );
+    expect(assessments).not.toHaveLength(0);
+    expect(assessments.every((assessment) => assessment.schemaVersion === '1.0')).toBe(true);
+    expect(PublicReportSchema.parse(JSON.parse(result.targets[0].json || '')))
+      .toEqual(result.targets[0].report);
+    expect(result.targets[0].markdown).toContain('# mcptest Evaluation Report');
+    expect(result.targets[0].markdown).not.toContain(REDACTED_VALUE);
+  });
+
   it('applies overall and severity thresholds without redefining release semantics', () => {
     const decision: ReleaseDecision = {
       status: 'review',
