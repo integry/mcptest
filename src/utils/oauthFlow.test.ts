@@ -1490,6 +1490,44 @@ describe('OAuth provider interoperability matrix', () => {
     });
   });
 
+  it('does not enable GitHub PAT guidance from an unknown target that advertises GitHub', async () => {
+    const target = 'https://attacker.example/mcp';
+    const issuer = 'https://github.com/login/oauth';
+    const registrationEndpoint = 'https://github.com/register';
+    const calls: string[] = [];
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      calls.push(`${init?.method || 'GET'} ${url}`);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return new Response(JSON.stringify({ error: 'access_denied' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected network request: ${url}`);
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(calls).toContain(`POST ${registrationEndpoint}`);
+    const prerequisite = getOAuthPrerequisite(caught);
+    expect(prerequisite?.providerName).toBe('github.com');
+    expect(prerequisite).not.toHaveProperty('supportsBearerToken');
+    expect(prerequisite).not.toHaveProperty('bearerTokenName');
+    expect(prerequisite?.providerName).not.toBe('GitHub');
+  });
+
   it('sanitizes a query-bearing challenge URL after the direct CORS failure', async () => {
     const target = 'https://challenge-query.example/mcp';
     const challengeSecret = 'challenge-secret';

@@ -14,7 +14,8 @@ import {
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
-  isAuthenticationRequired,
+  isProxyAuthenticationRequired,
+  isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
   type EvaluationAuthorizationContext,
   type EvaluationReport,
@@ -378,7 +379,7 @@ const ReportView: React.FC = () => {
         targetHeaders,
         authorizationContext
       );
-      if (isAuthenticationRequired(reportData)) {
+      if (isTargetAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
           authenticationUrl: reportData.authenticationUrl || reportData.serverUrl,
           ...(reportData.resourceMetadataUrl
@@ -395,6 +396,12 @@ const ReportView: React.FC = () => {
       addOrUpdateServer(reportData);
       
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
+        if (isProxyAuthenticationRequired(reportData)) {
+          setProgress(prev => [...prev,
+            'A valid mcptest login is required before the proxy can observe the target; this run was not scored.'
+          ]);
+          return;
+        }
         const options = getAuthorizationGateOptions(reportData);
         const requirements = [
           options.offersOAuth ? 'OAuth authorization' : undefined,
@@ -527,8 +534,11 @@ const ReportView: React.FC = () => {
   }, [currentUser]);
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
-  const reportRequiresAuthorization = reportOutcome === 'authorization-required';
-  const reportRequiresProxyAuthentication = report?.authenticationRequirement?.kind === 'proxy';
+  const reportRequiresProxyAuthentication = report
+    ? isProxyAuthenticationRequired(report)
+    : false;
+  const reportRequiresAuthorization = reportOutcome === 'authorization-required'
+    && !reportRequiresProxyAuthentication;
   const authorizationGateOptions = report
     ? getAuthorizationGateOptions(report, oauthTrace)
     : { offersOAuth: false, staticSchemes: [], isUnknown: true };
@@ -706,7 +716,7 @@ const ReportView: React.FC = () => {
                 </div>
               </section>
             )}
-            {reportRequiresAuthorization && !reportRequiresProxyAuthentication && authorizationGateOptions.offersOAuth && (
+            {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
               <ReportAuthorizationGate
                 serverUrl={report.serverUrl}
                 error={oauthError}
@@ -716,7 +726,7 @@ const ReportView: React.FC = () => {
                 onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
               />
             )}
-            {reportRequiresAuthorization && !reportRequiresProxyAuthentication
+            {reportRequiresAuthorization
               && selectedStaticAuthorizationScheme && (
               <section className="report-auth-gate" aria-labelledby="report-static-auth-title">
                 <div className="report-auth-heading">
@@ -799,7 +809,7 @@ const ReportView: React.FC = () => {
                 </form>
               </section>
             )}
-            {reportRequiresAuthorization && !reportRequiresProxyAuthentication && authorizationGateOptions.isUnknown && (
+            {reportRequiresAuthorization && authorizationGateOptions.isUnknown && (
               <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
                 <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
                 <p>

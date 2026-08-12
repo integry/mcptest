@@ -461,4 +461,41 @@ describe('ReportView OAuth discovery', () => {
     expect(container.textContent).toContain('Configure an existing client');
     expect(container.querySelector('#clientId')).not.toBeNull();
   });
+
+  it('renders proxy login without target-authorization actions or guidance', async () => {
+    evaluationMocks.evaluate.mockResolvedValue({
+      serverUrl: 'https://mcp.slack.com/mcp',
+      outcome: 'authorization-required',
+      authenticationRequirement: { kind: 'proxy', status: 401 },
+      finalScore: 0,
+      sections: {
+        auth: {
+          name: 'Proxy Authentication Required',
+          description: 'A valid mcptest login is required to use the authenticated proxy',
+          score: 0,
+          maxScore: 0,
+          status: 'skipped',
+          details: [{ text: 'Sign in to mcptest again, then retry the report.' }],
+        },
+      },
+    });
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+
+    expect(container.textContent).toContain('mcptest login required');
+    expect(container.textContent).toContain('Sign in to mcptest');
+    expect(container.textContent).not.toContain('Complete server authorization');
+    expect(container.textContent).not.toContain('Authorize and run report');
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+  });
 });

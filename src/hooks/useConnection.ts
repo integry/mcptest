@@ -27,6 +27,32 @@ import {
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
 
+const hasReadableHttpResponse = (error: unknown, seen = new Set<object>()): boolean => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return false;
+  seen.add(error);
+
+  if (getObservedAuthenticationChallenge(error)) return true;
+  if (typeof (error as { status?: unknown }).status === 'number') return true;
+
+  const candidateFailures = (error as {
+    candidateFailures?: ReadonlyArray<{
+      observedRequests?: ReadonlyArray<{ status?: number }>;
+    }>;
+  }).candidateFailures;
+  if (candidateFailures?.some(({ observedRequests }) => (
+    observedRequests?.some(({ status }) => typeof status === 'number')
+  ))) return true;
+
+  const nestedErrors = (error as { errors?: readonly unknown[] }).errors;
+  return Array.isArray(nestedErrors)
+    && nestedErrors.some((nestedError) => hasReadableHttpResponse(nestedError, seen));
+};
+
+const endedWithoutReadableHttpResponse = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return !/connection aborted by user/i.test(message) && !hasReadableHttpResponse(error);
+};
+
 const getConnectedServerUrl = (
   finalUrl: string,
   targetUrl: string,
@@ -411,6 +437,7 @@ export const useConnection = (
       : undefined;
     let oauthTrace = pendingOAuthRetry ? storedRetryTrace : undefined;
     let oauthRetryPending = Boolean(pendingOAuthRetry);
+    let proxyLoginPrerequisiteRequired = false;
     let connectionAttemptStartedAt = Date.now();
     const reloadLatestOAuthTrace = (): OAuthFlightRecorder | undefined => {
       const storedTrace = resumeOAuthFlightRecorder(targetUrl, sessionStorage);
@@ -534,18 +561,20 @@ export const useConnection = (
         const result = await withConnectionTimeout(connectDirectly());
         return { result, usedProxy: false };
       } catch (error: any) {
-        // Check if it's a CORS error and if automatic proxy fallback is enabled
-        const isCorsError = error.message?.toLowerCase().includes('cors') ||
-          (error.message?.toLowerCase().includes('failed to fetch') &&
-            !error.message?.toLowerCase().includes('network'));
+        const directResponseWasUnreadable = endedWithoutReadableHttpResponse(error);
+        const proxyConfigured = Boolean(import.meta.env.VITE_PROXY_URL);
 
-        if (isCorsError && shouldUseProxy && currentUser) {
+        // A browser failure with no readable response cannot establish whether
+        // the target is down or merely blocked by CORS. Use the authenticated
+        // proxy as the observation path whenever a valid login is available,
+        // independent of the optional manual proxy preference.
+        if (directResponseWasUnreadable && proxyConfigured && currentUser) {
           const result = await withConnectionTimeout(connectViaProxy());
           return { result, usedProxy: true };
         }
 
-        if (isCorsError && shouldUseProxy && !currentUser) {
-          addLogEntry({ type: 'warning', data: 'Proxy fallback disabled: User not logged in' });
+        if (directResponseWasUnreadable && proxyConfigured && !currentUser) {
+          proxyLoginPrerequisiteRequired = true;
         }
         throw error;
       }
@@ -585,6 +614,20 @@ export const useConnection = (
             && !attemptedAutomaticOAuth
             && !suppressOAuthDiscovery
             && !hasExplicitTargetCredential;
+
+          if (proxyLoginPrerequisiteRequired && !suppressOAuthDiscovery) {
+            const prerequisite = getProxyAuthenticationPrerequisite(targetUrl);
+            setConnectionError(null);
+            setOAuthPrerequisite(prerequisite);
+            setNeedsOAuthConfig(true);
+            setOAuthConfigServerUrl(targetUrl);
+            setConnectionStatus('Proxy authentication required');
+            setIsConnecting(false);
+            setConnectionStartTime(null);
+            abortControllerRef.current = null;
+            addLogEntry({ type: 'warning', data: prerequisite.explanation });
+            return;
+          }
 
           if (challenge && !oauthTrace) {
             oauthTrace = recordOAuthAuthenticationChallenge({

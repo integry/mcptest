@@ -67,10 +67,17 @@ export const getOAuthProviderPolicy = (
 ): OAuthProviderPolicy | undefined => {
   const targetHost = hostname(serverUrl);
   const issuerHost = hostname(issuer);
-  return PROVIDER_POLICIES.find((policy) => (
+  const targetPolicy = PROVIDER_POLICIES.find((policy) => (
     policy.targetHosts.some((host) => hostMatches(targetHost, host))
-    || policy.issuerHosts.some((host) => hostMatches(issuerHost, host))
   ));
+
+  // Discovery metadata is controlled by the target. It may confirm the
+  // provider selected from a trusted target host, but it must never enable
+  // provider-specific credentials for an otherwise unknown target.
+  if (!targetPolicy || !issuerHost) return targetPolicy;
+  return targetPolicy.issuerHosts.some((host) => hostMatches(issuerHost, host))
+    ? targetPolicy
+    : undefined;
 };
 
 export const isAuthoritativeStreamableHttpOnlyProvider = (serverUrl: string): boolean => (

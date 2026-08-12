@@ -154,6 +154,14 @@ export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
 );
 
+export const isProxyAuthenticationRequired = (report: EvaluationReport): boolean => (
+  isAuthenticationRequired(report) && report.authenticationRequirement?.kind === 'proxy'
+);
+
+export const isTargetAuthenticationRequired = (report: EvaluationReport): boolean => (
+  isAuthenticationRequired(report) && !isProxyAuthenticationRequired(report)
+);
+
 const isLegacyIncompleteEvaluationDetail = (detail: DetailItem): boolean => {
   const evidence = `${detail.text}. ${detail.context || ''}`;
   const scoredChecksCompleted = (

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isAuthoritativeStreamableHttpOnlyProvider } from '../utils/oauthProviderPolicy';
 
 interface ConnectionErrorDetails {
   error: string;
@@ -131,7 +132,12 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                       (errorDetails.error.toLowerCase().includes('failed to fetch') && !errorDetails.error.toLowerCase().includes('network'));
   const debuggingSteps = getDebuggingSteps(errorDetails.error);
   const httpCurlCommand = generateHttpCurlCommand(errorDetails.serverUrl);
-  const sseCurlCommand = generateSseCurlCommand(errorDetails.serverUrl);
+  const streamableHttpOnly = isAuthoritativeStreamableHttpOnlyProvider(
+    errorDetails.serverUrl
+  );
+  const sseCurlCommand = streamableHttpOnly
+    ? undefined
+    : generateSseCurlCommand(errorDetails.serverUrl);
 
   return (
     <div className="alert alert-danger border-danger mb-3" role="alert">
@@ -181,7 +187,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
           <div className="mb-3">
             <strong>Test Connection via Terminal:</strong>
             <div className="row mt-2">
-              <div className="col-12 col-md-6">
+              <div className={streamableHttpOnly ? 'col-12' : 'col-12 col-md-6'}>
                 <div className="mb-2">
                   <strong className="small">Streamable HTTP (POST):</strong>
                 </div>
@@ -197,7 +203,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                   </button>
                 </div>
               </div>
-              <div className="col-12 col-md-6">
+              {sseCurlCommand && <div className="col-12 col-md-6">
                 <div className="mb-2">
                   <strong className="small">SSE (GET):</strong>
                 </div>
@@ -212,12 +218,12 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                     {sseCurlCopied ? 'Copied!' : 'Copy SSE curl'}
                   </button>
                 </div>
-              </div>
+              </div>}
             </div>
             <small className="text-muted">
-              Run either command in your terminal to test the MCP server connection directly. 
+              Run {streamableHttpOnly ? 'this command' : 'either command'} in your terminal to test the MCP server connection directly.
               If you get a redirect (307), try with/without trailing slash in the URL.
-              The app automatically tries both variations for each transport.
+              The app automatically tries both trailing-slash variations for each allowed transport.
             </small>
           </div>
         </div>
