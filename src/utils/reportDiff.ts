@@ -112,12 +112,47 @@ const schemaType = (schema: JsonRecord): NormalizedSchemaType => {
   return { status: 'malformed' };
 };
 
-const stringSet = (value: unknown): Set<string> => new Set(
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
-);
-
 const sameSet = <T>(left: Set<T>, right: Set<T>): boolean => (
   left.size === right.size && [...left].every((value) => right.has(value))
+);
+
+type NormalizedSchemaKeyword<T> =
+  | { status: 'absent' }
+  | { status: 'valid'; value: T }
+  | { status: 'malformed' };
+
+const requiredKeyword = (
+  schema: JsonRecord
+): NormalizedSchemaKeyword<Set<string>> => {
+  if (!Object.prototype.hasOwnProperty.call(schema, 'required')) return { status: 'absent' };
+  const value = schema.required;
+  if (!Array.isArray(value)
+      || !value.every((item) => typeof item === 'string')
+      || new Set(value).size !== value.length) {
+    return { status: 'malformed' };
+  }
+  return { status: 'valid', value: new Set(value) };
+};
+
+const propertiesKeyword = (
+  schema: JsonRecord
+): NormalizedSchemaKeyword<JsonRecord> => {
+  if (!Object.prototype.hasOwnProperty.call(schema, 'properties')) return { status: 'absent' };
+  return isRecord(schema.properties)
+    ? { status: 'valid', value: schema.properties }
+    : { status: 'malformed' };
+};
+
+const keywordSet = (keyword: NormalizedSchemaKeyword<Set<string>>): Set<string> => (
+  keyword.status === 'valid' ? keyword.value : new Set()
+);
+
+const keywordRecord = (keyword: NormalizedSchemaKeyword<JsonRecord>): JsonRecord => (
+  keyword.status === 'valid' ? keyword.value : {}
+);
+
+const hasOwn = (value: JsonRecord, key: string): boolean => (
+  Object.prototype.hasOwnProperty.call(value, key)
 );
 
 const sameTypeKeyword = (
@@ -142,18 +177,27 @@ const displaySchemaType = (type: NormalizedSchemaType): string => (
       : display([...type.values].sort())
 );
 
-const sameRequiredKeyword = (left: unknown, right: unknown): boolean => {
-  const normalize = (value: unknown): Set<string> | undefined => {
-    if (value === undefined) return new Set();
-    if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return undefined;
-    return new Set(value);
-  };
-  const normalizedLeft = normalize(left);
-  const normalizedRight = normalize(right);
-  return normalizedLeft !== undefined
-    && normalizedRight !== undefined
-    && sameSet(normalizedLeft, normalizedRight);
+const sameRequiredKeyword = (leftSchema: JsonRecord, rightSchema: JsonRecord): boolean => {
+  const left = requiredKeyword(leftSchema);
+  const right = requiredKeyword(rightSchema);
+  if (left.status === 'malformed' || right.status === 'malformed') {
+    return left.status === right.status && same(leftSchema.required, rightSchema.required);
+  }
+  return sameSet(keywordSet(left), keywordSet(right));
 };
+
+const samePropertiesKeyword = (leftSchema: JsonRecord, rightSchema: JsonRecord): boolean => {
+  const left = propertiesKeyword(leftSchema);
+  const right = propertiesKeyword(rightSchema);
+  if (left.status === 'malformed' || right.status === 'malformed') {
+    return left.status === right.status && same(leftSchema.properties, rightSchema.properties);
+  }
+  return same(keywordRecord(left), keywordRecord(right));
+};
+
+const acceptedTypeCoveredBy = (before: string, after: Set<string>): boolean => (
+  after.has(before) || (before === 'integer' && after.has('number'))
+);
 
 const sameEnumKeyword = (left: unknown, right: unknown): boolean => {
   if (!Array.isArray(left) || !Array.isArray(right)) return same(left, right);
@@ -189,7 +233,9 @@ const schemaChanges = (
   if (!sameTypeKeyword(before, after, beforeType, afterType)) {
     const malformed = beforeType.status === 'malformed' || afterType.status === 'malformed';
     const removedTypes = beforeType.status === 'valid' && afterType.status === 'valid'
-      ? [...beforeType.values].filter((value) => !afterType.values.has(value)).sort()
+      ? [...beforeType.values]
+        .filter((value) => !acceptedTypeCoveredBy(value, afterType.values))
+        .sort()
       : [];
     const breaking = !malformed && (
       (beforeType.status === 'unconstrained' && afterType.status === 'valid')
@@ -206,54 +252,67 @@ const schemaChanges = (
   }
   if (changes.length > typeChangeStart) reportedHandledKeys.add('type');
 
-  const beforeRequired = stringSet(before.required);
-  const afterRequired = stringSet(after.required);
-  const requiredChangeStart = changes.length;
-  for (const name of [...afterRequired].filter((name) => !beforeRequired.has(name)).sort()) {
-    changes.push(makeChange(
-      'breaking', 'tools', `${path}.required.${name}`, `${toolName}.${name} became required`,
-      'Existing callers that omit this input will no longer satisfy the schema.'
-    ));
-  }
-  for (const name of [...beforeRequired].filter((name) => !afterRequired.has(name)).sort()) {
-    changes.push(makeChange(
-      'change', 'tools', `${path}.required.${name}`, `${toolName}.${name} is now optional`,
-      'The input contract was relaxed.'
-    ));
-  }
-  if (changes.length > requiredChangeStart) reportedHandledKeys.add('required');
-
-  const beforeProperties = isRecord(before.properties) ? before.properties : {};
-  const afterProperties = isRecord(after.properties) ? after.properties : {};
-  const propertiesChangeStart = changes.length;
-  let addedRequiredProperty = false;
-  for (const name of Object.keys(afterProperties).filter((name) => !(name in beforeProperties)).sort()) {
-    if (afterRequired.has(name)) {
-      addedRequiredProperty = true;
-      continue;
+  const beforeRequiredKeyword = requiredKeyword(before);
+  const afterRequiredKeyword = requiredKeyword(after);
+  const beforeRequired = keywordSet(beforeRequiredKeyword);
+  const afterRequired = keywordSet(afterRequiredKeyword);
+  if (!sameRequiredKeyword(before, after)) {
+    if (beforeRequiredKeyword.status === 'malformed'
+        || afterRequiredKeyword.status === 'malformed') {
+      changes.push(makeChange(
+        'unknown', 'tools', `${path}.required`, `${toolName} required inputs could not be compared`,
+        'At least one required declaration is malformed.'
+      ));
+    } else {
+      for (const name of [...afterRequired].filter((name) => !beforeRequired.has(name)).sort()) {
+        changes.push(makeChange(
+          'breaking', 'tools', `${path}.required.${name}`, `${toolName}.${name} became required`,
+          'Existing callers that omit this input will no longer satisfy the schema.'
+        ));
+      }
+      for (const name of [...beforeRequired].filter((name) => !afterRequired.has(name)).sort()) {
+        changes.push(makeChange(
+          'change', 'tools', `${path}.required.${name}`, `${toolName}.${name} is now optional`,
+          'The input contract was relaxed.'
+        ));
+      }
     }
-    changes.push(makeChange(
-      'addition', 'tools', `${path}.properties.${name}`, `${toolName} added optional input ${name}`,
-      'This additive optional field is compatible with existing callers.'
-    ));
   }
-  for (const name of Object.keys(beforeProperties).filter((name) => !(name in afterProperties)).sort()) {
-    changes.push(makeChange(
-      'removal', 'tools', `${path}.properties.${name}`, `${toolName} removed input ${name}`,
-      'Callers that still send this input may fail validation.', true
-    ));
+  reportedHandledKeys.add('required');
+
+  const beforePropertiesKeyword = propertiesKeyword(before);
+  const afterPropertiesKeyword = propertiesKeyword(after);
+  const beforeProperties = keywordRecord(beforePropertiesKeyword);
+  const afterProperties = keywordRecord(afterPropertiesKeyword);
+  if (!samePropertiesKeyword(before, after)) {
+    if (beforePropertiesKeyword.status === 'malformed'
+        || afterPropertiesKeyword.status === 'malformed') {
+      changes.push(makeChange(
+        'unknown', 'tools', `${path}.properties`, `${toolName} input properties could not be compared`,
+        'At least one properties declaration is malformed.'
+      ));
+    } else {
+      for (const name of Object.keys(afterProperties).filter((name) => !hasOwn(beforeProperties, name)).sort()) {
+        if (afterRequiredKeyword.status === 'malformed' || afterRequired.has(name)) continue;
+        changes.push(makeChange(
+          'addition', 'tools', `${path}.properties.${name}`, `${toolName} added optional input ${name}`,
+          'This additive optional field is compatible with existing callers.'
+        ));
+      }
+      for (const name of Object.keys(beforeProperties).filter((name) => !hasOwn(afterProperties, name)).sort()) {
+        changes.push(makeChange(
+          'removal', 'tools', `${path}.properties.${name}`, `${toolName} removed input ${name}`,
+          'Callers that still send this input may fail validation.', true
+        ));
+      }
+      for (const name of Object.keys(beforeProperties).filter((name) => hasOwn(afterProperties, name)).sort()) {
+        changes.push(...schemaChanges(
+          beforeProperties[name], afterProperties[name], toolName, `${path}.properties.${name}`
+        ));
+      }
+    }
   }
-  for (const name of Object.keys(beforeProperties).filter((name) => name in afterProperties).sort()) {
-    changes.push(...schemaChanges(
-      beforeProperties[name], afterProperties[name], toolName, `${path}.properties.${name}`
-    ));
-  }
-  if (changes.length > propertiesChangeStart || addedRequiredProperty) {
-    reportedHandledKeys.add('properties');
-  } else if (isRecord(before.properties) && isRecord(after.properties)) {
-    // Every shared child compared semantically and no property was added or removed.
-    reportedHandledKeys.add('properties');
-  }
+  reportedHandledKeys.add('properties');
 
   const beforeEnum = Array.isArray(before.enum) ? before.enum : undefined;
   const afterEnum = Array.isArray(after.enum) ? after.enum : undefined;
@@ -324,7 +383,9 @@ const schemaChanges = (
     const semanticallyEqual = key === 'type'
       ? sameTypeKeyword(before, after)
       : key === 'required'
-      ? sameRequiredKeyword(before[key], after[key])
+      ? sameRequiredKeyword(before, after)
+      : key === 'properties'
+        ? samePropertiesKeyword(before, after)
       : key === 'enum'
         ? sameEnumKeyword(before[key], after[key])
         : key === 'additionalProperties'
@@ -359,9 +420,7 @@ const compareTools = (before: PublicReport, after: PublicReport): ReportDiffChan
   const beforeSet = before.toolSurfaceAnalysis?.toolDefinitions;
   const afterSet = after.toolSurfaceAnalysis?.toolDefinitions;
   if (beforeSet?.status !== 'complete' || afterSet?.status !== 'complete') {
-    const fingerprintsMatch = before.toolSurfaceAnalysis?.fingerprint.value
-      && before.toolSurfaceAnalysis.fingerprint.value === after.toolSurfaceAnalysis?.fingerprint.value;
-    return fingerprintsMatch ? [] : [makeChange(
+    return [makeChange(
       'unknown', 'tools', 'toolSurfaceAnalysis.toolDefinitions',
       'Tool contracts could not be compared completely',
       'One or both snapshots contain unavailable or bounded tool definitions.'
@@ -784,9 +843,16 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
       'The latest run required the authenticated proxy after the previous run connected directly.'
     ));
   } else {
+    const routeComparable = before.provenance.route !== 'unknown'
+      && after.provenance.route !== 'unknown';
     compareScalar(changes, before.provenance.route, after.provenance.route, {
-      classification: 'change', category: 'transport', path: 'provenance.route',
-      title: 'Connection route changed', breaking: false,
+      classification: routeComparable ? 'change' : 'unknown',
+      category: 'transport', path: 'provenance.route',
+      title: 'Connection route changed',
+      detail: routeComparable
+        ? undefined
+        : 'One run did not establish a comparable connection route.',
+      breaking: false,
     });
   }
 

@@ -183,6 +183,44 @@ describe('semantic report drift', () => {
     }
   });
 
+  it.each([
+    ['integer', 'number'],
+    [['integer', 'string'], ['number', 'string']],
+  ] as const)('treats %j to %j as a compatible numeric widening', (beforeType, afterType) => {
+    const before = artifact({
+      tools: [tool(inputSchema({ query: { type: beforeType } }))],
+    });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(inputSchema({ query: { type: afterType } }))],
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties.query.type',
+      classification: 'change',
+      breaking: false,
+    }));
+  });
+
+  it.each([
+    ['number', 'integer'],
+    [['number', 'string'], ['integer', 'string']],
+  ] as const)('treats %j to %j as a breaking numeric narrowing', (beforeType, afterType) => {
+    const before = artifact({
+      tools: [tool(inputSchema({ query: { type: beforeType } }))],
+    });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(inputSchema({ query: { type: afterType } }))],
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties.query.type',
+      classification: 'breaking',
+      breaking: true,
+    }));
+  });
+
   it('classifies malformed input type declarations as unknown', () => {
     const before = artifact({ tools: [tool(inputSchema({ query: { type: 'string' } }))] });
     const after = artifact({
@@ -195,6 +233,79 @@ describe('semantic report drift', () => {
       classification: 'unknown',
       breaking: false,
     }));
+  });
+
+  it('does not infer property removals from a malformed properties declaration', () => {
+    const before = artifact({ tools: [tool(inputSchema({
+      query: { type: 'string' },
+      limit: { type: 'number' },
+    }))] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool({
+        type: 'object', properties: [], required: ['query'], additionalProperties: false,
+      })],
+    });
+    const changes = diffPublicReports(before, after).changes;
+
+    expect(changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties', classification: 'unknown', breaking: false,
+    }));
+    expect(changes).not.toContainEqual(expect.objectContaining({
+      path: expect.stringMatching(/inputSchema\.properties\.(query|limit)$/),
+      classification: 'removal',
+    }));
+  });
+
+  it('does not infer newly optional inputs from a malformed required declaration', () => {
+    const before = artifact({
+      tools: [tool(inputSchema({ query: { type: 'string' } }, ['query']))],
+    });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool({
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: 'query',
+        additionalProperties: false,
+      })],
+    });
+    const changes = diffPublicReports(before, after).changes;
+
+    expect(changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.required', classification: 'unknown', breaking: false,
+    }));
+    expect(changes).not.toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.required.query',
+      title: 'search.query is now optional',
+    }));
+  });
+
+  it('compares prototype-colliding property names as own schema properties', () => {
+    const withoutConstructor = artifact({
+      tools: [tool(inputSchema({ query: { type: 'string' } }))],
+    });
+    const withConstructor = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(inputSchema({
+        query: { type: 'string' },
+        constructor: { type: 'string' },
+      }))],
+    });
+
+    expect(diffPublicReports(withoutConstructor, withConstructor).changes).toContainEqual(
+      expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.constructor',
+        classification: 'addition',
+      })
+    );
+    expect(diffPublicReports(withConstructor, withoutConstructor).changes).toContainEqual(
+      expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.constructor',
+        classification: 'removal',
+        breaking: true,
+      })
+    );
   });
 
   it('classifies adding and removing enum constraints by direction', () => {
@@ -286,6 +397,26 @@ describe('semantic report drift', () => {
     }));
   });
 
+  it('reports matching partial tool sets as unknown without using their fingerprints', () => {
+    const before = artifact({ tools: [{
+      ...tool(inputSchema({ query: { type: 'string' } })),
+      description: 'Authenticate with access_token=quartz-maple-91',
+    }] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [{
+        ...tool(inputSchema({ query: { type: 'string' } })),
+        description: 'Authenticate with access_token=quartz-maple-91',
+      }],
+    });
+
+    expect(before.toolSurfaceAnalysis?.fingerprint.value)
+      .toBe(after.toolSurfaceAnalysis?.fingerprint.value);
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+    }));
+  });
+
   it('prioritizes transport regressions ahead of score changes', () => {
     const before = artifact();
     const after = artifact({
@@ -320,6 +451,21 @@ describe('semantic report drift', () => {
       title: 'Transport changed', breaking: false,
     }));
   });
+
+  it.each(['partial', 'failed'] as const)(
+    'classifies a route lost during a %s run as unknown',
+    (outcome) => {
+      const before = artifact();
+      const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+      after.provenance = { route: 'unknown', proxyUsed: null };
+      after.outcome = { status: outcome, summary: `The evaluation was ${outcome}.` };
+      after.score = null;
+
+      expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+        path: 'provenance.route', classification: 'unknown', breaking: false,
+      }));
+    }
+  );
 
   it('reports OAuth metadata changes as authentication risk changes', () => {
     const before = artifact({ oauthMetadata: {

@@ -760,6 +760,34 @@ describe('versioned public report artifacts', () => {
     expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
   });
 
+  it('does not retain a low-entropy credential dictionary verifier in the fingerprint', () => {
+    const credentialDictionary = ['0000', '0001', '1234', '9999'];
+    const analyses = credentialDictionary.map((credential) => analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: { type: 'string', enum: [credential] },
+        },
+      },
+    }]));
+    const artifacts = analyses.map((toolSurfaceAnalysis) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = toolSurfaceAnalysis;
+      return createPublicReport(report, FIXED_OPTIONS);
+    });
+    const rawFingerprints = new Set(analyses.map(({ fingerprint }) => fingerprint.value));
+    const storedFingerprints = new Set(artifacts.map(
+      ({ toolSurfaceAnalysis }) => toolSurfaceAnalysis?.fingerprint.value
+    ));
+
+    expect(artifacts.every(
+      ({ toolSurfaceAnalysis }) => toolSurfaceAnalysis?.toolDefinitions.status === 'partial'
+    )).toBe(true);
+    expect(storedFingerprints.size).toBe(1);
+    expect(rawFingerprints.has([...storedFingerprints][0]!)).toBe(false);
+  });
+
   it('redacts opaque credentials throughout a nested sensitive property schema', () => {
     const opaqueCredential = 'quartz-maple-91';
     const report = publicReport();

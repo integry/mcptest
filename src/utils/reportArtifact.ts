@@ -939,6 +939,32 @@ const sameReportValue = (left: unknown, right: unknown): boolean => {
     ));
 };
 
+const stableReportValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stableReportValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([childKey, childValue]) => [childKey, stableReportValue(childValue)]));
+  }
+  return value;
+};
+
+const redactedContractFingerprint = (value: unknown): { value: string; canonicalBytes: number } => {
+  const canonical = JSON.stringify(stableReportValue(value));
+  const bytes = new TextEncoder().encode(canonical);
+  let hash = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  const mask = 0xffffffffffffffffn;
+  for (const byte of bytes) {
+    hash ^= BigInt(byte);
+    hash = (hash * prime) & mask;
+  }
+  return {
+    value: hash.toString(16).padStart(16, '0'),
+    canonicalBytes: bytes.length,
+  };
+};
+
 const redactReportValueAtPath = (
   value: unknown,
   key: string | undefined,
@@ -989,6 +1015,26 @@ const redactReportValueAtPath = (
       && !sameReportValue(value, redactedObject)
     ) {
       return { ...redactedObject, status: 'partial' };
+    }
+    const redactedDefinitions = redactedObject.toolDefinitions;
+    const redactedFingerprint = redactedObject.fingerprint;
+    if (
+      key === 'toolSurfaceAnalysis'
+      && redactedDefinitions
+      && typeof redactedDefinitions === 'object'
+      && !Array.isArray(redactedDefinitions)
+      && (redactedDefinitions as Record<string, unknown>).status === 'partial'
+      && redactedFingerprint
+      && typeof redactedFingerprint === 'object'
+      && !Array.isArray(redactedFingerprint)
+    ) {
+      return {
+        ...redactedObject,
+        fingerprint: {
+          ...(redactedFingerprint as Record<string, unknown>),
+          ...redactedContractFingerprint(redactedDefinitions),
+        },
+      };
     }
     return redactedObject;
   }
