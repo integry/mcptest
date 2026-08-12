@@ -1174,6 +1174,21 @@ const hasSchemaValuedApplicator = (record: Record<string, unknown>): boolean => 
   ))
 );
 
+const dependencyKeywordMentionsUntraceableSensitiveProperty = (
+  value: unknown,
+  declaredProperties: Record<string, unknown> | undefined
+): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.entries(value).some(([propertyName, dependencies]) => (
+    Array.isArray(dependencies)
+    && [propertyName, ...dependencies].some((candidate) => (
+      typeof candidate === 'string'
+      && isSensitiveQueryKey(candidate)
+      && !Object.prototype.hasOwnProperty.call(declaredProperties ?? {}, candidate)
+    ))
+  ));
+};
+
 const hasUntraceableSensitiveSchemaProperty = (
   value: unknown,
   seen: Set<unknown> = new Set()
@@ -1193,17 +1208,29 @@ const hasUntraceableSensitiveSchemaProperty = (
   ) {
     return true;
   }
-  if (Array.isArray(record.required) && hasSchemaValuedApplicator(record)) {
+  if (hasSchemaValuedApplicator(record)) {
     const declaredProperties = record.properties
       && typeof record.properties === 'object'
       && !Array.isArray(record.properties)
       ? record.properties as Record<string, unknown>
       : undefined;
-    if (record.required.some((propertyName) => (
+    if (Array.isArray(record.required) && record.required.some((propertyName) => (
       typeof propertyName === 'string'
       && isSensitiveQueryKey(propertyName)
       && !Object.prototype.hasOwnProperty.call(declaredProperties ?? {}, propertyName)
     ))) {
+      return true;
+    }
+    if (
+      dependencyKeywordMentionsUntraceableSensitiveProperty(
+        record.dependentRequired,
+        declaredProperties
+      )
+      || dependencyKeywordMentionsUntraceableSensitiveProperty(
+        record.dependencies,
+        declaredProperties
+      )
+    ) {
       return true;
     }
   }

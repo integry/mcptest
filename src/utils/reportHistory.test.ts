@@ -92,6 +92,36 @@ describe('report snapshot history', () => {
     });
   });
 
+  it.each([
+    ['dependentRequired', { account: ['access_token'] }],
+    ['dependencies', { account: ['access_token'] }],
+  ] as const)('does not store credentials declared through %s', (keyword, declaration) => {
+    const credential = '0000';
+    const unsafeReport = report();
+    unsafeReport.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        [keyword]: declaration,
+        additionalProperties: { type: 'string', const: credential },
+      },
+    }]);
+    const storage = new MemoryStorage();
+    const snapshot = createReportSnapshot(
+      unsafeReport,
+      undefined,
+      '2026-08-11T20:00:00.000Z'
+    );
+
+    storeReportSnapshot(snapshot, storage);
+
+    const stored = storage.getItem(REPORT_HISTORY_STORAGE_KEY) || '';
+    expect(stored).not.toContain(credential);
+    expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toBe('[REDACTED]');
+  });
+
   it('retains multiple snapshots per endpoint within documented bounds', () => {
     const storage = new MemoryStorage();
     const base = createReportSnapshot(report(), undefined, '2026-08-11T20:00:00.000Z');

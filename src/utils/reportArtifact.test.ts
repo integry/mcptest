@@ -994,6 +994,22 @@ describe('versioned public report artifacts', () => {
         additionalProperties: { type: 'string', const: credential },
       }),
     },
+    {
+      name: 'dependentRequired with an applicator schema',
+      schema: (credential: string) => ({
+        type: 'object',
+        dependentRequired: { account: ['access_token'] },
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
+    {
+      name: 'array-form dependencies with an applicator schema',
+      schema: (credential: string) => ({
+        type: 'object',
+        dependencies: { access_token: ['account'] },
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
   ])('omits an indirectly declared low-entropy credential schema using $name', ({ schema }) => {
     const makeArtifact = (credential: string) => {
       const report = publicReport();
