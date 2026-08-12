@@ -1043,23 +1043,46 @@ const schemaValueAtPath = (
 const collectLocalSchemaReferences = (
   value: unknown,
   references: Set<string>,
-  seen: Set<unknown>
+  seen: Set<unknown>,
+  state: { unsafe: boolean },
+  hasScopedIdentifier = false
 ): void => {
   if (!value || typeof value !== 'object' || seen.has(value)) return;
   seen.add(value);
   if (Array.isArray(value)) {
-    value.forEach((item) => collectLocalSchemaReferences(item, references, seen));
+    value.forEach((item) => collectLocalSchemaReferences(
+      item,
+      references,
+      seen,
+      state,
+      hasScopedIdentifier
+    ));
     return;
   }
+  const record = value as Record<string, unknown>;
+  const referenceHasScopedIdentifier = hasScopedIdentifier
+    || Object.prototype.hasOwnProperty.call(record, '$id');
   for (const [childKey, childValue] of Object.entries(value)) {
-    if (
-      (childKey === '$ref' || childKey === '$dynamicRef')
-      && typeof childValue === 'string'
-      && childValue.startsWith('#')
-    ) {
-      references.add(childValue);
+    if (childKey === '$ref' || childKey === '$dynamicRef') {
+      if (
+        typeof childValue === 'string'
+        && childValue.startsWith('#')
+        && !referenceHasScopedIdentifier
+      ) {
+        references.add(childValue);
+      } else {
+        state.unsafe = true;
+      }
+    } else if (childKey === '$recursiveRef') {
+      state.unsafe = true;
     }
-    collectLocalSchemaReferences(childValue, references, seen);
+    collectLocalSchemaReferences(
+      childValue,
+      references,
+      seen,
+      state,
+      referenceHasScopedIdentifier
+    );
   }
 };
 
@@ -1089,35 +1112,53 @@ const redactSensitiveSchemaReferences = (schema: unknown): unknown => {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
   const pendingReferences = new Set<string>();
   const seenSchemaNodes = new Set<unknown>();
+  const referenceState = { unsafe: false };
 
-  const visitProperties = (value: unknown): void => {
+  const visitProperties = (value: unknown, hasScopedIdentifier = false): void => {
     if (!value || typeof value !== 'object' || seenSchemaNodes.has(value)) return;
     seenSchemaNodes.add(value);
     if (Array.isArray(value)) {
-      value.forEach(visitProperties);
+      value.forEach((item) => visitProperties(item, hasScopedIdentifier));
       return;
     }
     const record = value as Record<string, unknown>;
+    const childHasScopedIdentifier = hasScopedIdentifier
+      || (value !== schema && Object.prototype.hasOwnProperty.call(record, '$id'));
     if (record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)) {
       for (const [propertyName, declaration] of Object.entries(record.properties)) {
         if (isSensitiveQueryKey(propertyName)) {
-          collectLocalSchemaReferences(declaration, pendingReferences, new Set());
+          collectLocalSchemaReferences(
+            declaration,
+            pendingReferences,
+            new Set(),
+            referenceState,
+            childHasScopedIdentifier
+          );
         }
       }
     }
-    Object.values(record).forEach(visitProperties);
+    Object.values(record).forEach((child) => visitProperties(child, childHasScopedIdentifier));
   };
   visitProperties(schema);
+  if (referenceState.unsafe) return REDACTED_VALUE;
 
   const redactedPaths = new Set<string>();
   for (const reference of pendingReferences) {
-    for (const referencePath of localSchemaReferencePaths(schema, reference)) {
+    const referencePaths = localSchemaReferencePaths(schema, reference);
+    if (referencePaths.length === 0) return REDACTED_VALUE;
+    for (const referencePath of referencePaths) {
       const pathKey = JSON.stringify(referencePath);
       if (redactedPaths.has(pathKey)) continue;
       const target = schemaValueAtPath(schema, referencePath);
-      if (!target.found) continue;
+      if (!target.found) return REDACTED_VALUE;
       redactedPaths.add(pathKey);
-      collectLocalSchemaReferences(target.value, pendingReferences, new Set());
+      collectLocalSchemaReferences(
+        target.value,
+        pendingReferences,
+        new Set(),
+        referenceState
+      );
+      if (referenceState.unsafe) return REDACTED_VALUE;
     }
   }
 

@@ -900,6 +900,38 @@ describe('versioned public report artifacts', () => {
       .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
   });
 
+  it('omits a schema with a low-entropy credential behind an absolute same-document reference', () => {
+    const makeArtifact = (credential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          $id: 'https://schemas.example/input',
+          type: 'object',
+          properties: {
+            access_token: {
+              $ref: 'https://schemas.example/input#/$defs/public',
+            },
+          },
+          $defs: {
+            public: { type: 'string', const: credential },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact('0000');
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+    expect(output).not.toContain('0000');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
   it('does not retain a low-entropy credential dictionary verifier in the fingerprint', () => {
     const credentialDictionary = ['0000', '0001', '1234', '9999'];
     const analyses = credentialDictionary.map((credential) => analyzeToolSurface([{
