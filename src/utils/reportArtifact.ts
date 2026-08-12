@@ -1040,6 +1040,18 @@ const schemaValueAtPath = (
   return { found: true, value: current };
 };
 
+const schemaPathCrossesScopedIdentifier = (
+  root: unknown,
+  path: readonly string[]
+): boolean => path.some((_, index) => {
+  const candidate = schemaValueAtPath(root, path.slice(0, index + 1));
+  return candidate.found
+    && Boolean(candidate.value)
+    && typeof candidate.value === 'object'
+    && !Array.isArray(candidate.value)
+    && Object.prototype.hasOwnProperty.call(candidate.value, '$id');
+});
+
 const collectLocalSchemaReferences = (
   value: unknown,
   references: Set<string>,
@@ -1239,6 +1251,7 @@ const redactSensitiveSchemaReferences = (schema: unknown): unknown => {
     const referencePaths = localSchemaReferencePaths(schema, reference);
     if (referencePaths.length === 0) return REDACTED_VALUE;
     for (const referencePath of referencePaths) {
+      if (schemaPathCrossesScopedIdentifier(schema, referencePath)) return REDACTED_VALUE;
       const pathKey = JSON.stringify(referencePath);
       if (redactedPaths.has(pathKey)) continue;
       const target = schemaValueAtPath(schema, referencePath);

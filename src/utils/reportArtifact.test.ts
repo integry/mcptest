@@ -932,6 +932,42 @@ describe('versioned public report artifacts', () => {
       .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
   });
 
+  it('omits a schema when a sensitive reference enters a nested $id resource', () => {
+    const makeArtifact = (credential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            access_token: { $ref: '#/$defs/nested/$defs/credentialReference' },
+          },
+          $defs: {
+            credential: { type: 'string', const: 'public-decoy' },
+            nested: {
+              $id: 'https://schemas.example/nested-credential',
+              $defs: {
+                credentialReference: { $ref: '#/$defs/credential' },
+                credential: { type: 'string', const: credential },
+              },
+            },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact('0000');
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+    expect(output).not.toContain('0000');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
   it.each([
     {
       name: 'propertyNames',

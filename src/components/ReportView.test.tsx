@@ -531,4 +531,111 @@ describe('ReportView OAuth discovery', () => {
     expect(container.textContent).not.toContain('Authorize and run report');
     expect(oauthMocks.begin).not.toHaveBeenCalled();
   });
+
+  it('keeps rendering and surfaces an error when browser storage cannot be acquired', () => {
+    const storageError = new DOMException('Storage access denied', 'SecurityError');
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw storageError;
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const container = document.createElement('div');
+
+    expect(() => {
+      act(() => {
+        root = createRoot(container);
+        root.render(<ReportView />);
+      });
+    }).not.toThrow();
+    expect(container.textContent).toContain(
+      'Report history could not be loaded because browser storage is unavailable.'
+    );
+    expect(container.textContent).toContain('MCP release-readiness report');
+  });
+
+  it('keeps rendering and surfaces an error when report history cannot be read', () => {
+    const getItem = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (key: string) {
+      if (key === 'mcpReportSnapshotsV1') {
+        throw new DOMException('Storage read denied', 'SecurityError');
+      }
+      return getItem.call(this, key);
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const container = document.createElement('div');
+
+    expect(() => {
+      act(() => {
+        root = createRoot(container);
+        root.render(<ReportView />);
+      });
+    }).not.toThrow();
+    expect(container.textContent).toContain(
+      'Report history could not be loaded because browser storage is unavailable.'
+    );
+  });
+
+  it('keeps a snapshot visible and surfaces an error when deleting it fails', async () => {
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+    const deleteButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Delete snapshot from"]'
+    );
+    expect(deleteButton).not.toBeNull();
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('Storage write denied', 'SecurityError');
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    act(() => {
+      deleteButton?.click();
+    });
+
+    expect(container.querySelector('button[aria-label^="Delete snapshot from"]')).not.toBeNull();
+    expect(container.textContent).toContain(
+      'The report snapshot could not be deleted. Browser storage may be unavailable.'
+    );
+  });
+
+  it('keeps history visible and surfaces an error when deleting all snapshots fails', async () => {
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+    const deleteAllButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Delete all history')
+    );
+    expect(deleteAllButton).toBeDefined();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('Storage write denied', 'SecurityError');
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    act(() => {
+      deleteAllButton?.click();
+    });
+
+    expect(container.textContent).toContain('Report history');
+    expect(container.textContent).toContain(
+      'Report history could not be deleted. Browser storage may be unavailable.'
+    );
+  });
 });

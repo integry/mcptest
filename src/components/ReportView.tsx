@@ -34,6 +34,7 @@ import {
   deleteAllReportSnapshots,
   deleteReportSnapshot,
   loadReportSnapshots,
+  REPORT_HISTORY_STORAGE_KEY,
   saveReportSnapshotHistoryDownload,
   storeReportSnapshot,
   type ReportSnapshotV1,
@@ -300,15 +301,29 @@ const ReportView: React.FC = () => {
   }, [location.state, urlParam, currentUser, isRunning]);
 
   useEffect(() => {
+    let storage: Storage;
     try {
-      const savedServers = localStorage.getItem('mcpTestedServers');
+      storage = window.localStorage;
+    } catch (e) {
+      console.error('Failed to access browser storage for report history', e);
+      setHistoryError('Report history could not be loaded because browser storage is unavailable.');
+      return;
+    }
+    try {
+      const savedServers = storage.getItem('mcpTestedServers');
       if (savedServers) {
         setTestedServers(JSON.parse(savedServers));
       }
     } catch (e) {
       console.error("Failed to load servers from localStorage", e);
     }
-    setReportSnapshots(loadReportSnapshots(localStorage));
+    try {
+      const rawSnapshots = storage.getItem(REPORT_HISTORY_STORAGE_KEY);
+      setReportSnapshots(loadReportSnapshots({ getItem: () => rawSnapshots }));
+    } catch (e) {
+      console.error('Failed to load report history from browser storage', e);
+      setHistoryError('Report history could not be loaded because browser storage is unavailable.');
+    }
   }, []);
 
   const toggleItemExpanded = (itemKey: string) => {
@@ -704,6 +719,10 @@ const ReportView: React.FC = () => {
         </section>
       )}
 
+      {historyError && !report && (
+        <div className="alert alert-warning mb-3" role="alert">{historyError}</div>
+      )}
+
       {report && (
         <div className="card mb-4">
           <div className="card-header">
@@ -721,14 +740,26 @@ const ReportView: React.FC = () => {
               endpoint={report.serverUrl}
               snapshots={reportSnapshots}
               onDeleteSnapshot={(id) => {
-                setReportSnapshots(deleteReportSnapshot(id, localStorage));
-                setHistoryError(null);
+                try {
+                  const storage = window.localStorage;
+                  setReportSnapshots(deleteReportSnapshot(id, storage));
+                  setHistoryError(null);
+                } catch (e) {
+                  console.error('Failed to delete report snapshot:', e);
+                  setHistoryError('The report snapshot could not be deleted. Browser storage may be unavailable.');
+                }
               }}
               onDeleteAll={() => {
                 if (!window.confirm('Delete all locally stored report snapshots? Other app data will be kept.')) return;
-                deleteAllReportSnapshots(localStorage);
-                setReportSnapshots([]);
-                setHistoryError(null);
+                try {
+                  const storage = window.localStorage;
+                  deleteAllReportSnapshots(storage);
+                  setReportSnapshots([]);
+                  setHistoryError(null);
+                } catch (e) {
+                  console.error('Failed to delete report history:', e);
+                  setHistoryError('Report history could not be deleted. Browser storage may be unavailable.');
+                }
               }}
               onExportAll={() => saveReportSnapshotHistoryDownload(reportSnapshots)}
             />
