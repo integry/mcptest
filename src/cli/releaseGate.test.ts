@@ -9,6 +9,7 @@ import type { ReleaseDecision } from '../utils/releaseReadiness';
 import {
   RELEASE_GATE_EXIT_CODES,
   getReleaseGateThresholdReasons,
+  releaseGateFilenameBase,
   runReleaseGate,
 } from './releaseGate';
 
@@ -123,6 +124,20 @@ describe('headless release gate', () => {
     expect(result.exitCode).toBe(RELEASE_GATE_EXIT_CODES.infrastructureFailure);
     expect(result.targets[0].error).toContain(REDACTED_VALUE);
     expect(result.targets[0].error).not.toContain('unlabelled-fixture-secret');
+  });
+
+  it('rejects credential reuse across transports or origins before evaluation', async () => {
+    const evaluate = vi.fn(async () => evaluatedReport());
+
+    await expect(runReleaseGate({
+      endpoints: ['http://fixture.example/mcp'],
+      headers: { Authorization: 'Bearer fixture-secret' },
+    }, { evaluate })).rejects.toThrow('Credentialed endpoints must use HTTPS.');
+    await expect(runReleaseGate({
+      endpoints: ['https://one.example/mcp', 'https://two.example/mcp'],
+      headers: { 'X-API-Key': 'fixture-secret' },
+    }, { evaluate })).rejects.toThrow('Credentialed runs require all endpoints to share one origin.');
+    expect(evaluate).not.toHaveBeenCalled();
   });
 
   it('scrubs a supplied credential from arbitrary evaluator evidence before both artifacts', async () => {
@@ -346,5 +361,22 @@ describe('headless release gate', () => {
       '001-mcptest-fixture.example-report',
       '002-mcptest-fixture.example-report',
     ]);
+  });
+
+  it('bounds overlong filename hosts with a stable collision-resistant hash', () => {
+    const sharedLabels = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}`;
+    const first = releaseGateFilenameBase(
+      `https://${sharedLabels}.${'d'.repeat(61)}/mcp`, 0, 1
+    );
+    const second = releaseGateFilenameBase(
+      `https://${sharedLabels}.${'e'.repeat(61)}/mcp`, 0, 1
+    );
+
+    expect(Buffer.byteLength(`${first}.json`)).toBeLessThanOrEqual(255);
+    expect(first).toMatch(/-[a-f0-9]{12}-report$/);
+    expect(releaseGateFilenameBase(
+      `https://${sharedLabels}.${'d'.repeat(61)}/mcp`, 0, 1
+    )).toBe(first);
+    expect(second).not.toBe(first);
   });
 });

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { EvaluationReport } from '../utils/evaluation';
 import { evaluateServer } from '../utils/evaluation';
 import {
@@ -89,6 +90,22 @@ const credentialValues = (headers: HeadersInit | undefined): string[] => {
     if (bearer) values.add(bearer);
   }
   return [...values].sort((left, right) => right.length - left.length);
+};
+
+export const credentialedEndpointConfigurationError = (
+  endpoints: readonly string[],
+  headers: HeadersInit | undefined
+): string | undefined => {
+  if (credentialValues(headers).length === 0) return undefined;
+
+  const parsedEndpoints = endpoints.map((endpoint) => new URL(endpoint));
+  if (parsedEndpoints.some((endpoint) => endpoint.protocol !== 'https:')) {
+    return 'Credentialed endpoints must use HTTPS.';
+  }
+  if (new Set(parsedEndpoints.map((endpoint) => endpoint.origin)).size > 1) {
+    return 'Credentialed runs require all endpoints to share one origin.';
+  }
+  return undefined;
 };
 
 const redactKnownCredentialString = (value: string, credentials: readonly string[]): string => (
@@ -240,8 +257,15 @@ const redactEvaluationCredentials = (
 
 const safeFilenameHost = (endpoint: string): string => {
   try {
-    return new URL(endpoint).hostname.replace(/[^a-z0-9.-]+/gi, '-').replace(/^-+|-+$/g, '')
-      || 'mcp-server';
+    const hostname = new URL(endpoint).hostname
+      .replace(/[^a-z0-9.-]+/gi, '-')
+      .replace(/^-+|-+$/g, '') || 'mcp-server';
+    const maxLength = 180;
+    if (hostname.length <= maxLength) return hostname;
+
+    const hash = createHash('sha256').update(hostname).digest('hex').slice(0, 12);
+    const prefix = hostname.slice(0, maxLength - hash.length - 1).replace(/[-.]+$/g, '');
+    return `${prefix}-${hash}`;
   } catch {
     return 'mcp-server';
   }
@@ -304,6 +328,12 @@ export const runReleaseGate = async (
   options: RunReleaseGateOptions,
   dependencies: ReleaseGateDependencies = {}
 ): Promise<ReleaseGateRunResult> => {
+  const configurationError = credentialedEndpointConfigurationError(
+    options.endpoints,
+    options.headers
+  );
+  if (configurationError) throw new TypeError(configurationError);
+
   const evaluator = dependencies.evaluate ?? evaluateServer;
   const policy = options.policy ?? DEFAULT_RELEASE_GATE_POLICY;
   const credentials = credentialValues(options.headers);

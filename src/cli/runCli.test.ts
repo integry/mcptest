@@ -8,18 +8,18 @@ import {
 import { RELEASE_GATE_EXIT_CODES } from './releaseGate';
 
 describe('release gate CLI configuration', () => {
-  it('reads multiple endpoints and bearer credentials without putting the secret in arguments', () => {
+  it('reads same-origin endpoints and bearer credentials without putting the secret in arguments', () => {
     const configuration = parseReleaseGateArgs([
       '--endpoints-env', 'MCP_ENDPOINTS',
       '--bearer-token-env', 'MCP_BEARER',
     ], {
-      MCP_ENDPOINTS: 'https://one.example/mcp\nhttps://two.example/sse',
+      MCP_ENDPOINTS: 'https://one.example/mcp\nhttps://one.example/sse',
       MCP_BEARER: 'bearer-fixture-secret',
     });
 
     expect(configuration.endpoints).toEqual([
       'https://one.example/mcp',
-      'https://two.example/sse',
+      'https://one.example/sse',
     ]);
     expect(configuration.headers?.get('authorization')).toBe('Bearer bearer-fixture-secret');
     expect(configuration.consumedSecretEnvironmentVariables).toEqual(['MCP_BEARER']);
@@ -47,6 +47,28 @@ describe('release gate CLI configuration', () => {
     expect(() => parseReleaseGateArgs(argv, environment)).toThrowError(
       expect.objectContaining<Partial<ReleaseGateConfigurationError>>({ message: expect.stringContaining(message) })
     );
+  });
+
+  it.each([
+    [
+      ['--bearer-token-env', 'TOKEN', 'http://fixture.example/mcp'],
+      { TOKEN: 'fixture-secret' },
+      'Credentialed endpoints must use HTTPS.',
+    ],
+    [
+      ['--api-key-env', 'TOKEN', 'https://one.example/mcp', 'https://two.example/mcp'],
+      { TOKEN: 'fixture-secret' },
+      'Credentialed runs require all endpoints to share one origin.',
+    ],
+  ] as const)('rejects insecure credential transport or scope', (argv, environment, message) => {
+    expect(() => parseReleaseGateArgs(argv, environment)).toThrowError(
+      expect.objectContaining<Partial<ReleaseGateConfigurationError>>({ message })
+    );
+  });
+
+  it('continues to allow plaintext HTTP for public endpoints', () => {
+    expect(parseReleaseGateArgs(['http://fixture.example/mcp'], {}).endpoints)
+      .toEqual(['http://fixture.example/mcp']);
   });
 
   it('returns invalid configuration for an explicit non-HTTP endpoint scheme', async () => {

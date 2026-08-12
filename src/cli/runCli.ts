@@ -5,6 +5,7 @@ import { redactReportString } from '../utils/reportArtifact';
 import {
   DEFAULT_RELEASE_GATE_POLICY,
   RELEASE_GATE_EXIT_CODES,
+  credentialedEndpointConfigurationError,
   runReleaseGate,
   type ReleaseGateExitCode,
   type ReleaseGatePolicy,
@@ -223,6 +224,11 @@ export const parseReleaseGateArgs = (
       );
     }
     consumedSecretEnvironmentVariables.push(name);
+  }
+
+  const credentialConfigurationError = credentialedEndpointConfigurationError(endpoints, headers);
+  if (credentialConfigurationError) {
+    throw new ReleaseGateConfigurationError(credentialConfigurationError);
   }
 
   return {

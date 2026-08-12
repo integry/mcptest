@@ -80,7 +80,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: integry/mcptest
-          ref: ${{ inputs.mcptest_ref || github.sha }}
+          ref: ${{ github.workflow_sha }}
           path: mcptest
       - uses: actions/setup-node@v4
         with:
