@@ -143,6 +143,15 @@ const propertiesKeyword = (
     : { status: 'malformed' };
 };
 
+const enumKeyword = (
+  schema: JsonRecord
+): NormalizedSchemaKeyword<unknown[]> => {
+  if (!Object.prototype.hasOwnProperty.call(schema, 'enum')) return { status: 'absent' };
+  return Array.isArray(schema.enum)
+    ? { status: 'valid', value: schema.enum }
+    : { status: 'malformed' };
+};
+
 const keywordSet = (keyword: NormalizedSchemaKeyword<Set<string>>): Set<string> => (
   keyword.status === 'valid' ? keyword.value : new Set()
 );
@@ -199,10 +208,18 @@ const acceptedTypeCoveredBy = (before: string, after: Set<string>): boolean => (
   after.has(before) || (before === 'integer' && after.has('number'))
 );
 
-const sameEnumKeyword = (left: unknown, right: unknown): boolean => {
-  if (!Array.isArray(left) || !Array.isArray(right)) return same(left, right);
-  const normalizedLeft = left.map(stableString).sort();
-  const normalizedRight = right.map(stableString).sort();
+const sameEnumKeyword = (
+  leftSchema: JsonRecord,
+  rightSchema: JsonRecord,
+  left = enumKeyword(leftSchema),
+  right = enumKeyword(rightSchema)
+): boolean => {
+  if (left.status !== right.status) return false;
+  if (left.status === 'malformed') return same(leftSchema.enum, rightSchema.enum);
+  if (left.status === 'absent') return true;
+  if (right.status !== 'valid') return false;
+  const normalizedLeft = left.value.map(stableString).sort();
+  const normalizedRight = right.value.map(stableString).sort();
   return same(normalizedLeft, normalizedRight);
 };
 
@@ -383,45 +400,53 @@ const schemaChanges = (
   }
   reportedHandledKeys.add('properties');
 
-  const beforeEnum = Array.isArray(before.enum) ? before.enum : undefined;
-  const afterEnum = Array.isArray(after.enum) ? after.enum : undefined;
+  const beforeEnumKeyword = enumKeyword(before);
+  const afterEnumKeyword = enumKeyword(after);
   const enumChangeStart = changes.length;
-  if (beforeEnum && afterEnum && !sameEnumKeyword(beforeEnum, afterEnum)) {
-    const removed = beforeEnum.filter((value) => !afterEnum.some((candidate) => same(candidate, value)));
-    const added = afterEnum.filter((value) => !beforeEnum.some((candidate) => same(candidate, value)));
-    if (removed.length) {
+  if (!sameEnumKeyword(before, after, beforeEnumKeyword, afterEnumKeyword)) {
+    if (beforeEnumKeyword.status === 'malformed' || afterEnumKeyword.status === 'malformed') {
       changes.push(makeChange(
-        'breaking', 'tools', `${path}.enum`, `${toolName} no longer accepts some values`,
-        `Removed allowed values: ${removed.map(display).join(', ')}.`
+        'unknown', 'tools', `${path}.enum`, `${toolName} enum could not be compared`,
+        'At least one enum declaration is not an array of literal values.'
+      ));
+    } else if (beforeEnumKeyword.status === 'valid' && afterEnumKeyword.status === 'valid') {
+      const beforeEnum = beforeEnumKeyword.value;
+      const afterEnum = afterEnumKeyword.value;
+      const removed = beforeEnum.filter(
+        (value) => !afterEnum.some((candidate) => same(candidate, value))
+      );
+      const added = afterEnum.filter(
+        (value) => !beforeEnum.some((candidate) => same(candidate, value))
+      );
+      if (removed.length) {
+        changes.push(makeChange(
+          'breaking', 'tools', `${path}.enum`, `${toolName} no longer accepts some values`,
+          `Removed allowed values: ${removed.map(display).join(', ')}.`
+        ));
+      }
+      if (added.length) {
+        changes.push(makeChange(
+          'addition', 'tools', `${path}.enum`, `${toolName} accepts additional values`,
+          `Added allowed values: ${added.map(display).join(', ')}.`
+        ));
+      }
+      if (removed.length === 0 && added.length === 0) {
+        changes.push(makeChange(
+          'unknown', 'tools', `${path}.enum`, `${toolName} enum representation changed`,
+          'The enum changed without an identifiable addition or removal.'
+        ));
+      }
+    } else if (afterEnumKeyword.status === 'valid') {
+      changes.push(makeChange(
+        'breaking', 'tools', `${path}.enum`, `${toolName} now restricts accepted values`,
+        `The previously unrestricted input now accepts only: ${afterEnumKeyword.value.map(display).join(', ') || 'no values'}.`
+      ));
+    } else if (beforeEnumKeyword.status === 'valid') {
+      changes.push(makeChange(
+        'change', 'tools', `${path}.enum`, `${toolName} no longer restricts accepted values`,
+        'The input contract was relaxed from an explicit enum to unrestricted values.'
       ));
     }
-    if (added.length) {
-      changes.push(makeChange(
-        'addition', 'tools', `${path}.enum`, `${toolName} accepts additional values`,
-        `Added allowed values: ${added.map(display).join(', ')}.`
-      ));
-    }
-    if (removed.length === 0 && added.length === 0) {
-      changes.push(makeChange(
-        'unknown', 'tools', `${path}.enum`, `${toolName} enum representation changed`,
-        'The enum changed without an identifiable addition or removal.'
-      ));
-    }
-  } else if (!beforeEnum && afterEnum) {
-    changes.push(makeChange(
-      'breaking', 'tools', `${path}.enum`, `${toolName} now restricts accepted values`,
-      `The previously unrestricted input now accepts only: ${afterEnum.map(display).join(', ') || 'no values'}.`
-    ));
-  } else if (beforeEnum && !afterEnum && !('enum' in after)) {
-    changes.push(makeChange(
-      'change', 'tools', `${path}.enum`, `${toolName} no longer restricts accepted values`,
-      'The input contract was relaxed from an explicit enum to unrestricted values.'
-    ));
-  } else if ((!beforeEnum || !afterEnum) && !same(before.enum, after.enum)) {
-    changes.push(makeChange(
-      'unknown', 'tools', `${path}.enum`, `${toolName} enum could not be compared`,
-      'At least one enum declaration is not an array of literal values.'
-    ));
   }
   if (changes.length > enumChangeStart) reportedHandledKeys.add('enum');
 
@@ -466,7 +491,7 @@ const schemaChanges = (
       : key === 'properties'
         ? samePropertiesKeyword(before, after)
       : key === 'enum'
-        ? sameEnumKeyword(before[key], after[key])
+        ? sameEnumKeyword(before, after)
         : key === 'additionalProperties'
           ? sameAdditionalPropertiesKeyword(before[key], after[key])
           : same(before[key], after[key]);

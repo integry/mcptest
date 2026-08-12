@@ -387,6 +387,26 @@ describe('semantic report drift', () => {
     }));
   });
 
+  it('classifies a malformed-to-valid enum change as unknown', () => {
+    const before = artifact({
+      tools: [tool(inputSchema({ query: { type: 'string', enum: 'public' } }))],
+    });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(inputSchema({ query: { type: 'string', enum: ['public'] } }))],
+    });
+
+    const enumChanges = diffPublicReports(before, after).changes.filter(
+      ({ path }) => path === 'tools.search.inputSchema.properties.query.enum'
+    );
+
+    expect(enumChanges).toEqual([expect.objectContaining({
+      classification: 'unknown',
+      title: 'search enum could not be compared',
+      breaking: false,
+    })]);
+  });
+
   it('ignores representation-only schema changes', () => {
     const before = artifact({ tools: [tool({
       type: 'object',
