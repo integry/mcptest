@@ -266,6 +266,55 @@ describe('DeterministicTestPanel', () => {
     expect(container.querySelector('.test-tool summary span')?.textContent).toBe('lookup');
   });
 
+  it('blocks runs and regeneration while an imported file is still being read', async () => {
+    const callTool = await renderPanel('lookup');
+    const imported = generateDeterministicTestPlan(
+      [{
+        name: 'lookup',
+        inputSchema: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+        annotations: { readOnlyHint: true },
+      }],
+      'https://mcp.example.test/mcp',
+      '2026-08-11T00:00:00.000Z',
+    );
+    imported.tools[0].cases[0].arguments = { query: 'imported' };
+    let resolveRead!: (contents: string) => void;
+    const read = new Promise<string>(resolve => { resolveRead = resolve; });
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = { name: 'delayed.json', text: vi.fn(() => read) } as unknown as File;
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const toolbarButtons = [...container.querySelectorAll<HTMLButtonElement>('.deterministic-tests-toolbar button')];
+    const regenerateButton = toolbarButtons.find(button => button.textContent === 'Regenerate')!;
+    const runButton = container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary')!;
+    expect(regenerateButton.disabled).toBe(true);
+    expect(runButton.disabled).toBe(true);
+    await act(async () => {
+      regenerateButton.click();
+      runButton.click();
+    });
+    expect(callTool).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRead(serializeDeterministicTestPlan(imported));
+      await read;
+    });
+
+    expect(runButton.disabled).toBe(false);
+    await act(async () => container.querySelector<HTMLButtonElement>('.test-case-heading .btn-link')?.click());
+    expect(container.querySelector<HTMLTextAreaElement>('.test-case-editor textarea')?.value)
+      .toBe('{\n  "query": "imported"\n}');
+  });
+
   it('runs selected read-only fixtures and renders pass/fail evidence', async () => {
     const callTool = await renderPanel('lookup');
     const runButton = container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary');

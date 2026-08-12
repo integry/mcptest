@@ -548,19 +548,36 @@ export const normalizeTestError = (value: unknown): NormalizedTestError => {
 
 const responseError = (response: unknown): NormalizedTestError | undefined => {
   if (!isRecord(response) || response.isError !== true) return undefined;
-  let detail: unknown = response;
-  if (response.structuredContent !== undefined) detail = response.structuredContent;
-  else if (Array.isArray(response.content)) {
+  const details: unknown[] = [];
+  if (response.structuredContent !== undefined) details.push(response.structuredContent);
+  if (Array.isArray(response.content)) {
     const text = response.content
       .filter(isRecord)
       .map(item => typeof item.text === 'string' ? item.text : '')
       .filter(Boolean)
       .join('\n');
     if (text) {
-      try { detail = JSON.parse(text); } catch { detail = { message: text }; }
+      try { details.push(JSON.parse(text)); } catch { details.push({ message: text }); }
     }
   }
-  return normalizeTestError(detail);
+  if (details.length === 0) return normalizeTestError(response);
+
+  const normalized = details.map(normalizeTestError);
+  const primary = normalized.find(error => error.type !== 'unknown')
+    || normalized.find(error => error.code !== undefined || error.message !== 'Unknown tool error')
+    || normalized[0];
+  const matchingCode = normalized.find(error => error.code !== undefined
+    && (primary.type === 'unknown' || error.type === primary.type));
+  const usefulMessage = normalized.find(error => error.message !== 'Unknown tool error'
+    && (primary.type === 'unknown' || error.type === primary.type || error.type === 'unknown'));
+  return {
+    ...primary,
+    ...(primary.code === undefined && matchingCode?.code !== undefined ? { code: matchingCode.code } : {}),
+    message: primary.message === 'Unknown tool error' && usefulMessage
+      ? usefulMessage.message
+      : primary.message,
+    identifiers: Object.assign({}, ...normalized.map(error => error.identifiers)),
+  };
 };
 
 const malformedResponseError = (response: unknown): NormalizedTestError | undefined => {

@@ -511,6 +511,24 @@ describe('deterministic runner safety and evidence', () => {
     expect(result.error).toMatchObject({ type: 'malformed-response', code: 'INVALID_TOOL_RESULT' });
   });
 
+  it('classifies textual error details when structured content is generic', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({
+        isError: true,
+        structuredContent: { items: [] },
+        content: [{ type: 'text', text: JSON.stringify({ code: -32602, message: 'Missing required query' }) }],
+      }) },
+      fixtureCase({ expectedError: 'validation', assertions: [] }),
+    );
+
+    expect(result.status).toBe('passed');
+    expect(result.error).toMatchObject({
+      type: 'validation',
+      code: -32602,
+      message: 'Missing required query',
+    });
+  });
+
   it('requires structural assertions to pass for expected-error responses', async () => {
     const response = {
       isError: true,

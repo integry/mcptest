@@ -67,6 +67,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   const [drafts, setDrafts] = useState<Record<string, JsonDraft>>({});
   const [results, setResults] = useState<DeterministicCaseResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [confirmedUnsafeFixtureSignature, setConfirmedUnsafeFixtureSignature] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
@@ -75,6 +76,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   const abortRef = useRef<AbortController | null>(null);
   const runGenerationRef = useRef(0);
   const importGenerationRef = useRef(0);
+  const importInProgressRef = useRef(false);
   const connectionIdentityRef = useRef({ client, serverUrl, toolSurfaceSignature });
   if (connectionIdentityRef.current.client !== client
     || connectionIdentityRef.current.serverUrl !== serverUrl
@@ -101,6 +103,8 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
 
     invalidateAsyncWork();
     setIsRunning(false);
+    importInProgressRef.current = false;
+    setIsImporting(false);
     if (!open) return invalidateAsyncWork;
     setResults([]);
     setConfirmedUnsafeFixtureSignature(null);
@@ -185,7 +189,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   };
 
   const handleRun = async () => {
-    if (!client || !plan || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors) return;
+    if (importInProgressRef.current || !client || !plan || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors) return;
     const runGeneration = runGenerationRef.current + 1;
     runGenerationRef.current = runGeneration;
     setIsRunning(true);
@@ -232,9 +236,11 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
+    if (!file || isRunning || abortRef.current || importInProgressRef.current) return;
     const importGeneration = importGenerationRef.current + 1;
     importGenerationRef.current = importGeneration;
+    importInProgressRef.current = true;
+    setIsImporting(true);
     const importIdentity = { client, serverUrl, toolSurfaceSignature };
     const importIsCurrent = () => importGenerationRef.current === importGeneration
       && connectionIdentityRef.current.client === importIdentity.client
@@ -274,7 +280,22 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     } catch (cause) {
       if (!importIsCurrent()) return;
       setNotice(`Import failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    } finally {
+      if (importGenerationRef.current === importGeneration) {
+        importInProgressRef.current = false;
+        setIsImporting(false);
+      }
     }
+  };
+
+  const handleRegenerate = () => {
+    if (importInProgressRef.current || isRunning || !client || tools.length === 0) return;
+    const generated = generateDeterministicTestPlan(tools, serverUrl);
+    setPlan(generated);
+    setDrafts(createDrafts(generated));
+    setResults([]);
+    setConfirmedUnsafeFixtureSignature(null);
+    setNotice('Generated a fresh plan from the discovered tool surface.');
   };
 
   if (!open) return null;
@@ -296,17 +317,10 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
         </header>
 
         <div className="deterministic-tests-toolbar">
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => importRef.current?.click()} disabled={isRunning}>Import JSON</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => importRef.current?.click()} disabled={isRunning || isImporting}>Import JSON</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={handleExport} disabled={!plan || !planIsCurrent || isRunning || hasDraftErrors}>Export JSON</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => {
-            const generated = generateDeterministicTestPlan(tools, serverUrl);
-            setPlan(generated);
-            setDrafts(createDrafts(generated));
-            setResults([]);
-            setConfirmedUnsafeFixtureSignature(null);
-            setNotice('Generated a fresh plan from the discovered tool surface.');
-          }} disabled={isRunning || !client || tools.length === 0}>Regenerate</button>
-          <input ref={importRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImport} />
+          <button className="btn btn-sm btn-outline-secondary" onClick={handleRegenerate} disabled={isRunning || isImporting || !client || tools.length === 0}>Regenerate</button>
+          <input ref={importRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImport} disabled={isRunning || isImporting} />
           <span className="text-muted">Plan version {plan?.version || '—'}</span>
         </div>
 
@@ -433,7 +447,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
             <button
               className="btn btn-primary"
               onClick={handleRun}
-              disabled={isRunning || !client || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors || (selectedUnsafeTools.length > 0 && !unsafeConfirmed)}
+              disabled={isRunning || isImporting || !client || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors || (selectedUnsafeTools.length > 0 && !unsafeConfirmed)}
             >
               {isRunning ? 'Running…' : `Run ${selectedCases.length} selected ${selectedCases.length === 1 ? 'case' : 'cases'}`}
             </button>
