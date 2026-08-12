@@ -905,6 +905,64 @@ const sectionWasEvaluated = (report: PublicReport, id: string): boolean => (
   report.sections.find((section) => section.id === id)?.status === 'evaluated'
 );
 
+const compareScores = (before: PublicReport, after: PublicReport): ReportDiffChange[] => {
+  const changes: ReportDiffChange[] = [];
+
+  if (before.score && after.score) {
+    if (!same(before.score, after.score)) {
+      changes.push(makeChange(
+        'change', 'score',
+        before.score.percentage !== after.score.percentage ? 'score.percentage' : 'score',
+        'Evaluation score changed',
+        `Changed from ${before.score.earned}/${before.score.maximum} `
+          + `(${Math.round(before.score.percentage)}%) to ${after.score.earned}/${after.score.maximum} `
+          + `(${Math.round(after.score.percentage)}%).`
+      ));
+    }
+  } else if (Boolean(before.score) !== Boolean(after.score)) {
+    changes.push(makeChange(
+      'unknown', 'score', 'score', 'Scores are not comparable',
+      'One run was scored and the other was not.'
+    ));
+  }
+
+  const beforeSections = new Map(before.sections.map((section) => [section.id, section]));
+  const afterSections = new Map(after.sections.map((section) => [section.id, section]));
+  const sectionIds = [...new Set([...beforeSections.keys(), ...afterSections.keys()])].sort();
+
+  for (const id of sectionIds) {
+    const beforeSection = beforeSections.get(id);
+    const afterSection = afterSections.get(id);
+    const path = `sections.${id}.score`;
+    const name = afterSection?.name || beforeSection?.name || id;
+
+    if (!beforeSection || !afterSection) {
+      changes.push(makeChange(
+        'unknown', 'score', path, `${name} section scores are not comparable`,
+        'One snapshot does not contain this section score.'
+      ));
+      continue;
+    }
+    if (same(beforeSection.score, afterSection.score)) continue;
+
+    if (beforeSection.score.earned === null || afterSection.score.earned === null) {
+      changes.push(makeChange(
+        'unknown', 'score', path, `${name} section scores are not comparable`,
+        'One or both snapshots do not contain an earned score for this section.'
+      ));
+      continue;
+    }
+
+    changes.push(makeChange(
+      'change', 'score', path, `${name} section score changed`,
+      `Changed from ${beforeSection.score.earned}/${beforeSection.score.maximum} `
+        + `to ${afterSection.score.earned}/${afterSection.score.maximum}.`
+    ));
+  }
+
+  return changes;
+};
+
 export const diffPublicReports = (before: PublicReport, after: PublicReport): ReportDiff => {
   const changes: ReportDiffChange[] = [
     ...compareOAuth(before, after),
@@ -1025,17 +1083,7 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     ));
   }
 
-  if (before.score && after.score && before.score.percentage !== after.score.percentage) {
-    changes.push(makeChange(
-      'change', 'score', 'score.percentage', 'Evaluation score changed',
-      `Changed from ${Math.round(before.score.percentage)}% to ${Math.round(after.score.percentage)}%.`
-    ));
-  } else if (Boolean(before.score) !== Boolean(after.score)) {
-    changes.push(makeChange(
-      'unknown', 'score', 'score', 'Scores are not comparable',
-      'One run was scored and the other was not.'
-    ));
-  }
+  changes.push(...compareScores(before, after));
 
   changes.sort((left, right) => (
     Number(right.breaking) - Number(left.breaking)

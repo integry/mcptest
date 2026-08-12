@@ -532,6 +532,73 @@ describe('semantic report drift', () => {
     expect(diff.changes.findIndex((change) => change.category === 'score')).toBeGreaterThan(0);
   });
 
+  it('detects changed overall score totals when the percentage is unchanged', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    for (const section of after.sections) {
+      section.score.earned! *= 10;
+      section.score.maximum *= 10;
+    }
+    after.score!.earned *= 10;
+    after.score!.maximum *= 10;
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'score',
+      category: 'score',
+      classification: 'change',
+      title: 'Evaluation score changed',
+      detail: 'Changed from 55/55 (100%) to 550/550 (100%).',
+    }));
+  });
+
+  it('detects section-only score changes keyed by section ID', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    before.sections.find(({ id }) => id === 'protocol')!.score.earned = 14;
+    before.sections.find(({ id }) => id === 'capabilities')!.score.earned = 9;
+    after.sections.find(({ id }) => id === 'protocol')!.score.earned = 13;
+    after.sections.find(({ id }) => id === 'capabilities')!.score.earned = 10;
+    for (const report of [before, after]) {
+      report.score!.earned = 53;
+      report.score!.percentage = 53 / 55 * 100;
+    }
+
+    const scoreChanges = diffPublicReports(before, after).changes.filter(
+      ({ category }) => category === 'score'
+    );
+
+    expect(scoreChanges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: 'sections.protocol.score', classification: 'change',
+        title: 'Protocol section score changed',
+      }),
+      expect.objectContaining({
+        path: 'sections.capabilities.score', classification: 'change',
+        title: 'Capabilities section score changed',
+      }),
+    ]));
+    expect(scoreChanges).toHaveLength(2);
+  });
+
+  it('classifies a section with an unavailable earned score as unknown', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    before.outcome = { status: 'partial', summary: 'The evaluation was partial.' };
+    after.outcome = { status: 'partial', summary: 'The evaluation was partial.' };
+    before.score = null;
+    after.score = null;
+    const capabilities = after.sections.find(({ id }) => id === 'capabilities')!;
+    capabilities.status = 'partial';
+    capabilities.score.earned = null;
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'sections.capabilities.score',
+      category: 'score',
+      classification: 'unknown',
+      title: 'Capabilities section scores are not comparable',
+    }));
+  });
+
   it('classifies a transport upgrade as compatible', () => {
     const before = artifact({ transport: 'legacy-sse' });
     const after = artifact({
