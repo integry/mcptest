@@ -52,6 +52,37 @@ describe('deterministic test plans', () => {
     });
   });
 
+  it.each([
+    {
+      schema: {
+        input_schema: {
+          type: 'object',
+          properties: { query: { type: 'string' }, count: { type: 'integer' } },
+          required: ['query', 'count'],
+        },
+      },
+      expectedHappy: { query: 'fixture', count: 0 },
+      expectedValidation: { count: 0 },
+    },
+    {
+      schema: {
+        arguments: [
+          { name: 'query', type: 'string', required: true },
+          { name: 'enabled', type: 'boolean', required: true },
+        ],
+      },
+      expectedHappy: { query: 'fixture', enabled: false },
+      expectedValidation: { enabled: false },
+    },
+  ])('derives fixtures from legacy input definitions: $schema', ({ schema, expectedHappy, expectedValidation }) => {
+    const plan = generateDeterministicTestPlan([
+      { name: 'legacy_lookup', ...schema },
+    ], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    expect(plan.tools[0].cases.find(item => item.kind === 'happy-path')?.arguments).toEqual(expectedHappy);
+    expect(plan.tools[0].cases.find(item => item.kind === 'validation')?.arguments).toEqual(expectedValidation);
+  });
+
   it('infers write and destructive tools from annotations and language', () => {
     const plan = generateDeterministicTestPlan([
       { name: 'list_users', annotations: { readOnlyHint: true } },
@@ -129,6 +160,25 @@ describe('deterministic runner safety and evidence', () => {
     });
   });
 
+  it.each(['destroy_account', 'purge_records'])(
+    'requires explicit confirmation for common destructive action %s',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan([{ name: toolName }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+      plan.tools[0].safety = { writeCapable: false, destructive: false, reasons: [] };
+
+      const results = await runDeterministicPlan({ callTool }, plan, {
+        caseIds: [plan.tools[0].cases[0].id],
+      });
+
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({
+        status: 'blocked',
+        error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
+      });
+    },
+  );
+
   it('runs confirmed unsafe cases through the supplied stateful client', async () => {
     const callTool = vi.fn().mockResolvedValue({ content: [] });
     const plan = generateDeterministicTestPlan([{ name: 'update_user' }], 'https://example.test', '2026-08-11T00:00:00.000Z');
@@ -166,6 +216,40 @@ describe('deterministic runner safety and evidence', () => {
         { type: 'text', text: '{"api_key":"[REDACTED]","nested":{"clientSecret":"[REDACTED]"}}' },
         { type: 'text', text: 'Authorization: [REDACTED]\nX-API-Key: [REDACTED]' },
       ],
+    });
+  });
+
+  it('redacts credential URLs in request and response text-block evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{
+            type: 'text',
+            text: 'https://example.test/callback#refresh_token=response-secret&client_token=response-client-token&keep=response-value',
+          }],
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          content: [{
+            type: 'text',
+            text: 'https://example.test/callback?access_token=request-secret&client_secret=request-client-secret&keep=request-value',
+          }],
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        content: [{
+          text: 'https://example.test/callback?access_token=[REDACTED]&client_secret=[REDACTED]&keep=request-value',
+        }],
+      },
+    });
+    expect(result.response).toMatchObject({
+      content: [{
+        text: 'https://example.test/callback#refresh_token=[REDACTED]&client_token=[REDACTED]&keep=response-value',
+      }],
     });
   });
 
@@ -253,6 +337,24 @@ describe('structural assertions and machine-readable errors', () => {
       { path: '$.structuredContent.missing', operator: 'not-exists' },
     ]);
     expect(evidence.every(item => item.passed)).toBe(true);
+  });
+
+  it('compares JSON objects independent of key order while preserving array order', () => {
+    const evidence = evaluateAssertions({
+      structuredContent: {
+        object: { a: 1, nested: { b: 2, c: 3 } },
+        array: [1, 2],
+      },
+    }, [
+      {
+        path: '$.structuredContent.object',
+        operator: 'equals',
+        value: { nested: { c: 3, b: 2 }, a: 1 },
+      },
+      { path: '$.structuredContent.array', operator: 'equals', value: [2, 1] },
+    ]);
+
+    expect(evidence.map(item => item.passed)).toEqual([true, false]);
   });
 
   it.each([

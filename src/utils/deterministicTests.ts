@@ -12,6 +12,7 @@ import type {
   StructuralValueType,
 } from '../types/deterministicTests';
 import { DETERMINISTIC_TEST_PLAN_VERSION } from '../types/deterministicTests';
+import { getCapabilityInputSpec } from './capabilityParams';
 
 type RecordValue = Record<string, unknown>;
 
@@ -19,6 +20,8 @@ export interface DiscoveredTool {
   name: string;
   description?: string;
   inputSchema?: RecordValue;
+  input_schema?: RecordValue;
+  arguments?: Array<{ name: string; [key: string]: unknown }>;
   outputSchema?: RecordValue;
   annotations?: {
     readOnlyHint?: boolean;
@@ -35,17 +38,19 @@ export interface DeterministicToolClient {
 
 const WRITE_ACTIONS = new Set([
   'add', 'append', 'archive', 'assign', 'cancel', 'charge', 'commit', 'configure', 'create',
-  'delete', 'deploy', 'disable', 'edit', 'enable', 'execute', 'import', 'insert', 'install',
-  'invite', 'issue', 'merge', 'modify', 'move', 'patch', 'pay', 'post', 'provision', 'publish',
-  'purchase', 'remove', 'rename', 'replace', 'reset', 'restore', 'revoke', 'run', 'schedule',
+  'clear', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
+  'import', 'insert', 'install', 'invite', 'issue', 'merge', 'modify', 'move', 'patch', 'pay',
+  'post', 'provision', 'publish', 'purchase', 'purge', 'remove', 'rename', 'replace', 'reset',
+  'restore', 'revoke', 'run', 'schedule',
   'send', 'set', 'start', 'stop', 'submit', 'sync', 'terminate', 'transfer', 'truncate',
   'uninstall', 'update', 'upload', 'wipe', 'write',
 ]);
 const DESTRUCTIVE_ACTIONS = new Set([
-  'archive', 'cancel', 'delete', 'disable', 'remove', 'reset', 'revoke', 'terminate', 'transfer',
-  'truncate', 'uninstall', 'wipe',
+  'archive', 'cancel', 'clear', 'delete', 'destroy', 'disable', 'drop', 'erase', 'purge', 'remove',
+  'reset', 'revoke', 'terminate', 'transfer', 'truncate', 'uninstall', 'wipe',
 ]);
-const SENSITIVE_KEY = /(?:^|[_-])(?:authorization|proxy[_-]?authorization|cookie|set[_-]?cookie|token|access[_-]?token|refresh[_-]?token|api[_-]?key|x[_-]?api[_-]?key|password|passwd|secret|client[_-]?secret)(?:$|[_-])/i;
+const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|password|passwd|secret|client[_ -]?secret)';
+const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
 const ERROR_CODE_KEYS = ['code', 'errorCode', 'error_code', 'status', 'statusCode'];
 
@@ -114,16 +119,26 @@ const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
   return undefined;
 };
 
+const normalizedInputSchema = (tool: DiscoveredTool): RecordValue => {
+  const { definitions, required } = getCapabilityInputSpec(tool);
+  return {
+    type: 'object',
+    properties: Object.fromEntries(definitions.map(({ name, required: _required, ...definition }) => [
+      name,
+      definition,
+    ])),
+    required,
+  };
+};
+
 const happyArguments = (tool: DiscoveredTool): Record<string, unknown> => {
-  const generated = schemaExample(tool.inputSchema || { type: 'object' }, true);
+  const generated = schemaExample(normalizedInputSchema(tool), true);
   return isRecord(generated) ? generated : {};
 };
 
 const validationArguments = (tool: DiscoveredTool): Record<string, unknown> => {
   const args = happyArguments(tool);
-  const required = Array.isArray(tool.inputSchema?.required)
-    ? tool.inputSchema.required.filter((value): value is string => typeof value === 'string')
-    : [];
+  const { required } = getCapabilityInputSpec(tool);
   if (required[0]) delete args[required[0]];
   else args.__invalid_fixture_argument__ = { unexpected: true };
   return args;
@@ -233,15 +248,14 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
         // Continue with text-oriented credential redaction for non-JSON content.
       }
     }
-    const sensitiveName = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|password|passwd|secret|client[_ -]?secret)';
     return value
-      .replace(new RegExp(`(\\b${sensitiveName}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')
+      .replace(new RegExp(`(\\b${SENSITIVE_NAME_PATTERN}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')
       .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
       .replace(/\bBasic\s+[A-Za-z0-9+/]+=*/gi, 'Basic [REDACTED]')
-      .replace(/([?&](?:token|api[_-]?key|secret|password)=)[^&#\s]+/gi, '$1[REDACTED]')
-      .replace(new RegExp(`("${sensitiveName}"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi'), '$1"[REDACTED]"')
-      .replace(new RegExp(`('${sensitiveName}'\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'gi'), "$1'[REDACTED]'")
-      .replace(new RegExp(`(\\b${sensitiveName}\\b\\s*[:=]\\s*)(?!\\[REDACTED\\])[^\\s,;}]+`, 'gi'), '$1[REDACTED]');
+      .replace(new RegExp(`([?&#]${SENSITIVE_NAME_PATTERN}=)[^&#\\s]+`, 'gi'), '$1[REDACTED]')
+      .replace(new RegExp(`("${SENSITIVE_NAME_PATTERN}"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi'), '$1"[REDACTED]"')
+      .replace(new RegExp(`('${SENSITIVE_NAME_PATTERN}'\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'gi'), "$1'[REDACTED]'")
+      .replace(new RegExp(`(\\b${SENSITIVE_NAME_PATTERN}\\b\\s*[:=]\\s*)(?!\\[REDACTED\\])[^\\s,;}]+`, 'gi'), '$1[REDACTED]');
   }
   if (value === null || typeof value !== 'object') return value;
   if (seen.has(value)) return '[Circular]';
@@ -360,6 +374,21 @@ const valueType = (value: unknown): StructuralValueType => {
   return typeof value as StructuralValueType;
 };
 
+const jsonDeepEqual = (left: unknown, right: unknown): boolean => {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((item, index) => jsonDeepEqual(item, right[index]));
+  }
+  if (!isRecord(left) || !isRecord(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every(key => Object.prototype.hasOwnProperty.call(right, key)
+      && jsonDeepEqual(left[key], right[key]));
+};
+
 export const evaluateAssertions = (
   response: unknown,
   assertions: readonly DeterministicAssertion[]
@@ -369,7 +398,7 @@ export const evaluateAssertions = (
   if (assertion.operator === 'exists') passed = actual.found;
   else if (assertion.operator === 'not-exists') passed = !actual.found;
   else if (assertion.operator === 'type') passed = actual.found && valueType(actual.value) === assertion.value;
-  else if (assertion.operator === 'equals') passed = actual.found && JSON.stringify(actual.value) === JSON.stringify(assertion.value);
+  else if (assertion.operator === 'equals') passed = actual.found && jsonDeepEqual(actual.value, assertion.value);
   else {
     const length = typeof actual.value === 'string' || Array.isArray(actual.value)
       ? actual.value.length
