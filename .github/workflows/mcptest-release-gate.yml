@@ -98,8 +98,20 @@ jobs:
               run_id: context.runId,
               attempt_number: Number(process.env.GITHUB_RUN_ATTEMPT),
             });
-            const expectedPath = `integry/mcptest/.github/workflows/mcptest-release-gate.yml@${requestedRef}`;
-            const invokedWorkflow = run.referenced_workflows?.find(
+            const expectedWorkflowPath = 'integry/mcptest/.github/workflows/mcptest-release-gate.yml';
+            const referencedWorkflows = (run.referenced_workflows ?? []).filter(({ path }) => {
+              const refSeparator = path.lastIndexOf('@');
+              return refSeparator !== -1
+                && path.slice(0, refSeparator).toLowerCase() === expectedWorkflowPath;
+            });
+            const resolvedRefs = new Set(referencedWorkflows.map(({ sha }) => sha));
+            if (resolvedRefs.size > 1) {
+              core.setFailed('Cannot validate mcptest_ref because this run invokes the mcptest release gate at multiple commit SHAs');
+              return;
+            }
+
+            const expectedPath = `${expectedWorkflowPath}@${requestedRef}`;
+            const invokedWorkflow = referencedWorkflows.find(
               ({ path }) => path.toLowerCase() === expectedPath,
             );
             if (!invokedWorkflow || invokedWorkflow.sha !== requestedRef) {
