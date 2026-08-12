@@ -204,7 +204,10 @@ const outputSchemaAssertions = (tool: DiscoveredTool): DeterministicAssertion[] 
   }
   if (schema.type === 'object' && Array.isArray(schema.required)) {
     for (const key of schema.required.filter((value): value is string => typeof value === 'string')) {
-      assertions.push({ path: `$.structuredContent.${key}`, operator: 'exists' });
+      const propertyPath = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)
+        ? `$.structuredContent.${key}`
+        : `$.structuredContent[${JSON.stringify(key)}]`;
+      assertions.push({ path: propertyPath, operator: 'exists' });
     }
   }
   return assertions;
@@ -388,19 +391,64 @@ const malformedResponseError = (response: unknown): NormalizedTestError | undefi
 
 const getPath = (root: unknown, path: string): { found: boolean; value?: unknown } => {
   if (path === '$' || path === '') return { found: true, value: root };
-  if (!path.startsWith('$.')) return { found: false };
-  let current = root;
-  for (const segment of path.slice(2).split('.')) {
-    const match = /^(.*?)(?:\[(\d+)\])?$/.exec(segment);
-    if (!match || !isRecord(current) && !Array.isArray(current)) return { found: false };
-    const key = match[1];
-    if (key && !(key in (current as RecordValue))) return { found: false };
-    current = key ? (current as RecordValue)[key] : current;
-    if (match[2] !== undefined) {
-      const index = Number(match[2]);
-      if (!Array.isArray(current) || index >= current.length) return { found: false };
-      current = current[index];
+  if (!path.startsWith('$')) return { found: false };
+  const segments: Array<string | number> = [];
+  let offset = 1;
+  while (offset < path.length) {
+    if (path[offset] === '.') {
+      const start = ++offset;
+      while (offset < path.length && path[offset] !== '.' && path[offset] !== '[') offset += 1;
+      if (offset === start) return { found: false };
+      segments.push(path.slice(start, offset));
+      continue;
     }
+    if (path[offset] !== '[') return { found: false };
+    offset += 1;
+    if (path[offset] === '"') {
+      const start = offset;
+      let escaped = false;
+      offset += 1;
+      while (offset < path.length) {
+        const character = path[offset];
+        if (!escaped && character === '"') break;
+        escaped = !escaped && character === '\\';
+        if (character !== '\\') escaped = false;
+        offset += 1;
+      }
+      if (offset >= path.length) return { found: false };
+      let key: unknown;
+      try {
+        key = JSON.parse(path.slice(start, offset + 1));
+      } catch {
+        return { found: false };
+      }
+      if (typeof key !== 'string') return { found: false };
+      segments.push(key);
+      offset += 1;
+    } else {
+      const start = offset;
+      while (offset < path.length && /\d/.test(path[offset])) offset += 1;
+      if (offset === start) return { found: false };
+      segments.push(Number(path.slice(start, offset)));
+    }
+    if (path[offset] !== ']') return { found: false };
+    offset += 1;
+  }
+
+  let current = root;
+  for (const segment of segments) {
+    if (typeof segment === 'number') {
+      if (!Array.isArray(current) || !Object.prototype.hasOwnProperty.call(current, segment)) {
+        return { found: false };
+      }
+      current = current[segment];
+      continue;
+    }
+    if ((!isRecord(current) && !Array.isArray(current))
+      || !Object.prototype.hasOwnProperty.call(current, segment)) {
+      return { found: false };
+    }
+    current = (current as RecordValue)[segment];
   }
   return { found: true, value: current };
 };

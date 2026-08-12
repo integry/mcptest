@@ -70,25 +70,38 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   const [confirmedUnsafeFixtureSignature, setConfirmedUnsafeFixtureSignature] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
+  const toolSurfaceSignature = JSON.stringify(tools);
   const importRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const runGenerationRef = useRef(0);
+  const importGenerationRef = useRef(0);
+  const connectionIdentityRef = useRef({ client, serverUrl, toolSurfaceSignature });
+  if (connectionIdentityRef.current.client !== client
+    || connectionIdentityRef.current.serverUrl !== serverUrl
+    || connectionIdentityRef.current.toolSurfaceSignature !== toolSurfaceSignature) {
+    connectionIdentityRef.current = { client, serverUrl, toolSurfaceSignature };
+    importGenerationRef.current += 1;
+  }
   const planBindingRef = useRef<{
     client: Client;
     serverUrl: string;
     toolSurfaceSignature: string;
   } | null>(null);
-  const toolSurfaceSignature = JSON.stringify(tools);
   const planIsCurrent = planBindingRef.current?.client === client
     && planBindingRef.current.serverUrl === serverUrl
     && planBindingRef.current.toolSurfaceSignature === toolSurfaceSignature;
 
   useEffect(() => {
-    if (!open) return;
-    runGenerationRef.current += 1;
-    abortRef.current?.abort();
-    abortRef.current = null;
+    const invalidateAsyncWork = () => {
+      runGenerationRef.current += 1;
+      importGenerationRef.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+
+    invalidateAsyncWork();
     setIsRunning(false);
+    if (!open) return invalidateAsyncWork;
     setResults([]);
     setConfirmedUnsafeFixtureSignature(null);
     setExpandedCase(null);
@@ -98,13 +111,14 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
       planBindingRef.current = null;
       setPlan(null);
       setDrafts({});
-      return;
+      return invalidateAsyncWork;
     }
 
     const generated = generateDeterministicTestPlan(tools, serverUrl);
     planBindingRef.current = { client, serverUrl, toolSurfaceSignature };
     setPlan(generated);
     setDrafts(createDrafts(generated));
+    return invalidateAsyncWork;
     // The serialized signature intentionally covers schemas, descriptions, and annotations.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, client, serverUrl, toolSurfaceSignature]);
@@ -219,8 +233,17 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    const importGeneration = importGenerationRef.current + 1;
+    importGenerationRef.current = importGeneration;
+    const importIdentity = { client, serverUrl, toolSurfaceSignature };
+    const importIsCurrent = () => importGenerationRef.current === importGeneration
+      && connectionIdentityRef.current.client === importIdentity.client
+      && connectionIdentityRef.current.serverUrl === importIdentity.serverUrl
+      && connectionIdentityRef.current.toolSurfaceSignature === importIdentity.toolSurfaceSignature;
     try {
-      const parsed = parseDeterministicTestPlan(await file.text());
+      const contents = await file.text();
+      if (!importIsCurrent()) return;
+      const parsed = parseDeterministicTestPlan(contents);
       const undiscoveredToolNames = parsed.tools
         .map(tool => tool.toolName)
         .filter(toolName => !discoveredSafety.has(toolName));
@@ -242,12 +265,14 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
           };
         }),
       };
+      if (!importIsCurrent()) return;
       setPlan(imported);
       setDrafts(createDrafts(imported));
       setResults([]);
       setConfirmedUnsafeFixtureSignature(null);
       setNotice(`Imported ${imported.tools.length} tool plans from ${file.name}.`);
     } catch (cause) {
+      if (!importIsCurrent()) return;
       setNotice(`Import failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
   };
