@@ -150,6 +150,27 @@ describe('report snapshot history', () => {
     expect(storage.getItem('mcpSpaces')).toBe('keep-me');
   });
 
+  it('does not overwrite history when reading it fails during snapshot storage', () => {
+    const snapshot = createReportSnapshot(report(), undefined, '2026-08-11T20:00:00.000Z');
+    const storage = {
+      getItem: () => { throw new Error('storage read failed'); },
+      setItem: () => { throw new Error('setItem must not be called'); },
+      removeItem: () => { throw new Error('removeItem must not be called'); },
+    };
+
+    expect(() => storeReportSnapshot(snapshot, storage)).toThrow('storage read failed');
+  });
+
+  it('does not mutate history when reading it fails during snapshot deletion', () => {
+    const storage = {
+      getItem: () => { throw new Error('storage read failed'); },
+      setItem: () => { throw new Error('setItem must not be called'); },
+      removeItem: () => { throw new Error('removeItem must not be called'); },
+    };
+
+    expect(() => deleteReportSnapshot('snapshot-1', storage)).toThrow('storage read failed');
+  });
+
   it('exports bounded redacted history and ignores invalid stored entries', () => {
     const storage = new MemoryStorage();
     storage.setItem(REPORT_HISTORY_STORAGE_KEY, JSON.stringify([{ version: 1, id: 'bad' }]));

@@ -646,6 +646,14 @@ const hasCompleteRunObservations = (report: PublicReport): boolean => (
   report.outcome.status !== 'partial' && report.outcome.status !== 'failed'
 );
 
+const ADVERSE_OAUTH_OUTCOMES = new Set(['failed', 'cancelled', 'required', 'skipped']);
+
+const hasAdverseOAuthOutcome = (observation: unknown): boolean => (
+  isRecord(observation)
+  && typeof observation.outcome === 'string'
+  && ADVERSE_OAUTH_OUTCOMES.has(observation.outcome)
+);
+
 const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChange[] => {
   const changes: ReportDiffChange[] = [];
   if (before.outcome.status === 'scored' && after.outcome.status === 'authorization-required') {
@@ -683,10 +691,13 @@ const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChan
         'One run did not establish this OAuth observation.'
       ));
     } else if (left === undefined) {
+      const adverse = hasAdverseOAuthOutcome(right);
       changes.push(makeChange(
-        'addition', 'authentication', `oauth.${type}`,
-        `OAuth observation added: ${type}`,
-        'The latest snapshot includes additional OAuth evidence.'
+        adverse ? 'risk' : 'addition', 'authentication', `oauth.${type}`,
+        adverse ? `OAuth observation added with adverse outcome: ${type}` : `OAuth observation added: ${type}`,
+        adverse
+          ? 'The latest snapshot newly reports an unsuccessful OAuth step.'
+          : 'The latest snapshot includes additional OAuth evidence.'
       ));
     } else {
       changes.push(makeChange(

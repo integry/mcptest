@@ -13,6 +13,7 @@ interface FixtureOptions {
   score?: number;
   latency?: number;
   oauthMetadata?: Record<string, unknown>;
+  oauthOutcome?: 'succeeded' | 'failed';
 }
 
 const artifact = ({
@@ -33,6 +34,7 @@ const artifact = ({
   score = transport === 'streamable-http' ? 55 : 46,
   latency = 200,
   oauthMetadata,
+  oauthOutcome,
 }: FixtureOptions = {}): PublicReport => {
   const report: EvaluationReport = {
     serverUrl: 'https://drift.example/mcp',
@@ -62,7 +64,7 @@ const artifact = ({
   };
   return createPublicReport(report, {
     generatedAt,
-    ...(oauthMetadata ? {
+    ...(oauthMetadata || oauthOutcome ? {
       oauthTrace: {
         version: 1,
         traceId: `trace-${generatedAt}`,
@@ -72,7 +74,7 @@ const artifact = ({
         events: [{
           sequence: 1,
           type: 'authorization_server_metadata',
-          outcome: 'succeeded',
+          outcome: oauthOutcome || 'succeeded',
           timestamp: generatedAt,
           provenance: 'authorization_server',
           route: 'direct',
@@ -648,6 +650,21 @@ describe('semantic report drift', () => {
     expect(diffPublicReports(before, after).changes[0]).toEqual(expect.objectContaining({
       category: 'authentication', classification: 'risk',
       title: 'OAuth metadata changed: authorization_server_metadata',
+    }));
+  });
+
+  it('classifies a newly observed failed OAuth step as an authentication risk', () => {
+    const before = artifact();
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      oauthOutcome: 'failed',
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'oauth.authorization_server_metadata',
+      category: 'authentication',
+      classification: 'risk',
+      breaking: false,
     }));
   });
 

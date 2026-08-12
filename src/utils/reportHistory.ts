@@ -88,10 +88,8 @@ const applyRetention = (snapshots: readonly ReportSnapshotV1[]): ReportSnapshotV
   return retained;
 };
 
-/** Loads only validated, redacted report artifacts from the dedicated history key. */
-export const loadReportSnapshots = (storage: ReadStorage = localStorage): ReportSnapshotV1[] => {
+const parseReportSnapshots = (raw: string | null): ReportSnapshotV1[] => {
   try {
-    const raw = storage.getItem(REPORT_HISTORY_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -99,6 +97,19 @@ export const loadReportSnapshots = (storage: ReadStorage = localStorage): Report
       const snapshot = validateSnapshot(value);
       return snapshot ? [snapshot] : [];
     }));
+  } catch {
+    return [];
+  }
+};
+
+const readReportSnapshots = (storage: ReadStorage): ReportSnapshotV1[] => (
+  parseReportSnapshots(storage.getItem(REPORT_HISTORY_STORAGE_KEY))
+);
+
+/** Loads only validated, redacted report artifacts from the dedicated history key. */
+export const loadReportSnapshots = (storage: ReadStorage = localStorage): ReportSnapshotV1[] => {
+  try {
+    return readReportSnapshots(storage);
   } catch {
     return [];
   }
@@ -140,7 +151,7 @@ export const storeReportSnapshot = (
   if (!validated) throw new Error('Report snapshot is invalid.');
   const retained = applyRetention([
     validated,
-    ...loadReportSnapshots(storage).filter((candidate) => candidate.id !== validated.id),
+    ...readReportSnapshots(storage).filter((candidate) => candidate.id !== validated.id),
   ]);
   storage.setItem(REPORT_HISTORY_STORAGE_KEY, JSON.stringify(retained));
   return retained;
@@ -150,7 +161,7 @@ export const deleteReportSnapshot = (
   id: string,
   storage: WriteStorage = localStorage
 ): ReportSnapshotV1[] => {
-  const retained = loadReportSnapshots(storage).filter((snapshot) => snapshot.id !== id);
+  const retained = readReportSnapshots(storage).filter((snapshot) => snapshot.id !== id);
   if (retained.length === 0) storage.removeItem(REPORT_HISTORY_STORAGE_KEY);
   else storage.setItem(REPORT_HISTORY_STORAGE_KEY, JSON.stringify(retained));
   return retained;
