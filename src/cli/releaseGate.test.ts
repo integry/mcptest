@@ -1,3 +1,8 @@
+import { createServer } from 'node:http';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { EvaluationReport } from '../utils/evaluation';
 import {
@@ -6,6 +11,7 @@ import {
   REDACTED_VALUE,
 } from '../utils/reportArtifact';
 import type { ReleaseDecision } from '../utils/releaseReadiness';
+import { runCli } from './runCli';
 import {
   RELEASE_GATE_EXIT_CODES,
   getReleaseGateThresholdReasons,
@@ -109,6 +115,71 @@ describe('headless release gate', () => {
     expect(result.targets[0].report?.outcome.status).toBe('authorization-required');
     expect(result.targets[0].json).toContain('authorization-required');
     expect(result.targets[0].markdown).toContain('Authorization is a prerequisite');
+  });
+
+  it('classifies real HTTP transport challenges before disabled thresholds', async () => {
+    const requests: string[] = [];
+    const challengeSecret = 'local-challenge-secret';
+    const server = createServer((request, response) => {
+      requests.push(`${request.method} ${request.url}`);
+      const address = server.address() as AddressInfo;
+      response.writeHead(401, {
+        'WWW-Authenticate': `Bearer resource_metadata="http://127.0.0.1:${address.port}/.well-known/oauth-protected-resource?client_secret=${challengeSecret}"`,
+      });
+      response.end('Unauthorized');
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+
+    const port = (server.address() as AddressInfo).port;
+    const outputDir = await mkdtemp(join(tmpdir(), 'mcptest-authorization-required-'));
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      const exitCode = await runCli([
+        '--output-dir', outputDir,
+        '--format', 'both',
+        '--fail-on-result', 'none',
+        '--fail-on-severity', 'none',
+        `http://127.0.0.1:${port}/mcp`,
+        `http://127.0.0.1:${port}/sse`,
+      ], {});
+
+      expect(exitCode).toBe(RELEASE_GATE_EXIT_CODES.authorizationRequired);
+      expect(requests).toContain('POST /mcp');
+      expect(requests).toContain('GET /sse');
+
+      const filenames = (await readdir(outputDir)).sort();
+      expect(filenames.filter((name) => name.endsWith('.json'))).toHaveLength(2);
+      expect(filenames.filter((name) => name.endsWith('.md'))).toHaveLength(2);
+      for (const filename of filenames) {
+        const artifact = await readFile(join(outputDir, filename), 'utf8');
+        expect(artifact).not.toContain(challengeSecret);
+        if (filename.endsWith('.md')) {
+          expect(artifact).toContain('**authorization-required**');
+          continue;
+        }
+        const report = PublicReportSchema.parse(JSON.parse(artifact));
+        expect(report.outcome.status).toBe('authorization-required');
+        expect(report.releaseDecision?.status).toBe('authorization-required');
+        expect(report.sections[0].evidence[0].metadata).toMatchObject({
+          status: 401,
+          responseHeaders: {
+            'www-authenticate': expect.stringContaining('Bearer'),
+          },
+        });
+      }
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+      await rm(outputDir, { recursive: true, force: true });
+    }
   });
 
   it('redacts credentials even when a transport error includes them', async () => {
