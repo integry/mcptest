@@ -110,6 +110,60 @@ describe('semantic report drift', () => {
     expect(diff.hasBreakingChanges).toBe(false);
   });
 
+  it.each([undefined, true])(
+    'classifies an optional property added to an open schema (%s) as breaking when it narrows accepted values',
+    (additionalProperties) => {
+      const schema = (includeLimit: boolean) => ({
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          ...(includeLimit ? { limit: { type: 'number' } } : {}),
+        },
+        required: ['query'],
+        ...(additionalProperties === undefined ? {} : { additionalProperties }),
+      });
+      const before = artifact({ tools: [tool(schema(false))] });
+      const after = artifact({
+        generatedAt: '2026-08-11T20:01:00.000Z',
+        tools: [tool(schema(true))],
+      });
+
+      expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.limit',
+        classification: 'breaking',
+        title: 'search constrained optional input limit',
+        breaking: true,
+      }));
+    }
+  );
+
+  it.each([undefined, true])(
+    'classifies a property removed from an open schema (%s) as a relaxation',
+    (additionalProperties) => {
+      const schema = (includeLimit: boolean) => ({
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          ...(includeLimit ? { limit: { type: 'number' } } : {}),
+        },
+        required: ['query'],
+        ...(additionalProperties === undefined ? {} : { additionalProperties }),
+      });
+      const before = artifact({ tools: [tool(schema(true))] });
+      const after = artifact({
+        generatedAt: '2026-08-11T20:01:00.000Z',
+        tools: [tool(schema(false))],
+      });
+
+      expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.limit',
+        classification: 'change',
+        title: 'search removed input limit',
+        breaking: false,
+      }));
+    }
+  );
+
   it('classifies a newly required input as breaking', () => {
     const properties = { query: { type: 'string' }, tenant: { type: 'string' } };
     const before = artifact({ tools: [tool(inputSchema(properties, ['query']))] });
@@ -479,6 +533,43 @@ describe('semantic report drift', () => {
     expect(diffPublicReports(before, after).changes[0]).toEqual(expect.objectContaining({
       category: 'authentication', classification: 'risk',
       title: 'OAuth metadata changed: authorization_server_metadata',
+    }));
+  });
+
+  it('ignores reordering of set-valued OAuth metadata arrays', () => {
+    const before = artifact({ oauthMetadata: {
+      issuer: 'https://auth.example',
+      scopes_supported: ['read', 'write'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+    } });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      oauthMetadata: {
+        issuer: 'https://auth.example',
+        scopes_supported: ['write', 'read'],
+        grant_types_supported: ['refresh_token', 'authorization_code'],
+      },
+    });
+
+    expect(diffPublicReports(before, after).changes.filter(
+      ({ category }) => category === 'authentication'
+    )).toEqual([]);
+  });
+
+  it('preserves ordering when comparing other OAuth metadata arrays', () => {
+    const before = artifact({ oauthMetadata: {
+      issuer: 'https://auth.example', custom_endpoint_preference: ['primary', 'fallback'],
+    } });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      oauthMetadata: {
+        issuer: 'https://auth.example', custom_endpoint_preference: ['fallback', 'primary'],
+      },
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'oauth.authorization_server_metadata',
+      classification: 'risk',
     }));
   });
 

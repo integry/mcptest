@@ -211,6 +211,38 @@ const sameAdditionalPropertiesKeyword = (left: unknown, right: unknown): boolean
   right === undefined ? true : right
 );
 
+type SchemaAcceptance =
+  | { status: 'reject' }
+  | { status: 'schema'; schema: JsonRecord }
+  | { status: 'malformed' };
+
+type SchemaAcceptanceRelation = 'equal' | 'narrowed' | 'widened' | 'unknown';
+
+const schemaAcceptance = (value: unknown): SchemaAcceptance => {
+  if (value === false) return { status: 'reject' };
+  if (value === true) return { status: 'schema', schema: {} };
+  if (isRecord(value)) return { status: 'schema', schema: value };
+  return { status: 'malformed' };
+};
+
+const additionalPropertiesAcceptance = (schema: JsonRecord): SchemaAcceptance => (
+  schemaAcceptance(hasOwn(schema, 'additionalProperties') ? schema.additionalProperties : true)
+);
+
+function compareSchemaAcceptance(beforeValue: unknown, afterValue: unknown): SchemaAcceptanceRelation {
+  const before = schemaAcceptance(beforeValue);
+  const after = schemaAcceptance(afterValue);
+  if (before.status === 'malformed' || after.status === 'malformed') return 'unknown';
+  if (before.status === 'reject') return after.status === 'reject' ? 'equal' : 'widened';
+  if (after.status === 'reject') return 'narrowed';
+  if (same(before.schema, after.schema)) return 'equal';
+
+  const changes = schemaChanges(before.schema, after.schema, 'input', 'input');
+  if (changes.some((change) => change.breaking)) return 'narrowed';
+  if (changes.some((change) => change.classification === 'unknown')) return 'unknown';
+  return 'widened';
+}
+
 const schemaChanges = (
   before: unknown,
   after: unknown,
@@ -284,6 +316,8 @@ const schemaChanges = (
   const afterPropertiesKeyword = propertiesKeyword(after);
   const beforeProperties = keywordRecord(beforePropertiesKeyword);
   const afterProperties = keywordRecord(afterPropertiesKeyword);
+  const beforeAdditionalProperties = additionalPropertiesAcceptance(before);
+  const afterAdditionalProperties = additionalPropertiesAcceptance(after);
   if (!samePropertiesKeyword(before, after)) {
     if (beforePropertiesKeyword.status === 'malformed'
         || afterPropertiesKeyword.status === 'malformed') {
@@ -294,15 +328,50 @@ const schemaChanges = (
     } else {
       for (const name of Object.keys(afterProperties).filter((name) => !hasOwn(beforeProperties, name)).sort()) {
         if (afterRequiredKeyword.status === 'malformed' || afterRequired.has(name)) continue;
+        const relation = beforeAdditionalProperties.status === 'reject'
+          ? 'widened'
+          : compareSchemaAcceptance(
+            beforeAdditionalProperties.status === 'schema'
+              ? beforeAdditionalProperties.schema
+              : undefined,
+            afterProperties[name]
+          );
         changes.push(makeChange(
-          'addition', 'tools', `${path}.properties.${name}`, `${toolName} added optional input ${name}`,
-          'This additive optional field is compatible with existing callers.'
+          relation === 'narrowed' ? 'breaking' : relation === 'unknown' ? 'unknown' : 'addition',
+          'tools', `${path}.properties.${name}`,
+          relation === 'narrowed'
+            ? `${toolName} constrained optional input ${name}`
+            : relation === 'unknown'
+              ? `${toolName} optional input ${name} could not be compared`
+              : `${toolName} added optional input ${name}`,
+          relation === 'narrowed'
+            ? 'Values previously accepted as an extra input may now fail the declared property schema.'
+            : relation === 'unknown'
+              ? 'The prior extra-property behavior and the declared property schema could not be compared safely.'
+              : 'This additive optional field does not reject inputs accepted by the previous schema.'
         ));
       }
       for (const name of Object.keys(beforeProperties).filter((name) => !hasOwn(afterProperties, name)).sort()) {
+        const relation = afterAdditionalProperties.status === 'reject'
+          ? 'narrowed'
+          : compareSchemaAcceptance(
+            beforeProperties[name],
+            afterAdditionalProperties.status === 'schema'
+              ? afterAdditionalProperties.schema
+              : undefined
+          );
         changes.push(makeChange(
-          'removal', 'tools', `${path}.properties.${name}`, `${toolName} removed input ${name}`,
-          'Callers that still send this input may fail validation.', true
+          relation === 'narrowed' ? 'removal' : relation === 'unknown' ? 'unknown' : 'change',
+          'tools', `${path}.properties.${name}`,
+          relation === 'unknown'
+            ? `${toolName} removed input ${name}, but compatibility is unknown`
+            : `${toolName} removed input ${name}`,
+          relation === 'narrowed'
+            ? 'Callers that still send this input may fail validation.'
+            : relation === 'unknown'
+              ? 'The removed property schema and the latest extra-property behavior could not be compared safely.'
+              : 'The input remains accepted through the latest extra-property behavior, so the contract was relaxed.',
+          relation === 'narrowed'
         ));
       }
       for (const name of Object.keys(beforeProperties).filter((name) => hasOwn(afterProperties, name)).sort()) {
@@ -500,6 +569,56 @@ const OAUTH_METADATA_KEYS = new Set([
   'tokenEndpoint',
 ]);
 
+const OAUTH_SET_VALUED_ARRAY_KEYS = new Set([
+  'authorizationServers',
+  'authorization_servers',
+  'bearerMethodsSupported',
+  'bearer_methods_supported',
+  'codeChallengeMethodsSupported',
+  'code_challenge_methods_supported',
+  'grantTypesSupported',
+  'grant_types_supported',
+  'introspectionEndpointAuthMethodsSupported',
+  'introspection_endpoint_auth_methods_supported',
+  'resourceSigningAlgValuesSupported',
+  'resource_signing_alg_values_supported',
+  'responseModesSupported',
+  'responseTypesSupported',
+  'response_modes_supported',
+  'response_types_supported',
+  'revocationEndpointAuthMethodsSupported',
+  'revocation_endpoint_auth_methods_supported',
+  'scopesSupported',
+  'scopes_supported',
+  'supportedGrantTypes',
+  'supportedMethods',
+  'tokenEndpointAuthMethodsSupported',
+  'tokenEndpointAuthSigningAlgValuesSupported',
+  'token_endpoint_auth_methods_supported',
+  'token_endpoint_auth_signing_alg_values_supported',
+  'uiLocalesSupported',
+  'ui_locales_supported',
+]);
+
+const stableOAuthValue = (value: unknown, key?: string): unknown => {
+  if (Array.isArray(value)) {
+    const values = value.map((child) => stableOAuthValue(child));
+    return key && OAUTH_SET_VALUED_ARRAY_KEYS.has(key)
+      ? values.sort((left, right) => stableString(left).localeCompare(stableString(right)))
+      : values;
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([childKey, child]) => [childKey, stableOAuthValue(child, childKey)]));
+  }
+  return value;
+};
+
+const sameOAuthMetadata = (left: unknown, right: unknown): boolean => (
+  JSON.stringify(stableOAuthValue(left)) === JSON.stringify(stableOAuthValue(right))
+);
+
 const securityMetadata = (report: PublicReport): Map<string, unknown> => {
   const metadata = new Map<string, unknown>();
   for (const section of report.sections) {
@@ -546,7 +665,7 @@ const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChan
   for (const type of [...new Set([...beforeSteps.keys(), ...afterSteps.keys()])].sort()) {
     const left = beforeSteps.get(type);
     const right = afterSteps.get(type);
-    if (same(left, right)) continue;
+    if (sameOAuthMetadata(left, right)) continue;
     if (!observationsComparable || right === undefined) {
       changes.push(makeChange(
         'unknown', 'authentication', `oauth.${type}`,
@@ -571,7 +690,7 @@ const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChan
   for (const key of [...new Set([...beforeMetadata.keys(), ...afterMetadata.keys()])].sort()) {
     const left = beforeMetadata.get(key);
     const right = afterMetadata.get(key);
-    if (same(left, right)) continue;
+    if (sameOAuthMetadata({ [key]: left }, { [key]: right })) continue;
     const removed = beforeMetadata.has(key) && !afterMetadata.has(key);
     if (!observationsComparable) {
       changes.push(makeChange(
