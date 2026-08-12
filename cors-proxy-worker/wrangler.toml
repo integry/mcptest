@@ -11,6 +11,9 @@ HOSTED_OAUTH_CALLBACK_URL = "https://cors-proxy.mcptest.io/oauth/hosted/callback
 name = "HOSTED_OAUTH_BROKER"
 class_name = "HostedOAuthBroker"
 
+# Keep this initial migration in the reviewed configuration. Cloudflare's Git-integrated PR
+# previews upload a version and cannot apply Durable Object lifecycle changes; apply it only by
+# deploying the merge to master. Do not deploy an unreviewed branch to make a preview check pass.
 [[migrations]]
 tag = "v1-hosted-oauth"
 new_sqlite_classes = ["HostedOAuthBroker"]

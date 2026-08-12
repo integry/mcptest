@@ -60,6 +60,21 @@ wrangler secret put HOSTED_OAUTH_ENCRYPTION_KEY
 `HOSTED_OAUTH_CALLBACK_URL` and `PUBLIC_APP_ORIGIN` as non-secret Worker bindings, and keep the
 `HOSTED_OAUTH_BROKER` Durable Object binding and migration from `wrangler.toml`.
 
+### Pull request validation and initial migration
+
+Validate a pull request locally from this directory with `npm run build`. This runs TypeScript
+checking followed by `wrangler deploy --dry-run`; a successful dry run confirms that Wrangler
+accepts the `HostedOAuthBroker` SQLite Durable Object binding and its `v1-hosted-oauth` migration.
+
+Cloudflare's Git-integrated pull request check uploads a Worker version for its preview. A version
+upload cannot apply the initial Durable Object lifecycle migration, and Cloudflare does not generate
+[preview URLs for Workers that implement Durable Objects](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/#limitations).
+Consequently, that preview check cannot validate this first migration even when the local build and
+dry run pass. Do not remove the binding or migration, and do not deploy unreviewed branch code to
+production to work around the check. Apply `v1-hosted-oauth` with a real Worker deployment only
+after the reviewed change has merged to `master`, as required by Cloudflare's
+[Durable Object migration process](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/).
+
 Authorization transactions expire after 10 minutes and are single-use. Provider access and refresh
 tokens are AES-256-GCM encrypted in Durable Object storage, never returned to browser code, and
 refreshed server-side 60 seconds before provider expiry. The browser receives only an opaque grant
