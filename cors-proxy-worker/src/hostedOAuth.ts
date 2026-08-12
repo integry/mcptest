@@ -280,7 +280,18 @@ const verifyProviderMetadata = async (
   requestedResourceMetadataUrl?: string,
   requestedScope = ''
 ): Promise<void> => {
-  if (requestedResourceMetadataUrl && new URL(requestedResourceMetadataUrl).toString() !== provider.resourceMetadataUrl) {
+  const canonicalResourceMetadataUrl = (value: string): string => {
+    const url = new URL(value);
+    if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
+    return url.toString();
+  };
+  if (
+    requestedResourceMetadataUrl
+    && canonicalResourceMetadataUrl(requestedResourceMetadataUrl)
+      !== canonicalResourceMetadataUrl(provider.resourceMetadataUrl)
+  ) {
     throw new Error('The observed protected-resource metadata URL does not match the trusted provider target.');
   }
   const resourceResponse = await fetch(provider.resourceMetadataUrl, {

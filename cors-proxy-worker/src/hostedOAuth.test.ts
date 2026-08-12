@@ -165,6 +165,20 @@ describe('hosted provider authorization transactions', () => {
       .toBe(provider === 'slack' ? 'Bearer slack-refreshed' : 'Bearer github-access');
   });
 
+  it('accepts the trailing-slash GitHub metadata URL observed by browser discovery', async () => {
+    const browserResourceMetadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
+    const response = await start(makeEnv(), 'github', 'user-1', {
+      resourceMetadataUrl: browserResourceMetadataUrl,
+    });
+
+    expect(response.status).toBe(200);
+    const fetchedUrls = vi.mocked(fetch).mock.calls.map(([input]) => String(input));
+    expect(fetchedUrls).toContain(
+      'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp'
+    );
+    expect(fetchedUrls).not.toContain(browserResourceMetadataUrl);
+  });
+
   it('rejects unknown targets even when they advertise a trusted issuer', async () => {
     const response = await start(makeEnv(), 'slack', 'user-1', {
       target: 'https://attacker.example/mcp',
