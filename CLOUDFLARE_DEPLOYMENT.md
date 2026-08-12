@@ -52,19 +52,8 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
      both provider applications. See `cors-proxy-worker/README.md` for provider links and token storage details.
 
 4. **Deploy**
-   - Configure production deployment from `master`; do not deploy unreviewed pull request branches.
-   - The first reviewed deployment containing `v1-hosted-oauth` applies the initial
-     `HostedOAuthBroker` SQLite Durable Object migration.
+   - Cloudflare will automatically deploy when you push to your connected branch
    - The CORS proxy will be available at: `https://mcptest-cors-proxy.{your-account}.workers.dev/`
-
-   Cloudflare's Git-integrated pull request flow uses a Worker version upload. Durable Object
-   lifecycle migrations require a real deploy, and Workers that implement Durable Objects do not
-   receive preview URLs. A PR preview check can therefore fail even when `npm run build` in
-   `cors-proxy-worker` passes its TypeScript check and `wrangler deploy --dry-run`. Treat that as a
-   platform limitation; do not bypass it with an unreviewed production deploy. See Cloudflare's
-   [Durable Object migration](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/)
-   and [preview URL](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/#limitations)
-   documentation.
 
 ### Method 2: Deploy from Command Line
 
