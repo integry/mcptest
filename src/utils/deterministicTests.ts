@@ -51,6 +51,7 @@ const DESTRUCTIVE_ACTIONS = new Set([
   'wipe',
 ]);
 const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|password|passwd|secret|client[_ -]?secret)';
+const SENSITIVE_TEXT_NAME_PATTERN = `(?:[a-z0-9]+[_-])*${SENSITIVE_NAME_PATTERN}`;
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
 const ERROR_CODE_KEYS = ['code', 'errorCode', 'error_code', 'status', 'statusCode'];
@@ -111,11 +112,19 @@ const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
   if (type === 'integer' || type === 'number') return typeof schema.minimum === 'number' ? schema.minimum : 0;
   if (type === 'null') return null;
   if (type === 'string' || type === undefined) {
-    if (schema.format === 'email') return 'fixture@example.com';
-    if (schema.format === 'uri' || schema.format === 'url') return 'https://example.com/fixture';
-    return typeof schema.minLength === 'number' && schema.minLength > 1
-      ? 'fixture'.padEnd(schema.minLength, 'x')
-      : 'fixture';
+    const fixture = schema.format === 'email'
+      ? 'fixture@example.com'
+      : schema.format === 'uri' || schema.format === 'url'
+        ? 'https://example.com/fixture'
+        : 'fixture';
+    const minLength = typeof schema.minLength === 'number' && schema.minLength > 0
+      ? Math.ceil(schema.minLength)
+      : 0;
+    const maxLength = typeof schema.maxLength === 'number' && schema.maxLength >= 0
+      ? Math.floor(schema.maxLength)
+      : Number.POSITIVE_INFINITY;
+    const targetLength = Math.max(minLength, Math.min(fixture.length, maxLength));
+    return fixture.slice(0, targetLength).padEnd(targetLength, 'x');
   }
   return undefined;
 };
@@ -255,13 +264,14 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
       }
     }
     return value
-      .replace(new RegExp(`(\\b${SENSITIVE_NAME_PATTERN}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')
+      .replace(new RegExp(`^([ \\t]*${SENSITIVE_TEXT_NAME_PATTERN}[ \\t]*:[ \\t]*)[^\\r\\n]*`, 'gim'), '$1[REDACTED]')
+      .replace(new RegExp(`(\\b${SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')
       .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
       .replace(/\bBasic\s+[A-Za-z0-9+/]+=*/gi, 'Basic [REDACTED]')
-      .replace(new RegExp(`([?&#]${SENSITIVE_NAME_PATTERN}=)[^&#\\s]+`, 'gi'), '$1[REDACTED]')
-      .replace(new RegExp(`("${SENSITIVE_NAME_PATTERN}"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi'), '$1"[REDACTED]"')
-      .replace(new RegExp(`('${SENSITIVE_NAME_PATTERN}'\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'gi'), "$1'[REDACTED]'")
-      .replace(new RegExp(`(\\b${SENSITIVE_NAME_PATTERN}\\b\\s*[:=]\\s*)(?!\\[REDACTED\\])[^\\s,;}]+`, 'gi'), '$1[REDACTED]');
+      .replace(new RegExp(`([?&#]${SENSITIVE_TEXT_NAME_PATTERN}=)[^&#\\s]+`, 'gi'), '$1[REDACTED]')
+      .replace(new RegExp(`("${SENSITIVE_TEXT_NAME_PATTERN}"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi'), '$1"[REDACTED]"')
+      .replace(new RegExp(`('${SENSITIVE_TEXT_NAME_PATTERN}'\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'gi'), "$1'[REDACTED]'")
+      .replace(new RegExp(`(\\b${SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?!\\[REDACTED\\])[^\\s,;}]+`, 'gi'), '$1[REDACTED]');
   }
   if (value === null || typeof value !== 'object') return value;
   if (seen.has(value)) return '[Circular]';

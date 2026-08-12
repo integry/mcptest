@@ -53,6 +53,23 @@ describe('deterministic test plans', () => {
     });
   });
 
+  it('honors string length constraints in generated runnable fixtures', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'short_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string', minLength: 2, maxLength: 3 } },
+        required: ['query'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const happyPath = plan.tools[0].cases.find(item => item.kind === 'happy-path');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+    expect(happyPath?.arguments).toEqual({ query: 'fix' });
+    expect(outputShape?.arguments).toEqual({ query: 'fix' });
+  });
+
   it.each([
     {
       schema: {
@@ -295,6 +312,22 @@ describe('deterministic runner safety and evidence', () => {
         { type: 'text', text: 'Authorization: [REDACTED]\nX-API-Key: [REDACTED]' },
       ],
     });
+  });
+
+  it('redacts compound sensitive text keys and complete credential header values', () => {
+    expect(redactTestData([
+      'github_token=secret',
+      'Cookie: session=secret-one; csrf=secret-two',
+      'Set-Cookie: session=secret-one; Path=/; Secure',
+      'Authorization: Digest username="user", response="secret"',
+      'Proxy-Authorization: Custom part-one, part-two',
+    ].join('\n'))).toBe([
+      'github_token=[REDACTED]',
+      'Cookie: [REDACTED]',
+      'Set-Cookie: [REDACTED]',
+      'Authorization: [REDACTED]',
+      'Proxy-Authorization: [REDACTED]',
+    ].join('\n'));
   });
 
   it('redacts credential URLs in request and response text-block evidence', async () => {
