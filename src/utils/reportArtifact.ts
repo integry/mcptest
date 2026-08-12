@@ -977,6 +977,50 @@ const localSchemaReferencePath = (reference: string): string[] | undefined => {
   }
 };
 
+const localSchemaAnchorName = (reference: string): string | undefined => {
+  if (!reference.startsWith('#') || reference === '#' || reference.startsWith('#/')) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(reference.slice(1));
+  } catch {
+    return undefined;
+  }
+};
+
+const localSchemaAnchorPaths = (
+  root: unknown,
+  anchorName: string,
+  path: readonly string[] = [],
+  seen: Set<unknown> = new Set()
+): string[][] => {
+  if (!root || typeof root !== 'object' || seen.has(root)) return [];
+  seen.add(root);
+  if (Array.isArray(root)) {
+    return root.flatMap((item, index) => localSchemaAnchorPaths(
+      item,
+      anchorName,
+      [...path, String(index)],
+      seen
+    ));
+  }
+  const record = root as Record<string, unknown>;
+  const paths = record.$anchor === anchorName || record.$dynamicAnchor === anchorName
+    ? [[...path]]
+    : [];
+  return Object.entries(record).reduce<string[][]>((matches, [childKey, childValue]) => [
+    ...matches,
+    ...localSchemaAnchorPaths(childValue, anchorName, [...path, childKey], seen),
+  ], paths);
+};
+
+const localSchemaReferencePaths = (root: unknown, reference: string): string[][] => {
+  const pointerPath = localSchemaReferencePath(reference);
+  if (pointerPath) return [pointerPath];
+  const anchorName = localSchemaAnchorName(reference);
+  return anchorName === undefined ? [] : localSchemaAnchorPaths(root, anchorName);
+};
+
 const schemaValueAtPath = (
   root: unknown,
   path: readonly string[]
@@ -1008,7 +1052,11 @@ const collectLocalSchemaReferences = (
     return;
   }
   for (const [childKey, childValue] of Object.entries(value)) {
-    if (childKey === '$ref' && typeof childValue === 'string' && localSchemaReferencePath(childValue)) {
+    if (
+      (childKey === '$ref' || childKey === '$dynamicRef')
+      && typeof childValue === 'string'
+      && childValue.startsWith('#')
+    ) {
       references.add(childValue);
     }
     collectLocalSchemaReferences(childValue, references, seen);
@@ -1063,14 +1111,14 @@ const redactSensitiveSchemaReferences = (schema: unknown): unknown => {
 
   const redactedPaths = new Set<string>();
   for (const reference of pendingReferences) {
-    const referencePath = localSchemaReferencePath(reference);
-    if (!referencePath) continue;
-    const pathKey = JSON.stringify(referencePath);
-    if (redactedPaths.has(pathKey)) continue;
-    const target = schemaValueAtPath(schema, referencePath);
-    if (!target.found) continue;
-    redactedPaths.add(pathKey);
-    collectLocalSchemaReferences(target.value, pendingReferences, new Set());
+    for (const referencePath of localSchemaReferencePaths(schema, reference)) {
+      const pathKey = JSON.stringify(referencePath);
+      if (redactedPaths.has(pathKey)) continue;
+      const target = schemaValueAtPath(schema, referencePath);
+      if (!target.found) continue;
+      redactedPaths.add(pathKey);
+      collectLocalSchemaReferences(target.value, pendingReferences, new Set());
+    }
   }
 
   return redactedPaths.size > 0

@@ -802,6 +802,63 @@ describe('versioned public report artifacts', () => {
       .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
   });
 
+  it.each([
+    {
+      name: 'a $dynamicRef JSON pointer',
+      referenceKeyword: '$dynamicRef',
+      reference: '#/$defs/credential',
+      anchorKeyword: undefined,
+    },
+    {
+      name: 'a named-anchor $ref',
+      referenceKeyword: '$ref',
+      reference: '#credential',
+      anchorKeyword: '$anchor',
+    },
+  ])('redacts a low-entropy credential behind $name', ({
+    referenceKeyword,
+    reference,
+    anchorKeyword,
+  }) => {
+    const makeArtifact = (opaqueCredential: string) => {
+      const credentialDefinition: Record<string, unknown> = {
+        type: 'string',
+        const: opaqueCredential,
+      };
+      if (anchorKeyword) credentialDefinition[anchorKeyword] = 'credential';
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            access_token: { [referenceKeyword]: reference },
+          },
+          $defs: { credential: credentialDefinition },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const opaqueCredential = '0000';
+    const artifact = makeArtifact(opaqueCredential);
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown };
+      $defs: { credential: unknown };
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(schema.$defs.credential).toBe('[REDACTED]');
+    expect(json).not.toContain(opaqueCredential);
+    expect(markdown).not.toContain(opaqueCredential);
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
   it('does not retain a low-entropy credential dictionary verifier in the fingerprint', () => {
     const credentialDictionary = ['0000', '0001', '1234', '9999'];
     const analyses = credentialDictionary.map((credential) => analyzeToolSurface([{
