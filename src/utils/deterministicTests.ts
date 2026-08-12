@@ -57,6 +57,8 @@ const SENSITIVE_TEXT_NAME_PATTERN = `(?:[a-z0-9]+[_-])*${SENSITIVE_NAME_PATTERN}
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
 const ERROR_CODE_KEYS = ['code', 'errorCode', 'error_code', 'status', 'statusCode'];
+const MAX_SYNTHESIZED_STRING_LENGTH = 1_024;
+const MAX_SYNTHESIZED_ARRAY_ITEMS = 100;
 const inputSchemaAjv = new Ajv2020({ addUsedSchema: false, allErrors: true, strict: false });
 addFormats(inputSchemaAjv);
 inputSchemaAjv.addFormat('url', value => {
@@ -103,6 +105,13 @@ const schemaAccepts = (schema: RecordValue, value: unknown): boolean => {
   } catch {
     return false;
   }
+};
+
+const boundedMinimum = (value: unknown, limit: number): number | undefined => {
+  if (value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const minimum = Math.max(0, Math.ceil(value));
+  return minimum <= limit ? minimum : undefined;
 };
 
 const patternToken = (pattern: string, offset: number): { value: string; next: number } | undefined => {
@@ -164,6 +173,10 @@ const patternExample = (schema: RecordValue): string | undefined => {
       count = Number(quantifier[1]);
       offset += quantifier[0].length;
     }
+    const remainingLength = MAX_SYNTHESIZED_STRING_LENGTH - generated.length;
+    if (!Number.isSafeInteger(count) || count > Math.floor(remainingLength / token.value.length)) {
+      return undefined;
+    }
     generated += token.value.repeat(count);
   }
 
@@ -174,7 +187,8 @@ const patternExample = (schema: RecordValue): string | undefined => {
     return undefined;
   }
   const candidates = [generated, 'fixture', 'test', 'abc', 'ABC', '123', 'a', '0'];
-  const minLength = typeof schema.minLength === 'number' ? Math.ceil(schema.minLength) : 0;
+  const minLength = boundedMinimum(schema.minLength, MAX_SYNTHESIZED_STRING_LENGTH);
+  if (minLength === undefined) return undefined;
   const maxLength = typeof schema.maxLength === 'number' ? Math.floor(schema.maxLength) : Number.POSITIVE_INFINITY;
   return candidates.find(candidate => (
     candidate.length >= minLength && candidate.length <= maxLength && expression.test(candidate)
@@ -270,8 +284,9 @@ const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
     return result;
   }
   if (type === 'array') {
+    const count = boundedMinimum(schema.minItems, MAX_SYNTHESIZED_ARRAY_ITEMS);
+    if (count === undefined) return undefined;
     const item = schemaExample(schema.items, requiredOnly);
-    const count = typeof schema.minItems === 'number' ? Math.max(0, Math.ceil(schema.minItems)) : 0;
     if (count > 0 && item === undefined) return undefined;
     return Array.from({ length: count }, () => item);
   }
@@ -286,9 +301,8 @@ const schemaExample = (schema: unknown, requiredOnly = false): unknown => {
       : schema.format === 'uri' || schema.format === 'url'
         ? 'https://example.com/fixture'
         : 'fixture';
-    const minLength = typeof schema.minLength === 'number' && schema.minLength > 0
-      ? Math.ceil(schema.minLength)
-      : 0;
+    const minLength = boundedMinimum(schema.minLength, MAX_SYNTHESIZED_STRING_LENGTH);
+    if (minLength === undefined) return undefined;
     const maxLength = typeof schema.maxLength === 'number' && schema.maxLength >= 0
       ? Math.floor(schema.maxLength)
       : Number.POSITIVE_INFINITY;

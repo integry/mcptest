@@ -125,6 +125,27 @@ describe('deterministic test plans', () => {
   });
 
   it.each([
+    ['pattern quantifier', { type: 'string', pattern: '^a{1000000000}$' }],
+    ['minItems', { type: 'array', items: { type: 'string' }, minItems: 1_000_000_000 }],
+    ['minLength', { type: 'string', minLength: 1_000_000_000 }],
+  ])('requires a manual fixture for oversized %s constraints', (_constraint, propertySchema) => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'oversized_fixture_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { value: propertySchema },
+        required: ['value'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const fixtureCases = plan.tools[0].cases.filter(item => item.kind !== 'validation');
+    expect(fixtureCases.every(item => item.selected === false)).toBe(true);
+    expect(fixtureCases.every(item => item.name.includes('manual fixture required'))).toBe(true);
+    expect(fixtureCases.every(item => Object.keys(item.arguments).length === 0)).toBe(true);
+  });
+
+  it.each([
     {
       schema: {
         input_schema: {
