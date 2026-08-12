@@ -290,6 +290,24 @@ describe('deterministic runner safety and evidence', () => {
     ))).toBe(true);
   });
 
+  it('blocks shutdown tools despite contradictory read-only metadata', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'shutdown_server', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    const results = await runDeterministicPlan({ callTool }, plan);
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive: true });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every(result => (
+      result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+    ))).toBe(true);
+  });
+
   it('blocks upsert tools despite contradictory read-only metadata', async () => {
     const callTool = vi.fn().mockResolvedValue({ content: [] });
     const plan = generateDeterministicTestPlan(

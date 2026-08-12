@@ -49,7 +49,7 @@ const WRITE_ACTIONS = new Set([
 ]);
 const DESTRUCTIVE_ACTIONS = new Set([
   'archive', 'ban', 'cancel', 'clear', 'deactivate', 'delete', 'destroy', 'disable', 'drop', 'erase', 'kill',
-  'overwrite', 'purge', 'remove', 'reset', 'revoke', 'terminate', 'transfer', 'truncate', 'uninstall',
+  'overwrite', 'purge', 'remove', 'reset', 'revoke', 'shutdown', 'terminate', 'transfer', 'truncate', 'uninstall',
   'wipe',
 ]);
 const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|private[_ -]?key|signing[_ -]?key|password|passwd|secret|client[_ -]?secret)';
