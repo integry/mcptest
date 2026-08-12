@@ -150,6 +150,9 @@ Endpoints are newline-delimited and `credential_mode` is `public`, `bearer`, or
 jobs:
   gate:
     # Replace this example SHA in both places with the mcptest commit to run.
+    permissions:
+      actions: read
+      contents: read
     uses: integry/mcptest/.github/workflows/mcptest-release-gate.yml@0123456789abcdef0123456789abcdef01234567
     with:
       mcptest_ref: 0123456789abcdef0123456789abcdef01234567

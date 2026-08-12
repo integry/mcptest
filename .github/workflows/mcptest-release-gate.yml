@@ -67,6 +67,7 @@ jobs:
   evaluate:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
     env:
       MCPTEST_ENDPOINTS: ${{ inputs.endpoints }}
@@ -77,44 +78,52 @@ jobs:
       run:
         working-directory: mcptest
     steps:
-      - name: Select and validate mcptest ref
-        id: mcptest_ref
+      - name: Validate reusable workflow ref
+        if: inputs.mcptest_ref != ''
+        id: reusable_ref
+        uses: actions/github-script@v7
+        env:
+          MCPTEST_REQUESTED_REF: ${{ inputs.mcptest_ref }}
+        with:
+          script: |
+            const requestedRef = process.env.MCPTEST_REQUESTED_REF;
+            if (!/^[0-9a-f]{40}$/.test(requestedRef)) {
+              core.setFailed('mcptest_ref must be the exact 40-character commit SHA used by the reusable workflow caller');
+              return;
+            }
+
+            const { data: run } = await github.rest.actions.getWorkflowRunAttempt({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              attempt_number: Number(process.env.GITHUB_RUN_ATTEMPT),
+            });
+            const expectedPath = `integry/mcptest/.github/workflows/mcptest-release-gate.yml@${requestedRef}`;
+            const invokedWorkflow = run.referenced_workflows?.find(
+              ({ path }) => path.toLowerCase() === expectedPath,
+            );
+            if (!invokedWorkflow || invokedWorkflow.sha !== requestedRef) {
+              core.setFailed('mcptest_ref must match the commit SHA pinned in the reusable workflow uses value');
+              return;
+            }
+            core.setOutput('ref', requestedRef);
+      - name: Select workflow dispatch ref
+        if: inputs.mcptest_ref == ''
+        id: dispatch_ref
         shell: bash
         working-directory: ${{ github.workspace }}
         env:
-          MCPTEST_REQUESTED_REF: ${{ inputs.mcptest_ref }}
-          MCPTEST_CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
-          MCPTEST_JOB_WORKFLOW_REF: ${{ job.workflow_ref }}
-          MCPTEST_JOB_WORKFLOW_SHA: ${{ job.workflow_sha }}
-          MCPTEST_DISPATCH_SHA: ${{ github.sha }}
+          MCPTEST_DISPATCH_SHA: ${{ github.workflow_sha }}
         run: |
-          if [[ "$MCPTEST_JOB_WORKFLOW_REF" != "$MCPTEST_CALLER_WORKFLOW_REF" ]]; then
-            ref="$MCPTEST_REQUESTED_REF"
-            expected_workflow_ref="integry/mcptest/.github/workflows/mcptest-release-gate.yml@$ref"
-            if [[ ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "mcptest_ref must be the exact 40-character commit SHA used by the reusable workflow caller" >&2
-              exit 3
-            fi
-            if [[ "$MCPTEST_JOB_WORKFLOW_REF" != "$expected_workflow_ref" ]]; then
-              echo "mcptest_ref must match the commit SHA pinned in the reusable workflow uses value" >&2
-              exit 3
-            fi
-            if [[ -n "$MCPTEST_JOB_WORKFLOW_SHA" && "$ref" != "$MCPTEST_JOB_WORKFLOW_SHA" ]]; then
-              echo "mcptest_ref does not resolve to the invoked reusable workflow commit" >&2
-              exit 3
-            fi
-          else
-            ref="${MCPTEST_JOB_WORKFLOW_SHA:-$MCPTEST_DISPATCH_SHA}"
-            if [[ ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "Could not determine the exact mcptest commit for workflow_dispatch" >&2
-              exit 3
-            fi
+          if [[ ! "$MCPTEST_DISPATCH_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not determine the exact mcptest commit for workflow_dispatch" >&2
+            exit 3
           fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "ref=$MCPTEST_DISPATCH_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           repository: integry/mcptest
-          ref: ${{ steps.mcptest_ref.outputs.ref }}
+          ref: ${{ steps.reusable_ref.outputs.ref || steps.dispatch_ref.outputs.ref }}
           path: mcptest
       - uses: actions/setup-node@v4
         with:
