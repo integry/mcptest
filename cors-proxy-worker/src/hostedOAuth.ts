@@ -84,7 +84,17 @@ interface TransactionRecord {
   scope: string;
   expiresAt: number;
   code?: string;
+  completionHandle?: string;
   providerError?: string;
+}
+
+interface CompletionRecord {
+  kind: 'completion';
+  status: 'ready' | 'used';
+  handle: string;
+  transactionState: string;
+  uid: string;
+  expiresAt: number;
 }
 
 interface StoredGrant {
@@ -407,9 +417,9 @@ export const handleHostedOAuthRequest = async (
       });
       if (response.status === 404) return json({ error: 'state_mismatch' }, 400);
       if (!response.ok) return response;
-      const record = await response.json() as TransactionRecord;
-      const destination = new URL(record.returnUri);
-      destination.searchParams.set('hosted_result', state);
+      const result = await response.json() as { completionHandle: string; returnUri: string };
+      const destination = new URL(result.returnUri);
+      destination.searchParams.set('hosted_result', result.completionHandle);
       return new Response(null, {
         status: 303,
         headers: { Location: destination.toString(), 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
@@ -421,7 +431,7 @@ export const handleHostedOAuthRequest = async (
     const input = await request.json() as Record<string, unknown>;
     const result = typeof input.result === 'string' ? input.result : '';
     if (!OPAQUE_VALUE.test(result)) return json({ error: 'invalid_result' }, 400);
-    return stubFetch(env, result, '/transaction/exchange', { uid });
+    return stubFetch(env, result, '/completion/exchange', { uid, result });
   } catch (error) {
     const status = error instanceof Error && error.name === 'ProviderNotConfiguredError' ? 503 : 400;
     return json({
@@ -450,7 +460,7 @@ export class HostedOAuthBroker {
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === '/transaction/init') {
-      const existing = await this.state.storage.get<TransactionRecord | StoredGrant>('record');
+      const existing = await this.state.storage.get<TransactionRecord | CompletionRecord | StoredGrant>('record');
       if (existing) return json({ error: 'replay' }, 409);
       const record = await request.json() as TransactionRecord;
       await this.state.storage.put('record', record);
@@ -466,32 +476,46 @@ export class HostedOAuthBroker {
     }
 
     if (path === '/transaction/callback') {
-      const input = await request.json() as { state?: string; code?: string | null; error?: string | null; iss?: string | null };
-      const record = await this.state.storage.get<TransactionRecord>('record');
-      if (!record || record.kind !== 'transaction') return json({ error: 'unknown_transaction' }, 404);
-      if (record.expiresAt <= Date.now()) return json({ error: 'transaction_expired' }, 410);
-      if (record.status !== 'awaiting_callback') return json({ error: 'callback_replayed' }, 409);
-      if (input.state !== record.state) return json({ error: 'state_mismatch' }, 400);
-      if (input.iss && input.iss !== record.issuer) return json({ error: 'issuer_mismatch' }, 400);
-      if (input.error) {
-        const denied: TransactionRecord = {
-          ...record, status: 'denied', providerError: input.error.slice(0, 100),
+      return this.state.blockConcurrencyWhile(async () => {
+        const input = await request.json() as { state?: string; code?: string | null; error?: string | null; iss?: string | null };
+        const record = await this.state.storage.get<TransactionRecord>('record');
+        if (!record || record.kind !== 'transaction') return json({ error: 'unknown_transaction' }, 404);
+        if (record.expiresAt <= Date.now()) return json({ error: 'transaction_expired' }, 410);
+        if (record.status !== 'awaiting_callback') return json({ error: 'callback_replayed' }, 409);
+        if (input.state !== record.state) return json({ error: 'state_mismatch' }, 400);
+        if (input.iss && input.iss !== record.issuer) return json({ error: 'issuer_mismatch' }, 400);
+        if (!input.error && !input.code) return json({ error: 'missing_code' }, 400);
+        const completionHandle = randomOpaque();
+        const completion: CompletionRecord = {
+          kind: 'completion', status: 'ready', handle: completionHandle,
+          transactionState: record.state, uid: record.uid, expiresAt: record.expiresAt,
         };
-        await this.state.storage.put('record', denied);
-        return json(denied);
-      }
-      if (!input.code) return json({ error: 'missing_code' }, 400);
-      const updated: TransactionRecord = { ...record, status: 'code_received', code: input.code };
-      await this.state.storage.put('record', updated);
-      return json(updated);
+        const completionResponse = await stubFetch(this.env, completionHandle, '/completion/init', completion);
+        if (!completionResponse.ok) return completionResponse;
+        if (input.error) {
+          const denied: TransactionRecord = {
+            ...record, status: 'denied', completionHandle, providerError: input.error.slice(0, 100),
+          };
+          await this.state.storage.put('record', denied);
+          return json({ completionHandle, returnUri: denied.returnUri });
+        }
+        const updated: TransactionRecord = {
+          ...record, status: 'code_received', code: input.code!, completionHandle,
+        };
+        await this.state.storage.put('record', updated);
+        return json({ completionHandle, returnUri: updated.returnUri });
+      });
     }
 
     if (path === '/transaction/exchange') {
       return this.state.blockConcurrencyWhile(async () => {
-        const input = await request.json() as { uid?: string };
+        const input = await request.json() as { uid?: string; completionHandle?: string };
         const record = await this.state.storage.get<TransactionRecord>('record');
         if (!record || record.kind !== 'transaction') return json({ error: 'unknown_result' }, 404);
         if (record.expiresAt <= Date.now()) return json({ error: 'result_expired' }, 410);
+        if (!record.completionHandle || record.completionHandle !== input.completionHandle) {
+          return json({ error: 'unknown_result' }, 404);
+        }
         if (record.uid !== input.uid) return json({ error: 'result_user_mismatch' }, 403);
         if (record.status === 'denied') return json({ error: 'authorization_denied' }, 400);
         if (record.status !== 'code_received' || !record.code) return json({ error: 'result_replayed' }, 409);
@@ -520,6 +544,34 @@ export class HostedOAuthBroker {
             message: error instanceof Error ? error.message : 'Provider token exchange failed.',
           }, 502);
         }
+      });
+    }
+
+    if (path === '/completion/init') {
+      const existing = await this.state.storage.get('record');
+      if (existing) return json({ error: 'completion_collision' }, 409);
+      await this.state.storage.put('record', await request.json<CompletionRecord>());
+      return json({ ok: true });
+    }
+
+    if (path === '/completion/exchange') {
+      return this.state.blockConcurrencyWhile(async () => {
+        const input = await request.json() as { uid?: string; result?: string };
+        const completion = await this.state.storage.get<CompletionRecord>('record');
+        if (!completion || completion.kind !== 'completion' || completion.handle !== input.result) {
+          return json({ error: 'unknown_result' }, 404);
+        }
+        if (completion.expiresAt <= Date.now()) return json({ error: 'result_expired' }, 410);
+        if (completion.uid !== input.uid) return json({ error: 'result_user_mismatch' }, 403);
+        if (completion.status !== 'ready') return json({ error: 'result_replayed' }, 409);
+        const response = await stubFetch(this.env, completion.transactionState, '/transaction/exchange', {
+          uid: input.uid,
+          completionHandle: completion.handle,
+        });
+        if (response.status !== 502) {
+          await this.state.storage.put('record', { ...completion, status: 'used' });
+        }
+        return response;
       });
     }
 

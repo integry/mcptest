@@ -91,6 +91,17 @@ const callback = async (
   `https://proxy.mcptest.io${HOSTED_CALLBACK_PATH}?${parameters}`
 ), env, null))!;
 
+const readCompletion = (response: Response): string => {
+  expect(response.status).toBe(303);
+  const location = response.headers.get('location');
+  expect(location).toBeTruthy();
+  const callbackUrl = new URL(location!);
+  expect(`${callbackUrl.origin}${callbackUrl.pathname}`).toBe('https://mcptest.io/oauth/callback');
+  const result = callbackUrl.searchParams.get('hosted_result');
+  expect(result).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  return result!;
+};
+
 const exchange = async (env: HostedOAuthEnv, result: string, uid = 'user-1') => (
   (await handleHostedOAuthRequest(new Request(`https://proxy.mcptest.io${HOSTED_EXCHANGE_PATH}`, {
     method: 'POST', body: JSON.stringify({ result }),
@@ -143,12 +154,9 @@ describe('hosted provider authorization transactions', () => {
     expect(location).not.toContain(provider === 'slack' ? 'slack-client-secret' : 'github-client-secret');
     expect(location).not.toContain('provider-code');
 
-    const callbackResponse = await callback(env, transaction);
-    expect(callbackResponse?.status).toBe(303);
-    expect(callbackResponse?.headers.get('location')).toBe(
-      `https://mcptest.io/oauth/callback?hosted_result=${transaction}`
-    );
-    const exchangeResponse = await exchange(env, transaction);
+    const completion = readCompletion(await callback(env, transaction));
+    expect(completion).not.toBe(transaction);
+    const exchangeResponse = await exchange(env, completion);
     expect(exchangeResponse?.status).toBe(200);
     const result = await exchangeResponse!.json() as { grant: string; serverUrl: string };
     expect(JSON.stringify(result)).not.toContain('access');
@@ -169,8 +177,8 @@ describe('hosted provider authorization transactions', () => {
   it('rejects target substitution when resolving a grant', async () => {
     const env = makeEnv();
     const transaction = await readTransaction(await start(env));
-    await callback(env, transaction);
-    const result = await (await exchange(env, transaction))!.json() as { grant: string };
+    const completion = readCompletion(await callback(env, transaction));
+    const result = await (await exchange(env, completion))!.json() as { grant: string };
     await expect(resolveHostedGrant(env, result.grant, 'user-1', 'https://attacker.example/mcp'))
       .rejects.toThrow('invalid, expired, or not valid');
   });
@@ -178,10 +186,23 @@ describe('hosted provider authorization transactions', () => {
   it('binds completion to the signed-in user and makes exchange one-time', async () => {
     const env = makeEnv();
     const transaction = await readTransaction(await start(env));
-    await callback(env, transaction);
-    expect((await exchange(env, transaction, 'other-user'))?.status).toBe(403);
-    expect((await exchange(env, transaction, 'user-1'))?.status).toBe(200);
-    expect((await exchange(env, transaction, 'user-1'))?.status).toBe(409);
+    const completion = readCompletion(await callback(env, transaction));
+    expect((await exchange(env, completion, 'other-user'))?.status).toBe(403);
+    expect((await exchange(env, completion, 'user-1'))?.status).toBe(200);
+    expect((await exchange(env, completion, 'user-1'))?.status).toBe(409);
+  });
+
+  it('prevents a transaction initiator from claiming authorization completed in another user browser', async () => {
+    const env = makeEnv();
+    const attackerTransaction = await readTransaction(await start(env, 'slack', 'attacker-user'));
+    expect((await exchange(env, attackerTransaction, 'attacker-user')).status).toBe(404);
+
+    const victimBrowserCallback = await callback(env, attackerTransaction, `code=victim-code&state=${attackerTransaction}`);
+    const victimBrowserCompletion = readCompletion(victimBrowserCallback);
+    expect(victimBrowserCompletion).not.toBe(attackerTransaction);
+
+    expect((await exchange(env, attackerTransaction, 'attacker-user')).status).toBe(404);
+    expect((await exchange(env, victimBrowserCompletion, 'victim-user')).status).toBe(403);
   });
 
   it('rejects callback replay, state mismatch, issuer mix-up, denial, and expiry', async () => {
@@ -189,8 +210,8 @@ describe('hosted provider authorization transactions', () => {
     const transaction = await readTransaction(await start(env));
     expect((await callback(env, transaction, `code=x&state=wrong`))?.status).toBe(400);
     expect((await callback(env, transaction, `code=x&state=${transaction}&iss=https://attacker.example`))?.status).toBe(400);
-    expect((await callback(env, transaction, `error=access_denied&state=${transaction}`))?.status).toBe(303);
-    expect((await exchange(env, transaction))?.status).toBe(400);
+    const deniedCompletion = readCompletion(await callback(env, transaction, `error=access_denied&state=${transaction}`));
+    expect((await exchange(env, deniedCompletion))?.status).toBe(400);
 
     const second = await readTransaction(await start(env, 'github'));
     expect((await callback(env, second))?.status).toBe(303);
@@ -207,10 +228,10 @@ describe('hosted provider authorization transactions', () => {
   it('keeps a retryable transaction when the provider token endpoint errors', async () => {
     const env = makeEnv();
     const transaction = await readTransaction(await start(env, 'github'));
-    await callback(env, transaction);
+    const completion = readCompletion(await callback(env, transaction));
     vi.mocked(fetch).mockResolvedValueOnce(new Response('provider unavailable', { status: 503 }));
-    expect((await exchange(env, transaction))?.status).toBe(502);
-    expect((await exchange(env, transaction))?.status).toBe(200);
+    expect((await exchange(env, completion))?.status).toBe(502);
+    expect((await exchange(env, completion))?.status).toBe(200);
   });
 
   it('reports an honest operator prerequisite when provider secrets are absent', async () => {
