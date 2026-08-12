@@ -26,7 +26,7 @@ This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP 
    VITE_PROXY_URL=https://mcptest-cors-proxy.your-account.workers.dev
    ```
 
-## Hosted OAuth operator setup
+## Operator-owned and hosted OAuth clients
 
 Hosted OAuth is free and is enabled only for these exact provider/target pairs:
 
@@ -41,14 +41,18 @@ Both applications must register this exact redirect URI:
 https://cors-proxy.mcptest.io/oauth/hosted/callback
 ```
 
-Set the following Worker secrets; never put their values in `wrangler.toml`, Pages variables,
-frontend `.env` files, or build arguments:
+Slack and GitHub require fixed confidential host applications, while Figma requires an approved
+catalog client. Set provider credentials and the hosted-flow encryption key with encrypted Worker
+secrets; never put their values in `wrangler.toml`, Pages variables, frontend `.env` files, or build
+arguments:
 
 ```bash
 wrangler secret put SLACK_OAUTH_CLIENT_ID
 wrangler secret put SLACK_OAUTH_CLIENT_SECRET
 wrangler secret put GITHUB_OAUTH_CLIENT_ID
 wrangler secret put GITHUB_OAUTH_CLIENT_SECRET
+wrangler secret put FIGMA_OAUTH_CLIENT_ID
+wrangler secret put FIGMA_OAUTH_CLIENT_SECRET
 wrangler secret put HOSTED_OAUTH_ENCRYPTION_KEY
 ```
 
@@ -66,7 +70,10 @@ channel. Firebase credentials are never forwarded to the MCP target.
 
 If a provider app or secret is missing, the endpoint returns `provider_not_configured`; the UI does
 not offer a confidential-client form as a fallback. Figma hosted OAuth remains disabled until
-mcptest.io is approved for the Figma MCP Catalog.
+mcptest.io is approved for the Figma MCP Catalog. The Figma operator-client configuration remains
+server-only; its client secret must never be serialized into responses, URLs, reports, logs, or
+browser storage. The UI keeps supported bearer-token alternatives available where providers offer
+them.
 
 ## Usage
 

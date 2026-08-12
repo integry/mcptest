@@ -183,14 +183,12 @@ describe('BrowserOAuthProvider', () => {
     );
     sessionStorage.setItem('oauth_client_mcp.example', JSON.stringify({
       clientId: 'manual-client',
-      clientSecret: 'manual-secret',
       issuer: ISSUER_A,
       registeredManually: true,
     }));
 
     expect(provider.clientInformation({ issuer: ISSUER_A })).toMatchObject({
       client_id: 'manual-client',
-      client_secret: 'manual-secret',
       issuer: ISSUER_A,
     });
     expect(provider.clientInformation({ issuer: ISSUER_B })).toBeUndefined();
@@ -208,14 +206,35 @@ describe('BrowserOAuthProvider', () => {
       },
     });
 
-    saveManualOAuthClient(SERVER_URL, 'manual-client', 'manual-secret');
+    saveManualOAuthClient(SERVER_URL, 'manual-client');
 
     expect(provider.clientInformation({ issuer: ISSUER_A })).toMatchObject({
       client_id: 'manual-client',
-      client_secret: 'manual-secret',
       issuer: ISSUER_A,
     });
     expect(provider.clientInformation({ issuer: ISSUER_B })).toBeUndefined();
+  });
+
+  it('rejects confidential client secrets without writing them to browser storage', () => {
+    const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+
+    expect(() => saveManualOAuthClient(
+      SERVER_URL,
+      'confidential-client',
+      'operator-secret'
+    )).toThrow(/operator/);
+    expect(Array.from({ length: sessionStorage.length }, (_, index) => (
+      sessionStorage.getItem(sessionStorage.key(index) || '') || ''
+    )).join('\n')).not.toContain('operator-secret');
   });
 
   it('prepares provider discovery before showing manual client configuration', async () => {
@@ -693,14 +712,14 @@ describe('OAuth flight recorder integration', () => {
       ]),
     });
 
-    saveManualOAuthClient(SERVER_URL, 'manual-client', 'manual-client-secret');
+    saveManualOAuthClient(SERVER_URL, 'manual-client');
     await beginOAuthFlow(SERVER_URL, flowOptions);
 
     const serialized = JSON.stringify(getStoredOAuthTrace(SERVER_URL, sessionStorage));
     expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.events).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'pre_registered_client', outcome: 'succeeded' }),
     ]));
-    expect(serialized).not.toContain('manual-client-secret');
+    expect(serialized).not.toContain('client_secret');
   });
 
   it('carries challenge retry ownership through manual client continuation and callback', async () => {
@@ -748,7 +767,7 @@ describe('OAuth flight recorder integration', () => {
         response_types_supported: ['code'],
       },
     });
-    saveManualOAuthClient(SERVER_URL, 'manual-client', 'manual-client-secret');
+    saveManualOAuthClient(SERVER_URL, 'manual-client');
 
     let state = '';
     await expect(beginOAuthFlow(SERVER_URL, {
@@ -834,7 +853,7 @@ describe('OAuth flight recorder integration', () => {
     for (let index = 1; index < expectedOrder.length; index += 1) {
       expect(stageIndexes[index]).toBeGreaterThan(stageIndexes[index - 1]);
     }
-    expect(JSON.stringify(completedTrace)).not.toContain('manual-client-secret');
+    expect(JSON.stringify(completedTrace)).not.toContain('client_secret');
   });
 
   it('records refresh without serializing old or new tokens', async () => {
@@ -1004,7 +1023,7 @@ describe('OAuth flight recorder integration', () => {
     })).rejects.toBeTruthy();
 
     const trace = getStoredOAuthTrace(SERVER_URL, sessionStorage);
-    expect(trace?.outcome?.status).toBe('discovery_blocked_invalid');
+    expect(trace?.outcome?.status).toBe('transient_discovery_failure');
     expect(trace?.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: 'authorization_server_metadata',
@@ -1117,7 +1136,7 @@ describe('OAuth provider interoperability matrix', () => {
       kind: 'provider_approval_required',
       providerName: 'Figma',
       canConfigureClient: false,
-      documentationUrl: 'https://developers.figma.com/docs/figma-mcp-server/',
+      documentationUrl: 'https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/',
       httpStatus: 403,
     });
     expect(isOAuthClientConfigurationRequired(caught)).toBe(false);
@@ -1133,6 +1152,50 @@ describe('OAuth provider interoperability matrix', () => {
         }),
       }),
     ]));
+  });
+
+  it('classifies Figma bare HTTP 403 registration rejection using provider policy', async () => {
+    const target = 'https://mcp.figma.com/mcp';
+    const issuer = 'https://api.figma.com';
+    const resourceMetadataUrl = 'https://mcp.figma.com/.well-known/oauth-protected-resource';
+    const registrationEndpoint = 'https://api.figma.com/v1/oauth/mcp/register';
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({
+          resource: target,
+          authorization_servers: [issuer],
+          scopes_supported: ['mcp:connect'],
+        });
+      }
+      if (url === 'https://api.figma.com/.well-known/oauth-authorization-server') {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return new Response('Forbidden', {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { resourceMetadataUrl, fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'provider_approval_required',
+      providerName: 'Figma',
+      canConfigureClient: false,
+      httpStatus: 403,
+      explanation: expect.stringContaining('not yet an approved Figma MCP client'),
+    });
+    expect(getStoredOAuthTrace(target, sessionStorage)?.outcome?.status)
+      .toBe('provider_approval_required');
   });
 
   it.each([
@@ -1218,6 +1281,7 @@ describe('OAuth provider interoperability matrix', () => {
     expect(getOAuthPrerequisite(caught)).toMatchObject({
       kind: 'discovery_blocked_invalid',
       canConfigureClient: true,
+      configurationMode: 'browser-public',
       httpStatus: status,
       explanation: expect.stringContaining(expectedExplanation),
     });
@@ -1270,7 +1334,8 @@ describe('OAuth provider interoperability matrix', () => {
     expect(getOAuthPrerequisite(caught)).toMatchObject({
       kind: 'pre_registered_client_required',
       providerName: 'Slack',
-      canConfigureClient: true,
+      canConfigureClient: false,
+      configurationMode: 'operator-confidential',
       requiredScopes: ['channels:read', 'chat:write'],
       publicClientSecretSupported: 'unknown',
     });
@@ -1373,6 +1438,7 @@ describe('OAuth provider interoperability matrix', () => {
       providerName: 'GitHub',
       canConfigureClient: false,
       hostedProvider: 'github',
+      supportsBearerToken: true,
     });
     const trace = getStoredOAuthTrace(target, sessionStorage);
     expect(trace?.targetUrl).toBe(target);
@@ -1389,6 +1455,78 @@ describe('OAuth provider interoperability matrix', () => {
         request: { method: 'GET', url: authorizationMetadataUrl },
       }),
     ]));
+  });
+
+  it('never sends a GitHub registration request even when metadata advertises a bogus endpoint', async () => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const issuer = 'https://github.com/login/oauth';
+    const calls: string[] = [];
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      calls.push(`${init?.method || 'GET'} ${url}`);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, {
+          registrationEndpoint: 'https://github.com/register',
+        }));
+      }
+      throw new Error(`Unexpected network request: ${url}`);
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(calls).not.toContain('POST https://github.com/register');
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'pre_registered_client_required',
+      providerName: 'GitHub',
+      supportsBearerToken: true,
+      canConfigureClient: false,
+    });
+  });
+
+  it('does not enable GitHub PAT guidance from an unknown target that advertises GitHub', async () => {
+    const target = 'https://attacker.example/mcp';
+    const issuer = 'https://github.com/login/oauth';
+    const registrationEndpoint = 'https://github.com/register';
+    const calls: string[] = [];
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      calls.push(`${init?.method || 'GET'} ${url}`);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return new Response(JSON.stringify({ error: 'access_denied' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected network request: ${url}`);
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(calls).toContain(`POST ${registrationEndpoint}`);
+    const prerequisite = getOAuthPrerequisite(caught);
+    expect(prerequisite?.providerName).toBe('github.com');
+    expect(prerequisite).not.toHaveProperty('supportsBearerToken');
+    expect(prerequisite).not.toHaveProperty('bearerTokenName');
+    expect(prerequisite?.providerName).not.toBe('GitHub');
   });
 
   it('sanitizes a query-bearing challenge URL after the direct CORS failure', async () => {
@@ -1533,8 +1671,18 @@ describe('OAuth provider interoperability matrix', () => {
     }
 
     expect(getOAuthPrerequisite(caught)).toMatchObject({
-      kind: 'discovery_blocked_invalid',
+      kind: 'proxy_authentication_required',
+      providerName: 'mcptest proxy',
       failedStage: 'authorization server metadata',
+    });
+    expect(getOAuthPrerequisite(caught)).not.toMatchObject({
+      issuer: expect.anything(),
+      registrationEndpoint: expect.anything(),
+      documentationUrl: expect.anything(),
+      registrationUrl: expect.anything(),
+      configurationMode: expect.anything(),
+      supportsBearerToken: expect.anything(),
+      bearerTokenName: expect.anything(),
     });
     expect(getStoredOAuthTrace(target, sessionStorage)?.events).toEqual(expect.arrayContaining([
       expect.objectContaining({

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import proxyWorker, {
   PROXY_RESPONSE_SOURCE_HEADER,
   fetchTargetRequest,
+  getOperatorOAuthClient,
   getTargetRequestHeaders,
   withCorsResponseHeaders,
 } from './index';
@@ -30,6 +31,19 @@ const readProvenanceThroughCors = (url: string): Promise<string | null> => (
 );
 
 describe('proxy target credential forwarding', () => {
+  it('resolves confidential provider clients only from server bindings', () => {
+    const env = {
+      FIREBASE_PROJECT_ID: 'test-project',
+      SLACK_OAUTH_CLIENT_ID: 'slack-client',
+      SLACK_OAUTH_CLIENT_SECRET: 'slack-secret',
+    };
+
+    expect(getOperatorOAuthClient(env, 'slack')).toEqual({
+      clientId: 'slack-client',
+      clientSecret: 'slack-secret',
+    });
+    expect(getOperatorOAuthClient(env, 'github')).toBeUndefined();
+  });
   it('replaces proxy authorization with the isolated target credential', () => {
     const headers = getTargetRequestHeaders({
       Authorization: 'Bearer firebase-jwt',

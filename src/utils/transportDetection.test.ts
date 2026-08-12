@@ -64,9 +64,8 @@ afterEach(() => {
 });
 
 describe('transport candidate generation', () => {
-  it('uses only Streamable HTTP for the trusted Slack MCP endpoint', () => {
-    const candidates = getTransportCandidates('https://mcp.slack.com/mcp');
-    expect(candidates).toEqual([
+  it('uses only Streamable HTTP candidates for Slack MCP', () => {
+    expect(getTransportCandidates('https://mcp.slack.com/mcp')).toEqual([
       { url: 'https://mcp.slack.com/mcp', transportType: 'streamable-http' },
       { url: 'https://mcp.slack.com/mcp/', transportType: 'streamable-http' },
     ]);

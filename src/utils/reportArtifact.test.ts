@@ -102,6 +102,27 @@ const authorizationRequiredReport = (): EvaluationReport => ({
   },
 });
 
+const proxyAuthenticationRequiredReport = (): EvaluationReport => ({
+  serverUrl: 'https://protected.example/mcp',
+  outcome: 'authorization-required',
+  authenticationRequirement: { kind: 'proxy', status: 401 },
+  finalScore: 0,
+  sections: {
+    auth: section('Proxy Authentication Required', 0, 0, {
+      route: 'authenticated proxy',
+      status: 401,
+      authenticationSource: 'proxy',
+    }, {
+      status: 'skipped',
+      description: 'A valid mcptest login is required to use the authenticated proxy',
+      details: [{
+        text: 'Sign in to mcptest again, then retry the report.',
+        context: 'The proxy requested authentication before target evidence was available.',
+      }],
+    }),
+  },
+});
+
 const statefulReport = (): EvaluationReport => ({
   serverUrl: 'https://stateful.example/mcp',
   outcome: 'scored',
@@ -576,6 +597,26 @@ describe('versioned public report artifacts', () => {
       validatePublishedSchema(invalid),
       JSON.stringify(validatePublishedSchema.errors)
     ).toBe(false);
+  });
+
+  it('preserves proxy login as a distinct unscored public prerequisite', () => {
+    const artifact = createPublicReport(proxyAuthenticationRequiredReport(), FIXED_OPTIONS);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.outcome).toEqual({
+      status: 'authorization-required',
+      summary: 'A valid mcptest login is a prerequisite for proxy access; this run was not scored.',
+      authorizationPrerequisite: {
+        required: true,
+        state: 'proxy-authentication-required',
+        message: 'Sign in to mcptest again, then rerun the evaluation. Target OAuth has not started.',
+      },
+    });
+    expect(artifact.score).toBeNull();
+    expect(validatePublishedSchema(artifact), JSON.stringify(validatePublishedSchema.errors))
+      .toBe(true);
+    expect(markdown).toContain('valid mcptest login is a proxy prerequisite');
+    expect(markdown).not.toContain('Authorize access to the MCP server');
   });
 
   it.each(['failed', 'skipped', 'prerequisite'] as const)(

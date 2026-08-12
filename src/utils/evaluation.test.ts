@@ -648,23 +648,14 @@ describe('dual-era server evaluation', () => {
 
     const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn());
 
-    expect(report.sections.auth).toBeUndefined();
-    expect(report.outcome).toBe('failed');
-    expect(isScoredEvaluation(report)).toBe(false);
-    expect(report.sections.protocol.status).toBe('failed');
-    expect(report.sections.protocol.details[0].metadata).toEqual({
-      route: 'authenticated proxy',
-      routeFailures: [
-        { route: 'direct', message: 'Direct CORS failure' },
-        {
-          route: 'authenticated proxy',
-          message: 'All connections failed: Authenticated proxy returned HTTP 401',
-          status: 401,
-          authenticationSource: 'proxy',
-        },
-      ],
+    expect(report.sections.auth).toMatchObject({
+      name: 'Proxy Authentication Required',
+      maxScore: 0,
     });
-    expect(report.sections.protocol.details[0].text).toContain('Authenticated proxy:');
+    expect(report.authenticationRequirement).toMatchObject({ kind: 'proxy', status: 401 });
+    expect(report.outcome).toBe('authorization-required');
+    expect(isScoredEvaluation(report)).toBe(false);
+    expect(report.sections.protocol).toBeUndefined();
     const stored = getStoredOAuthTrace(endpoint, sessionStorage);
     expect(stored?.events.find(({ type }) => type === 'target_challenge')).toMatchObject({
       outcome: 'challenged',
@@ -675,7 +666,7 @@ describe('dual-era server evaluation', () => {
       timing: { startedAt: proxyRequest.startedAt, durationMs: 23 },
     });
     expect(stored?.outcome).toMatchObject({
-      status: 'failed',
+      status: 'proxy_authentication_required',
       explanation: expect.stringContaining('target OAuth discovery was not started'),
     });
   });

@@ -56,32 +56,35 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('.modal')).toBeNull();
     expect(view.querySelector('.oauth-prerequisite-panel')).not.toBeNull();
     expect(view.textContent).toContain('Figma approval is required');
-    expect(view.textContent).toContain('Supplying arbitrary client credentials is not expected');
+    expect(view.textContent).toContain('Supplying arbitrary ordinary OAuth credentials is not expected');
     expect(view.textContent).toContain(`${window.location.origin}/oauth/callback`);
     expect(view.querySelector('#clientId')).toBeNull();
     expect(view.querySelector('a[href="https://developers.figma.com/docs/figma-mcp-server/"]'))
       .not.toBeNull();
   });
 
-  it('offers provider registration and existing-client configuration for Slack', () => {
+  it('explains Slack confidential operator configuration without browser secret fields', () => {
     const view = renderPanel({
       kind: 'pre_registered_client_required',
       serverUrl: 'https://mcp.slack.com/mcp',
       providerName: 'Slack',
       explanation: 'Slack requires a pre-registered OAuth application.',
-      documentationUrl: 'https://api.slack.com/authentication/oauth-v2',
+      documentationUrl: 'https://docs.slack.dev/ai/slack-mcp-server/',
       registrationUrl: 'https://api.slack.com/apps',
       requiredScopes: ['channels:read', 'chat:write'],
       pkceS256: true,
       publicClientSecretSupported: false,
-      canConfigureClient: true,
+      canConfigureClient: false,
+      configurationMode: 'operator-confidential',
       failedStage: 'dynamic client registration',
     });
 
-    expect(view.textContent).toContain('Register an OAuth application for Slack');
+    expect(view.textContent).toContain('Slack host application required');
     expect(view.textContent).toContain('channels:read, chat:write');
     expect(view.textContent).toContain('does not support safely keeping a client secret');
-    expect(view.querySelector('#clientId')).not.toBeNull();
+    expect(view.textContent).toContain('will not ask you to paste that secret');
+    expect(view.querySelector('#clientId')).toBeNull();
+    expect(view.querySelector('#clientSecret')).toBeNull();
     expect(view.querySelector('a[href="https://api.slack.com/apps"]')).not.toBeNull();
   });
 
@@ -105,5 +108,53 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.textContent).toContain('client secret stays in the Worker');
     expect(view.querySelector('#clientId')).toBeNull();
     expect(view.querySelector('#clientSecret')).toBeNull();
+  });
+
+  it('offers GitHub PAT guidance without inventing browser OAuth registration', () => {
+    const view = renderPanel({
+      kind: 'pre_registered_client_required',
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      providerName: 'GitHub',
+      explanation: 'GitHub requires a host application or a PAT.',
+      documentationUrl: 'https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md',
+      registrationUrl: 'https://github.com/settings/applications/new',
+      requiredScopes: [],
+      pkceS256: false,
+      publicClientSecretSupported: false,
+      canConfigureClient: false,
+      configurationMode: 'operator-confidential',
+      supportsBearerToken: true,
+      bearerTokenName: 'GitHub personal access token',
+    });
+
+    expect(view.textContent).toContain('Use a GitHub personal access token');
+    expect(view.textContent).toContain('Authorization: Bearer');
+    expect(view.querySelector('#clientId')).toBeNull();
+    expect(view.querySelector('#clientSecret')).toBeNull();
+  });
+
+  it('suppresses target-provider remedies for proxy authentication', () => {
+    const view = renderPanel({
+      kind: 'proxy_authentication_required',
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      providerName: 'mcptest proxy',
+      explanation: 'Sign in to mcptest again.',
+      documentationUrl: 'https://docs.github.com/',
+      registrationUrl: 'https://github.com/settings/applications/new',
+      requiredScopes: [],
+      pkceS256: false,
+      publicClientSecretSupported: 'unknown',
+      canConfigureClient: true,
+      configurationMode: 'operator-confidential',
+      supportsBearerToken: true,
+      bearerTokenName: 'GitHub personal access token',
+    });
+
+    expect(view.textContent).toContain('mcptest proxy authentication required');
+    expect(view.textContent).not.toContain('fixed confidential host application');
+    expect(view.textContent).not.toContain('GitHub personal access token');
+    expect(view.querySelector('.oauth-bearer-option')).toBeNull();
+    expect(view.querySelector('#clientId')).toBeNull();
+    expect(view.querySelector('a')).toBeNull();
   });
 });

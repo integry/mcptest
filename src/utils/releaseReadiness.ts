@@ -226,6 +226,7 @@ export const createObservedServerFacts = (
   const protocolVersion = firstString(records, 'protocolVersion');
   const route = firstString(records, 'route');
   const outcome = resolveEvaluationOutcome(report);
+  const proxyAuthenticationRequired = report.authenticationRequirement?.kind === 'proxy';
   const schemes = inferAuthorizationSchemes(report, trace);
   const oauthApplies = schemes !== 'unknown' && schemes.includes('oauth');
   const unauthenticatedTargetRequestSucceeded = records.some(
@@ -302,15 +303,17 @@ export const createObservedServerFacts = (
     },
     authorization: {
       requirement: observed(
-        outcome === 'authorization-required' || hasTargetChallenge
+        (outcome === 'authorization-required' && !proxyAuthenticationRequired) || hasTargetChallenge
           ? 'required'
           : unauthenticatedTargetRequestSucceeded && oauthApplies
             ? 'optional'
             : unauthenticatedTargetRequestSucceeded
               ? 'none'
               : 'unknown',
-        outcome === 'authorization-required'
+        outcome === 'authorization-required' && !proxyAuthenticationRequired
           ? 'The target returned an authentication challenge before evaluation could continue.'
+          : proxyAuthenticationRequired
+            ? 'Proxy login was required before target authorization requirements could be observed.'
           : hasTargetChallenge
             ? 'A direct target authentication challenge was observed and the authenticated retry was evaluated.'
             : unauthenticatedTargetRequestSucceeded && oauthApplies
@@ -433,6 +436,21 @@ export const createReleaseDecision = (
   trace?: OAuthTraceV1
 ): ReleaseDecision => {
   const outcome = resolveEvaluationOutcome(report);
+  if (report.authenticationRequirement?.kind === 'proxy') {
+    return {
+      status: 'unknown',
+      answer: 'Not yet — mcptest login is required',
+      summary: 'The authenticated proxy needs a valid mcptest login before target evidence can be collected. This run was not scored.',
+      priorities: [{
+        id: 'evaluation.proxy-authentication',
+        severity: 'high',
+        title: 'Sign in to mcptest',
+        detail: 'Proxy access stopped the evaluation before the MCP target could be assessed.',
+        remediation: 'Sign in to mcptest again, then rerun the report. Do not start target OAuth unless the MCP target subsequently returns its own challenge.',
+        source: 'Evaluation',
+      }],
+    };
+  }
   if (outcome === 'authorization-required') {
     const schemes = inferAuthorizationSchemes(report, trace);
     const advertisedSchemes = schemes === 'unknown' ? [] : schemes;

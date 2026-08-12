@@ -378,6 +378,34 @@ describe('release readiness integration', () => {
     expect(decision.priorities[0].remediation).toContain('OAuth');
   });
 
+  it('treats proxy login as unscored infrastructure access, not target authorization', () => {
+    const report = evaluatedReport({
+      outcome: 'authorization-required',
+      authenticationRequirement: { kind: 'proxy', status: 401 },
+      finalScore: 0,
+      sections: {
+        auth: {
+          name: 'Proxy Authentication Required',
+          description: 'mcptest login required',
+          score: 0,
+          maxScore: 0,
+          status: 'skipped',
+          details: [{ text: 'Sign in to mcptest again.' }],
+        },
+      },
+      toolSurfaceAnalysis: undefined,
+    });
+    const facts = createObservedServerFacts(report);
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+
+    expect(facts.authorization.requirement.value).toBe('unknown');
+    expect(facts.authorization.requirement.evidence[0].description).toContain('Proxy login');
+    expect(decision.status).toBe('unknown');
+    expect(decision.answer).toContain('mcptest login');
+    expect(decision.priorities[0].title).toBe('Sign in to mcptest');
+    expect(JSON.stringify(decision)).not.toContain('Complete server authorization');
+  });
+
   it('returns a distinct unknown decision for a partial evaluation', () => {
     const report = evaluatedReport({ outcome: 'partial' });
     const decision = createReleaseDecision(report, createCompatibilityMatrix(report));

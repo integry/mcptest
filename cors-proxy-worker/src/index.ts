@@ -11,6 +11,38 @@ import {
 
 interface Env extends HostedOAuthEnv {
   FIREBASE_PROJECT_ID: string;
+  /** Server-only operator OAuth configuration. Set these with `wrangler secret put`. */
+  FIGMA_OAUTH_CLIENT_ID?: string;
+  FIGMA_OAUTH_CLIENT_SECRET?: string;
+  SLACK_OAUTH_CLIENT_ID?: string;
+  SLACK_OAUTH_CLIENT_SECRET?: string;
+  GITHUB_OAUTH_CLIENT_ID?: string;
+  GITHUB_OAUTH_CLIENT_SECRET?: string;
+}
+
+export type OperatorOAuthProvider = 'figma' | 'slack' | 'github';
+
+export interface OperatorOAuthClient {
+  clientId: string;
+  clientSecret: string;
+}
+
+/**
+ * Server-only configuration seam for approved/fixed provider applications.
+ * Callers must keep the returned object inside the Worker and perform any
+ * confidential token exchange there. It must never be serialized to a browser
+ * response, URL, report, artifact, or log.
+ */
+export function getOperatorOAuthClient(
+  env: Env,
+  provider: OperatorOAuthProvider
+): OperatorOAuthClient | undefined {
+  const prefix = provider.toUpperCase() as Uppercase<OperatorOAuthProvider>;
+  const clientId = env[`${prefix}_OAUTH_CLIENT_ID` as keyof Env];
+  const clientSecret = env[`${prefix}_OAUTH_CLIENT_SECRET` as keyof Env];
+  return typeof clientId === 'string' && clientId && typeof clientSecret === 'string' && clientSecret
+    ? { clientId, clientSecret }
+    : undefined;
 }
 
 export { HostedOAuthBroker };

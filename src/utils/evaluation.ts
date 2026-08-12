@@ -63,7 +63,7 @@ const recordEvaluationAuthenticationChallenge = (
   });
   if (failure.authenticationSource === 'proxy') {
     recorder.terminal(
-      'failed',
+      'proxy_authentication_required',
       'The server report evaluation stopped at authenticated proxy access; target OAuth discovery was not started.'
     );
   }
@@ -133,6 +133,10 @@ export interface EvaluationReport {
   resourceMetadataUrl?: string;
   scope?: string;
   outcome?: 'scored' | 'authorization-required' | 'partial' | 'failed';
+  authenticationRequirement?: {
+    kind: 'target' | 'proxy';
+    status?: number;
+  };
   finalScore: number;
   sections: Record<string, EvaluationSection>;
   /** Deterministic analysis of definitions returned by tools/list. */
@@ -148,6 +152,14 @@ export interface EvaluationAuthorizationContext {
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
+);
+
+export const isProxyAuthenticationRequired = (report: EvaluationReport): boolean => (
+  isAuthenticationRequired(report) && report.authenticationRequirement?.kind === 'proxy'
+);
+
+export const isTargetAuthenticationRequired = (report: EvaluationReport): boolean => (
+  isAuthenticationRequired(report) && !isProxyAuthenticationRequired(report)
 );
 
 const isLegacyIncompleteEvaluationDetail = (detail: DetailItem): boolean => {
@@ -1204,6 +1216,10 @@ export async function evaluateServer(
     });
     if (targetAuthFailure) {
       report.outcome = 'authorization-required';
+      report.authenticationRequirement = {
+        kind: 'target',
+        status: targetAuthFailure.httpStatus,
+      };
       report.authenticationUrl = targetAuthFailure.candidateUrl || serverUrl;
       attachEphemeralChallengeDirectives(report, targetAuthFailure);
       if (!finalizedPendingRetry) {
@@ -1232,6 +1248,32 @@ export async function evaluateServer(
     }
     if (proxyAuthFailure && !finalizedPendingRetry) {
       recordEvaluationAuthenticationChallenge(serverUrl, proxyAuthFailure);
+    }
+
+    if (proxyAuthFailure) {
+      report.outcome = 'authorization-required';
+      report.authenticationRequirement = {
+        kind: 'proxy',
+        status: proxyAuthFailure.httpStatus,
+      };
+      report.sections.auth = {
+        name: 'Proxy Authentication Required',
+        description: 'A valid mcptest login is required to use the authenticated proxy',
+        score: 0,
+        maxScore: 0,
+        status: 'skipped',
+        details: [{
+          text: 'Sign in to mcptest again, then retry the report.',
+          context: 'The proxy requested authentication before it could return target MCP evidence. This is not target OAuth and is not an MCP server failure.',
+          metadata: {
+            route: 'authenticated proxy',
+            status: proxyAuthFailure.httpStatus,
+            authenticationSource: 'proxy',
+          },
+        }],
+      };
+      onProgress('Proxy authentication is required before target evaluation can continue.');
+      return report;
     }
 
     report.outcome = 'failed';
