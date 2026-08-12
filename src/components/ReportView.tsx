@@ -900,10 +900,11 @@ const ReportView: React.FC = () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);
             setOAuthPrerequisite(null);
+            // The prerequisite can follow a target challenge observed through the proxy.
+            // Do not invent direct-target provenance when this continuation has no route context.
             await handleRunReport(
               configuredServerUrl,
-              { Authorization: `Bearer ${token}` },
-              { priorChallenge: { outcome: 'challenged', provenance: 'direct_target' } }
+              { Authorization: `Bearer ${token}` }
             );
           } : undefined}
           onConfigured={async () => {

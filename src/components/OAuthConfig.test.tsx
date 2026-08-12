@@ -110,4 +110,29 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('#clientId')).toBeNull();
     expect(view.querySelector('#clientSecret')).toBeNull();
   });
+
+  it('suppresses target-provider remedies for proxy authentication', () => {
+    const view = renderPanel({
+      kind: 'proxy_authentication_required',
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      providerName: 'mcptest proxy',
+      explanation: 'Sign in to mcptest again.',
+      documentationUrl: 'https://docs.github.com/',
+      registrationUrl: 'https://github.com/settings/applications/new',
+      requiredScopes: [],
+      pkceS256: false,
+      publicClientSecretSupported: 'unknown',
+      canConfigureClient: true,
+      configurationMode: 'operator-confidential',
+      supportsBearerToken: true,
+      bearerTokenName: 'GitHub personal access token',
+    });
+
+    expect(view.textContent).toContain('mcptest proxy authentication required');
+    expect(view.textContent).not.toContain('fixed confidential host application');
+    expect(view.textContent).not.toContain('GitHub personal access token');
+    expect(view.querySelector('.oauth-bearer-option')).toBeNull();
+    expect(view.querySelector('#clientId')).toBeNull();
+    expect(view.querySelector('a')).toBeNull();
+  });
 });

@@ -381,6 +381,22 @@ const buildOAuthPrerequisite = (
       ? false
       : 'unknown';
   const failedStage = discoveryStage(trace);
+
+  if (kind === 'proxy_authentication_required') {
+    return {
+      kind,
+      serverUrl,
+      providerName: 'mcptest proxy',
+      explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry discovery.',
+      requiredScopes: [],
+      pkceS256: false,
+      publicClientSecretSupported: 'unknown',
+      canConfigureClient: false,
+      failedStage,
+      ...(error instanceof RegistrationRejectedError ? { httpStatus: error.status } : {}),
+    };
+  }
+
   const base = {
     kind,
     serverUrl,
@@ -432,13 +448,6 @@ const buildOAuthPrerequisite = (
       ...base,
       canConfigureClient: true,
       explanation: `${guidance.name} advertises neither Client ID Metadata Documents nor Dynamic Client Registration. Use an OAuth application registered with the provider.`,
-    };
-  }
-  if (kind === 'proxy_authentication_required') {
-    return {
-      ...base,
-      canConfigureClient: false,
-      explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry discovery.',
     };
   }
   if (kind === 'transient_discovery_failure') {

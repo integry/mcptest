@@ -1671,7 +1671,17 @@ describe('OAuth provider interoperability matrix', () => {
 
     expect(getOAuthPrerequisite(caught)).toMatchObject({
       kind: 'proxy_authentication_required',
+      providerName: 'mcptest proxy',
       failedStage: 'authorization server metadata',
+    });
+    expect(getOAuthPrerequisite(caught)).not.toMatchObject({
+      issuer: expect.anything(),
+      registrationEndpoint: expect.anything(),
+      documentationUrl: expect.anything(),
+      registrationUrl: expect.anything(),
+      configurationMode: expect.anything(),
+      supportsBearerToken: expect.anything(),
+      bearerTokenName: expect.anything(),
     });
     expect(getStoredOAuthTrace(target, sessionStorage)?.events).toEqual(expect.arrayContaining([
       expect.objectContaining({

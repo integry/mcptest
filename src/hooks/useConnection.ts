@@ -565,15 +565,14 @@ export const useConnection = (
         const proxyConfigured = Boolean(import.meta.env.VITE_PROXY_URL);
 
         // A browser failure with no readable response cannot establish whether
-        // the target is down or merely blocked by CORS. Use the authenticated
-        // proxy as the observation path whenever a valid login is available,
-        // independent of the optional manual proxy preference.
-        if (directResponseWasUnreadable && proxyConfigured && currentUser) {
+        // the target is down or merely blocked by CORS. When proxy fallback is
+        // enabled, use the authenticated proxy as the observation path.
+        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && currentUser) {
           const result = await withConnectionTimeout(connectViaProxy());
           return { result, usedProxy: true };
         }
 
-        if (directResponseWasUnreadable && proxyConfigured && !currentUser) {
+        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && !currentUser) {
           proxyLoginPrerequisiteRequired = true;
         }
         throw error;

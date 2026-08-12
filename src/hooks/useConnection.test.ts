@@ -1020,13 +1020,33 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
-  it('shows the proxy-login prerequisite for a clean-browser Slack CORS failure', async () => {
+  it('honors proxy opt-out after a clean-browser Slack CORS failure', async () => {
     const endpoint = 'https://mcp.slack.com/mcp';
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
     connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
       new TypeError('Failed to fetch'),
     ]));
     const view = renderConnectionHook(undefined, false);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(view.connection.needsOAuthConfig).toBe(false);
+    expect(view.connection.oauthPrerequisite).toBeNull();
+    expect(view.connection.connectionError).not.toBeNull();
+    view.unmount();
+  });
+
+  it('shows the proxy-login prerequisite when fallback is enabled without a login', async () => {
+    const endpoint = 'https://mcp.slack.com/mcp';
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new TypeError('Failed to fetch'),
+    ]));
+    const view = renderConnectionHook(undefined, true);
 
     await act(async () => {
       await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
@@ -1057,7 +1077,7 @@ describe('connection URL finalization', () => {
         transportType: 'streamable-http',
         protocolEra: 'modern',
       });
-    const view = renderConnectionHook(undefined, false);
+    const view = renderConnectionHook(undefined, true);
 
     await act(async () => {
       await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);

@@ -26,7 +26,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const serviceDomain = new URL(serverUrl).host;
   const callbackUrl = getOAuthCallbackUrl();
-  const canConfigureClient = prerequisite?.canConfigureClient ?? true;
+  const isProxyAuthenticationPrerequisite = prerequisite?.kind === 'proxy_authentication_required';
+  const canConfigureClient = !isProxyAuthenticationPrerequisite
+    && (prerequisite?.canConfigureClient ?? true);
   const title = prerequisite?.kind === 'provider_approval_required'
     ? `${prerequisite.providerName} approval is required`
     : prerequisite?.kind === 'proxy_authentication_required'
@@ -95,7 +97,8 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           </p>
         )}
 
-        {prerequisite?.configurationMode === 'operator-confidential' && (
+        {!isProxyAuthenticationPrerequisite
+          && prerequisite?.configurationMode === 'operator-confidential' && (
           <div className="alert alert-info" role="note">
             This provider requires a fixed confidential host application. Its client secret and token
             exchange belong in operator-controlled server configuration; mcptest will not ask you to
@@ -103,7 +106,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           </div>
         )}
 
-        {prerequisite?.supportsBearerToken && (
+        {!isProxyAuthenticationPrerequisite && prerequisite?.supportsBearerToken && (
           <div className="oauth-bearer-option mb-4">
             <h6>Use a {prerequisite.bearerTokenName || 'bearer token'}</h6>
             <p className="mb-0">
@@ -175,20 +178,22 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           </div>
         )}
 
-        <div className="d-flex flex-wrap gap-2 mb-4">
-          {prerequisite?.registrationUrl && (
-            <a className="btn btn-outline-primary" href={prerequisite.registrationUrl} target="_blank" rel="noreferrer">
-              Open provider registration
-            </a>
-          )}
-          {prerequisite?.documentationUrl && (
-            <a className="btn btn-outline-secondary" href={prerequisite.documentationUrl} target="_blank" rel="noreferrer">
-              {prerequisite.kind === 'provider_approval_required'
-                ? 'Read catalog and approval documentation'
-                : 'Read provider documentation'}
-            </a>
-          )}
-        </div>
+        {!isProxyAuthenticationPrerequisite && (
+          <div className="d-flex flex-wrap gap-2 mb-4">
+            {prerequisite?.registrationUrl && (
+              <a className="btn btn-outline-primary" href={prerequisite.registrationUrl} target="_blank" rel="noreferrer">
+                Open provider registration
+              </a>
+            )}
+            {prerequisite?.documentationUrl && (
+              <a className="btn btn-outline-secondary" href={prerequisite.documentationUrl} target="_blank" rel="noreferrer">
+                {prerequisite.kind === 'provider_approval_required'
+                  ? 'Read catalog and approval documentation'
+                  : 'Read provider documentation'}
+              </a>
+            )}
+          </div>
+        )}
 
         {configurationError && (
           <div className="alert alert-danger" role="alert">{configurationError}</div>
