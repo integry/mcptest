@@ -341,7 +341,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                         className="form-check-input"
                         type="checkbox"
                         id="proxyFallbackCheck"
-                        checked={Boolean(currentUser && (useProxy !== undefined ? useProxy : true))}
+                        checked={useProxy !== false}
                         onChange={(e) => setUseProxy(e.target.checked)}
                         disabled={isConnecting || !currentUser}
                         aria-describedby={!currentUser ? 'proxyFallbackHelp' : undefined}
@@ -354,7 +354,9 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                     {!currentUser && (
                       <small id="proxyFallbackHelp" className="text-muted d-block mt-1">
                         <i className="bi bi-lock-fill me-1" aria-hidden="true"></i>
-                        Sign in with Google to enable proxy fallback.
+                        {useProxy !== false
+                          ? 'Sign in with Google before mcptest can use the enabled proxy fallback.'
+                          : 'Proxy fallback is off. Sign in with Google to change this preference.'}
                       </small>
                     )}
                   </div>

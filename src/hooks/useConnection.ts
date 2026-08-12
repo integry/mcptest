@@ -369,7 +369,10 @@ export const useConnection = (
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
-    const shouldUseProxy = forceUseProxy !== undefined ? forceUseProxy : useProxy;
+    // Proxy fallback is the default preference. Authentication availability
+    // controls whether it can execute, not whether the preference is enabled.
+    // Only a persisted or per-attempt explicit false opts out.
+    const shouldUseProxy = forceUseProxy ?? useProxy ?? true;
     logEvent('connect_attempt');
 
     // Clear any previous connection error
