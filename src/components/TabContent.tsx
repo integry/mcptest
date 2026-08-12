@@ -21,11 +21,21 @@ import { useResourceAccess } from '../hooks/useResourceAccess';
 
 // Import Utils
 import { parseUriTemplateArgs } from '../utils/uriUtils';
+import { normalizeOAuthServerUrl } from '../utils/oauthFlow';
 
 // Constants for localStorage keys
 const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
 const RESOURCE_HISTORY_KEY = 'mcpResourceAccessHistory';
 const MAX_HISTORY_ITEMS = 10;
+
+const normalizeConnectionTarget = (value: string): string => {
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    return normalizeOAuthServerUrl(withProtocol);
+  } catch {
+    return withProtocol;
+  }
+};
 
 // Helper to load history from localStorage
 const loadData = <T extends {}>(key: string, defaultValue: T): T => {
@@ -71,6 +81,13 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const [resourceAccessHistory, setResourceAccessHistory] = useState<Record<string, any[]>>(() => loadData(RESOURCE_HISTORY_KEY, {}));
   const [lastResult, setLastResult] = useState<LogEntry | null>(null);
   const [catalogCredential, setCatalogCredential] = useState('');
+  const [prerequisiteBearerCredential, setPrerequisiteBearerCredential] = useState<{
+    targetUrl: string;
+    authorization: string;
+    attemptId: number;
+  } | null>(null);
+  const nextBearerAttemptId = useRef(0);
+  const startedBearerAttemptId = useRef<number | null>(null);
   const [hasStartedFirstConnection, setHasStartedFirstConnection] = useState(() => Boolean(
     tab.serverUrl || tab.autoConnect || tab.resultShareData
   ));
@@ -84,6 +101,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       || (tab.catalogAuthType === 'bearer-token' ? 'Authorization' : 'x-api-key');
   }, [tab.catalogAuthType, tab.catalogRequiredHeaders]);
   const requestHeaders = useMemo(() => {
+    if (prerequisiteBearerCredential) {
+      return { Authorization: prerequisiteBearerCredential.authorization };
+    }
     const credential = catalogCredential.trim();
     if (!credentialHeader || !credential) return undefined;
 
@@ -94,7 +114,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         : credential;
 
     return { [credentialHeader]: value };
-  }, [catalogCredential, credentialHeader, tab.catalogAuthType]);
+  }, [catalogCredential, credentialHeader, prerequisiteBearerCredential, tab.catalogAuthType]);
   
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
@@ -682,7 +702,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Wrapper function to handle connect
   const handleConnectWrapper = (urlToConnect?: string, protocolEraHint?: string) => {
     const requestedUrl = urlToConnect || serverUrl;
-    handleConnect(
+    return handleConnect(
       setTools,
       setResources,
       setResponses,
@@ -695,6 +715,22 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         : getCatalogProtocolEraHint(requestedUrl)
     );
   };
+
+  useEffect(() => {
+    if (!prerequisiteBearerCredential) return;
+    if (startedBearerAttemptId.current === prerequisiteBearerCredential.attemptId) return;
+
+    if (normalizeConnectionTarget(serverUrl) !== prerequisiteBearerCredential.targetUrl) {
+      setPrerequisiteBearerCredential(null);
+      return;
+    }
+
+    startedBearerAttemptId.current = prerequisiteBearerCredential.attemptId;
+    void handleConnectWrapper(prerequisiteBearerCredential.targetUrl);
+    setPrerequisiteBearerCredential((current) => (
+      current?.attemptId === prerequisiteBearerCredential.attemptId ? null : current
+    ));
+  }, [prerequisiteBearerCredential, serverUrl]);
 
   // Wrapper for handleExecuteTool to save history
   const handleExecuteToolWrapper = async () => {
@@ -999,6 +1035,14 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
           prerequisite={oauthPrerequisite || undefined}
+          onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
+            setPrerequisiteBearerCredential({
+              targetUrl: normalizeConnectionTarget(oauthConfigServerUrl),
+              authorization: `Bearer ${token}`,
+              attemptId: ++nextBearerAttemptId.current,
+            });
+            clearOAuthConfigNeed();
+          } : undefined}
           onConfigured={async () => {
             clearOAuthConfigNeed();
             try {

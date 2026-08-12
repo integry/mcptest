@@ -46,14 +46,23 @@ describe('ConnectionPanel landing-page states', () => {
     vi.unstubAllEnvs();
   });
 
-  it('shows proxy fallback as off and unavailable while signed out', () => {
+  it('preserves the enabled proxy preference while signed out', () => {
     const panel = renderPanel(true);
+    const proxyToggle = panel.querySelector<HTMLInputElement>('#proxyFallbackCheck');
+
+    expect(proxyToggle?.checked).toBe(true);
+    expect(proxyToggle?.disabled).toBe(true);
+    expect(proxyToggle?.getAttribute('aria-describedby')).toBe('proxyFallbackHelp');
+    expect(panel.textContent).toContain('Sign in with Google before mcptest can use the enabled proxy fallback.');
+  });
+
+  it('preserves an explicit proxy opt-out while signed out', () => {
+    const panel = renderPanel(false);
     const proxyToggle = panel.querySelector<HTMLInputElement>('#proxyFallbackCheck');
 
     expect(proxyToggle?.checked).toBe(false);
     expect(proxyToggle?.disabled).toBe(true);
-    expect(proxyToggle?.getAttribute('aria-describedby')).toBe('proxyFallbackHelp');
-    expect(panel.textContent).toContain('Sign in with Google to enable proxy fallback.');
+    expect(panel.textContent).toContain('Proxy fallback is off. Sign in with Google to change this preference.');
   });
 
   it('restores the chosen proxy preference when its login prerequisite is met', () => {
