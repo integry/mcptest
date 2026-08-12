@@ -88,13 +88,28 @@ const makeChange = (
   breaking = classification === 'breaking'
 ): ReportDiffChange => ({ classification, category, path, title, detail, breaking });
 
-const schemaType = (schema: JsonRecord): string[] | undefined => {
+const JSON_SCHEMA_TYPES = new Set([
+  'array', 'boolean', 'integer', 'null', 'number', 'object', 'string',
+]);
+
+type NormalizedSchemaType =
+  | { status: 'unconstrained' }
+  | { status: 'valid'; values: Set<string> }
+  | { status: 'malformed' };
+
+const schemaType = (schema: JsonRecord): NormalizedSchemaType => {
+  if (!Object.prototype.hasOwnProperty.call(schema, 'type')) return { status: 'unconstrained' };
   const value = schema.type;
-  if (typeof value === 'string') return [value];
-  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
-    return [...value].sort();
+  if (typeof value === 'string' && JSON_SCHEMA_TYPES.has(value)) {
+    return { status: 'valid', values: new Set([value]) };
   }
-  return undefined;
+  if (Array.isArray(value)
+      && value.length > 0
+      && value.every((item) => typeof item === 'string' && JSON_SCHEMA_TYPES.has(item))
+      && new Set(value).size === value.length) {
+    return { status: 'valid', values: new Set(value) };
+  }
+  return { status: 'malformed' };
 };
 
 const stringSet = (value: unknown): Set<string> => new Set(
@@ -103,6 +118,28 @@ const stringSet = (value: unknown): Set<string> => new Set(
 
 const sameSet = <T>(left: Set<T>, right: Set<T>): boolean => (
   left.size === right.size && [...left].every((value) => right.has(value))
+);
+
+const sameTypeKeyword = (
+  leftSchema: JsonRecord,
+  rightSchema: JsonRecord,
+  left = schemaType(leftSchema),
+  right = schemaType(rightSchema)
+): boolean => {
+  if (left.status !== right.status) return false;
+  if (left.status === 'valid' && right.status === 'valid') {
+    return sameSet(left.values, right.values);
+  }
+  if (left.status === 'malformed') return same(leftSchema.type, rightSchema.type);
+  return true;
+};
+
+const displaySchemaType = (type: NormalizedSchemaType): string => (
+  type.status === 'unconstrained'
+    ? 'unconstrained'
+    : type.status === 'malformed'
+      ? 'malformed'
+      : display([...type.values].sort())
 );
 
 const sameRequiredKeyword = (left: unknown, right: unknown): boolean => {
@@ -149,10 +186,22 @@ const schemaChanges = (
   const beforeType = schemaType(before);
   const afterType = schemaType(after);
   const typeChangeStart = changes.length;
-  if (!same(beforeType, afterType)) {
+  if (!sameTypeKeyword(before, after, beforeType, afterType)) {
+    const malformed = beforeType.status === 'malformed' || afterType.status === 'malformed';
+    const removedTypes = beforeType.status === 'valid' && afterType.status === 'valid'
+      ? [...beforeType.values].filter((value) => !afterType.values.has(value)).sort()
+      : [];
+    const breaking = !malformed && (
+      (beforeType.status === 'unconstrained' && afterType.status === 'valid')
+      || removedTypes.length > 0
+    );
     changes.push(makeChange(
-      'breaking', 'tools', `${path}.type`, `${toolName} input type changed`,
-      `Type changed from ${display(beforeType)} to ${display(afterType)}.`
+      malformed ? 'unknown' : breaking ? 'breaking' : 'change',
+      'tools', `${path}.type`,
+      malformed ? `${toolName} input type could not be compared` : `${toolName} input type changed`,
+      malformed
+        ? 'At least one type declaration is malformed.'
+        : `Accepted types changed from ${displaySchemaType(beforeType)} to ${displaySchemaType(afterType)}.`
     ));
   }
   if (changes.length > typeChangeStart) reportedHandledKeys.add('type');
@@ -272,7 +321,9 @@ const schemaChanges = (
 
   const handledKeys = new Set(['type', 'required', 'properties', 'enum', 'additionalProperties', 'items']);
   for (const key of handledKeys) {
-    const semanticallyEqual = key === 'required'
+    const semanticallyEqual = key === 'type'
+      ? sameTypeKeyword(before, after)
+      : key === 'required'
       ? sameRequiredKeyword(before[key], after[key])
       : key === 'enum'
         ? sameEnumKeyword(before[key], after[key])
@@ -536,16 +587,35 @@ const severityRank: Record<string, number> = {
   info: 0, low: 1, medium: 2, warning: 2, unknown: 2, high: 3, error: 3, critical: 4,
 };
 
-const findingMap = (report: PublicReport): Map<string, { severity: string; title: string }> => {
-  const findings = new Map<string, { severity: string; title: string }>();
+type FindingSource =
+  | { kind: 'release'; source: 'Host compatibility' | 'Tool surface' | 'Evaluation' }
+  | { kind: 'tool' }
+  | { kind: 'compatibility'; profileId: string };
+
+interface FindingObservation {
+  severity: string;
+  title: string;
+  source: FindingSource;
+}
+
+const findingMap = (report: PublicReport): Map<string, FindingObservation> => {
+  const findings = new Map<string, FindingObservation>();
   for (const priority of report.releaseDecision?.priorities || []) {
-    findings.set(`release:${priority.id}`, { severity: priority.severity, title: priority.title });
+    findings.set(`release:${priority.id}`, {
+      severity: priority.severity,
+      title: priority.title,
+      source: { kind: 'release', source: priority.source },
+    });
   }
   const buckets = report.toolSurfaceAnalysis?.findings;
   if (buckets) {
     for (const [severity, values] of Object.entries(buckets)) {
       for (const finding of values) {
-        findings.set(`tool:${finding.id}`, { severity, title: finding.title });
+        findings.set(`tool:${finding.id}`, {
+          severity,
+          title: finding.title,
+          source: { kind: 'tool' },
+        });
       }
     }
   }
@@ -555,10 +625,31 @@ const findingMap = (report: PublicReport): Map<string, { severity: string; title
       findings.set(`compatibility:${assessment.profileId}:${finding.ruleId}`, {
         severity: finding.severity,
         title: finding.summary,
+        source: { kind: 'compatibility', profileId: assessment.profileId },
       });
     }
   }
   return findings;
+};
+
+const completedReport = (report: PublicReport): boolean => report.outcome.status === 'scored';
+
+const toolFindingsWereEvaluated = (report: PublicReport): boolean => (
+  completedReport(report)
+  && report.toolSurfaceAnalysis !== undefined
+  && sectionWasEvaluated(report, 'capabilities')
+);
+
+const findingSourceWasEvaluated = (report: PublicReport, source: FindingSource): boolean => {
+  if (!completedReport(report)) return false;
+  if (source.kind === 'tool') return toolFindingsWereEvaluated(report);
+  if (source.kind === 'compatibility') {
+    return report.compatibility?.assessments[source.profileId] !== undefined;
+  }
+  if (!report.releaseDecision) return false;
+  if (source.source === 'Tool surface') return toolFindingsWereEvaluated(report);
+  if (source.source === 'Host compatibility') return report.compatibility !== undefined;
+  return true;
 };
 
 const compareFindings = (before: PublicReport, after: PublicReport): ReportDiffChange[] => {
@@ -593,9 +684,15 @@ const compareFindings = (before: PublicReport, after: PublicReport): ReportDiffC
     ));
   }
   for (const id of [...left.keys()].filter((key) => !right.has(key)).sort()) {
+    const finding = left.get(id)!;
+    const comparable = findingSourceWasEvaluated(before, finding.source)
+      && findingSourceWasEvaluated(after, finding.source);
     changes.push(makeChange(
-      'removal', 'findings', `findings.${id}`, `Finding resolved: ${left.get(id)!.title}`,
-      'This finding is absent from the latest report.'
+      comparable ? 'removal' : 'unknown', 'findings', `findings.${id}`,
+      comparable ? `Finding resolved: ${finding.title}` : `Finding is not comparable: ${finding.title}`,
+      comparable
+        ? 'This finding is absent from the latest report.'
+        : 'The finding source was not completely evaluated in both snapshots.'
     ));
   }
   for (const id of [...left.keys()].filter((key) => right.has(key)).sort()) {

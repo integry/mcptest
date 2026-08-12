@@ -154,6 +154,49 @@ describe('semantic report drift', () => {
     }));
   });
 
+  it('classifies widening and removing input type constraints as compatible', () => {
+    const stringOnly = artifact({
+      tools: [tool(inputSchema({ query: { type: 'string' } }))],
+    });
+    const nullableString = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(inputSchema({ query: { type: ['null', 'string'] } }))],
+    });
+    const unconstrained = artifact({
+      generatedAt: '2026-08-11T20:02:00.000Z',
+      tools: [tool(inputSchema({ query: {} }))],
+    });
+
+    for (const diff of [
+      diffPublicReports(stringOnly, nullableString),
+      diffPublicReports(nullableString, unconstrained),
+    ]) {
+      expect(diff.changes).toContainEqual(expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.query.type',
+        classification: 'change',
+        breaking: false,
+      }));
+      expect(diff.changes).not.toContainEqual(expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.query.type',
+        classification: 'breaking',
+      }));
+    }
+  });
+
+  it('classifies malformed input type declarations as unknown', () => {
+    const before = artifact({ tools: [tool(inputSchema({ query: { type: 'string' } }))] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(inputSchema({ query: { type: ['string', 42] } }))],
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties.query.type',
+      classification: 'unknown',
+      breaking: false,
+    }));
+  });
+
   it('classifies adding and removing enum constraints by direction', () => {
     const unrestricted = artifact({
       tools: [tool(inputSchema({ query: { type: 'string' } }))],
@@ -334,6 +377,42 @@ describe('semantic report drift', () => {
       expect.objectContaining({ path: 'protocol.version', classification: 'unknown', breaking: false }),
     ]));
   });
+
+  it.each(['partial', 'failed'] as const)(
+    'does not resolve tool findings after a %s run',
+    (outcome) => {
+      const before = artifact();
+      const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+      const finding: NonNullable<PublicReport['toolSurfaceAnalysis']>['findings']['medium'][number] = {
+        id: 'tool-source-check',
+        category: 'schema-quality',
+        severity: 'medium',
+        kind: 'quality-signal',
+        title: 'Tool schema needs review',
+        summary: 'The tool schema needs review.',
+        evidence: [],
+        omittedEvidenceCount: 0,
+        remediation: 'Review the tool schema.',
+      };
+      before.toolSurfaceAnalysis!.findings.medium.push(finding);
+      before.toolSurfaceAnalysis!.findingCount += 1;
+      after.outcome = { status: outcome, summary: `The evaluation was ${outcome}.` };
+      after.score = null;
+      const capabilities = after.sections.find(({ id }) => id === 'capabilities')!;
+      capabilities.status = outcome;
+
+      const change = diffPublicReports(before, after).changes.find(
+        ({ path }) => path === 'findings.tool:tool-source-check'
+      );
+
+      expect(change).toEqual(expect.objectContaining({
+        classification: 'unknown',
+        title: 'Finding is not comparable: Tool schema needs review',
+        breaking: false,
+      }));
+      expect(change?.title).not.toContain('resolved');
+    }
+  );
 
   it('compares stateful and stateless protocol results without treating them as unavailable', () => {
     const stateful = artifact({ protocolEra: 'legacy', protocolVersion: '2025-11-25' });

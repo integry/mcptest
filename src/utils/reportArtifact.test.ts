@@ -751,11 +751,11 @@ describe('versioned public report artifacts', () => {
     const artifact = createPublicReport(report, FIXED_OPTIONS);
     const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
     const schema = definitions?.tools[0].inputSchema as {
-      properties: { access_token: { enum: unknown } };
+      properties: { access_token: unknown };
     };
 
     expect(definitions?.status).toBe('partial');
-    expect(schema.properties.access_token.enum).toBe('[REDACTED]');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
     expect(serializePublicReportJson(artifact)).not.toContain(opaqueCredential);
     expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
   });
@@ -781,13 +781,48 @@ describe('versioned public report artifacts', () => {
     const artifact = createPublicReport(report, FIXED_OPTIONS);
     const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
     const schema = definitions?.tools[0].inputSchema as {
-      properties: { access_token: { properties: { value: { default: unknown } } } };
+      properties: { access_token: unknown };
     };
 
     expect(definitions?.status).toBe('partial');
-    expect(schema.properties.access_token.properties.value.default).toBe('[REDACTED]');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
     expect(serializePublicReportJson(artifact)).not.toContain(opaqueCredential);
     expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
+  });
+
+  it('drops free-form descriptions and extensions beneath sensitive schema properties', () => {
+    const descriptionCredential = 'willow-ember-opaque-43';
+    const extensionCredential = 'violet-ridge-opaque-82';
+    const report = publicReport();
+    report.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: {
+            type: 'string',
+            description: `Credential issued for ${descriptionCredential}`,
+            'x-provider-secret': { value: extensionCredential },
+          },
+          tenant: { type: 'string', description: 'Public tenant name.' },
+        },
+      },
+    }]);
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown; tenant: unknown };
+    };
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(schema.properties.tenant).toEqual({
+      type: 'string', description: 'Public tenant name.',
+    });
+    expect(output).not.toContain(descriptionCredential);
+    expect(output).not.toContain(extensionCredential);
   });
 
   it('redacts OAuth credential parameters from URLs using canonicalized names', () => {

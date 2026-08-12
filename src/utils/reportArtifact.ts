@@ -919,25 +919,6 @@ const isToolInputSchemaPropertyDeclaration = (
     && path.includes('inputSchema');
 };
 
-const TOOL_SCHEMA_LITERAL_KEYS = new Set(['const', 'default', 'enum', 'example', 'examples']);
-
-const hasSensitiveToolSchemaPropertyAncestor = (path: readonly string[]): boolean => {
-  if (!path.includes('toolDefinitions') || !path.includes('inputSchema')) return false;
-  return path.some((segment, index) => (
-    segment === 'properties'
-    && index + 1 < path.length
-    && isSensitiveQueryKey(path[index + 1])
-  ));
-};
-
-const isSensitiveToolSchemaLiteral = (
-  key: string,
-  path: readonly string[]
-): boolean => {
-  if (!TOOL_SCHEMA_LITERAL_KEYS.has(canonicalKey(key))) return false;
-  return hasSensitiveToolSchemaPropertyAncestor(path);
-};
-
 const sameReportValue = (left: unknown, right: unknown): boolean => {
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -963,7 +944,11 @@ const redactReportValueAtPath = (
   key: string | undefined,
   path: readonly string[]
 ): unknown => {
-  if (key && isSensitiveToolSchemaLiteral(key, path)) return REDACTED_VALUE;
+  if (key
+      && isSensitiveQueryKey(key)
+      && isToolInputSchemaPropertyDeclaration(key, path)) {
+    return REDACTED_VALUE;
+  }
   if (key
     && isSensitiveQueryKey(key)
     && !isAuthorizationPrerequisiteSchemaField(path)

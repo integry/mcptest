@@ -80,7 +80,7 @@ describe('report snapshot history', () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0].report.toolSurfaceAnalysis?.toolDefinitions?.tools[0].inputSchema).toEqual({
       properties: {
-        access_token: { default: '[REDACTED]', type: 'string' },
+        access_token: '[REDACTED]',
       },
       type: 'object',
     });
