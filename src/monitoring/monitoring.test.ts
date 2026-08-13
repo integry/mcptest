@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -430,6 +430,51 @@ describe('MonitoringRunner', () => {
     expect(store.reports.size).toBe(2);
   });
 
+  it('retains the before artifact for consecutive non-scored status alerts at minimum retention', async () => {
+    const store = new MemoryMonitoringStore();
+    let current: { report?: PublicReport; failure?: {
+      message: string;
+      provenance: 'target' | 'proxy';
+    } } = { report: report({ at: '2026-08-13T03:00:00.000Z' }) };
+    const deliveredLinks: boolean[] = [];
+    const runner = new MonitoringRunner({
+      targets: [{ id: 'api', endpoint: 'https://api.example/mcp' }],
+      store,
+      retry: { maxAttempts: 1 },
+      retention: { perServer: 1, total: 2 },
+      probe: async () => current,
+      notifications: [{
+        name: 'artifact-check',
+        send: async (alert) => {
+          deliveredLinks.push(Boolean(
+            alert.before
+            && store.reports.has(alert.before.snapshotId)
+            && store.reports.has(alert.after.snapshotId)
+          ));
+        },
+      }],
+    });
+
+    const healthy = await runner.runOnce();
+    current = { failure: { message: 'offline', provenance: 'target' } };
+    const unavailable = await runner.runOnce();
+    current = { failure: { message: 'proxy offline', provenance: 'proxy' } };
+    const proxyFailure = await runner.runOnce();
+
+    const alert = proxyFailure.targets[0].alerts[0];
+    const state = await store.load();
+    expect(alert.before?.snapshotId).toBe(unavailable.targets[0].snapshot?.id);
+    expect(alert.after.snapshotId).toBe(proxyFailure.targets[0].snapshot?.id);
+    expect(deliveredLinks).toEqual([true, true]);
+    expect(state?.servers.api.snapshots.map(({ id }) => id)).toEqual(expect.arrayContaining([
+      healthy.targets[0].snapshot!.id,
+      unavailable.targets[0].snapshot!.id,
+      proxyFailure.targets[0].snapshot!.id,
+    ]));
+    expect(store.reports.has(alert.before!.snapshotId)).toBe(true);
+    expect(store.reports.has(alert.after.snapshotId)).toBe(true);
+  });
+
   it('rejects retention that cannot hold active current and last-scored baselines', () => {
     const store = new MemoryMonitoringStore();
     expect(() => new MonitoringRunner({
@@ -493,6 +538,71 @@ describe('MonitoringRunner', () => {
 });
 
 describe('FileMonitoringStore', () => {
+  it('serializes runner transactions across store instances and skips a competing run', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mcptest-monitor-lock-'));
+    try {
+      const options = { stateFile: join(directory, 'state.json') };
+      let releaseProbe!: () => void;
+      const firstProbe = vi.fn(async () => {
+        await new Promise<void>((resolve) => { releaseProbe = resolve; });
+        return { report: report() };
+      });
+      const secondProbe = vi.fn(async () => ({ report: report() }));
+      const firstRunner = new MonitoringRunner({
+        targets: [{ id: 'api', endpoint: 'https://api.example/mcp' }],
+        store: new FileMonitoringStore(options),
+        retry: { maxAttempts: 1 },
+        probe: firstProbe,
+      });
+      const secondRunner = new MonitoringRunner({
+        targets: [{ id: 'api', endpoint: 'https://api.example/mcp' }],
+        store: new FileMonitoringStore(options),
+        retry: { maxAttempts: 1 },
+        probe: secondProbe,
+      });
+
+      const first = firstRunner.runOnce();
+      await vi.waitFor(() => expect(firstProbe).toHaveBeenCalledTimes(1));
+      const competing = await secondRunner.runOnce();
+      expect(competing.targets[0]).toMatchObject({
+        result: 'skipped', skipReason: 'store-lease-held',
+      });
+      expect(secondProbe).not.toHaveBeenCalled();
+
+      releaseProbe();
+      await first;
+      expect((await secondRunner.runOnce()).targets[0].result).toBe('completed');
+      const persisted = JSON.parse(await readFile(options.stateFile, 'utf8')) as {
+        servers: { api: { snapshots: unknown[] } };
+      };
+      expect(persisted.servers.api.snapshots).toHaveLength(2);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers a stale filesystem run lease', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mcptest-monitor-stale-lock-'));
+    try {
+      const store = new FileMonitoringStore({
+        stateFile: join(directory, 'state.json'),
+        lockStaleMs: 1_000,
+      });
+      const ownerFile = join(store.runLockDirectory, 'owner.json');
+      await mkdir(store.runLockDirectory, { recursive: true });
+      await writeFile(ownerFile, '{"token":"abandoned"}\n', 'utf8');
+      const old = new Date(Date.now() - 10_000);
+      await utimes(ownerFile, old, old);
+
+      const lease = await store.acquireRunLease();
+      expect(lease).toBeDefined();
+      await lease!.release();
+      await expect(stat(store.runLockDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('confines dot segments and safely persists inherited-property server ids', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mcptest-monitor-keys-'));
     try {

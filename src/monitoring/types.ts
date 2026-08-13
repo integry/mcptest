@@ -56,6 +56,10 @@ export interface MonitoringStateV1 {
   servers: Record<string, MonitoringServerState>;
 }
 
+export interface MonitoringRunLease {
+  release(): Promise<void>;
+}
+
 export type MonitoringAlertKind =
   | 'status-change'
   | 'reachability'
@@ -125,6 +129,8 @@ export type MonitoringProbe = (
 ) => Promise<MonitoringProbeResult>;
 
 export interface MonitoringStore {
+  /** Atomically reserves the store for one complete monitoring transaction. */
+  acquireRunLease?(): Promise<MonitoringRunLease | undefined>;
   load(): Promise<MonitoringStateV1 | undefined>;
   save(state: MonitoringStateV1): Promise<void>;
   /** Returns the link/path at which this store persists a snapshot artifact. */
@@ -155,7 +161,7 @@ export interface MonitoringTargetRunResult {
   serverId: string;
   endpoint: string;
   result: 'completed' | 'skipped';
-  skipReason?: 'run-already-active' | 'prior-probe-still-running';
+  skipReason?: 'run-already-active' | 'store-lease-held' | 'prior-probe-still-running';
   snapshot?: MonitoringSnapshotV1;
   alerts: MonitoringAlertV1[];
 }

@@ -342,12 +342,14 @@ const applyRetention = (
   const all = Object.values(state.servers).flatMap((server) => server.snapshots)
     .sort((left, right) => Date.parse(right.checkedAt) - Date.parse(left.checkedAt));
   const retainedKeys = new Set<string>();
+  // A newly emitted alert may temporarily require current + baseline + before evidence.
+  // Keeping all such references can exceed the configured total by at most one snapshot
+  // per active target; the next run drops the exception once that alert is no longer new.
   for (const snapshot of protectedSnapshots) {
-    if (retainedKeys.size === retention.total) break;
     retainedKeys.add(snapshotKey(snapshot));
   }
   for (const snapshot of all) {
-    if (retainedKeys.size === retention.total) break;
+    if (retainedKeys.size >= retention.total) break;
     retainedKeys.add(snapshotKey(snapshot));
   }
   for (const server of Object.values(state.servers)) {
@@ -583,28 +585,42 @@ export class MonitoringRunner {
 
   runOnce(): Promise<MonitoringRunResult> {
     if (this.activeRun) {
-      const at = nowIso(this.now);
-      const targets = this.options.targets.map<MonitoringTargetRunResult>((target) => ({
-        serverId: target.id,
-        endpoint: safeEndpoint(target.endpoint),
-        result: 'skipped',
-        skipReason: 'run-already-active',
-        alerts: [],
-      }));
-      return Promise.resolve({
-        startedAt: at,
-        finishedAt: at,
-        targets,
-        aggregate: aggregate(targets),
-        notificationErrors: [],
-      });
+      return Promise.resolve(this.skippedRun('run-already-active'));
     }
-    const run = this.executeRun();
+    const run = this.executeRunWithLease();
     this.activeRun = run;
     void run.finally(() => {
       if (this.activeRun === run) this.activeRun = undefined;
     }).catch(() => {});
     return run;
+  }
+
+  private skippedRun(reason: 'run-already-active' | 'store-lease-held'): MonitoringRunResult {
+    const at = nowIso(this.now);
+    const targets = this.options.targets.map<MonitoringTargetRunResult>((target) => ({
+      serverId: target.id,
+      endpoint: safeEndpoint(target.endpoint),
+      result: 'skipped',
+      skipReason: reason,
+      alerts: [],
+    }));
+    return {
+      startedAt: at,
+      finishedAt: at,
+      targets,
+      aggregate: aggregate(targets),
+      notificationErrors: [],
+    };
+  }
+
+  private async executeRunWithLease(): Promise<MonitoringRunResult> {
+    const lease = await this.options.store.acquireRunLease?.();
+    if (this.options.store.acquireRunLease && !lease) return this.skippedRun('store-lease-held');
+    try {
+      return await this.executeRun();
+    } finally {
+      await lease?.release();
+    }
   }
 
   private async probeWithTimeout(

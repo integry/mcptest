@@ -180,14 +180,16 @@ export const runMonitorCli = async (
   argv: readonly string[] = process.argv.slice(2),
   environment: Record<string, string | undefined> = process.env
 ): Promise<number> => {
+  let args: ReturnType<typeof parseArguments>;
+  let runner: MonitoringRunner;
   try {
-    const args = parseArguments(argv);
+    args = parseArguments(argv);
     if (args.help) {
       process.stdout.write(HELP);
       return 0;
     }
     const config = await readConfiguration(args.config!);
-    const runner = new MonitoringRunner({
+    runner = new MonitoringRunner({
       targets: runtimeTargets(config, environment),
       store: new FileMonitoringStore({
         stateFile: config.stateFile,
@@ -199,6 +201,14 @@ export const runMonitorCli = async (
       retry: config.retry,
       retention: config.retention,
     });
+  } catch (error) {
+    process.stderr.write(`mcptest monitor: ${redactReportString(
+      error instanceof Error ? error.message : String(error)
+    )}\n`);
+    return 3;
+  }
+
+  try {
     const result = await runner.runOnce();
     if (args.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     else {
@@ -212,7 +222,7 @@ export const runMonitorCli = async (
     process.stderr.write(`mcptest monitor: ${redactReportString(
       error instanceof Error ? error.message : String(error)
     )}\n`);
-    return 3;
+    return 4;
   }
 };
 

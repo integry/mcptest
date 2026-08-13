@@ -1,12 +1,16 @@
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, readdir, rename, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { redactReportValue } from '../utils/reportArtifact';
 import type {
   MonitoringSnapshotV1,
+  MonitoringRunLease,
   MonitoringStateV1,
   MonitoringStore,
 } from './types';
+
+export const DEFAULT_MONITORING_LOCK_STALE_MS = 5 * 60_000;
 
 /** Reversible, collision-free encoding for one filesystem path component. */
 export const monitoringArtifactPathPart = (value: string): string => {
@@ -41,13 +45,17 @@ const writePrivateJson = async (path: string, value: unknown): Promise<void> => 
 export interface FileMonitoringStoreOptions {
   stateFile?: string;
   reportDirectory?: string;
+  /** Primarily useful for tests; active leases refresh well before this interval. */
+  lockStaleMs?: number;
 }
 
 /** Filesystem persistence for cron, CI, and other headless schedulers. */
 export class FileMonitoringStore implements MonitoringStore {
   readonly stateFile: string;
   readonly reportDirectory: string;
+  readonly runLockDirectory: string;
   private readonly configuredReportDirectory: string;
+  private readonly lockStaleMs: number;
 
   constructor(options: FileMonitoringStoreOptions = {}) {
     const configuredStateFile = options.stateFile || 'mcptest-monitor/state.json';
@@ -55,6 +63,76 @@ export class FileMonitoringStore implements MonitoringStore {
     this.configuredReportDirectory = options.reportDirectory
       || `${dirname(configuredStateFile)}/reports`;
     this.reportDirectory = resolve(this.configuredReportDirectory);
+    this.runLockDirectory = `${this.stateFile}.lock`;
+    this.lockStaleMs = options.lockStaleMs || DEFAULT_MONITORING_LOCK_STALE_MS;
+    if (!Number.isFinite(this.lockStaleMs) || this.lockStaleMs <= 0) {
+      throw new TypeError('lockStaleMs must be a positive number.');
+    }
+  }
+
+  async acquireRunLease(): Promise<MonitoringRunLease | undefined> {
+    await mkdir(dirname(this.stateFile), { recursive: true });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const token = `${process.pid}-${randomUUID()}`;
+      const ownerFile = resolve(this.runLockDirectory, 'owner.json');
+      try {
+        await mkdir(this.runLockDirectory, { mode: 0o700 });
+        await writeFile(ownerFile, `${JSON.stringify({ token, pid: process.pid })}\n`, {
+          encoding: 'utf8',
+          mode: 0o600,
+        });
+        return this.lease(token, ownerFile);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+          await rm(this.runLockDirectory, { recursive: true, force: true }).catch(() => {});
+          throw error;
+        }
+      }
+
+      let modifiedAt: number;
+      try {
+        modifiedAt = (await stat(ownerFile)).mtimeMs;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          try {
+            modifiedAt = (await stat(this.runLockDirectory)).mtimeMs;
+          } catch (statError) {
+            if ((statError as NodeJS.ErrnoException).code === 'ENOENT') continue;
+            throw statError;
+          }
+        } else {
+          throw error;
+        }
+      }
+      if (Date.now() - modifiedAt < this.lockStaleMs) return undefined;
+      await rm(this.runLockDirectory, { recursive: true, force: true });
+    }
+    return undefined;
+  }
+
+  private lease(token: string, ownerFile: string): MonitoringRunLease {
+    const heartbeatMs = Math.max(10, Math.min(30_000, Math.floor(this.lockStaleMs / 3)));
+    const heartbeat = setInterval(() => {
+      const at = new Date();
+      void utimes(ownerFile, at, at).catch(() => {});
+    }, heartbeatMs);
+    heartbeat.unref();
+    let released = false;
+    return {
+      release: async () => {
+        if (released) return;
+        released = true;
+        clearInterval(heartbeat);
+        try {
+          const owner = JSON.parse(await readFile(ownerFile, 'utf8')) as { token?: unknown };
+          if (owner.token === token) {
+            await rm(this.runLockDirectory, { recursive: true, force: true });
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      },
+    };
   }
 
   async load(): Promise<MonitoringStateV1 | undefined> {
