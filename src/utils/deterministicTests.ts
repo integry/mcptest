@@ -540,11 +540,15 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
   if (value === null || typeof value !== 'object') return value;
   if (seen.has(value)) return '[Circular]';
   seen.add(value);
-  if (Array.isArray(value)) return value.map(item => redactTestData(item, seen));
-  return Object.fromEntries(Object.entries(value as RecordValue).map(([key, item]) => [
-    key,
-    SENSITIVE_KEY.test(key.replace(/([a-z0-9])([A-Z])/g, '$1_$2')) ? '[REDACTED]' : redactTestData(item, seen),
-  ]));
+  try {
+    if (Array.isArray(value)) return value.map(item => redactTestData(item, seen));
+    return Object.fromEntries(Object.entries(value as RecordValue).map(([key, item]) => [
+      key,
+      SENSITIVE_KEY.test(key.replace(/([a-z0-9])([A-Z])/g, '$1_$2')) ? '[REDACTED]' : redactTestData(item, seen),
+    ]));
+  } finally {
+    seen.delete(value);
+  }
 };
 
 const collectIdentifiers = (value: unknown, output: Record<string, string>, depth = 0): void => {
@@ -613,8 +617,11 @@ export const normalizeTestError = (value: unknown): NormalizedTestError => {
   const searchable = message.toLowerCase();
   let type: DeterministicErrorType = errorTypeFromCode(code) || 'unknown';
   if (type === 'unknown') {
-    if ((typeof DOMException !== 'undefined' && value instanceof DOMException && value.name === 'AbortError') || /\babort(?:ed)?\b|cancel(?:led|ed)/.test(searchable)) type = 'cancelled';
+    const errorName = value instanceof Error ? value.name : undefined;
+    if (errorName === 'TimeoutError') type = 'timeout';
+    else if (errorName === 'AbortError') type = 'cancelled';
     else if (/requesttimeout|timed?\s*out|timeout|-32001/.test(searchable)) type = 'timeout';
+    else if (/\babort(?:ed)?\b|cancel(?:led|ed)/.test(searchable)) type = 'cancelled';
     else if (/\b401\b|\b403\b|authori[sz]ation|authentication|unauthori[sz]ed|forbidden|permission|insufficient.scope|invalid.token|expired.token/.test(searchable)) type = 'authorization';
     else if (/\b404\b|not.found|missing.resource|resource.not.found/.test(searchable)) type = 'missing-resource';
     else if (/\b400\b|\b422\b|-32602|invalid.params|validation|required/.test(searchable)) type = 'validation';

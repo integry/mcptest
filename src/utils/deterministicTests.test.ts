@@ -484,6 +484,44 @@ describe('deterministic runner safety and evidence', () => {
     });
   });
 
+  it('preserves repeated generated objects in request and response evidence', async () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'batch_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            minItems: 2,
+            items: {
+              type: 'object',
+              properties: { query: { type: 'string' } },
+              required: ['query'],
+            },
+          },
+        },
+        required: ['items'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const testCase = plan.tools[0].cases.find(item => item.kind === 'happy-path')!;
+    const responseItem = { type: 'text', text: 'fixture' };
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ content: [responseItem, responseItem] }) },
+      testCase,
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: { items: [{ query: 'fixture' }, { query: 'fixture' }] },
+    });
+    expect(result.response).toEqual({
+      content: [
+        { type: 'text', text: 'fixture' },
+        { type: 'text', text: 'fixture' },
+      ],
+    });
+  });
+
   it('redacts secrets embedded in MCP text blocks and credential headers', () => {
     expect(redactTestData({
       content: [
@@ -743,6 +781,20 @@ describe('deterministic runner safety and evidence', () => {
       { callTool: vi.fn().mockRejectedValue({ code: 'RequestTimeout', message: 'Timed out' }) },
       fixtureCase({ kind: 'timeout', expectedError: 'timeout', timeoutMs: 5, assertions: [] }),
     );
+    expect(result.status).toBe('passed');
+    expect(result.error).toMatchObject({ type: 'timeout', retryable: true });
+  });
+
+  it('classifies a standard DOM timeout separately from cancellation', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockRejectedValue(
+          new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+        ),
+      },
+      fixtureCase({ kind: 'timeout', expectedError: 'timeout', timeoutMs: 5, assertions: [] }),
+    );
+
     expect(result.status).toBe('passed');
     expect(result.error).toMatchObject({ type: 'timeout', retryable: true });
   });
