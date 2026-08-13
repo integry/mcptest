@@ -4,7 +4,7 @@
   "description": "CORS proxy worker for MCP Test with authentication",
   "main": "src/index.ts",
   "scripts": {
-    "test": "vitest run --environment jsdom",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "dry-run": "WRANGLER_WRITE_LOGS=false wrangler deploy --dry-run --outdir dist",
     "check": "npm run test && npm run typecheck && npm run dry-run",
