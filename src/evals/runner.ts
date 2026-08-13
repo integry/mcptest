@@ -73,8 +73,10 @@ const deepEqual = (left: unknown, right: unknown): boolean => {
   ));
 };
 
-export const evaluateAssertion = (argumentsValue: unknown, assertion: ArgumentAssertion): AssertionResult => {
-  const actual = readPath(argumentsValue, assertion.path);
+const assertionPasses = (
+  actual: { present: boolean; value?: unknown },
+  assertion: ArgumentAssertion
+): boolean => {
   let passed = false;
   switch (assertion.operator) {
     case 'present': passed = actual.present; break;
@@ -99,6 +101,12 @@ export const evaluateAssertion = (argumentsValue: unknown, assertion: ArgumentAs
       );
       break;
   }
+  return passed;
+};
+
+export const evaluateAssertion = (argumentsValue: unknown, assertion: ArgumentAssertion): AssertionResult => {
+  const actual = readPath(argumentsValue, assertion.path);
+  const passed = assertionPasses(actual, assertion);
   return {
     assertion,
     passed,
@@ -118,6 +126,10 @@ const figureAppears = (answer: string, figure: string | number): boolean => {
   const escaped = String(figure).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^0-9.])${escaped}([^0-9.]|$)`).test(answer);
 };
+
+const asTokenCount = (value: unknown): number | undefined => (
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+);
 
 const sourceContainsFigure = (source: unknown, figure: string | number): boolean => {
   if (typeof source === 'string' || typeof source === 'number') {
@@ -178,10 +190,13 @@ const scoreTrial = (
   const figuresGrounded = relevantSourceAvailable
     ? Boolean(finalAnswer) && figures.every(figure => figureAppears(finalAnswer!, figure))
     : null;
-  const inputTokens = observation.inputTokens || 0;
-  const outputTokens = observation.outputTokens || 0;
-  const approximateCost = (inputTokens * (config.inputCostPerMillionTokens || 0)
-    + outputTokens * (config.outputCostPerMillionTokens || 0)) / 1_000_000;
+  const inputTokens = asTokenCount(observation.inputTokens);
+  const outputTokens = asTokenCount(observation.outputTokens);
+  const calculatedCost = ((inputTokens || 0) * (config.inputCostPerMillionTokens || 0)
+    + (outputTokens || 0) * (config.outputCostPerMillionTokens || 0)) / 1_000_000;
+  const approximateCost = Number.isFinite(calculatedCost) && calculatedCost >= 0
+    ? calculatedCost
+    : undefined;
   return {
     caseId: evalCase.id,
     prompt: evalCase.prompt,
@@ -200,9 +215,9 @@ const scoreTrial = (
     figuresGrounded,
     finalAnswer: observation.finalAnswer,
     latencyMs: observation.latencyMs,
-    inputTokens: observation.inputTokens,
-    outputTokens: observation.outputTokens,
-    ...(observation.inputTokens !== undefined || observation.outputTokens !== undefined ? { approximateCost } : {}),
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(approximateCost !== undefined && (inputTokens !== undefined || outputTokens !== undefined) ? { approximateCost } : {}),
     ...(observation.error ? { error: observation.error } : {}),
   };
 };
@@ -245,9 +260,76 @@ export const calculateMetrics = (results: EvalTrialResult[]): EvalMetrics => {
   };
 };
 
+const assertTrialScoringRelationships = (result: EvalTrialResult): void => {
+  const fail = (): never => {
+    throw new Error('The evaluation trial scoring evidence was inconsistent and was blocked.');
+  };
+  if (result.observedTools === null) {
+    if (
+      result.forbiddenToolCalled !== null
+      || result.selectionPassed !== null
+      || result.noToolPassed !== null
+      || result.argumentSchemaValid !== null
+      || result.expectedToolCalled !== null
+      || result.figuresGrounded !== null
+      || result.assertionResults.length > 0
+    ) fail();
+    return;
+  }
+
+  const expectedToolCalled = result.observedTools.some(name => result.expectedTools.includes(name));
+  if (result.expectedToolCalled !== expectedToolCalled || typeof result.forbiddenToolCalled !== 'boolean') fail();
+
+  const expectedSelection = result.arm === 'with-mcp' && !result.expectedNoTool
+    ? expectedToolCalled && !result.forbiddenToolCalled
+    : null;
+  const expectedNoTool = result.arm === 'with-mcp' && result.expectedNoTool
+    ? result.observedTools.length === 0
+    : null;
+  if (result.selectionPassed !== expectedSelection || result.noToolPassed !== expectedNoTool) fail();
+  if ((result.observedTools.length > 0) !== (typeof result.argumentSchemaValid === 'boolean')) fail();
+
+  if (result.arm !== 'with-mcp' && result.assertionResults.length > 0) fail();
+  result.assertionResults.forEach(item => {
+    const hasActual = Object.prototype.hasOwnProperty.call(item, 'actual');
+    if (item.message === 'The asserted tool was not called.') {
+      if (item.passed || hasActual) fail();
+      return;
+    }
+    const expectedPassed = assertionPasses(
+      hasActual ? { present: true, value: item.actual } : { present: false },
+      item.assertion
+    );
+    if (item.passed !== expectedPassed) fail();
+  });
+
+  if (result.figuresGrounded === true && !result.finalAnswer?.trim()) fail();
+};
+
+const assertRedactionPreservesScoringOperands = (
+  original: EvalTrialResult,
+  redacted: EvalTrialResult
+): void => {
+  if (!deepEqual(original.observedTools, redacted.observedTools)) {
+    throw new Error('Credential redaction changed tool-selection scoring evidence and the trial was blocked.');
+  }
+  for (let index = 0; index < original.assertionResults.length; index += 1) {
+    const before = original.assertionResults[index];
+    const after = redacted.assertionResults[index];
+    const beforeHasActual = Object.prototype.hasOwnProperty.call(before, 'actual');
+    const afterHasActual = Object.prototype.hasOwnProperty.call(after, 'actual');
+    if (beforeHasActual !== afterHasActual || (beforeHasActual && !deepEqual(before.actual, after.actual))) {
+      throw new Error('Credential redaction changed assertion scoring evidence and the trial was blocked.');
+    }
+  }
+  if (original.figuresGrounded !== null && !deepEqual(original.finalAnswer, redacted.finalAnswer)) {
+    throw new Error('Credential redaction changed grounding scoring evidence and the trial was blocked.');
+  }
+};
+
 const redactProviderDerivedResult = (result: EvalTrialResult, credential: string): EvalTrialResult => {
   const { observedTools, assertionResults, finalAnswer, error, ...trusted } = result;
-  return {
+  const redacted: EvalTrialResult = {
     ...trusted,
     observedTools: observedTools === null ? null : redactCredential(observedTools, credential),
     assertionResults: assertionResults.map(item => ({
@@ -259,6 +341,9 @@ const redactProviderDerivedResult = (result: EvalTrialResult, credential: string
     ...(finalAnswer === undefined ? {} : { finalAnswer: redactCredential(finalAnswer, credential) }),
     ...(error === undefined ? {} : { error: redactCredential(error, credential) }),
   };
+  assertRedactionPreservesScoringOperands(result, redacted);
+  assertTrialScoringRelationships(redacted);
+  return redacted;
 };
 
 const assertCredentialDoesNotOverlapTrustedInputs = (
@@ -428,12 +513,16 @@ const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
 
-const isOptionalFiniteNumber = (value: unknown): boolean => (
-  value === undefined || isFiniteNumber(value)
-);
-
 const isOptionalNonNegativeFiniteNumber = (value: unknown): boolean => (
   value === undefined || (isFiniteNumber(value) && value >= 0)
+);
+
+const isNonNegativeSafeInteger = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+);
+
+const isOptionalNonNegativeSafeInteger = (value: unknown): boolean => (
+  value === undefined || isNonNegativeSafeInteger(value)
 );
 
 const isNullableFiniteNumber = (value: unknown): boolean => (
@@ -486,8 +575,8 @@ const isEvalMetrics = (value: unknown): value is EvalMetrics => {
   ))
     && isDistributionSummary(value.latencyMs)
     && (value.approximateTokenCost === null || (isFiniteNumber(value.approximateTokenCost) && value.approximateTokenCost >= 0))
-    && Number.isInteger(value.inputTokens) && Number(value.inputTokens) >= 0
-    && Number.isInteger(value.outputTokens) && Number(value.outputTokens) >= 0
+    && isNonNegativeSafeInteger(value.inputTokens)
+    && isNonNegativeSafeInteger(value.outputTokens)
     && Array.isArray(value.confusionPairs)
     && value.confusionPairs.every(pair => (
       isRecord(pair)
@@ -546,9 +635,9 @@ const isEvalTrialResult = (value: unknown): value is EvalTrialResult => {
     && isNullableBoolean(value.figuresGrounded)
     && (value.finalAnswer === undefined || typeof value.finalAnswer === 'string')
     && isNullableFiniteNumber(value.latencyMs)
-    && isOptionalFiniteNumber(value.inputTokens)
-    && isOptionalFiniteNumber(value.outputTokens)
-    && isOptionalFiniteNumber(value.approximateCost)
+    && isOptionalNonNegativeSafeInteger(value.inputTokens)
+    && isOptionalNonNegativeSafeInteger(value.outputTokens)
+    && isOptionalNonNegativeFiniteNumber(value.approximateCost)
     && (value.error === undefined || typeof value.error === 'string');
 };
 

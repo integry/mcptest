@@ -128,6 +128,21 @@ const ensureResponse = async (response: Response, secret = ''): Promise<unknown>
   return body;
 };
 
+const readTokenCount = (response: Record<string, unknown>, key: string): number | undefined => {
+  const usage = response.usage;
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return undefined;
+  const value = (usage as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+};
+
+const addTokenCounts = (first: number | undefined, second: number | undefined): number | undefined => {
+  if (first === undefined || second === undefined) return undefined;
+  const total = first + second;
+  return Number.isSafeInteger(total) && total >= 0 ? total : undefined;
+};
+
 export const createOpenAiProvider = (apiKey: string, fetcher: FetchLike = fetch): EvalProvider => ({
   id: 'openai',
   async run(request) {
@@ -156,8 +171,8 @@ export const createOpenAiProvider = (apiKey: string, fetcher: FetchLike = fetch)
       };
     });
     let finalAnswer = typeof message.content === 'string' ? message.content : undefined;
-    let inputTokens = Number((first.usage as Record<string, unknown> | undefined)?.prompt_tokens || 0);
-    let outputTokens = Number((first.usage as Record<string, unknown> | undefined)?.completion_tokens || 0);
+    let inputTokens = readTokenCount(first, 'prompt_tokens');
+    let outputTokens = readTokenCount(first, 'completion_tokens');
     let followUpError: string | undefined;
     if (rawCalls.length && request.case.toolReturnedData !== undefined) {
       messages.push(message);
@@ -171,8 +186,8 @@ export const createOpenAiProvider = (apiKey: string, fetcher: FetchLike = fetch)
         const secondChoice = Array.isArray(second.choices) ? second.choices[0] as Record<string, unknown> : {};
         const secondMessage = secondChoice.message && typeof secondChoice.message === 'object' ? secondChoice.message as Record<string, unknown> : {};
         finalAnswer = typeof secondMessage.content === 'string' ? secondMessage.content : finalAnswer;
-        inputTokens += Number((second.usage as Record<string, unknown> | undefined)?.prompt_tokens || 0);
-        outputTokens += Number((second.usage as Record<string, unknown> | undefined)?.completion_tokens || 0);
+        inputTokens = addTokenCounts(inputTokens, readTokenCount(second, 'prompt_tokens'));
+        outputTokens = addTokenCounts(outputTokens, readTokenCount(second, 'completion_tokens'));
       } catch (error) {
         followUpError = error instanceof Error ? error.message : String(error);
       }
@@ -214,8 +229,8 @@ export const createAnthropicProvider = (apiKey: string, fetcher: FetchLike = fet
       result: request.case.toolReturnedData,
     }));
     let finalAnswer = content.filter(block => block.type === 'text').map(block => String(block.text || '')).join('\n') || undefined;
-    let inputTokens = Number((first.usage as Record<string, unknown> | undefined)?.input_tokens || 0);
-    let outputTokens = Number((first.usage as Record<string, unknown> | undefined)?.output_tokens || 0);
+    let inputTokens = readTokenCount(first, 'input_tokens');
+    let outputTokens = readTokenCount(first, 'output_tokens');
     let followUpError: string | undefined;
     if (toolUses.length && request.case.toolReturnedData !== undefined) {
       messages.push({ role: 'assistant', content });
@@ -226,8 +241,8 @@ export const createAnthropicProvider = (apiKey: string, fetcher: FetchLike = fet
         const second = await makeRequest();
         const secondContent = Array.isArray(second.content) ? second.content as Array<Record<string, unknown>> : [];
         finalAnswer = secondContent.filter(block => block.type === 'text').map(block => String(block.text || '')).join('\n') || finalAnswer;
-        inputTokens += Number((second.usage as Record<string, unknown> | undefined)?.input_tokens || 0);
-        outputTokens += Number((second.usage as Record<string, unknown> | undefined)?.output_tokens || 0);
+        inputTokens = addTokenCounts(inputTokens, readTokenCount(second, 'input_tokens'));
+        outputTokens = addTokenCounts(outputTokens, readTokenCount(second, 'output_tokens'));
       } catch (error) {
         followUpError = error instanceof Error ? error.message : String(error);
       }

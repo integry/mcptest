@@ -79,6 +79,53 @@ describe('browser model providers', () => {
     expect(body.messages[0].content).toContain('Do not claim that you called a tool');
   });
 
+  it.each([
+    {
+      provider: 'OpenAI',
+      create: (fetcher: typeof fetch) => createOpenAiProvider('key', fetcher),
+      body: {
+        choices: [{ message: { role: 'assistant', content: 'Done.' } }],
+        usage: { prompt_tokens: -1, completion_tokens: 1.5 },
+      },
+    },
+    {
+      provider: 'Anthropic',
+      create: (fetcher: typeof fetch) => createAnthropicProvider('key', fetcher),
+      body: {
+        content: [{ type: 'text', text: 'Done.' }],
+        usage: { input_tokens: '4', output_tokens: Number.MAX_SAFE_INTEGER + 1 },
+      },
+    },
+  ])('treats malformed $provider usage counts as unavailable', async ({ create, body }) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+    const result = await create(fetcher as typeof fetch).run({
+      ...request,
+      tools: [],
+      arm: 'without-mcp',
+      case: { ...request.case, toolReturnedData: undefined },
+    });
+
+    expect(result.inputTokens).toBeUndefined();
+    expect(result.outputTokens).toBeUndefined();
+  });
+
+  it('drops a token total when a successful follow-up makes it unsafe', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Lisbon"}' } }] } }],
+        usage: { prompt_tokens: Number.MAX_SAFE_INTEGER, completion_tokens: 1 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: 'Done.' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      }), { status: 200 }));
+
+    const result = await createOpenAiProvider('key', fetcher as typeof fetch).run(request);
+
+    expect(result.inputTokens).toBeUndefined();
+    expect(result.outputTokens).toBe(2);
+  });
+
   it('redacts provider errors immediately and preserves successful observations for scoring', async () => {
     const secret = 'reflected-secret';
     const errorFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({

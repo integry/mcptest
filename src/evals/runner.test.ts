@@ -16,7 +16,7 @@ import {
   runEvaluation,
   evaluateAssertion,
 } from './runner';
-import type { EvalProvider, EvalProviderId, ToolSelectionDatasetV1 } from './types';
+import type { EvalProvider, EvalProviderId, EvalRunReportV1, ToolSelectionDatasetV1 } from './types';
 
 describe('tool-selection evaluation runner', () => {
   beforeEach(() => sessionStorage.clear());
@@ -216,6 +216,39 @@ describe('tool-selection evaluation runner', () => {
     expect(report.metrics.latencyMs).toMatchObject({ mean: 130 / 3, p50: 20, p95: 100, spread: 90 });
   });
 
+  it('publishes malformed provider token usage as unavailable', async () => {
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [LOCAL_TOOL_SELECTION_FIXTURE.cases[0]],
+    };
+    const provider: EvalProvider = {
+      id: 'fixture',
+      async run(request) {
+        return {
+          toolCalls: [{ name: 'get_forecast', arguments: { city: 'Lisbon', days: 1 } }],
+          latencyMs: 1,
+          inputTokens: request.trial === 1 ? -1 : 2.5,
+          outputTokens: request.trial === 1 ? 1.5 : Number.MAX_SAFE_INTEGER + 1,
+        };
+      },
+    };
+    const report = await runEvaluation(dataset, {
+      provider: 'fixture',
+      model: 'mock',
+      arms: ['with-mcp'],
+      trials: 2,
+      inputCostPerMillionTokens: 1,
+      outputCostPerMillionTokens: 1,
+    }, provider);
+
+    expect(report.results.every(result => (
+      result.inputTokens === undefined
+      && result.outputTokens === undefined
+      && result.approximateCost === undefined
+    ))).toBe(true);
+    expect(report.metrics).toMatchObject({ inputTokens: 0, outputTokens: 0, approximateTokenCost: null });
+  });
+
   it.each([
     ['input', 'inputCostPerMillionTokens', -1],
     ['input', 'inputCostPerMillionTokens', Number.NaN],
@@ -284,7 +317,7 @@ describe('tool-selection evaluation runner', () => {
     }, secret)).toThrow('contained the session credential');
   });
 
-  it('recursively redacts reflected credentials before assertions and tool names reach a report', async () => {
+  it('fails a trial closed when credential redaction would alter assertion or tool-selection evidence', async () => {
     const secret = 'reflected-session-key';
     const provider: EvalProvider = {
       id: 'fixture',
@@ -310,11 +343,86 @@ describe('tool-selection evaluation runner', () => {
     }, provider, undefined, secret);
 
     expect(reportContainsCredential(report, secret)).toBe(false);
-    expect(report.results[0].observedTools).toEqual(['get_forecast', 'unexpected-[redacted]']);
-    expect(report.results[0].assertionResults[0].actual).toBe('[redacted]');
-    expect(report.results[0].selectionPassed).toBe(true);
-    expect(report.metrics.selectionAccuracy).toBe(1);
-    expect(JSON.stringify(report.results[0])).toContain('[redacted]');
+    expect(report.results[0]).toMatchObject({
+      observedTools: null,
+      selectionPassed: null,
+      expectedToolCalled: null,
+      assertionResults: [],
+      error: 'Credential redaction changed tool-selection scoring evidence and the trial was blocked.',
+    });
+    expect(report.metrics.selectionAccuracy).toBeNull();
+  });
+
+  it('fails a trial closed when redaction would reverse an assertion against the redaction marker', async () => {
+    const secret = 'assertion-reflection-secret';
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [{
+        ...LOCAL_TOOL_SELECTION_FIXTURE.cases[0],
+        argumentAssertions: [{ path: 'city', operator: 'equals', value: '[redacted]' }],
+      }],
+    };
+    const provider: EvalProvider = {
+      id: 'fixture',
+      async run() {
+        return {
+          toolCalls: [{ name: 'get_forecast', arguments: { city: secret } }],
+          latencyMs: 1,
+        };
+      },
+    };
+
+    const report = await runEvaluation(dataset, {
+      provider: 'fixture', model: 'mock', arms: ['with-mcp'], trials: 1,
+    }, provider, undefined, secret);
+
+    expect(JSON.stringify(report)).not.toContain(secret);
+    expect(report.results[0]).toMatchObject({
+      observedTools: null,
+      selectionPassed: null,
+      assertionResults: [],
+      error: 'Credential redaction changed assertion scoring evidence and the trial was blocked.',
+    });
+    expect(report.metrics.assertionAccuracy).toBeNull();
+  });
+
+  it('fails a trial closed when redaction would change grounding evidence', async () => {
+    const secret = 'grounding-reflection-secret';
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [{
+        ...LOCAL_TOOL_SELECTION_FIXTURE.cases[0],
+        argumentAssertions: [],
+        toolReturnedData: { status: '[redacted]' },
+        expectedFigures: ['[redacted]'],
+      }],
+    };
+    const provider: EvalProvider = {
+      id: 'fixture',
+      async run() {
+        return {
+          toolCalls: [{
+            name: 'get_forecast',
+            arguments: { city: 'Lisbon', days: 1 },
+            result: { status: '[redacted]' },
+          }],
+          finalAnswer: secret,
+          latencyMs: 1,
+        };
+      },
+    };
+
+    const report = await runEvaluation(dataset, {
+      provider: 'fixture', model: 'mock', arms: ['with-mcp'], trials: 1,
+    }, provider, undefined, secret);
+
+    expect(JSON.stringify(report)).not.toContain(secret);
+    expect(report.results[0]).toMatchObject({
+      observedTools: null,
+      figuresGrounded: null,
+      error: 'Credential redaction changed grounding scoring evidence and the trial was blocked.',
+    });
+    expect(report.metrics.figureGroundingAccuracy).toBeNull();
   });
 
   it.each([
@@ -361,7 +469,7 @@ describe('tool-selection evaluation runner', () => {
         usage: { input_tokens: 9, output_tokens: 4 },
       }),
     },
-  ])('removes credentials reflected by mocked $providerId responses from the entire report', async ({
+  ])('fails mocked $providerId trials closed when reflected credentials alter scoring evidence', async ({
     providerId,
     createProvider,
     responseBody,
@@ -385,10 +493,14 @@ describe('tool-selection evaluation runner', () => {
 
     const serialized = JSON.stringify(report);
     expect(serialized).not.toContain(secret);
-    expect(serialized).toContain('[redacted]');
-    expect(report.results[0].observedTools).toEqual(['get_forecast', 'unexpected-[redacted]']);
-    expect(report.results[0].assertionResults[0].actual).toBe('[redacted]');
-    expect(report.results[0].finalAnswer).toBe('Reflected answer [redacted]');
+    expect(report.results[0]).toMatchObject({
+      observedTools: null,
+      selectionPassed: null,
+      expectedToolCalled: null,
+      figuresGrounded: null,
+      assertionResults: [],
+      error: 'Credential redaction changed tool-selection scoring evidence and the trial was blocked.',
+    });
   });
 
   it('fails closed when a report cannot be safely redacted or serialized', async () => {
@@ -471,6 +583,46 @@ describe('tool-selection evaluation runner', () => {
 
     expect(() => redactReportCredential(inconsistentReport, 'unrelated-session-key'))
       .toThrow('metrics disagreed');
+  });
+
+  it('blocks post-redaction selection, no-tool, expected-call, grounding, and assertion contradictions', async () => {
+    const report = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+    }, createFixtureProvider());
+    const selectionIndex = report.results.findIndex(result => result.selectionPassed !== null);
+    const noToolIndex = report.results.findIndex(result => result.noToolPassed !== null);
+    const mutations: Array<(candidate: EvalRunReportV1) => void> = [
+      candidate => { candidate.results[selectionIndex].selectionPassed = false; },
+      candidate => { candidate.results[noToolIndex].noToolPassed = false; },
+      candidate => { candidate.results[selectionIndex].expectedToolCalled = false; },
+      candidate => {
+        candidate.results[selectionIndex].figuresGrounded = true;
+        candidate.results[selectionIndex].finalAnswer = '';
+      },
+      candidate => { candidate.results[selectionIndex].assertionResults[0].passed = false; },
+    ];
+
+    mutations.forEach(mutate => {
+      const candidate = structuredClone(report);
+      mutate(candidate);
+      expect(() => redactReportCredential(candidate, 'unrelated-session-key')).toThrow('blocked');
+    });
+  });
+
+  it('rejects fractional and negative per-trial usage even when aggregates look valid', async () => {
+    const report = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 2,
+    }, createFixtureProvider());
+    const results = report.results.map((result, index) => ({
+      ...result,
+      inputTokens: index === 0 ? -0.5 : index === 1 ? 1.5 : result.inputTokens,
+      approximateCost: index === 0 ? -0.25 : index === 1 ? 0.25 : result.approximateCost,
+    }));
+    const malformed = { ...report, results, metrics: calculateMetrics(results) };
+
+    expect(malformed.metrics.inputTokens).toBeGreaterThanOrEqual(0);
+    expect(malformed.metrics.approximateTokenCost).toBeGreaterThanOrEqual(0);
+    expect(() => redactReportCredential(malformed, '')).toThrow('could not be safely redacted');
   });
 
   it('keeps provider failures out of model accuracy, cost, and latency metrics', async () => {
