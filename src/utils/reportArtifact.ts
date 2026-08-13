@@ -1208,19 +1208,32 @@ const dependencyKeywordMentionsUntraceableSensitiveProperty = (
 
 const hasUntraceableSensitiveSchemaProperty = (
   value: unknown,
-  seen: Set<unknown> = new Set(),
-  hasComposedAncestor = false
+  root: unknown = value,
+  seen: Map<unknown, number> = new Map(),
+  hasComposedAncestor = false,
+  hasScopedIdentifier = false
 ): boolean => {
-  if (!value || typeof value !== 'object' || seen.has(value)) return false;
-  seen.add(value);
+  if (!value || typeof value !== 'object') return false;
+  // A reference target may need another visit when reached under a stricter
+  // composition or resource scope than during ordinary tree traversal.
+  const traversalMode = 1 << (
+    Number(hasComposedAncestor) + (2 * Number(hasScopedIdentifier))
+  );
+  const visitedModes = seen.get(value) ?? 0;
+  if ((visitedModes & traversalMode) !== 0) return false;
+  seen.set(value, visitedModes | traversalMode);
   if (Array.isArray(value)) {
     return value.some((item) => hasUntraceableSensitiveSchemaProperty(
       item,
+      root,
       seen,
-      hasComposedAncestor
+      hasComposedAncestor,
+      hasScopedIdentifier
     ));
   }
   const record = value as Record<string, unknown>;
+  const childHasScopedIdentifier = hasScopedIdentifier
+    || (value !== root && Object.prototype.hasOwnProperty.call(record, '$id'));
   const declaredProperties = record.properties
     && typeof record.properties === 'object'
     && !Array.isArray(record.properties)
@@ -1268,11 +1281,34 @@ const hasUntraceableSensitiveSchemaProperty = (
       return true;
     }
   }
+  const referenceCrossesComposition = hasComposedAncestor || hasSchemaValuedApplicator(record);
+  for (const referenceKeyword of ['$ref', '$dynamicRef']) {
+    const reference = record[referenceKeyword];
+    if (typeof reference !== 'string' || !reference.startsWith('#')) continue;
+    if (childHasScopedIdentifier && referenceCrossesComposition) return true;
+    for (const referencePath of localSchemaReferencePaths(root, reference)) {
+      const target = schemaValueAtPath(root, referencePath);
+      if (
+        target.found
+        && hasUntraceableSensitiveSchemaProperty(
+          target.value,
+          root,
+          seen,
+          referenceCrossesComposition,
+          schemaPathCrossesScopedIdentifier(root, referencePath)
+        )
+      ) {
+        return true;
+      }
+    }
+  }
   return Object.entries(record).some(([keyword, child]) => (
     hasUntraceableSensitiveSchemaProperty(
       child,
+      root,
       seen,
-      hasComposedAncestor || COMPOSED_SCHEMA_APPLICATOR_KEYS.has(keyword)
+      hasComposedAncestor || COMPOSED_SCHEMA_APPLICATOR_KEYS.has(keyword),
+      childHasScopedIdentifier
     )
   ));
 };

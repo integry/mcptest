@@ -900,6 +900,37 @@ describe('versioned public report artifacts', () => {
       .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
   });
 
+  it.each(['$ref', '$dynamicRef'])(
+    'omits a low-entropy credential associated through %s',
+    (referenceKeyword) => {
+      const makeArtifact = (credential: string) => {
+        const report = publicReport();
+        report.toolSurfaceAnalysis = analyzeToolSurface([{
+          name: 'authenticate',
+          inputSchema: {
+            type: 'object',
+            [referenceKeyword]: '#/$defs/requiresToken',
+            additionalProperties: { const: credential },
+            $defs: {
+              requiresToken: { required: ['access_token'] },
+            },
+          },
+        }]);
+        return createPublicReport(report, FIXED_OPTIONS);
+      };
+      const artifact = makeArtifact('0000');
+      const alternate = makeArtifact('0001');
+      const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+      const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+      expect(definitions?.status).toBe('partial');
+      expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+      expect(output).not.toContain('0000');
+      expect(artifact.toolSurfaceAnalysis?.fingerprint)
+        .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+    }
+  );
+
   it('omits a schema with a low-entropy credential behind an absolute same-document reference', () => {
     const makeArtifact = (credential: string) => {
       const report = publicReport();
