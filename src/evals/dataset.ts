@@ -68,6 +68,9 @@ export const validateDataset = (value: unknown): {
     if (toolNames.has(tool.name)) errors.push(`Duplicate tool name "${tool.name}".`);
     else toolNames.add(tool.name);
     if (isRecord(tool.inputSchema)) {
+      if (tool.inputSchema.type !== 'object') {
+        errors.push(`tools[${index}].inputSchema must declare an object root with type "object".`);
+      }
       validateJsonSchemaDefinition(tool.inputSchema).forEach(error => {
         errors.push(`tools[${index}].inputSchema: ${error}`);
       });

@@ -245,6 +245,39 @@ export const calculateMetrics = (results: EvalTrialResult[]): EvalMetrics => {
   };
 };
 
+const redactProviderDerivedResult = (result: EvalTrialResult, credential: string): EvalTrialResult => {
+  const { observedTools, assertionResults, finalAnswer, error, ...trusted } = result;
+  return {
+    ...trusted,
+    observedTools: observedTools === null ? null : redactCredential(observedTools, credential),
+    assertionResults: assertionResults.map(item => ({
+      assertion: item.assertion,
+      passed: item.passed,
+      ...('actual' in item ? { actual: redactCredential(item.actual, credential) } : {}),
+      ...('message' in item ? { message: item.message } : {}),
+    })),
+    ...(finalAnswer === undefined ? {} : { finalAnswer: redactCredential(finalAnswer, credential) }),
+    ...(error === undefined ? {} : { error: redactCredential(error, credential) }),
+  };
+};
+
+const assertCredentialDoesNotOverlapTrustedInputs = (
+  dataset: ToolSelectionDatasetV1,
+  config: EvalRunConfig,
+  credential: string
+): void => {
+  if (!credential) return;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify({ dataset, configuration: config });
+  } catch {
+    throw new Error('The trusted evaluation inputs could not be safely checked for credentials and the run was blocked.');
+  }
+  if (serialized.includes(credential)) {
+    throw new Error('The session credential overlaps trusted evaluation dataset or configuration fields and the run was blocked.');
+  }
+};
+
 const randomId = (): string => globalThis.crypto?.randomUUID?.() || `eval-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export const runEvaluation = async (
@@ -268,6 +301,7 @@ export const runEvaluation = async (
   });
   const datasetValidation = validateDataset(dataset);
   if (!datasetValidation.valid) throw new Error(`Invalid evaluation dataset:\n${datasetValidation.errors.join('\n')}`);
+  assertCredentialDoesNotOverlapTrustedInputs(dataset, config, credential);
   const cases = getRunnableCases(dataset);
   if (!cases.length) throw new Error('The dataset has no manual or approved synthetic cases to run.');
   const total = cases.length * config.arms.length * config.trials;
@@ -276,14 +310,15 @@ export const runEvaluation = async (
     for (const arm of config.arms) {
       for (let trial = 1; trial <= config.trials; trial += 1) {
         try {
-          const observation = redactCredential(await provider.run({
+          const observation = await provider.run({
             case: evalCase,
             tools: arm === 'with-mcp' ? dataset.tools : [],
             arm,
             model: config.model,
             trial,
-          }), credential);
-          results.push(scoreTrial(evalCase, arm, trial, observation, dataset.tools, config));
+          });
+          const scored = scoreTrial(evalCase, arm, trial, observation, dataset.tools, config);
+          results.push(redactProviderDerivedResult(scored, credential));
         } catch (error) {
           results.push({
             caseId: evalCase.id,
@@ -333,6 +368,9 @@ const comparableMetrics = [
 ] as const;
 
 export const compareRuns = (baseline: EvalRunReportV1, candidate: EvalRunReportV1): EvalRunComparison => {
+  if (baseline.dataset.id !== candidate.dataset.id || baseline.dataset.version !== candidate.dataset.version) {
+    throw new Error('Evaluation reports from different dataset identities cannot be compared.');
+  }
   const metricDeltas: EvalRunComparison['metricDeltas'] = {};
   const regressions: string[] = [];
   comparableMetrics.forEach(metric => {
@@ -540,14 +578,30 @@ const isEvalRunReportV1 = (value: unknown): value is EvalRunReportV1 => {
 };
 
 export const redactReportCredential = (report: EvalRunReportV1, credential: string): EvalRunReportV1 => {
-  let redacted: EvalRunReportV1;
+  if (!isEvalRunReportV1(report)) {
+    throw new Error('The evaluation report could not be safely redacted and was blocked.');
+  }
+  let redactedResults: EvalTrialResult[];
+  let redactedConfusionPairs: ConfusionPair[];
   try {
-    redacted = redactCredential(report, credential);
+    redactedResults = report.results.map(result => redactProviderDerivedResult(result, credential));
+    redactedConfusionPairs = report.metrics.confusionPairs.map(pair => ({
+      ...pair,
+      observed: redactCredential(pair.observed, credential),
+    }));
   } catch {
     throw new Error('The evaluation report could not be safely redacted and was blocked.');
   }
+  const redacted: EvalRunReportV1 = {
+    ...report,
+    metrics: { ...report.metrics, confusionPairs: redactedConfusionPairs },
+    results: redactedResults,
+  };
   if (!isEvalRunReportV1(redacted)) {
     throw new Error('The evaluation report failed post-redaction validation and was blocked.');
+  }
+  if (!deepEqual(redacted.metrics, calculateMetrics(redacted.results))) {
+    throw new Error('The evaluation report metrics disagreed with its redacted results and the report was blocked.');
   }
   assertReportCredentialSafe(redacted, credential);
   return redacted;

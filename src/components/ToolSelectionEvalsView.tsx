@@ -111,6 +111,7 @@ const ToolSelectionEvalsView: React.FC = () => {
   };
 
   const applyDataset = () => {
+    if (running) return;
     try {
       const next = parseDataset(datasetText);
       if (next.id !== dataset.id) setReports([]);
@@ -122,6 +123,7 @@ const ToolSelectionEvalsView: React.FC = () => {
   };
 
   const updateDataset = (next: ToolSelectionDatasetV1) => {
+    if (running) return;
     if (next.id !== dataset.id) setReports([]);
     setDataset(next);
     setDatasetText(JSON.stringify(next, null, 2));
@@ -191,8 +193,8 @@ const ToolSelectionEvalsView: React.FC = () => {
               <p className="text-muted mb-0">Version {dataset.version} · {runnableCount} runnable cases · description {dataset.descriptionRevision} · schema {dataset.schemaRevision}</p>
             </div>
             <div className="d-flex gap-2">
-              <button className="btn btn-outline-secondary btn-sm" type="button" onClick={() => updateDataset(LOCAL_TOOL_SELECTION_FIXTURE)}>Reset local fixture</button>
-              <button className="btn btn-outline-primary btn-sm" type="button" onClick={generateSuggestions}>Suggest cases</button>
+              <button className="btn btn-outline-secondary btn-sm" type="button" onClick={() => updateDataset(LOCAL_TOOL_SELECTION_FIXTURE)} disabled={running}>Reset local fixture</button>
+              <button className="btn btn-outline-primary btn-sm" type="button" onClick={generateSuggestions} disabled={running}>Suggest cases</button>
             </div>
           </div>
           <label className="form-label" htmlFor="eval-dataset">Manual dataset JSON</label>
@@ -202,9 +204,10 @@ const ToolSelectionEvalsView: React.FC = () => {
             value={datasetText}
             onChange={event => setDatasetText(event.target.value)}
             spellCheck={false}
+            disabled={running}
           />
           {datasetError && <div className="alert alert-danger mt-3 mb-0" style={{ whiteSpace: 'pre-wrap' }}>{datasetError}</div>}
-          <button className="btn btn-primary mt-3" type="button" onClick={applyDataset}>Validate and use dataset</button>
+          <button className="btn btn-primary mt-3" type="button" onClick={applyDataset} disabled={running}>Validate and use dataset</button>
         </div>
       </section>
 
@@ -222,8 +225,8 @@ const ToolSelectionEvalsView: React.FC = () => {
                   </div>
                   {suggestion.reviewStatus === 'unreviewed' && (
                     <div className="d-flex gap-2">
-                      <button className="btn btn-success btn-sm" type="button" onClick={() => reviewSuggestion(suggestion.id, 'approved')}>Approve</button>
-                      <button className="btn btn-outline-secondary btn-sm" type="button" onClick={() => reviewSuggestion(suggestion.id, 'rejected')}>Reject</button>
+                      <button className="btn btn-success btn-sm" type="button" onClick={() => reviewSuggestion(suggestion.id, 'approved')} disabled={running}>Approve</button>
+                      <button className="btn btn-outline-secondary btn-sm" type="button" onClick={() => reviewSuggestion(suggestion.id, 'rejected')} disabled={running}>Reject</button>
                     </div>
                   )}
                 </div>

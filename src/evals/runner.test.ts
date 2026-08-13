@@ -252,6 +252,22 @@ describe('tool-selection evaluation runner', () => {
     expect(provider.run).not.toHaveBeenCalled();
   });
 
+  it.each(['array', 'string'])('rejects %s-root tool schemas before any provider request', async type => {
+    const provider: EvalProvider = { id: 'fixture', run: vi.fn() };
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      tools: LOCAL_TOOL_SELECTION_FIXTURE.tools.map((tool, index) => index === 0 ? {
+        ...tool,
+        inputSchema: { type },
+      } : tool),
+    };
+
+    await expect(runEvaluation(dataset, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+    }, provider)).rejects.toThrow('must declare an object root');
+    expect(provider.run).not.toHaveBeenCalled();
+  });
+
   it('stores credentials only in session storage and never includes them in reports', async () => {
     const secret = 'secret-session-key-123';
     setSessionCredential('openai', secret);
@@ -296,6 +312,8 @@ describe('tool-selection evaluation runner', () => {
     expect(reportContainsCredential(report, secret)).toBe(false);
     expect(report.results[0].observedTools).toEqual(['get_forecast', 'unexpected-[redacted]']);
     expect(report.results[0].assertionResults[0].actual).toBe('[redacted]');
+    expect(report.results[0].selectionPassed).toBe(true);
+    expect(report.metrics.selectionAccuracy).toBe(1);
     expect(JSON.stringify(report.results[0])).toContain('[redacted]');
   });
 
@@ -385,12 +403,38 @@ describe('tool-selection evaluation runner', () => {
   });
 
   it.each(['id', 'metrics', '1.0'])(
-    'blocks a fixture report when credential %s would corrupt its required shape',
+    'blocks a fixture report rather than rewriting trusted report content matching credential %s',
     async credential => {
       await expect(runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
         provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
       }, createFixtureProvider(), undefined, credential))
-        .rejects.toThrow('failed post-redaction validation');
+        .rejects.toThrow('blocked');
+    }
+  );
+
+  it.each([
+    ['tool name', 'get_forecast', LOCAL_TOOL_SELECTION_FIXTURE],
+    ['prompt', 'Will it rain in Lisbon tomorrow?', LOCAL_TOOL_SELECTION_FIXTURE],
+    ['assertion value', 'assertion-only-secret', {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [{
+        ...LOCAL_TOOL_SELECTION_FIXTURE.cases[0],
+        prompt: 'Check the weather.',
+        argumentAssertions: [{ path: 'city', operator: 'equals' as const, value: 'assertion-only-secret' }],
+      }],
+    }],
+    ['dataset metadata', 'metadata-only-secret', {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      name: 'metadata-only-secret',
+    }],
+  ] as Array<[string, string, ToolSelectionDatasetV1]>)(
+    'blocks credentials matching trusted %s without changing expectations or making a provider request',
+    async (_label, credential, dataset) => {
+      const provider: EvalProvider = { id: 'fixture', run: vi.fn() };
+      await expect(runEvaluation(dataset, {
+        provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+      }, provider, undefined, credential)).rejects.toThrow('overlaps trusted evaluation');
+      expect(provider.run).not.toHaveBeenCalled();
     }
   );
 
@@ -414,6 +458,19 @@ describe('tool-selection evaluation runner', () => {
 
     expect(() => redactReportCredential(collidingReport, credential))
       .toThrow('could not be safely redacted');
+  });
+
+  it('blocks reports whose metrics disagree with their post-redaction results', async () => {
+    const report = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+    }, createFixtureProvider());
+    const inconsistentReport = {
+      ...report,
+      metrics: { ...report.metrics, selectionAccuracy: 0 },
+    };
+
+    expect(() => redactReportCredential(inconsistentReport, 'unrelated-session-key'))
+      .toThrow('metrics disagreed');
   });
 
   it('keeps provider failures out of model accuracy, cost, and latency metrics', async () => {
@@ -459,5 +516,16 @@ describe('tool-selection evaluation runner', () => {
     const comparison = compareRuns(first, second);
     expect(comparison).toMatchObject({ descriptionRevisionChanged: true, schemaRevisionChanged: true });
     expect(comparison.metricDeltas.selectionAccuracy).toBe(0);
+  });
+
+  it('rejects comparisons between different dataset identities', async () => {
+    const config = { provider: 'fixture' as const, model: 'fixture-v1', arms: ['with-mcp' as const], trials: 1 };
+    const baseline = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, config, createFixtureProvider());
+    const candidate = await runEvaluation({
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      id: 'different-weather-eval',
+    }, config, createFixtureProvider());
+
+    expect(() => compareRuns(baseline, candidate)).toThrow('different dataset identities');
   });
 });

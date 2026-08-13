@@ -177,14 +177,14 @@ export const createOpenAiProvider = (apiKey: string, fetcher: FetchLike = fetch)
         followUpError = error instanceof Error ? error.message : String(error);
       }
     }
-    return redactCredential({
+    return {
       toolCalls: calls,
       finalAnswer,
       latencyMs: performance.now() - startedAt,
       inputTokens,
       outputTokens,
       error: followUpError,
-    }, apiKey);
+    };
   },
 });
 
@@ -232,14 +232,14 @@ export const createAnthropicProvider = (apiKey: string, fetcher: FetchLike = fet
         followUpError = error instanceof Error ? error.message : String(error);
       }
     }
-    return redactCredential({
+    return {
       toolCalls: calls,
       finalAnswer,
       latencyMs: performance.now() - startedAt,
       inputTokens,
       outputTokens,
       error: followUpError,
-    }, apiKey);
+    };
   },
 });
 

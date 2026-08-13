@@ -79,7 +79,7 @@ describe('browser model providers', () => {
     expect(body.messages[0].content).toContain('Do not claim that you called a tool');
   });
 
-  it('redacts a credential if a provider reflects it in an error or answer', async () => {
+  it('redacts provider errors immediately and preserves successful observations for scoring', async () => {
     const secret = 'reflected-secret';
     const errorFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       error: { message: `Invalid key ${secret}` },
@@ -97,10 +97,10 @@ describe('browser model providers', () => {
       arm: 'without-mcp',
       case: { ...request.case, toolReturnedData: undefined },
     });
-    expect(result.finalAnswer).toBe('Never show [redacted]');
+    expect(result.finalAnswer).toBe(`Never show ${secret}`);
   });
 
-  it('recursively redacts reflected credentials in provider tool calls', async () => {
+  it('preserves reflected tool calls until the runner has scored them', async () => {
     const secret = 'reflected-tool-secret';
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       choices: [{ message: {
@@ -119,12 +119,11 @@ describe('browser model providers', () => {
       ...request,
       case: { ...request.case, toolReturnedData: undefined },
     });
-    expect(JSON.stringify(result)).not.toContain(secret);
-    expect(result.toolCalls[0].name).toBe('tool-[redacted]');
-    expect(result.toolCalls[0].arguments).toEqual({ value: '[redacted]', nested: { '[redacted]': '[redacted]' } });
+    expect(result.toolCalls[0].name).toBe(`tool-${secret}`);
+    expect(result.toolCalls[0].arguments).toEqual({ value: secret, nested: { [secret]: secret } });
   });
 
-  it('rejects reflected property names that collide after credential redaction', async () => {
+  it('preserves reflected property names for the report boundary to sanitize', async () => {
     const secret = 'reflected-key';
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       choices: [{ message: {
@@ -142,10 +141,14 @@ describe('browser model providers', () => {
       usage: {},
     }), { status: 200 }));
 
-    await expect(createOpenAiProvider(secret, fetcher as typeof fetch).run({
+    const result = await createOpenAiProvider(secret, fetcher as typeof fetch).run({
       ...request,
       case: { ...request.case, toolReturnedData: undefined },
-    })).rejects.toThrow('duplicate property names');
+    });
+    expect(result.toolCalls[0].arguments).toEqual({
+      [secret]: 'credential key',
+      '[redacted]': 'existing key',
+    });
   });
 
   it('preserves first-turn tool calls when optional grounding follow-ups fail', async () => {

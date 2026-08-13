@@ -83,6 +83,24 @@ describe('versioned eval datasets', () => {
     expect(result.errors.join(' ')).toContain('Schema is invalid');
   });
 
+  it.each(['array', 'string', 'number', 'boolean']) (
+    'rejects %s-root tool schemas in runtime and published validation',
+    type => {
+      const dataset = {
+        ...LOCAL_TOOL_SELECTION_FIXTURE,
+        tools: LOCAL_TOOL_SELECTION_FIXTURE.tools.map((tool, index) => index === 0 ? {
+          ...tool,
+          inputSchema: { type },
+        } : tool),
+      };
+
+      const runtime = validateDataset(dataset);
+      expect(runtime.valid).toBe(false);
+      expect(runtime.errors.join(' ')).toContain('must declare an object root');
+      expect(validatePublicSchema(dataset)).toBe(false);
+    }
+  );
+
   it('rejects tools that are both acceptable and forbidden in one case', () => {
     const result = validateDataset({
       ...LOCAL_TOOL_SELECTION_FIXTURE,

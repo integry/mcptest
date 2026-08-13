@@ -63,6 +63,20 @@ describe('ToolSelectionEvalsView local workflow', () => {
     expect(button('Run 36 trials')).toBeTruthy();
   });
 
+  it('disables every dataset mutation control while a run is in flight', async () => {
+    renderView();
+    act(() => button('Suggest cases')?.click());
+
+    act(() => button('Run 27 trials')?.click());
+
+    expect(container.querySelector<HTMLTextAreaElement>('#eval-dataset')?.disabled).toBe(true);
+    ['Reset local fixture', 'Suggest cases', 'Validate and use dataset', 'Approve', 'Reject'].forEach(label => {
+      expect((button(label) as HTMLButtonElement | undefined)?.disabled).toBe(true);
+    });
+
+    await act(async () => {});
+  });
+
   it('preserves a baseline across revisions of the same dataset and resets it for a new identity', async () => {
     renderView();
     await act(async () => {
