@@ -86,18 +86,27 @@ const redactString = (value: string, secret: string): string => secret
   ? value.split(secret).join('[redacted]')
   : value;
 
-export const redactCredential = <T>(value: T, secret: string): T => {
-  if (!secret) return value;
+const redactCredentialValue = <T>(value: T, secret: string, ancestors: WeakSet<object>): T => {
   if (typeof value === 'string') return redactString(value, secret) as T;
-  if (Array.isArray(value)) return value.map(item => redactCredential(item, secret)) as T;
-  if (value && typeof value === 'object') {
+  if (!value || typeof value !== 'object') return value;
+  if (ancestors.has(value)) throw new Error('Credential redaction does not accept cyclic provider data.');
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map(item => redactCredentialValue(item, secret, ancestors)) as T;
+    }
     return Object.fromEntries(Object.entries(value).map(([key, child]) => [
       redactString(key, secret),
-      redactCredential(child, secret),
+      redactCredentialValue(child, secret, ancestors),
     ])) as T;
+  } finally {
+    ancestors.delete(value);
   }
-  return value;
 };
+
+export const redactCredential = <T>(value: T, secret: string): T => (
+  secret ? redactCredentialValue(value, secret, new WeakSet()) : value
+);
 
 const ensureResponse = async (response: Response, secret = ''): Promise<unknown> => {
   const body = await response.json().catch(() => undefined);

@@ -2,13 +2,13 @@ import React, { useMemo, useState } from 'react';
 import {
   LOCAL_TOOL_SELECTION_FIXTURE,
   LOCAL_TOOL_SELECTION_FIXTURE_JSON,
-  assertReportCredentialSafe,
   calculateMetrics,
   compareRuns,
   createProvider,
   getRunnableCases,
   getSessionCredential,
   parseDataset,
+  redactReportCredential,
   runEvaluation,
   setSessionCredential,
   suggestCases,
@@ -36,8 +36,8 @@ const formatCost = (value: number | null): string => value === null ? 'Unavailab
 const formatMilliseconds = (value: number | null, digits = 0): string => value === null ? 'Unavailable' : `${value.toFixed(digits)} ms`;
 
 const downloadJson = (report: EvalRunReportV1, filename: string, credential: string) => {
-  assertReportCredentialSafe(report, credential);
-  const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
+  const safeReport = redactReportCredential(report, credential);
+  const url = URL.createObjectURL(new Blob([JSON.stringify(safeReport, null, 2)], { type: 'application/json' }));
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
@@ -159,8 +159,8 @@ const ToolSelectionEvalsView: React.FC = () => {
         inputCostPerMillionTokens: inputPrice,
         outputCostPerMillionTokens: outputPrice,
       }, createProvider(provider, credential), (completed, total) => setProgress({ completed, total }), credential);
-      assertReportCredentialSafe(report, credential);
-      setReports(current => [...current, report]);
+      const safeReport = redactReportCredential(report, credential);
+      setReports(current => [...current, safeReport]);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : String(error));
     } finally {

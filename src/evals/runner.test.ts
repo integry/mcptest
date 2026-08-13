@@ -1,8 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LOCAL_TOOL_SELECTION_FIXTURE } from './fixtures';
-import { createFixtureProvider, getSessionCredential, setSessionCredential } from './providers';
-import { assertReportCredentialSafe, calculateMetrics, compareRuns, reportContainsCredential, runEvaluation } from './runner';
-import type { EvalProvider, ToolSelectionDatasetV1 } from './types';
+import {
+  createAnthropicProvider,
+  createFixtureProvider,
+  createOpenAiProvider,
+  getSessionCredential,
+  setSessionCredential,
+} from './providers';
+import {
+  assertReportCredentialSafe,
+  calculateMetrics,
+  compareRuns,
+  redactReportCredential,
+  reportContainsCredential,
+  runEvaluation,
+} from './runner';
+import type { EvalProvider, EvalProviderId, ToolSelectionDatasetV1 } from './types';
 
 describe('tool-selection evaluation runner', () => {
   beforeEach(() => sessionStorage.clear());
@@ -116,6 +129,91 @@ describe('tool-selection evaluation runner', () => {
     expect(report.results[0].observedTools).toEqual(['get_forecast', 'unexpected-[redacted]']);
     expect(report.results[0].assertionResults[0].actual).toBe('[redacted]');
     expect(JSON.stringify(report.results[0])).toContain('[redacted]');
+  });
+
+  it.each([
+    {
+      providerId: 'openai' as const,
+      createProvider: (secret: string, fetcher: typeof fetch) => createOpenAiProvider(secret, fetcher),
+      responseBody: (secret: string) => ({
+        choices: [{ message: {
+          role: 'assistant',
+          content: `Reflected answer ${secret}`,
+          tool_calls: [
+            {
+              id: 'call-1',
+              type: 'function',
+              function: {
+                name: 'get_forecast',
+                arguments: JSON.stringify({ city: secret, days: 1, nested: { [secret]: secret } }),
+              },
+            },
+            {
+              id: 'call-2',
+              type: 'function',
+              function: { name: `unexpected-${secret}`, arguments: JSON.stringify({ value: secret }) },
+            },
+          ],
+        } }],
+        usage: { prompt_tokens: 9, completion_tokens: 4 },
+      }),
+    },
+    {
+      providerId: 'anthropic' as const,
+      createProvider: (secret: string, fetcher: typeof fetch) => createAnthropicProvider(secret, fetcher),
+      responseBody: (secret: string) => ({
+        content: [
+          { type: 'text', text: `Reflected answer ${secret}` },
+          {
+            type: 'tool_use',
+            id: 'tool-1',
+            name: 'get_forecast',
+            input: { city: secret, days: 1, nested: { [secret]: secret } },
+          },
+          { type: 'tool_use', id: 'tool-2', name: `unexpected-${secret}`, input: { value: secret } },
+        ],
+        usage: { input_tokens: 9, output_tokens: 4 },
+      }),
+    },
+  ])('removes credentials reflected by mocked $providerId responses from the entire report', async ({
+    providerId,
+    createProvider,
+    responseBody,
+  }) => {
+    const secret = `${providerId}-reflected-session-key`;
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody(secret)), { status: 200 }));
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [{
+        ...LOCAL_TOOL_SELECTION_FIXTURE.cases[0],
+        toolReturnedData: undefined,
+        expectedFigures: undefined,
+      }],
+    };
+    const report = await runEvaluation(dataset, {
+      provider: providerId as EvalProviderId,
+      model: 'mock-provider-model',
+      arms: ['with-mcp'],
+      trials: 1,
+    }, createProvider(secret, fetcher as typeof fetch), undefined, secret);
+
+    const serialized = JSON.stringify(report);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).toContain('[redacted]');
+    expect(report.results[0].observedTools).toEqual(['get_forecast', 'unexpected-[redacted]']);
+    expect(report.results[0].assertionResults[0].actual).toBe('[redacted]');
+    expect(report.results[0].finalAnswer).toBe('Reflected answer [redacted]');
+  });
+
+  it('fails closed when a report cannot be safely redacted or serialized', async () => {
+    const report = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+    }, createFixtureProvider());
+    const cyclicReport = { ...report };
+    (cyclicReport as unknown as Record<string, unknown>).cycle = cyclicReport;
+
+    expect(() => redactReportCredential(cyclicReport, 'session-key'))
+      .toThrow('could not be safely redacted');
   });
 
   it('keeps provider failures out of model accuracy, cost, and latency metrics', async () => {

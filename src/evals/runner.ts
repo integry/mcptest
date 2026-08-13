@@ -260,7 +260,7 @@ export const runEvaluation = async (
       }
     }
   }
-  const report = redactCredential<EvalRunReportV1>({
+  return redactReportCredential({
     version: TOOL_SELECTION_REPORT_VERSION,
     id: randomId(),
     createdAt: new Date().toISOString(),
@@ -276,8 +276,6 @@ export const runEvaluation = async (
     metrics: calculateMetrics(results),
     results,
   }, credential);
-  assertReportCredentialSafe(report, credential);
-  return report;
 };
 
 const comparableMetrics = [
@@ -315,9 +313,26 @@ export const reportContainsCredential = (report: EvalRunReportV1, credential: st
 );
 
 export const assertReportCredentialSafe = (report: EvalRunReportV1, credential: string): void => {
-  if (reportContainsCredential(report, credential)) {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(report);
+  } catch {
+    throw new Error('The evaluation report could not be safely serialized and was blocked.');
+  }
+  if (credential && serialized.includes(credential)) {
     throw new Error('The evaluation report contained the session credential and was blocked.');
   }
+};
+
+export const redactReportCredential = (report: EvalRunReportV1, credential: string): EvalRunReportV1 => {
+  let redacted: EvalRunReportV1;
+  try {
+    redacted = redactCredential(report, credential);
+  } catch {
+    throw new Error('The evaluation report could not be safely redacted and was blocked.');
+  }
+  assertReportCredentialSafe(redacted, credential);
+  return redacted;
 };
 
 export type { ToolCallObservation };
