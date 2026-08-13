@@ -150,6 +150,14 @@ export interface EvaluationAuthorizationContext {
   };
 }
 
+export interface EvaluationOptions {
+  /**
+   * Browser runs include the browser-accessibility section. Headless runs use
+   * the same evaluator but omit that browser-only observation from scoring.
+   */
+  runtime?: 'browser' | 'headless';
+}
+
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
   report.outcome === 'authorization-required' || Boolean(report.sections.auth)
 );
@@ -1151,9 +1159,14 @@ export async function evaluateServer(
   oauthAccessToken?: string | null,
   targetHeaders?: HeadersInit,
   authorizationContext?: EvaluationAuthorizationContext,
-  hostedGrant?: string | null
+  hostedGrantOrOptions?: string | null | EvaluationOptions
 ): Promise<EvaluationReport> {
   const serverUrl = normalizeServerUrl(inputUrl);
+  const hostedGrant = typeof hostedGrantOrOptions === 'string' ? hostedGrantOrOptions : null;
+  const options = typeof hostedGrantOrOptions === 'object' && hostedGrantOrOptions !== null
+    ? hostedGrantOrOptions
+    : {};
+  const runtime = options.runtime ?? 'browser';
   // An explicitly entered bearer or API-key credential is the selected target
   // authentication mode. Never combine it with, or replace it by, cached OAuth.
   const oauthToken = hasExplicitTargetCredential(targetHeaders)
@@ -1349,6 +1362,7 @@ export async function evaluateServer(
             protocolVersion: connection.protocolVersion,
             endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
             route: connection.usedProxy ? 'authenticated proxy' : 'direct',
+            evaluationRuntime: runtime,
             ...evaluationAuthorizationEvidence(oauthToken, targetHeaders, authorizationContext),
           },
         },
@@ -1444,12 +1458,16 @@ export async function evaluateServer(
       onProgress('OAuth security metadata is unavailable; excluding it from scoring.');
     }
 
-    onProgress('Confirming direct-browser MCP accessibility at the negotiated endpoint...');
-    report.sections.cors = evaluateBrowserAccessibility(
-      connection,
-      Boolean(oauthToken),
-      targetHeaders
-    );
+    if (runtime === 'browser') {
+      onProgress('Confirming direct-browser MCP accessibility at the negotiated endpoint...');
+      report.sections.cors = evaluateBrowserAccessibility(
+        connection,
+        Boolean(oauthToken),
+        targetHeaders
+      );
+    } else {
+      onProgress('Browser CORS checks are not applicable in the headless runtime.');
+    }
 
     report.sections.performance = performanceSection(durationMs);
     report.finalScore = Object.entries(report.sections)

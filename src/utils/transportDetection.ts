@@ -666,21 +666,45 @@ export async function attemptParallelConnections(
     clients.push(client);
     const endpoint = new URL(candidate.url);
     let authenticationChallenge: ObservedAuthenticationChallenge | undefined;
+    let rejectAuthenticationChallenge: (error: ProxiedAuthenticationError) => void = () => {};
+    const authenticationChallengeFailure = new Promise<never>((_resolve, reject) => {
+      rejectAuthenticationChallenge = reject;
+    });
     const transportOpts = transportOptionsFor(candidate, observedRequests, (challenge) => {
       authenticationChallenge = challenge;
+      rejectAuthenticationChallenge(new ProxiedAuthenticationError(
+        challenge.status,
+        challenge.source,
+        new Error(`MCP transport received HTTP ${challenge.status}`),
+        challenge.method && challenge.requestUrl
+          ? {
+              method: challenge.method,
+              url: challenge.requestUrl,
+              startedAt: challenge.startedAt,
+              durationMs: challenge.durationMs,
+            }
+          : undefined,
+        challenge.responseHeaders,
+        challenge.resourceMetadataUrl,
+        challenge.scope
+      ));
     });
     const transport = candidate.transportType === 'legacy-sse'
       ? new CorsAwareSSETransport(endpoint, transportOpts)
       : new CorsAwareStreamableHTTPTransport(endpoint, transportOpts);
 
     try {
-      await client.connect(
-        transport,
-        protocolEraHint === 'stateful' || protocolEraHint === 'legacy'
-          ? { prior: { kind: 'legacy' } }
-          : undefined
-      );
+      await Promise.race([
+        client.connect(
+          transport,
+          protocolEraHint === 'stateful' || protocolEraHint === 'legacy'
+            ? { prior: { kind: 'legacy' } }
+            : undefined
+        ),
+        authenticationChallengeFailure,
+      ]);
     } catch (error) {
+      if (error instanceof ProxiedAuthenticationError) throw error;
       if (authenticationChallenge) {
         throw new ProxiedAuthenticationError(
           authenticationChallenge.status,

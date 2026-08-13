@@ -150,6 +150,35 @@ describe('dual-era server evaluation', () => {
     expect(client.close).toHaveBeenCalledOnce();
   });
 
+  it('uses the same evaluator headlessly without inventing a browser CORS result', async () => {
+    const client = createClient();
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://headless.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+    });
+
+    const report = await evaluateServer(
+      'https://headless.example/mcp',
+      '',
+      vi.fn(),
+      null,
+      undefined,
+      undefined,
+      { runtime: 'headless' }
+    );
+
+    expect(report.outcome).toBe('scored');
+    expect(report.sections.cors).toBeUndefined();
+    expect(getEvaluationMaxScore(report)).toBe(55);
+    expect(report.sections.protocol.details[0].metadata).toMatchObject({
+      evaluationRuntime: 'headless',
+      route: 'direct',
+    });
+  });
+
   it.each([
     ['Authorization', 'Bearer report-bearer-token', 'bearer'],
     ['x-api-key', 'report-api-key', 'api-key'],
