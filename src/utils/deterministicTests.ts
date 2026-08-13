@@ -40,20 +40,21 @@ export interface DeterministicToolClient {
 
 const WRITE_ACTIONS = new Set([
   'add', 'append', 'approve', 'archive', 'assign', 'ban', 'cancel', 'charge', 'commit', 'configure', 'create',
-  'clear', 'deactivate', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
+  'clear', 'close', 'deactivate', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
   'grant', 'import', 'insert', 'install', 'invite', 'issue', 'merge', 'modify', 'move', 'overwrite', 'patch', 'pay',
-  'post', 'provision', 'publish', 'purchase', 'purge', 'remove', 'rename', 'replace', 'reset',
+  'post', 'provision', 'publish', 'purchase', 'purge', 'reboot', 'remove', 'rename', 'replace', 'reset', 'restart',
   'restore', 'refund', 'revoke', 'run', 'save', 'schedule',
-  'send', 'set', 'start', 'stop', 'submit', 'sync', 'terminate', 'transfer', 'truncate',
+  'send', 'set', 'start', 'stop', 'submit', 'suspend', 'sync', 'terminate', 'transfer', 'truncate',
   'uninstall', 'update', 'upload', 'upsert', 'wipe', 'write',
 ]);
 const DESTRUCTIVE_ACTIONS = new Set([
-  'archive', 'ban', 'cancel', 'clear', 'deactivate', 'delete', 'destroy', 'disable', 'drop', 'erase', 'kill',
-  'overwrite', 'purge', 'remove', 'reset', 'revoke', 'shutdown', 'terminate', 'transfer', 'truncate', 'uninstall',
-  'wipe',
+  'archive', 'ban', 'cancel', 'clear', 'close', 'deactivate', 'delete', 'destroy', 'disable', 'drop', 'erase', 'kill',
+  'overwrite', 'purge', 'reboot', 'remove', 'reset', 'restart', 'revoke', 'shutdown', 'suspend', 'terminate',
+  'transfer', 'truncate', 'uninstall', 'wipe',
 ]);
 const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|private[_ -]?key|signing[_ -]?key|password|passwd|secret|client[_ -]?secret)';
 const SENSITIVE_TEXT_NAME_PATTERN = `(?:[a-z0-9]+[_-])*${SENSITIVE_NAME_PATTERN}`;
+const CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN = '[A-Za-z][A-Za-z0-9]*(?:Authorization|ProxyAuthorization|Cookie|SetCookie|Token|AccessToken|RefreshToken|ClientToken|ApiKey|XApiKey|PrivateKey|SigningKey|Password|Passwd|Secret|ClientSecret)';
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
 const ERROR_CODE_KEYS = ['code', 'errorCode', 'error_code', 'status', 'statusCode'];
@@ -517,7 +518,7 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
         // Continue with text-oriented credential redaction for non-JSON content.
       }
     }
-    return value
+    const redacted = value
       .replace(/-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?-----END \1-----/gi, '[REDACTED]')
       .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s\/?#@]+@/gi, '$1[REDACTED]@')
       .replace(new RegExp(`^([ \\t]*${SENSITIVE_TEXT_NAME_PATTERN}[ \\t]*:[ \\t]*)[^\\r\\n]*`, 'gim'), '$1[REDACTED]')
@@ -528,6 +529,13 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
       .replace(new RegExp(`("${SENSITIVE_TEXT_NAME_PATTERN}"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi'), '$1"[REDACTED]"')
       .replace(new RegExp(`('${SENSITIVE_TEXT_NAME_PATTERN}'\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'gi'), "$1'[REDACTED]'")
       .replace(new RegExp(`(\\b${SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?!\\[REDACTED\\])[^\\s,;}]+`, 'gi'), '$1[REDACTED]');
+    return redacted
+      .replace(new RegExp(`^([ \\t]*${CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN}[ \\t]*:[ \\t]*)[^\\r\\n]*`, 'gm'), '$1[REDACTED]')
+      .replace(new RegExp(`(\\b${CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'g'), '$1[REDACTED]')
+      .replace(new RegExp(`([?&#]${CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN}=)[^&#\\s]+`, 'g'), '$1[REDACTED]')
+      .replace(new RegExp(`("${CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN}"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'g'), '$1"[REDACTED]"')
+      .replace(new RegExp(`('${CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN}'\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'g'), "$1'[REDACTED]'")
+      .replace(new RegExp(`(\\b${CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?!\\[REDACTED\\])[^\\s,;}]+`, 'g'), '$1[REDACTED]');
   }
   if (value === null || typeof value !== 'object') return value;
   if (seen.has(value)) return '[Circular]';

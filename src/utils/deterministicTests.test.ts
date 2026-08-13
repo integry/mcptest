@@ -360,6 +360,27 @@ describe('deterministic runner safety and evidence', () => {
     ))).toBe(true);
   });
 
+  it.each(['close_account', 'suspendUser', 'reboot-server', 'restartService'])(
+    'blocks %s despite contradictory read-only metadata',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan(
+        [{ name: toolName, annotations: { readOnlyHint: true } }],
+        'https://example.test',
+        '2026-08-11T00:00:00.000Z',
+      );
+
+      const results = await runDeterministicPlan({ callTool }, plan);
+
+      expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive: true });
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results).toHaveLength(2);
+      expect(results.every(result => (
+        result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+      ))).toBe(true);
+    },
+  );
+
   it('blocks upsert tools despite contradictory read-only metadata', async () => {
     const callTool = vi.fn().mockResolvedValue({ content: [] });
     const plan = generateDeterministicTestPlan(
@@ -502,6 +523,40 @@ describe('deterministic runner safety and evidence', () => {
     expect(result.response).toMatchObject({
       content: [{
         text: 'https://example.test/callback#refresh_token=[REDACTED]&client_token=[REDACTED]&keep=response-value',
+      }],
+    });
+  });
+
+  it('redacts camelCase credential names in request and response text evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{
+            type: 'text',
+            text: 'githubToken=response-secret https://example.test/?stripeSecret=response-url-secret&keep=response-value',
+          }],
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          content: [{
+            type: 'text',
+            text: 'stripeSecret=request-secret https://example.test/?githubToken=request-url-secret&keep=request-value',
+          }],
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        content: [{
+          text: 'stripeSecret=[REDACTED] https://example.test/?githubToken=[REDACTED]&keep=request-value',
+        }],
+      },
+    });
+    expect(result.response).toMatchObject({
+      content: [{
+        text: 'githubToken=[REDACTED] https://example.test/?stripeSecret=[REDACTED]&keep=response-value',
       }],
     });
   });
