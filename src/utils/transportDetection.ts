@@ -61,6 +61,10 @@ export interface ObservedTransportRequest {
   startedAt?: string;
   durationMs?: number;
   status?: number;
+  /** Distinguishes a proxy-generated response from one forwarded by the MCP target. */
+  responseSource?: ProxyAuthenticationSource;
+  /** Unmodified standard retry guidance; contains no request credentials. */
+  retryAfter?: string;
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -408,6 +412,13 @@ const observeAuthenticationResponses = (
   try {
     response = await fetch(input, init);
     attemptedRequest.status = response.status;
+    attemptedRequest.responseSource = !usesProxy
+      ? 'target'
+      : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
+        ? 'target'
+        : 'proxy';
+    const retryAfter = response.headers.get('Retry-After');
+    if (retryAfter) attemptedRequest.retryAfter = retryAfter;
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
   } catch (error) {

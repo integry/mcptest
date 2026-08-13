@@ -511,6 +511,11 @@ describe('transport candidate generation', () => {
     };
     await mockTransport.fetch?.(connection.url);
 
+    expect(connection.observedRequests?.[connection.observedRequests.length - 1]).toMatchObject({
+      status: 401,
+      responseSource: 'target',
+    });
+
     expect(connection.takeAuthenticationChallenge()).toMatchObject({
       status: 401,
       source: 'target',
@@ -518,5 +523,34 @@ describe('transport candidate generation', () => {
       requestUrl: 'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
     });
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
+  });
+
+  it('retains proxy provenance for a non-authentication proxy response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Bad gateway', {
+      status: 502,
+      headers: {
+        'X-MCP-Proxy-Response-Source': 'proxy',
+        'Retry-After': '12',
+      },
+    })));
+
+    const connection = await attemptParallelConnections(
+      'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
+      undefined,
+      'firebase-jwt',
+      undefined,
+      true
+    );
+    const mockTransport = connection.transport as typeof connection.transport & {
+      fetch?: typeof fetch;
+    };
+    await mockTransport.fetch?.(connection.url);
+
+    expect(connection.observedRequests?.[connection.observedRequests.length - 1]).toMatchObject({
+      status: 502,
+      outcome: 'failed',
+      responseSource: 'proxy',
+      retryAfter: '12',
+    });
   });
 });

@@ -12,6 +12,7 @@
 - **Server catalog:** ships a validated catalog of public remote servers, authentication and protocol badges, and indexable server report pages included in the sitemap.
 - **Evaluation:** creates shareable server reports and reusable tool-call dashboards.
 - **Headless release gate:** evaluates remote endpoints in CI and emits the same versioned JSON and Markdown report semantics as the web app.
+- **Scheduled monitoring:** runs bounded headless probes from cron or a long-running host, persists redacted report history, distinguishes target/proxy/authorization/checker failures, and alerts on protocol, transport, tool-schema, latency, and high-severity drift. See [Scheduled MCP monitoring](docs/scheduled-monitoring.md).
 
 The exact URL entered by a user or supplied by the catalog is tried first. Conventional `/mcp` and `/sse` paths are compatibility fallbacks; they do not replace an explicit custom endpoint.
 

@@ -10,6 +10,7 @@
     "dev": "vite",
     "test": "vitest run",
     "mcptest": "vite-node scripts/mcptest.ts",
+    "monitor": "vite-node scripts/monitor.ts",
     "typecheck": "tsc --noEmit",
     "validate-catalog": "node scripts/validate-catalog.js",
     "build:workers": "npm --prefix cors-proxy-worker run build && npm --prefix cloudflare-worker run build",
