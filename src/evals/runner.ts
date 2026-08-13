@@ -1,0 +1,307 @@
+import { getRunnableCases } from './dataset';
+import { validateJsonSchema } from './schema';
+import {
+  TOOL_SELECTION_REPORT_VERSION,
+  type ArgumentAssertion,
+  type AssertionResult,
+  type ConfusionPair,
+  type DistributionSummary,
+  type EvalMetrics,
+  type EvalProvider,
+  type EvalRunComparison,
+  type EvalRunConfig,
+  type EvalRunReportV1,
+  type EvalTrialResult,
+  type ToolCallObservation,
+  type ToolSelectionCase,
+  type ToolSelectionDatasetV1,
+} from './types';
+
+const percentile = (sorted: number[], fraction: number): number => {
+  if (!sorted.length) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
+};
+
+export const summarizeDistribution = (values: number[]): DistributionSummary => {
+  if (!values.length) return { mean: 0, min: 0, max: 0, p50: 0, p95: 0, spread: 0 };
+  const sorted = [...values].sort((a, b) => a - b);
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return {
+    mean,
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    p50: percentile(sorted, 0.5),
+    p95: percentile(sorted, 0.95),
+    spread: sorted[sorted.length - 1] - sorted[0],
+  };
+};
+
+const rate = (values: Array<boolean | null>): number | null => {
+  const applicable = values.filter((value): value is boolean => value !== null);
+  return applicable.length ? applicable.filter(Boolean).length / applicable.length : null;
+};
+
+const readPath = (value: unknown, path: string): { present: boolean; value?: unknown } => {
+  const parts = path.replace(/^\$\.?/, '').split('.').filter(Boolean);
+  let cursor: unknown = value;
+  for (const part of parts) {
+    if (!cursor || typeof cursor !== 'object' || !(part in cursor)) return { present: false };
+    cursor = (cursor as Record<string, unknown>)[part];
+  }
+  return { present: true, value: cursor };
+};
+
+const deepEqual = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) return true;
+  try { return JSON.stringify(left) === JSON.stringify(right); } catch { return false; }
+};
+
+export const evaluateAssertion = (argumentsValue: unknown, assertion: ArgumentAssertion): AssertionResult => {
+  const actual = readPath(argumentsValue, assertion.path);
+  let passed = false;
+  switch (assertion.operator) {
+    case 'present': passed = actual.present; break;
+    case 'absent': passed = !actual.present; break;
+    case 'equals': passed = actual.present && deepEqual(actual.value, assertion.value); break;
+    case 'notEquals': passed = actual.present && !deepEqual(actual.value, assertion.value); break;
+    case 'type':
+      passed = actual.present && (
+        assertion.value === 'array' ? Array.isArray(actual.value)
+          : assertion.value === 'null' ? actual.value === null
+            : assertion.value === 'integer' ? typeof actual.value === 'number' && Number.isInteger(actual.value)
+              : typeof actual.value === assertion.value
+      );
+      break;
+    case 'matches':
+      try { passed = actual.present && typeof actual.value === 'string' && new RegExp(String(assertion.value)).test(actual.value); } catch { passed = false; }
+      break;
+    case 'includes':
+      passed = actual.present && (
+        Array.isArray(actual.value) ? actual.value.some(item => deepEqual(item, assertion.value))
+          : typeof actual.value === 'string' && actual.value.includes(String(assertion.value))
+      );
+      break;
+  }
+  return {
+    assertion,
+    passed,
+    ...(actual.present ? { actual: actual.value } : {}),
+    ...(passed ? {} : { message: actual.present ? 'Observed value did not satisfy the assertion.' : 'Argument path was not present.' }),
+  };
+};
+
+const figuresFrom = (value: unknown): string[] => {
+  if (typeof value === 'number') return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(figuresFrom);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(figuresFrom);
+  return [];
+};
+
+const figureAppears = (answer: string, figure: string | number): boolean => {
+  const escaped = String(figure).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^0-9.])${escaped}([^0-9.]|$)`).test(answer);
+};
+
+const scoreTrial = (
+  evalCase: ToolSelectionCase,
+  arm: EvalTrialResult['arm'],
+  trial: number,
+  observation: Awaited<ReturnType<EvalProvider['run']>>,
+  tools: ToolSelectionDatasetV1['tools'],
+  config: EvalRunConfig
+): EvalTrialResult => {
+  const expected = evalCase.acceptableTools || [];
+  const forbidden = evalCase.forbiddenTools || [];
+  const observed = observation.toolCalls.map(call => call.name);
+  const callsExpected = observation.toolCalls.filter(call => expected.includes(call.name));
+  const forbiddenToolCalled = observed.some(name => forbidden.includes(name));
+  const isToolArm = arm === 'with-mcp';
+  const expectedNoTool = evalCase.expectedNoTool === true;
+  const selectionPassed = isToolArm && !expectedNoTool
+    ? callsExpected.length > 0 && !forbiddenToolCalled
+    : null;
+  const noToolPassed = expectedNoTool ? observed.length === 0 : null;
+  const schemaChecks = observation.toolCalls.map(call => {
+    const tool = tools.find(candidate => candidate.name === call.name);
+    return Boolean(tool) && validateJsonSchema(call.arguments, tool!.inputSchema).length === 0;
+  });
+  const argumentSchemaValid = observation.toolCalls.length ? schemaChecks.every(Boolean) : null;
+  const assertions = isToolArm ? (evalCase.argumentAssertions || []) : [];
+  const assertionResults = assertions.map(assertion => {
+    const matchingCall = observation.toolCalls.find(call => !assertion.tool || assertion.tool === call.name);
+    return matchingCall
+      ? evaluateAssertion(matchingCall.arguments, assertion)
+      : { assertion, passed: false, message: 'The asserted tool was not called.' };
+  });
+  const figures = evalCase.expectedFigures?.length
+    ? evalCase.expectedFigures
+    : figuresFrom(evalCase.toolReturnedData ?? callsExpected[0]?.result);
+  const figuresGrounded = figures.length && observation.finalAnswer
+    ? figures.every(figure => figureAppears(observation.finalAnswer!, figure))
+    : null;
+  const inputTokens = observation.inputTokens || 0;
+  const outputTokens = observation.outputTokens || 0;
+  const approximateCost = (inputTokens * (config.inputCostPerMillionTokens || 0)
+    + outputTokens * (config.outputCostPerMillionTokens || 0)) / 1_000_000;
+  return {
+    caseId: evalCase.id,
+    prompt: evalCase.prompt,
+    tags: evalCase.tags || [],
+    arm,
+    trial,
+    expectedTools: expected,
+    expectedNoTool,
+    observedTools: observed,
+    forbiddenToolCalled,
+    selectionPassed,
+    noToolPassed,
+    argumentSchemaValid,
+    assertionResults,
+    expectedToolCalled: callsExpected.length > 0,
+    figuresGrounded,
+    finalAnswer: observation.finalAnswer,
+    latencyMs: observation.latencyMs,
+    inputTokens: observation.inputTokens,
+    outputTokens: observation.outputTokens,
+    approximateCost,
+  };
+};
+
+const confusionPairs = (results: EvalTrialResult[]): ConfusionPair[] => {
+  const counts = new Map<string, number>();
+  results.filter(result => result.arm === 'with-mcp' && result.expectedTools.length > 0).forEach(result => {
+    const expected = result.expectedTools.join(' | ');
+    const observed = result.observedTools.length ? result.observedTools.join(' + ') : '(no tool)';
+    if (result.selectionPassed) return;
+    const key = `${expected}\u0000${observed}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return [...counts.entries()].map(([key, count]) => {
+    const [expected, observed] = key.split('\u0000');
+    return { expected, observed, count };
+  }).sort((a, b) => b.count - a.count || a.expected.localeCompare(b.expected));
+};
+
+export const calculateMetrics = (results: EvalTrialResult[]): EvalMetrics => {
+  const assertions = results.flatMap(result => result.assertionResults.map(item => item.passed));
+  return {
+    selectionAccuracy: rate(results.map(result => result.selectionPassed)),
+    noToolAccuracy: rate(results.map(result => result.noToolPassed)),
+    argumentSchemaValidity: rate(results.map(result => result.argumentSchemaValid)),
+    assertionAccuracy: assertions.length ? assertions.filter(Boolean).length / assertions.length : null,
+    expectedToolCallRate: rate(results.map(result => (
+      result.arm === 'with-mcp' && result.expectedTools.length > 0 ? result.expectedToolCalled : null
+    ))),
+    figureGroundingAccuracy: rate(results.map(result => result.figuresGrounded)),
+    latencyMs: summarizeDistribution(results.map(result => result.latencyMs)),
+    approximateTokenCost: results.reduce((sum, result) => sum + (result.approximateCost || 0), 0),
+    inputTokens: results.reduce((sum, result) => sum + (result.inputTokens || 0), 0),
+    outputTokens: results.reduce((sum, result) => sum + (result.outputTokens || 0), 0),
+    confusionPairs: confusionPairs(results),
+  };
+};
+
+const randomId = (): string => globalThis.crypto?.randomUUID?.() || `eval-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+export const runEvaluation = async (
+  dataset: ToolSelectionDatasetV1,
+  config: EvalRunConfig,
+  provider: EvalProvider,
+  onProgress?: (completed: number, total: number) => void
+): Promise<EvalRunReportV1> => {
+  if (provider.id !== config.provider) throw new Error('The selected provider does not match the run configuration.');
+  if (!Number.isInteger(config.trials) || config.trials < 1 || config.trials > 20) throw new Error('Trials must be an integer from 1 to 20.');
+  if (!config.arms.length) throw new Error('Select at least one comparison arm.');
+  const cases = getRunnableCases(dataset);
+  if (!cases.length) throw new Error('The dataset has no manual or approved synthetic cases to run.');
+  const total = cases.length * config.arms.length * config.trials;
+  const results: EvalTrialResult[] = [];
+  for (const evalCase of cases) {
+    for (const arm of config.arms) {
+      for (let trial = 1; trial <= config.trials; trial += 1) {
+        try {
+          const observation = await provider.run({
+            case: evalCase,
+            tools: arm === 'with-mcp' ? dataset.tools : [],
+            arm,
+            model: config.model,
+            trial,
+          });
+          results.push(scoreTrial(evalCase, arm, trial, observation, dataset.tools, config));
+        } catch (error) {
+          results.push({
+            caseId: evalCase.id,
+            prompt: evalCase.prompt,
+            tags: evalCase.tags || [],
+            arm,
+            trial,
+            expectedTools: evalCase.acceptableTools || [],
+            expectedNoTool: evalCase.expectedNoTool === true,
+            observedTools: [],
+            forbiddenToolCalled: false,
+            selectionPassed: arm === 'with-mcp' && !evalCase.expectedNoTool ? false : null,
+            noToolPassed: evalCase.expectedNoTool ? false : null,
+            argumentSchemaValid: null,
+            assertionResults: (evalCase.argumentAssertions || []).map(assertion => ({ assertion, passed: false, message: 'Provider request failed.' })),
+            expectedToolCalled: false,
+            figuresGrounded: null,
+            latencyMs: 0,
+            approximateCost: 0,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        onProgress?.(results.length, total);
+      }
+    }
+  }
+  return {
+    version: TOOL_SELECTION_REPORT_VERSION,
+    id: randomId(),
+    createdAt: new Date().toISOString(),
+    dataset: {
+      id: dataset.id,
+      name: dataset.name,
+      version: dataset.version,
+      descriptionRevision: dataset.descriptionRevision,
+      schemaRevision: dataset.schemaRevision,
+    },
+    configuration: { ...config },
+    notice: 'This is an isolated model evaluation. It does not measure or reproduce real ChatGPT, Claude, Cursor, or other MCP host behavior.',
+    metrics: calculateMetrics(results),
+    results,
+  };
+};
+
+const comparableMetrics = [
+  'selectionAccuracy', 'noToolAccuracy', 'argumentSchemaValidity', 'assertionAccuracy',
+  'expectedToolCallRate', 'figureGroundingAccuracy', 'approximateTokenCost',
+] as const;
+
+export const compareRuns = (baseline: EvalRunReportV1, candidate: EvalRunReportV1): EvalRunComparison => {
+  const metricDeltas: EvalRunComparison['metricDeltas'] = {};
+  const regressions: string[] = [];
+  comparableMetrics.forEach(metric => {
+    const before = baseline.metrics[metric];
+    const after = candidate.metrics[metric];
+    metricDeltas[metric] = before === null || after === null ? null : after - before;
+    if (metric !== 'approximateTokenCost' && metricDeltas[metric] !== null && metricDeltas[metric]! < 0) regressions.push(metric);
+    if (metric === 'approximateTokenCost' && metricDeltas[metric] !== null && metricDeltas[metric]! > 0) regressions.push(metric);
+  });
+  const latencyMeanDeltaMs = candidate.metrics.latencyMs.mean - baseline.metrics.latencyMs.mean;
+  if (latencyMeanDeltaMs > 0) regressions.push('latencyMs.mean');
+  return {
+    baselineRunId: baseline.id,
+    candidateRunId: candidate.id,
+    descriptionRevisionChanged: baseline.dataset.descriptionRevision !== candidate.dataset.descriptionRevision,
+    schemaRevisionChanged: baseline.dataset.schemaRevision !== candidate.dataset.schemaRevision,
+    metricDeltas,
+    latencyMeanDeltaMs,
+    regressions,
+  };
+};
+
+export const reportContainsCredential = (report: EvalRunReportV1, credential: string): boolean => (
+  Boolean(credential) && JSON.stringify(report).includes(credential)
+);
+
+export type { ToolCallObservation };
