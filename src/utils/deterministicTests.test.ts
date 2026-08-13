@@ -1,0 +1,1147 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { DeterministicTestCaseV1 } from '../types/deterministicTests';
+import {
+  evaluateAssertions,
+  generateDeterministicTestPlan,
+  normalizeTestError,
+  parseDeterministicTestPlan,
+  redactTestData,
+  runDeterministicCase,
+  runDeterministicPlan,
+  serializeDeterministicTestPlan,
+} from './deterministicTests';
+
+const fixtureCase = (overrides: Partial<DeterministicTestCaseV1> = {}): DeterministicTestCaseV1 => ({
+  id: 'lookup--happy-path',
+  toolName: 'lookup',
+  name: 'Happy path',
+  kind: 'happy-path',
+  selected: true,
+  arguments: { query: 'fixture' },
+  assertions: [{ path: '$.content', operator: 'type', value: 'array' }],
+  timeoutMs: 1_000,
+  ...overrides,
+});
+
+describe('deterministic test plans', () => {
+  it('generates every required case deterministically and derives fixtures from schemas', () => {
+    const tools = [{
+      name: 'lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' }, limit: { type: 'integer', default: 3 } },
+        required: ['query'],
+      },
+      outputSchema: {
+        type: 'object',
+        properties: { items: { type: 'array' } },
+        required: ['items'],
+      },
+    }];
+    const first = generateDeterministicTestPlan(tools, 'https://mcp.example.test', '2026-08-11T00:00:00.000Z');
+    const second = generateDeterministicTestPlan(tools, 'https://mcp.example.test', '2026-08-11T00:00:00.000Z');
+
+    expect(first).toEqual(second);
+    expect(first.tools[0].cases.map(item => item.kind)).toEqual([
+      'happy-path', 'validation', 'empty-result', 'upstream-error', 'timeout', 'output-shape', 'cancellation',
+    ]);
+    expect(first.tools[0].cases[0].arguments).toEqual({ query: 'fixture' });
+    expect(first.tools[0].cases.find(item => item.kind === 'validation')?.arguments).toEqual({});
+    expect(first.tools[0].cases.find(item => item.kind === 'output-shape')?.assertions).toContainEqual({
+      path: '$.structuredContent.items', operator: 'exists',
+    });
+    expect(first.tools[0].cases.find(item => item.kind === 'output-shape')?.assertions).toContainEqual({
+      path: '$.structuredContent.items', operator: 'type', value: 'array',
+    });
+  });
+
+  it('fails an output-shape case when a required array property is returned as a string', async () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'list_items',
+      annotations: { readOnlyHint: true },
+      outputSchema: {
+        type: 'object',
+        properties: { items: { type: 'array' } },
+        required: ['items'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape')!;
+
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ structuredContent: { items: 'wrong' }, content: [] }) },
+      outputShape,
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.assertions).toContainEqual(expect.objectContaining({
+      assertion: { path: '$.structuredContent.items', operator: 'type', value: 'array' },
+      passed: false,
+      actual: 'wrong',
+    }));
+  });
+
+  it.each([
+    ['$ref', {
+      $ref: '#/$defs/result',
+      $defs: {
+        result: {
+          type: 'object',
+          properties: { items: { type: 'array' } },
+          required: ['items'],
+        },
+      },
+    }],
+    ['allOf', { allOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
+    ['oneOf', { oneOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
+    ['anyOf', { anyOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
+  ])('does not preselect output-shape cases requiring manual assertions for %s schemas', (_keyword, outputSchema) => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'list_items',
+      annotations: { readOnlyHint: true },
+      outputSchema,
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+
+    expect(outputShape?.selected).toBe(false);
+    expect(outputShape?.name).toContain('manual assertions required');
+  });
+
+  it('generates types for recursively required output object properties', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'get_profile',
+      annotations: { readOnlyHint: true },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          profile: {
+            type: 'object',
+            properties: { active: { type: 'boolean' } },
+            required: ['active'],
+          },
+        },
+        required: ['profile'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const assertions = plan.tools[0].cases.find(item => item.kind === 'output-shape')?.assertions;
+
+    expect(assertions).toEqual(expect.arrayContaining([
+      { path: '$.structuredContent.profile', operator: 'type', value: 'object' },
+      { path: '$.structuredContent.profile.active', operator: 'exists' },
+      { path: '$.structuredContent.profile.active', operator: 'type', value: 'boolean' },
+    ]));
+  });
+
+  it('honors string length constraints in generated runnable fixtures', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'short_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string', minLength: 2, maxLength: 3 } },
+        required: ['query'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const happyPath = plan.tools[0].cases.find(item => item.kind === 'happy-path');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+    expect(happyPath?.arguments).toEqual({ query: 'fix' });
+    expect(outputShape?.arguments).toEqual({ query: 'fix' });
+  });
+
+  it('generates a rejected validation fixture from an optional property when additional properties are permitted', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'optional_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { limit: { type: 'integer' } },
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const validation = plan.tools[0].cases.find(item => item.kind === 'validation');
+    expect(validation?.arguments).toEqual({ limit: null });
+    expect(validation?.name).not.toContain('manual fixture required');
+  });
+
+  it('requires a manual validation fixture when a schema permits every object argument', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'unconstrained_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: true,
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const validation = plan.tools[0].cases.find(item => item.kind === 'validation');
+    expect(validation).toMatchObject({ arguments: {}, selected: false });
+    expect(validation?.name).toContain('manual fixture required');
+  });
+
+  it('generates schema-valid fixtures for alternatives, patterns, and numeric bounds', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'constrained_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          choice: { oneOf: [{ type: 'number', maximum: -1 }, { type: 'boolean' }] },
+          code: { type: 'string', pattern: '^item-[A-Z]{2}-\\d{3}$' },
+          ratio: { type: 'number', exclusiveMinimum: 2, exclusiveMaximum: 3 },
+          ceiling: { type: 'integer', maximum: -2 },
+          alternative: { anyOf: [{ type: 'integer', minimum: 4 }, { const: 'fallback' }] },
+        },
+        required: ['choice', 'code', 'ratio', 'ceiling', 'alternative'],
+        additionalProperties: false,
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const happyPath = plan.tools[0].cases.find(item => item.kind === 'happy-path');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+    expect(happyPath).toMatchObject({
+      selected: true,
+      arguments: {
+        choice: -1,
+        code: 'item-AA-000',
+        ratio: 2.5,
+        ceiling: -2,
+        alternative: 4,
+      },
+    });
+    expect(outputShape?.selected).toBe(true);
+  });
+
+  it('marks unsynthesizable fixtures for manual input and does not preselect them', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'referenced_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { query: { $ref: '#/$defs/query' } },
+        required: ['query'],
+        $defs: { query: { type: 'string', const: 'from-reference' } },
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const happyPath = plan.tools[0].cases.find(item => item.kind === 'happy-path');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+    expect(happyPath?.selected).toBe(false);
+    expect(happyPath?.arguments).toEqual({});
+    expect(happyPath?.name).toContain('manual fixture required');
+    expect(outputShape).toMatchObject({ selected: false });
+    expect(outputShape?.name).toContain('manual fixture required');
+  });
+
+  it.each([
+    ['pattern quantifier', { type: 'string', pattern: '^a{1000000000}$' }],
+    ['minItems', { type: 'array', items: { type: 'string' }, minItems: 1_000_000_000 }],
+    ['minLength', { type: 'string', minLength: 1_000_000_000 }],
+  ])('requires a manual fixture for oversized %s constraints', (_constraint, propertySchema) => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'oversized_fixture_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { value: propertySchema },
+        required: ['value'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const fixtureCases = plan.tools[0].cases.filter(item => item.kind !== 'validation');
+    expect(fixtureCases.every(item => item.selected === false)).toBe(true);
+    expect(fixtureCases.every(item => item.name.includes('manual fixture required'))).toBe(true);
+    expect(fixtureCases.every(item => Object.keys(item.arguments).length === 0)).toBe(true);
+  });
+
+  it.each([
+    {
+      schema: {
+        input_schema: {
+          type: 'object',
+          properties: { query: { type: 'string' }, count: { type: 'integer' } },
+          required: ['query', 'count'],
+        },
+      },
+      expectedHappy: { query: 'fixture', count: 0 },
+      expectedValidation: { count: 0 },
+    },
+    {
+      schema: {
+        arguments: [
+          { name: 'query', type: 'string', required: true },
+          { name: 'enabled', type: 'boolean', required: true },
+        ],
+      },
+      expectedHappy: { query: 'fixture', enabled: false },
+      expectedValidation: { enabled: false },
+    },
+  ])('derives fixtures from legacy input definitions: $schema', ({ schema, expectedHappy, expectedValidation }) => {
+    const plan = generateDeterministicTestPlan([
+      { name: 'legacy_lookup', annotations: { readOnlyHint: true }, ...schema },
+    ], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    expect(plan.tools[0].cases.find(item => item.kind === 'happy-path')?.arguments).toEqual(expectedHappy);
+    expect(plan.tools[0].cases.find(item => item.kind === 'validation')?.arguments).toEqual(expectedValidation);
+  });
+
+  it('infers write and destructive tools from annotations and language', () => {
+    const plan = generateDeterministicTestPlan([
+      { name: 'list_users', annotations: { readOnlyHint: true } },
+      { name: 'update_user' },
+      { name: 'records', description: 'Deletes a permanent record.' },
+      { name: 'custom', annotations: { destructiveHint: true } },
+      { name: 'permanentlyDeleteAccount' },
+      { name: 'records', description: 'Deleting stale records.' },
+      { name: 'modify_user' },
+      { name: 'insert_record' },
+      { name: 'post_message' },
+      { name: 'charge_card' },
+      { name: 'deploy_app' },
+    ], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    expect(plan.tools.map(tool => tool.safety)).toMatchObject([
+      { writeCapable: false, destructive: false },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: true },
+      { writeCapable: true, destructive: true },
+      { writeCapable: true, destructive: true },
+      { writeCapable: true, destructive: true },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
+      { writeCapable: true, destructive: false },
+    ]);
+  });
+
+  it.each([
+    { name: 'lookup' },
+    { name: 'lookup', annotations: { destructiveHint: false } },
+    { name: 'lookup', annotations: { readOnlyHint: false } },
+  ])('requires confirmation unless a tool explicitly declares readOnlyHint=true: %j', tool => {
+    const plan = generateDeterministicTestPlan(
+      [tool],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true });
+  });
+
+  it('generates collision-free case IDs from exact tool identities', () => {
+    const plan = generateDeterministicTestPlan([
+      { name: 'foo.bar' },
+      { name: 'foo-bar' },
+    ], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const ids = plan.tools.flatMap(tool => tool.cases.map(testCase => testCase.id));
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(plan.tools[0].cases[0].id).not.toBe(plan.tools[1].cases[0].id);
+    expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
+  });
+
+  it('round-trips versioned JSON and rejects cross-tool imported cases', () => {
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'lookup', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+    expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
+    plan.tools[0].cases[0].toolName = 'delete_everything';
+    expect(() => parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toThrow(/containing tool/);
+  });
+
+  it('validates edited structural assertions before export and round-trips valid edits', () => {
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'lookup', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+    plan.tools[0].cases[0].assertions = [{ path: '$.content', operator: 'min-length', value: 2 }];
+    expect(parseDeterministicTestPlan(serializeDeterministicTestPlan(plan))).toEqual(plan);
+
+    plan.tools[0].cases[0].assertions = [{ path: '$.content', operator: 'subjective' } as any];
+    expect(() => serializeDeterministicTestPlan(plan)).toThrow(/malformed structural assertion/);
+  });
+
+  it('rejects invalid assertion paths before import, export, or execution', async () => {
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'lookup', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+    const invalidAssertion = { path: '$.content[', operator: 'not-exists' } as const;
+    plan.tools[0].cases[0].assertions = [invalidAssertion];
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+
+    expect(evaluateAssertions({}, [invalidAssertion])).toMatchObject([{ passed: false }]);
+    expect(() => parseDeterministicTestPlan(JSON.stringify(plan))).toThrow(/invalid structural assertion path/);
+    expect(() => serializeDeterministicTestPlan(plan)).toThrow(/invalid structural assertion path/);
+    await expect(runDeterministicPlan({ callTool }, plan)).rejects.toThrow(/invalid structural assertion path/);
+    expect(callTool).not.toHaveBeenCalled();
+  });
+});
+
+describe('deterministic runner safety and evidence', () => {
+  it.each([
+    { name: 'lookup' },
+    { name: 'lookup', annotations: { destructiveHint: false } },
+  ])('blocks an ambiguously annotated tool without explicit confirmation: %j', async tool => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan([tool], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const results = await runDeterministicPlan({ callTool }, plan, {
+      caseIds: [plan.tools[0].cases[0].id],
+    });
+
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results[0]).toMatchObject({
+      status: 'blocked',
+      error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
+    });
+  });
+
+  it('blocks inferred unsafe tools without explicit confirmation, including imported safety downgrades', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan([{ name: 'delete_user' }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    plan.tools[0].safety = { writeCapable: false, destructive: false, reasons: [] };
+    const caseId = plan.tools[0].cases[0].id;
+
+    const results = await runDeterministicPlan({ callTool }, plan, {
+      caseIds: [caseId],
+    });
+
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results[0]).toMatchObject({
+      status: 'blocked',
+      error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
+    });
+  });
+
+  it.each([
+    ['Modifies account data.', false],
+    ['Account data was modified.', false],
+    ['Modifying account data.', false],
+    ['Deletes account data.', true],
+    ['Account data was deleted.', true],
+    ['Deleting account data.', true],
+  ])('blocks inflected action description %j despite contradictory read-only metadata', async (description, destructive) => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'account_operation', description, annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    const results = await runDeterministicPlan({ callTool }, plan);
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every(result => (
+      result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+    ))).toBe(true);
+  });
+
+  it('blocks deactivate tools despite contradictory read-only metadata', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'deactivate_account', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    const results = await runDeterministicPlan({ callTool }, plan);
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive: true });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every(result => (
+      result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+    ))).toBe(true);
+  });
+
+  it('blocks shutdown tools despite contradictory read-only metadata', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'shutdown_server', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    const results = await runDeterministicPlan({ callTool }, plan);
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive: true });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every(result => (
+      result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+    ))).toBe(true);
+  });
+
+  it.each(['close_account', 'suspendUser', 'reboot-server', 'restartService'])(
+    'blocks %s despite contradictory read-only metadata',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan(
+        [{ name: toolName, annotations: { readOnlyHint: true } }],
+        'https://example.test',
+        '2026-08-11T00:00:00.000Z',
+      );
+
+      const results = await runDeterministicPlan({ callTool }, plan);
+
+      expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive: true });
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results).toHaveLength(2);
+      expect(results.every(result => (
+        result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+      ))).toBe(true);
+    },
+  );
+
+  it('blocks upsert tools despite contradictory read-only metadata', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'upsert_contact', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    const results = await runDeterministicPlan({ callTool }, plan);
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive: false });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every(result => (
+      result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+    ))).toBe(true);
+  });
+
+  it.each(['change_password', 'mutate_user', 'rotate_api_key'])(
+    'blocks common mutation %s despite contradictory read-only metadata',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan(
+        [{ name: toolName, annotations: { readOnlyHint: true } }],
+        'https://example.test',
+        '2026-08-11T00:00:00.000Z',
+      );
+
+      const results = await runDeterministicPlan({ callTool }, plan);
+
+      expect(plan.tools[0].safety).toMatchObject({ writeCapable: true });
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results).toHaveLength(2);
+      expect(results.every(result => (
+        result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+      ))).toBe(true);
+    },
+  );
+
+  it.each(['destroy_account', 'purge_records'])(
+    'requires explicit confirmation for common destructive action %s',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan([{ name: toolName }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+      plan.tools[0].safety = { writeCapable: false, destructive: false, reasons: [] };
+
+      const results = await runDeterministicPlan({ callTool }, plan, {
+        caseIds: [plan.tools[0].cases[0].id],
+      });
+
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({
+        status: 'blocked',
+        error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
+      });
+    },
+  );
+
+  it.each(['save_document', 'approve_request', 'refund_payment', 'ban_user'])(
+    'requires explicit confirmation for common write action %s',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan([{ name: toolName }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+      plan.tools[0].safety = { writeCapable: false, destructive: false, reasons: [] };
+
+      const results = await runDeterministicPlan({ callTool }, plan, {
+        caseIds: [plan.tools[0].cases[0].id],
+      });
+
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({
+        status: 'blocked',
+        error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
+      });
+    },
+  );
+
+  it('runs confirmed unsafe cases through the supplied stateful client', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan([{ name: 'update_user' }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const caseId = plan.tools[0].cases[0].id;
+    const results = await runDeterministicPlan({ callTool }, plan, {
+      caseIds: [caseId],
+      confirmedUnsafeToolNames: ['update_user'],
+      unsafeToolNames: ['update_user'],
+    });
+
+    expect(callTool).toHaveBeenCalledOnce();
+    expect(results[0].status).toBe('passed');
+  });
+
+  it('redacts nested secrets in requests and responses without changing ordinary values', () => {
+    expect(redactTestData({
+      authorization: 'Bearer abc.def',
+      nested: { github_token: 'secret', clientSecret: 'also-secret', url: 'https://x.test/?token=secret&keep=yes' },
+      query: 'normal',
+    })).toEqual({
+      authorization: '[REDACTED]',
+      nested: { github_token: '[REDACTED]', clientSecret: '[REDACTED]', url: 'https://x.test/?token=[REDACTED]&keep=yes' },
+      query: 'normal',
+    });
+  });
+
+  it('redacts credential-bearing error codes and identifiers', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockRejectedValue({
+          code: 'access_token=code-secret',
+          message: 'Lookup failed for token=message-secret',
+          data: {
+            resource_id: 'https://example.test/resource?api_key=identifier-secret&keep=visible',
+          },
+        }),
+      },
+      fixtureCase({ assertions: [] }),
+    );
+
+    expect(result.error).toMatchObject({
+      code: 'access_token=[REDACTED]',
+      message: 'Lookup failed for token=[REDACTED]',
+      identifiers: {
+        resource_id: 'https://example.test/resource?api_key=[REDACTED]&keep=visible',
+      },
+    });
+  });
+
+  it('preserves repeated generated objects in request and response evidence', async () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'batch_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            minItems: 2,
+            items: {
+              type: 'object',
+              properties: { query: { type: 'string' } },
+              required: ['query'],
+            },
+          },
+        },
+        required: ['items'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const testCase = plan.tools[0].cases.find(item => item.kind === 'happy-path')!;
+    const responseItem = { type: 'text', text: 'fixture' };
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ content: [responseItem, responseItem] }) },
+      testCase,
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: { items: [{ query: 'fixture' }, { query: 'fixture' }] },
+    });
+    expect(result.response).toEqual({
+      content: [
+        { type: 'text', text: 'fixture' },
+        { type: 'text', text: 'fixture' },
+      ],
+    });
+  });
+
+  it('redacts secrets embedded in MCP text blocks and credential headers', () => {
+    expect(redactTestData({
+      content: [
+        { type: 'text', text: '{"api_key":"secret","nested":{"clientSecret":"also-secret"}}' },
+        { type: 'text', text: 'Authorization: Basic dXNlcjpwYXNz\nX-API-Key: header-secret' },
+      ],
+    })).toEqual({
+      content: [
+        { type: 'text', text: '{"api_key":"[REDACTED]","nested":{"clientSecret":"[REDACTED]"}}' },
+        { type: 'text', text: 'Authorization: [REDACTED]\nX-API-Key: [REDACTED]' },
+      ],
+    });
+  });
+
+  it('redacts compound sensitive text keys and complete credential header values', () => {
+    expect(redactTestData([
+      'github_token=secret',
+      'Cookie: session=secret-one; csrf=secret-two',
+      'Set-Cookie: session=secret-one; Path=/; Secure',
+      'Authorization: Digest username="user", response="secret"',
+      'Proxy-Authorization: Custom part-one, part-two',
+    ].join('\n'))).toBe([
+      'github_token=[REDACTED]',
+      'Cookie: [REDACTED]',
+      'Set-Cookie: [REDACTED]',
+      'Authorization: [REDACTED]',
+      'Proxy-Authorization: [REDACTED]',
+    ].join('\n'));
+  });
+
+  it('redacts complete credential header values embedded in prefixed evidence text', () => {
+    expect(redactTestData([
+      'headers Authorization: Digest username="user", response="authorization-secret"',
+      'request Proxy-Authorization: Custom part-one, proxy-secret',
+      'request headers Cookie: session=cookie-secret; csrf=csrf-secret',
+      'response headers Set-Cookie: session=set-cookie-secret; Path=/; Secure',
+    ].join('\n'))).toBe([
+      'headers Authorization: [REDACTED]',
+      'request Proxy-Authorization: [REDACTED]',
+      'request headers Cookie: [REDACTED]',
+      'response headers Set-Cookie: [REDACTED]',
+    ].join('\n'));
+  });
+
+  it('redacts credential URLs in request and response text-block evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{
+            type: 'text',
+            text: 'https://example.test/callback#refresh_token=response-secret&client_token=response-client-token&keep=response-value',
+          }],
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          content: [{
+            type: 'text',
+            text: 'https://example.test/callback?access_token=request-secret&client_secret=request-client-secret&keep=request-value',
+          }],
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        content: [{
+          text: 'https://example.test/callback?access_token=[REDACTED]&client_secret=[REDACTED]&keep=request-value',
+        }],
+      },
+    });
+    expect(result.response).toMatchObject({
+      content: [{
+        text: 'https://example.test/callback#refresh_token=[REDACTED]&client_token=[REDACTED]&keep=response-value',
+      }],
+    });
+  });
+
+  it('redacts camelCase credential names in request and response text evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{
+            type: 'text',
+            text: 'githubToken=response-secret https://example.test/?stripeSecret=response-url-secret&keep=response-value',
+          }],
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          content: [{
+            type: 'text',
+            text: 'stripeSecret=request-secret https://example.test/?githubToken=request-url-secret&keep=request-value',
+          }],
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        content: [{
+          text: 'stripeSecret=[REDACTED] https://example.test/?githubToken=[REDACTED]&keep=request-value',
+        }],
+      },
+    });
+    expect(result.response).toMatchObject({
+      content: [{
+        text: 'githubToken=[REDACTED] https://example.test/?stripeSecret=[REDACTED]&keep=response-value',
+      }],
+    });
+  });
+
+  it('redacts singular, plural, and camel-case credential fields in request and response evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{
+            type: 'text',
+            text: 'credential=response-text credentials=response-texts clientCredentials=response-camel https://example.test/?credential=response-url&credentials=response-urls&clientCredentials=response-camel-url&keep=response-value',
+          }],
+          structuredContent: {
+            credential: 'response-object',
+            credentials: 'response-objects',
+            clientCredentials: 'response-camel-object',
+          },
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          credential: 'request-object',
+          credentials: 'request-objects',
+          clientCredential: 'request-camel-object',
+          text: 'credential=request-text credentials=request-texts clientCredential=request-camel https://example.test/?credential=request-url&credentials=request-urls&clientCredential=request-camel-url&keep=request-value',
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        credential: '[REDACTED]',
+        credentials: '[REDACTED]',
+        clientCredential: '[REDACTED]',
+        text: 'credential=[REDACTED] credentials=[REDACTED] clientCredential=[REDACTED] https://example.test/?credential=[REDACTED]&credentials=[REDACTED]&clientCredential=[REDACTED]&keep=request-value',
+      },
+    });
+    expect(result.response).toMatchObject({
+      content: [{
+        text: 'credential=[REDACTED] credentials=[REDACTED] clientCredentials=[REDACTED] https://example.test/?credential=[REDACTED]&credentials=[REDACTED]&clientCredentials=[REDACTED]&keep=response-value',
+      }],
+      structuredContent: {
+        credential: '[REDACTED]',
+        credentials: '[REDACTED]',
+        clientCredentials: '[REDACTED]',
+      },
+    });
+  });
+
+  it('redacts plain and percent-encoded URL authority credentials in request and response evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: 'text', text: 'response https://bob%40team:p%40ss@example.test/private' }],
+        }),
+      },
+      fixtureCase({
+        arguments: { endpoint: 'https://alice:secret@example.test/path?keep=yes' },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: { endpoint: 'https://[REDACTED]@example.test/path?keep=yes' },
+    });
+    expect(result.response).toMatchObject({
+      content: [{ text: 'response https://[REDACTED]@example.test/private' }],
+    });
+  });
+
+  it('redacts private and signing key fields in request and response evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [],
+          structuredContent: {
+            keyMaterial: {
+              private_key: 'response-private-key',
+              signingKey: 'response-signing-key',
+            },
+          },
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          privateKey: 'request-private-key',
+          nested: { signing_key: 'request-signing-key' },
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        privateKey: '[REDACTED]',
+        nested: { signing_key: '[REDACTED]' },
+      },
+    });
+    expect(result.response).toMatchObject({
+      structuredContent: {
+        keyMaterial: {
+          private_key: '[REDACTED]',
+          signingKey: '[REDACTED]',
+        },
+      },
+    });
+  });
+
+  it('redacts PEM private keys in request and response evidence text', async () => {
+    const requestKey = '-----BEGIN PRIVATE KEY-----\nrequest-private-material\n-----END PRIVATE KEY-----';
+    const responseKey = '-----BEGIN RSA PRIVATE KEY-----\nresponse-private-material\n-----END RSA PRIVATE KEY-----';
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: 'text', text: `generated key:\n${responseKey}` }],
+        }),
+      },
+      fixtureCase({ arguments: { payload: `use this key:\n${requestKey}` } }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: { payload: 'use this key:\n[REDACTED]' },
+    });
+    expect(result.response).toMatchObject({
+      content: [{ text: 'generated key:\n[REDACTED]' }],
+    });
+  });
+
+  it('reports malformed responses and preserves reproducible case data', async () => {
+    const testCase = fixtureCase({
+      arguments: { password: 'fixture-password', token: 'fixture-token', query: 'fixture' },
+    });
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ unexpected: true }) },
+      testCase,
+    );
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({ type: 'malformed-response', code: 'INVALID_TOOL_RESULT' });
+    expect(result.reproducibleCase).toEqual(testCase);
+    expect(result.reproducibleCase).not.toBe(testCase);
+    expect(result.redactedReproducibleCase.arguments).toEqual({
+      password: '[REDACTED]',
+      token: '[REDACTED]',
+      query: 'fixture',
+    });
+  });
+
+  it('redacts expected and actual assertion secrets for sensitive dot and bracket paths', async () => {
+    const testCase = fixtureCase({
+      assertions: [
+        { path: '$.structuredContent.access_token', operator: 'equals', value: 'expected-dot-secret' },
+        { path: '$.structuredContent["client_secret"]', operator: 'equals', value: 'expected-bracket-secret' },
+      ],
+    });
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({
+        content: [],
+        structuredContent: {
+          access_token: 'expected-dot-secret',
+          client_secret: 'expected-bracket-secret',
+        },
+      }) },
+      testCase,
+    );
+
+    expect(result.status).toBe('passed');
+    expect(result.assertions).toEqual([
+      expect.objectContaining({ assertion: expect.objectContaining({ value: '[REDACTED]' }), actual: '[REDACTED]' }),
+      expect.objectContaining({ assertion: expect.objectContaining({ value: '[REDACTED]' }), actual: '[REDACTED]' }),
+    ]);
+    expect(result.redactedReproducibleCase.assertions).toEqual([
+      { path: '$.structuredContent.access_token', operator: 'equals', value: '[REDACTED]' },
+      { path: '$.structuredContent["client_secret"]', operator: 'equals', value: '[REDACTED]' },
+    ]);
+    expect(result.reproducibleCase.assertions).toEqual(testCase.assertions);
+  });
+
+  it('supports fixture cancellation using an abort signal', async () => {
+    const callTool = vi.fn((_request, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    }));
+    const result = await runDeterministicCase(
+      { callTool },
+      fixtureCase({ kind: 'cancellation', expectedError: 'cancelled', cancelAfterMs: 1, assertions: [] }),
+    );
+    expect(result.status).toBe('passed');
+    expect(result.error?.type).toBe('cancelled');
+  });
+
+  it('classifies fixture cancellation when the client propagates signal.reason', async () => {
+    const callTool = vi.fn((_request, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true });
+    }));
+    const result = await runDeterministicCase(
+      { callTool },
+      fixtureCase({ kind: 'cancellation', expectedError: 'cancelled', cancelAfterMs: 1, assertions: [] }),
+    );
+    expect(result.status).toBe('passed');
+    expect(result.error?.type).toBe('cancelled');
+  });
+
+  it('passes timeout fixtures only for a machine-readable timeout error', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockRejectedValue({ code: 'RequestTimeout', message: 'Timed out' }) },
+      fixtureCase({ kind: 'timeout', expectedError: 'timeout', timeoutMs: 5, assertions: [] }),
+    );
+    expect(result.status).toBe('passed');
+    expect(result.error).toMatchObject({ type: 'timeout', retryable: true });
+  });
+
+  it('classifies a standard DOM timeout separately from cancellation', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockRejectedValue(
+          new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+        ),
+      },
+      fixtureCase({ kind: 'timeout', expectedError: 'timeout', timeoutMs: 5, assertions: [] }),
+    );
+
+    expect(result.status).toBe('passed');
+    expect(result.error).toMatchObject({ type: 'timeout', retryable: true });
+  });
+
+  it('rejects malformed content blocks', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ content: [{ text: 'missing type' }] }) },
+      fixtureCase(),
+    );
+    expect(result.error?.type).toBe('malformed-response');
+  });
+
+  it.each([
+    { content: [{ type: 'unknown', value: 'anything' }] },
+    { content: [{ type: 'text' }] },
+    { content: [{ type: 'image', data: 'abc' }] },
+    { content: [{ type: 'resource', resource: { uri: 'file:///fixture' } }] },
+  ])('rejects invalid content-block unions: %j', async response => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue(response) },
+      fixtureCase(),
+    );
+    expect(result.error?.type).toBe('malformed-response');
+  });
+
+  it('validates malformed error envelopes before interpreting isError', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ isError: true, content: [{ type: 'text' }] }) },
+      fixtureCase({ expectedError: 'upstream' }),
+    );
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({ type: 'malformed-response', code: 'INVALID_TOOL_RESULT' });
+  });
+
+  it('classifies textual error details when structured content is generic', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({
+        isError: true,
+        structuredContent: { items: [] },
+        content: [{ type: 'text', text: JSON.stringify({ code: -32602, message: 'Missing required query' }) }],
+      }) },
+      fixtureCase({ expectedError: 'validation', assertions: [] }),
+    );
+
+    expect(result.status).toBe('passed');
+    expect(result.error).toMatchObject({
+      type: 'validation',
+      code: -32602,
+      message: 'Missing required query',
+    });
+  });
+
+  it('requires structural assertions to pass for expected-error responses', async () => {
+    const response = {
+      isError: true,
+      content: [{ type: 'text', text: JSON.stringify({ code: 503, message: 'Unavailable' }) }],
+      structuredContent: { code: 503, items: [] },
+    };
+    const passing = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue(response) },
+      fixtureCase({
+        expectedError: 'upstream',
+        assertions: [{ path: '$.structuredContent.code', operator: 'equals', value: 503 }],
+      }),
+    );
+    const failing = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue(response) },
+      fixtureCase({
+        expectedError: 'upstream',
+        assertions: [{ path: '$.structuredContent.items', operator: 'min-length', value: 1 }],
+      }),
+    );
+
+    expect(passing.status).toBe('passed');
+    expect(passing.assertions).toMatchObject([{ passed: true }]);
+    expect(failing.status).toBe('failed');
+    expect(failing.assertions).toMatchObject([{ passed: false }]);
+  });
+
+  it('fails expected thrown errors when response assertions cannot be satisfied', async () => {
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockRejectedValue({ status: 503, message: 'Unavailable' }) },
+      fixtureCase({
+        expectedError: 'upstream',
+        assertions: [{ path: '$.structuredContent', operator: 'exists' }],
+      }),
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.assertions).toMatchObject([{ passed: false }]);
+  });
+});
+
+describe('structural assertions and machine-readable errors', () => {
+  it('evaluates paths, types, equality, and collection sizes without grading prose', () => {
+    const evidence = evaluateAssertions({ structuredContent: { items: [{ id: 7 }], ok: true } }, [
+      { path: '$.structuredContent.items', operator: 'type', value: 'array' },
+      { path: '$.structuredContent.items', operator: 'min-length', value: 1 },
+      { path: '$.structuredContent.items[0].id', operator: 'equals', value: 7 },
+      { path: '$.structuredContent.ok', operator: 'exists' },
+      { path: '$.structuredContent.missing', operator: 'not-exists' },
+    ]);
+    expect(evidence.every(item => item.passed)).toBe(true);
+  });
+
+  it('compares JSON objects independent of key order while preserving array order', () => {
+    const evidence = evaluateAssertions({
+      structuredContent: {
+        object: { a: 1, nested: { b: 2, c: 3 } },
+        array: [1, 2],
+      },
+    }, [
+      {
+        path: '$.structuredContent.object',
+        operator: 'equals',
+        value: { nested: { c: 3, b: 2 }, a: 1 },
+      },
+      { path: '$.structuredContent.array', operator: 'equals', value: [2, 1] },
+    ]);
+
+    expect(evidence.map(item => item.passed)).toEqual([true, false]);
+  });
+
+  it.each([
+    [{ status: 401, message: 'Unauthorized' }, 'authorization', false],
+    [{ code: -32602, message: 'Invalid params' }, 'validation', false],
+    [{ statusCode: 404, message: 'Resource not found' }, 'missing-resource', false],
+    [{ status: 503, message: 'Upstream unavailable', requestId: 'req-7' }, 'upstream', true],
+    [{ code: 'RequestTimeout', message: 'Timed out' }, 'timeout', true],
+  ])('normalizes %j', (error, type, retryable) => {
+    expect(normalizeTestError(error)).toMatchObject({ type, retryable });
+  });
+
+  it.each([
+    [{ status: 401, message: 'Authentication timed out' }, 'authorization'],
+    [{ status: 403, message: 'Validation failed' }, 'authorization'],
+    [{ status: 400, message: 'Upstream service unavailable' }, 'validation'],
+    [{ status: 422, message: 'Request timed out' }, 'validation'],
+    [{ status: 404, message: 'Authentication required' }, 'missing-resource'],
+    [{ status: 429, message: 'Validation failed' }, 'upstream'],
+    [{ status: 500, message: 'Invalid params' }, 'upstream'],
+    [{ status: 503, message: 'Validation failed upstream' }, 'upstream'],
+    [{ code: 'RequestTimeout', message: 'Unauthorized' }, 'timeout'],
+    [{ code: 'INVALID_PARAMS', message: 'Service unavailable' }, 'validation'],
+  ])('prioritizes machine-readable code in %j', (error, type) => {
+    expect(normalizeTestError(error).type).toBe(type);
+  });
+
+  it('captures actionable identifiers', () => {
+    expect(normalizeTestError({ status: 503, message: 'Unavailable', data: { trace_id: 'trace-8' } }).identifiers)
+      .toEqual({ trace_id: 'trace-8' });
+  });
+});
