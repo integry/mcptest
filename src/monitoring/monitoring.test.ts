@@ -603,6 +603,61 @@ describe('FileMonitoringStore', () => {
     }
   });
 
+  it('returns only one lease when stale recovery contenders act concurrently', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mcptest-monitor-stale-race-'));
+    try {
+      const options = {
+        stateFile: join(directory, 'state.json'),
+        lockStaleMs: 1_000,
+      };
+      const seed = new FileMonitoringStore(options);
+      const ownerFile = join(seed.runLockDirectory, 'owner.json');
+      await mkdir(seed.runLockDirectory, { recursive: true });
+      await writeFile(ownerFile, '{"token":"abandoned"}\n', 'utf8');
+      const old = new Date(Date.now() - 10_000);
+      await utimes(ownerFile, old, old);
+
+      let observed = 0;
+      let allowFirst!: () => void;
+      let allowSecond!: () => void;
+      const firstMayProceed = new Promise<void>((resolve) => { allowFirst = resolve; });
+      const secondMayProceed = new Promise<void>((resolve) => { allowSecond = resolve; });
+      class CoordinatedStore extends FileMonitoringStore {
+        constructor(private readonly waitAfterObservation: () => Promise<void>) {
+          super(options);
+        }
+
+        protected override async onStaleLockObserved(): Promise<void> {
+          observed += 1;
+          if (observed === 2) allowFirst();
+          await this.waitAfterObservation();
+        }
+      }
+      const firstStore = new CoordinatedStore(() => firstMayProceed);
+      const secondStore = new CoordinatedStore(() => secondMayProceed);
+
+      const firstLeasePromise = firstStore.acquireRunLease();
+      const secondLeasePromise = secondStore.acquireRunLease();
+      const firstLease = await firstLeasePromise;
+      expect(firstLease).toBeDefined();
+
+      // The second contender made its stale decision before the first replaced
+      // the lock. Releasing it now reproduces the delayed-removal race.
+      allowSecond();
+      const secondLease = await secondLeasePromise;
+      expect([firstLease, secondLease].filter(Boolean)).toHaveLength(1);
+      expect(JSON.parse(await readFile(ownerFile, 'utf8'))).toMatchObject({
+        token: expect.not.stringContaining('abandoned'),
+      });
+
+      await firstLease!.release();
+      await expect(stat(firstStore.runLockDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect((await readdir(directory)).filter((name) => name.includes('.stale-'))).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('confines dot segments and safely persists inherited-property server ids', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mcptest-monitor-keys-'));
     try {

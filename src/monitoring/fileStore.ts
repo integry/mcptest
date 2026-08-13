@@ -84,14 +84,27 @@ export class FileMonitoringStore implements MonitoringStore {
         return this.lease(token, ownerFile);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-          await rm(this.runLockDirectory, { recursive: true, force: true }).catch(() => {});
+          // Leave a partially initialized directory for stale recovery. Removing
+          // the shared path here could delete a replacement lock after a race.
           throw error;
         }
       }
 
-      let modifiedAt: number;
+      let lockIdentity: { dev: bigint; ino: bigint; birthtimeNs: bigint };
       try {
-        modifiedAt = (await stat(ownerFile)).mtimeMs;
+        const lock = await stat(this.runLockDirectory, { bigint: true });
+        lockIdentity = { dev: lock.dev, ino: lock.ino, birthtimeNs: lock.birthtimeNs };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+
+      let modifiedAt: number;
+      let observedOwner: string | undefined;
+      try {
+        const owner = await stat(ownerFile);
+        modifiedAt = owner.mtimeMs;
+        observedOwner = await readFile(ownerFile, 'utf8');
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           try {
@@ -105,9 +118,108 @@ export class FileMonitoringStore implements MonitoringStore {
         }
       }
       if (Date.now() - modifiedAt < this.lockStaleMs) return undefined;
-      await rm(this.runLockDirectory, { recursive: true, force: true });
+      await this.onStaleLockObserved();
+
+      // Claim this generation before moving it. A delayed contender may create
+      // a claim in a replacement lock, but the owner comparison below prevents
+      // it from moving or deleting that replacement.
+      const takeoverFile = resolve(this.runLockDirectory, 'takeover.json');
+      try {
+        await writeFile(takeoverFile, `${token}\n`, {
+          encoding: 'utf8',
+          mode: 0o600,
+          flag: 'wx',
+        });
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') continue;
+        if (code === 'EEXIST') return undefined;
+        throw error;
+      }
+
+      let currentIdentity: { dev: bigint; ino: bigint; birthtimeNs: bigint };
+      try {
+        const current = await stat(this.runLockDirectory, { bigint: true });
+        currentIdentity = {
+          dev: current.dev,
+          ino: current.ino,
+          birthtimeNs: current.birthtimeNs,
+        };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+      let currentOwner: string | undefined;
+      try {
+        currentOwner = await readFile(ownerFile, 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (currentIdentity.dev !== lockIdentity.dev
+          || currentIdentity.ino !== lockIdentity.ino
+          || currentIdentity.birthtimeNs !== lockIdentity.birthtimeNs
+          || currentOwner !== observedOwner) {
+        await this.releaseTakeoverClaim(takeoverFile, token);
+        continue;
+      }
+      try {
+        const currentModifiedAt = currentOwner === undefined
+          ? (await stat(this.runLockDirectory)).mtimeMs
+          : (await stat(ownerFile)).mtimeMs;
+        if (observedOwner !== undefined && Date.now() - currentModifiedAt < this.lockStaleMs) {
+          await this.releaseTakeoverClaim(takeoverFile, token);
+          return undefined;
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+
+      const quarantineDirectory = `${this.runLockDirectory}.stale-${token}`;
+      try {
+        await rename(this.runLockDirectory, quarantineDirectory);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+
+      const quarantined = await stat(quarantineDirectory, { bigint: true });
+      let quarantinedOwner: string | undefined;
+      let quarantinedClaim: string | undefined;
+      try {
+        quarantinedOwner = await readFile(resolve(quarantineDirectory, 'owner.json'), 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      try {
+        quarantinedClaim = await readFile(resolve(quarantineDirectory, 'takeover.json'), 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (quarantined.dev !== lockIdentity.dev
+          || quarantined.ino !== lockIdentity.ino
+          || quarantined.birthtimeNs !== lockIdentity.birthtimeNs
+          || quarantinedOwner !== observedOwner
+          || quarantinedClaim !== `${token}\n`) {
+        // The path changed between the identity check and rename. Put the live
+        // directory back instead of deleting a lease this attempt did not inspect.
+        await rename(quarantineDirectory, this.runLockDirectory);
+        return undefined;
+      }
+      await rm(quarantineDirectory, { recursive: true });
     }
     return undefined;
+  }
+
+  /** Synchronization seam for deterministic stale-takeover tests. */
+  protected async onStaleLockObserved(): Promise<void> {}
+
+  private async releaseTakeoverClaim(path: string, token: string): Promise<void> {
+    try {
+      if (await readFile(path, 'utf8') === `${token}\n`) await unlink(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
 
   private lease(token: string, ownerFile: string): MonitoringRunLease {
