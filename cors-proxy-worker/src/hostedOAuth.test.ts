@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   HOSTED_AUTHORIZE_PATH,
@@ -11,6 +13,21 @@ import {
 } from './hostedOAuth';
 
 const encryptionKey = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+const deployedProxyUrl = 'https://cors-proxy-worker.livecart.workers.dev/';
+
+describe('hosted OAuth deployment configuration', () => {
+  it('keeps the configured callback on the deployed proxy origin', () => {
+    const wranglerConfig = readFileSync(resolve('cors-proxy-worker/wrangler.toml'), 'utf8');
+    const configuredCallback = wranglerConfig.match(
+      /^HOSTED_OAUTH_CALLBACK_URL\s*=\s*"([^"]+)"$/m
+    )?.[1];
+
+    expect(configuredCallback).toBeDefined();
+    const callbackUrl = new URL(configuredCallback!);
+    expect(callbackUrl.origin).toBe(new URL(deployedProxyUrl).origin);
+    expect(callbackUrl.pathname).toBe(HOSTED_CALLBACK_PATH);
+  });
+});
 
 class MemoryStorage {
   readonly values = new Map<string, unknown>();

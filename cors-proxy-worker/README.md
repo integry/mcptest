@@ -38,7 +38,7 @@ and [GitHub OAuth application setup](https://docs.github.com/en/apps/oauth-apps/
 Both applications must register this exact redirect URI:
 
 ```text
-https://cors-proxy.mcptest.io/oauth/hosted/callback
+https://cors-proxy-worker.livecart.workers.dev/oauth/hosted/callback
 ```
 
 Slack and GitHub require fixed confidential host applications, while Figma requires an approved

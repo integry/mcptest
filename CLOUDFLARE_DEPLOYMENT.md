@@ -48,7 +48,7 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
    - Add `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_ID`,
      `GITHUB_OAUTH_CLIENT_SECRET`, and `HOSTED_OAUTH_ENCRYPTION_KEY` as encrypted Worker secrets.
      Do not expose these bindings to the Pages/frontend build.
-   - Register `https://cors-proxy.mcptest.io/oauth/hosted/callback` as the exact redirect URI in
+   - Register `https://cors-proxy-worker.livecart.workers.dev/oauth/hosted/callback` as the exact redirect URI in
      both provider applications. See `cors-proxy-worker/README.md` for provider links and token storage details.
 
 4. **Deploy**
