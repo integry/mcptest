@@ -76,16 +76,38 @@ const isRecord = (value: unknown): value is RecordValue => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
+const DOUBLED_FINAL_ACTIONS = new Set([
+  'ban', 'commit', 'drop', 'reset', 'run', 'set', 'stop', 'submit', 'transfer',
+]);
+const IRREGULAR_PAST_ACTION_FORMS: Record<string, string[]> = {
+  overwrite: ['overwrote', 'overwritten'],
+  pay: ['paid'],
+  reset: ['reset'],
+  run: ['ran'],
+  send: ['sent'],
+  set: ['set'],
+  write: ['wrote', 'written'],
+};
+
 const actionForms = (action: string): string[] => {
-  const forms = [action, `${action}s`];
-  if (action.endsWith('e')) forms.push(`${action}d`, `${action.slice(0, -1)}ing`);
-  else forms.push(`${action}ed`, `${action}ing`);
-  const last = action[action.length - 1];
-  if (last) forms.push(`${action}${last}ed`, `${action}${last}ing`);
-  if (action === 'send') forms.push('sent');
-  if (action === 'write') forms.push('wrote', 'written');
-  if (action === 'run') forms.push('ran');
-  return forms;
+  const forms = new Set([action]);
+  const finalCharacter = action.slice(-1);
+  if (/[^aeiou]y$/.test(action)) forms.add(`${action.slice(0, -1)}ies`);
+  else if (/(?:s|sh|ch|x|z|o)$/.test(action)) forms.add(`${action}es`);
+  else forms.add(`${action}s`);
+
+  const irregularPastForms = IRREGULAR_PAST_ACTION_FORMS[action];
+  if (irregularPastForms) irregularPastForms.forEach(form => forms.add(form));
+  else if (/[^aeiou]y$/.test(action)) forms.add(`${action.slice(0, -1)}ied`);
+  else if (action.endsWith('e')) forms.add(`${action}d`);
+  else if (DOUBLED_FINAL_ACTIONS.has(action)) forms.add(`${action}${finalCharacter}ed`);
+  else forms.add(`${action}ed`);
+
+  if (action.endsWith('ie')) forms.add(`${action.slice(0, -2)}ying`);
+  else if (action.endsWith('e')) forms.add(`${action.slice(0, -1)}ing`);
+  else if (DOUBLED_FINAL_ACTIONS.has(action)) forms.add(`${action}${finalCharacter}ing`);
+  else forms.add(`${action}ing`);
+  return [...forms];
 };
 
 const containsAction = (text: string, actions: Set<string>): boolean => {
@@ -433,18 +455,53 @@ const defaultCase = (
   assertions: DeterministicAssertion[],
   expectedError?: DeterministicErrorType,
   manualFixtureRequired = false,
+  manualAssertionsRequired = false,
 ): DeterministicTestCaseV1 => ({
   id: `tool-${caseIdPrefix(tool.name)}--${kind}`,
   toolName: tool.name,
-  name: `${kind.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join(' ')}${manualFixtureRequired ? ' (manual fixture required)' : ''}`,
+  name: `${kind.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join(' ')}${manualFixtureRequired ? ' (manual fixture required)' : ''}${manualAssertionsRequired ? ' (manual assertions required)' : ''}`,
   kind,
-  selected: !manualFixtureRequired && (kind === 'happy-path' || kind === 'output-shape'),
+  selected: !manualFixtureRequired && !manualAssertionsRequired && (kind === 'happy-path' || kind === 'output-shape'),
   arguments: args,
   assertions,
   ...(expectedError ? { expectedError } : {}),
   timeoutMs: kind === 'timeout' ? 250 : 30_000,
   ...(kind === 'cancellation' ? { cancelAfterMs: 100 } : {}),
 });
+
+const outputSchemaRequiresManualAssertions = (
+  schema: unknown,
+  ancestors = new WeakSet<object>(),
+): boolean => {
+  if (!isRecord(schema) || ancestors.has(schema)) return false;
+  if (['$ref', 'allOf', 'oneOf', 'anyOf'].some(keyword => (
+    Object.prototype.hasOwnProperty.call(schema, keyword)
+  ))) return true;
+
+  ancestors.add(schema);
+  try {
+    const schemaValues = [
+      schema.additionalProperties,
+      schema.contains,
+      schema.else,
+      schema.if,
+      schema.items,
+      schema.not,
+      schema.propertyNames,
+      schema.then,
+      schema.unevaluatedItems,
+      schema.unevaluatedProperties,
+      ...(Array.isArray(schema.prefixItems) ? schema.prefixItems : []),
+    ];
+    const schemaMaps = [schema.dependentSchemas, schema.patternProperties, schema.properties];
+    for (const schemaMap of schemaMaps) {
+      if (isRecord(schemaMap)) schemaValues.push(...Object.values(schemaMap));
+    }
+    return schemaValues.some(value => outputSchemaRequiresManualAssertions(value, ancestors));
+  } finally {
+    ancestors.delete(schema);
+  }
+};
 
 const outputSchemaAssertions = (tool: DiscoveredTool): DeterministicAssertion[] => {
   const schema = tool.outputSchema;
@@ -523,6 +580,7 @@ export const generateDeterministicTestPlan = (
     const validation = validationArguments(tool);
     const args = generated.arguments;
     const manualFixtureRequired = !generated.valid;
+    const manualOutputAssertionsRequired = outputSchemaRequiresManualAssertions(tool.outputSchema);
     return {
       toolName: tool.name,
       ...(tool.description ? { description: tool.description } : {}),
@@ -533,7 +591,15 @@ export const generateDeterministicTestPlan = (
         defaultCase(tool, 'empty-result', args, [{ path: '$.content', operator: 'length', value: 0 }], undefined, manualFixtureRequired),
         defaultCase(tool, 'upstream-error', args, [], 'upstream', manualFixtureRequired),
         defaultCase(tool, 'timeout', args, [], 'timeout', manualFixtureRequired),
-        defaultCase(tool, 'output-shape', args, outputSchemaAssertions(tool), undefined, manualFixtureRequired),
+        defaultCase(
+          tool,
+          'output-shape',
+          args,
+          outputSchemaAssertions(tool),
+          undefined,
+          manualFixtureRequired,
+          manualOutputAssertionsRequired,
+        ),
         defaultCase(tool, 'cancellation', args, [], 'cancelled', manualFixtureRequired),
       ],
     };

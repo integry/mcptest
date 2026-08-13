@@ -81,6 +81,32 @@ describe('deterministic test plans', () => {
     }));
   });
 
+  it.each([
+    ['$ref', {
+      $ref: '#/$defs/result',
+      $defs: {
+        result: {
+          type: 'object',
+          properties: { items: { type: 'array' } },
+          required: ['items'],
+        },
+      },
+    }],
+    ['allOf', { allOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
+    ['oneOf', { oneOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
+    ['anyOf', { anyOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
+  ])('does not preselect output-shape cases requiring manual assertions for %s schemas', (_keyword, outputSchema) => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'list_items',
+      annotations: { readOnlyHint: true },
+      outputSchema,
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+
+    expect(outputShape?.selected).toBe(false);
+    expect(outputShape?.name).toContain('manual assertions required');
+  });
+
   it('generates types for recursively required output object properties', () => {
     const plan = generateDeterministicTestPlan([{
       name: 'get_profile',
@@ -375,6 +401,31 @@ describe('deterministic runner safety and evidence', () => {
       status: 'blocked',
       error: { code: 'EXPLICIT_CONFIRMATION_REQUIRED' },
     });
+  });
+
+  it.each([
+    ['Modifies account data.', false],
+    ['Account data was modified.', false],
+    ['Modifying account data.', false],
+    ['Deletes account data.', true],
+    ['Account data was deleted.', true],
+    ['Deleting account data.', true],
+  ])('blocks inflected action description %j despite contradictory read-only metadata', async (description, destructive) => {
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'account_operation', description, annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+
+    const results = await runDeterministicPlan({ callTool }, plan);
+
+    expect(plan.tools[0].safety).toMatchObject({ writeCapable: true, destructive });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every(result => (
+      result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+    ))).toBe(true);
   });
 
   it('blocks deactivate tools despite contradictory read-only metadata', async () => {
