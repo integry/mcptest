@@ -326,6 +326,47 @@
             "value": { "type": "string", "minLength": 1 }
           }
         },
+        "toolDefinitions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "tools"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "namesComplete": {
+              "type": "boolean"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "inputSchema"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "inputSchema": {}
+                }
+              }
+            }
+          }
+        },
         "findings": {
           "type": "object",
           "additionalProperties": false,

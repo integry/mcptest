@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import OAuthConfig from './OAuthConfig';
 import ReportAuthorizationGate from './ReportAuthorizationGate';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
+import ReportHistory from './ReportHistory';
 import {
   beginOAuthFlow,
   getOAuthPrerequisite,
@@ -28,6 +29,16 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import {
+  createReportSnapshot,
+  deleteAllReportSnapshots,
+  deleteReportSnapshot,
+  loadReportSnapshots,
+  REPORT_HISTORY_STORAGE_KEY,
+  saveReportSnapshotHistoryDownload,
+  storeReportSnapshot,
+  type ReportSnapshotV1,
+} from '../utils/reportHistory';
 
 type StaticAuthorizationScheme = 'bearer' | 'api-key';
 
@@ -162,6 +173,8 @@ const ReportView: React.FC = () => {
   const [unknownAuthorizationScheme, setUnknownAuthorizationScheme] = useState<'bearer' | 'api-key'>('bearer');
   const [apiKeyHeader, setApiKeyHeader] = useState<'x-api-key' | 'api-key' | 'authorization'>('x-api-key');
   const [oauthTrace, setOAuthTrace] = useState<OAuthTraceV1 | undefined>();
+  const [reportSnapshots, setReportSnapshots] = useState<ReportSnapshotV1[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -288,13 +301,28 @@ const ReportView: React.FC = () => {
   }, [location.state, urlParam, currentUser, isRunning]);
 
   useEffect(() => {
+    let storage: Storage;
     try {
-      const savedServers = localStorage.getItem('mcpTestedServers');
+      storage = window.localStorage;
+    } catch (e) {
+      console.error('Failed to access browser storage for report history', e);
+      setHistoryError('Report history could not be loaded because browser storage is unavailable.');
+      return;
+    }
+    try {
+      const savedServers = storage.getItem('mcpTestedServers');
       if (savedServers) {
         setTestedServers(JSON.parse(savedServers));
       }
     } catch (e) {
       console.error("Failed to load servers from localStorage", e);
+    }
+    try {
+      const rawSnapshots = storage.getItem(REPORT_HISTORY_STORAGE_KEY);
+      setReportSnapshots(loadReportSnapshots({ getItem: () => rawSnapshots }));
+    } catch (e) {
+      console.error('Failed to load report history from browser storage', e);
+      setHistoryError('Report history could not be loaded because browser storage is unavailable.');
     }
   }, []);
 
@@ -389,8 +417,18 @@ const ReportView: React.FC = () => {
         };
       }
       setReport(reportData);
+      let evaluationTrace: OAuthTraceV1 | undefined;
       if (typeof sessionStorage !== 'undefined') {
-        setOAuthTrace(getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage));
+        evaluationTrace = getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage);
+        setOAuthTrace(evaluationTrace);
+      }
+      try {
+        const snapshot = createReportSnapshot(reportData, evaluationTrace);
+        setReportSnapshots(storeReportSnapshot(snapshot, localStorage));
+        setHistoryError(null);
+      } catch (snapshotError) {
+        console.error('Failed to store report snapshot:', snapshotError);
+        setHistoryError('This report completed, but its local snapshot could not be saved. Browser storage may be full or unavailable.');
       }
       
       addOrUpdateServer(reportData);
@@ -681,6 +719,10 @@ const ReportView: React.FC = () => {
         </section>
       )}
 
+      {historyError && !report && (
+        <div className="alert alert-warning mb-3" role="alert">{historyError}</div>
+      )}
+
       {report && (
         <div className="card mb-4">
           <div className="card-header">
@@ -693,6 +735,7 @@ const ReportView: React.FC = () => {
               expandedItems={expandedItems}
               onToggleItem={toggleItemExpanded}
             />
+            {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
             {reportRequiresProxyAuthentication && (
               <section className="report-auth-gate" aria-labelledby="report-proxy-auth-title">
                 <div className="report-auth-heading">
@@ -892,6 +935,33 @@ const ReportView: React.FC = () => {
           </div>
         </div>
       )}
+      <ReportHistory
+        endpoint={report?.serverUrl}
+        snapshots={reportSnapshots}
+        onDeleteSnapshot={(id) => {
+          try {
+            const storage = window.localStorage;
+            setReportSnapshots(deleteReportSnapshot(id, storage));
+            setHistoryError(null);
+          } catch (e) {
+            console.error('Failed to delete report snapshot:', e);
+            setHistoryError('The report snapshot could not be deleted. Browser storage may be unavailable.');
+          }
+        }}
+        onDeleteAll={() => {
+          if (!window.confirm('Delete all locally stored report snapshots? Other app data will be kept.')) return;
+          try {
+            const storage = window.localStorage;
+            deleteAllReportSnapshots(storage);
+            setReportSnapshots([]);
+            setHistoryError(null);
+          } catch (e) {
+            console.error('Failed to delete report history:', e);
+            setHistoryError('Report history could not be deleted. Browser storage may be unavailable.');
+          }
+        }}
+        onExportAll={() => saveReportSnapshotHistoryDownload(reportSnapshots)}
+      />
       {oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}

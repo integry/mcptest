@@ -139,6 +139,15 @@ const ToolSurfaceArtifactSchema = z.object({
     algorithm: z.string().min(1),
     value: z.string().min(1),
   }).passthrough(),
+  toolDefinitions: z.object({
+    status: z.enum(['complete', 'partial', 'unavailable']),
+    namesComplete: z.boolean().optional(),
+    tools: z.array(z.object({
+      name: z.string().min(1),
+      description: z.string().optional(),
+      inputSchema: JsonValueSchema,
+    }).strict()),
+  }).strict().optional(),
   findings: z.object({
     critical: z.array(ToolSurfaceFindingArtifactSchema),
     high: z.array(ToolSurfaceFindingArtifactSchema),
@@ -899,16 +908,743 @@ const isJsonRpcErrorCode = (
   && Number.isInteger(value)
 );
 
+const isToolInputSchemaPropertyDeclaration = (
+  key: string,
+  path: readonly string[]
+): boolean => {
+  const propertyIndex = path.length - 2;
+  return propertyIndex >= 0
+    && path[propertyIndex] === 'properties'
+    && path[path.length - 1] === key
+    && path.includes('toolDefinitions')
+    && path.includes('inputSchema');
+};
+
+// Stored schemas use a closed keyword vocabulary. Arbitrary keywords are omitted,
+// and keywords whose values may contain free-form data are retained only as a
+// redaction marker. Property and definition names remain as structural map keys.
+const TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS = new Set([
+  '$anchor',
+  '$comment',
+  '$dynamicAnchor',
+  '$dynamicRef',
+  '$id',
+  '$recursiveRef',
+  '$ref',
+  '$schema',
+  '$vocabulary',
+  'const',
+  'contentEncoding',
+  'contentMediaType',
+  'default',
+  'description',
+  'enum',
+  'examples',
+  'exclusiveMaximum',
+  'exclusiveMinimum',
+  'format',
+  'maximum',
+  'minimum',
+  'multipleOf',
+  'pattern',
+  'title',
+]);
+
+const TOOL_INPUT_SCHEMA_MAP_KEYS = new Set([
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+  'patternProperties',
+  'properties',
+]);
+
+const TOOL_INPUT_SCHEMA_SINGLE_SCHEMA_KEYS = new Set([
+  'additionalItems',
+  'additionalProperties',
+  'contains',
+  'contentSchema',
+  'else',
+  'if',
+  'items',
+  'not',
+  'propertyNames',
+  'then',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+]);
+
+const TOOL_INPUT_SCHEMA_ARRAY_SCHEMA_KEYS = new Set([
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'prefixItems',
+]);
+
+const TOOL_INPUT_SCHEMA_NONNEGATIVE_INTEGER_KEYS = new Set([
+  'maxContains',
+  'maxItems',
+  'maxLength',
+  'maxProperties',
+  'minContains',
+  'minItems',
+  'minLength',
+  'minProperties',
+]);
+
+const TOOL_INPUT_SCHEMA_BOOLEAN_KEYS = new Set([
+  '$recursiveAnchor',
+  'deprecated',
+  'readOnly',
+  'uniqueItems',
+  'writeOnly',
+]);
+
+const TOOL_INPUT_SCHEMA_TYPES = new Set([
+  'array',
+  'boolean',
+  'integer',
+  'null',
+  'number',
+  'object',
+  'string',
+]);
+
+const isSchemaObject = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const sanitizeStoredSchemaValue = (value: unknown): unknown => (
+  typeof value === 'boolean' || isSchemaObject(value)
+    ? sanitizeStoredInputSchema(value)
+    : REDACTED_VALUE
+);
+
+const isUniqueStringArray = (value: unknown): value is string[] => (
+  Array.isArray(value)
+  && value.every((item) => typeof item === 'string')
+  && new Set(value).size === value.length
+);
+
+const isValidSchemaType = (value: unknown): boolean => (
+  typeof value === 'string'
+    ? TOOL_INPUT_SCHEMA_TYPES.has(value)
+    : Array.isArray(value)
+      && value.length > 0
+      && isUniqueStringArray(value)
+      && value.every((type) => TOOL_INPUT_SCHEMA_TYPES.has(type))
+);
+
+const sanitizeStoredInputSchema = (value: unknown): unknown => {
+  if (typeof value === 'boolean') return value;
+  if (!isSchemaObject(value)) return REDACTED_VALUE;
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [keyword, keywordValue] of Object.entries(value)) {
+    if (TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS.has(keyword)) {
+      sanitized[keyword] = REDACTED_VALUE;
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_MAP_KEYS.has(keyword)) {
+      if (!isSchemaObject(keywordValue)) {
+        sanitized[keyword] = REDACTED_VALUE;
+        continue;
+      }
+      sanitized[keyword] = Object.fromEntries(Object.entries(keywordValue).map(
+        ([name, childSchema]) => [name, sanitizeStoredSchemaValue(childSchema)]
+      ));
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_SINGLE_SCHEMA_KEYS.has(keyword)) {
+      sanitized[keyword] = sanitizeStoredSchemaValue(keywordValue);
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_ARRAY_SCHEMA_KEYS.has(keyword)) {
+      sanitized[keyword] = Array.isArray(keywordValue) && keywordValue.length > 0
+        ? keywordValue.map(sanitizeStoredSchemaValue)
+        : REDACTED_VALUE;
+      continue;
+    }
+    if (keyword === 'required') {
+      sanitized[keyword] = isUniqueStringArray(keywordValue)
+        ? keywordValue
+        : REDACTED_VALUE;
+      continue;
+    }
+    if (keyword === 'dependentRequired') {
+      sanitized[keyword] = isSchemaObject(keywordValue)
+        ? Object.fromEntries(Object.entries(keywordValue).map(([name, dependency]) => [
+          name,
+          isUniqueStringArray(dependency) ? dependency : REDACTED_VALUE,
+        ]))
+        : REDACTED_VALUE;
+      continue;
+    }
+    if (keyword === 'dependencies') {
+      if (!isSchemaObject(keywordValue)) {
+        sanitized[keyword] = REDACTED_VALUE;
+        continue;
+      }
+      sanitized[keyword] = Object.fromEntries(Object.entries(keywordValue).map(
+        ([name, dependency]) => [
+          name,
+          isUniqueStringArray(dependency)
+            ? dependency
+            : typeof dependency === 'boolean' || isSchemaObject(dependency)
+              ? sanitizeStoredInputSchema(dependency)
+              : REDACTED_VALUE,
+        ]
+      ));
+      continue;
+    }
+    if (keyword === 'type') {
+      sanitized[keyword] = isValidSchemaType(keywordValue)
+        ? keywordValue
+        : REDACTED_VALUE;
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_NONNEGATIVE_INTEGER_KEYS.has(keyword)) {
+      sanitized[keyword] = typeof keywordValue === 'number'
+        && Number.isInteger(keywordValue)
+        && keywordValue >= 0
+        ? keywordValue
+        : REDACTED_VALUE;
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_BOOLEAN_KEYS.has(keyword)) {
+      sanitized[keyword] = typeof keywordValue === 'boolean'
+        ? keywordValue
+        : REDACTED_VALUE;
+    }
+  }
+  return sanitized;
+};
+
+const isToolInputSchemaRedactedValue = (
+  key: string,
+  path: readonly string[]
+): boolean => (
+  TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS.has(key)
+  && path.includes('toolDefinitions')
+  && path.includes('inputSchema')
+);
+
+const sameReportValue = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((item, index) => sameReportValue(item, right[index]));
+  }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((childKey) => (
+      Object.prototype.hasOwnProperty.call(rightRecord, childKey)
+      && sameReportValue(leftRecord[childKey], rightRecord[childKey])
+    ));
+};
+
+const retainedToolNamesAreComplete = (
+  original: Record<string, unknown>,
+  redacted: Record<string, unknown>
+): boolean => {
+  if (original.status !== 'complete' && original.namesComplete !== true) return false;
+  if (!Array.isArray(original.tools) || !Array.isArray(redacted.tools)) return false;
+  return original.tools.length === redacted.tools.length
+    && original.tools.every((tool, index) => {
+      const redactedTool = redacted.tools[index];
+      return isSchemaObject(tool)
+        && isSchemaObject(redactedTool)
+        && typeof tool.name === 'string'
+        && tool.name === redactedTool.name;
+    });
+};
+
+const stableReportValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stableReportValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([childKey, childValue]) => [childKey, stableReportValue(childValue)]));
+  }
+  return value;
+};
+
+const redactedContractFingerprint = (value: unknown): { value: string; canonicalBytes: number } => {
+  const canonical = JSON.stringify(stableReportValue(value));
+  const bytes = new TextEncoder().encode(canonical);
+  let hash = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  const mask = 0xffffffffffffffffn;
+  for (const byte of bytes) {
+    hash ^= BigInt(byte);
+    hash = (hash * prime) & mask;
+  }
+  return {
+    value: hash.toString(16).padStart(16, '0'),
+    canonicalBytes: bytes.length,
+  };
+};
+
+const localSchemaReferencePath = (reference: string): string[] | undefined => {
+  if (reference === '#') return [];
+  if (!reference.startsWith('#/')) return undefined;
+  try {
+    return decodeURIComponent(reference.slice(2))
+      .split('/')
+      .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
+  } catch {
+    return undefined;
+  }
+};
+
+const localSchemaAnchorName = (reference: string): string | undefined => {
+  if (!reference.startsWith('#') || reference === '#' || reference.startsWith('#/')) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(reference.slice(1));
+  } catch {
+    return undefined;
+  }
+};
+
+const localSchemaAnchorPaths = (
+  root: unknown,
+  anchorName: string,
+  path: readonly string[] = [],
+  seen: Set<unknown> = new Set()
+): string[][] => {
+  if (!root || typeof root !== 'object' || seen.has(root)) return [];
+  seen.add(root);
+  if (Array.isArray(root)) {
+    return root.flatMap((item, index) => localSchemaAnchorPaths(
+      item,
+      anchorName,
+      [...path, String(index)],
+      seen
+    ));
+  }
+  const record = root as Record<string, unknown>;
+  const paths = record.$anchor === anchorName || record.$dynamicAnchor === anchorName
+    ? [[...path]]
+    : [];
+  return Object.entries(record).reduce<string[][]>((matches, [childKey, childValue]) => [
+    ...matches,
+    ...localSchemaAnchorPaths(childValue, anchorName, [...path, childKey], seen),
+  ], paths);
+};
+
+const localSchemaReferencePaths = (root: unknown, reference: string): string[][] => {
+  const pointerPath = localSchemaReferencePath(reference);
+  if (pointerPath) return [pointerPath];
+  const anchorName = localSchemaAnchorName(reference);
+  return anchorName === undefined ? [] : localSchemaAnchorPaths(root, anchorName);
+};
+
+const schemaValueAtPath = (
+  root: unknown,
+  path: readonly string[]
+): { found: boolean; value?: unknown } => {
+  let current = root;
+  for (const segment of path) {
+    if (Array.isArray(current)) {
+      if (!/^\d+$/.test(segment) || Number(segment) >= current.length) return { found: false };
+      current = current[Number(segment)];
+      continue;
+    }
+    if (!current || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, segment)) {
+      return { found: false };
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return { found: true, value: current };
+};
+
+const schemaPathCrossesScopedIdentifier = (
+  root: unknown,
+  path: readonly string[]
+): boolean => path.some((_, index) => {
+  const candidate = schemaValueAtPath(root, path.slice(0, index + 1));
+  return candidate.found
+    && Boolean(candidate.value)
+    && typeof candidate.value === 'object'
+    && !Array.isArray(candidate.value)
+    && Object.prototype.hasOwnProperty.call(candidate.value, '$id');
+});
+
+const collectLocalSchemaReferences = (
+  value: unknown,
+  references: Set<string>,
+  seen: Set<unknown>,
+  state: { unsafe: boolean },
+  hasScopedIdentifier = false
+): void => {
+  if (!value || typeof value !== 'object' || seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectLocalSchemaReferences(
+      item,
+      references,
+      seen,
+      state,
+      hasScopedIdentifier
+    ));
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  const referenceHasScopedIdentifier = hasScopedIdentifier
+    || Object.prototype.hasOwnProperty.call(record, '$id');
+  for (const [childKey, childValue] of Object.entries(value)) {
+    if (childKey === '$ref' || childKey === '$dynamicRef') {
+      if (
+        typeof childValue === 'string'
+        && childValue.startsWith('#')
+        && !referenceHasScopedIdentifier
+      ) {
+        references.add(childValue);
+      } else {
+        state.unsafe = true;
+      }
+    } else if (childKey === '$recursiveRef') {
+      state.unsafe = true;
+    }
+    collectLocalSchemaReferences(
+      childValue,
+      references,
+      seen,
+      state,
+      referenceHasScopedIdentifier
+    );
+  }
+};
+
+const redactSchemaValuesAtPaths = (
+  value: unknown,
+  redactedPaths: ReadonlySet<string>,
+  path: readonly string[] = []
+): unknown => {
+  if (redactedPaths.has(JSON.stringify(path))) return REDACTED_VALUE;
+  if (Array.isArray(value)) {
+    return value.map((item, index) => redactSchemaValuesAtPaths(
+      item,
+      redactedPaths,
+      [...path, String(index)]
+    ));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      redactSchemaValuesAtPaths(childValue, redactedPaths, [...path, childKey]),
+    ]));
+  }
+  return value;
+};
+
+const SCHEMA_VALUE_APPLICATOR_KEYS = new Set([
+  'additionalProperties',
+  'allOf',
+  'anyOf',
+  'contains',
+  'dependentSchemas',
+  'else',
+  'if',
+  'items',
+  'not',
+  'oneOf',
+  'patternProperties',
+  'prefixItems',
+  'then',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+]);
+
+const COMPOSED_SCHEMA_APPLICATOR_KEYS = new Set([
+  'allOf',
+  'anyOf',
+  'else',
+  'if',
+  'oneOf',
+  'then',
+]);
+
+const schemaPatternMentionsSensitiveProperty = (pattern: string): boolean => (
+  isSensitiveQueryKey(pattern)
+);
+
+const schemaNameConstraintMentionsSensitiveProperty = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (typeof record.const === 'string' && isSensitiveQueryKey(record.const)) return true;
+  if (typeof record.pattern === 'string' && schemaPatternMentionsSensitiveProperty(record.pattern)) {
+    return true;
+  }
+  if (
+    Array.isArray(record.enum)
+    && record.enum.some((candidate) => (
+      typeof candidate === 'string' && isSensitiveQueryKey(candidate)
+    ))
+  ) {
+    return true;
+  }
+  return ['allOf', 'anyOf', 'oneOf', 'if', 'then', 'else']
+    .some((keyword) => {
+      const child = record[keyword];
+      return Array.isArray(child)
+        ? child.some(schemaNameConstraintMentionsSensitiveProperty)
+        : schemaNameConstraintMentionsSensitiveProperty(child);
+    });
+};
+
+const hasSchemaValuedApplicator = (record: Record<string, unknown>): boolean => (
+  Object.entries(record).some(([keyword, value]) => (
+    SCHEMA_VALUE_APPLICATOR_KEYS.has(keyword)
+    && value !== null
+    && typeof value === 'object'
+  ))
+);
+
+const hasComposedSchemaApplicator = (record: Record<string, unknown>): boolean => (
+  Object.entries(record).some(([keyword, value]) => (
+    COMPOSED_SCHEMA_APPLICATOR_KEYS.has(keyword)
+    && value !== null
+    && typeof value === 'object'
+  ))
+);
+
+const dependencyKeywordMentionsUntraceableSensitiveProperty = (
+  value: unknown,
+  declaredProperties: Record<string, unknown> | undefined
+): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.entries(value).some(([propertyName, dependencies]) => (
+    Array.isArray(dependencies)
+    && [propertyName, ...dependencies].some((candidate) => (
+      typeof candidate === 'string'
+      && isSensitiveQueryKey(candidate)
+      && !Object.prototype.hasOwnProperty.call(declaredProperties ?? {}, candidate)
+    ))
+  ));
+};
+
+const hasUntraceableSensitiveSchemaProperty = (
+  value: unknown,
+  root: unknown = value,
+  seen: Map<unknown, number> = new Map(),
+  hasComposedAncestor = false,
+  hasScopedIdentifier = false
+): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  // A reference target may need another visit when reached under a stricter
+  // composition or resource scope than during ordinary tree traversal.
+  const traversalMode = 1 << (
+    Number(hasComposedAncestor) + (2 * Number(hasScopedIdentifier))
+  );
+  const visitedModes = seen.get(value) ?? 0;
+  if ((visitedModes & traversalMode) !== 0) return false;
+  seen.set(value, visitedModes | traversalMode);
+  if (Array.isArray(value)) {
+    return value.some((item) => hasUntraceableSensitiveSchemaProperty(
+      item,
+      root,
+      seen,
+      hasComposedAncestor,
+      hasScopedIdentifier
+    ));
+  }
+  const record = value as Record<string, unknown>;
+  const childHasScopedIdentifier = hasScopedIdentifier
+    || (value !== root && Object.prototype.hasOwnProperty.call(record, '$id'));
+  const declaredProperties = record.properties
+    && typeof record.properties === 'object'
+    && !Array.isArray(record.properties)
+    ? record.properties as Record<string, unknown>
+    : undefined;
+  const crossesComposition = hasComposedAncestor || hasComposedSchemaApplicator(record);
+  if (
+    crossesComposition
+    && Object.keys(declaredProperties ?? {}).some(isSensitiveQueryKey)
+  ) {
+    return true;
+  }
+  if (schemaNameConstraintMentionsSensitiveProperty(record.propertyNames)) return true;
+  if (
+    record.patternProperties
+    && typeof record.patternProperties === 'object'
+    && !Array.isArray(record.patternProperties)
+    && Object.keys(record.patternProperties).some(schemaPatternMentionsSensitiveProperty)
+  ) {
+    return true;
+  }
+  if (hasSchemaValuedApplicator(record) || hasComposedAncestor) {
+    // A required/dependency declaration in one composed or conditional branch can
+    // make a value constrained by another branch sensitive. JSON Schema does not
+    // provide a reliable local property relationship across those branches, so
+    // fail closed instead of trusting a same-object `properties` declaration.
+    const locallyTraceableProperties = crossesComposition ? undefined : declaredProperties;
+    if (Array.isArray(record.required) && record.required.some((propertyName) => (
+      typeof propertyName === 'string'
+      && isSensitiveQueryKey(propertyName)
+      && !Object.prototype.hasOwnProperty.call(locallyTraceableProperties ?? {}, propertyName)
+    ))) {
+      return true;
+    }
+    if (
+      dependencyKeywordMentionsUntraceableSensitiveProperty(
+        record.dependentRequired,
+        locallyTraceableProperties
+      )
+      || dependencyKeywordMentionsUntraceableSensitiveProperty(
+        record.dependencies,
+        locallyTraceableProperties
+      )
+    ) {
+      return true;
+    }
+  }
+  const referenceCrossesComposition = hasComposedAncestor || hasSchemaValuedApplicator(record);
+  for (const referenceKeyword of ['$ref', '$dynamicRef']) {
+    const reference = record[referenceKeyword];
+    if (typeof reference !== 'string' || !reference.startsWith('#')) continue;
+    if (childHasScopedIdentifier && referenceCrossesComposition) return true;
+    for (const referencePath of localSchemaReferencePaths(root, reference)) {
+      const target = schemaValueAtPath(root, referencePath);
+      if (
+        target.found
+        && hasUntraceableSensitiveSchemaProperty(
+          target.value,
+          root,
+          seen,
+          referenceCrossesComposition,
+          schemaPathCrossesScopedIdentifier(root, referencePath)
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return Object.entries(record).some(([keyword, child]) => (
+    hasUntraceableSensitiveSchemaProperty(
+      child,
+      root,
+      seen,
+      hasComposedAncestor || COMPOSED_SCHEMA_APPLICATOR_KEYS.has(keyword),
+      childHasScopedIdentifier
+    )
+  ));
+};
+
+const redactSensitiveSchemaReferences = (schema: unknown): unknown => {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
+  if (hasUntraceableSensitiveSchemaProperty(schema)) return REDACTED_VALUE;
+  const pendingReferences = new Set<string>();
+  const seenSchemaNodes = new Set<unknown>();
+  const referenceState = { unsafe: false };
+
+  const visitProperties = (value: unknown, hasScopedIdentifier = false): void => {
+    if (!value || typeof value !== 'object' || seenSchemaNodes.has(value)) return;
+    seenSchemaNodes.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((item) => visitProperties(item, hasScopedIdentifier));
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    const childHasScopedIdentifier = hasScopedIdentifier
+      || (value !== schema && Object.prototype.hasOwnProperty.call(record, '$id'));
+    if (record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)) {
+      for (const [propertyName, declaration] of Object.entries(record.properties)) {
+        if (isSensitiveQueryKey(propertyName)) {
+          collectLocalSchemaReferences(
+            declaration,
+            pendingReferences,
+            new Set(),
+            referenceState,
+            childHasScopedIdentifier
+          );
+        }
+      }
+    }
+    Object.values(record).forEach((child) => visitProperties(child, childHasScopedIdentifier));
+  };
+  visitProperties(schema);
+  if (referenceState.unsafe) return REDACTED_VALUE;
+
+  const redactedPaths = new Set<string>();
+  for (const reference of pendingReferences) {
+    const referencePaths = localSchemaReferencePaths(schema, reference);
+    if (referencePaths.length === 0) return REDACTED_VALUE;
+    for (const referencePath of referencePaths) {
+      if (schemaPathCrossesScopedIdentifier(schema, referencePath)) return REDACTED_VALUE;
+      const pathKey = JSON.stringify(referencePath);
+      if (redactedPaths.has(pathKey)) continue;
+      const target = schemaValueAtPath(schema, referencePath);
+      if (!target.found) return REDACTED_VALUE;
+      redactedPaths.add(pathKey);
+      collectLocalSchemaReferences(
+        target.value,
+        pendingReferences,
+        new Set(),
+        referenceState
+      );
+      if (referenceState.unsafe) return REDACTED_VALUE;
+    }
+  }
+
+  return redactedPaths.size > 0
+    ? redactSchemaValuesAtPaths(schema, redactedPaths)
+    : schema;
+};
+
 const redactReportValueAtPath = (
   value: unknown,
   key: string | undefined,
-  path: readonly string[]
+  path: readonly string[],
+  schemaReferencesRedacted = false,
+  inputSchemaSanitized = false
 ): unknown => {
+  if (key && isToolInputSchemaRedactedValue(key, path)) return REDACTED_VALUE;
+  if (key
+      && isSensitiveQueryKey(key)
+      && isToolInputSchemaPropertyDeclaration(key, path)) {
+    return REDACTED_VALUE;
+  }
   if (key
     && isSensitiveQueryKey(key)
     && !isAuthorizationPrerequisiteSchemaField(path)
+    && !isToolInputSchemaPropertyDeclaration(key, path)
     && !isJsonRpcErrorCode(value, key, path)) {
     return REDACTED_VALUE;
+  }
+  if (
+    key === 'inputSchema'
+    && path.includes('toolDefinitions')
+    && !schemaReferencesRedacted
+  ) {
+    const redactedReferences = redactSensitiveSchemaReferences(value);
+    if (redactedReferences !== value) {
+      return redactReportValueAtPath(redactedReferences, key, path, true);
+    }
+  }
+  if (
+    key === 'inputSchema'
+    && path.includes('toolDefinitions')
+    && !inputSchemaSanitized
+  ) {
+    const sanitizedSchema = sanitizeStoredInputSchema(value);
+    if (!sameReportValue(sanitizedSchema, value)) {
+      return redactReportValueAtPath(
+        sanitizedSchema,
+        key,
+        path,
+        schemaReferencesRedacted,
+        true
+      );
+    }
+    inputSchemaSanitized = true;
   }
   if (value === undefined) return undefined;
   if (typeof value === 'string') return redactReportString(value);
@@ -917,12 +1653,12 @@ const redactReportValueAtPath = (
     return value.map((item, index) => redactReportValueAtPath(item, undefined, [
       ...path,
       String(index),
-    ]));
+    ], schemaReferencesRedacted, inputSchemaSanitized));
   }
   if (value && typeof value === 'object') {
     const redactedKeys = new Set<string>();
     // Sort the source keys so collision suffixes do not depend on insertion order.
-    return Object.fromEntries(Object.entries(value)
+    const redactedObject = Object.fromEntries(Object.entries(value)
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .filter(([, childValue]) => childValue !== undefined)
       .map(([childKey, childValue]) => {
@@ -934,9 +1670,50 @@ const redactReportValueAtPath = (
         redactedKeys.add(uniqueKey);
         return [
           uniqueKey,
-          redactReportValueAtPath(childValue, childKey, [...path, childKey]),
+          redactReportValueAtPath(
+            childValue,
+            childKey,
+            [...path, childKey],
+            schemaReferencesRedacted,
+            inputSchemaSanitized
+          ),
         ];
       }));
+    if (
+      key === 'toolDefinitions'
+      && path.includes('toolSurfaceAnalysis')
+      && !sameReportValue(value, redactedObject)
+    ) {
+      return {
+        ...redactedObject,
+        status: 'partial',
+        namesComplete: retainedToolNamesAreComplete(
+          value as Record<string, unknown>,
+          redactedObject
+        ),
+      };
+    }
+    const redactedDefinitions = redactedObject.toolDefinitions;
+    const redactedFingerprint = redactedObject.fingerprint;
+    if (
+      key === 'toolSurfaceAnalysis'
+      && redactedDefinitions
+      && typeof redactedDefinitions === 'object'
+      && !Array.isArray(redactedDefinitions)
+      && (redactedDefinitions as Record<string, unknown>).status === 'partial'
+      && redactedFingerprint
+      && typeof redactedFingerprint === 'object'
+      && !Array.isArray(redactedFingerprint)
+    ) {
+      return {
+        ...redactedObject,
+        fingerprint: {
+          ...(redactedFingerprint as Record<string, unknown>),
+          ...redactedContractFingerprint(redactedDefinitions),
+        },
+      };
+    }
+    return redactedObject;
   }
   return String(value);
 };

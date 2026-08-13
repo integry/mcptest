@@ -98,6 +98,22 @@ export interface ToolSurfaceFingerprintV1 {
   canonicalBytes: number;
 }
 
+export interface ToolDefinitionSnapshotV1 {
+  name: string;
+  description?: string;
+  inputSchema: unknown;
+}
+
+/**
+ * A bounded copy of the contracts used for local semantic drift comparisons.
+ * `partial` means at least one definition could not be retained losslessly, so
+ * callers must report unknown instead of inferring removals from this list.
+ */
+export interface ToolDefinitionSnapshotSetV1 {
+  status: 'complete' | 'partial' | 'unavailable';
+  tools: ToolDefinitionSnapshotV1[];
+}
+
 export type ToolSurfaceFindingsBySeverityV1 = Record<
   ToolSurfaceSeverity,
   ToolSurfaceFindingV1[]
@@ -107,6 +123,7 @@ export interface ToolSurfaceAnalysisV1 {
   version: ToolSurfaceAnalysisVersion;
   metrics: ToolSurfaceMetricsV1;
   fingerprint: ToolSurfaceFingerprintV1;
+  toolDefinitions: ToolDefinitionSnapshotSetV1;
   findings: ToolSurfaceFindingsBySeverityV1;
   findingCount: number;
   interpretation: string;
