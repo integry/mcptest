@@ -24,6 +24,13 @@ describe('ToolSelectionEvalsView local workflow', () => {
 
   const button = (text: string) => Array.from(container.querySelectorAll('button')).find(item => item.textContent?.includes(text));
 
+  const setDatasetText = (value: string) => {
+    const textarea = container.querySelector<HTMLTextAreaElement>('#eval-dataset')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    setter?.call(textarea, value);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
   it('runs the complete fixture flow without a paid provider', async () => {
     renderView();
     expect(container.textContent).toContain('Local fixture (no API call)');
@@ -54,5 +61,32 @@ describe('ToolSelectionEvalsView local workflow', () => {
     act(() => button('Approve')?.click());
     expect(container.textContent).toContain('2 still need review');
     expect(button('Run 36 trials')).toBeTruthy();
+  });
+
+  it('preserves a baseline across revisions of the same dataset and resets it for a new identity', async () => {
+    renderView();
+    await act(async () => {
+      button('Run 27 trials')?.click();
+    });
+
+    const textarea = container.querySelector<HTMLTextAreaElement>('#eval-dataset')!;
+    const revised = JSON.parse(textarea.value);
+    revised.descriptionRevision = 'weather-descriptions-v2';
+    revised.schemaRevision = 'weather-schemas-v2';
+    act(() => setDatasetText(JSON.stringify(revised, null, 2)));
+    act(() => button('Validate and use dataset')?.click());
+
+    expect(container.textContent).toContain('Latest results');
+    await act(async () => {
+      button('Run 27 trials')?.click();
+    });
+    expect(container.textContent).toContain('Compared with previous run');
+    expect(container.textContent).toContain('Description revision changed; schema revision changed');
+
+    const differentDataset = { ...revised, id: 'different-weather-eval' };
+    act(() => setDatasetText(JSON.stringify(differentDataset, null, 2)));
+    act(() => button('Validate and use dataset')?.click());
+    expect(container.textContent).not.toContain('Latest results');
+    expect(container.textContent).not.toContain('Compared with previous run');
   });
 });

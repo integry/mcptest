@@ -14,6 +14,26 @@ describe('versioned eval datasets', () => {
     expect(parseDataset(JSON.stringify(LOCAL_TOOL_SELECTION_FIXTURE)).id).toBe('local-weather-eval');
   });
 
+  it('repeatedly validates equivalent datasets whose tool schemas share a root $id', () => {
+    const dataset = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      tools: LOCAL_TOOL_SELECTION_FIXTURE.tools.map((tool, index) => index === 0 ? {
+        ...tool,
+        inputSchema: {
+          $id: 'https://example.test/schemas/weather-input.json',
+          type: 'object',
+          properties: { city: { type: 'string' } },
+          required: ['city'],
+          additionalProperties: false,
+        },
+      } : tool),
+    };
+    const serialized = JSON.stringify(dataset);
+
+    expect(parseDataset(serialized).tools[0].inputSchema.$id).toBe('https://example.test/schemas/weather-input.json');
+    expect(parseDataset(serialized).tools[0].inputSchema.$id).toBe('https://example.test/schemas/weather-input.json');
+  });
+
   it('publishes a JSON Schema that accepts the local fixture and reviewed suggestions', () => {
     const suggestion = { ...suggestCases(LOCAL_TOOL_SELECTION_FIXTURE)[0], reviewStatus: 'approved' as const };
     expect(validatePublicSchema({ ...LOCAL_TOOL_SELECTION_FIXTURE, suggestions: [suggestion] }), validatePublicSchema.errors?.map(error => error.message).join(', ')).toBe(true);

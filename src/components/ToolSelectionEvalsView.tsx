@@ -113,15 +113,16 @@ const ToolSelectionEvalsView: React.FC = () => {
   const applyDataset = () => {
     try {
       const next = parseDataset(datasetText);
+      if (next.id !== dataset.id) setReports([]);
       setDataset(next);
       setDatasetError('');
-      setReports([]);
     } catch (error) {
       setDatasetError(error instanceof Error ? error.message : String(error));
     }
   };
 
   const updateDataset = (next: ToolSelectionDatasetV1) => {
+    if (next.id !== dataset.id) setReports([]);
     setDataset(next);
     setDatasetText(JSON.stringify(next, null, 2));
     setDatasetError('');
@@ -315,6 +316,9 @@ const ToolSelectionEvalsView: React.FC = () => {
               >Download report</button>
             </div>
             <MetricsTable metrics={latest.metrics} />
+            <p className="form-text mt-2">
+              Figures grounded is scored only when the figure was supplied as plain context or through a successfully completed expected tool-result turn.
+            </p>
             <div className="row g-3 mt-2">
               {armMetrics.map(({ arm, metrics }) => (
                 <div className="col-12" key={arm}>

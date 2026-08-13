@@ -46,7 +46,9 @@ const readPath = (value: unknown, path: string): { present: boolean; value?: unk
   const parts = path.replace(/^\$\.?/, '').split('.').filter(Boolean);
   let cursor: unknown = value;
   for (const part of parts) {
-    if (!cursor || typeof cursor !== 'object' || !(part in cursor)) return { present: false };
+    if (!cursor || typeof cursor !== 'object' || !Object.prototype.hasOwnProperty.call(cursor, part)) {
+      return { present: false };
+    }
     cursor = (cursor as Record<string, unknown>)[part];
   }
   return { present: true, value: cursor };
@@ -117,6 +119,17 @@ const figureAppears = (answer: string, figure: string | number): boolean => {
   return new RegExp(`(^|[^0-9.])${escaped}([^0-9.]|$)`).test(answer);
 };
 
+const sourceContainsFigure = (source: unknown, figure: string | number): boolean => {
+  if (typeof source === 'string' || typeof source === 'number') {
+    return figureAppears(String(source), figure);
+  }
+  if (Array.isArray(source)) return source.some(value => sourceContainsFigure(value, figure));
+  if (source && typeof source === 'object') {
+    return Object.values(source).some(value => sourceContainsFigure(value, figure));
+  }
+  return false;
+};
+
 const scoreTrial = (
   evalCase: ToolSelectionCase,
   arm: EvalTrialResult['arm'],
@@ -148,10 +161,19 @@ const scoreTrial = (
       ? evaluateAssertion(matchingCall.arguments, assertion)
       : { assertion, passed: false, message: 'The asserted tool was not called.' };
   });
+  const groundingSources = arm === 'plain-context' && evalCase.toolReturnedData !== undefined
+    ? [evalCase.toolReturnedData]
+    : arm === 'with-mcp' && !observation.error
+      ? callsExpected.flatMap(call => call.result === undefined ? [] : [call.result])
+      : [];
   const figures = evalCase.expectedFigures?.length
     ? evalCase.expectedFigures
-    : figuresFrom(evalCase.toolReturnedData ?? callsExpected[0]?.result);
-  const figuresGrounded = figures.length && observation.finalAnswer
+    : groundingSources.flatMap(figuresFrom);
+  const relevantSourceAvailable = figures.length > 0
+    && figures.every(figure => groundingSources.some(source => sourceContainsFigure(source, figure)));
+  // Grounding is not applicable when the arm did not supply the configured
+  // figures. With a relevant source and answer, absence of a figure is a failure.
+  const figuresGrounded = relevantSourceAvailable && observation.finalAnswer
     ? figures.every(figure => figureAppears(observation.finalAnswer!, figure))
     : null;
   const inputTokens = observation.inputTokens || 0;

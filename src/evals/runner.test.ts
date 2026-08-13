@@ -41,6 +41,22 @@ describe('tool-selection evaluation runner', () => {
     }).passed).toBe(true);
   });
 
+  it.each(['toString', 'constructor'])(
+    'does not treat inherited %s members as observed argument properties',
+    path => {
+      expect(evaluateAssertion({}, { path, operator: 'present' }).passed).toBe(false);
+      expect(evaluateAssertion({}, { path, operator: 'equals', value: Object.prototype[path as keyof Object] }).passed).toBe(false);
+      expect(evaluateAssertion({}, { path, operator: 'absent' }).passed).toBe(true);
+    }
+  );
+
+  it('requires own properties at every nested assertion path segment', () => {
+    const argumentsValue = { request: Object.create({ inherited: 42 }) };
+    expect(evaluateAssertion(argumentsValue, {
+      path: 'request.inherited', operator: 'equals', value: 42,
+    }).passed).toBe(false);
+  });
+
   it('handles multiple acceptable tools, expected no-tool, and malformed arguments deterministically', async () => {
     const progress = vi.fn();
     const report = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
@@ -80,6 +96,47 @@ describe('tool-selection evaluation runner', () => {
     expect(calculateMetrics(report.results.filter(result => result.arm === 'plain-context')).selectionAccuracy).toBeNull();
     expect(report.results.filter(result => result.caseId === 'expected-no-tool').map(result => result.noToolPassed)).toEqual([true, null, null]);
     expect(report.metrics.noToolAccuracy).toBe(1);
+  });
+
+  it('scores figures only when the arm supplied them through an eligible grounding source', async () => {
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [LOCAL_TOOL_SELECTION_FIXTURE.cases[0]],
+    };
+    const sourced = await runEvaluation(dataset, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp', 'without-mcp', 'plain-context'], trials: 1,
+    }, createFixtureProvider());
+
+    expect(sourced.results.map(result => [result.arm, result.figuresGrounded])).toEqual([
+      ['with-mcp', true],
+      ['without-mcp', null],
+      ['plain-context', true],
+    ]);
+
+    const guessed = await runEvaluation(dataset, {
+      provider: 'fixture', model: 'mock', arms: ['with-mcp'], trials: 1,
+    }, {
+      id: 'fixture',
+      async run() {
+        return { toolCalls: [], finalAnswer: 'The chance of rain is 32%.', latencyMs: 1 };
+      },
+    });
+    expect(guessed.results[0].figuresGrounded).toBeNull();
+
+    const failedToolResult = await runEvaluation(dataset, {
+      provider: 'fixture', model: 'mock', arms: ['with-mcp'], trials: 1,
+    }, {
+      id: 'fixture',
+      async run() {
+        return {
+          toolCalls: [{ name: 'get_forecast', arguments: { city: 'Lisbon', days: 1 }, result: { rainChancePercent: 32 } }],
+          finalAnswer: 'The chance of rain is 32%.',
+          latencyMs: 1,
+          error: 'Tool-result turn failed.',
+        };
+      },
+    });
+    expect(failedToolResult.results[0].figuresGrounded).toBeNull();
   });
 
   it('supports deterministic mocked provider output and repeated-trial tails', async () => {
