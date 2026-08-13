@@ -50,6 +50,13 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
    Keep non-production branch builds enabled only with the dry-run command above; do not use the
    default `wrangler versions upload` command for this Worker.
 
+   The red PR check was reproduced with a real, inactive `wrangler versions upload`. Cloudflare
+   returned error 10211: `Version upload failed because the Worker includes an unapplied Durable
+   Object migration; migrations must be fully applied via a non-versioned deployment.` No version
+   was created and no production traffic changed. This is a lifecycle constraint, not a
+   TypeScript, bundle, or OAuth failure. Cloudflare documents that
+   [version uploads cannot apply Durable Object lifecycle changes](https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/#durable-object-migrations).
+
 3. **Set environment variables**
    - Add `FIREBASE_PROJECT_ID` with your actual Firebase project ID (e.g., `mcp-testing`)
    - Set `PUBLIC_APP_ORIGIN` and `HOSTED_OAUTH_CALLBACK_URL` to the deployed application and proxy origins.
@@ -72,6 +79,28 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
    [preview URLs for Workers that implement Durable Objects](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/#limitations),
    so PR validation must remain a non-uploading check. Keep the `HostedOAuthBroker` binding and
    migration intact; the reviewed `master` deployment applies lifecycle changes.
+
+#### Declarative Durable Object exports evaluation
+
+Cloudflare's newer declarative equivalent for this new SQLite-backed class is:
+
+```toml
+[exports.HostedOAuthBroker]
+type = "durable-object"
+storage = "sqlite"
+```
+
+The repository-pinned Wrangler 4.120.0 schema accepts this form. Both Wrangler deploy and version
+upload dry runs validate it locally. It is mutually exclusive with `[[migrations]]`, so adopting it
+would require removing the existing migration. However, Cloudflare explicitly states that
+`wrangler versions upload` cannot apply lifecycle changes made with either `exports` or
+`migrations`; an actual upload with an `exports` entry also fails rather than provisioning the
+namespace. A dry run validates configuration and bundling only, not account reconciliation.
+
+Therefore declarative `exports` is compatible with `HostedOAuthBroker` but is not a solution for
+the PR check. This branch retains the initial SQLite migration and the non-uploading PR validation
+path. Only the reviewed `master` deployment may provision the namespace and apply the lifecycle
+change. Do not run a production deployment from a pull-request branch.
 
 ### Method 2: Deploy from Command Line
 
