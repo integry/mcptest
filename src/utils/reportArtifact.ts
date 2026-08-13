@@ -141,6 +141,7 @@ const ToolSurfaceArtifactSchema = z.object({
   }).passthrough(),
   toolDefinitions: z.object({
     status: z.enum(['complete', 'partial', 'unavailable']),
+    namesComplete: z.boolean().optional(),
     tools: z.array(z.object({
       name: z.string().min(1),
       description: z.string().optional(),
@@ -1147,6 +1148,22 @@ const sameReportValue = (left: unknown, right: unknown): boolean => {
     ));
 };
 
+const retainedToolNamesAreComplete = (
+  original: Record<string, unknown>,
+  redacted: Record<string, unknown>
+): boolean => {
+  if (original.status !== 'complete' && original.namesComplete !== true) return false;
+  if (!Array.isArray(original.tools) || !Array.isArray(redacted.tools)) return false;
+  return original.tools.length === redacted.tools.length
+    && original.tools.every((tool, index) => {
+      const redactedTool = redacted.tools[index];
+      return isSchemaObject(tool)
+        && isSchemaObject(redactedTool)
+        && typeof tool.name === 'string'
+        && tool.name === redactedTool.name;
+    });
+};
+
 const stableReportValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stableReportValue);
   if (value && typeof value === 'object') {
@@ -1667,7 +1684,14 @@ const redactReportValueAtPath = (
       && path.includes('toolSurfaceAnalysis')
       && !sameReportValue(value, redactedObject)
     ) {
-      return { ...redactedObject, status: 'partial' };
+      return {
+        ...redactedObject,
+        status: 'partial',
+        namesComplete: retainedToolNamesAreComplete(
+          value as Record<string, unknown>,
+          redactedObject
+        ),
+      };
     }
     const redactedDefinitions = redactedObject.toolDefinitions;
     const redactedFingerprint = redactedObject.fingerprint;

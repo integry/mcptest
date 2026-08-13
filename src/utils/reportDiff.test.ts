@@ -285,7 +285,7 @@ describe('semantic report drift', () => {
     });
 
     expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions',
+      path: 'tools.search.inputSchema.properties.query.type',
       classification: 'unknown',
       breaking: false,
     }));
@@ -306,7 +306,7 @@ describe('semantic report drift', () => {
     const changes = diffPublicReports(before, after).changes;
 
     expect(changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+      path: 'tools.search.inputSchema.properties', classification: 'unknown', breaking: false,
     }));
     expect(changes).not.toContainEqual(expect.objectContaining({
       path: expect.stringMatching(/inputSchema\.properties\.(query|limit)$/),
@@ -330,7 +330,7 @@ describe('semantic report drift', () => {
     const changes = diffPublicReports(before, after).changes;
 
     expect(changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+      path: 'tools.search.inputSchema.required', classification: 'unknown', breaking: false,
     }));
     expect(changes).not.toContainEqual(expect.objectContaining({
       path: 'tools.search.inputSchema.required.query',
@@ -376,12 +376,12 @@ describe('semantic report drift', () => {
 
     expect(restricted.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(diffPublicReports(unrestricted, restricted).changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions',
+      path: 'tools.search.inputSchema.properties.query.enum',
       classification: 'unknown',
       breaking: false,
     }));
     expect(diffPublicReports(restricted, unrestricted).changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions',
+      path: 'tools.search.inputSchema.properties.query.enum',
       classification: 'unknown',
       breaking: false,
     }));
@@ -399,7 +399,7 @@ describe('semantic report drift', () => {
     expect(before.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions',
+      path: 'tools.search.inputSchema.properties.query.enum',
       classification: 'unknown',
       breaking: false,
     }));
@@ -447,7 +447,7 @@ describe('semantic report drift', () => {
       tools: [tool(schema(afterValue))],
     });
     const changes = diffPublicReports(before, after).changes.filter(
-      ({ path }) => path === 'toolSurfaceAnalysis.toolDefinitions'
+      ({ path }) => path === 'tools.search.inputSchema.additionalProperties'
     );
 
     expect(changes).toEqual([expect.objectContaining({
@@ -472,7 +472,7 @@ describe('semantic report drift', () => {
     expect(before.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+      path: 'tools.search.description', classification: 'unknown', breaking: false,
     }));
   });
 
@@ -515,7 +515,9 @@ describe('semantic report drift', () => {
     expect(before.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+      path: 'tools.search.inputSchema.properties.query.examples',
+      classification: 'unknown',
+      breaking: false,
     }));
   });
 
@@ -535,7 +537,115 @@ describe('semantic report drift', () => {
     expect(before.toolSurfaceAnalysis?.fingerprint.value)
       .toBe(after.toolSurfaceAnalysis?.fingerprint.value);
     expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
-      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
+      path: 'tools.search.description', classification: 'unknown', breaking: false,
+    }));
+  });
+
+  it('detects retained breaking schema changes beside redacted annotations', () => {
+    const schema = (queryType: string, required: string[]) => inputSchema({
+      query: { type: queryType, description: 'The public search query.' },
+      tenant: { type: 'string' },
+    }, required);
+    const before = artifact({ tools: [tool(schema('string', ['query']))] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(schema('number', ['query', 'tenant']))],
+    });
+    const changes = diffPublicReports(before, after).changes;
+
+    expect(before.toolSurfaceAnalysis?.toolDefinitions).toEqual(expect.objectContaining({
+      status: 'partial', namesComplete: true,
+    }));
+    expect(after.toolSurfaceAnalysis?.toolDefinitions).toEqual(expect.objectContaining({
+      status: 'partial', namesComplete: true,
+    }));
+    expect(changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: 'tools.search.inputSchema.required.tenant',
+        classification: 'breaking',
+        breaking: true,
+      }),
+      expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.query.type',
+        classification: 'breaking',
+        breaking: true,
+      }),
+      expect.objectContaining({
+        path: 'tools.search.inputSchema.properties.query.description',
+        classification: 'unknown',
+        breaking: false,
+      }),
+    ]));
+  });
+
+  it('does not let a redacted annotation obscure a comparable optional-property addition', () => {
+    const before = artifact({ tools: [tool({
+      type: 'object', properties: {}, additionalProperties: false,
+    })] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool({
+        type: 'object',
+        properties: { limit: { description: 'Public limit guidance.' } },
+        additionalProperties: false,
+      })],
+    });
+    const changes = diffPublicReports(before, after).changes;
+
+    expect(changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties.limit',
+      classification: 'addition',
+      breaking: false,
+    }));
+    expect(changes).toContainEqual(expect.objectContaining({
+      path: 'tools.search.inputSchema.properties.limit.description',
+      classification: 'unknown',
+      breaking: false,
+    }));
+  });
+
+  it('detects removals when redaction left the retained tool-name set complete', () => {
+    const describedSchema = {
+      type: 'object',
+      description: 'Public input guidance.',
+      properties: {},
+    };
+    const before = artifact({ tools: [
+      tool(describedSchema),
+      { name: 'delete_record', description: 'Delete one record.', inputSchema: describedSchema },
+    ] });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      tools: [tool(describedSchema)],
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'tools.delete_record',
+      classification: 'removal',
+      breaking: true,
+    }));
+  });
+
+  it('does not infer removals when the latest partial snapshot omitted definitions', () => {
+    const before = artifact({ tools: [
+      tool(inputSchema({ query: { type: 'string' } })),
+      { name: 'delete_record', description: 'Delete one record.', inputSchema: { type: 'object' } },
+    ] });
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    after.toolSurfaceAnalysis!.toolDefinitions = {
+      status: 'partial',
+      tools: [after.toolSurfaceAnalysis!.toolDefinitions.tools[0]],
+    };
+    const changes = diffPublicReports(before, after).changes;
+
+    expect(changes).toContainEqual(expect.objectContaining({
+      path: 'tools.delete_record',
+      classification: 'unknown',
+      breaking: false,
+    }));
+    expect(changes).not.toContainEqual(expect.objectContaining({
+      path: 'tools.delete_record',
+      classification: 'removal',
     }));
   });
 

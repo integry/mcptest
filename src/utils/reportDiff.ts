@@ -53,6 +53,17 @@ const stableValue = (value: unknown): unknown => {
 
 const stableString = (value: unknown): string => JSON.stringify(stableValue(value));
 const same = (left: unknown, right: unknown): boolean => stableString(left) === stableString(right);
+const REDACTED_VALUE = '[REDACTED]';
+const COSMETIC_SCHEMA_KEYS = new Set(['title', 'description', 'examples', 'default']);
+const isRedactedValue = (value: unknown): boolean => value === REDACTED_VALUE;
+const containsRedactedValue = (value: unknown): boolean => {
+  if (isRedactedValue(value)) return true;
+  if (Array.isArray(value)) return value.some(containsRedactedValue);
+  return isRecord(value) && Object.values(value).some(containsRedactedValue);
+};
+const isRedactedString = (value: unknown): value is string => (
+  typeof value === 'string' && value.includes(REDACTED_VALUE)
+);
 const display = (value: unknown): string => {
   if (value === undefined) return 'unavailable';
   if (typeof value === 'string') return value;
@@ -87,6 +98,41 @@ const makeChange = (
   detail: string,
   breaking = classification === 'breaking'
 ): ReportDiffChange => ({ classification, category, path, title, detail, breaking });
+
+const collectRedactedSchemaPaths = (
+  value: unknown,
+  path: string,
+  paths: Set<string>
+): void => {
+  if (isRedactedValue(value)) {
+    paths.add(path);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => collectRedactedSchemaPaths(child, `${path}.${index}`, paths));
+    return;
+  }
+  if (isRecord(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      collectRedactedSchemaPaths(child, `${path}.${key}`, paths);
+    }
+  }
+};
+
+const redactedSchemaChanges = (
+  before: unknown,
+  after: unknown,
+  toolName: string,
+  path = `tools.${toolName}.inputSchema`
+): ReportDiffChange[] => {
+  const paths = new Set<string>();
+  collectRedactedSchemaPaths(before, path, paths);
+  collectRedactedSchemaPaths(after, path, paths);
+  return [...paths].sort().map((redactedPath) => makeChange(
+    'unknown', 'tools', redactedPath, `${toolName} schema portion could not be compared`,
+    'This schema portion was redacted from at least one stored snapshot.'
+  ));
+};
 
 const JSON_SCHEMA_TYPES = new Set([
   'array', 'boolean', 'integer', 'null', 'number', 'object', 'string',
@@ -256,7 +302,10 @@ function compareSchemaAcceptance(beforeValue: unknown, afterValue: unknown): Sch
 
   const changes = schemaChanges(before.schema, after.schema, 'input', 'input');
   if (changes.some((change) => change.breaking)) return 'narrowed';
-  if (changes.some((change) => change.classification === 'unknown')) return 'unknown';
+  if (changes.some((change) => (
+    change.classification === 'unknown'
+    && !COSMETIC_SCHEMA_KEYS.has(change.path.slice(change.path.lastIndexOf('.') + 1))
+  ))) return 'unknown';
   return 'widened';
 }
 
@@ -266,7 +315,13 @@ const schemaChanges = (
   toolName: string,
   path = `tools.${toolName}.inputSchema`
 ): ReportDiffChange[] => {
-  if (same(before, after)) return [];
+  if (same(before, after) && !containsRedactedValue(before)) return [];
+  if (isRedactedValue(before) || isRedactedValue(after)) {
+    return [makeChange(
+      'unknown', 'tools', path, `Could not compare ${toolName} input schema`,
+      'At least one schema portion was redacted from the stored snapshot.'
+    )];
+  }
   if (!isRecord(before) || !isRecord(after)) {
     return [makeChange(
       'unknown', 'tools', path, `Could not compare ${toolName} input schema`,
@@ -391,11 +446,13 @@ const schemaChanges = (
           relation === 'narrowed'
         ));
       }
-      for (const name of Object.keys(beforeProperties).filter((name) => hasOwn(afterProperties, name)).sort()) {
-        changes.push(...schemaChanges(
-          beforeProperties[name], afterProperties[name], toolName, `${path}.properties.${name}`
-        ));
-      }
+    }
+  }
+  if (beforePropertiesKeyword.status === 'valid' && afterPropertiesKeyword.status === 'valid') {
+    for (const name of Object.keys(beforeProperties).filter((name) => hasOwn(afterProperties, name)).sort()) {
+      changes.push(...schemaChanges(
+        beforeProperties[name], afterProperties[name], toolName, `${path}.properties.${name}`
+      ));
     }
   }
   reportedHandledKeys.add('properties');
@@ -484,6 +541,15 @@ const schemaChanges = (
 
   const handledKeys = new Set(['type', 'required', 'properties', 'enum', 'additionalProperties', 'items']);
   for (const key of handledKeys) {
+    if (isRedactedValue(before[key]) || isRedactedValue(after[key])) {
+      if (!changes.some((change) => change.path === `${path}.${key}`)) {
+        changes.push(makeChange(
+          'unknown', 'tools', `${path}.${key}`, `${toolName} schema constraint could not be compared`,
+          `${key} was redacted from at least one stored snapshot.`
+        ));
+      }
+      continue;
+    }
     const semanticallyEqual = key === 'type'
       ? sameTypeKeyword(before, after)
       : key === 'required'
@@ -506,8 +572,15 @@ const schemaChanges = (
     ...Object.keys(after).filter((key) => !handledKeys.has(key)),
   ]);
   for (const key of [...remainingKeys].sort()) {
+    if (isRedactedValue(before[key]) || isRedactedValue(after[key])) {
+      changes.push(makeChange(
+        'unknown', 'tools', `${path}.${key}`, `${toolName} schema portion could not be compared`,
+        `${key} was redacted from at least one stored snapshot.`
+      ));
+      continue;
+    }
     if (same(before[key], after[key])) continue;
-    const cosmetic = key === 'title' || key === 'description' || key === 'examples' || key === 'default';
+    const cosmetic = COSMETIC_SCHEMA_KEYS.has(key);
     changes.push(makeChange(
       cosmetic ? 'change' : 'unknown', 'tools', `${path}.${key}`,
       cosmetic ? `${toolName} input guidance changed` : `${toolName} schema constraint changed`,
@@ -523,36 +596,67 @@ const schemaChanges = (
 const compareTools = (before: PublicReport, after: PublicReport): ReportDiffChange[] => {
   const beforeSet = before.toolSurfaceAnalysis?.toolDefinitions;
   const afterSet = after.toolSurfaceAnalysis?.toolDefinitions;
-  if (beforeSet?.status !== 'complete' || afterSet?.status !== 'complete') {
+  if (!beforeSet || !afterSet || beforeSet.status === 'unavailable' || afterSet.status === 'unavailable') {
     return [makeChange(
       'unknown', 'tools', 'toolSurfaceAnalysis.toolDefinitions',
       'Tool contracts could not be compared completely',
-      'One or both snapshots contain unavailable or bounded tool definitions.'
+      'One or both snapshots contain unavailable tool definitions.'
     )];
   }
 
   const beforeTools = new Map(beforeSet.tools.map((tool) => [tool.name, tool]));
   const afterTools = new Map(afterSet.tools.map((tool) => [tool.name, tool]));
   const changes: ReportDiffChange[] = [];
+  const beforeNamesComplete = beforeSet.status === 'complete' || beforeSet.namesComplete === true;
+  const afterNamesComplete = afterSet.status === 'complete' || afterSet.namesComplete === true;
+  if (!beforeNamesComplete || !afterNamesComplete) {
+    changes.push(makeChange(
+      'unknown', 'tools', 'toolSurfaceAnalysis.toolDefinitions',
+      'Tool membership could not be compared completely',
+      'One or both snapshots omitted tool definitions; retained tools are still compared.'
+    ));
+  }
   for (const name of [...afterTools.keys()].filter((name) => !beforeTools.has(name)).sort()) {
-    changes.push(makeChange('addition', 'tools', `tools.${name}`, `Tool added: ${name}`, 'A new tool is available.'));
+    changes.push(beforeNamesComplete
+      ? makeChange('addition', 'tools', `tools.${name}`, `Tool added: ${name}`, 'A new tool is available.')
+      : makeChange(
+        'unknown', 'tools', `tools.${name}`, `Could not determine whether tool was added: ${name}`,
+        'The earlier snapshot may have omitted this tool definition.'
+      ));
   }
   for (const name of [...beforeTools.keys()].filter((name) => !afterTools.has(name)).sort()) {
-    changes.push(makeChange(
-      'removal', 'tools', `tools.${name}`, `Tool removed: ${name}`,
-      'Clients that call this tool will break.', true
-    ));
+    changes.push(afterNamesComplete
+      ? makeChange(
+        'removal', 'tools', `tools.${name}`, `Tool removed: ${name}`,
+        'Clients that call this tool will break.', true
+      )
+      : makeChange(
+        'unknown', 'tools', `tools.${name}`, `Could not determine whether tool was removed: ${name}`,
+        'The later snapshot may have omitted this tool definition.'
+      ));
   }
   for (const name of [...beforeTools.keys()].filter((name) => afterTools.has(name)).sort()) {
     const left = beforeTools.get(name)!;
     const right = afterTools.get(name)!;
-    if (left.description !== right.description) {
+    if (isRedactedString(left.description) || isRedactedString(right.description)) {
+      changes.push(makeChange(
+        'unknown', 'tools', `tools.${name}.description`, `${name} description could not be compared`,
+        'At least one stored description contains redacted content.'
+      ));
+    } else if (left.description !== right.description) {
       changes.push(makeChange(
         'change', 'tools', `tools.${name}.description`, `${name} description changed`,
         'Tool guidance changed without a structural schema change.'
       ));
     }
-    changes.push(...schemaChanges(left.inputSchema, right.inputSchema, name));
+    const redactedChanges = redactedSchemaChanges(left.inputSchema, right.inputSchema, name);
+    const redactedPaths = new Set(redactedChanges.map((change) => change.path));
+    changes.push(
+      ...redactedChanges,
+      ...schemaChanges(left.inputSchema, right.inputSchema, name).filter((change) => (
+        change.classification !== 'unknown' || !redactedPaths.has(change.path)
+      ))
+    );
   }
   return changes;
 };
