@@ -552,6 +552,20 @@ describe('deterministic runner safety and evidence', () => {
     ].join('\n'));
   });
 
+  it('redacts complete credential header values embedded in prefixed evidence text', () => {
+    expect(redactTestData([
+      'headers Authorization: Digest username="user", response="authorization-secret"',
+      'request Proxy-Authorization: Custom part-one, proxy-secret',
+      'request headers Cookie: session=cookie-secret; csrf=csrf-secret',
+      'response headers Set-Cookie: session=set-cookie-secret; Path=/; Secure',
+    ].join('\n'))).toBe([
+      'headers Authorization: [REDACTED]',
+      'request Proxy-Authorization: [REDACTED]',
+      'request headers Cookie: [REDACTED]',
+      'response headers Set-Cookie: [REDACTED]',
+    ].join('\n'));
+  });
+
   it('redacts credential URLs in request and response text-block evidence', async () => {
     const result = await runDeterministicCase(
       {
@@ -743,13 +757,22 @@ describe('deterministic runner safety and evidence', () => {
   });
 
   it('reports malformed responses and preserves reproducible case data', async () => {
+    const testCase = fixtureCase({
+      arguments: { password: 'fixture-password', token: 'fixture-token', query: 'fixture' },
+    });
     const result = await runDeterministicCase(
       { callTool: vi.fn().mockResolvedValue({ unexpected: true }) },
-      fixtureCase(),
+      testCase,
     );
     expect(result.status).toBe('failed');
     expect(result.error).toMatchObject({ type: 'malformed-response', code: 'INVALID_TOOL_RESULT' });
-    expect(result.reproducibleCase).toEqual(fixtureCase());
+    expect(result.reproducibleCase).toEqual(testCase);
+    expect(result.reproducibleCase).not.toBe(testCase);
+    expect(result.redactedReproducibleCase.arguments).toEqual({
+      password: '[REDACTED]',
+      token: '[REDACTED]',
+      query: 'fixture',
+    });
   });
 
   it('supports fixture cancellation using an abort signal', async () => {

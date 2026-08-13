@@ -91,6 +91,7 @@ export interface DeterministicCaseResult {
   response?: unknown;
   error?: NormalizedTestError;
   assertions: AssertionEvidence[];
+  redactedReproducibleCase: DeterministicTestCaseV1;
   reproducibleCase: DeterministicTestCaseV1;
   startedAt: string;
 }

@@ -55,6 +55,7 @@ const DESTRUCTIVE_ACTIONS = new Set([
 const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|private[_ -]?key|signing[_ -]?key|password|passwd|secret|client[_ -]?secret|credential|credentials)';
 const SENSITIVE_TEXT_NAME_PATTERN = `(?:[a-z0-9]+[_-])*${SENSITIVE_NAME_PATTERN}`;
 const CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN = '[A-Za-z][A-Za-z0-9]*(?:Authorization|ProxyAuthorization|Cookie|SetCookie|Token|AccessToken|RefreshToken|ClientToken|ApiKey|XApiKey|PrivateKey|SigningKey|Password|Passwd|Secret|ClientSecret|Credential|Credentials)';
+const CREDENTIAL_HEADER_NAME_PATTERN = '(?:proxy-authorization|authorization|set-cookie|cookie|x-api-key)';
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
 const ERROR_CODE_KEYS = ['code', 'errorCode', 'error_code', 'status', 'statusCode'];
@@ -521,6 +522,7 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
     const redacted = value
       .replace(/-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?-----END \1-----/gi, '[REDACTED]')
       .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s\/?#@]+@/gi, '$1[REDACTED]@')
+      .replace(new RegExp(`(\\b${CREDENTIAL_HEADER_NAME_PATTERN}\\b[ \\t]*:[ \\t]*)[^\\r\\n]*`, 'gi'), '$1[REDACTED]')
       .replace(new RegExp(`^([ \\t]*${SENSITIVE_TEXT_NAME_PATTERN}[ \\t]*:[ \\t]*)[^\\r\\n]*`, 'gim'), '$1[REDACTED]')
       .replace(new RegExp(`(\\b${SENSITIVE_TEXT_NAME_PATTERN}\\b\\s*[:=]\\s*)(?:Bearer|Basic)\\s+[^\\s,;}]+`, 'gi'), '$1[REDACTED]')
       .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
@@ -860,7 +862,8 @@ export const runDeterministicCase = async (
     ...(response !== undefined ? { response: redactTestData(response) } : {}),
     ...(error ? { error: { ...error, message: String(redactTestData(error.message)) } } : {}),
     assertions: assertionEvidence,
-    reproducibleCase: redactTestData(testCase) as DeterministicTestCaseV1,
+    redactedReproducibleCase: redactTestData(testCase) as DeterministicTestCaseV1,
+    reproducibleCase: structuredClone(testCase),
     startedAt,
   };
 };
@@ -912,7 +915,8 @@ export const runDeterministicPlan = async (
             identifiers: {},
           },
           assertions: [],
-          reproducibleCase: redactTestData(testCase) as DeterministicTestCaseV1,
+          redactedReproducibleCase: redactTestData(testCase) as DeterministicTestCaseV1,
+          reproducibleCase: structuredClone(testCase),
           startedAt: new Date().toISOString(),
         };
       } else if (options.signal?.aborted) {

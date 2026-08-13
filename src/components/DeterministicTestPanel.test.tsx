@@ -325,6 +325,25 @@ describe('DeterministicTestPanel', () => {
     expect(callTool).toHaveBeenCalledTimes(2);
     expect(container.querySelectorAll('.test-result')).toHaveLength(2);
     expect(container.textContent).toContain('Redacted request');
-    expect(container.textContent).toContain('Reproducible case');
+    expect(container.textContent).toContain('Reproducible case (redacted)');
+    expect(container.textContent).toContain('Reveal exact case (may contain secrets)');
+  });
+
+  it('only displays exact fixture values after an intentional warning action', async () => {
+    await renderPanel('lookup');
+    await act(async () => container.querySelector<HTMLButtonElement>('.test-case-heading .btn-link')?.click());
+    await changeText(
+      container.querySelector<HTMLTextAreaElement>('.test-case-editor textarea')!,
+      '{"password":"exact-fixture-secret"}',
+    );
+    await act(async () => container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary')?.click());
+
+    const evidence = container.querySelector<HTMLElement>('.deterministic-tests-results')!;
+    expect(evidence.textContent).not.toContain('exact-fixture-secret');
+    expect(evidence.textContent).toContain('[REDACTED]');
+
+    await act(async () => container.querySelector<HTMLButtonElement>('.test-result .btn-outline-warning')?.click());
+    expect(evidence.textContent).toContain('Exact reproducible case — may contain secrets');
+    expect(evidence.textContent).toContain('exact-fixture-secret');
   });
 });

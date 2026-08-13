@@ -55,6 +55,27 @@ const resultClass = (status: DeterministicCaseResult['status']) => ({
   cancelled: 'secondary',
 }[status]);
 
+const ReproducibleCaseEvidence: React.FC<{ result: DeterministicCaseResult }> = ({ result }) => {
+  const [showExactCase, setShowExactCase] = useState(false);
+
+  return (
+    <>
+      <h4>Reproducible case (redacted)</h4>
+      <pre>{JSON.stringify(result.redactedReproducibleCase, null, 2)}</pre>
+      {showExactCase ? (
+        <>
+          <h4>Exact reproducible case — may contain secrets</h4>
+          <pre>{JSON.stringify(result.reproducibleCase, null, 2)}</pre>
+        </>
+      ) : (
+        <button className="btn btn-sm btn-outline-warning" onClick={() => setShowExactCase(true)}>
+          Reveal exact case (may contain secrets)
+        </button>
+      )}
+    </>
+  );
+};
+
 export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   open,
   onClose,
@@ -420,8 +441,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
                 <h4>Redacted request</h4>
                 <pre>{JSON.stringify(result.request, null, 2)}</pre>
                 {result.response !== undefined && <><h4>Redacted response</h4><pre>{JSON.stringify(result.response, null, 2)}</pre></>}
-                <h4>Reproducible case</h4>
-                <pre>{JSON.stringify(result.reproducibleCase, null, 2)}</pre>
+                <ReproducibleCaseEvidence result={result} />
               </details>
             ))}
           </aside>
