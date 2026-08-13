@@ -76,6 +76,13 @@ const GRANT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REFRESH_SKEW_MS = 60 * 1000;
 const OPAQUE_VALUE = /^[A-Za-z0-9_-]{43}$/;
 const SCOPE_VALUE = /^[A-Za-z0-9:._/-]{1,128}$/;
+const INVALID_REFRESH_CREDENTIAL_ERRORS = new Set([
+  'invalid_grant',
+  'invalid_refresh_token',
+  'bad_refresh_token',
+  'refresh_token_revoked',
+]);
+const RETRYABLE_PROVIDER_STATUSES = new Set([408, 425, 429]);
 const HOSTED_GRANT_REJECTION_REASONS = new Set([
   'invalid_grant_reference',
   'unknown_grant',
@@ -276,7 +283,10 @@ const pkceChallenge = async (verifier: string): Promise<string> => base64Url(new
   await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
 ));
 
-const parseTokenResponse = async (response: Response): Promise<ProviderTokens> => {
+const parseTokenResponse = async (
+  response: Response,
+  grantType: string | undefined
+): Promise<ProviderTokens> => {
   const body = await response.json() as Record<string, unknown>;
   const nestedUser = body.authed_user && typeof body.authed_user === 'object'
     ? body.authed_user as Record<string, unknown>
@@ -284,8 +294,14 @@ const parseTokenResponse = async (response: Response): Promise<ProviderTokens> =
   const errorCode = typeof body.error === 'string' ? body.error : undefined;
   if (!response.ok || body.ok === false || errorCode) {
     const error = new Error(`Provider token request was rejected${errorCode ? ` (${errorCode})` : ''}.`);
-    if (response.status < 500) {
-      error.name = 'ProviderTokenRejectedError';
+    if (
+      grantType === 'refresh_token'
+      && errorCode
+      && INVALID_REFRESH_CREDENTIAL_ERRORS.has(errorCode)
+      && response.status < 500
+      && !RETRYABLE_PROVIDER_STATUSES.has(response.status)
+    ) {
+      error.name = 'ProviderRefreshCredentialRejectedError';
     }
     throw error;
   }
@@ -330,7 +346,7 @@ const requestProviderTokens = async (
     body,
     redirect: 'error',
   });
-  return parseTokenResponse(response);
+  return parseTokenResponse(response, parameters.grant_type);
 };
 
 const verifyProviderMetadata = async (
@@ -738,7 +754,7 @@ export class HostedOAuthBroker {
               resource: grant.resource,
             });
           } catch (error) {
-            if (error instanceof Error && error.name === 'ProviderTokenRejectedError') {
+            if (error instanceof Error && error.name === 'ProviderRefreshCredentialRejectedError') {
               await this.deleteRecord();
               return json({ error: 'provider_token_rejected' }, 401);
             }

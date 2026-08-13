@@ -490,6 +490,25 @@ describe('hosted provider authorization transactions', () => {
     expect((await exchange(env, completion))?.status).toBe(200);
   });
 
+  it('preserves a grant after a JSON 429 refresh failure and refreshes it on retry', async () => {
+    const env = makeEnv();
+    const transaction = await readTransaction(await start(env));
+    const completion = readCompletion(await callback(env, transaction));
+    const result = await (await exchange(env, completion)).json() as { grant: string; serverUrl: string };
+    const namespace = env.HOSTED_OAUTH_BROKER as unknown as MemoryNamespace;
+    const grantStore = namespace.stores.get(result.grant)!;
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(
+      { ok: false, error: 'ratelimited' },
+      { status: 429, headers: { 'Retry-After': '1' } }
+    ));
+
+    await expect(resolveHostedGrant(env, result.grant, 'user-1', result.serverUrl))
+      .rejects.toThrow('Provider token request was rejected (ratelimited).');
+    expect(grantStore.values.has('record')).toBe(true);
+    await expect(resolveHostedGrant(env, result.grant, 'user-1', result.serverUrl))
+      .resolves.toBe('Bearer slack-refreshed');
+  });
+
   it('reports an honest operator prerequisite when provider secrets are absent', async () => {
     const env = makeEnv();
     delete env.SLACK_OAUTH_CLIENT_SECRET;
