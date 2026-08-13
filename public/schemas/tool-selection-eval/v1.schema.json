@@ -48,7 +48,16 @@
           "enum": ["equals", "notEquals", "present", "absent", "type", "matches", "includes"]
         },
         "value": true
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "operator": { "not": { "enum": ["present", "absent"] } } },
+            "required": ["operator"]
+          },
+          "then": { "required": ["value"] }
+        }
+      ]
     },
     "toolCall": {
       "type": "object",
@@ -77,7 +86,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "prompt": { "type": "string", "minLength": 1 },
-        "acceptableTools": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "acceptableTools": { "type": "array", "minItems": 1, "items": { "type": "string" }, "uniqueItems": true },
         "forbiddenTools": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
         "expectedNoTool": { "type": "boolean" },
         "argumentAssertions": { "type": "array", "items": { "$ref": "#/$defs/assertion" } },

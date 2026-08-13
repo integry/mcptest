@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LOCAL_TOOL_SELECTION_FIXTURE } from './fixtures';
 import { createFixtureProvider, getSessionCredential, setSessionCredential } from './providers';
-import { calculateMetrics, compareRuns, reportContainsCredential, runEvaluation } from './runner';
+import { assertReportCredentialSafe, calculateMetrics, compareRuns, reportContainsCredential, runEvaluation } from './runner';
 import type { EvalProvider, ToolSelectionDatasetV1 } from './types';
 
 describe('tool-selection evaluation runner', () => {
@@ -44,7 +44,8 @@ describe('tool-selection evaluation runner', () => {
     expect(calculateMetrics(report.results.filter(result => result.arm === 'with-mcp')).selectionAccuracy).toBe(1);
     expect(calculateMetrics(report.results.filter(result => result.arm === 'without-mcp')).selectionAccuracy).toBeNull();
     expect(calculateMetrics(report.results.filter(result => result.arm === 'plain-context')).selectionAccuracy).toBeNull();
-    expect(report.results.filter(result => result.caseId === 'expected-no-tool').every(result => result.noToolPassed)).toBe(true);
+    expect(report.results.filter(result => result.caseId === 'expected-no-tool').map(result => result.noToolPassed)).toEqual([true, null, null]);
+    expect(report.metrics.noToolAccuracy).toBe(1);
   });
 
   it('supports deterministic mocked provider output and repeated-trial tails', async () => {
@@ -80,6 +81,72 @@ describe('tool-selection evaluation runner', () => {
     }, createFixtureProvider());
     expect(reportContainsCredential(report, secret)).toBe(false);
     expect(JSON.stringify(report.configuration)).not.toContain('credential');
+    expect(() => assertReportCredentialSafe({
+      ...report,
+      results: [{ ...report.results[0], finalAnswer: secret }],
+    }, secret)).toThrow('contained the session credential');
+  });
+
+  it('recursively redacts reflected credentials before assertions and tool names reach a report', async () => {
+    const secret = 'reflected-session-key';
+    const provider: EvalProvider = {
+      id: 'fixture',
+      async run() {
+        return {
+          toolCalls: [
+            { name: 'get_forecast', arguments: { city: secret, nested: { [secret]: secret }, days: 1 } },
+            { name: `unexpected-${secret}`, arguments: { value: secret } },
+          ],
+          finalAnswer: secret,
+          latencyMs: 12,
+          inputTokens: 5,
+          outputTokens: 2,
+        };
+      },
+    };
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [LOCAL_TOOL_SELECTION_FIXTURE.cases[0]],
+    };
+    const report = await runEvaluation(dataset, {
+      provider: 'fixture', model: 'mock', arms: ['with-mcp'], trials: 1,
+    }, provider, undefined, secret);
+
+    expect(reportContainsCredential(report, secret)).toBe(false);
+    expect(report.results[0].observedTools).toEqual(['get_forecast', 'unexpected-[redacted]']);
+    expect(report.results[0].assertionResults[0].actual).toBe('[redacted]');
+    expect(JSON.stringify(report.results[0])).toContain('[redacted]');
+  });
+
+  it('keeps provider failures out of model accuracy, cost, and latency metrics', async () => {
+    const provider: EvalProvider = {
+      id: 'fixture',
+      async run() { throw new Error('network unavailable'); },
+    };
+    const report = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
+      provider: 'fixture', model: 'mock', arms: ['with-mcp'], trials: 1,
+    }, provider);
+
+    expect(report.results.every(result => (
+      result.observedTools === null
+      && result.selectionPassed === null
+      && result.noToolPassed === null
+      && result.argumentSchemaValid === null
+      && result.expectedToolCalled === null
+      && result.latencyMs === null
+      && result.assertionResults.length === 0
+      && result.error === 'network unavailable'
+    ))).toBe(true);
+    expect(report.metrics).toMatchObject({
+      selectionAccuracy: null,
+      noToolAccuracy: null,
+      argumentSchemaValidity: null,
+      assertionAccuracy: null,
+      expectedToolCallRate: null,
+      approximateTokenCost: null,
+      latencyMs: { mean: null, p95: null },
+      confusionPairs: [],
+    });
   });
 
   it('compares run metrics and records description/schema revision changes', async () => {

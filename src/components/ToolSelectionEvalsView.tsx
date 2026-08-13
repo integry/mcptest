@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   LOCAL_TOOL_SELECTION_FIXTURE,
   LOCAL_TOOL_SELECTION_FIXTURE_JSON,
+  assertReportCredentialSafe,
   calculateMetrics,
   compareRuns,
   createProvider,
@@ -31,10 +32,12 @@ const armLabels: Record<EvalArm, string> = {
 };
 
 const formatPercent = (value: number | null): string => value === null ? 'Not applicable' : `${(value * 100).toFixed(1)}%`;
-const formatCost = (value: number): string => value ? `$${value.toFixed(5)}` : '$0.00';
+const formatCost = (value: number | null): string => value === null ? 'Unavailable' : value ? `$${value.toFixed(5)}` : '$0.00';
+const formatMilliseconds = (value: number | null, digits = 0): string => value === null ? 'Unavailable' : `${value.toFixed(digits)} ms`;
 
-const downloadJson = (value: unknown, filename: string) => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
+const downloadJson = (report: EvalRunReportV1, filename: string, credential: string) => {
+  assertReportCredentialSafe(report, credential);
+  const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
@@ -65,7 +68,7 @@ const MetricsTable: React.FC<{ metrics: EvalMetrics }> = ({ metrics }) => (
           <td>{formatPercent(metrics.assertionAccuracy)}</td>
           <td>{formatPercent(metrics.expectedToolCallRate)}</td>
           <td>{formatPercent(metrics.figureGroundingAccuracy)}</td>
-          <td>{metrics.latencyMs.mean.toFixed(0)} / {metrics.latencyMs.p95.toFixed(0)} ms</td>
+          <td>{formatMilliseconds(metrics.latencyMs.mean)} / {formatMilliseconds(metrics.latencyMs.p95)}</td>
           <td>{formatCost(metrics.approximateTokenCost)}</td>
         </tr>
       </tbody>
@@ -155,7 +158,8 @@ const ToolSelectionEvalsView: React.FC = () => {
         trials,
         inputCostPerMillionTokens: inputPrice,
         outputCostPerMillionTokens: outputPrice,
-      }, createProvider(provider, credential), (completed, total) => setProgress({ completed, total }));
+      }, createProvider(provider, credential), (completed, total) => setProgress({ completed, total }), credential);
+      assertReportCredentialSafe(report, credential);
       setReports(current => [...current, report]);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : String(error));
@@ -300,7 +304,15 @@ const ToolSelectionEvalsView: React.FC = () => {
                 <h2 className="h4 mb-1">Latest results</h2>
                 <p className="text-muted mb-0">{latest.configuration.provider} · {latest.configuration.model} · {latest.configuration.trials} repeated trials</p>
               </div>
-              <button className="btn btn-outline-secondary btn-sm align-self-start" type="button" onClick={() => downloadJson(latest, `${latest.dataset.id}-${latest.id}.json`)}>Download report</button>
+              <button
+                className="btn btn-outline-secondary btn-sm align-self-start"
+                type="button"
+                onClick={() => downloadJson(
+                  latest,
+                  `${latest.dataset.id}-${latest.id}.json`,
+                  latest.configuration.provider === 'fixture' ? '' : getSessionCredential(latest.configuration.provider)
+                )}
+              >Download report</button>
             </div>
             <MetricsTable metrics={latest.metrics} />
             <div className="row g-3 mt-2">
@@ -313,8 +325,8 @@ const ToolSelectionEvalsView: React.FC = () => {
             </div>
             <div className="mt-4">
               <h3 className="h5">Spread and tail behavior</h3>
-              <p className="mb-1">Latency: mean {latest.metrics.latencyMs.mean.toFixed(1)} ms, p50 {latest.metrics.latencyMs.p50.toFixed(1)} ms, p95 {latest.metrics.latencyMs.p95.toFixed(1)} ms.</p>
-              <p className="text-muted">Range {latest.metrics.latencyMs.min.toFixed(1)}–{latest.metrics.latencyMs.max.toFixed(1)} ms; spread {latest.metrics.latencyMs.spread.toFixed(1)} ms.</p>
+              <p className="mb-1">Latency: mean {formatMilliseconds(latest.metrics.latencyMs.mean, 1)}, p50 {formatMilliseconds(latest.metrics.latencyMs.p50, 1)}, p95 {formatMilliseconds(latest.metrics.latencyMs.p95, 1)}.</p>
+              <p className="text-muted">Range {formatMilliseconds(latest.metrics.latencyMs.min, 1)}–{formatMilliseconds(latest.metrics.latencyMs.max, 1)}; spread {formatMilliseconds(latest.metrics.latencyMs.spread, 1)}.</p>
             </div>
             <div className="mt-4">
               <h3 className="h5">Confusion pairs</h3>
@@ -333,7 +345,7 @@ const ToolSelectionEvalsView: React.FC = () => {
                     {latest.results.map((result, index) => (
                       <tr key={`${result.caseId}-${result.arm}-${result.trial}-${index}`}>
                         <td>{result.caseId}</td><td>{armLabels[result.arm]}</td><td>{result.trial}</td>
-                        <td>{result.observedTools.join(', ') || 'No tool'}</td>
+                        <td>{result.observedTools === null ? 'Unavailable' : result.observedTools.join(', ') || 'No tool'}</td>
                         <td>{result.argumentSchemaValid === null ? '—' : result.argumentSchemaValid ? 'Valid' : 'Invalid'}</td>
                         <td>{result.figuresGrounded === null ? '—' : result.figuresGrounded ? 'Yes' : 'No'}</td>
                         <td>{result.error || '—'}</td>
@@ -357,7 +369,7 @@ const ToolSelectionEvalsView: React.FC = () => {
             <ul className="mb-0">
               <li>Selection accuracy: {comparison.metricDeltas.selectionAccuracy === null ? 'not comparable' : `${(comparison.metricDeltas.selectionAccuracy! * 100).toFixed(1)} points`}</li>
               <li>Schema validity: {comparison.metricDeltas.argumentSchemaValidity === null ? 'not comparable' : `${(comparison.metricDeltas.argumentSchemaValidity! * 100).toFixed(1)} points`}</li>
-              <li>Mean latency: {comparison.latencyMeanDeltaMs.toFixed(1)} ms</li>
+              <li>Mean latency: {comparison.latencyMeanDeltaMs === null ? 'not comparable' : `${comparison.latencyMeanDeltaMs.toFixed(1)} ms`}</li>
               <li>Regressions: {comparison.regressions.length ? comparison.regressions.join(', ') : 'none detected'}</li>
             </ul>
           </div>

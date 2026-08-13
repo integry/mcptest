@@ -1,3 +1,4 @@
+import datasetSchema from '../../public/schemas/tool-selection-eval/v1.schema.json';
 import {
   TOOL_SELECTION_DATASET_VERSION,
   type EvalTool,
@@ -5,6 +6,7 @@ import {
   type ToolSelectionCase,
   type ToolSelectionDatasetV1,
 } from './types';
+import { validateJsonSchema } from './schema';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -14,24 +16,13 @@ const stringArray = (value: unknown): value is string[] => (
   Array.isArray(value) && value.every(item => typeof item === 'string')
 );
 
-const validateCase = (
+const validateCaseSemantics = (
   value: unknown,
   path: string,
   toolNames: Set<string>,
   errors: string[]
 ): value is ToolSelectionCase => {
-  if (!isRecord(value)) {
-    errors.push(`${path} must be an object.`);
-    return false;
-  }
-  if (typeof value.id !== 'string' || !value.id.trim()) errors.push(`${path}.id is required.`);
-  if (typeof value.prompt !== 'string' || !value.prompt.trim()) errors.push(`${path}.prompt is required.`);
-  if (value.acceptableTools !== undefined && !stringArray(value.acceptableTools)) {
-    errors.push(`${path}.acceptableTools must be an array of tool names.`);
-  }
-  if (value.forbiddenTools !== undefined && !stringArray(value.forbiddenTools)) {
-    errors.push(`${path}.forbiddenTools must be an array of tool names.`);
-  }
+  if (!isRecord(value)) return false;
   const acceptable = stringArray(value.acceptableTools) ? value.acceptableTools : [];
   const forbidden = stringArray(value.forbiddenTools) ? value.forbiddenTools : [];
   [...acceptable, ...forbidden].forEach(name => {
@@ -43,18 +34,9 @@ const validateCase = (
   if (value.expectedNoTool !== true && acceptable.length === 0) {
     errors.push(`${path} must set expectedNoTool or provide acceptableTools.`);
   }
-  if (value.argumentAssertions !== undefined && !Array.isArray(value.argumentAssertions)) {
-    errors.push(`${path}.argumentAssertions must be an array.`);
-  }
-  const operators = new Set(['equals', 'notEquals', 'present', 'absent', 'type', 'matches', 'includes']);
   (Array.isArray(value.argumentAssertions) ? value.argumentAssertions : []).forEach((assertion, index) => {
     const assertionPath = `${path}.argumentAssertions[${index}]`;
-    if (!isRecord(assertion)) {
-      errors.push(`${assertionPath} must be an object.`);
-      return;
-    }
-    if (typeof assertion.path !== 'string' || !assertion.path.trim()) errors.push(`${assertionPath}.path is required.`);
-    if (typeof assertion.operator !== 'string' || !operators.has(assertion.operator)) errors.push(`${assertionPath}.operator is invalid.`);
+    if (!isRecord(assertion)) return;
     if (assertion.tool !== undefined && (typeof assertion.tool !== 'string' || !toolNames.has(assertion.tool))) {
       errors.push(`${assertionPath}.tool must reference a known tool.`);
     }
@@ -70,47 +52,28 @@ export const validateDataset = (value: unknown): {
   errors: string[];
   dataset?: ToolSelectionDatasetV1;
 } => {
-  const errors: string[] = [];
+  const errors = validateJsonSchema(value, datasetSchema);
   if (!isRecord(value)) return { valid: false, errors: ['Dataset must be a JSON object.'] };
   if (value.version !== TOOL_SELECTION_DATASET_VERSION) {
     errors.push(`Unsupported dataset version. Expected "${TOOL_SELECTION_DATASET_VERSION}".`);
   }
-  for (const field of ['id', 'name', 'descriptionRevision', 'schemaRevision']) {
-    if (typeof value[field] !== 'string' || !(value[field] as string).trim()) {
-      errors.push(`${field} is required.`);
-    }
-  }
-  if (!Array.isArray(value.tools) || value.tools.length === 0) errors.push('tools must be a non-empty array.');
   const tools = Array.isArray(value.tools) ? value.tools : [];
   const toolNames = new Set<string>();
-  tools.forEach((tool, index) => {
-    if (!isRecord(tool)) {
-      errors.push(`tools[${index}] must be an object.`);
-      return;
-    }
-    if (typeof tool.name !== 'string' || !tool.name.trim()) errors.push(`tools[${index}].name is required.`);
-    else if (toolNames.has(tool.name)) errors.push(`Duplicate tool name "${tool.name}".`);
+  tools.forEach(tool => {
+    if (!isRecord(tool) || typeof tool.name !== 'string') return;
+    if (toolNames.has(tool.name)) errors.push(`Duplicate tool name "${tool.name}".`);
     else toolNames.add(tool.name);
-    if (!isRecord(tool.inputSchema)) errors.push(`tools[${index}].inputSchema must be a JSON Schema object.`);
   });
-  if (!Array.isArray(value.cases)) errors.push('cases must be an array.');
   const ids = new Set<string>();
   (Array.isArray(value.cases) ? value.cases : []).forEach((item, index) => {
-    validateCase(item, `cases[${index}]`, toolNames, errors);
+    validateCaseSemantics(item, `cases[${index}]`, toolNames, errors);
     if (isRecord(item) && typeof item.id === 'string') {
       if (ids.has(item.id)) errors.push(`Duplicate case id "${item.id}".`);
       ids.add(item.id);
     }
   });
-  if (value.suggestions !== undefined && !Array.isArray(value.suggestions)) {
-    errors.push('suggestions must be an array.');
-  }
   (Array.isArray(value.suggestions) ? value.suggestions : []).forEach((item, index) => {
-    validateCase(item, `suggestions[${index}]`, toolNames, errors);
-    if (!isRecord(item) || item.synthetic !== true) errors.push(`suggestions[${index}].synthetic must be true.`);
-    if (!isRecord(item) || !['unreviewed', 'approved', 'rejected'].includes(String(item.reviewStatus))) {
-      errors.push(`suggestions[${index}].reviewStatus is invalid.`);
-    }
+    validateCaseSemantics(item, `suggestions[${index}]`, toolNames, errors);
     if (isRecord(item) && typeof item.id === 'string') {
       if (ids.has(item.id)) errors.push(`Duplicate case id "${item.id}".`);
       ids.add(item.id);

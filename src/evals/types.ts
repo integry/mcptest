@@ -83,6 +83,7 @@ export interface ProviderObservation {
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
+  error?: string;
 }
 
 export interface EvalProviderRequest {
@@ -122,16 +123,16 @@ export interface EvalTrialResult {
   trial: number;
   expectedTools: string[];
   expectedNoTool: boolean;
-  observedTools: string[];
-  forbiddenToolCalled: boolean;
+  observedTools: string[] | null;
+  forbiddenToolCalled: boolean | null;
   selectionPassed: boolean | null;
   noToolPassed: boolean | null;
   argumentSchemaValid: boolean | null;
   assertionResults: AssertionResult[];
-  expectedToolCalled: boolean;
+  expectedToolCalled: boolean | null;
   figuresGrounded: boolean | null;
   finalAnswer?: string;
-  latencyMs: number;
+  latencyMs: number | null;
   inputTokens?: number;
   outputTokens?: number;
   approximateCost?: number;
@@ -139,12 +140,12 @@ export interface EvalTrialResult {
 }
 
 export interface DistributionSummary {
-  mean: number;
-  min: number;
-  max: number;
-  p50: number;
-  p95: number;
-  spread: number;
+  mean: number | null;
+  min: number | null;
+  max: number | null;
+  p50: number | null;
+  p95: number | null;
+  spread: number | null;
 }
 
 export interface ConfusionPair {
@@ -161,7 +162,7 @@ export interface EvalMetrics {
   expectedToolCallRate: number | null;
   figureGroundingAccuracy: number | null;
   latencyMs: DistributionSummary;
-  approximateTokenCost: number;
+  approximateTokenCost: number | null;
   inputTokens: number;
   outputTokens: number;
   confusionPairs: ConfusionPair[];
@@ -195,6 +196,6 @@ export interface EvalRunComparison {
     'assertionAccuracy' | 'expectedToolCallRate' | 'figureGroundingAccuracy' |
     'approximateTokenCost'
   >, number | null>>;
-  latencyMeanDeltaMs: number;
+  latencyMeanDeltaMs: number | null;
   regressions: string[];
 }

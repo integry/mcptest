@@ -82,16 +82,29 @@ export const createFixtureProvider = (): EvalProvider => ({
 
 type FetchLike = typeof fetch;
 
-const redact = (value: string, secret: string): string => secret
+const redactString = (value: string, secret: string): string => secret
   ? value.split(secret).join('[redacted]')
   : value;
+
+export const redactCredential = <T>(value: T, secret: string): T => {
+  if (!secret) return value;
+  if (typeof value === 'string') return redactString(value, secret) as T;
+  if (Array.isArray(value)) return value.map(item => redactCredential(item, secret)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+      redactString(key, secret),
+      redactCredential(child, secret),
+    ])) as T;
+  }
+  return value;
+};
 
 const ensureResponse = async (response: Response, secret = ''): Promise<unknown> => {
   const body = await response.json().catch(() => undefined);
   if (!response.ok) {
     const record = body && typeof body === 'object' ? body as Record<string, unknown> : {};
     const nested = record.error && typeof record.error === 'object' ? record.error as Record<string, unknown> : {};
-    throw new Error(redact(
+    throw new Error(redactString(
       typeof nested.message === 'string' ? nested.message : `Provider request failed with HTTP ${response.status}.`,
       secret
     ));
@@ -129,6 +142,7 @@ export const createOpenAiProvider = (apiKey: string, fetcher: FetchLike = fetch)
     let finalAnswer = typeof message.content === 'string' ? message.content : undefined;
     let inputTokens = Number((first.usage as Record<string, unknown> | undefined)?.prompt_tokens || 0);
     let outputTokens = Number((first.usage as Record<string, unknown> | undefined)?.completion_tokens || 0);
+    let followUpError: string | undefined;
     if (rawCalls.length && request.case.toolReturnedData !== undefined) {
       messages.push(message);
       rawCalls.forEach(call => messages.push({
@@ -136,20 +150,25 @@ export const createOpenAiProvider = (apiKey: string, fetcher: FetchLike = fetch)
         tool_call_id: call.id,
         content: JSON.stringify(request.case.toolReturnedData),
       }));
-      const second = await makeRequest();
-      const secondChoice = Array.isArray(second.choices) ? second.choices[0] as Record<string, unknown> : {};
-      const secondMessage = secondChoice.message && typeof secondChoice.message === 'object' ? secondChoice.message as Record<string, unknown> : {};
-      finalAnswer = typeof secondMessage.content === 'string' ? secondMessage.content : finalAnswer;
-      inputTokens += Number((second.usage as Record<string, unknown> | undefined)?.prompt_tokens || 0);
-      outputTokens += Number((second.usage as Record<string, unknown> | undefined)?.completion_tokens || 0);
+      try {
+        const second = await makeRequest();
+        const secondChoice = Array.isArray(second.choices) ? second.choices[0] as Record<string, unknown> : {};
+        const secondMessage = secondChoice.message && typeof secondChoice.message === 'object' ? secondChoice.message as Record<string, unknown> : {};
+        finalAnswer = typeof secondMessage.content === 'string' ? secondMessage.content : finalAnswer;
+        inputTokens += Number((second.usage as Record<string, unknown> | undefined)?.prompt_tokens || 0);
+        outputTokens += Number((second.usage as Record<string, unknown> | undefined)?.completion_tokens || 0);
+      } catch (error) {
+        followUpError = error instanceof Error ? error.message : String(error);
+      }
     }
-    return {
+    return redactCredential({
       toolCalls: calls,
-      finalAnswer: finalAnswer ? redact(finalAnswer, apiKey) : undefined,
+      finalAnswer,
       latencyMs: performance.now() - startedAt,
       inputTokens,
       outputTokens,
-    };
+      error: followUpError,
+    }, apiKey);
   },
 });
 
@@ -181,24 +200,30 @@ export const createAnthropicProvider = (apiKey: string, fetcher: FetchLike = fet
     let finalAnswer = content.filter(block => block.type === 'text').map(block => String(block.text || '')).join('\n') || undefined;
     let inputTokens = Number((first.usage as Record<string, unknown> | undefined)?.input_tokens || 0);
     let outputTokens = Number((first.usage as Record<string, unknown> | undefined)?.output_tokens || 0);
+    let followUpError: string | undefined;
     if (toolUses.length && request.case.toolReturnedData !== undefined) {
       messages.push({ role: 'assistant', content });
       messages.push({ role: 'user', content: toolUses.map(block => ({
         type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(request.case.toolReturnedData),
       })) });
-      const second = await makeRequest();
-      const secondContent = Array.isArray(second.content) ? second.content as Array<Record<string, unknown>> : [];
-      finalAnswer = secondContent.filter(block => block.type === 'text').map(block => String(block.text || '')).join('\n') || finalAnswer;
-      inputTokens += Number((second.usage as Record<string, unknown> | undefined)?.input_tokens || 0);
-      outputTokens += Number((second.usage as Record<string, unknown> | undefined)?.output_tokens || 0);
+      try {
+        const second = await makeRequest();
+        const secondContent = Array.isArray(second.content) ? second.content as Array<Record<string, unknown>> : [];
+        finalAnswer = secondContent.filter(block => block.type === 'text').map(block => String(block.text || '')).join('\n') || finalAnswer;
+        inputTokens += Number((second.usage as Record<string, unknown> | undefined)?.input_tokens || 0);
+        outputTokens += Number((second.usage as Record<string, unknown> | undefined)?.output_tokens || 0);
+      } catch (error) {
+        followUpError = error instanceof Error ? error.message : String(error);
+      }
     }
-    return {
+    return redactCredential({
       toolCalls: calls,
-      finalAnswer: finalAnswer ? redact(finalAnswer, apiKey) : undefined,
+      finalAnswer,
       latencyMs: performance.now() - startedAt,
       inputTokens,
       outputTokens,
-    };
+      error: followUpError,
+    }, apiKey);
   },
 });
 

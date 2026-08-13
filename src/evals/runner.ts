@@ -1,4 +1,5 @@
 import { getRunnableCases } from './dataset';
+import { redactCredential } from './providers';
 import { validateJsonSchema } from './schema';
 import {
   TOOL_SELECTION_REPORT_VERSION,
@@ -23,7 +24,7 @@ const percentile = (sorted: number[], fraction: number): number => {
 };
 
 export const summarizeDistribution = (values: number[]): DistributionSummary => {
-  if (!values.length) return { mean: 0, min: 0, max: 0, p50: 0, p95: 0, spread: 0 };
+  if (!values.length) return { mean: null, min: null, max: null, p50: null, p95: null, spread: null };
   const sorted = [...values].sort((a, b) => a - b);
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   return {
@@ -120,7 +121,7 @@ const scoreTrial = (
   const selectionPassed = isToolArm && !expectedNoTool
     ? callsExpected.length > 0 && !forbiddenToolCalled
     : null;
-  const noToolPassed = expectedNoTool ? observed.length === 0 : null;
+  const noToolPassed = isToolArm && expectedNoTool ? observed.length === 0 : null;
   const schemaChecks = observation.toolCalls.map(call => {
     const tool = tools.find(candidate => candidate.name === call.name);
     return Boolean(tool) && validateJsonSchema(call.arguments, tool!.inputSchema).length === 0;
@@ -163,15 +164,19 @@ const scoreTrial = (
     latencyMs: observation.latencyMs,
     inputTokens: observation.inputTokens,
     outputTokens: observation.outputTokens,
-    approximateCost,
+    ...(observation.inputTokens !== undefined || observation.outputTokens !== undefined ? { approximateCost } : {}),
+    ...(observation.error ? { error: observation.error } : {}),
   };
 };
 
 const confusionPairs = (results: EvalTrialResult[]): ConfusionPair[] => {
   const counts = new Map<string, number>();
-  results.filter(result => result.arm === 'with-mcp' && result.expectedTools.length > 0).forEach(result => {
+  results.filter(result => (
+    result.arm === 'with-mcp' && result.expectedTools.length > 0 && result.observedTools !== null
+  )).forEach(result => {
     const expected = result.expectedTools.join(' | ');
-    const observed = result.observedTools.length ? result.observedTools.join(' + ') : '(no tool)';
+    const observedTools = result.observedTools!;
+    const observed = observedTools.length ? observedTools.join(' + ') : '(no tool)';
     if (result.selectionPassed) return;
     const key = `${expected}\u0000${observed}`;
     counts.set(key, (counts.get(key) || 0) + 1);
@@ -184,6 +189,7 @@ const confusionPairs = (results: EvalTrialResult[]): ConfusionPair[] => {
 
 export const calculateMetrics = (results: EvalTrialResult[]): EvalMetrics => {
   const assertions = results.flatMap(result => result.assertionResults.map(item => item.passed));
+  const costs = results.flatMap(result => result.approximateCost === undefined ? [] : [result.approximateCost]);
   return {
     selectionAccuracy: rate(results.map(result => result.selectionPassed)),
     noToolAccuracy: rate(results.map(result => result.noToolPassed)),
@@ -193,8 +199,8 @@ export const calculateMetrics = (results: EvalTrialResult[]): EvalMetrics => {
       result.arm === 'with-mcp' && result.expectedTools.length > 0 ? result.expectedToolCalled : null
     ))),
     figureGroundingAccuracy: rate(results.map(result => result.figuresGrounded)),
-    latencyMs: summarizeDistribution(results.map(result => result.latencyMs)),
-    approximateTokenCost: results.reduce((sum, result) => sum + (result.approximateCost || 0), 0),
+    latencyMs: summarizeDistribution(results.flatMap(result => result.latencyMs === null ? [] : [result.latencyMs])),
+    approximateTokenCost: costs.length ? costs.reduce((sum, cost) => sum + cost, 0) : null,
     inputTokens: results.reduce((sum, result) => sum + (result.inputTokens || 0), 0),
     outputTokens: results.reduce((sum, result) => sum + (result.outputTokens || 0), 0),
     confusionPairs: confusionPairs(results),
@@ -207,7 +213,8 @@ export const runEvaluation = async (
   dataset: ToolSelectionDatasetV1,
   config: EvalRunConfig,
   provider: EvalProvider,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
+  credential = ''
 ): Promise<EvalRunReportV1> => {
   if (provider.id !== config.provider) throw new Error('The selected provider does not match the run configuration.');
   if (!Number.isInteger(config.trials) || config.trials < 1 || config.trials > 20) throw new Error('Trials must be an integer from 1 to 20.');
@@ -220,13 +227,13 @@ export const runEvaluation = async (
     for (const arm of config.arms) {
       for (let trial = 1; trial <= config.trials; trial += 1) {
         try {
-          const observation = await provider.run({
+          const observation = redactCredential(await provider.run({
             case: evalCase,
             tools: arm === 'with-mcp' ? dataset.tools : [],
             arm,
             model: config.model,
             trial,
-          });
+          }), credential);
           results.push(scoreTrial(evalCase, arm, trial, observation, dataset.tools, config));
         } catch (error) {
           results.push({
@@ -237,24 +244,23 @@ export const runEvaluation = async (
             trial,
             expectedTools: evalCase.acceptableTools || [],
             expectedNoTool: evalCase.expectedNoTool === true,
-            observedTools: [],
-            forbiddenToolCalled: false,
-            selectionPassed: arm === 'with-mcp' && !evalCase.expectedNoTool ? false : null,
-            noToolPassed: evalCase.expectedNoTool ? false : null,
+            observedTools: null,
+            forbiddenToolCalled: null,
+            selectionPassed: null,
+            noToolPassed: null,
             argumentSchemaValid: null,
-            assertionResults: (evalCase.argumentAssertions || []).map(assertion => ({ assertion, passed: false, message: 'Provider request failed.' })),
-            expectedToolCalled: false,
+            assertionResults: [],
+            expectedToolCalled: null,
             figuresGrounded: null,
-            latencyMs: 0,
-            approximateCost: 0,
-            error: error instanceof Error ? error.message : String(error),
+            latencyMs: null,
+            error: redactCredential(error instanceof Error ? error.message : String(error), credential),
           });
         }
         onProgress?.(results.length, total);
       }
     }
   }
-  return {
+  const report = redactCredential<EvalRunReportV1>({
     version: TOOL_SELECTION_REPORT_VERSION,
     id: randomId(),
     createdAt: new Date().toISOString(),
@@ -269,7 +275,9 @@ export const runEvaluation = async (
     notice: 'This is an isolated model evaluation. It does not measure or reproduce real ChatGPT, Claude, Cursor, or other MCP host behavior.',
     metrics: calculateMetrics(results),
     results,
-  };
+  }, credential);
+  assertReportCredentialSafe(report, credential);
+  return report;
 };
 
 const comparableMetrics = [
@@ -287,8 +295,10 @@ export const compareRuns = (baseline: EvalRunReportV1, candidate: EvalRunReportV
     if (metric !== 'approximateTokenCost' && metricDeltas[metric] !== null && metricDeltas[metric]! < 0) regressions.push(metric);
     if (metric === 'approximateTokenCost' && metricDeltas[metric] !== null && metricDeltas[metric]! > 0) regressions.push(metric);
   });
-  const latencyMeanDeltaMs = candidate.metrics.latencyMs.mean - baseline.metrics.latencyMs.mean;
-  if (latencyMeanDeltaMs > 0) regressions.push('latencyMs.mean');
+  const latencyMeanDeltaMs = baseline.metrics.latencyMs.mean === null || candidate.metrics.latencyMs.mean === null
+    ? null
+    : candidate.metrics.latencyMs.mean - baseline.metrics.latencyMs.mean;
+  if (latencyMeanDeltaMs !== null && latencyMeanDeltaMs > 0) regressions.push('latencyMs.mean');
   return {
     baselineRunId: baseline.id,
     candidateRunId: candidate.id,
@@ -303,5 +313,11 @@ export const compareRuns = (baseline: EvalRunReportV1, candidate: EvalRunReportV
 export const reportContainsCredential = (report: EvalRunReportV1, credential: string): boolean => (
   Boolean(credential) && JSON.stringify(report).includes(credential)
 );
+
+export const assertReportCredentialSafe = (report: EvalRunReportV1, credential: string): void => {
+  if (reportContainsCredential(report, credential)) {
+    throw new Error('The evaluation report contained the session credential and was blocked.');
+  }
+};
 
 export type { ToolCallObservation };
