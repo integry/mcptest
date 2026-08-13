@@ -670,6 +670,36 @@ describe('semantic report drift', () => {
     }));
   });
 
+  it('compares every same-type OAuth metadata observation', () => {
+    const before = artifact({ oauthMetadata: { issuer: 'https://auth.example/final' } });
+    const after = artifact({
+      generatedAt: '2026-08-11T20:01:00.000Z',
+      oauthMetadata: { issuer: 'https://auth.example/final' },
+    });
+    const beforeFinal = before.oauthTrace!.events[0];
+    const afterFinal = after.oauthTrace!.events[0];
+    before.oauthTrace!.events = [
+      {
+        ...beforeFinal,
+        response: { status: 200, metadata: { issuer: 'https://auth.example/old' } },
+      },
+      { ...beforeFinal, sequence: 2 },
+    ];
+    after.oauthTrace!.events = [
+      {
+        ...afterFinal,
+        response: { status: 200, metadata: { issuer: 'https://auth.example/new' } },
+      },
+      { ...afterFinal, sequence: 2 },
+    ];
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'oauth.authorization_server_metadata',
+      category: 'authentication',
+      classification: 'risk',
+    }));
+  });
+
   it('classifies a newly observed failed OAuth step as an authentication risk', () => {
     const before = artifact();
     const after = artifact({
@@ -799,6 +829,77 @@ describe('semantic report drift', () => {
       expect(change?.title).not.toContain('resolved');
     }
   );
+
+  it('reports changed finding content when severity is unchanged', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    const finding: NonNullable<PublicReport['toolSurfaceAnalysis']>['findings']['medium'][number] = {
+      id: 'stable-finding',
+      category: 'schema-quality',
+      severity: 'medium',
+      kind: 'quality-signal',
+      title: 'Tool schema needs review',
+      summary: 'The tool schema needs review.',
+      evidence: [],
+      omittedEvidenceCount: 0,
+      remediation: 'Review the tool schema.',
+    };
+    before.toolSurfaceAnalysis!.findings.medium.push(finding);
+    after.toolSurfaceAnalysis!.findings.medium.push({
+      ...finding,
+      summary: 'The tool schema rejects a newly observed input.',
+      remediation: 'Restore support for the observed input.',
+    });
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'findings.tool:stable-finding.content',
+      category: 'findings',
+      classification: 'change',
+      title: 'Finding changed: Tool schema needs review',
+    }));
+  });
+
+  it('reports a worsened finding outcome as risk when severity is unchanged', () => {
+    const before = artifact();
+    const after = artifact({ generatedAt: '2026-08-11T20:01:00.000Z' });
+    const assessment = {
+      schemaVersion: '1.0',
+      profileId: 'test-host',
+      profileVersion: '1.0.0',
+      status: 'compatible-with-caveats' as const,
+      findings: [{
+        schemaVersion: '1.0' as const,
+        ruleId: 'authorization.oauth.metadata',
+        scope: 'authorization-server' as const,
+        outcome: 'caveat' as const,
+        severity: 'warning' as const,
+        summary: 'OAuth metadata is incomplete',
+        detail: 'One optional field is unavailable.',
+        evidence: [],
+      }],
+    };
+    before.compatibility = { schemaVersion: '1.0', assessments: { 'test-host': assessment } };
+    after.compatibility = {
+      schemaVersion: '1.0',
+      assessments: {
+        'test-host': {
+          ...assessment,
+          status: 'incompatible',
+          findings: [{
+            ...assessment.findings[0],
+            outcome: 'fail',
+            detail: 'Required authorization-server metadata is invalid.',
+          }],
+        },
+      },
+    };
+
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'findings.compatibility:test-host:authorization.oauth.metadata.outcome',
+      category: 'findings',
+      classification: 'risk',
+    }));
+  });
 
   it('compares stateful and stateless protocol results without treating them as unavailable', () => {
     const stateful = artifact({ protocolEra: 'legacy', protocolVersion: '2025-11-25' });

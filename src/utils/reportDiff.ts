@@ -575,20 +575,25 @@ const compareScalar = (
   ));
 };
 
-const metadataByOAuthStep = (report: PublicReport): Map<string, unknown> => new Map(
-  (report.oauthTrace?.events || [])
-    .filter((event) => [
+const metadataByOAuthStep = (report: PublicReport): Map<string, unknown[]> => {
+  const observations = new Map<string, unknown[]>();
+  for (const event of report.oauthTrace?.events || []) {
+    if (![
       'protected_resource_metadata',
       'authorization_server_metadata',
       'cimd',
       'dynamic_client_registration',
       'pkce',
-    ].includes(event.type))
-    .map((event) => [event.type, {
+    ].includes(event.type)) continue;
+    const group = observations.get(event.type) || [];
+    group.push({
       outcome: event.outcome,
       metadata: event.response?.metadata,
-    }])
-);
+    });
+    observations.set(event.type, group);
+  }
+  return observations;
+};
 
 const OAUTH_METADATA_KEYS = new Set([
   'authorizationSchemes',
@@ -674,9 +679,11 @@ const hasCompleteRunObservations = (report: PublicReport): boolean => (
 const ADVERSE_OAUTH_OUTCOMES = new Set(['failed', 'cancelled', 'required', 'skipped']);
 
 const hasAdverseOAuthOutcome = (observation: unknown): boolean => (
-  isRecord(observation)
-  && typeof observation.outcome === 'string'
-  && ADVERSE_OAUTH_OUTCOMES.has(observation.outcome)
+  Array.isArray(observation)
+    ? observation.some(hasAdverseOAuthOutcome)
+    : isRecord(observation)
+      && typeof observation.outcome === 'string'
+      && ADVERSE_OAUTH_OUTCOMES.has(observation.outcome)
 );
 
 const compareOAuth = (before: PublicReport, after: PublicReport): ReportDiffChange[] => {
@@ -820,6 +827,8 @@ interface FindingObservation {
   severity: string;
   title: string;
   source: FindingSource;
+  outcome?: string;
+  material: unknown;
 }
 
 const findingMap = (report: PublicReport): Map<string, FindingObservation> => {
@@ -829,6 +838,12 @@ const findingMap = (report: PublicReport): Map<string, FindingObservation> => {
       severity: priority.severity,
       title: priority.title,
       source: { kind: 'release', source: priority.source },
+      material: {
+        title: priority.title,
+        detail: priority.detail,
+        remediation: priority.remediation,
+        source: priority.source,
+      },
     });
   }
   const buckets = report.toolSurfaceAnalysis?.findings;
@@ -839,6 +854,15 @@ const findingMap = (report: PublicReport): Map<string, FindingObservation> => {
           severity,
           title: finding.title,
           source: { kind: 'tool' },
+          material: {
+            category: finding.category,
+            kind: finding.kind,
+            title: finding.title,
+            summary: finding.summary,
+            evidence: finding.evidence,
+            omittedEvidenceCount: finding.omittedEvidenceCount,
+            remediation: finding.remediation,
+          },
         });
       }
     }
@@ -850,6 +874,14 @@ const findingMap = (report: PublicReport): Map<string, FindingObservation> => {
         severity: finding.severity,
         title: finding.summary,
         source: { kind: 'compatibility', profileId: assessment.profileId },
+        outcome: finding.outcome,
+        material: {
+          scope: finding.scope,
+          summary: finding.summary,
+          detail: finding.detail,
+          evidence: finding.evidence,
+          remediation: finding.remediation,
+        },
       });
     }
   }
@@ -922,13 +954,31 @@ const compareFindings = (before: PublicReport, after: PublicReport): ReportDiffC
   for (const id of [...left.keys()].filter((key) => right.has(key)).sort()) {
     const oldFinding = left.get(id)!;
     const newFinding = right.get(id)!;
-    if (oldFinding.severity === newFinding.severity) continue;
-    const worsened = (severityRank[newFinding.severity] || 0) > (severityRank[oldFinding.severity] || 0);
-    changes.push(makeChange(
-      worsened ? 'risk' : 'change', 'findings', `findings.${id}.severity`,
-      `${newFinding.title} severity ${worsened ? 'increased' : 'decreased'}`,
-      `Severity changed from ${oldFinding.severity} to ${newFinding.severity}.`
-    ));
+    if (oldFinding.severity !== newFinding.severity) {
+      const worsened = (severityRank[newFinding.severity] || 0) > (severityRank[oldFinding.severity] || 0);
+      changes.push(makeChange(
+        worsened ? 'risk' : 'change', 'findings', `findings.${id}.severity`,
+        `${newFinding.title} severity ${worsened ? 'increased' : 'decreased'}`,
+        `Severity changed from ${oldFinding.severity} to ${newFinding.severity}.`
+      ));
+    }
+    if (oldFinding.outcome !== newFinding.outcome) {
+      const outcomeRank: Record<string, number> = { pass: 0, caveat: 1, unknown: 2, fail: 3 };
+      const worsened = (outcomeRank[newFinding.outcome || ''] || 0)
+        > (outcomeRank[oldFinding.outcome || ''] || 0);
+      changes.push(makeChange(
+        worsened ? 'risk' : 'change', 'findings', `findings.${id}.outcome`,
+        `${newFinding.title} outcome ${worsened ? 'worsened' : 'changed'}`,
+        `Outcome changed from ${display(oldFinding.outcome)} to ${display(newFinding.outcome)}.`
+      ));
+    }
+    if (!same(oldFinding.material, newFinding.material)) {
+      changes.push(makeChange(
+        'change', 'findings', `findings.${id}.content`,
+        `Finding changed: ${newFinding.title}`,
+        'The finding title, detail, evidence, or remediation changed.'
+      ));
+    }
   }
   return changes;
 };
