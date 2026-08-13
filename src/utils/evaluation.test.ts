@@ -71,6 +71,47 @@ describe('dual-era server evaluation', () => {
     expect(headers.get('x-mcp-authorization')).toBeNull();
   });
 
+  it('records hosted OAuth and its prior target challenge on a successful report', async () => {
+    const target = 'https://mcp.slack.com/mcp';
+    const client = createClient();
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: `https://proxy.mcptest.test/?target=${encodeURIComponent(target)}`,
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+      protocolVersion: '2026-07-28',
+    });
+
+    const report = await evaluateServer(
+      target,
+      'firebase-jwt',
+      vi.fn(),
+      'unused-cached-oauth-token',
+      undefined,
+      {
+        priorChallenge: {
+          outcome: 'challenged',
+          provenance: 'direct_target',
+        },
+      },
+      'opaque-hosted-grant'
+    );
+
+    expect(report.sections.protocol.details[0].metadata).toMatchObject({
+      authorizationSchemes: ['oauth'],
+      authorizationCredentialProvenance: ['hosted-grant'],
+      authorizationChallenge: {
+        outcome: 'challenged',
+        provenance: 'direct_target',
+      },
+    });
+    expect(report.sections.protocol.details[0].metadata).not.toHaveProperty(
+      'unauthenticatedTargetRequestSucceeded'
+    );
+    expect(JSON.stringify(report)).not.toContain('opaque-hosted-grant');
+    expect(JSON.stringify(report)).not.toContain('unused-cached-oauth-token');
+  });
+
   it.each([
     ['an expired grant', 401],
     ['a grant bound to another Firebase user', 403],
@@ -100,6 +141,56 @@ describe('dual-era server evaluation', () => {
       'X-MCP-Hosted-Grant'
     )).toBe('opaque-grant');
   });
+
+  it.each([
+    ['Slack', 401, 'https://mcp.slack.com/mcp'],
+    ['GitHub', 403, 'https://api.githubcopilot.com/mcp'],
+  ] as const)(
+    'routes a stale hosted %s grant target-origin %i through reauthorization',
+    async (_, status, target) => {
+      const metadataUrl = `${new URL(target).origin}/.well-known/oauth-protected-resource`;
+      const targetChallenge = new ProxiedAuthenticationError(
+        status,
+        'target',
+        new Error('The upstream target rejected its provider access token'),
+        { method: 'POST', url: `https://proxy.mcptest.test/?target=${encodeURIComponent(target)}` },
+        { 'www-authenticate': 'Bearer resource_metadata="[sanitized]"' },
+        metadataUrl
+      );
+      connectionMocks.attempt.mockRejectedValueOnce(
+        new TransportConnectionError([targetChallenge])
+      );
+
+      const report = await evaluateServer(
+        target,
+        'firebase-jwt',
+        vi.fn(),
+        null,
+        undefined,
+        undefined,
+        'stale-hosted-grant'
+      );
+
+      expect(report).toMatchObject({
+        outcome: 'authorization-required',
+        authenticationRequirement: { kind: 'target', status },
+        authenticationUrl: new URL(target).toString(),
+      });
+      expect(report.resourceMetadataUrl).toBe(metadataUrl);
+      expect(report.sections.auth.details[0].metadata).toMatchObject({
+        route: 'proxy',
+        status,
+        endpoint: new URL(target).toString(),
+        responseHeaders: { 'www-authenticate': 'Bearer resource_metadata="[sanitized]"' },
+      });
+      expect(getStoredOAuthTrace(target, sessionStorage)?.events[0]).toMatchObject({
+        type: 'target_challenge',
+        route: 'proxy',
+        provenance: 'direct_target',
+        response: { status },
+      });
+    }
+  );
 
   it('tries a direct fetch before falling back to the proxy', async () => {
     const fetchMock = vi.mocked(fetch);

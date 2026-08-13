@@ -552,16 +552,22 @@ export class HostedGrantRejectedError extends Error {
 }
 
 const isHostedGrantInvalidTokenRejection = (error: unknown): boolean => {
-  const observedChallenge = getObservedAuthenticationChallenge(error);
-  const challenge = Object.entries(observedChallenge?.responseHeaders || {}).find(([name]) => (
-    name.toLowerCase() === 'www-authenticate'
-  ))?.[1];
+  const errors = error instanceof EvaluationConnectionError
+    ? error.failures.map((failure) => failure.error)
+    : [error];
 
-  return observedChallenge?.source === 'proxy'
-    && (observedChallenge.status === 401 || observedChallenge.status === 403)
-    && typeof challenge === 'string'
-    && /^HostedGrant\b/i.test(challenge)
-    && /\berror\s*=\s*"?invalid_token"?/i.test(challenge);
+  return errors.some((nestedError) => {
+    const observedChallenge = getObservedAuthenticationChallenge(nestedError);
+    const challenge = Object.entries(observedChallenge?.responseHeaders || {}).find(([name]) => (
+      name.toLowerCase() === 'www-authenticate'
+    ))?.[1];
+
+    return observedChallenge?.source === 'proxy'
+      && (observedChallenge.status === 401 || observedChallenge.status === 403)
+      && typeof challenge === 'string'
+      && /^HostedGrant\b/i.test(challenge)
+      && /\berror\s*=\s*"?invalid_token"?/i.test(challenge);
+  });
 };
 
 const connectForEvaluation = async (
@@ -579,16 +585,23 @@ const connectForEvaluation = async (
   if (hostedGrant) {
     const proxyUrl = getProxyUrl();
     if (!proxyUrl) throw new Error('Hosted OAuth requires the authenticated proxy.');
+    const proxyStartedAt = Date.now();
     onProgress('Connecting through the authenticated proxy with the server-side OAuth grant...');
     const proxyConnectionUrl = new URL(proxyUrl);
     proxyConnectionUrl.searchParams.set('target', serverUrl);
     const proxiedTargetHeaders = new Headers(targetHeaders);
     proxiedTargetHeaders.set('X-MCP-Hosted-Grant', hostedGrant);
-    const proxied = await attemptParallelConnections(
-      proxyConnectionUrl.toString(), abortController.signal, firebaseToken,
-      proxiedTargetHeaders, true, undefined, pendingRetry?.observeRequest('proxy')
-    );
-    return { ...proxied, usedProxy: true };
+    try {
+      const proxied = await attemptParallelConnections(
+        proxyConnectionUrl.toString(), abortController.signal, firebaseToken,
+        proxiedTargetHeaders, true, undefined, pendingRetry?.observeRequest('proxy')
+      );
+      return { ...proxied, usedProxy: true };
+    } catch (proxyError) {
+      throw new EvaluationConnectionError([
+        makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt),
+      ]);
+    }
   }
 
   try {
@@ -1131,12 +1144,16 @@ const performanceSection = (durationMs: number): EvaluationSection => {
 const evaluationAuthorizationEvidence = (
   oauthToken: string | null,
   targetHeaders?: HeadersInit,
+  hostedGrant?: string | null,
   authorizationContext?: EvaluationAuthorizationContext
 ): Record<string, unknown> => {
   const schemes = new Set<'oauth' | 'bearer' | 'api-key'>();
   const credentialProvenance: string[] = [];
 
-  if (oauthToken) {
+  if (hostedGrant) {
+    schemes.add('oauth');
+    credentialProvenance.push('hosted-grant');
+  } else if (oauthToken) {
     schemes.add('oauth');
     credentialProvenance.push('cached-oauth');
   }
@@ -1386,7 +1403,12 @@ export async function evaluateServer(
             endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
             route: connection.usedProxy ? 'authenticated proxy' : 'direct',
             evaluationRuntime: runtime,
-            ...evaluationAuthorizationEvidence(oauthToken, targetHeaders, authorizationContext),
+            ...evaluationAuthorizationEvidence(
+              oauthToken,
+              targetHeaders,
+              selectedHostedGrant,
+              authorizationContext
+            ),
           },
         },
         {
