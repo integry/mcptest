@@ -4,6 +4,7 @@ import type { CatalogAuthType, CatalogRequiredHeader } from './catalog';
 import type { CatalogProtocolEra } from './catalog';
 
 export * from './toolSurfaceAnalysis';
+export * from './deterministicTests';
 
 // Define interfaces for state clarity
 export interface LogEntry {
