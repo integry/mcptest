@@ -364,7 +364,7 @@ describe('semantic report drift', () => {
     );
   });
 
-  it('classifies adding and removing enum constraints by direction', () => {
+  it('treats enum constraint changes as uncomparable after literal redaction', () => {
     const unrestricted = artifact({
       tools: [tool(inputSchema({ query: { type: 'string' } }))],
     });
@@ -373,21 +373,20 @@ describe('semantic report drift', () => {
       tools: [tool(inputSchema({ query: { type: 'string', enum: ['public', 'private'] } }))],
     });
 
+    expect(restricted.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(diffPublicReports(unrestricted, restricted).changes).toContainEqual(expect.objectContaining({
-      path: 'tools.search.inputSchema.properties.query.enum',
-      classification: 'breaking',
-      title: 'search now restricts accepted values',
-      breaking: true,
+      path: 'toolSurfaceAnalysis.toolDefinitions',
+      classification: 'unknown',
+      breaking: false,
     }));
     expect(diffPublicReports(restricted, unrestricted).changes).toContainEqual(expect.objectContaining({
-      path: 'tools.search.inputSchema.properties.query.enum',
-      classification: 'change',
-      title: 'search no longer restricts accepted values',
+      path: 'toolSurfaceAnalysis.toolDefinitions',
+      classification: 'unknown',
       breaking: false,
     }));
   });
 
-  it('classifies a malformed-to-valid enum change as unknown', () => {
+  it('does not retain malformed or valid enum literals for comparison', () => {
     const before = artifact({
       tools: [tool(inputSchema({ query: { type: 'string', enum: 'public' } }))],
     });
@@ -396,22 +395,20 @@ describe('semantic report drift', () => {
       tools: [tool(inputSchema({ query: { type: 'string', enum: ['public'] } }))],
     });
 
-    const enumChanges = diffPublicReports(before, after).changes.filter(
-      ({ path }) => path === 'tools.search.inputSchema.properties.query.enum'
-    );
-
-    expect(enumChanges).toEqual([expect.objectContaining({
+    expect(before.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
+      path: 'toolSurfaceAnalysis.toolDefinitions',
       classification: 'unknown',
-      title: 'search enum could not be compared',
       breaking: false,
-    })]);
+    }));
   });
 
   it('ignores representation-only schema changes', () => {
     const before = artifact({ tools: [tool({
       type: 'object',
       properties: {
-        query: { type: 'string', enum: ['public', 'private'] },
+        query: { type: 'string' },
         tenant: { type: 'string' },
       },
       required: ['query', 'tenant'],
@@ -421,7 +418,7 @@ describe('semantic report drift', () => {
       tools: [tool({
         type: 'object',
         properties: {
-          query: { type: 'string', enum: ['private', 'public'] },
+          query: { type: 'string' },
           tenant: { type: 'string' },
         },
         required: ['tenant', 'query'],

@@ -801,6 +801,41 @@ describe('versioned public report artifacts', () => {
     expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
   });
 
+  it('redacts numeric schema literals without relying on a sensitive property name', () => {
+    const makeArtifact = (credential: number) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          title: 'Authentication PIN',
+          type: 'integer',
+          const: credential,
+          default: credential,
+          examples: [credential],
+          enum: [credential],
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact(1234);
+    const alternate = makeArtifact(5678);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as Record<string, unknown>;
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema).toEqual({
+      const: '[REDACTED]',
+      default: '[REDACTED]',
+      enum: '[REDACTED]',
+      examples: '[REDACTED]',
+      title: 'Authentication PIN',
+      type: 'integer',
+    });
+    expect(JSON.stringify(schema)).not.toContain('1234');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
   it('redacts definitions recursively referenced by sensitive schema properties', () => {
     const makeArtifact = (opaqueCredential: string) => {
       const report = publicReport();

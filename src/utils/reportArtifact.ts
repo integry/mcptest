@@ -919,6 +919,22 @@ const isToolInputSchemaPropertyDeclaration = (
     && path.includes('inputSchema');
 };
 
+const TOOL_INPUT_SCHEMA_LITERAL_KEYS = new Set([
+  'const',
+  'default',
+  'enum',
+  'examples',
+]);
+
+const isToolInputSchemaLiteral = (
+  key: string,
+  path: readonly string[]
+): boolean => (
+  TOOL_INPUT_SCHEMA_LITERAL_KEYS.has(key)
+  && path.includes('toolDefinitions')
+  && path.includes('inputSchema')
+);
+
 const sameReportValue = (left: unknown, right: unknown): boolean => {
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -1380,6 +1396,7 @@ const redactReportValueAtPath = (
   path: readonly string[],
   schemaReferencesRedacted = false
 ): unknown => {
+  if (key && isToolInputSchemaLiteral(key, path)) return REDACTED_VALUE;
   if (key
       && isSensitiveQueryKey(key)
       && isToolInputSchemaPropertyDeclaration(key, path)) {
