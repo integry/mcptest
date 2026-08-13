@@ -8,6 +8,10 @@ import ReportView, {
   getStaticCredentialHeaders,
 } from './ReportView';
 import { createOAuthFlightRecorder } from '../utils/oauthTrace';
+import {
+  REPORT_HISTORY_STORAGE_KEY,
+  createReportSnapshot,
+} from '../utils/reportHistory';
 
 const challengedReport = (challenge: string): EvaluationReport => ({
   serverUrl: 'https://auth.example/mcp',
@@ -550,6 +554,26 @@ describe('ReportView OAuth discovery', () => {
       'Report history could not be loaded because browser storage is unavailable.'
     );
     expect(container.textContent).toContain('MCP release-readiness report');
+  });
+
+  it('renders global history controls before a report completes for the current endpoint', async () => {
+    evaluationMocks.evaluate.mockReturnValueOnce(new Promise(() => undefined));
+    const snapshot = createReportSnapshot(
+      challengedReport('Bearer'),
+      undefined,
+      '2026-08-11T20:00:00.000Z'
+    );
+    localStorage.setItem(REPORT_HISTORY_STORAGE_KEY, JSON.stringify([snapshot]));
+    const container = document.createElement('div');
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+
+    expect(container.textContent).toContain('Building release-readiness report');
+    expect(container.textContent).toContain('Export history');
+    expect(container.textContent).toContain('Delete all history');
   });
 
   it('keeps rendering and surfaces an error when report history cannot be read', () => {

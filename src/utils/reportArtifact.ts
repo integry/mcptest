@@ -1138,6 +1138,15 @@ const SCHEMA_VALUE_APPLICATOR_KEYS = new Set([
   'unevaluatedProperties',
 ]);
 
+const COMPOSED_SCHEMA_APPLICATOR_KEYS = new Set([
+  'allOf',
+  'anyOf',
+  'else',
+  'if',
+  'oneOf',
+  'then',
+]);
+
 const schemaPatternMentionsSensitiveProperty = (pattern: string): boolean => (
   isSensitiveQueryKey(pattern)
 );
@@ -1174,6 +1183,14 @@ const hasSchemaValuedApplicator = (record: Record<string, unknown>): boolean => 
   ))
 );
 
+const hasComposedSchemaApplicator = (record: Record<string, unknown>): boolean => (
+  Object.entries(record).some(([keyword, value]) => (
+    COMPOSED_SCHEMA_APPLICATOR_KEYS.has(keyword)
+    && value !== null
+    && typeof value === 'object'
+  ))
+);
+
 const dependencyKeywordMentionsUntraceableSensitiveProperty = (
   value: unknown,
   declaredProperties: Record<string, unknown> | undefined
@@ -1191,14 +1208,31 @@ const dependencyKeywordMentionsUntraceableSensitiveProperty = (
 
 const hasUntraceableSensitiveSchemaProperty = (
   value: unknown,
-  seen: Set<unknown> = new Set()
+  seen: Set<unknown> = new Set(),
+  hasComposedAncestor = false
 ): boolean => {
   if (!value || typeof value !== 'object' || seen.has(value)) return false;
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.some((item) => hasUntraceableSensitiveSchemaProperty(item, seen));
+    return value.some((item) => hasUntraceableSensitiveSchemaProperty(
+      item,
+      seen,
+      hasComposedAncestor
+    ));
   }
   const record = value as Record<string, unknown>;
+  const declaredProperties = record.properties
+    && typeof record.properties === 'object'
+    && !Array.isArray(record.properties)
+    ? record.properties as Record<string, unknown>
+    : undefined;
+  const crossesComposition = hasComposedAncestor || hasComposedSchemaApplicator(record);
+  if (
+    crossesComposition
+    && Object.keys(declaredProperties ?? {}).some(isSensitiveQueryKey)
+  ) {
+    return true;
+  }
   if (schemaNameConstraintMentionsSensitiveProperty(record.propertyNames)) return true;
   if (
     record.patternProperties
@@ -1208,34 +1242,39 @@ const hasUntraceableSensitiveSchemaProperty = (
   ) {
     return true;
   }
-  if (hasSchemaValuedApplicator(record)) {
-    const declaredProperties = record.properties
-      && typeof record.properties === 'object'
-      && !Array.isArray(record.properties)
-      ? record.properties as Record<string, unknown>
-      : undefined;
+  if (hasSchemaValuedApplicator(record) || hasComposedAncestor) {
+    // A required/dependency declaration in one composed or conditional branch can
+    // make a value constrained by another branch sensitive. JSON Schema does not
+    // provide a reliable local property relationship across those branches, so
+    // fail closed instead of trusting a same-object `properties` declaration.
+    const locallyTraceableProperties = crossesComposition ? undefined : declaredProperties;
     if (Array.isArray(record.required) && record.required.some((propertyName) => (
       typeof propertyName === 'string'
       && isSensitiveQueryKey(propertyName)
-      && !Object.prototype.hasOwnProperty.call(declaredProperties ?? {}, propertyName)
+      && !Object.prototype.hasOwnProperty.call(locallyTraceableProperties ?? {}, propertyName)
     ))) {
       return true;
     }
     if (
       dependencyKeywordMentionsUntraceableSensitiveProperty(
         record.dependentRequired,
-        declaredProperties
+        locallyTraceableProperties
       )
       || dependencyKeywordMentionsUntraceableSensitiveProperty(
         record.dependencies,
-        declaredProperties
+        locallyTraceableProperties
       )
     ) {
       return true;
     }
   }
-  return Object.values(record)
-    .some((child) => hasUntraceableSensitiveSchemaProperty(child, seen));
+  return Object.entries(record).some(([keyword, child]) => (
+    hasUntraceableSensitiveSchemaProperty(
+      child,
+      seen,
+      hasComposedAncestor || COMPOSED_SCHEMA_APPLICATOR_KEYS.has(keyword)
+    )
+  ));
 };
 
 const redactSensitiveSchemaReferences = (schema: unknown): unknown => {

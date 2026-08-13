@@ -69,4 +69,25 @@ describe('ReportHistory', () => {
       container.textContent?.indexOf('Evaluation score changed') || 0
     );
   });
+
+  it('renders global controls without an endpoint-specific timeline', () => {
+    const snapshot = createReportSnapshot(
+      report('streamable-http'), undefined, '2026-08-11T20:00:00.000Z'
+    );
+    const markup = renderToStaticMarkup(
+      <ReportHistory
+        snapshots={[snapshot]}
+        onDeleteSnapshot={() => undefined}
+        onDeleteAll={() => undefined}
+        onExportAll={() => undefined}
+      />
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+
+    expect(container.textContent).toContain('Report history');
+    expect(container.textContent).toContain('Export history');
+    expect(container.textContent).toContain('Delete all history');
+    expect(container.textContent).not.toContain('Delete snapshot');
+  });
 });

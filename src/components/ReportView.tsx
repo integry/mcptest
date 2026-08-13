@@ -736,33 +736,6 @@ const ReportView: React.FC = () => {
               onToggleItem={toggleItemExpanded}
             />
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
-            <ReportHistory
-              endpoint={report.serverUrl}
-              snapshots={reportSnapshots}
-              onDeleteSnapshot={(id) => {
-                try {
-                  const storage = window.localStorage;
-                  setReportSnapshots(deleteReportSnapshot(id, storage));
-                  setHistoryError(null);
-                } catch (e) {
-                  console.error('Failed to delete report snapshot:', e);
-                  setHistoryError('The report snapshot could not be deleted. Browser storage may be unavailable.');
-                }
-              }}
-              onDeleteAll={() => {
-                if (!window.confirm('Delete all locally stored report snapshots? Other app data will be kept.')) return;
-                try {
-                  const storage = window.localStorage;
-                  deleteAllReportSnapshots(storage);
-                  setReportSnapshots([]);
-                  setHistoryError(null);
-                } catch (e) {
-                  console.error('Failed to delete report history:', e);
-                  setHistoryError('Report history could not be deleted. Browser storage may be unavailable.');
-                }
-              }}
-              onExportAll={() => saveReportSnapshotHistoryDownload(reportSnapshots)}
-            />
             {reportRequiresProxyAuthentication && (
               <section className="report-auth-gate" aria-labelledby="report-proxy-auth-title">
                 <div className="report-auth-heading">
@@ -962,6 +935,33 @@ const ReportView: React.FC = () => {
           </div>
         </div>
       )}
+      <ReportHistory
+        endpoint={report?.serverUrl}
+        snapshots={reportSnapshots}
+        onDeleteSnapshot={(id) => {
+          try {
+            const storage = window.localStorage;
+            setReportSnapshots(deleteReportSnapshot(id, storage));
+            setHistoryError(null);
+          } catch (e) {
+            console.error('Failed to delete report snapshot:', e);
+            setHistoryError('The report snapshot could not be deleted. Browser storage may be unavailable.');
+          }
+        }}
+        onDeleteAll={() => {
+          if (!window.confirm('Delete all locally stored report snapshots? Other app data will be kept.')) return;
+          try {
+            const storage = window.localStorage;
+            deleteAllReportSnapshots(storage);
+            setReportSnapshots([]);
+            setHistoryError(null);
+          } catch (e) {
+            console.error('Failed to delete report history:', e);
+            setHistoryError('Report history could not be deleted. Browser storage may be unavailable.');
+          }
+        }}
+        onExportAll={() => saveReportSnapshotHistoryDownload(reportSnapshots)}
+      />
       {oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
