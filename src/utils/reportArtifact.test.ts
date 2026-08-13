@@ -15,6 +15,7 @@ import {
   serializePublicReportMarkdown,
   validatePublicReport,
 } from './reportArtifact';
+import { analyzeToolSurface } from './toolSurfaceAnalysis';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
@@ -773,6 +774,474 @@ describe('versioned public report artifacts', () => {
       safe: 'visible',
       code_challenge_methods_supported: ['S256'],
     });
+  });
+
+  it('publishes redacted partial tool definitions with complete names under the v2 schema', () => {
+    const opaqueCredential = 'elm-cobalt-73';
+    const report = publicReport();
+    report.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: { type: 'string', enum: [opaqueCredential] },
+        },
+      },
+    }]);
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown };
+    };
+    const serialized = serializePublicReportJson(artifact);
+    const serializedArtifact = JSON.parse(serialized);
+
+    expect(definitions?.status).toBe('partial');
+    expect(definitions?.namesComplete).toBe(true);
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(serialized).not.toContain(opaqueCredential);
+    expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
+    expect(
+      validatePublishedSchema(serializedArtifact),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(true);
+
+    delete serializedArtifact.toolSurfaceAnalysis.toolDefinitions.namesComplete;
+    expect(
+      validatePublishedSchema(serializedArtifact),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(true);
+  });
+
+  it('redacts numeric schema literals without relying on a sensitive property name', () => {
+    const makeArtifact = (credential: number) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          title: 'Authentication PIN',
+          type: 'integer',
+          const: credential,
+          default: credential,
+          examples: [credential],
+          enum: [credential],
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact(1234);
+    const alternate = makeArtifact(5678);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as Record<string, unknown>;
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema).toEqual({
+      const: '[REDACTED]',
+      default: '[REDACTED]',
+      enum: '[REDACTED]',
+      examples: '[REDACTED]',
+      title: '[REDACTED]',
+      type: 'integer',
+    });
+    expect(JSON.stringify(schema)).not.toContain('1234');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
+  it('redacts exact numeric bounds and regex constraints that encode credentials', () => {
+    const makeArtifact = (credential: number) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            value: {
+              title: 'Authentication PIN',
+              type: 'integer',
+              minimum: credential,
+              maximum: credential,
+              pattern: `^${credential}$`,
+            },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact(4813);
+    const alternate = makeArtifact(7592);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { value: Record<string, unknown> };
+    };
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.value).toEqual({
+      maximum: '[REDACTED]',
+      minimum: '[REDACTED]',
+      pattern: '[REDACTED]',
+      title: '[REDACTED]',
+      type: 'integer',
+    });
+    expect(output).not.toContain('4813');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
+  it('redacts definitions recursively referenced by sensitive schema properties', () => {
+    const makeArtifact = (opaqueCredential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            access_token: { $ref: '#/$defs/public' },
+          },
+          $defs: {
+            public: { $ref: '#/definitions/shared' },
+          },
+          definitions: {
+            shared: { type: 'string', const: opaqueCredential },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const opaqueCredential = 'cedar-orbit-opaque-58';
+    const artifact = makeArtifact(opaqueCredential);
+    const alternate = makeArtifact('indigo-harbor-opaque-26');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown };
+      $defs: { public: unknown };
+      definitions: { shared: unknown };
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(schema.$defs.public).toBe('[REDACTED]');
+    expect(schema.definitions.shared).toBe('[REDACTED]');
+    expect(json).not.toContain(opaqueCredential);
+    expect(markdown).not.toContain(opaqueCredential);
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
+  it.each([
+    {
+      name: 'a $dynamicRef JSON pointer',
+      referenceKeyword: '$dynamicRef',
+      reference: '#/$defs/credential',
+      anchorKeyword: undefined,
+    },
+    {
+      name: 'a named-anchor $ref',
+      referenceKeyword: '$ref',
+      reference: '#credential',
+      anchorKeyword: '$anchor',
+    },
+  ])('redacts a low-entropy credential behind $name', ({
+    referenceKeyword,
+    reference,
+    anchorKeyword,
+  }) => {
+    const makeArtifact = (opaqueCredential: string) => {
+      const credentialDefinition: Record<string, unknown> = {
+        type: 'string',
+        const: opaqueCredential,
+      };
+      if (anchorKeyword) credentialDefinition[anchorKeyword] = 'credential';
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            access_token: { [referenceKeyword]: reference },
+          },
+          $defs: { credential: credentialDefinition },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const opaqueCredential = '0000';
+    const artifact = makeArtifact(opaqueCredential);
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown };
+      $defs: { credential: unknown };
+    };
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(schema.$defs.credential).toBe('[REDACTED]');
+    expect(json).not.toContain(opaqueCredential);
+    expect(markdown).not.toContain(opaqueCredential);
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
+  it.each(['$ref', '$dynamicRef'])(
+    'omits a low-entropy credential associated through %s',
+    (referenceKeyword) => {
+      const makeArtifact = (credential: string) => {
+        const report = publicReport();
+        report.toolSurfaceAnalysis = analyzeToolSurface([{
+          name: 'authenticate',
+          inputSchema: {
+            type: 'object',
+            [referenceKeyword]: '#/$defs/requiresToken',
+            additionalProperties: { const: credential },
+            $defs: {
+              requiresToken: { required: ['access_token'] },
+            },
+          },
+        }]);
+        return createPublicReport(report, FIXED_OPTIONS);
+      };
+      const artifact = makeArtifact('0000');
+      const alternate = makeArtifact('0001');
+      const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+      const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+      expect(definitions?.status).toBe('partial');
+      expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+      expect(output).not.toContain('0000');
+      expect(artifact.toolSurfaceAnalysis?.fingerprint)
+        .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+    }
+  );
+
+  it('omits a schema with a low-entropy credential behind an absolute same-document reference', () => {
+    const makeArtifact = (credential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          $id: 'https://schemas.example/input',
+          type: 'object',
+          properties: {
+            access_token: {
+              $ref: 'https://schemas.example/input#/$defs/public',
+            },
+          },
+          $defs: {
+            public: { type: 'string', const: credential },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact('0000');
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+    expect(output).not.toContain('0000');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
+  it('omits a schema when a sensitive reference enters a nested $id resource', () => {
+    const makeArtifact = (credential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            access_token: { $ref: '#/$defs/nested/$defs/credentialReference' },
+          },
+          $defs: {
+            credential: { type: 'string', const: 'public-decoy' },
+            nested: {
+              $id: 'https://schemas.example/nested-credential',
+              $defs: {
+                credentialReference: { $ref: '#/$defs/credential' },
+                credential: { type: 'string', const: credential },
+              },
+            },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact('0000');
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+    expect(output).not.toContain('0000');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
+  it.each([
+    {
+      name: 'propertyNames',
+      schema: (credential: string) => ({
+        type: 'object',
+        propertyNames: { const: 'access_token' },
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
+    {
+      name: 'patternProperties',
+      schema: (credential: string) => ({
+        type: 'object',
+        patternProperties: {
+          '^access_token$': { type: 'string', const: credential },
+        },
+      }),
+    },
+    {
+      name: 'required with an applicator schema',
+      schema: (credential: string) => ({
+        type: 'object',
+        required: ['access_token'],
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
+    {
+      name: 'dependentRequired with an applicator schema',
+      schema: (credential: string) => ({
+        type: 'object',
+        dependentRequired: { account: ['access_token'] },
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
+    {
+      name: 'array-form dependencies with an applicator schema',
+      schema: (credential: string) => ({
+        type: 'object',
+        dependencies: { access_token: ['account'] },
+        additionalProperties: { type: 'string', const: credential },
+      }),
+    },
+  ])('omits an indirectly declared low-entropy credential schema using $name', ({ schema }) => {
+    const makeArtifact = (credential: string) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: schema(credential),
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact('0000');
+    const alternate = makeArtifact('0001');
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(definitions?.tools[0].inputSchema).toBe('[REDACTED]');
+    expect(output).not.toContain('0000');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
+  it('does not retain a low-entropy credential dictionary verifier in the fingerprint', () => {
+    const credentialDictionary = ['0000', '0001', '1234', '9999'];
+    const analyses = credentialDictionary.map((credential) => analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: { type: 'string', enum: [credential] },
+        },
+      },
+    }]));
+    const artifacts = analyses.map((toolSurfaceAnalysis) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = toolSurfaceAnalysis;
+      return createPublicReport(report, FIXED_OPTIONS);
+    });
+    const rawFingerprints = new Set(analyses.map(({ fingerprint }) => fingerprint.value));
+    const storedFingerprints = new Set(artifacts.map(
+      ({ toolSurfaceAnalysis }) => toolSurfaceAnalysis?.fingerprint.value
+    ));
+
+    expect(artifacts.every(
+      ({ toolSurfaceAnalysis }) => toolSurfaceAnalysis?.toolDefinitions.status === 'partial'
+    )).toBe(true);
+    expect(storedFingerprints.size).toBe(1);
+    expect(rawFingerprints.has([...storedFingerprints][0]!)).toBe(false);
+  });
+
+  it('redacts opaque credentials throughout a nested sensitive property schema', () => {
+    const opaqueCredential = 'quartz-maple-91';
+    const report = publicReport();
+    report.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: {
+            type: 'object',
+            properties: {
+              value: { type: 'string', default: opaqueCredential },
+            },
+          },
+        },
+      },
+    }]);
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown };
+    };
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(serializePublicReportJson(artifact)).not.toContain(opaqueCredential);
+    expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
+  });
+
+  it('drops free-form descriptions and extensions beneath sensitive schema properties', () => {
+    const descriptionCredential = 'willow-ember-opaque-43';
+    const extensionCredential = 'violet-ridge-opaque-82';
+    const report = publicReport();
+    report.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          access_token: {
+            type: 'string',
+            description: `Credential issued for ${descriptionCredential}`,
+            'x-provider-secret': { value: extensionCredential },
+          },
+          tenant: { type: 'string', description: 'Public tenant name.' },
+        },
+      },
+    }]);
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { access_token: unknown; tenant: unknown };
+    };
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.access_token).toBe('[REDACTED]');
+    expect(schema.properties.tenant).toEqual({
+      type: 'string', description: '[REDACTED]',
+    });
+    expect(output).not.toContain(descriptionCredential);
+    expect(output).not.toContain(extensionCredential);
   });
 
   it('redacts OAuth credential parameters from URLs using canonicalized names', () => {
