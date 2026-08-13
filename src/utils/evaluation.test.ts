@@ -16,6 +16,7 @@ import {
   getEvaluationProxyHeaders,
   getEvaluationTargetUrl,
   getEvaluationTransportProbeUrl,
+  HostedGrantRejectedError,
   isAuthenticationRequired,
   isScoredEvaluation,
   resolveEvaluationOutcome,
@@ -68,6 +69,36 @@ describe('dual-era server evaluation', () => {
     expect(headers.get('authorization')).toBe('Bearer firebase-jwt');
     expect(headers.get('x-mcp-hosted-grant')).toBe('opaque-grant');
     expect(headers.get('x-mcp-authorization')).toBeNull();
+  });
+
+  it.each([
+    ['an expired grant', 401],
+    ['a grant bound to another Firebase user', 403],
+  ] as const)('identifies %s from the proxy challenge', async (_, status) => {
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(
+        status,
+        'proxy',
+        new Error('Hosted grant rejected'),
+        undefined,
+        { 'www-authenticate': 'HostedGrant error="invalid_token"' }
+      ),
+    ]));
+
+    await expect(evaluateServer(
+      'https://mcp.slack.com/mcp',
+      'firebase-jwt',
+      vi.fn(),
+      null,
+      undefined,
+      undefined,
+      'opaque-grant'
+    )).rejects.toBeInstanceOf(HostedGrantRejectedError);
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(new Headers(connectionMocks.attempt.mock.calls[0][3]).get(
+      'X-MCP-Hosted-Grant'
+    )).toBe('opaque-grant');
   });
 
   it('tries a direct fetch before falling back to the proxy', async () => {

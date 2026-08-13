@@ -1,7 +1,10 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EvaluationReport } from '../utils/evaluation';
+import {
+  HostedGrantRejectedError,
+  type EvaluationReport,
+} from '../utils/evaluation';
 import ReportView, {
   getAuthorizationGateOptions,
   getOAuthTraceForEvaluation,
@@ -36,6 +39,20 @@ const challengedReport = (challenge: string): EvaluationReport => ({
 });
 
 const oauthAuthorizationDetail = { text: 'OAuth authorization is required' };
+
+const storeHostedGrant = (
+  serverUrl: string,
+  grant: string,
+  issuer = 'https://github.com/login/oauth'
+): void => {
+  const url = new URL(serverUrl);
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  const resource = `${url.origin}${url.pathname}`;
+  sessionStorage.setItem(
+    `mcp_hosted_oauth_v1:${encodeURIComponent(resource)}`,
+    JSON.stringify({ grant, issuer })
+  );
+};
 
 describe('report static credential delivery', () => {
   it('uses the Authorization header and advertised scheme for an ApiKey challenge', () => {
@@ -248,6 +265,57 @@ describe('ReportView OAuth discovery', () => {
         deferAuthorizedTraceOutcome: true,
       })
     );
+  });
+
+  it.each([
+    ['an expired hosted grant', 401],
+    ['a hosted grant bound to another Firebase user', 403],
+  ] as const)('clears only %s and retries once without it', async (_, status) => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const unrelatedTarget = 'https://mcp.slack.com/mcp';
+    storeHostedGrant(target, `rejected-${status}`);
+    storeHostedGrant(unrelatedTarget, 'unrelated-grant', 'https://mcp.slack.com');
+    evaluationMocks.evaluate
+      .mockRejectedValueOnce(new HostedGrantRejectedError(new Error(`HTTP ${status}`)))
+      .mockResolvedValueOnce({
+        serverUrl: target,
+        authenticationUrl: target,
+        outcome: 'authorization-required',
+        finalScore: 0,
+        sections: {
+          auth: {
+            name: 'Authorization Required',
+            description: 'OAuth authorization is required',
+            score: 0,
+            maxScore: 0,
+            details: [oauthAuthorizationDetail],
+          },
+        },
+      });
+
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+
+    expect(evaluationMocks.evaluate).toHaveBeenCalledTimes(2);
+    expect(evaluationMocks.evaluate.mock.calls[0][6]).toBe(`rejected-${status}`);
+    expect(evaluationMocks.evaluate.mock.calls[1][6]).toBeNull();
+    expect(sessionStorage.getItem(
+      `mcp_hosted_oauth_v1:${encodeURIComponent('https://api.githubcopilot.com/mcp')}`
+    )).toBeNull();
+    expect(sessionStorage.getItem(
+      `mcp_hosted_oauth_v1:${encodeURIComponent('https://mcp.slack.com/mcp')}`
+    )).toContain('unrelated-grant');
+    expect(container.textContent).toContain('Authorize and run report');
   });
 
   it('passes ephemeral challenge metadata and scope into report OAuth discovery', async () => {

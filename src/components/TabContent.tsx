@@ -935,6 +935,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       {needsOAuthConfig && oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
             setPrerequisiteBearerCredential({
@@ -1075,44 +1076,6 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           </>
         )}
       </div>
-      {/* OAuth authorization prerequisite */}
-      {needsOAuthConfig && oauthConfigServerUrl && (
-        <OAuthConfig
-          serverUrl={oauthConfigServerUrl}
-          currentUser={currentUser}
-          prerequisite={oauthPrerequisite || undefined}
-          onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
-            setPrerequisiteBearerCredential({
-              targetUrl: normalizeConnectionTarget(oauthConfigServerUrl),
-              authorization: `Bearer ${token}`,
-              attemptId: ++nextBearerAttemptId.current,
-            });
-            clearOAuthConfigNeed();
-          } : undefined}
-          onBeforeHostedAuthorization={saveOAuthReturnState}
-          onConfigured={async () => {
-            clearOAuthConfigNeed();
-            try {
-              saveOAuthReturnState();
-
-              addLogEntry({
-                type: 'info',
-                data: '🔐 OAuth client configured. Continuing secure authorization...'
-              });
-              handleConnectWrapper();
-            } catch (error) {
-              console.error('[OAuth Config] Failed to continue auth flow:', error);
-              addLogEntry({
-                type: 'error',
-                data: `Failed to continue OAuth authorization: ${error instanceof Error ? error.message : 'Unknown error'}`
-              });
-            }
-          }}
-          onCancel={() => {
-            clearOAuthConfigNeed();
-          }}
-        />
-      )}
       <DeterministicTestPanel
         open={showDeterministicTests}
         onClose={() => setShowDeterministicTests(false)}

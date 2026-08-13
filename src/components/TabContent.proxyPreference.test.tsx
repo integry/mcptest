@@ -5,6 +5,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { ConnectionTab } from '../types';
 
 const connectionMocks = vi.hoisted(() => ({ attempt: vi.fn() }));
+const authMocks = vi.hoisted(() => ({
+  currentUser: null as { getIdToken: () => Promise<string> } | null,
+}));
+const oauthMocks = vi.hoisted(() => ({ begin: vi.fn(), beginHosted: vi.fn() }));
 
 vi.mock('../utils/transportDetection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/transportDetection')>();
@@ -12,13 +16,27 @@ vi.mock('../utils/transportDetection', async (importOriginal) => {
 });
 
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ currentUser: null, loading: false }),
+  useAuth: () => ({ currentUser: authMocks.currentUser, loading: false }),
 }));
+
+vi.mock('../utils/oauthFlow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/oauthFlow')>();
+  return { ...actual, beginOAuthFlow: oauthMocks.begin };
+});
+
+vi.mock('../utils/hostedOAuth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/hostedOAuth')>();
+  return { ...actual, beginHostedOAuthFlow: oauthMocks.beginHosted };
+});
 
 vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
 
 import TabContent, { savePlaygroundOAuthReturnState } from './TabContent';
-import { TransportConnectionError } from '../utils/transportDetection';
+import {
+  ProxiedAuthenticationError,
+  TransportConnectionError,
+} from '../utils/transportDetection';
+import { OAuthPrerequisiteError } from '../utils/oauthFlow';
 
 beforeAll(() => {
   (
@@ -90,6 +108,9 @@ describe('rendered anonymous proxy preference', () => {
     localStorage.clear();
     sessionStorage.clear();
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    authMocks.currentUser = null;
+    oauthMocks.begin.mockReset();
+    oauthMocks.beginHosted.mockReset().mockResolvedValue(undefined);
     connectionMocks.attempt.mockReset();
     connectionMocks.attempt.mockRejectedValue(new TransportConnectionError([
       new TypeError('Failed to fetch'),
@@ -128,6 +149,45 @@ describe('rendered anonymous proxy preference', () => {
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(false);
     expect(view.container.textContent).toContain('MCP Server Connection Failed');
     expect(view.container.textContent).not.toContain('mcptest proxy authentication required');
+    view.unmount();
+  });
+
+  it('renders one functional hosted authorization action for the prerequisite', async () => {
+    authMocks.currentUser = { getIdToken: vi.fn().mockResolvedValue('firebase-token') };
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
+      new ProxiedAuthenticationError(401, 'target', new Error('Slack authorization required')),
+    ]));
+    oauthMocks.begin.mockRejectedValueOnce(new OAuthPrerequisiteError({
+      kind: 'pre_registered_client_required',
+      serverUrl: 'https://mcp.slack.com/mcp',
+      providerName: 'Slack',
+      explanation: 'Slack requires the operator-owned confidential OAuth client.',
+      issuer: 'https://mcp.slack.com',
+      requiredScopes: ['channels:read'],
+      hostedScope: 'channels:read',
+      pkceS256: true,
+      publicClientSecretSupported: false,
+      canConfigureClient: false,
+      configurationMode: 'operator-confidential',
+      hostedProvider: 'slack',
+    }));
+    const view = renderNewTab();
+
+    await connectToSlack(view.container);
+
+    const hostedButtons = Array.from(view.container.querySelectorAll('button')).filter(
+      (button) => button.textContent?.includes('Authorize with Slack')
+    );
+    expect(hostedButtons).toHaveLength(1);
+
+    await act(async () => {
+      hostedButtons[0].click();
+    });
+    expect(oauthMocks.beginHosted).toHaveBeenCalledOnce();
+    expect(oauthMocks.beginHosted).toHaveBeenCalledWith(expect.objectContaining({
+      serverUrl: 'https://mcp.slack.com/mcp',
+      firebaseToken: 'firebase-token',
+    }));
     view.unmount();
   });
 });

@@ -544,6 +544,26 @@ class EvaluationConnectionError extends Error {
   }
 }
 
+export class HostedGrantRejectedError extends Error {
+  constructor(readonly cause: unknown) {
+    super('The stored hosted OAuth authorization is no longer valid.');
+    this.name = 'HostedGrantRejectedError';
+  }
+}
+
+const isHostedGrantInvalidTokenRejection = (error: unknown): boolean => {
+  const observedChallenge = getObservedAuthenticationChallenge(error);
+  const challenge = Object.entries(observedChallenge?.responseHeaders || {}).find(([name]) => (
+    name.toLowerCase() === 'www-authenticate'
+  ))?.[1];
+
+  return observedChallenge?.source === 'proxy'
+    && (observedChallenge.status === 401 || observedChallenge.status === 403)
+    && typeof challenge === 'string'
+    && /^HostedGrant\b/i.test(challenge)
+    && /\berror\s*=\s*"?invalid_token"?/i.test(challenge);
+};
+
 const connectForEvaluation = async (
   serverUrl: string,
   firebaseToken: string,
@@ -1227,6 +1247,9 @@ export async function evaluateServer(
         },
       } : {}),
     });
+    if (selectedHostedGrant && isHostedGrantInvalidTokenRejection(error)) {
+      throw new HostedGrantRejectedError(error);
+    }
     if (targetAuthFailure) {
       report.outcome = 'authorization-required';
       report.authenticationRequirement = {

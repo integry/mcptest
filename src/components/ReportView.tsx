@@ -15,6 +15,7 @@ import {
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
+  HostedGrantRejectedError,
   isProxyAuthenticationRequired,
   isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
@@ -29,7 +30,10 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
-import { loadHostedOAuthAuthorization } from '../utils/hostedOAuth';
+import {
+  clearHostedOAuthAuthorization,
+  loadHostedOAuthAuthorization,
+} from '../utils/hostedOAuth';
 import {
   createReportSnapshot,
   deleteAllReportSnapshots,
@@ -401,15 +405,32 @@ const ReportView: React.FC = () => {
     
     try {
       const evaluationStartedAt = Date.now();
-      const reportData = await evaluateServer(
-        urlToTest,
-        token,
-        onProgress,
-        oauthAccessToken,
-        targetHeaders,
-        authorizationContext,
-        hostedGrant
-      );
+      let reportData: EvaluationReport;
+      try {
+        reportData = await evaluateServer(
+          urlToTest,
+          token,
+          onProgress,
+          oauthAccessToken,
+          targetHeaders,
+          authorizationContext,
+          hostedGrant
+        );
+      } catch (error) {
+        if (!hostedGrant || !(error instanceof HostedGrantRejectedError)) throw error;
+
+        clearHostedOAuthAuthorization(urlToTest);
+        onProgress('The stored hosted OAuth authorization expired or belongs to another user. Requesting authorization again...');
+        reportData = await evaluateServer(
+          urlToTest,
+          token,
+          onProgress,
+          oauthAccessToken,
+          targetHeaders,
+          authorizationContext,
+          null
+        );
+      }
       if (isTargetAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
           authenticationUrl: reportData.authenticationUrl || reportData.serverUrl,
