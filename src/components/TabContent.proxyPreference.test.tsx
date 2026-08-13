@@ -17,7 +17,7 @@ vi.mock('../context/AuthContext', () => ({
 
 vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
 
-import TabContent from './TabContent';
+import TabContent, { savePlaygroundOAuthReturnState } from './TabContent';
 import { TransportConnectionError } from '../utils/transportDetection';
 
 beforeAll(() => {
@@ -129,5 +129,25 @@ describe('rendered anonymous proxy preference', () => {
     expect(view.container.textContent).toContain('MCP Server Connection Failed');
     expect(view.container.textContent).not.toContain('mcptest proxy authentication required');
     view.unmount();
+  });
+});
+
+describe('playground hosted OAuth return state', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it('preserves the active tabs and originating playground tab for the callback round trip', () => {
+    const tabs = JSON.stringify([{ id: 'tab-1' }, { id: 'tab-2' }]);
+    localStorage.setItem('mcpConnectionTabs', tabs);
+
+    savePlaygroundOAuthReturnState('tab-2');
+
+    expect(sessionStorage.getItem('oauth_tabs_before_redirect')).toBe(tabs);
+    expect(sessionStorage.getItem('oauth_tab_id')).toBe('tab-2');
+    expect(JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null')).toEqual(
+      expect.objectContaining({ activeView: 'playground', activeTabId: 'tab-2' })
+    );
   });
 });

@@ -441,14 +441,18 @@ const ReportView: React.FC = () => {
     handleRunReportRef.current = handleRunReport;
   }, [handleRunReport]);
 
-  const startOAuth = useCallback(async (authenticationUrl: string) => {
-    setOAuthAction('authorize');
-    setOAuthError(null);
+  const saveOAuthReturnState = useCallback((authenticationUrl: string) => {
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
       activeView: 'report',
       serverUrl: authenticationUrl,
       timestamp: Date.now()
     }));
+  }, []);
+
+  const startOAuth = useCallback(async (authenticationUrl: string) => {
+    setOAuthAction('authorize');
+    setOAuthError(null);
+    saveOAuthReturnState(authenticationUrl);
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
@@ -488,16 +492,12 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, [currentUser]);
+  }, [currentUser, saveOAuthReturnState]);
 
   const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('configure');
     setOAuthError(null);
-    sessionStorage.setItem('oauth_return_view', JSON.stringify({
-      activeView: 'report',
-      serverUrl: authenticationUrl,
-      timestamp: Date.now()
-    }));
+    saveOAuthReturnState(authenticationUrl);
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
@@ -534,7 +534,7 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, [currentUser]);
+  }, [currentUser, saveOAuthReturnState]);
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresProxyAuthentication = report
@@ -911,6 +911,7 @@ const ReportView: React.FC = () => {
               { Authorization: `Bearer ${token}` }
             );
           } : undefined}
+          onBeforeHostedAuthorization={() => saveOAuthReturnState(oauthConfigServerUrl)}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);

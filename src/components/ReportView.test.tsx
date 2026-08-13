@@ -120,6 +120,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 const oauthMocks = vi.hoisted(() => ({
   begin: vi.fn(),
+  beginHosted: vi.fn(),
   prepare: vi.fn(),
 }));
 const evaluationMocks = vi.hoisted(() => ({
@@ -154,6 +155,14 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
   };
 });
 
+vi.mock('../utils/hostedOAuth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/hostedOAuth')>();
+  return {
+    ...actual,
+    beginHostedOAuthFlow: oauthMocks.beginHosted,
+  };
+});
+
 vi.mock('../utils/evaluation', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/evaluation')>();
   return {
@@ -177,6 +186,7 @@ describe('ReportView OAuth discovery', () => {
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
     authMocks.getIdToken.mockReset().mockResolvedValue('firebase-session-token');
     oauthMocks.begin.mockReset().mockResolvedValue('REDIRECT');
+    oauthMocks.beginHosted.mockReset().mockResolvedValue(undefined);
     oauthMocks.prepare.mockReset().mockResolvedValue(undefined);
     evaluationMocks.evaluate.mockReset().mockResolvedValue({
       serverUrl: 'https://api.githubcopilot.com/mcp/',
@@ -382,6 +392,19 @@ describe('ReportView OAuth discovery', () => {
     expect(container.textContent).toContain('Use a GitHub personal access token');
     expect(container.querySelector('#clientId')).toBeNull();
     expect(container.querySelector('#clientSecret')).toBeNull();
+    sessionStorage.removeItem('oauth_return_view');
+    const hostedAuthorizeButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Authorize with GitHub')
+    );
+    await act(async () => {
+      hostedAuthorizeButton?.click();
+    });
+    expect(oauthMocks.beginHosted).toHaveBeenCalledOnce();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null')).toEqual(
+      expect.objectContaining({ activeView: 'report', serverUrl: target })
+    );
+
     const bearerInput = container.querySelector<HTMLInputElement>(
       '#oauth-prerequisite-bearer-token'
     );

@@ -2,6 +2,13 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { OAuthPrerequisite } from '../utils/oauthFlow';
+
+const hostedOAuthMocks = vi.hoisted(() => ({ begin: vi.fn() }));
+
+vi.mock('../utils/hostedOAuth', () => ({
+  beginHostedOAuthFlow: hostedOAuthMocks.begin,
+}));
+
 import OAuthConfig from './OAuthConfig';
 
 beforeAll(() => {
@@ -17,7 +24,10 @@ afterEach(() => {
   if (root) act(() => root?.unmount());
   root = undefined;
   container = undefined;
+  localStorage.clear();
   sessionStorage.clear();
+  hostedOAuthMocks.begin.mockReset();
+  vi.unstubAllEnvs();
 });
 
 const renderPanel = (prerequisite: OAuthPrerequisite): HTMLDivElement => {
@@ -108,6 +118,64 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.textContent).toContain('client secret stays in the Worker');
     expect(view.querySelector('#clientId')).toBeNull();
     expect(view.querySelector('#clientSecret')).toBeNull();
+  });
+
+  it('runs return-state persistence before hosted authorization without continuing the manual flow', async () => {
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    const order: string[] = [];
+    const onConfigured = vi.fn();
+    const onBeforeHostedAuthorization = vi.fn(() => {
+      order.push('return-state');
+      sessionStorage.setItem('oauth_return_view', JSON.stringify({
+        activeView: 'playground',
+        activeTabId: 'playground-tab-2',
+      }));
+    });
+    hostedOAuthMocks.begin.mockImplementation(async () => {
+      order.push('hosted-start');
+    });
+    const prerequisite: OAuthPrerequisite = {
+      kind: 'pre_registered_client_required',
+      serverUrl: 'https://mcp.slack.com/mcp',
+      providerName: 'Slack',
+      explanation: 'Slack requires a confidential client.',
+      issuer: 'https://mcp.slack.com',
+      requiredScopes: ['channels:read'],
+      hostedScope: 'channels:read',
+      pkceS256: true,
+      publicClientSecretSupported: false,
+      canConfigureClient: false,
+      hostedProvider: 'slack',
+    };
+    container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        <OAuthConfig
+          serverUrl={prerequisite.serverUrl}
+          prerequisite={prerequisite}
+          currentUser={{ getIdToken: vi.fn().mockResolvedValue('firebase-token') }}
+          onBeforeHostedAuthorization={onBeforeHostedAuthorization}
+          onConfigured={onConfigured}
+          onCancel={vi.fn()}
+        />
+      );
+    });
+
+    const authorizeButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Authorize with Slack')
+    );
+    await act(async () => {
+      authorizeButton?.click();
+    });
+
+    expect(order).toEqual(['return-state', 'hosted-start']);
+    expect(onBeforeHostedAuthorization).toHaveBeenCalledOnce();
+    expect(onConfigured).not.toHaveBeenCalled();
+    expect(JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null')).toEqual({
+      activeView: 'playground',
+      activeTabId: 'playground-tab-2',
+    });
   });
 
   it('explains the operator scope policy when a hosted-provider challenge omits scope', () => {

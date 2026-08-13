@@ -10,6 +10,7 @@ import { beginHostedOAuthFlow } from '../utils/hostedOAuth';
 interface OAuthConfigProps {
   serverUrl: string;
   onConfigured: () => void;
+  onBeforeHostedAuthorization?: () => void | Promise<void>;
   onCancel: () => void;
   prerequisite?: OAuthPrerequisite;
   currentUser?: { getIdToken: () => Promise<string> } | null;
@@ -19,6 +20,7 @@ interface OAuthConfigProps {
 const OAuthConfig: React.FC<OAuthConfigProps> = ({
   serverUrl,
   onConfigured,
+  onBeforeHostedAuthorization,
   onCancel,
   prerequisite,
   currentUser,
@@ -81,6 +83,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
     setIsStartingHosted(true);
     setConfigurationError(null);
     try {
+      await onBeforeHostedAuthorization?.();
       await beginHostedOAuthFlow({
         serverUrl,
         issuer: prerequisite.issuer,
