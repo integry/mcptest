@@ -341,6 +341,9 @@
                 "unavailable"
               ]
             },
+            "namesComplete": {
+              "type": "boolean"
+            },
             "tools": {
               "type": "array",
               "items": {

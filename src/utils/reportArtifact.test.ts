@@ -776,7 +776,7 @@ describe('versioned public report artifacts', () => {
     });
   });
 
-  it('redacts opaque enum credentials and marks the stored contract partial', () => {
+  it('publishes redacted partial tool definitions with complete names under the v2 schema', () => {
     const opaqueCredential = 'elm-cobalt-73';
     const report = publicReport();
     report.toolSurfaceAnalysis = analyzeToolSurface([{
@@ -794,11 +794,24 @@ describe('versioned public report artifacts', () => {
     const schema = definitions?.tools[0].inputSchema as {
       properties: { access_token: unknown };
     };
+    const serialized = serializePublicReportJson(artifact);
+    const serializedArtifact = JSON.parse(serialized);
 
     expect(definitions?.status).toBe('partial');
+    expect(definitions?.namesComplete).toBe(true);
     expect(schema.properties.access_token).toBe('[REDACTED]');
-    expect(serializePublicReportJson(artifact)).not.toContain(opaqueCredential);
+    expect(serialized).not.toContain(opaqueCredential);
     expect(serializePublicReportMarkdown(artifact)).not.toContain(opaqueCredential);
+    expect(
+      validatePublishedSchema(serializedArtifact),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(true);
+
+    delete serializedArtifact.toolSurfaceAnalysis.toolDefinitions.namesComplete;
+    expect(
+      validatePublishedSchema(serializedArtifact),
+      JSON.stringify(validatePublishedSchema.errors)
+    ).toBe(true);
   });
 
   it('redacts numeric schema literals without relying on a sensitive property name', () => {
