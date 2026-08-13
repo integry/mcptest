@@ -1,0 +1,28 @@
+name: cors-proxy Worker validation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cors-proxy-worker-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: TypeScript and Wrangler dry run
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cors-proxy-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cors-proxy-worker/package-lock.json
+      - run: npm ci
+      - run: npm run check

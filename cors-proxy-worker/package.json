@@ -5,9 +5,12 @@
   "main": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && WRANGLER_WRITE_LOGS=false wrangler deploy --dry-run --outdir dist",
+    "dry-run": "WRANGLER_WRITE_LOGS=false wrangler deploy --dry-run --outdir dist",
+    "check": "npm run typecheck && npm run dry-run",
+    "build": "npm run check",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:production": "node scripts/require-production-branch.mjs && npm run deploy",
     "tail": "wrangler tail"
   },
   "keywords": [

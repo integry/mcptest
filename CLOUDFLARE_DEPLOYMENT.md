@@ -34,12 +34,21 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
    - Select the same GitHub repository
 
 2. **Configure the CORS Proxy Worker**
-   - Set the worker name: `mcptest-cors-proxy`
+   - Set the worker name: `cors-proxy-worker` (matching `wrangler.toml`)
    - Build configuration:
      - Root directory: `cors-proxy-worker`
-     - Build command: `npm install`
+     - Production branch: `master`
+     - Build command: `npm run typecheck`
+     - Deploy command: `npm run deploy:production`
+     - Non-production branch deploy command: `npm run dry-run`
    - The wrangler.toml in `cors-proxy-worker/` will be automatically detected
    - Deployment settings will use the configuration from `cors-proxy-worker/wrangler.toml`
+
+   Configure these values in **Settings > Build** for the `cors-proxy-worker` Worker. Cloudflare's
+   [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)
+   does not read its build and deploy commands from Wrangler's custom-build configuration.
+   Keep non-production branch builds enabled only with the dry-run command above; do not use the
+   default `wrangler versions upload` command for this Worker.
 
 3. **Set environment variables**
    - Add `FIREBASE_PROJECT_ID` with your actual Firebase project ID (e.g., `mcp-testing`)
@@ -52,8 +61,17 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
      both provider applications. See `cors-proxy-worker/README.md` for provider links and token storage details.
 
 4. **Deploy**
-   - Cloudflare will automatically deploy when you push to your connected branch
-   - The CORS proxy will be available at: `https://mcptest-cors-proxy.{your-account}.workers.dev/`
+   - Pull requests run TypeScript and `wrangler deploy --dry-run`; they do not upload a Worker
+     version or apply a Durable Object migration.
+   - Cloudflare deploys production only after a commit reaches `master`. The production command
+     also checks Cloudflare's `WORKERS_CI_BRANCH` before invoking Wrangler.
+   - The CORS proxy will be available at: `https://cors-proxy-worker.{your-account}.workers.dev/`
+
+   The repository-owned `cors-proxy Worker validation` GitHub workflow performs the same
+   typecheck and dry run on every pull request. Cloudflare does not generate
+   [preview URLs for Workers that implement Durable Objects](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/#limitations),
+   so PR validation must remain a non-uploading check. Keep the `HostedOAuthBroker` binding and
+   migration intact; the reviewed `master` deployment applies lifecycle changes.
 
 ### Method 2: Deploy from Command Line
 
