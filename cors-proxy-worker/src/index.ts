@@ -242,26 +242,7 @@ export default {
         });
       }
 
-      // Create a new request to the target URL
-      const inboundHeaders = new Headers(request.headers);
-      const hostedGrant = inboundHeaders.get(HOSTED_GRANT_HEADER);
-      if (hostedGrant) {
-        const targetAuthorization = await resolveHostedGrant(env, hostedGrant, uid, target.toString());
-        inboundHeaders.set('X-MCP-Authorization', targetAuthorization);
-      }
-      const headers = getTargetRequestHeaders(inboundHeaders);
-
-      const newRequest = new Request(target.toString(), {
-        method: request.method,
-        headers: headers,
-        body: request.body,
-        redirect: 'manual',
-      });
-
-      // Make the actual request to the target server
-      const response = await fetchTargetRequest(newRequest);
-
-      return withCorsResponseHeaders(response, 'target');
+      return await forwardAuthenticatedProxyRequest(request, env, uid, target);
 
     } catch (error) {
       console.error('Proxy error:', error);
@@ -275,6 +256,36 @@ export default {
     }
   },
 };
+
+export async function forwardAuthenticatedProxyRequest(
+  request: Request,
+  env: HostedOAuthEnv,
+  uid: string,
+  target: URL
+): Promise<Response> {
+  try {
+    const inboundHeaders = new Headers(request.headers);
+    const hostedGrant = inboundHeaders.get(HOSTED_GRANT_HEADER);
+    if (hostedGrant) {
+      const targetAuthorization = await resolveHostedGrant(env, hostedGrant, uid, target.toString());
+      inboundHeaders.set('X-MCP-Authorization', targetAuthorization);
+    }
+    const headers = getTargetRequestHeaders(inboundHeaders);
+    const targetRequest = new Request(target.toString(), {
+      method: request.method,
+      headers,
+      body: request.body,
+      redirect: 'manual',
+    });
+
+    return withCorsResponseHeaders(await fetchTargetRequest(targetRequest), 'target');
+  } catch (error) {
+    if (error instanceof Response) {
+      return withCorsResponseHeaders(error, 'proxy');
+    }
+    throw error;
+  }
+}
 
 async function authenticatedUid(request: Request, env: Env): Promise<string | null> {
   const authorization = request.headers.get('Authorization');

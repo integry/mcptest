@@ -297,13 +297,19 @@ const parseTokenResponse = async (response: Response): Promise<ProviderTokens> =
   const refreshToken = typeof body.refresh_token === 'string'
     ? body.refresh_token
     : typeof nestedUser?.refresh_token === 'string' ? nestedUser.refresh_token : undefined;
-  const expiresIn = typeof body.expires_in === 'number'
+  const expiresIn = body.expires_in !== undefined
     ? body.expires_in
-    : typeof nestedUser?.expires_in === 'number' ? nestedUser.expires_in : undefined;
+    : nestedUser?.expires_in;
+  if (
+    expiresIn !== undefined
+    && (typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn < 0)
+  ) {
+    throw new Error('Provider token response expires_in must be a finite non-negative number.');
+  }
   return {
     accessToken,
     ...(refreshToken ? { refreshToken } : {}),
-    ...(expiresIn ? { expiresAt: Date.now() + Math.max(0, expiresIn) * 1000 } : {}),
+    ...(expiresIn !== undefined ? { expiresAt: Date.now() + expiresIn * 1000 } : {}),
     ...(typeof body.scope === 'string' ? { scope: body.scope } : {}),
   };
 };
@@ -679,7 +685,7 @@ export class HostedOAuthBroker {
         } catch {
           return json({ error: 'grant_unusable' }, 401);
         }
-        if (tokens.expiresAt && tokens.expiresAt <= Date.now() + REFRESH_SKEW_MS) {
+        if (tokens.expiresAt !== undefined && tokens.expiresAt <= Date.now() + REFRESH_SKEW_MS) {
           if (!tokens.refreshToken) return json({ error: 'provider_token_expired' }, 401);
           let refreshed: ProviderTokens;
           try {

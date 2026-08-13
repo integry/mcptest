@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  PROXY_RESPONSE_SOURCE_HEADER,
+  forwardAuthenticatedProxyRequest,
+} from './index';
+import {
   HOSTED_AUTHORIZE_PATH,
   HOSTED_CALLBACK_PATH,
   HOSTED_EXCHANGE_PATH,
@@ -208,6 +212,43 @@ describe('hosted provider authorization transactions', () => {
     }
   });
 
+  it('honors expires_in zero as an immediately expired provider token', async () => {
+    const env = makeEnv();
+    const transaction = await readTransaction(await start(env));
+    const completion = readCompletion(await callback(env, transaction));
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+      ok: true,
+      authed_user: {
+        access_token: 'immediately-expired',
+        refresh_token: 'slack-refresh',
+        expires_in: 0,
+      },
+    }));
+
+    const result = await (await exchange(env, completion)).json() as { grant: string; serverUrl: string };
+
+    await expect(resolveHostedGrant(env, result.grant, 'user-1', result.serverUrl))
+      .resolves.toBe('Bearer slack-refreshed');
+  });
+
+  it('rejects a negative provider token expiry', async () => {
+    const env = makeEnv();
+    const transaction = await readTransaction(await start(env));
+    const completion = readCompletion(await callback(env, transaction));
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+      ok: true,
+      authed_user: { access_token: 'slack-access', expires_in: -1 },
+    }));
+
+    const response = await exchange(env, completion);
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      error: 'provider_token_error',
+      message: 'Provider token response expires_in must be a finite non-negative number.',
+    });
+  });
+
   it('accepts the trailing-slash GitHub metadata URL observed by browser discovery', async () => {
     const browserResourceMetadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
     const response = await start(makeEnv(), 'github', 'user-1', {
@@ -286,14 +327,24 @@ describe('hosted provider authorization transactions', () => {
     const record = store.values.get('record') as Record<string, unknown>;
     store.values.set('record', { ...record, expiresAt: Date.now() - 1 });
 
-    const response = await rejectedGrantResponse(
-      resolveHostedGrant(env, result.grant, 'user-1', result.serverUrl)
+    const response = await forwardAuthenticatedProxyRequest(
+      new Request('https://proxy.mcptest.io/', {
+        headers: { 'X-MCP-Hosted-Grant': result.grant },
+      }),
+      env,
+      'user-1',
+      new URL(result.serverUrl)
     );
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
       error: 'hosted_grant_rejected',
       reason: 'grant_expired',
     });
+    expect(response.headers.get('www-authenticate')).toBe('HostedGrant error="invalid_token"');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-expose-headers')?.toLowerCase())
+      .toContain('www-authenticate');
   });
 
   it('returns an identifiable rejection when another Firebase user presents the grant', async () => {
@@ -302,14 +353,24 @@ describe('hosted provider authorization transactions', () => {
     const completion = readCompletion(await callback(env, transaction));
     const result = await (await exchange(env, completion)).json() as { grant: string; serverUrl: string };
 
-    const response = await rejectedGrantResponse(
-      resolveHostedGrant(env, result.grant, 'different-user', result.serverUrl)
+    const response = await forwardAuthenticatedProxyRequest(
+      new Request('https://proxy.mcptest.io/', {
+        headers: { 'X-MCP-Hosted-Grant': result.grant },
+      }),
+      env,
+      'different-user',
+      new URL(result.serverUrl)
     );
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
       error: 'hosted_grant_rejected',
       reason: 'grant_binding_mismatch',
     });
+    expect(response.headers.get('www-authenticate')).toBe('HostedGrant error="invalid_token"');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-expose-headers')?.toLowerCase())
+      .toContain('www-authenticate');
   });
 
   it('binds completion to the signed-in user and makes exchange one-time', async () => {
