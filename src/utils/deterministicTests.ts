@@ -99,13 +99,17 @@ const caseIdPrefix = (value: string): string => (
   [...value].map(character => character.codePointAt(0)?.toString(16)).join('-') || 'empty'
 );
 
-const schemaAccepts = (schema: RecordValue, value: unknown): boolean => {
+const schemaValidationResult = (schema: RecordValue, value: unknown): boolean | undefined => {
   try {
     return inputSchemaAjv.compile(schema)(value) === true;
   } catch {
-    return false;
+    return undefined;
   }
 };
+
+const schemaAccepts = (schema: RecordValue, value: unknown): boolean => (
+  schemaValidationResult(schema, value) === true
+);
 
 const boundedMinimum = (value: unknown, limit: number): number | undefined => {
   if (value === undefined) return 0;
@@ -334,12 +338,70 @@ const happyArguments = (tool: DiscoveredTool): { arguments: Record<string, unkno
   return { arguments: valid ? args : {}, valid };
 };
 
-const validationArguments = (tool: DiscoveredTool): Record<string, unknown> => {
+const topLevelPropertyNames = (schema: RecordValue): string[] => {
+  const names = new Set<string>();
+  const visit = (candidate: unknown) => {
+    if (!isRecord(candidate)) return;
+    if (isRecord(candidate.properties)) {
+      Object.keys(candidate.properties).forEach(name => names.add(name));
+    }
+    for (const keyword of ['allOf', 'anyOf', 'oneOf'] as const) {
+      if (Array.isArray(candidate[keyword])) candidate[keyword].forEach(visit);
+    }
+  };
+  visit(schema);
+  return [...names];
+};
+
+const validationArguments = (
+  tool: DiscoveredTool,
+): { arguments: Record<string, unknown>; invalid: boolean } => {
+  const schema = normalizedInputSchema(tool);
   const args = { ...happyArguments(tool).arguments };
-  const { required } = getCapabilityInputSpec(tool);
-  if (required[0]) delete args[required[0]];
-  else args.__invalid_fixture_argument__ = { unexpected: true };
-  return args;
+  const rejects = (candidate: Record<string, unknown>): boolean => (
+    schemaValidationResult(schema, candidate) === false
+  );
+
+  if (rejects(args)) return { arguments: args, invalid: true };
+
+  for (const name of Object.keys(args)) {
+    const candidate = { ...args };
+    delete candidate[name];
+    if (rejects(candidate)) return { arguments: candidate, invalid: true };
+  }
+
+  const unexpectedName = '__invalid_fixture_argument__';
+  const unexpectedCandidate = {
+    ...args,
+    [unexpectedName]: { unexpected: true },
+  };
+  if (rejects(unexpectedCandidate)) {
+    return { arguments: unexpectedCandidate, invalid: true };
+  }
+
+  const invalidValueCandidates: unknown[] = [
+    null,
+    true,
+    false,
+    0,
+    1,
+    -1,
+    '',
+    '__invalid_fixture_value__',
+    [],
+    {},
+    [null],
+    { unexpected: true },
+  ];
+  const propertyNames = new Set([...Object.keys(args), ...topLevelPropertyNames(schema)]);
+  for (const name of propertyNames) {
+    for (const value of invalidValueCandidates) {
+      const candidate = { ...args, [name]: value };
+      if (rejects(candidate)) return { arguments: candidate, invalid: true };
+    }
+  }
+
+  return { arguments: args, invalid: false };
 };
 
 export const inferToolSafety = (tool: DiscoveredTool): DeterministicToolPlanV1['safety'] => {
@@ -422,6 +484,7 @@ export const generateDeterministicTestPlan = (
   generatedAt,
   tools: tools.map(tool => {
     const generated = happyArguments(tool);
+    const validation = validationArguments(tool);
     const args = generated.arguments;
     const manualFixtureRequired = !generated.valid;
     return {
@@ -430,7 +493,7 @@ export const generateDeterministicTestPlan = (
       safety: inferToolSafety(tool),
       cases: [
         defaultCase(tool, 'happy-path', args, [{ path: '$.content', operator: 'type', value: 'array' }], undefined, manualFixtureRequired),
-        defaultCase(tool, 'validation', validationArguments(tool), [], 'validation'),
+        defaultCase(tool, 'validation', validation.arguments, [], 'validation', !validation.invalid),
         defaultCase(tool, 'empty-result', args, [{ path: '$.content', operator: 'length', value: 0 }], undefined, manualFixtureRequired),
         defaultCase(tool, 'upstream-error', args, [], 'upstream', manualFixtureRequired),
         defaultCase(tool, 'timeout', args, [], 'timeout', manualFixtureRequired),

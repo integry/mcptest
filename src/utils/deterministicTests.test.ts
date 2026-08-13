@@ -70,6 +70,37 @@ describe('deterministic test plans', () => {
     expect(outputShape?.arguments).toEqual({ query: 'fix' });
   });
 
+  it('generates a rejected validation fixture from an optional property when additional properties are permitted', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'optional_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { limit: { type: 'integer' } },
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const validation = plan.tools[0].cases.find(item => item.kind === 'validation');
+    expect(validation?.arguments).toEqual({ limit: null });
+    expect(validation?.name).not.toContain('manual fixture required');
+  });
+
+  it('requires a manual validation fixture when a schema permits every object argument', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'unconstrained_lookup',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: true,
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+
+    const validation = plan.tools[0].cases.find(item => item.kind === 'validation');
+    expect(validation).toMatchObject({ arguments: {}, selected: false });
+    expect(validation?.name).toContain('manual fixture required');
+  });
+
   it('generates schema-valid fixtures for alternatives, patterns, and numeric bounds', () => {
     const plan = generateDeterministicTestPlan([{
       name: 'constrained_lookup',
