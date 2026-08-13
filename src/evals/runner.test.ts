@@ -216,6 +216,38 @@ describe('tool-selection evaluation runner', () => {
       .toThrow('could not be safely redacted');
   });
 
+  it.each(['id', 'metrics', '1.0'])(
+    'blocks a fixture report when credential %s would corrupt its required shape',
+    async credential => {
+      await expect(runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
+        provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+      }, createFixtureProvider(), undefined, credential))
+        .rejects.toThrow('failed post-redaction validation');
+    }
+  );
+
+  it('blocks report export when redacted provider-derived property names would collide', async () => {
+    const credential = 'reflected-key';
+    const report = await runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+    }, createFixtureProvider());
+    const collidingReport = {
+      ...report,
+      results: report.results.map((result, index) => index === 0 ? {
+        ...result,
+        assertionResults: result.assertionResults.map((assertionResult, assertionIndex) => (
+          assertionIndex === 0 ? {
+            ...assertionResult,
+            actual: { [credential]: 'credential key', '[redacted]': 'existing key' },
+          } : assertionResult
+        )),
+      } : result),
+    };
+
+    expect(() => redactReportCredential(collidingReport, credential))
+      .toThrow('could not be safely redacted');
+  });
+
   it('keeps provider failures out of model accuracy, cost, and latency metrics', async () => {
     const provider: EvalProvider = {
       id: 'fixture',

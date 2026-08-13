@@ -324,12 +324,177 @@ export const assertReportCredentialSafe = (report: EvalRunReportV1, credential: 
   }
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const hasOnlyKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean => {
+  const allowed = new Set(keys);
+  return Object.keys(value).every(key => allowed.has(key));
+};
+
+const isStringArray = (value: unknown): value is string[] => (
+  Array.isArray(value) && value.every(item => typeof item === 'string')
+);
+
+const isFiniteNumber = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isFinite(value)
+);
+
+const isOptionalFiniteNumber = (value: unknown): boolean => (
+  value === undefined || isFiniteNumber(value)
+);
+
+const isNullableFiniteNumber = (value: unknown): boolean => (
+  value === null || isFiniteNumber(value)
+);
+
+const isNullableBoolean = (value: unknown): boolean => (
+  value === null || typeof value === 'boolean'
+);
+
+const isArgumentAssertion = (value: unknown): value is ArgumentAssertion => {
+  if (!isRecord(value)) return false;
+  return hasOnlyKeys(value, ['tool', 'path', 'operator', 'value'])
+    && (value.tool === undefined || typeof value.tool === 'string')
+    && typeof value.path === 'string'
+    && ['equals', 'notEquals', 'present', 'absent', 'type', 'matches', 'includes'].includes(String(value.operator));
+};
+
+const isAssertionResult = (value: unknown): boolean => {
+  if (!isRecord(value)) return false;
+  return hasOnlyKeys(value, ['assertion', 'passed', 'actual', 'message'])
+    && isArgumentAssertion(value.assertion)
+    && typeof value.passed === 'boolean'
+    && (value.message === undefined || typeof value.message === 'string');
+};
+
+const isDistributionSummary = (value: unknown): boolean => {
+  if (!isRecord(value)) return false;
+  const keys = ['mean', 'min', 'max', 'p50', 'p95', 'spread'];
+  return hasOnlyKeys(value, keys) && keys.every(key => isNullableFiniteNumber(value[key]));
+};
+
+const isEvalMetrics = (value: unknown): value is EvalMetrics => {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, [
+    'selectionAccuracy', 'noToolAccuracy', 'argumentSchemaValidity', 'assertionAccuracy',
+    'expectedToolCallRate', 'figureGroundingAccuracy', 'latencyMs', 'approximateTokenCost',
+    'inputTokens', 'outputTokens', 'confusionPairs',
+  ])) return false;
+  const rates = [
+    value.selectionAccuracy,
+    value.noToolAccuracy,
+    value.argumentSchemaValidity,
+    value.assertionAccuracy,
+    value.expectedToolCallRate,
+    value.figureGroundingAccuracy,
+  ];
+  return rates.every(rateValue => (
+    rateValue === null || (isFiniteNumber(rateValue) && rateValue >= 0 && rateValue <= 1)
+  ))
+    && isDistributionSummary(value.latencyMs)
+    && (value.approximateTokenCost === null || (isFiniteNumber(value.approximateTokenCost) && value.approximateTokenCost >= 0))
+    && Number.isInteger(value.inputTokens) && Number(value.inputTokens) >= 0
+    && Number.isInteger(value.outputTokens) && Number(value.outputTokens) >= 0
+    && Array.isArray(value.confusionPairs)
+    && value.confusionPairs.every(pair => (
+      isRecord(pair)
+      && hasOnlyKeys(pair, ['expected', 'observed', 'count'])
+      && typeof pair.expected === 'string'
+      && typeof pair.observed === 'string'
+      && Number.isInteger(pair.count)
+      && Number(pair.count) >= 1
+    ));
+};
+
+const evalArms = new Set(['with-mcp', 'without-mcp', 'plain-context']);
+const evalProviders = new Set(['fixture', 'openai', 'anthropic']);
+
+const isEvalRunConfig = (value: unknown): value is EvalRunConfig => {
+  if (!isRecord(value)) return false;
+  return hasOnlyKeys(value, [
+    'provider', 'model', 'arms', 'trials', 'inputCostPerMillionTokens', 'outputCostPerMillionTokens',
+  ])
+    && evalProviders.has(String(value.provider))
+    && typeof value.model === 'string'
+    && Array.isArray(value.arms)
+    && value.arms.length > 0
+    && value.arms.every(arm => evalArms.has(String(arm)))
+    && Number.isInteger(value.trials)
+    && Number(value.trials) >= 1
+    && Number(value.trials) <= 20
+    && isOptionalFiniteNumber(value.inputCostPerMillionTokens)
+    && isOptionalFiniteNumber(value.outputCostPerMillionTokens);
+};
+
+const isEvalTrialResult = (value: unknown): value is EvalTrialResult => {
+  if (!isRecord(value)) return false;
+  return hasOnlyKeys(value, [
+    'caseId', 'prompt', 'tags', 'arm', 'trial', 'expectedTools', 'expectedNoTool',
+    'observedTools', 'forbiddenToolCalled', 'selectionPassed', 'noToolPassed',
+    'argumentSchemaValid', 'assertionResults', 'expectedToolCalled', 'figuresGrounded',
+    'finalAnswer', 'latencyMs', 'inputTokens', 'outputTokens', 'approximateCost', 'error',
+  ])
+    && typeof value.caseId === 'string'
+    && typeof value.prompt === 'string'
+    && isStringArray(value.tags)
+    && evalArms.has(String(value.arm))
+    && Number.isInteger(value.trial)
+    && Number(value.trial) >= 1
+    && isStringArray(value.expectedTools)
+    && typeof value.expectedNoTool === 'boolean'
+    && (value.observedTools === null || isStringArray(value.observedTools))
+    && isNullableBoolean(value.forbiddenToolCalled)
+    && isNullableBoolean(value.selectionPassed)
+    && isNullableBoolean(value.noToolPassed)
+    && isNullableBoolean(value.argumentSchemaValid)
+    && Array.isArray(value.assertionResults)
+    && value.assertionResults.every(isAssertionResult)
+    && isNullableBoolean(value.expectedToolCalled)
+    && isNullableBoolean(value.figuresGrounded)
+    && (value.finalAnswer === undefined || typeof value.finalAnswer === 'string')
+    && isNullableFiniteNumber(value.latencyMs)
+    && isOptionalFiniteNumber(value.inputTokens)
+    && isOptionalFiniteNumber(value.outputTokens)
+    && isOptionalFiniteNumber(value.approximateCost)
+    && (value.error === undefined || typeof value.error === 'string');
+};
+
+const isEvalRunReportV1 = (value: unknown): value is EvalRunReportV1 => {
+  if (!isRecord(value) || !isRecord(value.dataset)) return false;
+  return hasOnlyKeys(value, [
+    'version', 'id', 'createdAt', 'dataset', 'configuration', 'notice', 'metrics', 'results',
+  ])
+    && hasOnlyKeys(value.dataset, [
+      'id', 'name', 'version', 'descriptionRevision', 'schemaRevision',
+    ])
+    && value.version === TOOL_SELECTION_REPORT_VERSION
+    && typeof value.id === 'string'
+    && value.id.length > 0
+    && typeof value.createdAt === 'string'
+    && !Number.isNaN(Date.parse(value.createdAt))
+    && typeof value.dataset.id === 'string'
+    && typeof value.dataset.name === 'string'
+    && typeof value.dataset.version === 'string'
+    && typeof value.dataset.descriptionRevision === 'string'
+    && typeof value.dataset.schemaRevision === 'string'
+    && isEvalRunConfig(value.configuration)
+    && typeof value.notice === 'string'
+    && isEvalMetrics(value.metrics)
+    && Array.isArray(value.results)
+    && value.results.every(isEvalTrialResult);
+};
+
 export const redactReportCredential = (report: EvalRunReportV1, credential: string): EvalRunReportV1 => {
   let redacted: EvalRunReportV1;
   try {
     redacted = redactCredential(report, credential);
   } catch {
     throw new Error('The evaluation report could not be safely redacted and was blocked.');
+  }
+  if (!isEvalRunReportV1(redacted)) {
+    throw new Error('The evaluation report failed post-redaction validation and was blocked.');
   }
   assertReportCredentialSafe(redacted, credential);
   return redacted;

@@ -124,6 +124,30 @@ describe('browser model providers', () => {
     expect(result.toolCalls[0].arguments).toEqual({ value: '[redacted]', nested: { '[redacted]': '[redacted]' } });
   });
 
+  it('rejects reflected property names that collide after credential redaction', async () => {
+    const secret = 'reflected-key';
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: {
+            name: 'get_weather',
+            arguments: JSON.stringify({ [secret]: 'credential key', '[redacted]': 'existing key' }),
+          },
+        }],
+      } }],
+      usage: {},
+    }), { status: 200 }));
+
+    await expect(createOpenAiProvider(secret, fetcher as typeof fetch).run({
+      ...request,
+      case: { ...request.case, toolReturnedData: undefined },
+    })).rejects.toThrow('duplicate property names');
+  });
+
   it('preserves first-turn tool calls when optional grounding follow-ups fail', async () => {
     const secret = 'follow-up-secret';
     const openAiFetcher = vi.fn()

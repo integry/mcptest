@@ -95,10 +95,17 @@ const redactCredentialValue = <T>(value: T, secret: string, ancestors: WeakSet<o
     if (Array.isArray(value)) {
       return value.map(item => redactCredentialValue(item, secret, ancestors)) as T;
     }
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
-      redactString(key, secret),
-      redactCredentialValue(child, secret, ancestors),
-    ])) as T;
+    const entries: Array<[string, unknown]> = [];
+    const redactedKeys = new Set<string>();
+    for (const [key, child] of Object.entries(value)) {
+      const redactedKey = redactString(key, secret);
+      if (redactedKeys.has(redactedKey)) {
+        throw new Error('Credential redaction produced duplicate property names and was blocked.');
+      }
+      redactedKeys.add(redactedKey);
+      entries.push([redactedKey, redactCredentialValue(child, secret, ancestors)]);
+    }
+    return Object.fromEntries(entries) as T;
   } finally {
     ancestors.delete(value);
   }
