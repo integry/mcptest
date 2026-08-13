@@ -399,6 +399,27 @@ describe('deterministic runner safety and evidence', () => {
     ))).toBe(true);
   });
 
+  it.each(['change_password', 'mutate_user', 'rotate_api_key'])(
+    'blocks common mutation %s despite contradictory read-only metadata',
+    async toolName => {
+      const callTool = vi.fn().mockResolvedValue({ content: [] });
+      const plan = generateDeterministicTestPlan(
+        [{ name: toolName, annotations: { readOnlyHint: true } }],
+        'https://example.test',
+        '2026-08-11T00:00:00.000Z',
+      );
+
+      const results = await runDeterministicPlan({ callTool }, plan);
+
+      expect(plan.tools[0].safety).toMatchObject({ writeCapable: true });
+      expect(callTool).not.toHaveBeenCalled();
+      expect(results).toHaveLength(2);
+      expect(results.every(result => (
+        result.status === 'blocked' && result.error?.code === 'EXPLICIT_CONFIRMATION_REQUIRED'
+      ))).toBe(true);
+    },
+  );
+
   it.each(['destroy_account', 'purge_records'])(
     'requires explicit confirmation for common destructive action %s',
     async toolName => {
@@ -561,6 +582,51 @@ describe('deterministic runner safety and evidence', () => {
     });
   });
 
+  it('redacts singular, plural, and camel-case credential fields in request and response evidence', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockResolvedValue({
+          content: [{
+            type: 'text',
+            text: 'credential=response-text credentials=response-texts clientCredentials=response-camel https://example.test/?credential=response-url&credentials=response-urls&clientCredentials=response-camel-url&keep=response-value',
+          }],
+          structuredContent: {
+            credential: 'response-object',
+            credentials: 'response-objects',
+            clientCredentials: 'response-camel-object',
+          },
+        }),
+      },
+      fixtureCase({
+        arguments: {
+          credential: 'request-object',
+          credentials: 'request-objects',
+          clientCredential: 'request-camel-object',
+          text: 'credential=request-text credentials=request-texts clientCredential=request-camel https://example.test/?credential=request-url&credentials=request-urls&clientCredential=request-camel-url&keep=request-value',
+        },
+      }),
+    );
+
+    expect(result.request).toMatchObject({
+      arguments: {
+        credential: '[REDACTED]',
+        credentials: '[REDACTED]',
+        clientCredential: '[REDACTED]',
+        text: 'credential=[REDACTED] credentials=[REDACTED] clientCredential=[REDACTED] https://example.test/?credential=[REDACTED]&credentials=[REDACTED]&clientCredential=[REDACTED]&keep=request-value',
+      },
+    });
+    expect(result.response).toMatchObject({
+      content: [{
+        text: 'credential=[REDACTED] credentials=[REDACTED] clientCredentials=[REDACTED] https://example.test/?credential=[REDACTED]&credentials=[REDACTED]&clientCredentials=[REDACTED]&keep=response-value',
+      }],
+      structuredContent: {
+        credential: '[REDACTED]',
+        credentials: '[REDACTED]',
+        clientCredentials: '[REDACTED]',
+      },
+    });
+  });
+
   it('redacts plain and percent-encoded URL authority credentials in request and response evidence', async () => {
     const result = await runDeterministicCase(
       {
@@ -587,7 +653,7 @@ describe('deterministic runner safety and evidence', () => {
         callTool: vi.fn().mockResolvedValue({
           content: [],
           structuredContent: {
-            credentials: {
+            keyMaterial: {
               private_key: 'response-private-key',
               signingKey: 'response-signing-key',
             },
@@ -610,7 +676,7 @@ describe('deterministic runner safety and evidence', () => {
     });
     expect(result.response).toMatchObject({
       structuredContent: {
-        credentials: {
+        keyMaterial: {
           private_key: '[REDACTED]',
           signingKey: '[REDACTED]',
         },

@@ -40,9 +40,9 @@ export interface DeterministicToolClient {
 
 const WRITE_ACTIONS = new Set([
   'add', 'append', 'approve', 'archive', 'assign', 'ban', 'cancel', 'charge', 'commit', 'configure', 'create',
-  'clear', 'close', 'deactivate', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
-  'grant', 'import', 'insert', 'install', 'invite', 'issue', 'merge', 'modify', 'move', 'overwrite', 'patch', 'pay',
-  'post', 'provision', 'publish', 'purchase', 'purge', 'reboot', 'remove', 'rename', 'replace', 'reset', 'restart',
+  'change', 'clear', 'close', 'deactivate', 'delete', 'deploy', 'destroy', 'disable', 'drop', 'edit', 'enable', 'erase', 'execute',
+  'grant', 'import', 'insert', 'install', 'invite', 'issue', 'merge', 'modify', 'move', 'mutate', 'overwrite', 'patch', 'pay',
+  'post', 'provision', 'publish', 'purchase', 'purge', 'reboot', 'remove', 'rename', 'replace', 'reset', 'restart', 'rotate',
   'restore', 'refund', 'revoke', 'run', 'save', 'schedule',
   'send', 'set', 'start', 'stop', 'submit', 'suspend', 'sync', 'terminate', 'transfer', 'truncate',
   'uninstall', 'update', 'upload', 'upsert', 'wipe', 'write',
@@ -52,9 +52,9 @@ const DESTRUCTIVE_ACTIONS = new Set([
   'overwrite', 'purge', 'reboot', 'remove', 'reset', 'restart', 'revoke', 'shutdown', 'suspend', 'terminate',
   'transfer', 'truncate', 'uninstall', 'wipe',
 ]);
-const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|private[_ -]?key|signing[_ -]?key|password|passwd|secret|client[_ -]?secret)';
+const SENSITIVE_NAME_PATTERN = '(?:authorization|proxy[_ -]?authorization|cookie|set[_ -]?cookie|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?token|api[_ -]?key|x[_ -]?api[_ -]?key|private[_ -]?key|signing[_ -]?key|password|passwd|secret|client[_ -]?secret|credential|credentials)';
 const SENSITIVE_TEXT_NAME_PATTERN = `(?:[a-z0-9]+[_-])*${SENSITIVE_NAME_PATTERN}`;
-const CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN = '[A-Za-z][A-Za-z0-9]*(?:Authorization|ProxyAuthorization|Cookie|SetCookie|Token|AccessToken|RefreshToken|ClientToken|ApiKey|XApiKey|PrivateKey|SigningKey|Password|Passwd|Secret|ClientSecret)';
+const CAMEL_CASE_SENSITIVE_TEXT_NAME_PATTERN = '[A-Za-z][A-Za-z0-9]*(?:Authorization|ProxyAuthorization|Cookie|SetCookie|Token|AccessToken|RefreshToken|ClientToken|ApiKey|XApiKey|PrivateKey|SigningKey|Password|Passwd|Secret|ClientSecret|Credential|Credentials)';
 const SENSITIVE_KEY = new RegExp(`(?:^|[_-])${SENSITIVE_NAME_PATTERN}(?:$|[_-])`, 'i');
 const IDENTIFIER_KEY = /^(?:request[_-]?id|trace[_-]?id|correlation[_-]?id|error[_-]?id|incident[_-]?id|resource[_-]?id|operation[_-]?id|job[_-]?id)$/i;
 const ERROR_CODE_KEYS = ['code', 'errorCode', 'error_code', 'status', 'statusCode'];
