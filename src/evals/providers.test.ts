@@ -58,7 +58,7 @@ describe('browser model providers', () => {
 
     const result = await createAnthropicProvider('session-secret', fetcher as typeof fetch).run(request);
     expect(result).toMatchObject({
-      toolCalls: [{ name: 'get_weather', arguments: { city: 'Lisbon' } }],
+      toolCalls: [{ name: 'get_weather', arguments: { city: 'Lisbon' }, result: { temperature: 21 } }],
       finalAnswer: 'The temperature is 21.', inputTokens: 40, outputTokens: 13,
     });
     expect(fetcher).toHaveBeenCalledTimes(2);

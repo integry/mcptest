@@ -139,6 +139,60 @@ describe('tool-selection evaluation runner', () => {
     expect(failedToolResult.results[0].figuresGrounded).toBeNull();
   });
 
+  it('scores a successful Anthropic tool-result follow-up as grounded', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        content: [{
+          type: 'tool_use', id: 'tool-1', name: 'get_forecast', input: { city: 'Lisbon', days: 1 },
+        }],
+        usage: { input_tokens: 18, output_tokens: 6 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        content: [{ type: 'text', text: 'The chance of rain is 32%.' }],
+        usage: { input_tokens: 22, output_tokens: 7 },
+      }), { status: 200 }));
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [LOCAL_TOOL_SELECTION_FIXTURE.cases[0]],
+    };
+
+    const report = await runEvaluation(dataset, {
+      provider: 'anthropic', model: 'mock-claude', arms: ['with-mcp'], trials: 1,
+    }, createAnthropicProvider('session-secret', fetcher as typeof fetch));
+
+    expect(report.results[0].figuresGrounded).toBe(true);
+    expect(report.metrics.figureGroundingAccuracy).toBe(1);
+  });
+
+  it.each([undefined, '', '   '])(
+    'scores a missing or empty final answer (%j) as ungrounded when figures were supplied',
+    async finalAnswer => {
+      const dataset: ToolSelectionDatasetV1 = {
+        ...LOCAL_TOOL_SELECTION_FIXTURE,
+        cases: [LOCAL_TOOL_SELECTION_FIXTURE.cases[0]],
+      };
+      const report = await runEvaluation(dataset, {
+        provider: 'fixture', model: 'mock', arms: ['with-mcp'], trials: 1,
+      }, {
+        id: 'fixture',
+        async run() {
+          return {
+            toolCalls: [{
+              name: 'get_forecast',
+              arguments: { city: 'Lisbon', days: 1 },
+              result: { rainChancePercent: 32 },
+            }],
+            finalAnswer,
+            latencyMs: 1,
+          };
+        },
+      });
+
+      expect(report.results[0].figuresGrounded).toBe(false);
+      expect(report.metrics.figureGroundingAccuracy).toBe(0);
+    }
+  );
+
   it('supports deterministic mocked provider output and repeated-trial tails', async () => {
     const latencies = [10, 20, 100];
     const provider: EvalProvider = {

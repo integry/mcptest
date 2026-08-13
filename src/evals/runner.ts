@@ -172,9 +172,11 @@ const scoreTrial = (
   const relevantSourceAvailable = figures.length > 0
     && figures.every(figure => groundingSources.some(source => sourceContainsFigure(source, figure)));
   // Grounding is not applicable when the arm did not supply the configured
-  // figures. With a relevant source and answer, absence of a figure is a failure.
-  const figuresGrounded = relevantSourceAvailable && observation.finalAnswer
-    ? figures.every(figure => figureAppears(observation.finalAnswer!, figure))
+  // figures. Once a relevant source is available, a missing answer or figure is
+  // a response-quality failure.
+  const finalAnswer = observation.finalAnswer?.trim();
+  const figuresGrounded = relevantSourceAvailable
+    ? Boolean(finalAnswer) && figures.every(figure => figureAppears(finalAnswer!, figure))
     : null;
   const inputTokens = observation.inputTokens || 0;
   const outputTokens = observation.outputTokens || 0;
