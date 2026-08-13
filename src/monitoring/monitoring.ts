@@ -216,7 +216,7 @@ export const classifyMonitoringReport = (
 
   const proxyFailure = report.outcome.status === 'failed'
     && report.provenance.route === 'authenticated-proxy'
-    && signal?.responseSource === 'proxy';
+    && signal?.responseSource !== 'target';
   const provenance: FailureProvenance = proxyFailure ? 'proxy' : 'target';
   return {
     status: proxyFailure ? 'proxy-failure' : 'unavailable',
@@ -256,31 +256,22 @@ const classifyProbeFailure = (
 };
 
 export const createReleaseGateMonitoringProbe = (): MonitoringProbe => {
-  // The release gate scopes credentialed SDK fetches through a process-global fetch seam.
-  // Serialize only credentialed probes so credentials from independent targets cannot overlap.
-  let credentialedTail: Promise<void> = Promise.resolve();
   return async (target, context) => {
-    const evaluate = async (): Promise<MonitoringProbeResult> => {
-      if (context.signal.aborted) throw context.signal.reason;
-      const result = await runReleaseGate({
-        endpoints: [target.endpoint],
-        headers: target.headers,
-        generatedAt: context.checkedAt,
-        policy: { failOnResults: new Set(), failOnSeverity: 'none' },
-      });
-      const outcome = result.targets[0];
-      if (outcome?.report) return { report: outcome.report };
-      return {
-        failure: {
-          provenance: 'checker',
-          message: outcome?.error || 'The release-gate checker returned no report.',
-        },
-      };
+    if (context.signal.aborted) throw context.signal.reason;
+    const result = await runReleaseGate({
+      endpoints: [target.endpoint],
+      headers: target.headers,
+      generatedAt: context.checkedAt,
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    });
+    const outcome = result.targets[0];
+    if (outcome?.report) return { report: outcome.report };
+    return {
+      failure: {
+        provenance: 'checker',
+        message: outcome?.error || 'The release-gate checker returned no report.',
+      },
     };
-    if (!target.headers || [...new Headers(target.headers).keys()].length === 0) return evaluate();
-    const queued = credentialedTail.then(evaluate, evaluate);
-    credentialedTail = queued.then(() => undefined, () => undefined);
-    return queued;
   };
 };
 
@@ -350,8 +341,15 @@ const applyRetention = (
   }
   const all = Object.values(state.servers).flatMap((server) => server.snapshots)
     .sort((left, right) => Date.parse(right.checkedAt) - Date.parse(left.checkedAt));
-  const retainedKeys = new Set(all.slice(0, retention.total).map(snapshotKey));
-  for (const key of protectedKeys) retainedKeys.add(key);
+  const retainedKeys = new Set<string>();
+  for (const snapshot of protectedSnapshots) {
+    if (retainedKeys.size === retention.total) break;
+    retainedKeys.add(snapshotKey(snapshot));
+  }
+  for (const snapshot of all) {
+    if (retainedKeys.size === retention.total) break;
+    retainedKeys.add(snapshotKey(snapshot));
+  }
   for (const server of Object.values(state.servers)) {
     server.snapshots = server.snapshots.filter((snapshot) => retainedKeys.has(snapshotKey(snapshot)));
   }
@@ -471,6 +469,7 @@ const aggregate = (targets: readonly MonitoringTargetRunResult[]): MonitoringRun
     status = 'unavailable';
   } else if (statuses.includes('degraded')) status = 'degraded';
   else if (statuses.includes('authorization-required')) status = 'attention';
+  else if (targets.some((target) => target.result === 'skipped')) status = 'degraded';
   else status = 'healthy';
   return { status, counts };
 };
@@ -533,6 +532,7 @@ export class MonitoringRunner {
   private readonly timers: Pick<MonitoringRunnerDependencies, 'setTimeout' | 'clearTimeout'>;
   private activeRun?: Promise<MonitoringRunResult>;
   private readonly activeProbes = new Map<string, Promise<MonitoringProbeResult>>();
+  private credentialedTail: Promise<void> = Promise.resolve();
 
   constructor(options: MonitoringRunnerOptions, dependencies: MonitoringRunnerDependencies = {}) {
     if (options.targets.length === 0) throw new TypeError('At least one monitoring target is required.');
@@ -565,6 +565,13 @@ export class MonitoringRunner {
     positiveInteger(this.retry.maxDelayMs, 'retry.maxDelayMs');
     positiveInteger(this.retention.perServer, 'retention.perServer');
     positiveInteger(this.retention.total, 'retention.total');
+    const requiredBaselineCapacity = options.targets.length * 2;
+    if (this.retention.total < requiredBaselineCapacity) {
+      throw new TypeError(
+        `retention.total must be at least ${requiredBaselineCapacity} `
+        + 'to retain the current and last scored baseline for every monitoring target.'
+      );
+    }
     this.now = dependencies.now || (() => new Date());
     this.sleep = dependencies.sleep || delay;
     this.createId = dependencies.createId || randomId;
@@ -605,11 +612,21 @@ export class MonitoringRunner {
     attempt: number,
     checkedAt: string
   ): Promise<MonitoringProbeResult> {
+    // The release gate scopes credentialed SDK fetches through a process-global fetch seam.
+    // Acquire that slot before starting this target's independent timeout window.
+    const releaseCredentialedSlot = await this.acquireCredentialedSlot(target);
     const controller = new AbortController();
-    const probe = this.options.probe(target, { signal: controller.signal, attempt, checkedAt });
+    let probe: Promise<MonitoringProbeResult>;
+    try {
+      probe = this.options.probe(target, { signal: controller.signal, attempt, checkedAt });
+    } catch (error) {
+      releaseCredentialedSlot();
+      throw error;
+    }
     this.activeProbes.set(target.id, probe);
     void probe.finally(() => {
       if (this.activeProbes.get(target.id) === probe) this.activeProbes.delete(target.id);
+      releaseCredentialedSlot();
     }).catch(() => {});
 
     let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
@@ -627,6 +644,18 @@ export class MonitoringRunner {
     } finally {
       if (timeout !== undefined) this.timers.clearTimeout!(timeout);
     }
+  }
+
+  private async acquireCredentialedSlot(target: MonitoringTarget): Promise<() => void> {
+    if (!target.headers || [...new Headers(target.headers).keys()].length === 0) return () => {};
+    const previous = this.credentialedTail.catch(() => {});
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.credentialedTail = previous.then(() => held);
+    await previous;
+    return release;
   }
 
   private async observeTarget(target: MonitoringTarget): Promise<ProbeOutcome> {
@@ -766,7 +795,9 @@ export class MonitoringRunner {
     }
 
     state.updatedAt = nowIso(this.now);
-    const protectedSnapshots = Object.values(state.servers).flatMap((server) => {
+    const protectedSnapshots = this.options.targets.flatMap((target) => {
+      const server = state.servers[target.id];
+      if (!server) return [];
       const current = server.snapshots[0];
       const lastScored = server.snapshots.find((snapshot) => (
         snapshot.report?.outcome.status === 'scored'

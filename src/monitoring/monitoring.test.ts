@@ -173,6 +173,14 @@ describe('monitoring classification', () => {
       status: 'proxy-failure', failure: { provenance: 'proxy', httpStatus: 502 },
     });
   });
+
+  it('attributes a response-less authenticated-proxy transport rejection to the proxy', () => {
+    expect(classifyMonitoringReport(report({
+      outcome: 'failed', route: 'authenticated-proxy',
+    }))).toMatchObject({
+      status: 'proxy-failure', failure: { provenance: 'proxy' },
+    });
+  });
 });
 
 describe('MonitoringRunner', () => {
@@ -217,6 +225,38 @@ describe('MonitoringRunner', () => {
     expect(sleep).toHaveBeenCalledWith(5_000);
   });
 
+  it('starts each credentialed probe timeout after acquiring the serialized evaluation slot', async () => {
+    vi.useFakeTimers();
+    const starts: string[] = [];
+    const runner = new MonitoringRunner({
+      targets: ['one', 'two'].map((id) => ({
+        id,
+        endpoint: `https://${id}.example/mcp`,
+        headers: { Authorization: `Bearer ${id}` },
+      })),
+      store: new MemoryMonitoringStore(),
+      concurrency: 2,
+      timeoutMs: 100,
+      retry: { maxAttempts: 1 },
+      probe: async (target) => {
+        starts.push(target.id);
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        return { report: report({ endpoint: target.endpoint }) };
+      },
+    });
+
+    const running = runner.runOnce();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts).toEqual(['one']);
+    await vi.advanceTimersByTimeAsync(75);
+    expect(starts).toEqual(['one', 'two']);
+    await vi.advanceTimersByTimeAsync(75);
+
+    expect((await running).targets.map((target) => target.snapshot?.status)).toEqual([
+      'healthy', 'healthy',
+    ]);
+  });
+
   it('skips overlapping runs and does not stack a new probe after a timed-out transport is still active', async () => {
     vi.useFakeTimers();
     let resolveProbe!: (value: { report: PublicReport }) => void;
@@ -247,6 +287,32 @@ describe('MonitoringRunner', () => {
     });
     expect(probe).toHaveBeenCalledTimes(1);
     resolveProbe({ report: report() });
+    await Promise.resolve();
+  });
+
+  it('does not report a healthy aggregate when one target is skipped', async () => {
+    vi.useFakeTimers();
+    let resolveSlow!: (value: { report: PublicReport }) => void;
+    const runner = new MonitoringRunner({
+      targets: ['slow', 'healthy'].map((id) => ({ id, endpoint: `https://${id}.example/mcp` })),
+      store: new MemoryMonitoringStore(),
+      timeoutMs: 100,
+      retry: { maxAttempts: 1 },
+      probe: async (target) => target.id === 'slow'
+        ? new Promise<{ report: PublicReport }>((resolve) => { resolveSlow = resolve; })
+        : { report: report({ endpoint: target.endpoint }) },
+    });
+
+    const first = runner.runOnce();
+    await vi.advanceTimersByTimeAsync(100);
+    await first;
+    const mixed = await runner.runOnce();
+
+    expect(mixed.targets.map((target) => target.result)).toEqual(['skipped', 'completed']);
+    expect(mixed.aggregate).toMatchObject({
+      status: 'degraded', counts: { skipped: 1, healthy: 1 },
+    });
+    resolveSlow({ report: report() });
     await Promise.resolve();
   });
 
@@ -305,7 +371,7 @@ describe('MonitoringRunner', () => {
       targets: [{ id: 'api', endpoint: 'https://api.example/mcp' }],
       store,
       retry: { maxAttempts: 1 },
-      retention: { perServer: 1, total: 1 },
+      retention: { perServer: 1, total: 2 },
       probe: async () => current,
     }, { createId: (prefix) => `${prefix}-${++sequence}` });
 
@@ -339,7 +405,7 @@ describe('MonitoringRunner', () => {
       targets: [{ id: 'api', endpoint: 'https://api.example/mcp' }],
       store,
       retry: { maxAttempts: 1 },
-      retention: { perServer: 1, total: 1 },
+      retention: { perServer: 1, total: 2 },
       probe: async () => ({ report: current }),
       notifications: [{
         name: 'artifact-check',
@@ -364,21 +430,36 @@ describe('MonitoringRunner', () => {
     expect(store.reports.size).toBe(2);
   });
 
-  it('keeps every server current when total retention is below the target count', async () => {
+  it('rejects retention that cannot hold active current and last-scored baselines', () => {
     const store = new MemoryMonitoringStore();
-    let sequence = 0;
-    const runner = new MonitoringRunner({
+    expect(() => new MonitoringRunner({
       targets: ['one', 'two'].map((id) => ({ id, endpoint: `https://${id}.example/mcp` })),
       store,
-      retry: { maxAttempts: 1 },
-      retention: { perServer: 1, total: 1 },
-      probe: async (target) => ({ report: report({ endpoint: target.endpoint }) }),
-    }, { createId: (prefix) => `${prefix}-${++sequence}` });
+      retention: { perServer: 1, total: 3 },
+    })).toThrow(/retention\.total must be at least 4/);
+  });
 
-    await runner.runOnce();
+  it('keeps total retention bounded when the configured target set changes across runs', async () => {
+    const store = new MemoryMonitoringStore();
+    let sequence = 0;
+    for (const [index, id] of ['one', 'two', 'three'].entries()) {
+      const runner = new MonitoringRunner({
+        targets: [{ id, endpoint: `https://${id}.example/mcp` }],
+        store,
+        retry: { maxAttempts: 1 },
+        retention: { perServer: 1, total: 2 },
+        probe: async (target) => ({ report: report({
+          at: `2026-08-13T03:${String(index).padStart(2, '0')}:00.000Z`,
+          endpoint: target.endpoint,
+        }) }),
+      }, { createId: (prefix) => `${prefix}-${++sequence}` });
+      await runner.runOnce();
+    }
+
     const state = await store.load();
-    expect(state?.servers.one.snapshots).toHaveLength(1);
-    expect(state?.servers.two.snapshots).toHaveLength(1);
+    const retained = Object.values(state?.servers || {}).flatMap((server) => server.snapshots);
+    expect(retained).toHaveLength(2);
+    expect(retained.map((snapshot) => snapshot.serverId).sort()).toEqual(['three', 'two']);
     expect(store.reports.size).toBe(2);
   });
 
