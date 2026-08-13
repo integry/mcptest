@@ -35,8 +35,16 @@ describe('hosted OAuth deployment configuration', () => {
 
 class MemoryStorage {
   readonly values = new Map<string, unknown>();
+  alarmTime: number | null = null;
   get<T>(key: string): Promise<T | undefined> { return Promise.resolve(this.values.get(key) as T | undefined); }
   put(key: string, value: unknown): Promise<void> { this.values.set(key, value); return Promise.resolve(); }
+  delete(key: string): Promise<boolean> { return Promise.resolve(this.values.delete(key)); }
+  setAlarm(scheduledTime: number | Date): Promise<void> {
+    this.alarmTime = scheduledTime instanceof Date ? scheduledTime.getTime() : scheduledTime;
+    return Promise.resolve();
+  }
+  deleteAlarm(): Promise<void> { this.alarmTime = null; return Promise.resolve(); }
+  transaction<T>(callback: (transaction: MemoryStorage) => Promise<T>): Promise<T> { return callback(this); }
 }
 
 class MemoryNamespace {
@@ -345,6 +353,8 @@ describe('hosted provider authorization transactions', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
     expect(response.headers.get('access-control-expose-headers')?.toLowerCase())
       .toContain('www-authenticate');
+    expect(store.values.has('record')).toBe(false);
+    expect(store.alarmTime).toBeNull();
   });
 
   it('returns an identifiable rejection when another Firebase user presents the grant', async () => {
@@ -379,7 +389,61 @@ describe('hosted provider authorization transactions', () => {
     const completion = readCompletion(await callback(env, transaction));
     expect((await exchange(env, completion, 'other-user'))?.status).toBe(403);
     expect((await exchange(env, completion, 'user-1'))?.status).toBe(200);
-    expect((await exchange(env, completion, 'user-1'))?.status).toBe(409);
+    expect((await exchange(env, completion, 'user-1'))?.status).toBe(404);
+  });
+
+  it('schedules expiry for every durable record and removes terminal sensitive records', async () => {
+    const env = makeEnv();
+    const namespace = env.HOSTED_OAUTH_BROKER as unknown as MemoryNamespace;
+    const transaction = await readTransaction(await start(env));
+    const transactionStore = namespace.stores.get(transaction)!;
+    const transactionRecord = transactionStore.values.get('record') as { expiresAt: number };
+    expect(transactionStore.alarmTime).toBe(transactionRecord.expiresAt);
+
+    const completion = readCompletion(await callback(env, transaction));
+    const completionStore = namespace.stores.get(completion)!;
+    const completionRecord = completionStore.values.get('record') as { expiresAt: number };
+    expect(completionStore.alarmTime).toBe(completionRecord.expiresAt);
+
+    const result = await (await exchange(env, completion)).json() as { grant: string };
+    const grantStore = namespace.stores.get(result.grant)!;
+    const grantRecord = grantStore.values.get('record') as { expiresAt: number; encryptedTokens?: unknown };
+    expect(grantRecord.encryptedTokens).toBeDefined();
+    expect(grantStore.alarmTime).toBe(grantRecord.expiresAt);
+    expect(transactionStore.values.has('record')).toBe(false);
+    expect(transactionStore.alarmTime).toBeNull();
+    expect(completionStore.values.has('record')).toBe(false);
+    expect(completionStore.alarmTime).toBeNull();
+
+    vi.spyOn(Date, 'now').mockReturnValue(grantRecord.expiresAt);
+    await namespace.brokers.get(result.grant)!.alarm();
+    expect(grantStore.values.has('record')).toBe(false);
+    expect(grantStore.alarmTime).toBeNull();
+  });
+
+  it('deletes abandoned transactions and unused completions when their alarms fire', async () => {
+    const env = makeEnv();
+    const namespace = env.HOSTED_OAUTH_BROKER as unknown as MemoryNamespace;
+    const abandonedTransaction = await readTransaction(await start(env));
+    const abandonedStore = namespace.stores.get(abandonedTransaction)!;
+    const abandonedRecord = abandonedStore.values.get('record') as { expiresAt: number };
+
+    const transactionExpiry = vi.spyOn(Date, 'now').mockReturnValue(abandonedRecord.expiresAt);
+    await namespace.brokers.get(abandonedTransaction)!.alarm();
+    transactionExpiry.mockRestore();
+    expect(abandonedStore.values.has('record')).toBe(false);
+    expect(abandonedStore.alarmTime).toBeNull();
+
+    const transaction = await readTransaction(await start(env, 'github'));
+    const completion = readCompletion(await callback(env, transaction));
+    const completionStore = namespace.stores.get(completion)!;
+    const completionRecord = completionStore.values.get('record') as { expiresAt: number };
+
+    const completionExpiry = vi.spyOn(Date, 'now').mockReturnValue(completionRecord.expiresAt);
+    await namespace.brokers.get(completion)!.alarm();
+    completionExpiry.mockRestore();
+    expect(completionStore.values.has('record')).toBe(false);
+    expect(completionStore.alarmTime).toBeNull();
   });
 
   it('prevents a transaction initiator from claiming authorization completed in another user browser', async () => {
@@ -413,6 +477,8 @@ describe('hosted provider authorization transactions', () => {
     const record = store.values.get('record') as Record<string, unknown>;
     store.values.set('record', { ...record, expiresAt: Date.now() - 1 });
     expect((await callback(env, third))?.status).toBe(410);
+    expect(store.values.has('record')).toBe(false);
+    expect(store.alarmTime).toBeNull();
   });
 
   it('keeps a retryable transaction when the provider token endpoint errors', async () => {

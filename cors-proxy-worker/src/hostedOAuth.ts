@@ -103,7 +103,6 @@ interface TransactionRecord {
   expiresAt: number;
   code?: string;
   completionHandle?: string;
-  providerError?: string;
 }
 
 interface CompletionRecord {
@@ -546,20 +545,48 @@ export const resolveHostedGrant = async (
 export class HostedOAuthBroker {
   constructor(private readonly state: DurableObjectState, private readonly env: HostedOAuthEnv) {}
 
+  private async storeRecord(record: TransactionRecord | CompletionRecord | StoredGrant): Promise<void> {
+    await this.state.storage.transaction(async transaction => {
+      await transaction.put('record', record);
+      await transaction.setAlarm(record.expiresAt);
+    });
+  }
+
+  private async deleteRecord(): Promise<void> {
+    await this.state.storage.transaction(async transaction => {
+      await transaction.delete('record');
+      await transaction.deleteAlarm();
+    });
+  }
+
+  async alarm(): Promise<void> {
+    await this.state.blockConcurrencyWhile(async () => {
+      const record = await this.state.storage.get<TransactionRecord | CompletionRecord | StoredGrant>('record');
+      if (!record || record.expiresAt <= Date.now()) {
+        await this.deleteRecord();
+        return;
+      }
+      await this.state.storage.setAlarm(record.expiresAt);
+    });
+  }
+
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === '/transaction/init') {
       const existing = await this.state.storage.get<TransactionRecord | CompletionRecord | StoredGrant>('record');
       if (existing) return json({ error: 'replay' }, 409);
       const record = await request.json() as TransactionRecord;
-      await this.state.storage.put('record', record);
+      await this.storeRecord(record);
       return json({ ok: true });
     }
 
     if (path === '/transaction/read') {
       const record = await this.state.storage.get<TransactionRecord>('record');
       if (!record || record.kind !== 'transaction') return json({ error: 'unknown_transaction' }, 404);
-      if (record.expiresAt <= Date.now()) return json({ error: 'transaction_expired' }, 410);
+      if (record.expiresAt <= Date.now()) {
+        await this.deleteRecord();
+        return json({ error: 'transaction_expired' }, 410);
+      }
       if (record.status !== 'awaiting_callback') return json({ error: 'transaction_replayed' }, 409);
       return json(record);
     }
@@ -569,7 +596,10 @@ export class HostedOAuthBroker {
         const input = await request.json() as { state?: string; code?: string | null; error?: string | null; iss?: string | null };
         const record = await this.state.storage.get<TransactionRecord>('record');
         if (!record || record.kind !== 'transaction') return json({ error: 'unknown_transaction' }, 404);
-        if (record.expiresAt <= Date.now()) return json({ error: 'transaction_expired' }, 410);
+        if (record.expiresAt <= Date.now()) {
+          await this.deleteRecord();
+          return json({ error: 'transaction_expired' }, 410);
+        }
         if (record.status !== 'awaiting_callback') return json({ error: 'callback_replayed' }, 409);
         if (input.state !== record.state) return json({ error: 'state_mismatch' }, 400);
         if (input.iss && input.iss !== record.issuer) return json({ error: 'issuer_mismatch' }, 400);
@@ -583,15 +613,15 @@ export class HostedOAuthBroker {
         if (!completionResponse.ok) return completionResponse;
         if (input.error) {
           const denied: TransactionRecord = {
-            ...record, status: 'denied', completionHandle, providerError: input.error.slice(0, 100),
+            ...record, status: 'denied', completionHandle, code: undefined, verifier: '', state: '',
           };
-          await this.state.storage.put('record', denied);
+          await this.storeRecord(denied);
           return json({ completionHandle, returnUri: denied.returnUri });
         }
         const updated: TransactionRecord = {
           ...record, status: 'code_received', code: input.code!, completionHandle,
         };
-        await this.state.storage.put('record', updated);
+        await this.storeRecord(updated);
         return json({ completionHandle, returnUri: updated.returnUri });
       });
     }
@@ -601,12 +631,18 @@ export class HostedOAuthBroker {
         const input = await request.json() as { uid?: string; completionHandle?: string };
         const record = await this.state.storage.get<TransactionRecord>('record');
         if (!record || record.kind !== 'transaction') return json({ error: 'unknown_result' }, 404);
-        if (record.expiresAt <= Date.now()) return json({ error: 'result_expired' }, 410);
+        if (record.expiresAt <= Date.now()) {
+          await this.deleteRecord();
+          return json({ error: 'result_expired' }, 410);
+        }
         if (!record.completionHandle || record.completionHandle !== input.completionHandle) {
           return json({ error: 'unknown_result' }, 404);
         }
         if (record.uid !== input.uid) return json({ error: 'result_user_mismatch' }, 403);
-        if (record.status === 'denied') return json({ error: 'authorization_denied' }, 400);
+        if (record.status === 'denied') {
+          await this.deleteRecord();
+          return json({ error: 'authorization_denied' }, 400);
+        }
         if (record.status !== 'code_received' || !record.code) return json({ error: 'result_replayed' }, 409);
         const provider = providerById(record.provider);
         try {
@@ -624,9 +660,7 @@ export class HostedOAuthBroker {
           };
           const grantResponse = await stubFetch(this.env, grant, '/grant/store', storedGrant);
           if (!grantResponse.ok) throw new Error('Could not retain the hosted OAuth grant.');
-          await this.state.storage.put('record', {
-            ...record, status: 'exchanged', code: undefined, verifier: '',
-          });
+          await this.deleteRecord();
           return json({ grant, serverUrl: record.target, issuer: record.issuer });
         } catch (error) {
           return json({
@@ -640,7 +674,7 @@ export class HostedOAuthBroker {
     if (path === '/completion/init') {
       const existing = await this.state.storage.get('record');
       if (existing) return json({ error: 'completion_collision' }, 409);
-      await this.state.storage.put('record', await request.json<CompletionRecord>());
+      await this.storeRecord(await request.json<CompletionRecord>());
       return json({ ok: true });
     }
 
@@ -651,7 +685,10 @@ export class HostedOAuthBroker {
         if (!completion || completion.kind !== 'completion' || completion.handle !== input.result) {
           return json({ error: 'unknown_result' }, 404);
         }
-        if (completion.expiresAt <= Date.now()) return json({ error: 'result_expired' }, 410);
+        if (completion.expiresAt <= Date.now()) {
+          await this.deleteRecord();
+          return json({ error: 'result_expired' }, 410);
+        }
         if (completion.uid !== input.uid) return json({ error: 'result_user_mismatch' }, 403);
         if (completion.status !== 'ready') return json({ error: 'result_replayed' }, 409);
         const response = await stubFetch(this.env, completion.transactionState, '/transaction/exchange', {
@@ -659,7 +696,7 @@ export class HostedOAuthBroker {
           completionHandle: completion.handle,
         });
         if (response.status !== 502) {
-          await this.state.storage.put('record', { ...completion, status: 'used' });
+          await this.deleteRecord();
         }
         return response;
       });
@@ -668,7 +705,7 @@ export class HostedOAuthBroker {
     if (path === '/grant/store') {
       const existing = await this.state.storage.get('record');
       if (existing) return json({ error: 'grant_collision' }, 409);
-      await this.state.storage.put('record', await request.json<StoredGrant>());
+      await this.storeRecord(await request.json<StoredGrant>());
       return json({ ok: true });
     }
 
@@ -677,16 +714,23 @@ export class HostedOAuthBroker {
         const input = await request.json() as { uid?: string; target?: string };
         const grant = await this.state.storage.get<StoredGrant>('record');
         if (!grant || grant.kind !== 'grant') return json({ error: 'unknown_grant' }, 404);
-        if (grant.expiresAt <= Date.now()) return json({ error: 'grant_expired' }, 410);
+        if (grant.expiresAt <= Date.now()) {
+          await this.deleteRecord();
+          return json({ error: 'grant_expired' }, 410);
+        }
         if (grant.uid !== input.uid || grant.target !== input.target) return json({ error: 'grant_binding_mismatch' }, 403);
         let tokens: ProviderTokens;
         try {
           tokens = await decryptTokens(grant.encryptedTokens, this.env);
         } catch {
+          await this.deleteRecord();
           return json({ error: 'grant_unusable' }, 401);
         }
         if (tokens.expiresAt !== undefined && tokens.expiresAt <= Date.now() + REFRESH_SKEW_MS) {
-          if (!tokens.refreshToken) return json({ error: 'provider_token_expired' }, 401);
+          if (!tokens.refreshToken) {
+            await this.deleteRecord();
+            return json({ error: 'provider_token_expired' }, 401);
+          }
           let refreshed: ProviderTokens;
           try {
             refreshed = await requestProviderTokens(providerById(grant.provider), this.env, {
@@ -695,6 +739,7 @@ export class HostedOAuthBroker {
             });
           } catch (error) {
             if (error instanceof Error && error.name === 'ProviderTokenRejectedError') {
+              await this.deleteRecord();
               return json({ error: 'provider_token_rejected' }, 401);
             }
             throw error;
