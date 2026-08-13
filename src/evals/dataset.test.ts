@@ -49,6 +49,34 @@ describe('versioned eval datasets', () => {
     expect(result.errors.join(' ')).toContain('cannot expect no tool');
   });
 
+  it('rejects invalid tool input schemas during dataset validation', () => {
+    const result = validateDataset({
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      tools: LOCAL_TOOL_SELECTION_FIXTURE.tools.map((tool, index) => index === 0 ? {
+        ...tool,
+        inputSchema: { type: 'not-a-json-schema-type' },
+      } : tool),
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(' ')).toContain('tools[0].inputSchema');
+    expect(result.errors.join(' ')).toContain('Schema is invalid');
+  });
+
+  it('rejects tools that are both acceptable and forbidden in one case', () => {
+    const result = validateDataset({
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      cases: [{
+        ...LOCAL_TOOL_SELECTION_FIXTURE.cases[0],
+        acceptableTools: ['get_weather'],
+        forbiddenTools: ['get_weather'],
+      }],
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(' ')).toContain('both acceptable and forbidden');
+  });
+
   it('requires synthetic suggestions to be reviewed before they run', () => {
     const suggestions = suggestCases(LOCAL_TOOL_SELECTION_FIXTURE);
     const dataset = { ...LOCAL_TOOL_SELECTION_FIXTURE, suggestions };

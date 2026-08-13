@@ -1,4 +1,4 @@
-import { getRunnableCases } from './dataset';
+import { getRunnableCases, validateDataset } from './dataset';
 import { redactCredential } from './providers';
 import { validateJsonSchema } from './schema';
 import {
@@ -53,8 +53,22 @@ const readPath = (value: unknown, path: string): { present: boolean; value?: unk
 };
 
 const deepEqual = (left: unknown, right: unknown): boolean => {
-  if (Object.is(left, right)) return true;
-  try { return JSON.stringify(left) === JSON.stringify(right); } catch { return false; }
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((item, index) => deepEqual(item, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length && leftKeys.every(key => (
+    Object.prototype.hasOwnProperty.call(rightRecord, key)
+    && deepEqual(leftRecord[key], rightRecord[key])
+  ));
 };
 
 export const evaluateAssertion = (argumentsValue: unknown, assertion: ArgumentAssertion): AssertionResult => {
@@ -219,6 +233,17 @@ export const runEvaluation = async (
   if (provider.id !== config.provider) throw new Error('The selected provider does not match the run configuration.');
   if (!Number.isInteger(config.trials) || config.trials < 1 || config.trials > 20) throw new Error('Trials must be an integer from 1 to 20.');
   if (!config.arms.length) throw new Error('Select at least one comparison arm.');
+  const tokenPrices = [
+    ['Input', config.inputCostPerMillionTokens],
+    ['Output', config.outputCostPerMillionTokens],
+  ] as const;
+  tokenPrices.forEach(([label, price]) => {
+    if (price !== undefined && (!Number.isFinite(price) || price < 0)) {
+      throw new Error(`${label} token price must be a finite, non-negative number.`);
+    }
+  });
+  const datasetValidation = validateDataset(dataset);
+  if (!datasetValidation.valid) throw new Error(`Invalid evaluation dataset:\n${datasetValidation.errors.join('\n')}`);
   const cases = getRunnableCases(dataset);
   if (!cases.length) throw new Error('The dataset has no manual or approved synthetic cases to run.');
   const total = cases.length * config.arms.length * config.trials;
@@ -345,6 +370,10 @@ const isOptionalFiniteNumber = (value: unknown): boolean => (
   value === undefined || isFiniteNumber(value)
 );
 
+const isOptionalNonNegativeFiniteNumber = (value: unknown): boolean => (
+  value === undefined || (isFiniteNumber(value) && value >= 0)
+);
+
 const isNullableFiniteNumber = (value: unknown): boolean => (
   value === null || isFiniteNumber(value)
 );
@@ -424,8 +453,8 @@ const isEvalRunConfig = (value: unknown): value is EvalRunConfig => {
     && Number.isInteger(value.trials)
     && Number(value.trials) >= 1
     && Number(value.trials) <= 20
-    && isOptionalFiniteNumber(value.inputCostPerMillionTokens)
-    && isOptionalFiniteNumber(value.outputCostPerMillionTokens);
+    && isOptionalNonNegativeFiniteNumber(value.inputCostPerMillionTokens)
+    && isOptionalNonNegativeFiniteNumber(value.outputCostPerMillionTokens);
 };
 
 const isEvalTrialResult = (value: unknown): value is EvalTrialResult => {

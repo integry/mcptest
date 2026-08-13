@@ -14,11 +14,32 @@ import {
   redactReportCredential,
   reportContainsCredential,
   runEvaluation,
+  evaluateAssertion,
 } from './runner';
 import type { EvalProvider, EvalProviderId, ToolSelectionDatasetV1 } from './types';
 
 describe('tool-selection evaluation runner', () => {
   beforeEach(() => sessionStorage.clear());
+
+  it('compares reordered and nested JSON objects structurally for equality assertions', () => {
+    const actual = {
+      payload: {
+        outer: { first: 1, nested: { enabled: true, labels: ['a', { code: 2 }] } },
+      },
+    };
+    const reordered = {
+      nested: { labels: ['a', { code: 2 }], enabled: true },
+      first: 1,
+    };
+
+    expect(evaluateAssertion(actual, { path: 'payload.outer', operator: 'equals', value: reordered }).passed).toBe(true);
+    expect(evaluateAssertion(actual, { path: 'payload.outer', operator: 'notEquals', value: reordered }).passed).toBe(false);
+    expect(evaluateAssertion(actual, {
+      path: 'payload.outer',
+      operator: 'notEquals',
+      value: { nested: { enabled: false, labels: ['a', { code: 2 }] }, first: 1 },
+    }).passed).toBe(true);
+  });
 
   it('handles multiple acceptable tools, expected no-tool, and malformed arguments deterministically', async () => {
     const progress = vi.fn();
@@ -82,6 +103,42 @@ describe('tool-selection evaluation runner', () => {
 
     expect(provider.run).toHaveBeenCalledTimes(3);
     expect(report.metrics.latencyMs).toMatchObject({ mean: 130 / 3, p50: 20, p95: 100, spread: 90 });
+  });
+
+  it.each([
+    ['input', 'inputCostPerMillionTokens', -1],
+    ['input', 'inputCostPerMillionTokens', Number.NaN],
+    ['input', 'inputCostPerMillionTokens', Number.POSITIVE_INFINITY],
+    ['output', 'outputCostPerMillionTokens', -1],
+    ['output', 'outputCostPerMillionTokens', Number.NEGATIVE_INFINITY],
+  ] as const)('rejects invalid %s token prices before running trials', async (_, key, price) => {
+    const provider: EvalProvider = { id: 'fixture', run: vi.fn() };
+    const config = {
+      provider: 'fixture' as const,
+      model: 'fixture-v1',
+      arms: ['with-mcp' as const],
+      trials: 1,
+      [key]: price,
+    };
+
+    await expect(runEvaluation(LOCAL_TOOL_SELECTION_FIXTURE, config, provider)).rejects.toThrow('finite, non-negative');
+    expect(provider.run).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid dataset schemas before running trials or producing argument metrics', async () => {
+    const provider: EvalProvider = { id: 'fixture', run: vi.fn() };
+    const dataset: ToolSelectionDatasetV1 = {
+      ...LOCAL_TOOL_SELECTION_FIXTURE,
+      tools: LOCAL_TOOL_SELECTION_FIXTURE.tools.map((tool, index) => index === 0 ? {
+        ...tool,
+        inputSchema: { type: 'not-a-json-schema-type' },
+      } : tool),
+    };
+
+    await expect(runEvaluation(dataset, {
+      provider: 'fixture', model: 'fixture-v1', arms: ['with-mcp'], trials: 1,
+    }, provider)).rejects.toThrow('Invalid evaluation dataset');
+    expect(provider.run).not.toHaveBeenCalled();
   });
 
   it('stores credentials only in session storage and never includes them in reports', async () => {

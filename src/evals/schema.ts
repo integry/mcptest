@@ -17,15 +17,26 @@ const formatError = (error: ErrorObject): string => (
   `${error.instancePath || '$'} ${error.message || 'does not satisfy the schema.'}`
 );
 
+const schemaCompilationError = (error: unknown): string => (
+  `Schema is invalid or is not JSON Schema draft 2020-12: ${error instanceof Error ? error.message : String(error)}`
+);
+
+export const validateJsonSchemaDefinition = (schema: JsonSchema): string[] => {
+  if (validators.has(schema)) return [];
+  try {
+    validators.set(schema, ajv.compile(schema));
+    return [];
+  } catch (error) {
+    return [schemaCompilationError(error)];
+  }
+};
+
 export const validateJsonSchema = (value: unknown, schema: JsonSchema): string[] => {
   let validate = validators.get(schema);
   if (!validate) {
-    try {
-      validate = ajv.compile(schema);
-      validators.set(schema, validate);
-    } catch (error) {
-      return [`Schema is invalid or is not JSON Schema draft 2020-12: ${error instanceof Error ? error.message : String(error)}`];
-    }
+    const schemaErrors = validateJsonSchemaDefinition(schema);
+    if (schemaErrors.length) return schemaErrors;
+    validate = validators.get(schema)!;
   }
   return validate(value) ? [] : (validate.errors || []).map(formatError);
 };

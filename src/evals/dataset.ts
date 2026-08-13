@@ -6,7 +6,7 @@ import {
   type ToolSelectionCase,
   type ToolSelectionDatasetV1,
 } from './types';
-import { validateJsonSchema } from './schema';
+import { validateJsonSchema, validateJsonSchemaDefinition } from './schema';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -28,6 +28,10 @@ const validateCaseSemantics = (
   [...acceptable, ...forbidden].forEach(name => {
     if (!toolNames.has(name)) errors.push(`${path} references unknown tool "${name}".`);
   });
+  const overlap = [...new Set(acceptable.filter(name => forbidden.includes(name)))];
+  if (overlap.length) {
+    errors.push(`${path} cannot list the same tool as both acceptable and forbidden: ${overlap.map(name => `"${name}"`).join(', ')}.`);
+  }
   if (value.expectedNoTool === true && acceptable.length > 0) {
     errors.push(`${path} cannot expect no tool and also list acceptable tools.`);
   }
@@ -59,10 +63,15 @@ export const validateDataset = (value: unknown): {
   }
   const tools = Array.isArray(value.tools) ? value.tools : [];
   const toolNames = new Set<string>();
-  tools.forEach(tool => {
+  tools.forEach((tool, index) => {
     if (!isRecord(tool) || typeof tool.name !== 'string') return;
     if (toolNames.has(tool.name)) errors.push(`Duplicate tool name "${tool.name}".`);
     else toolNames.add(tool.name);
+    if (isRecord(tool.inputSchema)) {
+      validateJsonSchemaDefinition(tool.inputSchema).forEach(error => {
+        errors.push(`tools[${index}].inputSchema: ${error}`);
+      });
+    }
   });
   const ids = new Set<string>();
   (Array.isArray(value.cases) ? value.cases : []).forEach((item, index) => {
