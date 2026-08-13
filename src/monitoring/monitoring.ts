@@ -6,6 +6,7 @@ import {
   type PublicReport,
 } from '../utils/reportArtifact';
 import { diffPublicReports, type ReportDiffChange } from '../utils/reportDiff';
+import { monitoringArtifactPathPart } from './fileStore';
 import {
   MONITORING_ALERT_VERSION,
   MONITORING_SNAPSHOT_VERSION,
@@ -80,11 +81,15 @@ const positiveInteger = (value: number, name: string): number => {
 
 const reportLink = (
   target: MonitoringTarget,
-  snapshotId: string
+  snapshotId: string,
+  store: MonitoringStore
 ): string => {
-  const serverId = encodeURIComponent(target.id);
-  const encodedSnapshotId = encodeURIComponent(snapshotId);
-  if (!target.reportBaseUrl) return `reports/${serverId}/${encodedSnapshotId}.json`;
+  const serverId = encodeURIComponent(monitoringArtifactPathPart(target.id));
+  const encodedSnapshotId = encodeURIComponent(monitoringArtifactPathPart(snapshotId));
+  if (!target.reportBaseUrl) {
+    return store.snapshotReportUrl?.(target.id, snapshotId)
+      || `reports/${serverId}/${encodedSnapshotId}.json`;
+  }
   if (target.reportBaseUrl.includes(':serverId') || target.reportBaseUrl.includes(':snapshotId')) {
     return redactReportString(target.reportBaseUrl
       .split(':serverId').join(serverId)
@@ -93,31 +98,58 @@ const reportLink = (
   return `${redactReportString(target.reportBaseUrl).replace(/\/$/, '')}/${serverId}/${encodedSnapshotId}.json`;
 };
 
-interface HttpSignals {
-  statuses: number[];
+interface HttpFailureSignal {
+  status?: number;
   retryAfter?: string;
-  proxyResponseObserved: boolean;
+  responseSource?: 'target' | 'proxy';
 }
 
-const collectHttpSignals = (value: unknown, signals: HttpSignals): void => {
-  if (!value || typeof value !== 'object') return;
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectHttpSignals(item, signals));
-    return;
-  }
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if ((normalized === 'status' || normalized === 'httpstatus')
-        && typeof child === 'number' && Number.isInteger(child)) {
-      signals.statuses.push(child);
+const httpFailureSignal = (value: unknown): HttpFailureSignal | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const status = typeof record.status === 'number' && Number.isInteger(record.status)
+    ? record.status
+    : typeof record.httpStatus === 'number' && Number.isInteger(record.httpStatus)
+      ? record.httpStatus
+      : undefined;
+  const responseHeaders = record.responseHeaders && typeof record.responseHeaders === 'object'
+    && !Array.isArray(record.responseHeaders)
+    ? record.responseHeaders as Record<string, unknown>
+    : undefined;
+  const retryAfter = typeof record.retryAfter === 'string'
+    ? record.retryAfter
+    : responseHeaders
+      ? Object.entries(responseHeaders)
+        .find(([key, header]) => key.toLowerCase() === 'retry-after' && typeof header === 'string')?.[1] as string | undefined
+      : undefined;
+  const rawSource = typeof record.responseSource === 'string'
+    ? record.responseSource.toLowerCase()
+    : responseHeaders
+      ? Object.entries(responseHeaders).find(([key, header]) => (
+        key.toLowerCase() === 'x-mcp-proxy-response-source' && typeof header === 'string'
+      ))?.[1]?.toString().toLowerCase()
+      : undefined;
+  const responseSource = rawSource === 'proxy' || rawSource === 'target' ? rawSource : undefined;
+  if (status === undefined && retryAfter === undefined && responseSource === undefined) return undefined;
+  return { status, retryAfter, responseSource };
+};
+
+const decisiveHttpFailure = (report: PublicReport): HttpFailureSignal | undefined => {
+  for (const section of report.sections) {
+    if (section.status !== 'failed' && section.status !== 'prerequisite') continue;
+    for (let index = section.evidence.length - 1; index >= 0; index -= 1) {
+      const metadata = section.evidence[index].metadata;
+      if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
+      const record = metadata as Record<string, unknown>;
+      if (Array.isArray(record.routeFailures) && record.routeFailures.length > 0) {
+        const terminal = httpFailureSignal(record.routeFailures[record.routeFailures.length - 1]);
+        if (terminal) return terminal;
+      }
+      const direct = httpFailureSignal(record);
+      if (direct) return direct;
     }
-    if (normalized === 'retryafter' && typeof child === 'string') signals.retryAfter = child;
-    if ((normalized === 'xmcpproxyresponsesource' || normalized === 'responsesource')
-        && typeof child === 'string' && child.toLowerCase() === 'proxy') {
-      signals.proxyResponseObserved = true;
-    }
-    collectHttpSignals(child, signals);
   }
+  return undefined;
 };
 
 const retryAfterMilliseconds = (value: string | undefined, at: Date): number | undefined => {
@@ -143,10 +175,11 @@ export const classifyMonitoringReport = (
   report: PublicReport,
   checkedAt: Date = new Date()
 ): ClassifiedReport => {
-  const signals: HttpSignals = { statuses: [], proxyResponseObserved: false };
-  collectHttpSignals(report.sections, signals);
-  const retryAfterMs = retryAfterMilliseconds(signals.retryAfter, checkedAt);
-  const httpStatus = signals.statuses[signals.statuses.length - 1];
+  if (report.outcome.status === 'scored') return { status: 'healthy' };
+
+  const signal = decisiveHttpFailure(report);
+  const retryAfterMs = retryAfterMilliseconds(signal?.retryAfter, checkedAt);
+  const httpStatus = signal?.status;
   const authorizationState = report.outcome.authorizationPrerequisite?.state;
 
   if (authorizationState === 'authorization-required') {
@@ -162,7 +195,7 @@ export const classifyMonitoringReport = (
       },
     };
   }
-  if (signals.statuses.includes(429)) {
+  if (httpStatus === 429 && signal?.responseSource !== 'proxy') {
     return {
       status: 'degraded',
       retryAfterMs,
@@ -174,7 +207,6 @@ export const classifyMonitoringReport = (
       },
     };
   }
-  if (report.outcome.status === 'scored') return { status: 'healthy' };
   if (report.outcome.status === 'partial') {
     return {
       status: 'degraded',
@@ -184,7 +216,7 @@ export const classifyMonitoringReport = (
 
   const proxyFailure = report.outcome.status === 'failed'
     && report.provenance.route === 'authenticated-proxy'
-    && signals.proxyResponseObserved;
+    && signal?.responseSource === 'proxy';
   const provenance: FailureProvenance = proxyFailure ? 'proxy' : 'target';
   return {
     status: proxyFailure ? 'proxy-failure' : 'unavailable',
@@ -255,12 +287,12 @@ export const createReleaseGateMonitoringProbe = (): MonitoringProbe => {
 const emptyState = (updatedAt: string): MonitoringStateV1 => ({
   version: MONITORING_STATE_VERSION,
   updatedAt,
-  servers: {},
+  servers: Object.create(null) as Record<string, MonitoringServerState>,
 });
 
 const normalizeState = (value: MonitoringStateV1 | undefined, at: string): MonitoringStateV1 => {
   if (!value || value.version !== MONITORING_STATE_VERSION || !value.servers) return emptyState(at);
-  const servers: Record<string, MonitoringServerState> = {};
+  const servers = Object.create(null) as Record<string, MonitoringServerState>;
   for (const [serverId, server] of Object.entries(value.servers)) {
     if (!server || !server.summary || !Array.isArray(server.snapshots)) continue;
     const snapshots = server.snapshots.flatMap((snapshot) => {
@@ -302,17 +334,26 @@ const normalizeState = (value: MonitoringStateV1 | undefined, at: string): Monit
 
 const applyRetention = (
   state: MonitoringStateV1,
-  retention: MonitoringRetentionPolicy
+  retention: MonitoringRetentionPolicy,
+  protectedSnapshots: readonly MonitoringSnapshotV1[]
 ): void => {
+  const snapshotKey = (snapshot: MonitoringSnapshotV1): string => JSON.stringify([
+    snapshot.serverId,
+    snapshot.id,
+  ]);
+  const protectedKeys = new Set(protectedSnapshots.map(snapshotKey));
   for (const server of Object.values(state.servers)) {
     server.snapshots.sort((left, right) => Date.parse(right.checkedAt) - Date.parse(left.checkedAt));
-    server.snapshots.splice(retention.perServer);
+    server.snapshots = server.snapshots.filter((snapshot, index) => (
+      index < retention.perServer || protectedKeys.has(snapshotKey(snapshot))
+    ));
   }
   const all = Object.values(state.servers).flatMap((server) => server.snapshots)
     .sort((left, right) => Date.parse(right.checkedAt) - Date.parse(left.checkedAt));
-  const retainedIds = new Set(all.slice(0, retention.total).map((snapshot) => snapshot.id));
+  const retainedKeys = new Set(all.slice(0, retention.total).map(snapshotKey));
+  for (const key of protectedKeys) retainedKeys.add(key);
   for (const server of Object.values(state.servers)) {
-    server.snapshots = server.snapshots.filter((snapshot) => retainedIds.has(snapshot.id));
+    server.snapshots = server.snapshots.filter((snapshot) => retainedKeys.has(snapshotKey(snapshot)));
   }
 };
 
@@ -355,13 +396,15 @@ const alertSeverity = (
 const buildAlert = (
   target: MonitoringTarget,
   snapshot: MonitoringSnapshotV1,
-  previous: MonitoringSnapshotV1 | undefined,
+  previousStatus: MonitoringSnapshotV1 | undefined,
+  previousReport: MonitoringSnapshotV1 | undefined,
   changes: readonly ReportDiffChange[],
   createId: (prefix: string, at: string) => string
 ): MonitoringAlertV1 | undefined => {
-  const firstProblem = !previous && snapshot.status !== 'healthy';
-  const statusChanged = Boolean(previous && previous.status !== snapshot.status);
+  const firstProblem = !previousStatus && snapshot.status !== 'healthy';
+  const statusChanged = Boolean(previousStatus && previousStatus.status !== snapshot.status);
   if (!firstProblem && !statusChanged && changes.length === 0) return undefined;
+  const before = changes.length > 0 ? previousReport : previousStatus;
 
   const kinds = new Set<MonitoringAlertKind>();
   const evidence: MonitoringAlertEvidence[] = [];
@@ -371,8 +414,8 @@ const buildAlert = (
     evidence.push({
       category: 'status',
       path: 'status',
-      message: previous
-        ? `Status changed from ${previous.status} to ${snapshot.status}.`
+      message: previousStatus
+        ? `Status changed from ${previousStatus.status} to ${snapshot.status}.`
         : `Initial scheduled status is ${snapshot.status}.`,
     });
   }
@@ -400,11 +443,11 @@ const buildAlert = (
     title,
     summary: `${safeEvidence.length} monitored change${safeEvidence.length === 1 ? '' : 's'} detected for ${snapshot.endpoint}.`,
     evidence: safeEvidence,
-    ...(previous ? {
+    ...(before ? {
       before: {
-        snapshotId: previous.id,
-        generatedAt: previous.checkedAt,
-        url: previous.reportUrl,
+        snapshotId: before.id,
+        generatedAt: before.checkedAt,
+        url: before.reportUrl,
       },
     } : {}),
     after: {
@@ -672,20 +715,31 @@ export class MonitoringRunner {
         checkedAt,
         status: outcome.observation.status,
         attempts: outcome.observation.attempts,
-        reportUrl: reportLink(target, snapshotId),
+        reportUrl: reportLink(target, snapshotId, this.options.store),
         ...(outcome.observation.report ? { report: outcome.observation.report } : {}),
         ...(outcome.observation.failure ? { failure: outcome.observation.failure } : {}),
       };
-      const server = state.servers[target.id] || {
-        summary: { serverId: target.id, endpoint: snapshot.endpoint },
-        snapshots: [],
-      };
-      const previous = server.snapshots[0];
-      const changes = previous?.report?.outcome.status === 'scored'
-        && snapshot.report?.outcome.status === 'scored'
-        ? monitoredDiffChanges(previous.report, snapshot.report)
+      const server = Object.prototype.hasOwnProperty.call(state.servers, target.id)
+        ? state.servers[target.id]
+        : {
+          summary: { serverId: target.id, endpoint: snapshot.endpoint },
+          snapshots: [],
+        };
+      const previousStatus = server.snapshots[0];
+      const previousReport = server.snapshots.find((candidate) => (
+        candidate.report?.outcome.status === 'scored'
+      ));
+      const changes = previousReport?.report && snapshot.report?.outcome.status === 'scored'
+        ? monitoredDiffChanges(previousReport.report, snapshot.report)
         : [];
-      const alert = buildAlert(target, snapshot, previous, changes, this.createId);
+      const alert = buildAlert(
+        target,
+        snapshot,
+        previousStatus,
+        previousReport,
+        changes,
+        this.createId
+      );
       if (alert) alerts.push(alert);
 
       server.snapshots.unshift(snapshot);
@@ -712,7 +766,26 @@ export class MonitoringRunner {
     }
 
     state.updatedAt = nowIso(this.now);
-    applyRetention(state, this.retention);
+    const protectedSnapshots = Object.values(state.servers).flatMap((server) => {
+      const current = server.snapshots[0];
+      const lastScored = server.snapshots.find((snapshot) => (
+        snapshot.report?.outcome.status === 'scored'
+      ));
+      return [current, lastScored].filter(
+        (snapshot): snapshot is MonitoringSnapshotV1 => Boolean(snapshot)
+      );
+    });
+    protectedSnapshots.push(...targets.flatMap((target) => {
+      if (!target.snapshot) return [];
+      const referencedIds = new Set(target.alerts.flatMap((alert) => (
+        [alert.before?.snapshotId, alert.after.snapshotId].filter((id): id is string => Boolean(id))
+      )));
+      const server = state.servers[target.serverId];
+      return server.snapshots.filter((snapshot) => (
+        snapshot.id === target.snapshot!.id || referencedIds.has(snapshot.id)
+      ));
+    }));
+    applyRetention(state, this.retention, protectedSnapshots);
     for (const target of targets) {
       if (target.snapshot) await this.options.store.saveSnapshot?.(target.snapshot);
     }

@@ -127,6 +127,8 @@ export type MonitoringProbe = (
 export interface MonitoringStore {
   load(): Promise<MonitoringStateV1 | undefined>;
   save(state: MonitoringStateV1): Promise<void>;
+  /** Returns the link/path at which this store persists a snapshot artifact. */
+  snapshotReportUrl?(serverId: string, snapshotId: string): string;
   /** Optional hook for stores that also expose each report as a separately linkable artifact. */
   saveSnapshot?(snapshot: MonitoringSnapshotV1): Promise<void>;
   /** Removes separately stored artifacts that are no longer present in bounded state. */

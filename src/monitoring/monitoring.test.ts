@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   MemoryMonitoringStore,
   MonitoringRunner,
   MonitoringScheduler,
   classifyMonitoringReport,
 } from './monitoring';
+import { FileMonitoringStore, monitoringArtifactPathPart } from './fileStore';
 import { createWebhookNotificationAdapter } from './notifications';
 import type { PublicReport } from '../utils/reportArtifact';
 
@@ -146,6 +150,29 @@ describe('monitoring classification', () => {
       status: 'proxy-failure', failure: { provenance: 'proxy', httpStatus: 502 },
     });
   });
+
+  it('uses the completed outcome and decisive failed route instead of incidental HTTP evidence', () => {
+    const completed = report();
+    completed.sections[0].evidence.push({
+      message: 'An earlier optional request was rate limited.',
+      metadata: { status: 429, responseHeaders: { 'Retry-After': '60' } },
+    });
+    expect(classifyMonitoringReport(completed)).toEqual({ status: 'healthy' });
+
+    const proxyFailure = report({
+      outcome: 'failed', route: 'authenticated-proxy', responseSource: 'proxy', status: 502,
+    });
+    proxyFailure.sections[0].evidence[0].metadata = {
+      route: 'authenticated proxy',
+      routeFailures: [
+        { route: 'direct', status: 429, responseSource: 'target', retryAfter: '60' },
+        { route: 'authenticated proxy', status: 502, responseSource: 'proxy' },
+      ],
+    };
+    expect(classifyMonitoringReport(proxyFailure)).toMatchObject({
+      status: 'proxy-failure', failure: { provenance: 'proxy', httpStatus: 502 },
+    });
+  });
 });
 
 describe('MonitoringRunner', () => {
@@ -268,6 +295,93 @@ describe('MonitoringRunner', () => {
     });
   });
 
+  it('compares a recovered report with the last scored report across an outage', async () => {
+    const store = new MemoryMonitoringStore();
+    let current: { report?: PublicReport; failure?: { message: string; provenance: 'target' } } = {
+      report: report({ at: '2026-08-13T03:00:00.000Z' }),
+    };
+    let sequence = 0;
+    const runner = new MonitoringRunner({
+      targets: [{ id: 'api', endpoint: 'https://api.example/mcp' }],
+      store,
+      retry: { maxAttempts: 1 },
+      retention: { perServer: 1, total: 1 },
+      probe: async () => current,
+    }, { createId: (prefix) => `${prefix}-${++sequence}` });
+
+    await runner.runOnce();
+    current = { failure: { message: 'offline', provenance: 'target' } };
+    await runner.runOnce();
+    await runner.runOnce();
+    current = {
+      report: report({
+        at: '2026-08-13T03:10:00.000Z', transport: 'sse', protocol: 'legacy',
+      }),
+    };
+    const recovered = await runner.runOnce();
+    const alert = recovered.targets[0].alerts[0];
+
+    expect(alert.kinds).toEqual(expect.arrayContaining([
+      'recovery', 'transport-drift', 'protocol-drift',
+    ]));
+    expect(alert.before?.snapshotId).toBe('monitor-1');
+    expect(alert.evidence).toContainEqual(expect.objectContaining({
+      message: 'Status changed from unavailable to healthy.',
+    }));
+  });
+
+  it('retains current and newly alerted artifacts until notifications are delivered', async () => {
+    const store = new MemoryMonitoringStore();
+    let current = report({ at: '2026-08-13T03:00:00.000Z' });
+    let sequence = 0;
+    const observedArtifacts: boolean[] = [];
+    const runner = new MonitoringRunner({
+      targets: [{ id: 'api', endpoint: 'https://api.example/mcp' }],
+      store,
+      retry: { maxAttempts: 1 },
+      retention: { perServer: 1, total: 1 },
+      probe: async () => ({ report: current }),
+      notifications: [{
+        name: 'artifact-check',
+        send: async (alert) => {
+          observedArtifacts.push(Boolean(
+            alert.before
+            && store.reports.has(alert.before.snapshotId)
+            && store.reports.has(alert.after.snapshotId)
+          ));
+        },
+      }],
+    }, { createId: (prefix) => `${prefix}-${++sequence}` });
+
+    await runner.runOnce();
+    current = report({ at: '2026-08-13T03:05:00.000Z', transport: 'sse' });
+    const changed = await runner.runOnce();
+    const state = await store.load();
+
+    expect(changed.targets[0].alerts).toHaveLength(1);
+    expect(observedArtifacts).toEqual([true]);
+    expect(state?.servers.api.snapshots).toHaveLength(2);
+    expect(store.reports.size).toBe(2);
+  });
+
+  it('keeps every server current when total retention is below the target count', async () => {
+    const store = new MemoryMonitoringStore();
+    let sequence = 0;
+    const runner = new MonitoringRunner({
+      targets: ['one', 'two'].map((id) => ({ id, endpoint: `https://${id}.example/mcp` })),
+      store,
+      retry: { maxAttempts: 1 },
+      retention: { perServer: 1, total: 1 },
+      probe: async (target) => ({ report: report({ endpoint: target.endpoint }) }),
+    }, { createId: (prefix) => `${prefix}-${++sequence}` });
+
+    await runner.runOnce();
+    const state = await store.load();
+    expect(state?.servers.one.snapshots).toHaveLength(1);
+    expect(state?.servers.two.snapshots).toHaveLength(1);
+    expect(store.reports.size).toBe(2);
+  });
+
   it('never includes credentials in persisted errors or webhook payloads', async () => {
     const credential = 'elm-cobalt-73-secret';
     const bodies: string[] = [];
@@ -294,6 +408,57 @@ describe('MonitoringRunner', () => {
     expect(JSON.stringify(result)).not.toContain(credential);
     expect(JSON.stringify(await store.load())).not.toContain(credential);
     expect(bodies.join('')).not.toContain(credential);
+  });
+});
+
+describe('FileMonitoringStore', () => {
+  it('confines dot segments and safely persists inherited-property server ids', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mcptest-monitor-keys-'));
+    try {
+      const reportDirectory = join(directory, 'artifacts');
+      const store = new FileMonitoringStore({
+        stateFile: join(directory, 'state.json'),
+        reportDirectory,
+      });
+      let sequence = 0;
+      const ids = ['.', '..', '__proto__', 'constructor'];
+      const runner = new MonitoringRunner({
+        targets: ids.map((id, index) => ({
+          id,
+          endpoint: `https://server-${index}.example/mcp`,
+        })),
+        store,
+        retry: { maxAttempts: 1 },
+        probe: async (target) => ({ report: report({ endpoint: target.endpoint }) }),
+      }, { createId: (prefix) => `${prefix}-${++sequence}` });
+
+      const result = await runner.runOnce();
+      const persisted = JSON.parse(await readFile(store.stateFile, 'utf8')) as {
+        servers: Record<string, unknown>;
+      };
+
+      for (const id of ids) {
+        expect(Object.prototype.hasOwnProperty.call(persisted.servers, id)).toBe(true);
+      }
+      expect((await readdir(reportDirectory)).sort()).toEqual(
+        ids.map(monitoringArtifactPathPart).sort()
+      );
+      for (const target of result.targets) {
+        const url = target.snapshot?.reportUrl;
+        expect(url).toMatch(/^file:/);
+        expect(JSON.parse(await readFile(new URL(url!), 'utf8'))).toMatchObject({
+          serverId: target.serverId,
+          id: target.snapshot?.id,
+        });
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('derives default links from a custom relative report directory', () => {
+    const store = new FileMonitoringStore({ reportDirectory: 'artifacts' });
+    expect(store.snapshotReportUrl('api', 'monitor-1')).toBe('artifacts/api/monitor-1.json');
   });
 });
 
