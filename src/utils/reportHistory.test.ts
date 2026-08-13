@@ -11,6 +11,7 @@ import {
   serializeReportSnapshotHistory,
   snapshotsForEndpoint,
   storeReportSnapshot,
+  type ReportSnapshotV1,
 } from './reportHistory';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
 
@@ -184,6 +185,45 @@ describe('report snapshot history', () => {
     expect(storage.getItem(REPORT_HISTORY_STORAGE_KEY)).not.toContain(credential);
     expect(serializeReportSnapshotHistory([snapshot])).not.toContain(credential);
     expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+  });
+
+  it('drops opaque low-entropy credentials in unrecognized schema extensions from storage and exports', () => {
+    const makeSnapshot = (credential: number) => {
+      const unsafeReport = report();
+      unsafeReport.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: { type: 'object' },
+      }]);
+      const unsafeSnapshot = createReportSnapshot(
+        unsafeReport,
+        undefined,
+        '2026-08-11T20:00:00.000Z'
+      );
+      const inputSchema = unsafeSnapshot.report.toolSurfaceAnalysis
+        ?.toolDefinitions?.tools[0].inputSchema as Record<string, unknown>;
+      inputSchema['x-validation-value'] = credential;
+      return unsafeSnapshot;
+    };
+    const snapshot = makeSnapshot(1234);
+    const alternate = makeSnapshot(5678);
+    const storage = new MemoryStorage();
+
+    const storedSnapshots = storeReportSnapshot(snapshot, storage);
+    const alternateStoredSnapshots = storeReportSnapshot(alternate, new MemoryStorage());
+
+    const stored = storage.getItem(REPORT_HISTORY_STORAGE_KEY) || '';
+    const exported = serializeReportSnapshotHistory([snapshot]);
+    const exportedSnapshots = (JSON.parse(exported) as { snapshots: ReportSnapshotV1[] }).snapshots;
+    expect(stored).not.toContain('1234');
+    expect(stored).not.toContain('x-validation-value');
+    expect(exported).not.toContain('1234');
+    expect(exported).not.toContain('x-validation-value');
+    expect(storedSnapshots[0].report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(storedSnapshots[0].report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toEqual({ type: 'object' });
+    expect(exportedSnapshots[0].report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(storedSnapshots[0].report.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternateStoredSnapshots[0].report.toolSurfaceAnalysis?.fingerprint);
   });
 
   it('retains multiple snapshots per endpoint within documented bounds', () => {

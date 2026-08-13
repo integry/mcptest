@@ -828,7 +828,7 @@ describe('versioned public report artifacts', () => {
       default: '[REDACTED]',
       enum: '[REDACTED]',
       examples: '[REDACTED]',
-      title: 'Authentication PIN',
+      title: '[REDACTED]',
       type: 'integer',
     });
     expect(JSON.stringify(schema)).not.toContain('1234');
@@ -869,7 +869,7 @@ describe('versioned public report artifacts', () => {
       maximum: '[REDACTED]',
       minimum: '[REDACTED]',
       pattern: '[REDACTED]',
-      title: 'Authentication PIN',
+      title: '[REDACTED]',
       type: 'integer',
     });
     expect(output).not.toContain('4813');
@@ -1225,7 +1225,7 @@ describe('versioned public report artifacts', () => {
     expect(definitions?.status).toBe('partial');
     expect(schema.properties.access_token).toBe('[REDACTED]');
     expect(schema.properties.tenant).toEqual({
-      type: 'string', description: 'Public tenant name.',
+      type: 'string', description: '[REDACTED]',
     });
     expect(output).not.toContain(descriptionCredential);
     expect(output).not.toContain(extensionCredential);

@@ -919,24 +919,168 @@ const isToolInputSchemaPropertyDeclaration = (
     && path.includes('inputSchema');
 };
 
-const TOOL_INPUT_SCHEMA_VALUE_CONSTRAINT_KEYS = new Set([
+// Stored schemas use a closed keyword vocabulary. Arbitrary keywords are omitted,
+// and keywords whose values may contain free-form data are retained only as a
+// redaction marker. Property and definition names remain as structural map keys.
+const TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS = new Set([
+  '$anchor',
+  '$comment',
+  '$dynamicAnchor',
+  '$dynamicRef',
+  '$id',
+  '$recursiveRef',
+  '$ref',
+  '$schema',
+  '$vocabulary',
   'const',
+  'contentEncoding',
+  'contentMediaType',
   'default',
+  'description',
   'enum',
   'examples',
   'exclusiveMaximum',
   'exclusiveMinimum',
+  'format',
   'maximum',
   'minimum',
   'multipleOf',
   'pattern',
+  'title',
 ]);
 
-const isToolInputSchemaValueConstraint = (
+const TOOL_INPUT_SCHEMA_MAP_KEYS = new Set([
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+  'patternProperties',
+  'properties',
+]);
+
+const TOOL_INPUT_SCHEMA_SINGLE_SCHEMA_KEYS = new Set([
+  'additionalItems',
+  'additionalProperties',
+  'contains',
+  'contentSchema',
+  'else',
+  'if',
+  'items',
+  'not',
+  'propertyNames',
+  'then',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+]);
+
+const TOOL_INPUT_SCHEMA_ARRAY_SCHEMA_KEYS = new Set([
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'prefixItems',
+]);
+
+const TOOL_INPUT_SCHEMA_NUMBER_KEYS = new Set([
+  'maxContains',
+  'maxItems',
+  'maxLength',
+  'maxProperties',
+  'minContains',
+  'minItems',
+  'minLength',
+  'minProperties',
+]);
+
+const TOOL_INPUT_SCHEMA_BOOLEAN_KEYS = new Set([
+  '$recursiveAnchor',
+  'deprecated',
+  'readOnly',
+  'uniqueItems',
+  'writeOnly',
+]);
+
+const sanitizeStoredInputSchema = (value: unknown): unknown => {
+  if (typeof value === 'boolean') return value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return REDACTED_VALUE;
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [keyword, keywordValue] of Object.entries(value)) {
+    if (TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS.has(keyword)) {
+      sanitized[keyword] = REDACTED_VALUE;
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_MAP_KEYS.has(keyword)) {
+      if (!keywordValue || typeof keywordValue !== 'object' || Array.isArray(keywordValue)) {
+        sanitized[keyword] = keywordValue;
+        continue;
+      }
+      sanitized[keyword] = Object.fromEntries(Object.entries(keywordValue).map(
+        ([name, childSchema]) => [name, sanitizeStoredInputSchema(childSchema)]
+      ));
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_SINGLE_SCHEMA_KEYS.has(keyword)) {
+      sanitized[keyword] = keywordValue
+        && typeof keywordValue === 'object'
+        && !Array.isArray(keywordValue)
+        ? sanitizeStoredInputSchema(keywordValue)
+        : keywordValue;
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_ARRAY_SCHEMA_KEYS.has(keyword)) {
+      sanitized[keyword] = Array.isArray(keywordValue)
+        ? keywordValue.map((childSchema) => (
+          childSchema && typeof childSchema === 'object' && !Array.isArray(childSchema)
+            ? sanitizeStoredInputSchema(childSchema)
+            : childSchema
+        ))
+        : keywordValue;
+      continue;
+    }
+    if (keyword === 'required') {
+      sanitized[keyword] = keywordValue;
+      continue;
+    }
+    if (keyword === 'dependentRequired') {
+      sanitized[keyword] = keywordValue;
+      continue;
+    }
+    if (keyword === 'dependencies') {
+      if (!keywordValue || typeof keywordValue !== 'object' || Array.isArray(keywordValue)) {
+        sanitized[keyword] = keywordValue;
+        continue;
+      }
+      sanitized[keyword] = Object.fromEntries(Object.entries(keywordValue).map(
+        ([name, dependency]) => [
+          name,
+          Array.isArray(dependency) && dependency.every((item) => typeof item === 'string')
+            ? dependency
+            : dependency && typeof dependency === 'object' && !Array.isArray(dependency)
+              ? sanitizeStoredInputSchema(dependency)
+              : dependency,
+        ]
+      ));
+      continue;
+    }
+    if (keyword === 'type') {
+      sanitized[keyword] = keywordValue;
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_NUMBER_KEYS.has(keyword)) {
+      sanitized[keyword] = keywordValue;
+      continue;
+    }
+    if (TOOL_INPUT_SCHEMA_BOOLEAN_KEYS.has(keyword)) {
+      sanitized[keyword] = keywordValue;
+    }
+  }
+  return sanitized;
+};
+
+const isToolInputSchemaRedactedValue = (
   key: string,
   path: readonly string[]
 ): boolean => (
-  TOOL_INPUT_SCHEMA_VALUE_CONSTRAINT_KEYS.has(key)
+  TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS.has(key)
   && path.includes('toolDefinitions')
   && path.includes('inputSchema')
 );
@@ -1400,9 +1544,10 @@ const redactReportValueAtPath = (
   value: unknown,
   key: string | undefined,
   path: readonly string[],
-  schemaReferencesRedacted = false
+  schemaReferencesRedacted = false,
+  inputSchemaSanitized = false
 ): unknown => {
-  if (key && isToolInputSchemaValueConstraint(key, path)) return REDACTED_VALUE;
+  if (key && isToolInputSchemaRedactedValue(key, path)) return REDACTED_VALUE;
   if (key
       && isSensitiveQueryKey(key)
       && isToolInputSchemaPropertyDeclaration(key, path)) {
@@ -1425,6 +1570,23 @@ const redactReportValueAtPath = (
       return redactReportValueAtPath(redactedReferences, key, path, true);
     }
   }
+  if (
+    key === 'inputSchema'
+    && path.includes('toolDefinitions')
+    && !inputSchemaSanitized
+  ) {
+    const sanitizedSchema = sanitizeStoredInputSchema(value);
+    if (!sameReportValue(sanitizedSchema, value)) {
+      return redactReportValueAtPath(
+        sanitizedSchema,
+        key,
+        path,
+        schemaReferencesRedacted,
+        true
+      );
+    }
+    inputSchemaSanitized = true;
+  }
   if (value === undefined) return undefined;
   if (typeof value === 'string') return redactReportString(value);
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
@@ -1432,7 +1594,7 @@ const redactReportValueAtPath = (
     return value.map((item, index) => redactReportValueAtPath(item, undefined, [
       ...path,
       String(index),
-    ], schemaReferencesRedacted));
+    ], schemaReferencesRedacted, inputSchemaSanitized));
   }
   if (value && typeof value === 'object') {
     const redactedKeys = new Set<string>();
@@ -1453,7 +1615,8 @@ const redactReportValueAtPath = (
             childValue,
             childKey,
             [...path, childKey],
-            schemaReferencesRedacted
+            schemaReferencesRedacted,
+            inputSchemaSanitized
           ),
         ];
       }));
