@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   validate:
-    name: TypeScript and Wrangler dry run
+    name: Tests, TypeScript, and Wrangler dry run
     runs-on: ubuntu-latest
     defaults:
       run:

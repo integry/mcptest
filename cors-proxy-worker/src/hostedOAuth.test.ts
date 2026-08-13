@@ -17,7 +17,7 @@ const deployedProxyUrl = 'https://cors-proxy-worker.livecart.workers.dev/';
 
 describe('hosted OAuth deployment configuration', () => {
   it('keeps the configured callback on the deployed proxy origin', () => {
-    const wranglerConfig = readFileSync(resolve('cors-proxy-worker/wrangler.toml'), 'utf8');
+    const wranglerConfig = readFileSync(resolve(import.meta.dirname, '../wrangler.toml'), 'utf8');
     const configuredCallback = wranglerConfig.match(
       /^HOSTED_OAUTH_CALLBACK_URL\s*=\s*"([^"]+)"$/m
     )?.[1];
