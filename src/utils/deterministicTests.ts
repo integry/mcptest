@@ -904,6 +904,13 @@ export const evaluateAssertions = (
   response: unknown,
   assertions: readonly DeterministicAssertion[]
 ): AssertionEvidence[] => assertions.map(assertion => {
+  if (pathSegments(assertion.path) === undefined) {
+    return {
+      assertion: redactAssertion(assertion),
+      passed: false,
+      message: `${assertion.path} is not a valid structural assertion path.`,
+    };
+  }
   const actual = getPath(response, assertion.path);
   let passed = false;
   if (assertion.operator === 'exists') passed = actual.found;
@@ -943,6 +950,7 @@ export const runDeterministicCase = async (
   testCase: DeterministicTestCaseV1,
   externalSignal?: AbortSignal
 ): Promise<DeterministicCaseResult> => {
+  validateDeterministicAssertions(testCase.assertions, testCase.id);
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
   const controller = new AbortController();
@@ -988,7 +996,7 @@ export const runDeterministicCase = async (
     durationMs: Date.now() - started,
     request: redactTestData(request),
     ...(response !== undefined ? { response: redactTestData(response) } : {}),
-    ...(error ? { error: { ...error, message: String(redactTestData(error.message)) } } : {}),
+    ...(error ? { error: redactTestData(error) as NormalizedTestError } : {}),
     assertions: assertionEvidence,
     redactedReproducibleCase: redactReproducibleCase(testCase),
     reproducibleCase: structuredClone(testCase),
@@ -1070,6 +1078,9 @@ export function validateDeterministicAssertions(
     if (!isRecord(assertion) || typeof assertion.path !== 'string'
       || !['exists', 'not-exists', 'type', 'equals', 'length', 'min-length', 'max-length'].includes(String(assertion.operator))) {
       throw new Error(`Case ${caseId} contains a malformed structural assertion.`);
+    }
+    if (pathSegments(assertion.path) === undefined) {
+      throw new Error(`Case ${caseId} contains an invalid structural assertion path.`);
     }
     if (assertion.operator === 'type' && !['array', 'object', 'string', 'number', 'boolean', 'null'].includes(String(assertion.value))) {
       throw new Error(`Case ${caseId} contains an invalid type assertion.`);

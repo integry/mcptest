@@ -365,6 +365,23 @@ describe('deterministic test plans', () => {
     plan.tools[0].cases[0].assertions = [{ path: '$.content', operator: 'subjective' } as any];
     expect(() => serializeDeterministicTestPlan(plan)).toThrow(/malformed structural assertion/);
   });
+
+  it('rejects invalid assertion paths before import, export, or execution', async () => {
+    const plan = generateDeterministicTestPlan(
+      [{ name: 'lookup', annotations: { readOnlyHint: true } }],
+      'https://example.test',
+      '2026-08-11T00:00:00.000Z',
+    );
+    const invalidAssertion = { path: '$.content[', operator: 'not-exists' } as const;
+    plan.tools[0].cases[0].assertions = [invalidAssertion];
+    const callTool = vi.fn().mockResolvedValue({ content: [] });
+
+    expect(evaluateAssertions({}, [invalidAssertion])).toMatchObject([{ passed: false }]);
+    expect(() => parseDeterministicTestPlan(JSON.stringify(plan))).toThrow(/invalid structural assertion path/);
+    expect(() => serializeDeterministicTestPlan(plan)).toThrow(/invalid structural assertion path/);
+    await expect(runDeterministicPlan({ callTool }, plan)).rejects.toThrow(/invalid structural assertion path/);
+    expect(callTool).not.toHaveBeenCalled();
+  });
 });
 
 describe('deterministic runner safety and evidence', () => {
@@ -585,6 +602,29 @@ describe('deterministic runner safety and evidence', () => {
       authorization: '[REDACTED]',
       nested: { github_token: '[REDACTED]', clientSecret: '[REDACTED]', url: 'https://x.test/?token=[REDACTED]&keep=yes' },
       query: 'normal',
+    });
+  });
+
+  it('redacts credential-bearing error codes and identifiers', async () => {
+    const result = await runDeterministicCase(
+      {
+        callTool: vi.fn().mockRejectedValue({
+          code: 'access_token=code-secret',
+          message: 'Lookup failed for token=message-secret',
+          data: {
+            resource_id: 'https://example.test/resource?api_key=identifier-secret&keep=visible',
+          },
+        }),
+      },
+      fixtureCase({ assertions: [] }),
+    );
+
+    expect(result.error).toMatchObject({
+      code: 'access_token=[REDACTED]',
+      message: 'Lookup failed for token=[REDACTED]',
+      identifiers: {
+        resource_id: 'https://example.test/resource?api_key=[REDACTED]&keep=visible',
+      },
     });
   });
 
