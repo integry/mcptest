@@ -151,6 +151,41 @@ describe('report snapshot history', () => {
       .toBe('[REDACTED]');
   });
 
+  it.each([
+    ['exact numeric bounds', { type: 'integer', minimum: 1234, maximum: 1234 }, '1234'],
+    ['a regex pattern', { type: 'string', pattern: '^0000$' }, '0000'],
+  ] as const)('does not store low-entropy credentials encoded by %s', (
+    _constraint,
+    credentialSchema,
+    credential
+  ) => {
+    const unsafeReport = report();
+    unsafeReport.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          value: {
+            title: 'Authentication PIN',
+            ...credentialSchema,
+          },
+        },
+      },
+    }]);
+    const storage = new MemoryStorage();
+    const snapshot = createReportSnapshot(
+      unsafeReport,
+      undefined,
+      '2026-08-11T20:00:00.000Z'
+    );
+
+    storeReportSnapshot(snapshot, storage);
+
+    expect(storage.getItem(REPORT_HISTORY_STORAGE_KEY)).not.toContain(credential);
+    expect(serializeReportSnapshotHistory([snapshot])).not.toContain(credential);
+    expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+  });
+
   it('retains multiple snapshots per endpoint within documented bounds', () => {
     const storage = new MemoryStorage();
     const base = createReportSnapshot(report(), undefined, '2026-08-11T20:00:00.000Z');

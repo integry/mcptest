@@ -836,6 +836,47 @@ describe('versioned public report artifacts', () => {
       .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
   });
 
+  it('redacts exact numeric bounds and regex constraints that encode credentials', () => {
+    const makeArtifact = (credential: number) => {
+      const report = publicReport();
+      report.toolSurfaceAnalysis = analyzeToolSurface([{
+        name: 'authenticate',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            value: {
+              title: 'Authentication PIN',
+              type: 'integer',
+              minimum: credential,
+              maximum: credential,
+              pattern: `^${credential}$`,
+            },
+          },
+        },
+      }]);
+      return createPublicReport(report, FIXED_OPTIONS);
+    };
+    const artifact = makeArtifact(4813);
+    const alternate = makeArtifact(7592);
+    const definitions = artifact.toolSurfaceAnalysis?.toolDefinitions;
+    const schema = definitions?.tools[0].inputSchema as {
+      properties: { value: Record<string, unknown> };
+    };
+    const output = `${serializePublicReportJson(artifact)}${serializePublicReportMarkdown(artifact)}`;
+
+    expect(definitions?.status).toBe('partial');
+    expect(schema.properties.value).toEqual({
+      maximum: '[REDACTED]',
+      minimum: '[REDACTED]',
+      pattern: '[REDACTED]',
+      title: 'Authentication PIN',
+      type: 'integer',
+    });
+    expect(output).not.toContain('4813');
+    expect(artifact.toolSurfaceAnalysis?.fingerprint)
+      .toEqual(alternate.toolSurfaceAnalysis?.fingerprint);
+  });
+
   it('redacts definitions recursively referenced by sensitive schema properties', () => {
     const makeArtifact = (opaqueCredential: string) => {
       const report = publicReport();

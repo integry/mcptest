@@ -919,18 +919,24 @@ const isToolInputSchemaPropertyDeclaration = (
     && path.includes('inputSchema');
 };
 
-const TOOL_INPUT_SCHEMA_LITERAL_KEYS = new Set([
+const TOOL_INPUT_SCHEMA_VALUE_CONSTRAINT_KEYS = new Set([
   'const',
   'default',
   'enum',
   'examples',
+  'exclusiveMaximum',
+  'exclusiveMinimum',
+  'maximum',
+  'minimum',
+  'multipleOf',
+  'pattern',
 ]);
 
-const isToolInputSchemaLiteral = (
+const isToolInputSchemaValueConstraint = (
   key: string,
   path: readonly string[]
 ): boolean => (
-  TOOL_INPUT_SCHEMA_LITERAL_KEYS.has(key)
+  TOOL_INPUT_SCHEMA_VALUE_CONSTRAINT_KEYS.has(key)
   && path.includes('toolDefinitions')
   && path.includes('inputSchema')
 );
@@ -1396,7 +1402,7 @@ const redactReportValueAtPath = (
   path: readonly string[],
   schemaReferencesRedacted = false
 ): unknown => {
-  if (key && isToolInputSchemaLiteral(key, path)) return REDACTED_VALUE;
+  if (key && isToolInputSchemaValueConstraint(key, path)) return REDACTED_VALUE;
   if (key
       && isSensitiveQueryKey(key)
       && isToolInputSchemaPropertyDeclaration(key, path)) {
