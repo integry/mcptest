@@ -51,6 +51,59 @@ describe('deterministic test plans', () => {
     expect(first.tools[0].cases.find(item => item.kind === 'output-shape')?.assertions).toContainEqual({
       path: '$.structuredContent.items', operator: 'exists',
     });
+    expect(first.tools[0].cases.find(item => item.kind === 'output-shape')?.assertions).toContainEqual({
+      path: '$.structuredContent.items', operator: 'type', value: 'array',
+    });
+  });
+
+  it('fails an output-shape case when a required array property is returned as a string', async () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'list_items',
+      annotations: { readOnlyHint: true },
+      outputSchema: {
+        type: 'object',
+        properties: { items: { type: 'array' } },
+        required: ['items'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape')!;
+
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({ structuredContent: { items: 'wrong' }, content: [] }) },
+      outputShape,
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.assertions).toContainEqual(expect.objectContaining({
+      assertion: { path: '$.structuredContent.items', operator: 'type', value: 'array' },
+      passed: false,
+      actual: 'wrong',
+    }));
+  });
+
+  it('generates types for recursively required output object properties', () => {
+    const plan = generateDeterministicTestPlan([{
+      name: 'get_profile',
+      annotations: { readOnlyHint: true },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          profile: {
+            type: 'object',
+            properties: { active: { type: 'boolean' } },
+            required: ['active'],
+          },
+        },
+        required: ['profile'],
+      },
+    }], 'https://example.test', '2026-08-11T00:00:00.000Z');
+    const assertions = plan.tools[0].cases.find(item => item.kind === 'output-shape')?.assertions;
+
+    expect(assertions).toEqual(expect.arrayContaining([
+      { path: '$.structuredContent.profile', operator: 'type', value: 'object' },
+      { path: '$.structuredContent.profile.active', operator: 'exists' },
+      { path: '$.structuredContent.profile.active', operator: 'type', value: 'boolean' },
+    ]));
   });
 
   it('honors string length constraints in generated runnable fixtures', () => {
@@ -773,6 +826,36 @@ describe('deterministic runner safety and evidence', () => {
       token: '[REDACTED]',
       query: 'fixture',
     });
+  });
+
+  it('redacts expected and actual assertion secrets for sensitive dot and bracket paths', async () => {
+    const testCase = fixtureCase({
+      assertions: [
+        { path: '$.structuredContent.access_token', operator: 'equals', value: 'expected-dot-secret' },
+        { path: '$.structuredContent["client_secret"]', operator: 'equals', value: 'expected-bracket-secret' },
+      ],
+    });
+    const result = await runDeterministicCase(
+      { callTool: vi.fn().mockResolvedValue({
+        content: [],
+        structuredContent: {
+          access_token: 'expected-dot-secret',
+          client_secret: 'expected-bracket-secret',
+        },
+      }) },
+      testCase,
+    );
+
+    expect(result.status).toBe('passed');
+    expect(result.assertions).toEqual([
+      expect.objectContaining({ assertion: expect.objectContaining({ value: '[REDACTED]' }), actual: '[REDACTED]' }),
+      expect.objectContaining({ assertion: expect.objectContaining({ value: '[REDACTED]' }), actual: '[REDACTED]' }),
+    ]);
+    expect(result.redactedReproducibleCase.assertions).toEqual([
+      { path: '$.structuredContent.access_token', operator: 'equals', value: '[REDACTED]' },
+      { path: '$.structuredContent["client_secret"]', operator: 'equals', value: '[REDACTED]' },
+    ]);
+    expect(result.reproducibleCase.assertions).toEqual(testCase.assertions);
   });
 
   it('supports fixture cancellation using an abort signal', async () => {

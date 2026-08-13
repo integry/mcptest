@@ -457,22 +457,56 @@ const outputSchemaAssertions = (tool: DiscoveredTool): DeterministicAssertion[] 
     { path: '$.content', operator: 'type', value: 'array' },
     { path: '$.structuredContent', operator: 'exists' },
   ];
-  if (['object', 'array', 'string', 'number', 'boolean', 'null'].includes(String(schema.type))) {
+  const structuredContentType = schemaStructuralType(schema);
+  if (structuredContentType) {
     assertions.push({
       path: '$.structuredContent',
       operator: 'type',
-      value: schema.type as StructuralValueType,
+      value: structuredContentType,
     });
   }
-  if (schema.type === 'object' && Array.isArray(schema.required)) {
-    for (const key of schema.required.filter((value): value is string => typeof value === 'string')) {
-      const propertyPath = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)
-        ? `$.structuredContent.${key}`
-        : `$.structuredContent[${JSON.stringify(key)}]`;
-      assertions.push({ path: propertyPath, operator: 'exists' });
-    }
-  }
+  appendRequiredSchemaAssertions(schema, '$.structuredContent', assertions);
   return assertions;
+};
+
+const schemaStructuralType = (schema: RecordValue): StructuralValueType | undefined => {
+  if (schema.type === 'integer') return 'number';
+  return ['object', 'array', 'string', 'number', 'boolean', 'null'].includes(String(schema.type))
+    ? schema.type as StructuralValueType
+    : undefined;
+};
+
+const appendPathProperty = (path: string, property: string): string => (
+  /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(property)
+    ? `${path}.${property}`
+    : `${path}[${JSON.stringify(property)}]`
+);
+
+const appendRequiredSchemaAssertions = (
+  schema: RecordValue,
+  path: string,
+  assertions: DeterministicAssertion[],
+  ancestors = new WeakSet<object>(),
+): void => {
+  if (schema.type !== 'object' || !Array.isArray(schema.required) || ancestors.has(schema)) return;
+  ancestors.add(schema);
+  try {
+    const properties = isRecord(schema.properties) ? schema.properties : {};
+    const required = new Set(schema.required.filter((value): value is string => typeof value === 'string'));
+    for (const key of required) {
+      const propertyPath = appendPathProperty(path, key);
+      assertions.push({ path: propertyPath, operator: 'exists' });
+      const propertySchema = properties[key];
+      if (!isRecord(propertySchema)) continue;
+      const propertyType = schemaStructuralType(propertySchema);
+      if (propertyType) {
+        assertions.push({ path: propertyPath, operator: 'type', value: propertyType });
+      }
+      appendRequiredSchemaAssertions(propertySchema, propertyPath, assertions, ancestors);
+    }
+  } finally {
+    ancestors.delete(schema);
+  }
 };
 
 export const generateDeterministicTestPlan = (
@@ -546,7 +580,7 @@ export const redactTestData = (value: unknown, seen = new WeakSet<object>()): un
     if (Array.isArray(value)) return value.map(item => redactTestData(item, seen));
     return Object.fromEntries(Object.entries(value as RecordValue).map(([key, item]) => [
       key,
-      SENSITIVE_KEY.test(key.replace(/([a-z0-9])([A-Z])/g, '$1_$2')) ? '[REDACTED]' : redactTestData(item, seen),
+      isSensitiveKey(key) ? '[REDACTED]' : redactTestData(item, seen),
     ]));
   } finally {
     seen.delete(value);
@@ -689,20 +723,20 @@ const malformedResponseError = (response: unknown): NormalizedTestError | undefi
   return undefined;
 };
 
-const getPath = (root: unknown, path: string): { found: boolean; value?: unknown } => {
-  if (path === '$' || path === '') return { found: true, value: root };
-  if (!path.startsWith('$')) return { found: false };
+const pathSegments = (path: string): Array<string | number> | undefined => {
+  if (path === '$' || path === '') return [];
+  if (!path.startsWith('$')) return undefined;
   const segments: Array<string | number> = [];
   let offset = 1;
   while (offset < path.length) {
     if (path[offset] === '.') {
       const start = ++offset;
       while (offset < path.length && path[offset] !== '.' && path[offset] !== '[') offset += 1;
-      if (offset === start) return { found: false };
+      if (offset === start) return undefined;
       segments.push(path.slice(start, offset));
       continue;
     }
-    if (path[offset] !== '[') return { found: false };
+    if (path[offset] !== '[') return undefined;
     offset += 1;
     if (path[offset] === '"') {
       const start = offset;
@@ -715,25 +749,31 @@ const getPath = (root: unknown, path: string): { found: boolean; value?: unknown
         if (character !== '\\') escaped = false;
         offset += 1;
       }
-      if (offset >= path.length) return { found: false };
+      if (offset >= path.length) return undefined;
       let key: unknown;
       try {
         key = JSON.parse(path.slice(start, offset + 1));
       } catch {
-        return { found: false };
+        return undefined;
       }
-      if (typeof key !== 'string') return { found: false };
+      if (typeof key !== 'string') return undefined;
       segments.push(key);
       offset += 1;
     } else {
       const start = offset;
       while (offset < path.length && /\d/.test(path[offset])) offset += 1;
-      if (offset === start) return { found: false };
+      if (offset === start) return undefined;
       segments.push(Number(path.slice(start, offset)));
     }
-    if (path[offset] !== ']') return { found: false };
+    if (path[offset] !== ']') return undefined;
     offset += 1;
   }
+  return segments;
+};
+
+const getPath = (root: unknown, path: string): { found: boolean; value?: unknown } => {
+  const segments = pathSegments(path);
+  if (!segments) return { found: false };
 
   let current = root;
   for (const segment of segments) {
@@ -752,6 +792,26 @@ const getPath = (root: unknown, path: string): { found: boolean; value?: unknown
   }
   return { found: true, value: current };
 };
+
+const isSensitiveKey = (key: string): boolean => (
+  SENSITIVE_KEY.test(key.replace(/([a-z0-9])([A-Z])/g, '$1_$2'))
+);
+
+const isSensitiveAssertionPath = (path: string): boolean => (
+  pathSegments(path)?.some(segment => typeof segment === 'string' && isSensitiveKey(segment)) === true
+);
+
+const redactAssertion = (assertion: DeterministicAssertion): DeterministicAssertion => {
+  if (assertion.operator === 'equals' && isSensitiveAssertionPath(assertion.path)) {
+    return { ...assertion, value: '[REDACTED]' };
+  }
+  return redactTestData(assertion) as DeterministicAssertion;
+};
+
+const redactReproducibleCase = (testCase: DeterministicTestCaseV1): DeterministicTestCaseV1 => ({
+  ...redactTestData(testCase) as DeterministicTestCaseV1,
+  assertions: testCase.assertions.map(redactAssertion),
+});
 
 const valueType = (value: unknown): StructuralValueType => {
   if (value === null) return 'null';
@@ -793,9 +853,11 @@ export const evaluateAssertions = (
     if (assertion.operator === 'max-length') passed = length !== undefined && length <= assertion.value;
   }
   return {
-    assertion,
+    assertion: redactAssertion(assertion),
     passed,
-    ...(actual.found ? { actual: redactTestData(actual.value) } : {}),
+    ...(actual.found ? {
+      actual: isSensitiveAssertionPath(assertion.path) ? '[REDACTED]' : redactTestData(actual.value),
+    } : {}),
     message: passed
       ? `${assertion.path} satisfied ${assertion.operator}.`
       : `${assertion.path} did not satisfy ${assertion.operator}.`,
@@ -805,7 +867,7 @@ export const evaluateAssertions = (
 const unavailableAssertionEvidence = (
   assertions: readonly DeterministicAssertion[]
 ): AssertionEvidence[] => assertions.map(assertion => ({
-  assertion,
+  assertion: redactAssertion(assertion),
   passed: false,
   message: `${assertion.path} could not be evaluated because the tool did not return a response.`,
 }));
@@ -862,7 +924,7 @@ export const runDeterministicCase = async (
     ...(response !== undefined ? { response: redactTestData(response) } : {}),
     ...(error ? { error: { ...error, message: String(redactTestData(error.message)) } } : {}),
     assertions: assertionEvidence,
-    redactedReproducibleCase: redactTestData(testCase) as DeterministicTestCaseV1,
+    redactedReproducibleCase: redactReproducibleCase(testCase),
     reproducibleCase: structuredClone(testCase),
     startedAt,
   };
@@ -915,7 +977,7 @@ export const runDeterministicPlan = async (
             identifiers: {},
           },
           assertions: [],
-          redactedReproducibleCase: redactTestData(testCase) as DeterministicTestCaseV1,
+          redactedReproducibleCase: redactReproducibleCase(testCase),
           reproducibleCase: structuredClone(testCase),
           startedAt: new Date().toISOString(),
         };
