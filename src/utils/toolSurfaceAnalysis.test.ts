@@ -148,6 +148,11 @@ describe('analyzeToolSurface', () => {
     expect(malformed.metrics.toolListStatus).toBe('malformed');
     expect(finding(malformed, 'availability.malformed-tool-list')?.severity).toBe('high');
     expect(empty.fingerprint).toEqual(missing.fingerprint);
+    expect(empty.toolDefinitions.status).toBe('complete');
+    expect(missing.toolDefinitions.status).toBe('unavailable');
+    expect(resourcesOnly.toolDefinitions.status).toBe('unavailable');
+    expect(resourcesOnlyWithUndefinedTools.toolDefinitions.status).toBe('unavailable');
+    expect(malformed.toolDefinitions.status).toBe('unavailable');
   });
 
   it('reports a paginated tools/list result as incomplete', () => {
