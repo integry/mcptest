@@ -979,7 +979,7 @@ const TOOL_INPUT_SCHEMA_ARRAY_SCHEMA_KEYS = new Set([
   'prefixItems',
 ]);
 
-const TOOL_INPUT_SCHEMA_NUMBER_KEYS = new Set([
+const TOOL_INPUT_SCHEMA_NONNEGATIVE_INTEGER_KEYS = new Set([
   'maxContains',
   'maxItems',
   'maxLength',
@@ -998,9 +998,44 @@ const TOOL_INPUT_SCHEMA_BOOLEAN_KEYS = new Set([
   'writeOnly',
 ]);
 
+const TOOL_INPUT_SCHEMA_TYPES = new Set([
+  'array',
+  'boolean',
+  'integer',
+  'null',
+  'number',
+  'object',
+  'string',
+]);
+
+const isSchemaObject = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const sanitizeStoredSchemaValue = (value: unknown): unknown => (
+  typeof value === 'boolean' || isSchemaObject(value)
+    ? sanitizeStoredInputSchema(value)
+    : REDACTED_VALUE
+);
+
+const isUniqueStringArray = (value: unknown): value is string[] => (
+  Array.isArray(value)
+  && value.every((item) => typeof item === 'string')
+  && new Set(value).size === value.length
+);
+
+const isValidSchemaType = (value: unknown): boolean => (
+  typeof value === 'string'
+    ? TOOL_INPUT_SCHEMA_TYPES.has(value)
+    : Array.isArray(value)
+      && value.length > 0
+      && isUniqueStringArray(value)
+      && value.every((type) => TOOL_INPUT_SCHEMA_TYPES.has(type))
+);
+
 const sanitizeStoredInputSchema = (value: unknown): unknown => {
   if (typeof value === 'boolean') return value;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return REDACTED_VALUE;
+  if (!isSchemaObject(value)) return REDACTED_VALUE;
 
   const sanitized: Record<string, unknown> = {};
   for (const [keyword, keywordValue] of Object.entries(value)) {
@@ -1009,68 +1044,75 @@ const sanitizeStoredInputSchema = (value: unknown): unknown => {
       continue;
     }
     if (TOOL_INPUT_SCHEMA_MAP_KEYS.has(keyword)) {
-      if (!keywordValue || typeof keywordValue !== 'object' || Array.isArray(keywordValue)) {
-        sanitized[keyword] = keywordValue;
+      if (!isSchemaObject(keywordValue)) {
+        sanitized[keyword] = REDACTED_VALUE;
         continue;
       }
       sanitized[keyword] = Object.fromEntries(Object.entries(keywordValue).map(
-        ([name, childSchema]) => [name, sanitizeStoredInputSchema(childSchema)]
+        ([name, childSchema]) => [name, sanitizeStoredSchemaValue(childSchema)]
       ));
       continue;
     }
     if (TOOL_INPUT_SCHEMA_SINGLE_SCHEMA_KEYS.has(keyword)) {
-      sanitized[keyword] = keywordValue
-        && typeof keywordValue === 'object'
-        && !Array.isArray(keywordValue)
-        ? sanitizeStoredInputSchema(keywordValue)
-        : keywordValue;
+      sanitized[keyword] = sanitizeStoredSchemaValue(keywordValue);
       continue;
     }
     if (TOOL_INPUT_SCHEMA_ARRAY_SCHEMA_KEYS.has(keyword)) {
-      sanitized[keyword] = Array.isArray(keywordValue)
-        ? keywordValue.map((childSchema) => (
-          childSchema && typeof childSchema === 'object' && !Array.isArray(childSchema)
-            ? sanitizeStoredInputSchema(childSchema)
-            : childSchema
-        ))
-        : keywordValue;
+      sanitized[keyword] = Array.isArray(keywordValue) && keywordValue.length > 0
+        ? keywordValue.map(sanitizeStoredSchemaValue)
+        : REDACTED_VALUE;
       continue;
     }
     if (keyword === 'required') {
-      sanitized[keyword] = keywordValue;
+      sanitized[keyword] = isUniqueStringArray(keywordValue)
+        ? keywordValue
+        : REDACTED_VALUE;
       continue;
     }
     if (keyword === 'dependentRequired') {
-      sanitized[keyword] = keywordValue;
+      sanitized[keyword] = isSchemaObject(keywordValue)
+        ? Object.fromEntries(Object.entries(keywordValue).map(([name, dependency]) => [
+          name,
+          isUniqueStringArray(dependency) ? dependency : REDACTED_VALUE,
+        ]))
+        : REDACTED_VALUE;
       continue;
     }
     if (keyword === 'dependencies') {
-      if (!keywordValue || typeof keywordValue !== 'object' || Array.isArray(keywordValue)) {
-        sanitized[keyword] = keywordValue;
+      if (!isSchemaObject(keywordValue)) {
+        sanitized[keyword] = REDACTED_VALUE;
         continue;
       }
       sanitized[keyword] = Object.fromEntries(Object.entries(keywordValue).map(
         ([name, dependency]) => [
           name,
-          Array.isArray(dependency) && dependency.every((item) => typeof item === 'string')
+          isUniqueStringArray(dependency)
             ? dependency
-            : dependency && typeof dependency === 'object' && !Array.isArray(dependency)
+            : typeof dependency === 'boolean' || isSchemaObject(dependency)
               ? sanitizeStoredInputSchema(dependency)
-              : dependency,
+              : REDACTED_VALUE,
         ]
       ));
       continue;
     }
     if (keyword === 'type') {
-      sanitized[keyword] = keywordValue;
+      sanitized[keyword] = isValidSchemaType(keywordValue)
+        ? keywordValue
+        : REDACTED_VALUE;
       continue;
     }
-    if (TOOL_INPUT_SCHEMA_NUMBER_KEYS.has(keyword)) {
-      sanitized[keyword] = keywordValue;
+    if (TOOL_INPUT_SCHEMA_NONNEGATIVE_INTEGER_KEYS.has(keyword)) {
+      sanitized[keyword] = typeof keywordValue === 'number'
+        && Number.isInteger(keywordValue)
+        && keywordValue >= 0
+        ? keywordValue
+        : REDACTED_VALUE;
       continue;
     }
     if (TOOL_INPUT_SCHEMA_BOOLEAN_KEYS.has(keyword)) {
-      sanitized[keyword] = keywordValue;
+      sanitized[keyword] = typeof keywordValue === 'boolean'
+        ? keywordValue
+        : REDACTED_VALUE;
     }
   }
   return sanitized;

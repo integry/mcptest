@@ -285,10 +285,11 @@ describe('semantic report drift', () => {
     });
 
     expect(diffPublicReports(before, after).changes).toContainEqual(expect.objectContaining({
-      path: 'tools.search.inputSchema.properties.query.type',
+      path: 'toolSurfaceAnalysis.toolDefinitions',
       classification: 'unknown',
       breaking: false,
     }));
+    expect(after.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
   });
 
   it('does not infer property removals from a malformed properties declaration', () => {
@@ -305,7 +306,7 @@ describe('semantic report drift', () => {
     const changes = diffPublicReports(before, after).changes;
 
     expect(changes).toContainEqual(expect.objectContaining({
-      path: 'tools.search.inputSchema.properties', classification: 'unknown', breaking: false,
+      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
     }));
     expect(changes).not.toContainEqual(expect.objectContaining({
       path: expect.stringMatching(/inputSchema\.properties\.(query|limit)$/),
@@ -329,7 +330,7 @@ describe('semantic report drift', () => {
     const changes = diffPublicReports(before, after).changes;
 
     expect(changes).toContainEqual(expect.objectContaining({
-      path: 'tools.search.inputSchema.required', classification: 'unknown', breaking: false,
+      path: 'toolSurfaceAnalysis.toolDefinitions', classification: 'unknown', breaking: false,
     }));
     expect(changes).not.toContainEqual(expect.objectContaining({
       path: 'tools.search.inputSchema.required.query',
@@ -446,7 +447,7 @@ describe('semantic report drift', () => {
       tools: [tool(schema(afterValue))],
     });
     const changes = diffPublicReports(before, after).changes.filter(
-      ({ path }) => path === 'tools.search.inputSchema.additionalProperties'
+      ({ path }) => path === 'toolSurfaceAnalysis.toolDefinitions'
     );
 
     expect(changes).toEqual([expect.objectContaining({

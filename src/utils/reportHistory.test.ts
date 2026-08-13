@@ -226,6 +226,46 @@ describe('report snapshot history', () => {
       .toEqual(alternateStoredSnapshots[0].report.toolSurfaceAnalysis?.fingerprint);
   });
 
+  it.each([
+    ['type', (credential: string) => ({ type: credential })],
+    ['required', (credential: string) => ({ type: 'object', required: credential })],
+    ['dependentRequired', (credential: string) => ({
+      type: 'object', dependentRequired: { account: credential },
+    })],
+    ['dependencies', (credential: string) => ({
+      type: 'object', dependencies: { account: credential },
+    })],
+    ['numeric', (credential: string) => ({ type: 'array', minItems: credential })],
+    ['boolean', (credential: string) => ({ type: 'string', readOnly: credential })],
+  ])('redacts an opaque credential in a malformed %s keyword from storage and exports', (
+    keyword,
+    schema
+  ) => {
+    const credential = `opaque-${keyword}-credential-47`;
+    const unsafeReport = report();
+    unsafeReport.toolSurfaceAnalysis = analyzeToolSurface([{
+      name: 'authenticate',
+      inputSchema: schema(credential),
+    }]);
+    const storage = new MemoryStorage();
+    const snapshot = createReportSnapshot(
+      unsafeReport,
+      undefined,
+      '2026-08-11T20:00:00.000Z'
+    );
+
+    const storedSnapshots = storeReportSnapshot(snapshot, storage);
+    const stored = storage.getItem(REPORT_HISTORY_STORAGE_KEY) || '';
+    const exported = serializeReportSnapshotHistory([snapshot]);
+
+    expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(storedSnapshots[0].report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(JSON.stringify(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema))
+      .toContain('[REDACTED]');
+    expect(stored).not.toContain(credential);
+    expect(exported).not.toContain(credential);
+  });
+
   it('retains multiple snapshots per endpoint within documented bounds', () => {
     const storage = new MemoryStorage();
     const base = createReportSnapshot(report(), undefined, '2026-08-11T20:00:00.000Z');
