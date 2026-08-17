@@ -208,7 +208,7 @@ a:hover {
   min-width: 0;
 }
 
-.server-profile-logo {
+.catalog-server-logo.server-profile-logo {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -3399,14 +3399,38 @@ span.health-indicator.health-indicator-gray {
 }
 
 .suggested-server-logo,
-.catalog-server-logo {
+.catalog-server-card-logo {
+  display: grid;
+  place-items: center;
   width: 3rem;
   height: 3rem;
   padding: 0.3rem;
-  object-fit: contain;
   border: 1px solid var(--border-color);
   border-radius: 0.72rem;
   background: rgba(255, 255, 255, 0.94);
+}
+
+.suggested-server-logo img,
+.catalog-server-card-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.catalog-server-logo--fallback {
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
+  color: var(--primary-color);
+}
+
+.catalog-server-logo-initials {
+  font-size: 0.92rem;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.server-profile-logo .catalog-server-logo-initials {
+  font-size: 1.65rem;
 }
 
 .suggested-server-copy {
@@ -4349,9 +4373,13 @@ pre.bg-light code {
   color: #052e16 !important;
 }
 
-:root[data-theme='dark'] .catalog-server-logo,
+:root[data-theme='dark'] .catalog-server-card-logo,
 :root[data-theme='dark'] .suggested-server-logo {
   background: #f7fffc;
+}
+
+:root[data-theme='dark'] .catalog-server-logo--fallback {
+  background: color-mix(in srgb, var(--primary-color) 18%, var(--card-bg));
 }
 
 :root[data-theme='dark'] .catalog-metadata-badge {

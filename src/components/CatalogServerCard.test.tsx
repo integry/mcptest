@@ -24,6 +24,9 @@ const server: CatalogServer = {
   protocolEra: 'stateless',
   status: 'online',
   browserAccess: 'direct',
+  logoUrl: '/server-logos/example.svg',
+  logoSourceKind: 'generated-fallback',
+  logoRetrievedAt: '2026-08-17',
 };
 
 describe('CatalogServerCard presentation', () => {

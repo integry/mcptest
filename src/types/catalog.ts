@@ -53,6 +53,14 @@ export type CatalogSortOrder =
  */
 export type OAuthFilter = 'all' | 'oauth' | 'bearer-token' | 'api-key' | 'no-auth';
 
+/** Provenance category for a self-hosted catalog logo. */
+export type CatalogLogoSourceKind =
+  | 'official-brand'
+  | 'official-site'
+  | 'publisher-repository'
+  | 'simple-icons'
+  | 'generated-fallback';
+
 export interface CatalogRequiredHeader {
   /** HTTP header name expected by the remote server. */
   name: string;
@@ -97,8 +105,16 @@ export interface CatalogServerSeed {
   authType?: CatalogAuthType;
   /** Non-secret header requirements documented by the server publisher. */
   requiredHeaders?: CatalogRequiredHeader[];
-  /** Optional logo path or URL for catalog and suggested-server surfaces. */
-  logoUrl?: string;
+  /** Self-hosted logo path used by every catalog, profile, and SEO surface. */
+  logoUrl: string;
+  /** HTTPS page or asset from which the self-hosted logo was retrieved. */
+  logoSourceUrl?: string;
+  /** Publisher/source classification, or generated-fallback for a local monogram. */
+  logoSourceKind: CatalogLogoSourceKind;
+  /** ISO calendar date on which the source asset was retrieved or fallback generated. */
+  logoRetrievedAt: string;
+  /** Optional license, trademark, or usage context recorded during curation. */
+  logoLicenseNote?: string;
   /** Optional project, product, or documentation homepage. */
   homepageUrl?: string;
   /** Optional source repository or package URL for the server. */

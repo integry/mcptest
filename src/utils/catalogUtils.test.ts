@@ -26,6 +26,9 @@ const server = (
   authType,
   protocolEra: 'unknown',
   status: 'online',
+  logoUrl: `/server-logos/${id}.svg`,
+  logoSourceKind: 'generated-fallback',
+  logoRetrievedAt: '2026-08-17',
   ...overrides,
 });
 
@@ -63,6 +66,8 @@ describe('catalog authentication metadata', () => {
       declaredTransport: 'legacy-sse',
     });
     expect(catalog.every(({ listingSource }) => Boolean(listingSource?.kind))).toBe(true);
+    expect(catalog.every(({ logoUrl }) => logoUrl.startsWith('/server-logos/'))).toBe(true);
+    expect(JSON.stringify(catalog)).not.toMatch(/"logoUrl":"https?:/);
   });
 });
 

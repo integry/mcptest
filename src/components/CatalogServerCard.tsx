@@ -12,11 +12,12 @@ import {
   getCatalogServerPath,
   getEffectiveCatalogTransport,
 } from '../utils/catalogSeo';
+import { CatalogServerLogo } from './CatalogServerLogo';
 
 export interface CatalogServerCardProps {
   server: CatalogServer;
   onTest: (server: CatalogServer) => void;
-  onCategorySelect: (category: string) => void;
+  onCategorySelect?: (category: string) => void;
 }
 
 const formatValidationTime = (checkedAt?: string): string => {
@@ -83,12 +84,6 @@ const getServerHostname = (url: string): string => {
   }
 };
 
-const getServerInitials = (name: string): string => {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const initials = words.slice(0, 2).map((word) => word[0]).join('');
-  return (initials || '?').toLocaleUpperCase();
-};
-
 const getListingSourceDetails = (
   kind: CatalogListingSourceKind
 ): { label: string; description: string } => {
@@ -137,21 +132,11 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
       <div className="card-body d-flex flex-column">
         <div className="catalog-server-main">
           <div className="d-flex align-items-start gap-3 mb-3">
-            {server.logoUrl ? (
-              <img
-                src={server.logoUrl}
-                alt={`${server.name} logo`}
-                className="catalog-server-logo flex-shrink-0"
-              />
-            ) : (
-              <span
-                className="catalog-server-logo catalog-server-initials flex-shrink-0"
-                role="img"
-                aria-label={`${server.name} initials logo`}
-              >
-                {getServerInitials(server.name)}
-              </span>
-            )}
+            <CatalogServerLogo
+              name={server.name}
+              logoUrl={server.logoUrl}
+              className="catalog-server-card-logo flex-shrink-0"
+            />
             <div className="catalog-server-heading">
               <div className="catalog-server-title-row d-flex align-items-start justify-content-between gap-2 mb-1">
                 <div className="catalog-server-name-source">
@@ -218,7 +203,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
             <button
               type="button"
               className="badge catalog-metadata-badge catalog-metadata-badge--category"
-              onClick={() => onCategorySelect(server.category)}
+              onClick={() => onCategorySelect?.(server.category)}
               aria-label={`Show ${server.category} servers`}
             >
               {server.category}
