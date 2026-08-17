@@ -4372,6 +4372,12 @@ pre.bg-light code {
   color: #fde68a;
 }
 
+@media (min-width: 1600px) {
+  .catalog-result-column {
+    width: 33.33333333%;
+  }
+}
+
 @media (max-width: 1499.98px) {
   .catalog-command-bar {
     grid-template-columns: 1fr;

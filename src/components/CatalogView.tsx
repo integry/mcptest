@@ -195,7 +195,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           ) : (
             <div className="row g-3">
               {filteredServers.map((server) => (
-                <div key={server.id} className="col-12 col-md-6 col-xl-4">
+                <div key={server.id} className="col-12 col-md-6 catalog-result-column">
                   <CatalogServerCard
                     server={server}
                     onTest={onTestServer}

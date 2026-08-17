@@ -1,8 +1,11 @@
 import React, { act } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createRoot } from 'react-dom/client';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const catalogMocks = vi.hoisted(() => ({
+  filteredServers: [] as Array<{ id: string }>,
   setSearchQuery: vi.fn(),
   setOauthFilter: vi.fn(),
   setCategory: vi.fn(),
@@ -12,7 +15,7 @@ const catalogMocks = vi.hoisted(() => ({
 vi.mock('../hooks/useCatalog', () => ({
   useCatalog: () => ({
     allServers: [{ id: 'example' }],
-    filteredServers: [],
+    filteredServers: catalogMocks.filteredServers,
     categories: ['Developer tools'],
     categoryCounts: {
       all: 0,
@@ -29,6 +32,10 @@ vi.mock('../hooks/useCatalog', () => ({
   }),
 }));
 
+vi.mock('./CatalogServerCard', () => ({
+  default: () => null,
+}));
+
 import CatalogView from './CatalogView';
 
 beforeAll(() => {
@@ -37,8 +44,9 @@ beforeAll(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
-describe('CatalogView empty state', () => {
+describe('CatalogView', () => {
   beforeEach(() => {
+    catalogMocks.filteredServers = [];
     vi.clearAllMocks();
   });
 
@@ -77,6 +85,30 @@ describe('CatalogView empty state', () => {
     const categoryRail = container.querySelector<HTMLElement>('.catalog-category-rail');
     expect(categoryRail?.getAttribute('aria-label')).toBe('Catalog categories');
     expect(categoryRail?.querySelectorAll('button')).toHaveLength(2);
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('keeps cards in two columns at the 1440px sidebar-visible desktop width', () => {
+    catalogMocks.filteredServers = [{ id: 'example' }];
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(<CatalogView onTestServer={vi.fn()} />);
+    });
+
+    const resultColumn = container.querySelector<HTMLElement>('.catalog-result-column');
+    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const wideDesktopRule = catalogCss.match(
+      /@media \(min-width: (\d+)px\) \{\s*\.catalog-result-column \{\s*width: 33\.33333333%;/
+    );
+
+    expect(resultColumn?.classList).toContain('col-md-6');
+    expect(resultColumn?.classList).not.toContain('col-xl-4');
+    expect(Number(wideDesktopRule?.[1])).toBeGreaterThan(1440);
 
     act(() => {
       root.unmount();
