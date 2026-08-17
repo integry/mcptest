@@ -2743,7 +2743,7 @@ span.health-indicator.health-indicator-gray {
 }
 
 .playground-tabs-wrapper {
-  margin: 0;
+  margin: 0 0 0.75rem;
   padding: 0;
 }
 
