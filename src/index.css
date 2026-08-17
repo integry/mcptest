@@ -4418,6 +4418,18 @@ pre.bg-light code {
     box-shadow: none;
   }
 
+  /* The desktop playground row compensates for Bootstrap column gutters with
+     negative margins and matching child padding. There are no columns in the
+     mobile idle layout, so those gutters only make its cards narrower than the
+     connection card above. */
+  .playground-layout {
+    margin-inline: 0;
+  }
+
+  .playground-layout > div {
+    padding-inline: 0;
+  }
+
   /* Elevated cards sit too close to the viewport edge at this width. Their
      shadows overlap vertically and read as dark bands down either side of the
      playground, so keep the elevation treatment for larger screens only. */
@@ -4474,8 +4486,11 @@ pre.bg-light code {
   }
 
   .awaiting-connection-tabs {
-    overflow-x: auto;
-    white-space: nowrap;
+    justify-content: space-between;
+    gap: clamp(0.5rem, 4vw, 2rem);
+    overflow-x: hidden;
+    text-align: center;
+    white-space: normal;
   }
 
   .awaiting-connection-empty {
