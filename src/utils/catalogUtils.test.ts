@@ -16,6 +16,9 @@ const server = (id: string, authType: CatalogAuthType): CatalogServer => ({
   authType,
   protocolEra: 'unknown',
   status: 'online',
+  logoUrl: `/server-logos/${id}.svg`,
+  logoSourceKind: 'generated-fallback',
+  logoRetrievedAt: '2026-08-17',
 });
 
 describe('catalog authentication metadata', () => {
@@ -51,5 +54,7 @@ describe('catalog authentication metadata', () => {
     expect(catalog.find(({ id }) => id === 'agentra')).toMatchObject({
       declaredTransport: 'legacy-sse',
     });
+    expect(catalog.every(({ logoUrl }) => logoUrl.startsWith('/server-logos/'))).toBe(true);
+    expect(JSON.stringify(catalog)).not.toMatch(/"logoUrl":"https?:/);
   });
 });

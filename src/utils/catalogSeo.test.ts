@@ -5,6 +5,7 @@ import {
   formatCatalogTransport,
   formatProtocolEra,
   getCatalogServerMetaDescription,
+  getCatalogServerImageUrl,
   getCatalogServerIdFromPath,
   getCatalogServerPath,
   getCatalogServerSeo,
@@ -24,6 +25,9 @@ const server: CatalogServer = {
   authType: 'oauth',
   protocolEra: 'unknown',
   status: 'unknown',
+  logoUrl: '/server-logos/example.svg',
+  logoSourceKind: 'generated-fallback',
+  logoRetrievedAt: '2026-08-17',
 };
 
 describe('catalog SEO helpers', () => {
@@ -52,5 +56,17 @@ describe('catalog SEO helpers', () => {
 
     expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(seoDescription);
     expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(seoDescription);
+  });
+
+  it('makes local server logos absolute and rejects remote logo URLs', () => {
+    expect(getCatalogServerImageUrl('/server-logos/example.svg')).toBe(
+      'https://mcptest.io/server-logos/example.svg'
+    );
+    expect(getCatalogServerSeo(server).imageUrl).toBe(
+      'https://mcptest.io/server-logos/example.svg'
+    );
+    expect(getCatalogServerImageUrl('https://remote.example/logo.svg')).toBe(
+      'https://mcptest.io/logo.png'
+    );
   });
 });

@@ -21,6 +21,9 @@ function catalogServer(url, declaredTransport) {
     authType: 'none',
     protocolEra: 'unknown',
     status: 'online',
+    logoUrl: '/server-logos/example-server.svg',
+    logoSourceKind: 'generated-fallback',
+    logoRetrievedAt: '2026-08-17',
   };
 }
 
@@ -79,6 +82,27 @@ describe('generated server report Playground links', () => {
 });
 
 describe('generated page metadata', () => {
+  it('uses the absolute local logo in social metadata and static profile markup', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('property="og:image" content="https://mcptest.io/server-logos/example-server.svg"');
+    expect(html).toContain('name="twitter:image" content="https://mcptest.io/server-logos/example-server.svg"');
+    expect(html).toContain('<img src="/server-logos/example-server.svg" alt=""');
+    expect(html).not.toContain('server-profile-eyebrow');
+  });
+
+  it('never emits a remote logo and renders an accessible static fallback', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.logoUrl = 'https://remote.example/logo.svg';
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).not.toContain('https://remote.example/logo.svg');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/logo.png"');
+    expect(html).toContain('role="img" aria-label="Example Server logo"');
+    expect(html).toContain('catalog-server-logo-initials');
+  });
+
   it('uses the server capability summary across search and social tags', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';
