@@ -1,14 +1,15 @@
-import {
-  CAPABILITY_INVENTORY_VERSION,
-  type CapabilityInventoryArgumentV1,
-  type CapabilityInventoryCategory,
-  type CapabilityInventoryPromptV1,
-  type CapabilityInventoryResourceV1,
-  type CapabilityInventorySectionV1,
-  type CapabilityInventoryStatus,
-  type CapabilityInventoryToolV1,
-  type CapabilityInventoryV1,
+import type {
+  CapabilityInventoryArgumentV1,
+  CapabilityInventoryCategory,
+  CapabilityInventoryPromptV1,
+  CapabilityInventoryResourceV1,
+  CapabilityInventorySectionV1,
+  CapabilityInventoryStatus,
+  CapabilityInventoryToolV1,
+  CapabilityInventoryV1,
 } from '../types/capabilityInventory';
+
+const CAPABILITY_INVENTORY_VERSION = 1 as const;
 
 export const CAPABILITY_INVENTORY_ITEM_LIMIT = 100;
 export const CAPABILITY_INVENTORY_ARGUMENT_LIMIT = 32;

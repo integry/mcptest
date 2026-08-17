@@ -1,14 +1,58 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, it } from 'vitest';
+import { validateCapabilityInventory } from '../src/utils/capabilityInventory';
 import validator from './validate-catalog.js';
 
 const {
   detectedAuthType,
+  discoverPublicInventory,
   endpointVariants,
   mergeCapabilitySnapshots,
+  paginateDiscovery,
   probeSseEndpoint,
   probeStreamableEndpoint,
   validateSeed,
+  writeResults,
 } = validator;
+
+async function connectedClient(listHandler) {
+  const client = new Client(
+    { name: 'catalog-pagination-test', version: '1.0.0' },
+    { versionNegotiation: { mode: 'legacy' } }
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  serverTransport.onmessage = async (message) => {
+    if (!('method' in message) || !('id' in message)) return;
+    if (message.method === 'initialize') {
+      await serverTransport.send({
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          protocolVersion: '2025-06-18',
+          capabilities: { tools: {}, resources: {}, prompts: {} },
+          serverInfo: { name: 'pagination-test-server', version: '1.0.0' },
+        },
+      });
+      return;
+    }
+    try {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id, result: await listHandler(message.method, message.params),
+      });
+    } catch (error) {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id,
+        error: { code: -32603, message: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  };
+  await serverTransport.start();
+  await client.connect(clientTransport);
+  return client;
+}
 
 function jsonRpcResponse(body, result, options = {}) {
   return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), {
@@ -86,10 +130,10 @@ describe('catalog protocol validation', () => {
     const fetch = async (_input, init = {}) => {
       const body = JSON.parse(String(init.body));
       requests.push({ body, headers: new Headers(init.headers) });
-      return jsonRpcResponse(body, {
-        supportedVersions: ['2026-07-28'],
-        capabilities: { tools: {} },
-      });
+      const result = body.method === 'server/discover'
+        ? { supportedVersions: ['2026-07-28'], capabilities: { tools: {} } }
+        : { [body.method === 'resources/templates/list' ? 'resourceTemplates' : body.method.split('/')[0]]: [] };
+      return jsonRpcResponse(body, result);
     };
 
     const result = await probeStreamableEndpoint(
@@ -102,7 +146,9 @@ describe('catalog protocol validation', () => {
       protocolEra: 'stateless',
       protocolVersion: '2026-07-28',
     });
-    expect(requests.map(({ body }) => body.method)).toEqual(['server/discover', 'tools/list']);
+    expect(requests.map(({ body }) => body.method)).toEqual([
+      'server/discover', 'tools/list', 'resources/list', 'resources/templates/list', 'prompts/list',
+    ]);
     expect(requests[0].headers.get('mcp-method')).toBe('server/discover');
     expect(requests[0].headers.get('mcp-protocol-version')).toBe('2026-07-28');
   });
@@ -119,11 +165,14 @@ describe('catalog protocol validation', () => {
       }
       if (!('id' in body)) return new Response(null, { status: 202 });
 
-      return jsonRpcResponse(body, {
+      const result = body.method === 'initialize' ? {
         protocolVersion: '2025-06-18',
         capabilities: { tools: {} },
         serverInfo: { name: 'stateful-test-server', version: '1.0.0' },
-      }, {
+      } : {
+        [body.method === 'resources/templates/list' ? 'resourceTemplates' : body.method.split('/')[0]]: [],
+      };
+      return jsonRpcResponse(body, result, {
         headers: body.method === 'initialize'
           ? { 'Mcp-Session-Id': 'catalog-session' }
           : {},
@@ -145,6 +194,9 @@ describe('catalog protocol validation', () => {
       'initialize',
       'notifications/initialized',
       'tools/list',
+      'resources/list',
+      'resources/templates/list',
+      'prompts/list',
     ]);
   });
 
@@ -252,6 +304,13 @@ describe('catalog protocol validation', () => {
             serverInfo: { name: 'legacy-test-server', version: '1.0.0' },
           },
         })}\n\n`));
+      } else if ('id' in body) {
+        const itemKey = body.method === 'resources/templates/list'
+          ? 'resourceTemplates'
+          : body.method.split('/')[0];
+        streamController.enqueue(encoder.encode(`event: message\ndata: ${JSON.stringify({
+          jsonrpc: '2.0', id: body.id, result: { [itemKey]: [] },
+        })}\n\n`));
       }
       return new Response(null, { status: 202 });
     };
@@ -267,7 +326,10 @@ describe('catalog protocol validation', () => {
       protocolEra: 'legacy',
       protocolVersion: '2025-06-18',
     });
-    expect(methods).toEqual(['initialize', 'notifications/initialized', 'tools/list']);
+    expect(methods).toEqual([
+      'initialize', 'notifications/initialized', 'tools/list', 'resources/list',
+      'resources/templates/list', 'prompts/list',
+    ]);
   });
 
   it('does not record a MIME-only event stream as legacy MCP', async () => {
@@ -327,5 +389,136 @@ describe('catalog protocol validation', () => {
       [{ alive: true, authChallenge: false }],
       { oauthMetadata: true }
     )).toBe('none');
+  });
+});
+
+describe('catalog capability pagination and persistence', () => {
+  it('uses actual Client transport behavior for multi-page success', async () => {
+    const requests = [];
+    const client = await connectedClient((method, params) => {
+      requests.push({ method, params });
+      if (method !== 'tools/list') throw new Error(`Unexpected method ${method}`);
+      return params?.cursor === 'tools-2'
+        ? { tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }] }
+        : {
+          tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+          nextCursor: 'tools-2',
+        };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'complete', paginationComplete: true });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+      expect(requests).toEqual([
+        { method: 'tools/list', params: undefined },
+        { method: 'tools/list', params: { cursor: 'tools-2' } },
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('retains actual Client pages and marks a repeated cursor partial', async () => {
+    const client = await connectedClient((_method, params) => params?.cursor
+      ? {
+        tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      }
+      : {
+        tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('retains page one with partial status when actual Client page two fails', async () => {
+    const client = await connectedClient((_method, params) => {
+      if (params?.cursor) throw new Error('page two unavailable');
+      return {
+        tools: [{ name: 'retained_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['retained_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('writes only canonical sanitized inventories and preserves the last snapshot on rejection', async () => {
+    const rawPages = {
+      'tools/list': {
+        tools: [{
+          name: 'safe_tool',
+          description: 'client_secret=alpha id_token=beta private_key=gamma',
+          inputSchema: { type: 'object' },
+          unknownToolField: 'discard me',
+        }],
+      },
+      'resources/list': {
+        resources: [
+          { name: '<script>alert(1)</script>', mimeType: 'text/html' },
+          { name: 'Safe resource', mimeType: 'definitely not a MIME type', unknown: true },
+        ],
+      },
+      'resources/templates/list': {
+        resourceTemplates: [
+          { name: '<img src=x onerror=alert(1)>', mimeType: 'text/plain' },
+          { name: 'Safe template', mimeType: 'application/json', uriTemplate: 'secret://tenant/{id}' },
+        ],
+      },
+      'prompts/list': { prompts: [{ name: 'safe_prompt', unknownPromptField: true }] },
+    };
+    const inventory = await discoverPublicInventory(
+      { request: async ({ method }) => rawPages[method] },
+      'https://example.com/mcp?access_token=secret',
+      1_000
+    );
+
+    expect(inventory).toBeDefined();
+    expect(inventory.provenance.testedEndpoint).toBe('https://example.com/mcp');
+    expect(inventory.tools.items[0].description).toBe(
+      'client_secret=[REDACTED] id_token=[REDACTED] private_key=[REDACTED]'
+    );
+    expect(inventory.resources.items).toEqual([{ name: 'Safe resource' }]);
+    expect(inventory.resourceTemplates.items).toEqual([
+      { name: 'Safe template', mimeType: 'application/json' },
+    ]);
+    expect(JSON.stringify(inventory)).not.toMatch(/<script|onerror|unknownToolField|unknownPromptField|tenant/);
+    expect(validateCapabilityInventory(inventory)).toEqual(inventory);
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-'));
+    const capabilities = path.join(directory, 'catalogCapabilities.json');
+    const validation = path.join(directory, 'catalogValidation.json');
+    fs.writeFileSync(capabilities, '{}\n');
+    try {
+      await writeResults(
+        [{ serverId: 'safe', status: 'online', capabilityInventory: inventory }],
+        { capabilities, validation }
+      );
+      const written = JSON.parse(fs.readFileSync(capabilities, 'utf8'));
+      expect(validateCapabilityInventory(written.safe)).toEqual(written.safe);
+
+      const lastSuccessfulSnapshot = fs.readFileSync(capabilities, 'utf8');
+      await expect(writeResults(
+        [{
+          serverId: 'unsafe', status: 'online',
+          capabilityInventory: { ...inventory, unknownInventoryField: true },
+        }],
+        { capabilities, validation }
+      )).rejects.toThrow('unsafe or non-canonical');
+      expect(fs.readFileSync(capabilities, 'utf8')).toBe(lastSuccessfulSnapshot);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

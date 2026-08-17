@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
 import learnData from '../src/data/learnArticles.json';
+import catalogSeeds from '../src/data/serverCatalog.json';
+import catalogValidation from '../src/data/catalogValidation.json';
+import catalogCapabilities from '../src/data/catalogCapabilities.json';
 
-const { renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml } = seoGenerator;
+const {
+  mergeCatalogServers, renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml,
+} = seoGenerator;
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
 function catalogServer(url, declaredTransport) {
@@ -79,6 +84,21 @@ describe('generated server report Playground links', () => {
 });
 
 describe('generated page metadata', () => {
+  it('renders observed catalog capability names and descriptions as literal server HTML', () => {
+    const server = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ capabilityInventory }) => capabilityInventory?.tools.items.some(
+      ({ description }) => description
+    ));
+    const observedTool = server?.capabilityInventory?.tools.items.find(({ description }) => description);
+
+    expect(server).toBeDefined();
+    expect(observedTool).toBeDefined();
+    const html = renderServerHtml(indexHtml, server);
+    expect(html).toContain(`<strong>${observedTool.name}</strong>`);
+    expect(html).toContain(`<p>${observedTool.description}</p>`);
+  });
+
   it('renders escaped literal capabilities and only aggregate inventory counts in JSON-LD', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     const section = (items) => ({

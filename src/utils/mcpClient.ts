@@ -28,3 +28,19 @@ export const getProtocolDetails = (client: Client): ProtocolDetails => ({
   era: client.getProtocolEra() ?? 'legacy',
   version: client.getNegotiatedProtocolVersion(),
 });
+
+export type CapabilityDiscoveryMethod =
+  | 'tools/list'
+  | 'resources/list'
+  | 'resources/templates/list'
+  | 'prompts/list';
+
+/** Fetch exactly one wire page; SDK list helpers aggregate when cursor is omitted. */
+export const requestCapabilityDiscoveryPage = (
+  client: Client,
+  method: CapabilityDiscoveryMethod,
+  cursor?: string
+): Promise<unknown> => client.request({
+  method,
+  ...(cursor === undefined ? {} : { params: { cursor } }),
+});

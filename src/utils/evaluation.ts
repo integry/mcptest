@@ -29,6 +29,7 @@ import type {
   CapabilityInventoryV1,
 } from '../types/capabilityInventory';
 import { createCapabilityInventory } from './capabilityInventory';
+import { requestCapabilityDiscoveryPage } from './mcpClient';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
@@ -752,16 +753,18 @@ const evaluateCapabilities = async (
       name: 'tools',
       method: 'tools/list',
       points: 4,
-      run: () => connection.client.listTools(),
-      runPage: (cursor) => connection.client.listTools({ cursor }),
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'tools/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(connection.client, 'tools/list', cursor),
       count: (result) => Array.isArray(result?.tools) ? result.tools.length : 0,
     },
     {
       name: 'resourceTemplates',
       method: 'resources/templates/list',
       points: 0,
-      run: () => connection.client.listResourceTemplates(),
-      runPage: (cursor) => connection.client.listResourceTemplates({ cursor }),
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'resources/templates/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(
+        connection.client, 'resources/templates/list', cursor
+      ),
       count: (result) => Array.isArray(result?.resourceTemplates)
         ? result.resourceTemplates.length
         : 0,
@@ -770,16 +773,18 @@ const evaluateCapabilities = async (
       name: 'resources',
       method: 'resources/list',
       points: 3,
-      run: () => connection.client.listResources(),
-      runPage: (cursor) => connection.client.listResources({ cursor }),
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'resources/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(
+        connection.client, 'resources/list', cursor
+      ),
       count: (result) => Array.isArray(result?.resources) ? result.resources.length : 0,
     },
     {
       name: 'prompts',
       method: 'prompts/list',
       points: 3,
-      run: () => connection.client.listPrompts(),
-      runPage: (cursor) => connection.client.listPrompts({ cursor }),
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'prompts/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(connection.client, 'prompts/list', cursor),
       count: (result) => Array.isArray(result?.prompts) ? result.prompts.length : 0,
     },
   ];

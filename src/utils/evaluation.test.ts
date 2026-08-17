@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 
 const connectionMocks = vi.hoisted(() => ({ attempt: vi.fn() }));
 
@@ -30,13 +31,64 @@ import {
   recordOAuthAuthenticationChallenge,
 } from './oauthTrace';
 
-const createClient = () => ({
-  listTools: vi.fn().mockResolvedValue({ tools: [] }),
-  listResources: vi.fn().mockResolvedValue({ resources: [] }),
-  listResourceTemplates: vi.fn().mockResolvedValue({ resourceTemplates: [] }),
-  listPrompts: vi.fn().mockResolvedValue({ prompts: [] }),
-  close: vi.fn().mockResolvedValue(undefined),
-});
+const createClient = () => {
+  const client = {
+    listTools: vi.fn().mockResolvedValue({ tools: [] }),
+    listResources: vi.fn().mockResolvedValue({ resources: [] }),
+    listResourceTemplates: vi.fn().mockResolvedValue({ resourceTemplates: [] }),
+    listPrompts: vi.fn().mockResolvedValue({ prompts: [] }),
+    request: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  client.request.mockImplementation(({ method, params }) => {
+    const listMethod = {
+      'tools/list': client.listTools,
+      'resources/list': client.listResources,
+      'resources/templates/list': client.listResourceTemplates,
+      'prompts/list': client.listPrompts,
+    }[method];
+    if (!listMethod) throw new Error(`Unexpected mocked request method: ${method}`);
+    return listMethod(params);
+  });
+  return client;
+};
+
+const connectedSdkClient = async (
+  listHandler: (method: string, params?: Record<string, unknown>) => Record<string, unknown>
+): Promise<Client> => {
+  const client = new Client(
+    { name: 'evaluation-pagination-test', version: '1.0.0' },
+    { versionNegotiation: { mode: 'legacy' } }
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  serverTransport.onmessage = async (message) => {
+    if (!('method' in message) || !('id' in message)) return;
+    if (message.method === 'initialize') {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id,
+        result: {
+          protocolVersion: '2025-06-18',
+          capabilities: { tools: {}, resources: {}, prompts: {} },
+          serverInfo: { name: 'evaluation-test-server', version: '1.0.0' },
+        },
+      });
+      return;
+    }
+    try {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id, result: await listHandler(message.method, message.params),
+      });
+    } catch (error) {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id,
+        error: { code: -32603, message: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  };
+  await serverTransport.start();
+  await client.connect(clientTransport);
+  return client;
+};
 
 describe('dual-era server evaluation', () => {
   beforeEach(() => {
@@ -868,6 +920,54 @@ describe('dual-era server evaluation', () => {
     });
     expect(Object.keys(report.sections)).toEqual(['auth']);
   });
+
+  it.each([
+    ['multi-page success', 'complete', 2, false],
+    ['repeated cursor', 'partial', 2, false],
+    ['page-two failure', 'partial', 1, true],
+  ] as const)(
+    'preserves SDK wire pages for %s',
+    async (scenario, expectedStatus, retainedCount, failPageTwo) => {
+      const observedToolParams: Array<Record<string, unknown> | undefined> = [];
+      const client = await connectedSdkClient((method, params) => {
+        if (method === 'tools/list') {
+          observedToolParams.push(params);
+          if (params?.cursor && failPageTwo) throw new Error('page two unavailable');
+          if (params?.cursor) return {
+            tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+            ...(scenario === 'repeated cursor' ? { nextCursor: 'tools-2' } : {}),
+          };
+          return {
+            tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+            nextCursor: 'tools-2',
+          };
+        }
+        if (method === 'resources/list') return { resources: [] };
+        if (method === 'resources/templates/list') return { resourceTemplates: [] };
+        if (method === 'prompts/list') return { prompts: [] };
+        throw new Error(`Unexpected method ${method}`);
+      });
+      connectionMocks.attempt.mockResolvedValueOnce({
+        client,
+        url: 'https://mcp.example/mcp',
+        transportType: 'streamable-http',
+        protocolEra: 'legacy',
+      });
+
+      const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+      expect(report.capabilityInventory.tools).toMatchObject({
+        status: expectedStatus,
+        retainedCount,
+        paginationComplete: expectedStatus === 'complete',
+      });
+      expect(observedToolParams).toEqual([
+        undefined,
+        { cursor: 'tools-2' },
+      ]);
+      expect(report.outcome).toBe(expectedStatus === 'complete' ? 'scored' : 'partial');
+    }
+  );
 
   it('aggregates every discovery page before tool-surface analysis', async () => {
     const client = createClient();
