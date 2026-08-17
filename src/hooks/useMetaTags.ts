@@ -2,10 +2,9 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getCatalogServerById } from '../utils/catalogUtils';
 import { getCatalogServerIdFromPath, getCatalogServerSeo, SITE_URL } from '../utils/catalogSeo';
+import { getDocsMetadata, HOME_METADATA } from '../utils/pageMetadata';
 import { parseResultShareUrl } from '../utils/urlUtils';
 
-const DEFAULT_TITLE = 'mcptest.io - MCP Playground';
-const DEFAULT_DESCRIPTION = 'A web-based testing and debugging tool for Model Context Protocol (MCP) servers.';
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
 
 const setMetaTag = (property: string, content: string) => {
@@ -76,6 +75,7 @@ const applyMetadata = ({
   setNamedMetaTag('twitter:card', 'summary');
   setNamedMetaTag('twitter:title', title);
   setNamedMetaTag('twitter:description', description);
+  setNamedMetaTag('twitter:image', imageUrl);
   setNamedMetaTag('robots', robots);
   setMetaTag('og:title', title);
   setMetaTag('og:description', description);
@@ -93,6 +93,7 @@ export const useMetaTags = () => {
     const resultData = parseResultShareUrl(location.pathname, location.search);
     const serverId = getCatalogServerIdFromPath(location.pathname);
     const catalogServer = serverId ? getCatalogServerById(serverId) : undefined;
+    const docsMetadata = getDocsMetadata(location.pathname);
 
     if (catalogServer) {
       applyMetadata(getCatalogServerSeo(catalogServer));
@@ -115,13 +116,25 @@ export const useMetaTags = () => {
         type: 'article',
       });
 
+    } else if (docsMetadata) {
+      applyMetadata({
+        ...docsMetadata,
+        canonicalUrl: `${SITE_URL}${location.pathname.replace(/\/$/, '')}`,
+      });
+    } else if (location.pathname.startsWith('/docs/')) {
+      applyMetadata({
+        title: 'Documentation Not Found | mcptest.io',
+        description: 'This documentation page is not available. Browse mcptest.io guides for testing and debugging remote MCP servers.',
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
+        robots: 'noindex, follow',
+      });
     } else {
       const isCatalog = location.pathname === '/catalog';
       applyMetadata({
-        title: isCatalog ? 'Remote MCP Server Catalog | mcptest.io' : DEFAULT_TITLE,
+        title: isCatalog ? 'Remote MCP Server Catalog | mcptest.io' : HOME_METADATA.title,
         description: isCatalog
           ? 'Browse remote MCP servers by capability, transport, authentication method, and live validation status.'
-          : DEFAULT_DESCRIPTION,
+          : HOME_METADATA.description,
         canonicalUrl: `${SITE_URL}${location.pathname === '/' ? '' : location.pathname}`,
       });
     }
