@@ -241,7 +241,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               type="text"
               className="form-control"
               id="serverUrl"
-              placeholder={`${placeholder} (https:// added automatically)`}
+              placeholder={placeholder}
               value={serverUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
