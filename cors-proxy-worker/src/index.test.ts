@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import proxyWorker, {
+  HostedOAuthBroker,
   PROXY_RESPONSE_SOURCE_HEADER,
   fetchTargetRequest,
   getOperatorOAuthClient,
@@ -31,6 +32,13 @@ const readProvenanceThroughCors = (url: string): Promise<string | null> => (
 );
 
 describe('proxy target credential forwarding', () => {
+  it('retains the registered hosted OAuth Durable Object export', async () => {
+    const response = await new HostedOAuthBroker().fetch();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
   it('resolves confidential provider clients only from server bindings', () => {
     const env = {
       FIREBASE_PROJECT_ID: 'test-project',
