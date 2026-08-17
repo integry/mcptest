@@ -4,6 +4,11 @@ import { getCatalogServerById } from '../utils/catalogUtils';
 import { getCatalogServerIdFromPath, getCatalogServerSeo, SITE_URL } from '../utils/catalogSeo';
 import { getDocsMetadata, HOME_METADATA } from '../utils/pageMetadata';
 import { parseResultShareUrl } from '../utils/urlUtils';
+import {
+  LEARN_INDEX_METADATA,
+  getLearnArticleFromPath,
+  getLearnArticleMetadata,
+} from '../content/learnRegistry';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
 
@@ -94,6 +99,7 @@ export const useMetaTags = () => {
     const serverId = getCatalogServerIdFromPath(location.pathname);
     const catalogServer = serverId ? getCatalogServerById(serverId) : undefined;
     const docsMetadata = getDocsMetadata(location.pathname);
+    const learnArticle = getLearnArticleFromPath(location.pathname);
 
     if (catalogServer) {
       applyMetadata(getCatalogServerSeo(catalogServer));
@@ -101,6 +107,21 @@ export const useMetaTags = () => {
       applyMetadata({
         title: 'MCP Server Not Found | mcptest.io',
         description: 'This MCP server report is not available. Browse the catalog for tested remote MCP servers.',
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
+        robots: 'noindex, follow',
+      });
+    } else if (learnArticle) {
+      applyMetadata(getLearnArticleMetadata(learnArticle));
+    } else if (location.pathname === '/learn' || location.pathname === '/learn/') {
+      applyMetadata({
+        title: `${LEARN_INDEX_METADATA.title} | mcptest.io`,
+        description: LEARN_INDEX_METADATA.description,
+        canonicalUrl: `${SITE_URL}/learn`,
+      });
+    } else if (location.pathname.startsWith('/learn/')) {
+      applyMetadata({
+        title: 'Guide Not Found | mcptest.io',
+        description: 'This MCP Learn guide is not available. Browse source-backed guides for using and building MCP integrations.',
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });

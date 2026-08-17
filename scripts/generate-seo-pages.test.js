@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
+import learnData from '../src/data/learnArticles.json';
 
-const { renderServerHtml, renderStaticPageHtml } = seoGenerator;
+const { renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml } = seoGenerator;
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
 function catalogServer(url, declaredTransport) {
@@ -103,5 +104,21 @@ describe('generated page metadata', () => {
     expect(html).toContain(`property="og:title" content="${metadata.title}"`);
     expect(html).toContain(`name="twitter:title" content="${metadata.title}"`);
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/troubleshooting"');
+  });
+
+  it('renders indexable Learn article HTML, social metadata, and Article JSON-LD', () => {
+    const article = learnData.articles[0];
+    const html = renderLearnArticleHtml(indexHtml, article, learnData.articles);
+
+    expect(html).toContain(`<title>${article.title} | mcptest.io</title>`);
+    expect(html).toContain(`property="og:type" content="article"`);
+    expect(html).toContain(`rel="canonical" href="https://mcptest.io/learn/${article.slug}"`);
+    expect(html).toContain('type="application/ld+json"');
+    expect(html).toContain('"@type":"Article"');
+    expect(html).toContain(`"dateModified":"${article.lastReviewed}"`);
+    expect(html).toContain(`data-article-slug="${article.slug}"`);
+    expect(html).toContain('<h2>Coverage and how to read this comparison</h2>');
+    expect(html).toContain('<table><thead><tr>');
+    expect(html).toContain('Sources</h2>');
   });
 });
