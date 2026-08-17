@@ -4,8 +4,7 @@ import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
-import { DOCUMENTATION_NAV_ITEMS } from '../content/docsRegistry';
-import { LEARN_ARTICLES } from '../content/learnRegistry';
+import { RESOURCE_NAV_ITEMS } from '../content/resourceNavigation';
 
 interface SideNavProps {
   activeView: 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
@@ -406,49 +405,19 @@ const SideNav: React.FC<SideNavProps> = ({
         </div>
       )}
 
-      {/* Documentation Section */}
-      <section className="sidenav-content-section mt-4" aria-labelledby="documentation-nav-heading">
-        <h2 id="documentation-nav-heading" className="sidenav-section-label mb-1">Documentation</h2>
+      {/* Resources Section */}
+      <section className="sidenav-content-section mt-4" aria-labelledby="resources-nav-heading">
+        <h2 id="resources-nav-heading" className="sidenav-section-label mb-1">Resources</h2>
         <ul className="nav flex-column sidenav-content-list">
-          {DOCUMENTATION_NAV_ITEMS.map(item => (
-            <li className="nav-item" key={item.slug}>
+          {RESOURCE_NAV_ITEMS.map(item => (
+            <li className="nav-item" key={item.path}>
               <NavLink
-                to={`/docs/${item.slug}`}
-                end
+                to={item.path}
+                end={!item.matchDescendants}
                 className="nav-link docs-nav-link py-1"
                 onClick={() => document.body.classList.remove('menu-open')}
               >
-                <i className={`bi ${item.icon} me-2`} aria-hidden="true"></i> {item.title}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* Learn Section */}
-      <section className="sidenav-content-section mt-3" aria-labelledby="learn-nav-heading">
-        <h2 id="learn-nav-heading" className="sidenav-section-label mb-1">Learn</h2>
-        <ul className="nav flex-column sidenav-content-list">
-          <li className="nav-item">
-            <NavLink
-              to="/learn"
-              end
-              className="nav-link docs-nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-journals me-2" aria-hidden="true"></i> All guides
-            </NavLink>
-          </li>
-          {LEARN_ARTICLES.map(article => (
-            <li className="nav-item" key={article.slug}>
-              <NavLink
-                to={`/learn/${article.slug}`}
-                end
-                className="nav-link docs-nav-link learn-nav-link py-1"
-                onClick={() => document.body.classList.remove('menu-open')}
-                title={article.title}
-              >
-                {article.title}
+                <i className={`bi ${item.icon} me-2`} aria-hidden="true"></i> {item.label}
               </NavLink>
             </li>
           ))}

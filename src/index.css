@@ -2735,16 +2735,7 @@ span.health-indicator.health-indicator-gray {
   margin-left: 0.45rem;
 }
 
-.app-sidenav .learn-nav-link {
-  overflow: hidden;
-  padding-left: 1rem;
-  font-size: 0.82rem;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Learn is an editorial surface alongside, rather than inside, reference docs. */
+/* Guides are an editorial surface within the Resources hub. */
 .learn-page {
   width: min(1120px, 100%);
   margin: 0 auto;
