@@ -248,7 +248,8 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
         <div className="tool-result-content">
           <div className="d-flex align-items-center justify-content-between mb-1">
             <span className="small text-muted">Output</span>
-            <div className="btn-group" role="group">
+            {/* Spaced actions: related, but each one stands on its own */}
+            <div className="result-actions">
               {onRunAgain && (
                 <button
                   className="btn btn-sm btn-outline-primary"
@@ -261,10 +262,11 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               )}
               {addToSpaceButton}
               <button
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-ghost"
                 style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                 onClick={() => setIsFullscreen(true)}
                 title="Fullscreen"
+                aria-label="View result in fullscreen"
               >
                 <i className="bi bi-arrows-fullscreen"></i>
               </button>

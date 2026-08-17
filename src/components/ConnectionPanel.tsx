@@ -207,7 +207,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             <div className="position-relative">
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary py-0"
+                className="btn btn-sm btn-ghost py-0"
                 onClick={handleShareConnection}
                 title="Share connection link"
                 aria-label="Share connection link"
