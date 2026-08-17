@@ -40,6 +40,12 @@ describe('catalog logo asset validation', () => {
     );
   });
 
+  it('rejects character-reference-encoded external SVG URLs', () => {
+    expect(validateSvg(
+      '<svg viewBox="0 0 1 1"><image href="https&#58;//remote.example/a.png" /></svg>'
+    )).toContain('references an external or executable resource');
+  });
+
   it('rejects duplicate ids, non-local paths, and invalid provenance', () => {
     const first = catalog[0];
     const errors = validateCatalogAssets([

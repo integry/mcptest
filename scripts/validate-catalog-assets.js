@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { JSDOM } = require('jsdom');
 
 const MAX_LOGO_BYTES = 256 * 1024;
 const LOGO_SOURCE_KINDS = new Set([
@@ -34,21 +35,60 @@ function validateSvg(contents) {
   const errors = [];
   const forbiddenElements = contents.match(/<(?:script|foreignObject|iframe|object|embed)\b/i);
   if (forbiddenElements) errors.push(`contains unsafe <${forbiddenElements[0].slice(1)} element`);
-  if (/<!DOCTYPE|<!ENTITY/i.test(contents)) errors.push('contains a DOCTYPE or entity declaration');
+  const hasEntityDeclaration = /<!DOCTYPE|<!ENTITY/i.test(contents);
+  if (hasEntityDeclaration) errors.push('contains a DOCTYPE or entity declaration');
   if (/\son[a-z0-9_-]+\s*=/i.test(contents)) errors.push('contains an event-handler attribute');
-  if (/\b(?:href|xlink:href|src)\s*=\s*["']\s*(?:https?:|\/\/|javascript:)/i.test(contents)) {
-    errors.push('references an external or executable resource');
-  }
-  if (/(?:@import|url\()\s*["']?\s*(?:https?:|\/\/|javascript:)/i.test(contents)) {
-    errors.push('loads an external resource from CSS');
-  }
-  if (/\b(?:href|xlink:href|src)\s*=\s*["']\s*data:(?!image\/(?:png|webp);base64,)/i.test(contents)) {
-    errors.push('contains an unsupported embedded data resource');
+
+  if (!hasEntityDeclaration) {
+    try {
+      const document = new JSDOM(contents, { contentType: 'image/svg+xml' }).window.document;
+      let hasExternalResource = false;
+      let hasUnsupportedDataResource = false;
+      let hasExternalCssResource = false;
+
+      for (const element of document.querySelectorAll('*')) {
+        for (const attribute of element.attributes) {
+          const value = attribute.value.trim();
+          if (['href', 'src'].includes(attribute.localName.toLowerCase())) {
+            if (value.startsWith('#') || /^data:image\/(?:png|webp);base64,/i.test(value)) {
+              continue;
+            }
+            if (/^data:/i.test(value)) hasUnsupportedDataResource = true;
+            else hasExternalResource = true;
+          }
+
+          if (containsExternalCssResource(value)) hasExternalCssResource = true;
+        }
+
+        if (element.localName.toLowerCase() === 'style'
+          && containsExternalCssResource(element.textContent || '')) {
+          hasExternalCssResource = true;
+        }
+      }
+
+      if (hasExternalResource) errors.push('references an external or executable resource');
+      if (hasExternalCssResource) errors.push('loads an external resource from CSS');
+      if (hasUnsupportedDataResource) errors.push('contains an unsupported embedded data resource');
+    } catch {
+      errors.push('must be well-formed XML');
+    }
   }
   if (!/<svg\b/i.test(contents) || !/\bviewBox\s*=/.test(contents)) {
     errors.push('must contain an SVG root with a viewBox');
   }
   return errors;
+}
+
+function containsExternalCssResource(value) {
+  if (/@import\b/i.test(value)) return true;
+
+  for (const match of value.matchAll(/\burl\(\s*(?:(["'])(.*?)\1|([^)]*))\s*\)/gi)) {
+    const reference = (match[2] ?? match[3] ?? '').trim();
+    if (!reference.startsWith('#') && !/^data:image\/(?:png|webp);base64,/i.test(reference)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function readPngMetadata(buffer) {
