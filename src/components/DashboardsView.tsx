@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Space, SpaceCard } from '../types';
 import McpResponseDisplay from './McpResponseDisplay'; // Import the new display component
+import LayoutColumnsIcon from './LayoutColumnsIcon';
 import { getResultShareUrl } from '../utils/urlUtils';
 import { useShare } from '../hooks/useShare';
 import { loadOAuthAuthorization } from '../utils/oauthFlow';
+
+// Column counts offered by the dashboard layout selector.
+const COLUMN_OPTIONS = [1, 2, 3, 4];
 
 // --- OAuth Status Indicator Component ---
 interface OAuthStatusIndicatorProps {
@@ -324,7 +328,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
           </div>
           <div className="d-flex align-items-center">
             <button
-              className="btn btn-sm btn-outline-secondary me-2"
+              className="btn btn-sm btn-ghost me-1"
               onClick={() => setIsFullscreen(true)}
               title="Fullscreen"
               aria-label="View result in fullscreen"
@@ -333,7 +337,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
             </button>
             <div className="dropdown" style={{ position: 'relative' }}>
               <button
-                className="btn btn-sm btn-outline-secondary dropdown-toggle"
+                className="btn btn-sm btn-ghost dropdown-toggle"
                 type="button"
                 id={`cardDropdown-${card.id}`}
                 data-bs-toggle="dropdown"
@@ -699,69 +703,59 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
         ) : (
           <h2 className="mb-0">{space.name}</h2>
         )}
-        <div className="d-flex align-items-center gap-2 dashboard-controls">
-          {/* Refresh Button */}
+        <div className="d-flex align-items-center dashboard-controls">
+          {/* Group 1: Data actions */}
           {onRefreshSpace && (
-            <button
-              className="btn btn-sm btn-outline-secondary"
-              onClick={onRefreshSpace}
-              disabled={isRefreshing}
-              title="Refresh all cards in this dashboard"
-            >
-              {isRefreshing ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                  Refreshing...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-arrow-clockwise me-1"></i>
-                  Refresh
-                </>
-              )}
-            </button>
+            <>
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                onClick={onRefreshSpace}
+                disabled={isRefreshing}
+                title="Refresh all cards in this dashboard"
+              >
+                {isRefreshing ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-arrow-clockwise me-1"></i>
+                    Refresh
+                  </>
+                )}
+              </button>
+              <span className="toolbar-divider" aria-hidden="true"></span>
+            </>
           )}
-          {/* Column Selector */}
-          <div className="btn-group btn-group-sm" role="group" aria-label="Column count">
-            <button
-              type="button"
-              className={`btn ${(space.columns || 2) === 1 ? 'btn-primary' : 'btn-outline-primary'}`}
-              onClick={() => handleColumnChange(1)}
-              title="1 column"
-            >
-              ▌
-            </button>
-            <button
-              type="button"
-              className={`btn ${(space.columns || 2) === 2 ? 'btn-primary' : 'btn-outline-primary'}`}
-              onClick={() => handleColumnChange(2)}
-              title="2 columns"
-            >
-              ▌▌
-            </button>
-            <button
-              type="button"
-              className={`btn ${(space.columns || 2) === 3 ? 'btn-primary' : 'btn-outline-primary'}`}
-              onClick={() => handleColumnChange(3)}
-              title="3 columns"
-            >
-              ▌▌▌
-            </button>
-            <button
-              type="button"
-              className={`btn ${(space.columns || 2) === 4 ? 'btn-primary' : 'btn-outline-primary'}`}
-              onClick={() => handleColumnChange(4)}
-              title="4 columns"
-            >
-              ▌▌▌▌
-            </button>
+          {/* Group 2: View actions — segmented column selector */}
+          <div className="segmented-control" role="group" aria-label="Column count">
+            {COLUMN_OPTIONS.map((columnCount) => {
+              const isActive = (space.columns || 2) === columnCount;
+              const label = columnCount === 1 ? '1 column' : `${columnCount} columns`;
+              return (
+                <button
+                  key={columnCount}
+                  type="button"
+                  className={`segmented-control-item${isActive ? ' active' : ''}`}
+                  onClick={() => handleColumnChange(columnCount)}
+                  title={label}
+                  aria-label={label}
+                  aria-pressed={isActive}
+                >
+                  <LayoutColumnsIcon columns={columnCount} />
+                </button>
+              );
+            })}
           </div>
+          <span className="toolbar-divider" aria-hidden="true"></span>
+          {/* Group 3: Dashboard actions */}
           {!isEditingName && (
-            <button className="btn btn-sm btn-outline-secondary" onClick={handleNameEditStart} title="Edit Dashboard Name">
+            <button className="btn btn-sm btn-outline-secondary" onClick={handleNameEditStart} title="Edit Dashboard Name" aria-label="Edit Dashboard Name">
               <i className="bi bi-pencil"></i>
             </button>
           )}
-          <button className="btn btn-sm btn-outline-danger" onClick={handleDeleteClick} title="Delete Dashboard">
+          <button className="btn btn-sm btn-outline-secondary btn-danger-hover" onClick={handleDeleteClick} title="Delete Dashboard" aria-label="Delete Dashboard">
             <i className="bi bi-trash"></i>
           </button>
         </div>
