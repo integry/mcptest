@@ -33,6 +33,12 @@
   --box-shadow-lg: 0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -2px rgba(15, 23, 42, 0.08);
   --box-shadow-xl: 0 12px 24px -8px rgba(15, 23, 42, 0.16);
   --border-radius: 0.9rem;
+  /* One button shape for the whole app: soft rectangles, never pills. A
+     developer tool is grid-heavy, so buttons should echo the panels they sit
+     in. --button-radius-sm is reserved for buttons nested inside another
+     bordered container (segmented control items, inline-edit icons). */
+  --button-radius: 0.5rem;
+  --button-radius-sm: 0.375rem;
   --accent-gradient: linear-gradient(120deg, #047857, #0f766e);
 }
 
@@ -553,7 +559,7 @@ a:hover {
 
 /* Buttons */
 .btn {
-  border-radius: var(--border-radius);
+  border-radius: var(--button-radius);
   padding: 0.5rem 1rem;
   font-weight: 500;
   font-size: 0.875rem;
@@ -638,30 +644,34 @@ a:hover {
   color: white;
 }
 
-/* Outline buttons */
+/* Outline buttons
+   An outline button always wears one palette: its border and its label are the
+   same colour, and hovering tints the background instead of flooding it. A
+   neutral border wrapped around coloured text reads as a disabled control
+   trying to look active, so those combinations are never allowed. */
+
+/* Brand / active secondary */
 .btn-outline-primary {
   color: var(--primary-color);
   border-color: var(--primary-color);
   background-color: transparent;
 }
 .btn-outline-primary:hover {
-  background-color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 10%, transparent);
   border-color: var(--primary-color);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(34, 197, 94, 0.2);
+  color: var(--primary-color);
 }
 
+/* Neutral / default secondary */
 .btn-outline-secondary {
-  color: var(--secondary-color);
-  border-color: var(--secondary-color);
+  color: var(--text-accent);
+  border-color: var(--input-border);
   background-color: transparent;
 }
 .btn-outline-secondary:hover {
-  background-color: var(--secondary-color);
+  background-color: var(--card-bg-secondary);
   border-color: var(--secondary-color);
-  color: white;
-  transform: translateY(-1px);
+  color: var(--text-color);
 }
 
 .btn-outline-danger {
@@ -670,10 +680,9 @@ a:hover {
   background-color: transparent;
 }
 .btn-outline-danger:hover {
-  background-color: var(--danger-color);
+  background-color: color-mix(in srgb, var(--danger-color) 10%, transparent);
   border-color: var(--danger-color);
-  color: white;
-  transform: translateY(-1px);
+  color: var(--danger-color);
 }
 
 .btn-outline-success {
@@ -682,10 +691,9 @@ a:hover {
   background-color: transparent;
 }
 .btn-outline-success:hover {
-  background-color: var(--success-color);
+  background-color: color-mix(in srgb, var(--success-color) 10%, transparent);
   border-color: var(--success-color);
-  color: white;
-  transform: translateY(-1px);
+  color: var(--success-color);
 }
 
 /* Forms */
@@ -755,12 +763,14 @@ a:hover {
   cursor: pointer;
 }
 
-/* Badges */
+/* Badges
+   Badges are read-only status, not controls. They stay smaller, tighter and
+   softer than any button so nobody tries to click one. */
 .badge {
-  border-radius: 0.5rem;
-  padding: 0.4em 0.75em;
-  font-weight: 500;
-  font-size: 0.8rem;
+  border-radius: var(--button-radius-sm);
+  padding: 0.22em 0.5em;
+  font-weight: 600;
+  font-size: 0.72rem;
   letter-spacing: 0;
 }
 .bg-success { 
@@ -783,9 +793,43 @@ a:hover {
   background-color: var(--warning-color) !important; 
   color: var(--body-bg) !important;
 }
-.bg-light { 
-  background-color: var(--card-bg-secondary) !important; 
+.bg-light {
+  background-color: var(--card-bg-secondary) !important;
   color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* On a badge the same palette is used as a soft wash: a solid fill next to a
+   solid button is indistinguishable from one, which invites a click that will
+   never happen. Non-badge elements keep the heavy fills above. */
+.badge.bg-success {
+  background-color: color-mix(in srgb, var(--success-color) 14%, var(--card-bg)) !important;
+  color: var(--success-color) !important;
+}
+.badge.bg-danger {
+  background-color: color-mix(in srgb, var(--danger-color) 14%, var(--card-bg)) !important;
+  color: var(--danger-color) !important;
+}
+.badge.bg-primary {
+  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--card-bg)) !important;
+  color: var(--primary-color) !important;
+}
+.badge.bg-info {
+  background-color: color-mix(in srgb, var(--info-color) 14%, var(--card-bg)) !important;
+  color: var(--info-color) !important;
+}
+.badge.bg-warning {
+  background-color: color-mix(in srgb, var(--warning-color) 16%, var(--card-bg)) !important;
+  color: var(--warning-color) !important;
+}
+.badge.bg-secondary,
+.badge.bg-dark {
+  background-color: color-mix(in srgb, var(--secondary-color) 16%, var(--card-bg)) !important;
+  color: var(--text-accent) !important;
+}
+.badge.bg-light {
+  background-color: var(--card-bg-secondary) !important;
+  color: var(--text-accent) !important;
   border: 1px solid var(--border-color) !important;
 }
 
@@ -1587,11 +1631,11 @@ select {
   line-height: 1 !important;
 }
 
-/* Small button adjustments */
+/* Small button adjustments — same shape as a full-size button, just tighter */
 .btn-sm {
   padding: .375rem .75rem;
   font-size: .8125rem;
-  border-radius: .25rem;
+  border-radius: var(--button-radius);
 }
 
 /* Override for card header buttons specifically */
@@ -1701,7 +1745,7 @@ select {
   color: var(--text-color);
   cursor: pointer;
   padding: 0.25rem;
-  border-radius: var(--border-radius);
+  border-radius: var(--button-radius);
 }
 
 .mobile-close-btn:hover {
@@ -1925,12 +1969,12 @@ select {
   transition: max-height 0.3s ease-in-out;
 }
 
-.tool-result-content .btn-group {
+.tool-result-content .result-actions {
   opacity: 0.8;
   transition: opacity 0.2s ease;
 }
 
-.tool-result-content:hover .btn-group {
+.tool-result-content:hover .result-actions {
   opacity: 1;
 }
 
@@ -1975,11 +2019,11 @@ select {
 }
 
 /* Dashboards mode specific styling */
-.spaces-mode .tool-result-content .btn-group {
+.spaces-mode .tool-result-content .result-actions {
   opacity: 0.8;
 }
 
-.spaces-mode .tool-result-content:hover .btn-group {
+.spaces-mode .tool-result-content:hover .result-actions {
   opacity: 1;
 }
 
@@ -2004,9 +2048,8 @@ select {
   display: block;
 }
 
-.spaces-mode .btn-group {
+.spaces-mode .result-actions {
   margin-bottom: 0.5rem;
-  border-radius: 0.25rem;
 }
 
 /* Remove card body padding in spaces */
@@ -2326,7 +2369,7 @@ span.health-indicator.health-indicator-gray {
 /* --- Ghost buttons (no border; the icon and label rest on the background) --- */
 .btn-ghost {
   border: none;
-  border-radius: 0.375rem;
+  border-radius: var(--button-radius);
   background-color: transparent;
   color: var(--text-muted);
   box-shadow: none;
@@ -2371,6 +2414,73 @@ span.health-indicator.health-indicator-gray {
 /* The caret on a ghost dropdown toggle adds visual noise at this size */
 .btn-ghost.dropdown-toggle::after {
   display: none;
+}
+
+/* --- Grouped actions --- */
+/* Related actions are spaced, never welded together with shared borders.
+   Anything that still reaches for Bootstrap's .btn-group gets pulled apart
+   here so a stray group can't reintroduce the old glued-strip look. */
+.panel-actions,
+.result-actions,
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-group > .btn,
+.btn-group > .dropdown > .btn {
+  margin-left: 0 !important;
+  border-radius: var(--button-radius) !important;
+}
+
+/* --- Inline edit (input + confirm/cancel as one component) --- */
+/* The border and the focus ring belong to the wrapper; the input and the two
+   icon buttons inside it are borderless so only one outline is ever drawn. */
+.inline-edit-group {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 0;
+  padding: 0.125rem 0.125rem 0.125rem 0.5rem;
+  border: 1px solid var(--input-border);
+  border-radius: var(--button-radius);
+  background-color: var(--input-bg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.inline-edit-group:focus-within {
+  border-color: var(--input-focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.inline-edit-group .form-control,
+.inline-edit-group .form-control:focus {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.25rem 0;
+  border: 0 !important;
+  border-radius: 0;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.inline-edit-group .btn {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.4rem !important;
+  border: none;
+  border-radius: var(--button-radius-sm);
+  line-height: 1;
+}
+
+.inline-edit-group .btn-confirm {
+  color: var(--primary-color);
+}
+
+.inline-edit-group .btn-confirm:hover,
+.inline-edit-group .btn-confirm:focus-visible {
+  color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 12%, transparent);
 }
 
 /* Dark mode tab fixes */
@@ -2524,9 +2634,10 @@ span.health-indicator.health-indicator-gray {
   letter-spacing: 0;
 }
 
+/* A circle here would be a third button shape in the header */
 .app-theme-toggle {
-  border: 1px solid var(--border-color);
-  border-radius: 50%;
+  border: 1px solid var(--input-border);
+  border-radius: var(--button-radius);
   background: var(--card-bg);
 }
 
@@ -2713,7 +2824,7 @@ span.health-indicator.health-indicator-gray {
   flex-wrap: nowrap;
   padding: 0;
   border: 0;
-  border-radius: 0.625rem;
+  border-radius: var(--button-radius);
   background: transparent;
   box-shadow: none;
 }
@@ -2728,7 +2839,7 @@ span.health-indicator.health-indicator-gray {
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--input-border) !important;
   border-right: 0 !important;
-  border-radius: 0.625rem 0 0 0.625rem !important;
+  border-radius: var(--button-radius) 0 0 var(--button-radius) !important;
   background: var(--input-bg) !important;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   font-family: var(--font-family-mono);
@@ -2743,7 +2854,7 @@ span.health-indicator.health-indicator-gray {
 
 .connection-console .input-group .btn {
   min-width: 7rem;
-  border-radius: 0 0.625rem 0.625rem 0 !important;
+  border-radius: 0 var(--button-radius) var(--button-radius) 0 !important;
   box-shadow: none;
 }
 
@@ -3490,7 +3601,6 @@ span.health-indicator.health-indicator-gray {
   position: relative;
   z-index: 2;
   min-width: 6.75rem;
-  border-width: 2px;
   box-shadow: none;
 }
 
@@ -3538,7 +3648,7 @@ span.health-indicator.health-indicator-gray {
 .badge {
   border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
   font-family: var(--font-family-sans-serif);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -3904,7 +4014,7 @@ pre.bg-light code {
   .connection-console .input-group .btn {
     width: 100%;
     min-width: 0;
-    border-radius: 0.62rem !important;
+    border-radius: var(--button-radius) !important;
   }
 
   .connection-console .input-group .form-control {
@@ -4195,7 +4305,7 @@ pre.bg-light code {
 
 .request-actions .btn {
   min-height: 2.55rem;
-  border-radius: 0.52rem;
+  border-radius: var(--button-radius);
   font-family: var(--font-family-sans-serif);
   font-size: 0.8rem;
   font-weight: 700;
@@ -5125,7 +5235,7 @@ pre.bg-light code {
   gap: 0.75rem;
   padding: 0.6rem;
   border: 1px solid var(--border-color);
-  border-radius: 0.55rem;
+  border-radius: var(--button-radius);
   background: var(--card-bg-secondary);
   color: var(--text-color);
   text-align: left;

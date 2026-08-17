@@ -306,7 +306,7 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
               </div>
             )}
             {isEditing ? (
-              <div className="input-group input-group-sm flex-grow-1 me-2">
+              <div className="inline-edit-group flex-grow-1 me-2">
                 <input
                   type="text"
                   className="form-control form-control-sm"
@@ -315,10 +315,10 @@ const SpaceCardComponent: React.FC<SpaceCardComponentProps> = ({
                   onKeyDown={handleTitleInputKeyDown}
                   autoFocus
                 />
-                <button className="btn btn-outline-success btn-sm" type="button" onClick={handleEditSave} title="Save Changes">
+                <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleEditSave} title="Save Changes">
                   <i className="bi bi-check-lg"></i>
                 </button>
-                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={handleEditCancel} title="Cancel Edit">
+                <button className="btn btn-sm btn-ghost" type="button" onClick={handleEditCancel} title="Cancel Edit">
                   <i className="bi bi-x-lg"></i>
                 </button>
               </div>
@@ -684,7 +684,7 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
       {/* Dashboard Header */}
       <div className="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
         {isEditingName ? (
-          <div className="input-group">
+          <div className="inline-edit-group">
             <input
               type="text"
               className="form-control"
@@ -693,10 +693,10 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
               onKeyDown={handleNameInputKeyDown}
               autoFocus
             />
-            <button className="btn btn-outline-success" type="button" onClick={handleNameEditSave} title="Save Name">
+            <button className="btn btn-ghost btn-confirm" type="button" onClick={handleNameEditSave} title="Save Name">
               <i className="bi bi-check-lg"></i>
             </button>
-            <button className="btn btn-outline-secondary" type="button" onClick={handleNameEditCancel} title="Cancel Edit">
+            <button className="btn btn-ghost" type="button" onClick={handleNameEditCancel} title="Cancel Edit">
               <i className="bi bi-x-lg"></i>
             </button>
           </div>

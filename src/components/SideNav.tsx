@@ -347,7 +347,7 @@ const SideNav: React.FC<SideNavProps> = ({
       {/* Create New Dashboard */}
       <div className="mt-2 ms-3">
         {showCreateInput ? (
-          <div className="input-group input-group-sm">
+          <div className="inline-edit-group">
             <input
               type="text"
               className="form-control form-control-sm"
@@ -357,10 +357,10 @@ const SideNav: React.FC<SideNavProps> = ({
               onKeyDown={handleInputKeyDown}
               autoFocus
             />
-            <button className="btn btn-outline-success btn-sm" type="button" onClick={handleCreateConfirm} title="Create">
+            <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create">
               <i className="bi bi-check-lg"></i>
             </button>
-            <button className="btn btn-outline-secondary btn-sm" type="button" onClick={handleCreateCancel} title="Cancel">
+            <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel">
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
