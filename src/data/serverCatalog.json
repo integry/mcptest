@@ -225,10 +225,10 @@
     "requiresOAuth": true,
     "authType": "oauth",
     "logoUrl": "/server-logos/cloudflare.svg",
-    "logoSourceUrl": "https://cf-assets.www.cloudflare.com/dzlvafdwdttg/1Bfmnkb5ivLEQMGSKbih7o/c04d748252745f7169212868e155b5e2/Type_Default_1.svg",
+    "logoSourceUrl": "https://cf-assets.www.cloudflare.com/slt3lc6tev37/1wf4qdGsPqa2UUSEoa4Yyg/3250a65f210bbb7062ab4dd9a9bdf213/logo-cloudflare-dark.svg",
     "logoSourceKind": "official-brand",
     "logoRetrievedAt": "2026-08-17",
-    "logoLicenseNote": "Official Cloudflare press-kit asset; trademark rights remain with Cloudflare.",
+    "logoLicenseNote": "Official Cloudflare logo asset; trademark rights remain with Cloudflare.",
     "homepageUrl": "https://www.cloudflare.com"
   },
   {
@@ -373,7 +373,7 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
-    "logoUrl": "/server-logos/inference-sh.svg",
+    "logoUrl": "/server-logos/inference-sh.png",
     "logoSourceUrl": "https://inference.sh/favicon.svg",
     "logoSourceKind": "official-site",
     "logoRetrievedAt": "2026-08-17",
