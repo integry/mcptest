@@ -82,14 +82,19 @@ const truncateDescription = (value: string, maxLength = 158): string => {
   return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 };
 
+export const getCatalogServerMetaDescription = (server: CatalogServer): string => {
+  return truncateDescription(
+    server.seoDescription
+      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
+  );
+};
+
 export const getCatalogServerSeo = (server: CatalogServer) => {
   const transport = formatCatalogTransport(getEffectiveCatalogTransport(server));
   const auth = formatCatalogAuth(server.authType);
   const protocol = formatProtocolEra(server.protocolEra, server.protocolVersion);
   const canonicalUrl = `${SITE_URL}${getCatalogServerPath(server.id)}`;
-  const description = truncateDescription(
-    `${server.name} MCP server connection report: ${transport}, ${protocol}, ${auth}, endpoint details, and live-test status.`
-  );
+  const description = getCatalogServerMetaDescription(server);
 
   return {
     title: `${server.name} MCP Server Report | mcptest.io`,

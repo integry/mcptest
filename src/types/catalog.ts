@@ -64,6 +64,8 @@ export interface CatalogServerSeed {
   browserAccess?: CatalogBrowserAccess;
   /** Short summary of what the server provides. */
   description: string;
+  /** Optional search-result summary when the catalog description is not written as metadata. */
+  seoDescription?: string;
   /** Primary grouping used by the category filter. */
   category: string;
   /** Searchable keywords, capabilities, or ecosystem labels. */

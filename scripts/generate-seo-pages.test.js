@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
 
-const { renderServerHtml } = seoGenerator;
+const { renderServerHtml, renderStaticPageHtml } = seoGenerator;
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
 function catalogServer(url, declaredTransport) {
@@ -74,5 +74,34 @@ describe('generated server report Playground links', () => {
 
     expect(html).toContain('Browser-verified endpoint');
     expect(html).toContain('href="/server/https://example.com/sse/sse"');
+  });
+});
+
+describe('generated page metadata', () => {
+  it('uses the server capability summary across search and social tags', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('<title>Example Server MCP Server Report | mcptest.io</title>');
+    expect(html).toContain(`name="description" content="${server.seoDescription}"`);
+    expect(html).toContain(`property="og:description" content="${server.seoDescription}"`);
+    expect(html).toContain(`name="twitter:description" content="${server.seoDescription}"`);
+  });
+
+  it('renders unique initial metadata for documentation routes', () => {
+    const metadata = {
+      title: 'Troubleshooting MCP Server Errors | mcptest.io',
+      description: 'Fix common Model Context Protocol connection issues.',
+    };
+
+    const html = renderStaticPageHtml(indexHtml, '/docs/troubleshooting', metadata);
+
+    expect(html).toContain(`<title>${metadata.title}</title>`);
+    expect(html).toContain(`name="description" content="${metadata.description}"`);
+    expect(html).toContain(`property="og:title" content="${metadata.title}"`);
+    expect(html).toContain(`name="twitter:title" content="${metadata.title}"`);
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/troubleshooting"');
   });
 });

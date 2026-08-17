@@ -9,6 +9,7 @@ const distRoot = path.join(projectRoot, 'dist');
 const indexPath = path.join(distRoot, 'index.html');
 const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
 const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.json');
+const pageMetadataPath = path.join(projectRoot, 'src', 'data', 'pageMetadata.json');
 
 function escapeHtml(value) {
   return String(value)
@@ -231,7 +232,8 @@ function renderServerHtml(indexHtml, server) {
   const canonicalUrl = `${SITE_URL}${serverPath(server.id)}`;
   const title = `${server.name} MCP Server Report | mcptest.io`;
   const description = truncate(
-    `${server.name} MCP server connection report: ${transportLabel(server.declaredTransport)}, ${protocolLabel(server.protocolEra, server.protocolVersion)}, ${authenticationLabel(server.authType)}, endpoint details, and live-test status.`
+    server.seoDescription
+      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
   );
   const imageUrl = server.logoUrl
     ? (server.logoUrl.startsWith('http') ? server.logoUrl : `${SITE_URL}${server.logoUrl}`)
@@ -263,6 +265,7 @@ function renderServerHtml(indexHtml, server) {
   html = setNamedMeta(html, 'twitter:card', 'summary');
   html = setNamedMeta(html, 'twitter:title', title);
   html = setNamedMeta(html, 'twitter:description', description);
+  html = setNamedMeta(html, 'twitter:image', imageUrl);
   html = setPropertyMeta(html, 'og:title', title);
   html = setPropertyMeta(html, 'og:description', description);
   html = setPropertyMeta(html, 'og:url', canonicalUrl);
@@ -287,6 +290,30 @@ function renderServerHtml(indexHtml, server) {
   return html;
 }
 
+function renderStaticPageHtml(indexHtml, pathname, metadata) {
+  const canonicalUrl = `${SITE_URL}${pathname}`;
+  const imageUrl = `${SITE_URL}/logo.png`;
+  let html = indexHtml.replace(
+    /<title>[^<]*<\/title>/i,
+    `<title>${escapeHtml(metadata.title)}</title>`
+  );
+  html = setNamedMeta(html, 'description', metadata.description);
+  html = setNamedMeta(html, 'twitter:card', 'summary');
+  html = setNamedMeta(html, 'twitter:title', metadata.title);
+  html = setNamedMeta(html, 'twitter:description', metadata.description);
+  html = setNamedMeta(html, 'twitter:image', imageUrl);
+  html = setPropertyMeta(html, 'og:title', metadata.title);
+  html = setPropertyMeta(html, 'og:description', metadata.description);
+  html = setPropertyMeta(html, 'og:url', canonicalUrl);
+  html = setPropertyMeta(html, 'og:image', imageUrl);
+  html = setPropertyMeta(html, 'og:type', 'website');
+  return replaceOrInsertHead(
+    html,
+    /<link\s+[^>]*rel=["']canonical["'][^>]*>/i,
+    `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`
+  );
+}
+
 function writeServerPages(indexHtml, servers) {
   for (const server of servers) {
     const outputDirectory = path.join(distRoot, 'servers', server.id);
@@ -294,6 +321,19 @@ function writeServerPages(indexHtml, servers) {
     fs.writeFileSync(
       path.join(outputDirectory, 'index.html'),
       renderServerHtml(indexHtml, server),
+      'utf8'
+    );
+  }
+}
+
+function writeStaticPages(indexHtml, docsMetadata) {
+  for (const [slug, metadata] of Object.entries(docsMetadata)) {
+    const pathname = `/docs/${slug}`;
+    const outputDirectory = path.join(distRoot, 'docs', slug);
+    fs.mkdirSync(outputDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDirectory, 'index.html'),
+      renderStaticPageHtml(indexHtml, pathname, metadata),
       'utf8'
     );
   }
@@ -356,18 +396,26 @@ function main() {
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
   const validationResults = JSON.parse(fs.readFileSync(validationPath, 'utf8'));
+  const pageMetadata = JSON.parse(fs.readFileSync(pageMetadataPath, 'utf8'));
   validateInputs(seeds);
   const servers = mergeCatalogServers(seeds, validationResults);
   const indexHtml = fs.readFileSync(indexPath, 'utf8');
 
   writeServerPages(indexHtml, servers);
+  writeStaticPages(indexHtml, pageMetadata.docs);
   writeSitemap(servers);
 
-  console.log(`Generated ${servers.length} server profile documents, sitemap.xml, and robots.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, sitemap.xml, and robots.txt.`);
 }
 
 if (require.main === module) {
   main();
 }
 
-module.exports = { mergeCatalogServers, renderServerHtml, serverPath, transportLabel };
+module.exports = {
+  mergeCatalogServers,
+  renderServerHtml,
+  renderStaticPageHtml,
+  serverPath,
+  transportLabel,
+};

@@ -4,6 +4,7 @@ import {
   formatCatalogAuth,
   formatCatalogTransport,
   formatProtocolEra,
+  getCatalogServerMetaDescription,
   getCatalogServerIdFromPath,
   getCatalogServerPath,
   getCatalogServerSeo,
@@ -33,15 +34,23 @@ describe('catalog SEO helpers', () => {
     expect(getCatalogServerIdFromPath('/catalog/example-server')).toBeNull();
   });
 
-  it('uses the declared transport when validation is pending', () => {
+  it('uses server capabilities in metadata when validation is pending', () => {
     const seo = getCatalogServerSeo(server);
 
     expect(formatCatalogTransport(server.declaredTransport)).toBe('Streamable HTTP');
     expect(formatCatalogAuth(server.authType)).toBe('OAuth 2.1');
     expect(formatProtocolEra(server.protocolEra)).toBe('Not yet negotiated');
-    expect(seo.description).toContain('Streamable HTTP');
-    expect(seo.description).toContain('OAuth 2.1');
+    expect(seo.description).toBe(
+      'Inspect the Example MCP server. An example remote MCP server. Test and debug endpoints.'
+    );
     expect(seo.canonicalUrl).toBe('https://mcptest.io/servers/example-server/');
     expect(seo.structuredData.endpointUrl).toBe(server.url);
+  });
+
+  it('uses a curated search summary when the catalog provides one', () => {
+    const seoDescription = 'Inspect the Example MCP server. Explore example tools and resources.';
+
+    expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(seoDescription);
+    expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(seoDescription);
   });
 });

@@ -1,0 +1,36 @@
+{
+  "home": {
+    "title": "mcptest.io | The Remote MCP Server Playground",
+    "description": "The easiest way to inspect, debug, and negotiate with remote MCP servers. Connect an endpoint to explore its tools, resources, prompts, and live responses."
+  },
+  "docs": {
+    "what-is-mcp": {
+      "title": "What Is the Model Context Protocol? | mcptest.io",
+      "description": "Understand MCP tools, resources, prompts, transports, and protocol lifecycles. A developer introduction to local and remote Model Context Protocol servers."
+    },
+    "remote-vs-local": {
+      "title": "Remote vs. Local MCP Servers | mcptest.io",
+      "description": "Compare stdio and Streamable HTTP MCP servers. Learn how local and remote transports handle sessions, authentication, deployment, and compatibility."
+    },
+    "testing-guide": {
+      "title": "Testing Guide for Remote MCP Servers | mcptest.io",
+      "description": "Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers. A step-by-step developer guide for validating stateless and stateful flows."
+    },
+    "troubleshooting": {
+      "title": "Troubleshooting MCP Server Errors | mcptest.io",
+      "description": "Fix common Model Context Protocol connection issues. A technical guide to resolving CORS, session state errors, 404s, and routing metadata failures."
+    },
+    "privacy-policy": {
+      "title": "Privacy Policy | mcptest.io",
+      "description": "Read the mcptest.io privacy policy, including how server connections, test history, local browser storage, and website analytics are handled."
+    },
+    "terms-of-service": {
+      "title": "Terms of Service | mcptest.io",
+      "description": "Review the terms for using mcptest.io to connect to, inspect, test, and debug remote Model Context Protocol servers."
+    },
+    "contact": {
+      "title": "Contact | mcptest.io",
+      "description": "Contact the mcptest.io team for technical support, product questions, feedback, or help testing remote Model Context Protocol servers."
+    }
+  }
+}
