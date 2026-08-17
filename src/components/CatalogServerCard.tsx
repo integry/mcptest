@@ -1,6 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import type { CatalogServer, CatalogServerStatus, CatalogValidationTransport } from '../types/catalog';
+import type {
+  CatalogListingSourceKind,
+  CatalogServer,
+  CatalogServerStatus,
+  CatalogValidationTransport,
+} from '../types/catalog';
 import {
   formatCatalogAuth,
   formatProtocolEra,
@@ -11,6 +16,7 @@ import {
 export interface CatalogServerCardProps {
   server: CatalogServer;
   onTest: (server: CatalogServer) => void;
+  onCategorySelect: (category: string) => void;
 }
 
 const formatValidationTime = (checkedAt?: string): string => {
@@ -69,44 +75,133 @@ const getTransportLabels = (transport: CatalogValidationTransport) => {
   }
 };
 
-export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, onTest }) => {
+const getServerHostname = (url: string): string => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+};
+
+const getServerInitials = (name: string): string => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const initials = words.slice(0, 2).map((word) => word[0]).join('');
+  return (initials || '?').toLocaleUpperCase();
+};
+
+const getListingSourceDetails = (
+  kind: CatalogListingSourceKind
+): { label: string; description: string } => {
+  switch (kind) {
+    case 'publisher':
+      return {
+        label: 'Publisher',
+        description: 'Listing sourced from provider-controlled documentation, site, or repository',
+      };
+    case 'mcp-registry':
+      return {
+        label: 'MCP Registry',
+        description: 'Listing sourced from an official MCP Registry record; publisher identity is not proven',
+      };
+    case 'community':
+    default:
+      return {
+        label: 'Community',
+        description: 'Listing independently curated by the community',
+      };
+  }
+};
+
+export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
+  server,
+  onTest,
+  onCategorySelect,
+}) => {
   const statusDetails = getStatusDetails(server.status, server.checkedAt);
   const transportIsDeclaredOnly = server.transport === 'unknown';
   const transportLabels = getTransportLabels(getEffectiveCatalogTransport(server));
   const isOffline = server.status === 'offline';
+  const hostname = getServerHostname(server.url);
+  const listingSource = getListingSourceDetails(server.listingSource.kind);
+  const provenanceContent = (
+    <>
+      {listingSource.label}
+      {server.listingSource.url && (
+        <i className="bi bi-box-arrow-up-right" aria-hidden="true" />
+      )}
+    </>
+  );
 
   return (
     <div className="card h-100 catalog-server-card">
       <div className="card-body d-flex flex-column">
         <div className="catalog-server-main">
           <div className="d-flex align-items-start gap-3 mb-3">
-            {server.logoUrl && (
+            {server.logoUrl ? (
               <img
                 src={server.logoUrl}
                 alt={`${server.name} logo`}
                 className="catalog-server-logo flex-shrink-0"
               />
+            ) : (
+              <span
+                className="catalog-server-logo catalog-server-initials flex-shrink-0"
+                role="img"
+                aria-label={`${server.name} initials logo`}
+              >
+                {getServerInitials(server.name)}
+              </span>
             )}
             <div className="catalog-server-heading">
-              <div className="catalog-server-title-row d-flex align-items-center justify-content-between gap-2 mb-1">
-                <h5 className="mb-0 text-truncate flex-grow-1">
-                  <Link
-                    className="catalog-server-title stretched-link"
-                    to={getCatalogServerPath(server.id)}
-                  >
-                    {server.name}
-                  </Link>
-                </h5>
+              <div className="catalog-server-title-row d-flex align-items-start justify-content-between gap-2 mb-1">
+                <div className="catalog-server-name-source">
+                  <h3 className="h5 mb-0">
+                    <Link
+                      className="catalog-server-title"
+                      to={getCatalogServerPath(server.id)}
+                    >
+                      {server.name}
+                    </Link>
+                  </h3>
+                  {server.listingSource.url ? (
+                    <a
+                      className="catalog-listing-source"
+                      href={server.listingSource.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={listingSource.description}
+                      aria-label={`${listingSource.label} source for ${server.name}. ${listingSource.description}.`}
+                    >
+                      {provenanceContent}
+                    </a>
+                  ) : (
+                    <span
+                      className="catalog-listing-source"
+                      title={listingSource.description}
+                      aria-label={`${listingSource.label} source for ${server.name}. ${listingSource.description}.`}
+                    >
+                      {provenanceContent}
+                    </span>
+                  )}
+                </div>
                 <span
-                  className={`catalog-status-dot rounded-circle flex-shrink-0 ${statusDetails.className}`}
+                  className="catalog-runtime-status flex-shrink-0"
                   title={statusDetails.tooltip}
                   aria-label={statusDetails.tooltip}
                 >
-                  <span className="visually-hidden">{statusDetails.label}</span>
+                  <span
+                    className={`catalog-status-dot rounded-circle ${statusDetails.className}`}
+                    aria-hidden="true"
+                  />
+                  {statusDetails.label}
                 </span>
               </div>
-              <p className="catalog-server-url text-muted small text-truncate mb-0" title={server.url}>
-                {server.url}
+              <p
+                className="catalog-server-url text-muted small text-truncate mb-0"
+                title={server.url}
+                aria-label={`Endpoint hostname ${hostname}. Full endpoint ${server.url}`}
+              >
+                {hostname}
               </p>
             </div>
           </div>
@@ -115,25 +210,22 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
         </div>
 
         <div className="catalog-server-footer mt-auto">
-          <Link
-            className="catalog-server-badges d-flex flex-wrap align-items-center mb-3"
-            to={getCatalogServerPath(server.id)}
-            aria-label={`View ${server.name} report`}
+          <div
+            className="catalog-server-badges d-flex flex-wrap align-items-center mb-2"
+            role="group"
+            aria-label="Server summary"
           >
-            <span className="badge catalog-metadata-badge catalog-metadata-badge--category">
+            <button
+              type="button"
+              className="badge catalog-metadata-badge catalog-metadata-badge--category"
+              onClick={() => onCategorySelect(server.category)}
+              aria-label={`Show ${server.category} servers`}
+            >
               {server.category}
-            </span>
+            </button>
             <span className="badge catalog-metadata-badge catalog-metadata-badge--auth">
               {formatCatalogAuth(server.authType)}
             </span>
-            {server.protocolEra !== 'unknown' && (
-              <span
-                className="badge catalog-metadata-badge catalog-metadata-badge--architecture"
-                title={server.protocolVersion || undefined}
-              >
-                {formatProtocolEra(server.protocolEra)}
-              </span>
-            )}
             {transportLabels.map((label) => (
               <span
                 key={label}
@@ -143,20 +235,36 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
                 {label}
               </span>
             ))}
-            {server.browserAccess === 'direct' && (
-              <span className="badge catalog-status-badge catalog-status-badge--verified" title="Verified with an in-browser MCP connection and call">
-                Browser ready
+            {server.protocolEra !== 'unknown' && (
+              <span
+                className="badge catalog-metadata-badge catalog-metadata-badge--architecture"
+                title={server.protocolVersion || undefined}
+              >
+                {formatProtocolEra(server.protocolEra)}
               </span>
             )}
-            {server.browserAccess === 'proxy-required' && (
-              <span className="badge catalog-status-badge catalog-status-badge--warning" title="The server is online but does not permit a direct browser connection">
-                Proxy required
-              </span>
-            )}
-          </Link>
+          </div>
+
+          {(server.browserAccess === 'direct' || server.browserAccess === 'proxy-required') && (
+            <div
+              className="catalog-browser-evidence mb-3"
+              role="group"
+              aria-label="Browser access evidence"
+            >
+              {server.browserAccess === 'direct' ? (
+                <span className="badge catalog-status-badge catalog-status-badge--verified" title="Observed with an in-browser MCP connection and call">
+                  Browser ready
+                </span>
+              ) : (
+                <span className="badge catalog-status-badge catalog-status-badge--warning" title="The server was reachable but did not permit a direct browser connection">
+                  Proxy required
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="catalog-card-actions align-items-center">
-            <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
+            <Link className="btn btn-sm btn-primary catalog-report-link" to={getCatalogServerPath(server.id)}>
               View report
             </Link>
             <button
@@ -164,8 +272,9 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
               className="btn btn-sm btn-outline-primary catalog-test-button"
               onClick={() => onTest(server)}
               disabled={isOffline}
+              title={isOffline ? 'Testing is unavailable while this server is offline' : undefined}
             >
-              Test server
+              Test in Playground
             </button>
           </div>
         </div>

@@ -1,6 +1,12 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, useLocation, type Location } from 'react-router-dom';
+import {
+  MemoryRouter,
+  useLocation,
+  useNavigate,
+  type Location,
+  type NavigateFunction,
+} from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CATALOG_CATEGORY_ALL } from '../types/catalog';
 import { logEvent } from '../utils/analytics';
@@ -25,12 +31,14 @@ beforeAll(() => {
 const renderCatalogHook = (initialEntry = '/catalog') => {
   let catalog: ReturnType<typeof useCatalog> | undefined;
   let location: Location | undefined;
+  let navigate: NavigateFunction | undefined;
   const container = document.createElement('div');
   const root: Root = createRoot(container);
 
   const Probe = () => {
     catalog = useCatalog();
     location = useLocation();
+    navigate = useNavigate();
 
     return null;
   };
@@ -60,6 +68,12 @@ const renderCatalogHook = (initialEntry = '/catalog') => {
 
       return location;
     },
+    navigate(to: number) {
+      if (!navigate) {
+        throw new Error('Catalog navigation was not rendered');
+      }
+      navigate(to);
+    },
     unmount() {
       act(() => {
         root.unmount();
@@ -83,7 +97,7 @@ describe('catalog query params', () => {
 
   it('reads valid params and normalizes search text', () => {
     const filters = getCatalogFiltersFromParams(
-      new URLSearchParams('q=%20crypto%20&auth=oauth&category=Finance'),
+      new URLSearchParams('q=%20crypto%20&auth=oauth&category=Finance&sort=name'),
       categories
     );
 
@@ -91,6 +105,7 @@ describe('catalog query params', () => {
       searchQuery: 'crypto',
       oauthFilter: 'oauth',
       category: 'Finance',
+      sortOrder: 'name',
     });
   });
 
@@ -104,6 +119,7 @@ describe('catalog query params', () => {
       searchQuery: 'agent',
       oauthFilter: 'all',
       category: CATALOG_CATEGORY_ALL,
+      sortOrder: 'catalog-order',
     });
   });
 
@@ -121,21 +137,28 @@ describe('catalog query params', () => {
   });
 
   it('trims search text and preserves non-default filters when building params', () => {
-    const params = buildCatalogSearchParams('  crypto tools  ', 'no-auth', 'Productivity');
+    const params = buildCatalogSearchParams(
+      '  crypto tools  ',
+      'no-auth',
+      'Productivity',
+      'recently-tested'
+    );
 
     expect(params.get('q')).toBe('crypto tools');
     expect(params.get('auth')).toBe('no-auth');
     expect(params.get('category')).toBe('Productivity');
+    expect(params.get('sort')).toBe('recently-tested');
   });
 
   it('cleans invalid URL params without logging search analytics', () => {
     const view = renderCatalogHook(
-      '/catalog?q=%20crypto%20&auth=basic&category=DoesNotExist&extra=1'
+      '/catalog?q=%20crypto%20&auth=basic&category=DoesNotExist&sort=random&extra=1'
     );
 
     expect(view.catalog.searchQuery).toBe('crypto');
     expect(view.catalog.oauthFilter).toBe('all');
     expect(view.catalog.category).toBe(CATALOG_CATEGORY_ALL);
+    expect(view.catalog.sortOrder).toBe('catalog-order');
     expect(view.location.search).toBe('?q=crypto');
 
     act(() => {
@@ -143,6 +166,62 @@ describe('catalog query params', () => {
     });
 
     expect(mockedLogEvent).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('hydrates category, auth, and sort together and produces filtered name order', () => {
+    const view = renderCatalogHook('/catalog?category=Finance&auth=no-auth&sort=name');
+
+    expect(view.catalog.category).toBe('Finance');
+    expect(view.catalog.oauthFilter).toBe('no-auth');
+    expect(view.catalog.sortOrder).toBe('name');
+    expect(view.catalog.filteredServers.map(({ name }) => name)).toEqual([
+      'CoinGecko',
+      'Yahoo Finance',
+    ]);
+    expect(view.location.search).toBe('?category=Finance&auth=no-auth&sort=name');
+    expect(mockedLogEvent).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('logs sorting only for user changes and persists the non-default value', () => {
+    const view = renderCatalogHook('/catalog?sort=name');
+
+    expect(view.catalog.sortOrder).toBe('name');
+    expect(mockedLogEvent).not.toHaveBeenCalled();
+
+    act(() => {
+      view.catalog.setSortOrder('browser-ready');
+    });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(view.location.search).toBe('?sort=browser-ready');
+    expect(mockedLogEvent).toHaveBeenCalledWith('catalog_sort', {
+      sort: 'browser-ready',
+    });
+    view.unmount();
+  });
+
+  it('pushes category changes so browser back and forward restore selection', () => {
+    const view = renderCatalogHook();
+
+    act(() => {
+      view.catalog.setCategory('Finance');
+    });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(view.location.search).toBe('?category=Finance');
+
+    act(() => view.navigate(-1));
+    expect(view.location.search).toBe('');
+    expect(view.catalog.category).toBe(CATALOG_CATEGORY_ALL);
+
+    act(() => view.navigate(1));
+    expect(view.location.search).toBe('?category=Finance');
+    expect(view.catalog.category).toBe('Finance');
     view.unmount();
   });
 

@@ -3,6 +3,7 @@ import { useCatalog } from '../hooks/useCatalog';
 import {
   CATALOG_CATEGORY_ALL,
   type CatalogServer,
+  type CatalogSortOrder,
   type OAuthFilter,
 } from '../types/catalog';
 import CatalogServerCard from './CatalogServerCard';
@@ -19,17 +20,26 @@ const OAUTH_FILTER_OPTIONS: Array<{ value: OAuthFilter; label: string }> = [
   { value: 'api-key', label: 'API key' },
 ];
 
+const SORT_OPTIONS: Array<{ value: CatalogSortOrder; label: string }> = [
+  { value: 'catalog-order', label: 'Catalog order' },
+  { value: 'name', label: 'Name' },
+  { value: 'recently-tested', label: 'Recently tested' },
+  { value: 'browser-ready', label: 'Browser ready' },
+];
+
 const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
   const {
     allServers,
     filteredServers,
-    categories,
+    categoryCounts,
     searchQuery,
     setSearchQuery,
     oauthFilter,
     setOauthFilter,
     category,
     setCategory,
+    sortOrder,
+    setSortOrder,
   } = useCatalog();
   const idPrefix = useId();
 
@@ -37,6 +47,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
     setSearchQuery('');
     setOauthFilter('all');
     setCategory(CATALOG_CATEGORY_ALL);
+    setSortOrder('catalog-order');
   };
 
   return (
@@ -89,6 +100,24 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             </select>
           </div>
 
+          <div className="catalog-sort-field">
+            <label className="form-label" htmlFor={`${idPrefix}-catalog-sort`}>
+              Sort
+            </label>
+            <select
+              id={`${idPrefix}-catalog-sort`}
+              className="form-select"
+              value={sortOrder}
+              onChange={(event) => setSortOrder(event.target.value as CatalogSortOrder)}
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="catalog-category-field">
             <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-category`}>
               Category
@@ -99,10 +128,12 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
               value={category}
               onChange={(event) => setCategory(event.target.value)}
             >
-              <option value={CATALOG_CATEGORY_ALL}>Category: All</option>
-              {categories.map((catalogCategory) => (
-                <option key={catalogCategory} value={catalogCategory}>
-                  Category: {catalogCategory}
+              <option value={CATALOG_CATEGORY_ALL} disabled={categoryCounts.all === 0}>
+                Category: All ({categoryCounts.all})
+              </option>
+              {categoryCounts.categories.map(({ category: catalogCategory, count }) => (
+                <option key={catalogCategory} value={catalogCategory} disabled={count === 0}>
+                  Category: {catalogCategory} ({count})
                 </option>
               ))}
             </select>
@@ -110,33 +141,72 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
         </div>
       </div>
 
-      {filteredServers.length === 0 ? (
-        <section
-          className="catalog-empty-state"
-          aria-labelledby={`${idPrefix}-catalog-empty-title`}
-        >
-          <div className="catalog-empty-state-icon" aria-hidden="true">
-            <i className="bi bi-search" />
-          </div>
-          <h3 id={`${idPrefix}-catalog-empty-title`}>
-            No servers found matching your criteria
-          </h3>
-          <p>
-            Try adjusting your search or filters, or clear them to browse the full catalog.
-          </p>
-          <button type="button" className="btn btn-outline-primary" onClick={handleResetFilters}>
-            Clear all filters
+      <div className="catalog-content-layout">
+        <nav className="catalog-category-rail" aria-label="Catalog categories">
+          <p className="catalog-category-heading">Categories</p>
+          <button
+            type="button"
+            className="catalog-category-option"
+            aria-pressed={category === CATALOG_CATEGORY_ALL}
+            disabled={categoryCounts.all === 0}
+            onClick={() => setCategory(CATALOG_CATEGORY_ALL)}
+          >
+            <span>All</span>
+            <span aria-label={`${categoryCounts.all} servers`}>{categoryCounts.all}</span>
           </button>
-        </section>
-      ) : (
-        <div className="row g-3">
-          {filteredServers.map((server) => (
-            <div key={server.id} className="col-12 col-md-6 col-xl-4">
-              <CatalogServerCard server={server} onTest={onTestServer} />
-            </div>
+          {categoryCounts.categories.map(({ category: catalogCategory, count }) => (
+            <button
+              key={catalogCategory}
+              type="button"
+              className="catalog-category-option"
+              aria-pressed={category === catalogCategory}
+              disabled={count === 0}
+              onClick={() => setCategory(catalogCategory)}
+            >
+              <span>{catalogCategory}</span>
+              <span aria-label={`${count} servers`}>{count}</span>
+            </button>
           ))}
+        </nav>
+
+        <div className="catalog-results-region">
+          {filteredServers.length === 0 ? (
+            <section
+              className="catalog-empty-state"
+              aria-labelledby={`${idPrefix}-catalog-empty-title`}
+            >
+              <div className="catalog-empty-state-icon" aria-hidden="true">
+                <i className="bi bi-search" />
+              </div>
+              <h3 id={`${idPrefix}-catalog-empty-title`}>
+                No servers found matching your criteria
+              </h3>
+              <p>
+                Try adjusting your search or filters, or clear them to browse the full catalog.
+              </p>
+              <button
+                type="button"
+                className="btn btn-outline-primary"
+                onClick={handleResetFilters}
+              >
+                Clear all filters
+              </button>
+            </section>
+          ) : (
+            <div className="row g-3">
+              {filteredServers.map((server) => (
+                <div key={server.id} className="col-12 col-md-6 col-xl-4">
+                  <CatalogServerCard
+                    server={server}
+                    onTest={onTestServer}
+                    onCategorySelect={setCategory}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };

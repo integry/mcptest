@@ -6,6 +6,7 @@ const catalogMocks = vi.hoisted(() => ({
   setSearchQuery: vi.fn(),
   setOauthFilter: vi.fn(),
   setCategory: vi.fn(),
+  setSortOrder: vi.fn(),
 }));
 
 vi.mock('../hooks/useCatalog', () => ({
@@ -13,12 +14,18 @@ vi.mock('../hooks/useCatalog', () => ({
     allServers: [{ id: 'example' }],
     filteredServers: [],
     categories: ['Developer tools'],
+    categoryCounts: {
+      all: 0,
+      categories: [{ category: 'Developer tools', count: 0 }],
+    },
     searchQuery: 'ASDFASDF',
     setSearchQuery: catalogMocks.setSearchQuery,
     oauthFilter: 'oauth',
     setOauthFilter: catalogMocks.setOauthFilter,
     category: 'Developer tools',
     setCategory: catalogMocks.setCategory,
+    sortOrder: 'name',
+    setSortOrder: catalogMocks.setSortOrder,
   }),
 }));
 
@@ -61,6 +68,15 @@ describe('CatalogView empty state', () => {
     expect(catalogMocks.setSearchQuery).toHaveBeenCalledWith('');
     expect(catalogMocks.setOauthFilter).toHaveBeenCalledWith('all');
     expect(catalogMocks.setCategory).toHaveBeenCalledWith('all');
+    expect(catalogMocks.setSortOrder).toHaveBeenCalledWith('catalog-order');
+
+    const sortSelect = container.querySelector<HTMLSelectElement>('.catalog-sort-field select');
+    expect(sortSelect?.value).toBe('name');
+    expect(sortSelect?.labels[0]?.textContent).toBe('Sort');
+
+    const categoryRail = container.querySelector<HTMLElement>('.catalog-category-rail');
+    expect(categoryRail?.getAttribute('aria-label')).toBe('Catalog categories');
+    expect(categoryRail?.querySelectorAll('button')).toHaveLength(2);
 
     act(() => {
       root.unmount();

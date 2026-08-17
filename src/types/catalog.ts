@@ -31,6 +31,23 @@ export type CatalogServerStatus = 'online' | 'offline' | 'unknown';
 /** Whether a hosted endpoint was verified from a browser, not just from Node. */
 export type CatalogBrowserAccess = 'direct' | 'proxy-required' | 'unknown';
 
+/** How a catalog listing was discovered. This is independent of live validation. */
+export type CatalogListingSourceKind = 'publisher' | 'mcp-registry' | 'community';
+
+export interface CatalogListingSource {
+  /** Curated source class; it must not be inferred from tags or validation results. */
+  kind: CatalogListingSourceKind;
+  /** HTTPS evidence for the listing source, when available. */
+  url?: string;
+}
+
+/** Stable sort options supported by the catalog URL and UI. */
+export type CatalogSortOrder =
+  | 'catalog-order'
+  | 'name'
+  | 'recently-tested'
+  | 'browser-ready';
+
 /**
  * Authentication-method filter used by the searchable catalog UI.
  */
@@ -70,6 +87,8 @@ export interface CatalogServerSeed {
   category: string;
   /** Searchable keywords, capabilities, or ecosystem labels. */
   tags: string[];
+  /** Explicit listing provenance, kept separate from runtime validation evidence. */
+  listingSource: CatalogListingSource;
   /** Known or preferred transport for this remote server. */
   transport: CatalogTransport;
   /** Whether the server requires an OAuth flow before testing. */
@@ -162,4 +181,6 @@ export interface CatalogFilters {
   category: string;
   /** Authentication-method filter. */
   oauth: OAuthFilter;
+  /** Stable catalog ordering selected by the user. */
+  sort: CatalogSortOrder;
 }

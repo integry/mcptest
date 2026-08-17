@@ -35,6 +35,51 @@ function toUrl(value) {
   }
 }
 
+const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community']);
+
+function isHttpsUrl(value) {
+  const url = typeof value === 'string' ? toUrl(value) : null;
+  return Boolean(url && url.protocol === 'https:');
+}
+
+function validateCatalogSeed(seed, index = 0) {
+  const label = seed && typeof seed.id === 'string' ? seed.id : `entry ${index + 1}`;
+  const listingSource = seed && seed.listingSource;
+
+  if (!listingSource || typeof listingSource !== 'object' || Array.isArray(listingSource)) {
+    throw new Error(`${label}: listingSource is required`);
+  }
+
+  if (!LISTING_SOURCE_KINDS.has(listingSource.kind)) {
+    throw new Error(`${label}: listingSource.kind must be publisher, mcp-registry, or community`);
+  }
+
+  if (listingSource.url !== undefined && !isHttpsUrl(listingSource.url)) {
+    throw new Error(`${label}: listingSource.url must be a valid HTTPS URL`);
+  }
+
+  if (listingSource.kind === 'mcp-registry') {
+    if (!isHttpsUrl(seed.registryUrl)) {
+      throw new Error(`${label}: MCP Registry provenance requires a valid HTTPS registryUrl`);
+    }
+
+    if (listingSource.url !== seed.registryUrl) {
+      throw new Error(`${label}: MCP Registry provenance must reuse registryUrl`);
+    }
+  }
+
+  return seed;
+}
+
+function validateCatalogSeeds(seeds) {
+  if (!Array.isArray(seeds)) {
+    throw new Error('Catalog seed data must be an array');
+  }
+
+  seeds.forEach(validateCatalogSeed);
+  return seeds;
+}
+
 function slashVariants(value) {
   const url = toUrl(value);
   if (!url) return [];
@@ -417,6 +462,7 @@ async function validateSeed(
   seed,
   { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
 ) {
+  validateCatalogSeed(seed);
   const probes = [];
   const validatedTransports = new Set();
 
@@ -511,6 +557,7 @@ async function main() {
   if (!requireRuntime()) return;
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
+  validateCatalogSeeds(seeds);
   console.log(`Validating ${seeds.length} catalog servers with concurrency ${CONCURRENCY}...`);
 
   const results = await mapWithConcurrency(seeds, CONCURRENCY, async (seed) => {
@@ -539,5 +586,7 @@ module.exports = {
   endpointVariants,
   probeSseEndpoint,
   probeStreamableEndpoint,
+  validateCatalogSeed,
+  validateCatalogSeeds,
   validateSeed,
 };
