@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { getCatalogServers } from '../utils/catalogUtils';
 import type { CatalogProtocolEra } from '../types/catalog';
+import { CatalogServerLogo } from './CatalogServerLogo';
 
 interface SuggestedServersPanelProps {
   setServerUrl: (url: string) => void;
@@ -61,13 +62,11 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
               onClick={() => handleServerClick(connectUrl, server.protocolEra)}
               disabled={isConnected || isConnecting}
             >
-              {server.logoUrl && (
-                <img
-                  src={server.logoUrl}
-                  alt={`${server.name} logo`}
-                  className="suggested-server-logo"
-                />
-              )}
+              <CatalogServerLogo
+                name={server.name}
+                logoUrl={server.logoUrl}
+                className="suggested-server-logo"
+              />
               <div className="suggested-server-copy">
                 <div className="suggested-server-title-row">
                   <strong>{server.name}</strong>

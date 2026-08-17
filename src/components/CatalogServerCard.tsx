@@ -7,6 +7,7 @@ import {
   getCatalogServerPath,
   getEffectiveCatalogTransport,
 } from '../utils/catalogSeo';
+import { CatalogServerLogo } from './CatalogServerLogo';
 
 export interface CatalogServerCardProps {
   server: CatalogServer;
@@ -80,13 +81,11 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
       <div className="card-body d-flex flex-column">
         <div className="catalog-server-main">
           <div className="d-flex align-items-start gap-3 mb-3">
-            {server.logoUrl && (
-              <img
-                src={server.logoUrl}
-                alt={`${server.name} logo`}
-                className="catalog-server-logo flex-shrink-0"
-              />
-            )}
+            <CatalogServerLogo
+              name={server.name}
+              logoUrl={server.logoUrl}
+              className="catalog-server-card-logo flex-shrink-0"
+            />
             <div className="catalog-server-heading">
               <div className="catalog-server-title-row d-flex align-items-center justify-content-between gap-2 mb-1">
                 <h5 className="mb-0 text-truncate flex-grow-1">
