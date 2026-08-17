@@ -2313,7 +2313,6 @@ span.health-indicator.health-indicator-gray {
 .btn-danger-hover:hover,
 .btn-danger-hover:focus-visible,
 .btn-danger-hover:active {
-  border-color: var(--danger-color) !important;
   color: var(--danger-color) !important;
   background-color: rgba(220, 38, 38, 0.08) !important;
 }
@@ -2324,19 +2323,21 @@ span.health-indicator.health-indicator-gray {
   background-color: rgba(248, 113, 113, 0.14) !important;
 }
 
-/* --- Ghost buttons (borderless inner-card actions) --- */
+/* --- Ghost buttons (no border; the icon and label rest on the background) --- */
 .btn-ghost {
-  border: 1px solid transparent;
+  border: none;
+  border-radius: 0.375rem;
   background-color: transparent;
   color: var(--text-muted);
   box-shadow: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+/* A soft grey wash is the only affordance the button needs on hover */
 .btn-ghost:hover,
 .btn-ghost:focus-visible {
   background-color: rgba(15, 23, 42, 0.06);
   color: var(--text-color);
-  border-color: transparent;
 }
 
 :root[data-theme='dark'] .btn-ghost:hover,
@@ -2344,11 +2345,27 @@ span.health-indicator.health-indicator-gray {
   background-color: rgba(255, 255, 255, 0.08);
 }
 
+.btn-ghost:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .btn-ghost.show,
 .btn-ghost:active {
   background-color: rgba(15, 23, 42, 0.08);
   color: var(--text-color);
-  border-color: transparent;
+}
+
+:root[data-theme='dark'] .btn-ghost.show,
+:root[data-theme='dark'] .btn-ghost:active {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Disabled ghost buttons stay flat rather than dimming a border into view */
+.btn-ghost:disabled,
+.btn-ghost.disabled {
+  background-color: transparent;
+  color: var(--text-muted);
 }
 
 /* The caret on a ghost dropdown toggle adds visual noise at this size */

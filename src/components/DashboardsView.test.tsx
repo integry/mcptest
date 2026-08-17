@@ -60,7 +60,15 @@ describe('DashboardsView toolbar', () => {
     const markup = renderToolbar();
 
     expect(markup).not.toContain('btn-outline-danger');
-    expect(markup).toContain('btn-outline-secondary btn-danger-hover');
+    expect(markup).toContain('btn-ghost btn-danger-hover');
+  });
+
+  it('renders the toolbar actions as borderless ghost buttons', () => {
+    const markup = renderToolbar();
+
+    expect(markup).not.toContain('btn-outline-secondary');
+    // Refresh, edit and delete all rest on the background until hovered.
+    expect(markup.match(/btn-ghost/g) ?? []).toHaveLength(3);
   });
 
   it('separates the toolbar into logical groups with dividers', () => {
@@ -85,5 +93,14 @@ describe('DashboardsView toolbar', () => {
     expect(css).toMatch(/\.segmented-control-item\.active\s*\{[^}]*background-color:\s*var\(--card-bg\)/);
     expect(css).toMatch(/\.btn-danger-hover:hover[^{]*\{[^}]*color:\s*var\(--danger-color\)/);
     expect(css).toMatch(/\.btn-ghost\s*\{[^}]*background-color:\s*transparent/);
+  });
+
+  it('gives ghost buttons no border and a grey hover wash', () => {
+    const css = readFileSync(resolve('src/index.css'), 'utf8');
+
+    expect(css).toMatch(/\.btn-ghost\s*\{[^}]*border:\s*none/);
+    expect(css).toMatch(/\.btn-ghost:hover[^{]*\{[^}]*background-color:\s*rgba\(15, 23, 42, 0\.06\)/);
+    // The destructive hover tints the background instead of drawing a border.
+    expect(css).not.toMatch(/\.btn-danger-hover:hover[^{]*\{[^}]*border-color/);
   });
 });

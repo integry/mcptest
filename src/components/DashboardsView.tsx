@@ -708,7 +708,7 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
           {onRefreshSpace && (
             <>
               <button
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-ghost"
                 onClick={onRefreshSpace}
                 disabled={isRefreshing}
                 title="Refresh all cards in this dashboard"
@@ -751,11 +751,11 @@ const DashboardsView: React.FC<DashboardsViewProps> = ({
           <span className="toolbar-divider" aria-hidden="true"></span>
           {/* Group 3: Dashboard actions */}
           {!isEditingName && (
-            <button className="btn btn-sm btn-outline-secondary" onClick={handleNameEditStart} title="Edit Dashboard Name" aria-label="Edit Dashboard Name">
+            <button className="btn btn-sm btn-ghost" onClick={handleNameEditStart} title="Edit Dashboard Name" aria-label="Edit Dashboard Name">
               <i className="bi bi-pencil"></i>
             </button>
           )}
-          <button className="btn btn-sm btn-outline-secondary btn-danger-hover" onClick={handleDeleteClick} title="Delete Dashboard" aria-label="Delete Dashboard">
+          <button className="btn btn-sm btn-ghost btn-danger-hover" onClick={handleDeleteClick} title="Delete Dashboard" aria-label="Delete Dashboard">
             <i className="bi bi-trash"></i>
           </button>
         </div>
