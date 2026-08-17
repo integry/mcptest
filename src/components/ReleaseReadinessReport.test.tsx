@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { EvaluationReport } from '../utils/evaluation';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
+import { createCapabilityInventory } from '../utils/capabilityInventory';
 
 const authorizationReport: EvaluationReport = {
   serverUrl: 'https://oauth.example/mcp',
@@ -20,6 +21,40 @@ const authorizationReport: EvaluationReport = {
 };
 
 describe('ReleaseReadinessReport', () => {
+  it('renders safe capability names, summaries, provenance, and honest unavailable states', () => {
+    const report: EvaluationReport = {
+      ...authorizationReport,
+      capabilityInventory: createCapabilityInventory({
+        observedAt: '2026-08-17T22:00:00.000Z',
+        testedEndpoint: 'https://oauth.example/mcp',
+        route: 'direct',
+        authentication: 'authenticated',
+        statuses: {
+          tools: 'complete', resources: 'unavailable', resourceTemplates: 'unsupported', prompts: 'partial',
+        },
+        paginationComplete: { prompts: false },
+        discovered: {
+          tools: [{ name: 'search_records', description: 'Search public records', inputSchema: {
+            properties: { query: { type: 'string' } }, required: ['query'],
+          } }],
+          prompts: [{ name: 'summarize', arguments: [{ name: 'text', required: true }] }],
+        },
+      }),
+    };
+    const markup = renderToStaticMarkup(
+      <ReleaseReadinessReport report={report} expandedItems={new Set()} onToggleItem={() => undefined} />
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+
+    expect(container.querySelector('#release-capabilities-title')?.textContent).toBe('Capabilities provided');
+    expect(container.textContent).toContain('search_records');
+    expect(container.textContent).toContain('query · string · required');
+    expect(container.textContent).toContain('Discovery was unavailable. This does not mean the server provides no capabilities.');
+    expect(container.textContent).toContain('This server does not support this discovery method.');
+    expect(container.textContent).toContain('authenticated discovery');
+  });
+
   it('renders the primary hierarchy and never exposes a score behind the authorization gate', () => {
     const markup = renderToStaticMarkup(
       <ReleaseReadinessReport

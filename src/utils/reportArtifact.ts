@@ -2,6 +2,8 @@ import { z } from 'zod';
 import packageJson from '../../package.json';
 import type { CompatibilityMatrixV1 } from '../compatibility';
 import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
+import type { CapabilityInventoryV1 } from '../types/capabilityInventory';
+import { validateCapabilityInventory } from './capabilityInventory';
 import {
   getEvaluationMaxScore,
   hasLegacyIncompleteEvaluationEvidence,
@@ -159,6 +161,85 @@ const ToolSurfaceArtifactSchema = z.object({
   interpretation: z.string(),
 }).passthrough();
 
+const CapabilityInventoryArgumentSchema = z.object({
+  name: z.string().min(1).max(128),
+  type: z.string().min(1).optional(),
+  description: z.string().min(1).max(600).optional(),
+  required: z.boolean(),
+}).strict();
+
+const CapabilityInventorySectionBaseSchema = z.object({
+  status: z.enum(['complete', 'partial', 'unsupported', 'unavailable']),
+  observedCount: z.number().int().nonnegative(),
+  retainedCount: z.number().int().nonnegative(),
+  omittedCount: z.number().int().nonnegative(),
+  paginationComplete: z.boolean(),
+});
+
+const CapabilityInventoryResourceSchema = z.object({
+  name: z.string().min(1).max(128),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().min(1).max(600).optional(),
+  mimeType: z.string().min(1).max(128).optional(),
+}).strict();
+
+const CapabilityInventoryArtifactSchema: z.ZodType<CapabilityInventoryV1> = z.object({
+  version: z.literal(1),
+  observedAt: z.string().datetime({ offset: true }),
+  provenance: z.object({
+    testedEndpoint: z.string().url(),
+    route: z.enum(['direct', 'authenticated-proxy']),
+  }).strict(),
+  authentication: z.enum(['authenticated', 'unauthenticated']),
+  tools: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(z.object({
+      name: z.string().min(1).max(128),
+      description: z.string().min(1).max(600).optional(),
+      input: z.array(CapabilityInventoryArgumentSchema).optional(),
+    }).strict()),
+  }).strict(),
+  resources: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(CapabilityInventoryResourceSchema),
+  }).strict(),
+  resourceTemplates: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(CapabilityInventoryResourceSchema),
+  }).strict(),
+  prompts: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(z.object({
+      name: z.string().min(1).max(128),
+      description: z.string().min(1).max(600).optional(),
+      arguments: z.array(CapabilityInventoryArgumentSchema).optional(),
+    }).strict()),
+  }).strict(),
+}).strict().superRefine((inventory, context) => {
+  for (const name of ['tools', 'resources', 'resourceTemplates', 'prompts'] as const) {
+    const section = inventory[name];
+    if (section.retainedCount !== section.items.length
+        || section.observedCount !== section.retainedCount + section.omittedCount) {
+      context.addIssue({
+        code: 'custom',
+        path: [name],
+        message: 'Capability inventory counts must match retained items and omissions.',
+      });
+    }
+    if ((section.status === 'complete' || section.status === 'unsupported')
+        && !section.paginationComplete) {
+      context.addIssue({
+        code: 'custom',
+        path: [name, 'paginationComplete'],
+        message: 'Complete and unsupported discovery must have complete pagination.',
+      });
+    }
+    if (section.status === 'unavailable' && section.paginationComplete) {
+      context.addIssue({
+        code: 'custom',
+        path: [name, 'paginationComplete'],
+        message: 'Unavailable discovery cannot have complete pagination.',
+      });
+    }
+  }
+});
+
 const OAuthTraceArtifactSchema = z.object({
   version: z.number().int().positive(),
   traceId: z.string().min(1),
@@ -293,11 +374,23 @@ const PublicReportObjectSchema = z.object({
   releaseDecision: ReleaseDecisionSchema.optional(),
   compatibility: CompatibilityArtifactSchema.optional(),
   toolSurfaceAnalysis: ToolSurfaceArtifactSchema.optional(),
+  capabilityInventory: CapabilityInventoryArtifactSchema.optional(),
   oauthTrace: OAuthTraceArtifactSchema.optional(),
   sections: z.array(ReportSectionSchema),
 }).strict();
 
 export const PublicReportSchema = PublicReportObjectSchema.superRefine((report, context) => {
+  if (report.capabilityInventory) {
+    try {
+      validateCapabilityInventory(report.capabilityInventory);
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        path: ['capabilityInventory'],
+        message: error instanceof Error ? error.message : 'Capability inventory is not public-safe.',
+      });
+    }
+  }
   const isScored = report.outcome.status === 'scored';
   if (isScored && report.score === null) {
     context.addIssue({
@@ -895,6 +988,10 @@ const isAuthorizationPrerequisiteSchemaField = (path: readonly string[]): boolea
     && path[0] === 'outcome'
     && path[1] === 'authorizationPrerequisite'
     && path[2] === 'state')
+);
+
+const isCapabilityInventoryAuthenticationField = (path: readonly string[]): boolean => (
+  path.length === 2 && path[0] === 'capabilityInventory' && path[1] === 'authentication'
 );
 
 const isJsonRpcErrorCode = (
@@ -1615,6 +1712,7 @@ const redactReportValueAtPath = (
   if (key
     && isSensitiveQueryKey(key)
     && !isAuthorizationPrerequisiteSchemaField(path)
+    && !isCapabilityInventoryAuthenticationField(path)
     && !isToolInputSchemaPropertyDeclaration(key, path)
     && !isJsonRpcErrorCode(value, key, path)) {
     return REDACTED_VALUE;
@@ -1860,6 +1958,9 @@ export const createPublicReport = (
     VERSION_INFO.commitHash && VERSION_INFO.commitHash !== 'unknown' ? VERSION_INFO.commitHash : undefined
   );
   const toolSurfaceAnalysis = options.toolSurfaceAnalysis ?? report.toolSurfaceAnalysis;
+  const capabilityInventory = report.capabilityInventory
+    ? validateCapabilityInventory(report.capabilityInventory)
+    : undefined;
 
   const artifact: PublicReport = {
     $schema: REPORT_SCHEMA_URL,
@@ -1926,6 +2027,7 @@ export const createPublicReport = (
     ...(toolSurfaceAnalysis ? {
       toolSurfaceAnalysis: toolSurfaceAnalysis as unknown as NonNullable<PublicReport['toolSurfaceAnalysis']>,
     } : {}),
+    ...(capabilityInventory ? { capabilityInventory } : {}),
     ...(options.oauthTrace ? {
       oauthTrace: options.oauthTrace as unknown as NonNullable<PublicReport['oauthTrace']>,
     } : {}),
@@ -1980,6 +2082,17 @@ const scoreLabel = (section: PublicReport['sections'][number]): string => (
     ? `Not scored (maximum ${section.score.maximum})`
     : `${section.score.earned} / ${section.score.maximum}`
 );
+
+const inventoryStatusLabel = (
+  section: NonNullable<PublicReport['capabilityInventory']>['tools']
+): string => {
+  const omitted = section.omittedCount > 0 ? `; ${section.omittedCount} omitted` : '';
+  return `${section.status}; ${section.retainedCount} retained of ${section.observedCount} observed${omitted}`;
+};
+
+const argumentSummary = (
+  argument: { name: string; type?: string; required: boolean }
+): string => `${markdownInline(argument.name)}${argument.type ? `: ${markdownInline(argument.type)}` : ''}${argument.required ? ' (required)' : ' (optional)'}`;
 
 /** Produces deterministic, standalone human-readable Markdown. */
 export const serializePublicReportMarkdown = (report: PublicReport): string => {
@@ -2045,6 +2158,44 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     }
     if (value.transport) lines.push(`- Transport: ${markdownInline(value.transport.type)}`);
     lines.push('');
+  }
+
+  if (value.capabilityInventory) {
+    const inventory = value.capabilityInventory;
+    lines.push(
+      '## Capabilities provided',
+      '',
+      `Observed ${inventory.observedAt} at ${markdownInline(inventory.provenance.testedEndpoint)} via ${inventory.provenance.route}; ${inventory.authentication}.`,
+      ''
+    );
+    const groups = [
+      ['Tools', inventory.tools, (item: typeof inventory.tools.items[number]) => (
+        `${markdownInline(item.name)}${item.description ? ` — ${markdownInline(item.description)}` : ''}${item.input?.length ? ` (${item.input.map(argumentSummary).join(', ')})` : ''}`
+      )],
+      ['Resources', inventory.resources, (item: typeof inventory.resources.items[number]) => (
+        `${markdownInline(item.name)}${item.title ? ` — ${markdownInline(item.title)}` : ''}${item.description ? `: ${markdownInline(item.description)}` : ''}${item.mimeType ? ` [${markdownInline(item.mimeType)}]` : ''}`
+      )],
+      ['Resource templates', inventory.resourceTemplates, (item: typeof inventory.resourceTemplates.items[number]) => (
+        `${markdownInline(item.name)}${item.title ? ` — ${markdownInline(item.title)}` : ''}${item.description ? `: ${markdownInline(item.description)}` : ''}${item.mimeType ? ` [${markdownInline(item.mimeType)}]` : ''}`
+      )],
+      ['Prompts', inventory.prompts, (item: typeof inventory.prompts.items[number]) => (
+        `${markdownInline(item.name)}${item.description ? ` — ${markdownInline(item.description)}` : ''}${item.arguments?.length ? ` (${item.arguments.map(argumentSummary).join(', ')})` : ''}`
+      )],
+    ] as const;
+    for (const [label, section, formatItem] of groups) {
+      lines.push(`### ${label}`, '', inventoryStatusLabel(section), '');
+      if (section.items.length > 0) {
+        lines.push(...section.items.map((item) => `- ${formatItem(item as never)}`), '');
+      } else {
+        lines.push(section.status === 'complete'
+          ? 'No capabilities were reported.'
+          : section.status === 'unsupported'
+            ? 'This discovery method is unsupported.'
+            : section.status === 'unavailable'
+              ? 'Capabilities are unavailable; this does not mean the server provides none.'
+              : 'No retained capabilities are available from this partial result.', '');
+      }
+    }
   }
 
   if (value.timings) {

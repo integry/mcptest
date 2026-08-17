@@ -33,6 +33,7 @@ import {
 const createClient = () => ({
   listTools: vi.fn().mockResolvedValue({ tools: [] }),
   listResources: vi.fn().mockResolvedValue({ resources: [] }),
+  listResourceTemplates: vi.fn().mockResolvedValue({ resourceTemplates: [] }),
   listPrompts: vi.fn().mockResolvedValue({ prompts: [] }),
   close: vi.fn().mockResolvedValue(undefined),
 });
@@ -881,6 +882,14 @@ describe('dual-era server evaluation', () => {
     client.listResources
       .mockResolvedValueOnce({ resources: [{ uri: 'test://one', name: 'one' }], nextCursor: 'resources-2' })
       .mockResolvedValueOnce({ resources: [{ uri: 'test://two', name: 'two' }] });
+    client.listResourceTemplates
+      .mockResolvedValueOnce({
+        resourceTemplates: [{ uriTemplate: 'test://one/{id}', name: 'template-one' }],
+        nextCursor: 'templates-2',
+      })
+      .mockResolvedValueOnce({
+        resourceTemplates: [{ uriTemplate: 'test://two/{id}', name: 'template-two' }],
+      });
     client.listPrompts
       .mockResolvedValueOnce({ prompts: [{ name: 'one' }], nextCursor: 'prompts-2' })
       .mockResolvedValueOnce({ prompts: [{ name: 'two' }] });
@@ -901,7 +910,34 @@ describe('dual-era server evaluation', () => {
     });
     expect(client.listTools).toHaveBeenNthCalledWith(2, { cursor: 'tools-2' });
     expect(client.listResources).toHaveBeenNthCalledWith(2, { cursor: 'resources-2' });
+    expect(client.listResourceTemplates).toHaveBeenNthCalledWith(2, { cursor: 'templates-2' });
     expect(client.listPrompts).toHaveBeenNthCalledWith(2, { cursor: 'prompts-2' });
+    expect(report.capabilityInventory).toMatchObject({
+      tools: { status: 'complete', retainedCount: 2, paginationComplete: true },
+      resources: { status: 'complete', retainedCount: 2, paginationComplete: true },
+      resourceTemplates: { status: 'complete', retainedCount: 2, paginationComplete: true },
+      prompts: { status: 'complete', retainedCount: 2, paginationComplete: true },
+    });
+    expect(report.sections.capabilities.score).toBe(10);
+  });
+
+  it('records unavailable resource-template discovery without changing the score or outcome', async () => {
+    const client = createClient();
+    client.listResourceTemplates.mockRejectedValueOnce(new Error('template service unavailable'));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('scored');
+    expect(report.sections.capabilities).toMatchObject({ score: 10, maxScore: 10 });
+    expect(report.capabilityInventory?.resourceTemplates).toMatchObject({
+      status: 'unavailable', paginationComplete: false, retainedCount: 0,
+    });
   });
 
   it.each([

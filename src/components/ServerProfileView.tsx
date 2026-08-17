@@ -6,6 +6,7 @@ import {
   formatCatalogTransport,
   formatProtocolEra,
 } from '../utils/catalogSeo';
+import CapabilitiesProvided from './CapabilitiesProvided';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -244,6 +245,19 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           </div>
         </aside>
       </div>
+
+      {server.capabilityInventory && (
+        <section className="card server-profile-section" aria-labelledby="server-capabilities-title">
+          <div className="card-body">
+            <CapabilitiesProvided
+              inventory={server.capabilityInventory}
+              serverName={server.name}
+              titleId="server-capabilities-title"
+              titleLevel={2}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="card server-profile-section">
         <div className="card-body">

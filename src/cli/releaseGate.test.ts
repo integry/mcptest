@@ -11,6 +11,7 @@ import {
   REDACTED_VALUE,
 } from '../utils/reportArtifact';
 import type { ReleaseDecision } from '../utils/releaseReadiness';
+import { createCapabilityInventory } from '../utils/capabilityInventory';
 import { runCli } from './runCli';
 import {
   RELEASE_GATE_EXIT_CODES,
@@ -82,6 +83,24 @@ const authorizationReport = (): EvaluationReport => ({
 });
 
 describe('headless release gate', () => {
+  it('retains the safe capability inventory in CLI JSON and Markdown artifacts', async () => {
+    const evaluation = evaluatedReport();
+    evaluation.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z', testedEndpoint: evaluation.serverUrl,
+      route: 'direct', authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'unsupported', prompts: 'complete' },
+      discovered: { tools: [{ name: 'search_records', description: 'Search records' }], resources: [], prompts: [] },
+    });
+    const result = await runReleaseGate({
+      endpoints: [evaluation.serverUrl],
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, { evaluate: async () => evaluation });
+
+    expect(result.targets[0].report?.capabilityInventory?.tools.items[0].name).toBe('search_records');
+    expect(result.targets[0].json).toContain('"capabilityInventory"');
+    expect(result.targets[0].markdown).toContain('## Capabilities provided');
+  });
+
   it.each([
     ['stateless Streamable HTTP', 'streamable-http', 'modern'],
     ['stateful Streamable HTTP', 'streamable-http', 'stateful'],

@@ -16,6 +16,7 @@ import {
   validatePublicReport,
 } from './reportArtifact';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
+import { createCapabilityInventory } from './capabilityInventory';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
@@ -371,6 +372,38 @@ const expandedPublicArtifact = (): Record<string, any> => ({
 });
 
 describe('versioned public report artifacts', () => {
+  it('persists the optional canonical inventory in JSON and semantic Markdown', () => {
+    const report = publicReport();
+    report.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: report.serverUrl,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'unsupported', prompts: 'complete' },
+      discovered: {
+        tools: [{ name: 'search_records', description: 'Search records' }],
+        resources: [{ name: 'Records', uri: 'private://tenant/records' }],
+        prompts: [{ name: 'summarize' }],
+      },
+    });
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.capabilityInventory?.tools.items[0].name).toBe('search_records');
+    expect(json).toContain('"capabilityInventory"');
+    expect(json).not.toContain('private://tenant/records');
+    expect(markdown).toContain('## Capabilities provided');
+    expect(markdown).toContain('### Resource templates');
+    expect(markdown).toContain('This discovery method is unsupported.');
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+
+    const unsafe = structuredClone(artifact);
+    unsafe.capabilityInventory!.tools.items[0].description = 'Open private://tenant/account';
+    expect(safeParsePublicReport(unsafe).success).toBe(false);
+  });
+
   it.each(Object.entries(GOLDEN_REPORTS))('matches the %s JSON and Markdown golden', (name, makeReport) => {
     const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
     expect({

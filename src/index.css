@@ -5290,6 +5290,111 @@ pre.bg-light code {
 
 .release-empty-success { color: var(--success-color); }
 
+.capability-inventory {
+  min-width: 0;
+}
+
+.capability-inventory-heading {
+  margin-bottom: 1rem;
+}
+
+.capability-inventory-heading h2,
+.capability-inventory-heading h3 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+}
+
+.capability-inventory-heading p {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.capability-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.capability-inventory-group {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  background: var(--card-bg-secondary);
+}
+
+.capability-inventory-group h3,
+.capability-inventory-group h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.capability-inventory-status {
+  margin: 0.3rem 0 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.capability-inventory-status-partial { color: var(--warning-color); }
+.capability-inventory-status-unavailable { color: var(--text-muted); }
+
+.capability-inventory-list,
+.capability-argument-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.capability-inventory-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.capability-inventory-list > li {
+  min-width: 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border-color);
+  overflow-wrap: anywhere;
+}
+
+.capability-inventory-list > li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.capability-inventory-list strong,
+.capability-inventory-title,
+.capability-inventory-mime {
+  display: block;
+}
+
+.capability-inventory-title { margin-top: 0.15rem; }
+.capability-inventory-mime { color: var(--text-muted); font-family: var(--font-family-mono); font-size: 0.75rem; }
+.capability-inventory-list p { margin: 0.3rem 0 0; color: var(--text-muted); }
+
+.capability-argument-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.capability-argument-list li {
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.4rem;
+  background: var(--card-bg);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.capability-argument-list p { width: 100%; }
+
+@media (max-width: 767.98px) {
+  .capability-inventory-grid { grid-template-columns: 1fr; }
+}
+
 .report-history {
   margin-top: 1rem;
 }

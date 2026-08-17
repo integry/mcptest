@@ -23,6 +23,12 @@ import {
 import type { TransportType } from '../types';
 import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
+import type {
+  CapabilityInventoryCategory,
+  CapabilityInventoryStatus,
+  CapabilityInventoryV1,
+} from '../types/capabilityInventory';
+import { createCapabilityInventory } from './capabilityInventory';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
@@ -141,6 +147,8 @@ export interface EvaluationReport {
   sections: Record<string, EvaluationSection>;
   /** Deterministic analysis of definitions returned by tools/list. */
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
+  /** Bounded, public-safe definitions returned by MCP discovery methods. */
+  capabilityInventory?: CapabilityInventoryV1;
 }
 
 export interface EvaluationAuthorizationContext {
@@ -611,6 +619,7 @@ interface CapabilityEvaluation {
   section: EvaluationSection;
   targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
+  capabilityInventory: CapabilityInventoryV1;
 }
 
 const DISCOVERY_PAGE_LIMIT = 64;
@@ -639,7 +648,7 @@ const isDiscoveryPaginationFailure = (error: unknown, seen = new Set<object>()):
 
 const aggregateDiscoveryPages = async (
   firstPage: unknown,
-  itemKey: 'tools' | 'resources' | 'prompts',
+  itemKey: 'tools' | 'resources' | 'resourceTemplates' | 'prompts',
   fetchPage: (cursor: string) => Promise<unknown>
 ): Promise<Record<string, unknown>> => {
   if (!firstPage || typeof firstPage !== 'object' || Array.isArray(firstPage)) {
@@ -710,21 +719,29 @@ const aggregateDiscoveryPages = async (
 };
 
 const evaluateCapabilities = async (
-  connection: ConnectedEvaluation
+  connection: ConnectedEvaluation,
+  authentication: 'authenticated' | 'unauthenticated'
 ): Promise<CapabilityEvaluation> => {
   const section: EvaluationSection = {
     name: 'MCP Capabilities',
-    description: 'Exercises standardized tools, resources, and prompts discovery methods',
+    description: 'Exercises standardized tools, resources, resource templates, and prompts discovery methods',
     score: 0,
     maxScore: 10,
     details: [],
   };
   const targetAuthenticationFailures: CapabilityEvaluation['targetAuthenticationFailures'] = [];
-  const discovered: { tools?: unknown; resources?: unknown; prompts?: unknown } = {};
+  const discovered: Partial<Record<CapabilityInventoryCategory, unknown>> = {};
+  const discoveryStatuses: Record<CapabilityInventoryCategory, CapabilityInventoryStatus> = {
+    tools: 'unavailable',
+    resources: 'unavailable',
+    resourceTemplates: 'unavailable',
+    prompts: 'unavailable',
+  };
+  const paginationComplete: Partial<Record<CapabilityInventoryCategory, boolean>> = {};
   const incompleteDiscovery = new Set<'tools' | 'resources' | 'prompts'>();
   let canAnalyzeToolSurface = false;
   const checks: Array<{
-    name: string;
+    name: CapabilityInventoryCategory;
     method: string;
     points: number;
     run: () => Promise<unknown>;
@@ -738,6 +755,16 @@ const evaluateCapabilities = async (
       run: () => connection.client.listTools(),
       runPage: (cursor) => connection.client.listTools({ cursor }),
       count: (result) => Array.isArray(result?.tools) ? result.tools.length : 0,
+    },
+    {
+      name: 'resourceTemplates',
+      method: 'resources/templates/list',
+      points: 0,
+      run: () => connection.client.listResourceTemplates(),
+      runPage: (cursor) => connection.client.listResourceTemplates({ cursor }),
+      count: (result) => Array.isArray(result?.resourceTemplates)
+        ? result.resourceTemplates.length
+        : 0,
     },
     {
       name: 'resources',
@@ -765,14 +792,14 @@ const evaluateCapabilities = async (
       const firstPage = await check.run();
       const result = await aggregateDiscoveryPages(
         firstPage,
-        check.name as 'tools' | 'resources' | 'prompts',
+        check.name,
         check.runPage
       );
       const durationMs = Date.now() - startedAt;
       const itemCount = check.count(result);
-      if (check.name === 'tools') discovered.tools = (result as { tools?: unknown })?.tools;
-      if (check.name === 'resources') discovered.resources = (result as { resources?: unknown })?.resources;
-      if (check.name === 'prompts') discovered.prompts = (result as { prompts?: unknown })?.prompts;
+      discovered[check.name] = result[check.name];
+      discoveryStatuses[check.name] = 'complete';
+      paginationComplete[check.name] = true;
       section.score += check.points;
       if (check.name === 'tools') canAnalyzeToolSurface = true;
       section.details.push({
@@ -790,6 +817,8 @@ const evaluateCapabilities = async (
         startedAt
       );
       if (
+        check.name !== 'resourceTemplates'
+        &&
         (failure.httpStatus === 401 || failure.httpStatus === 403)
         && failure.authenticationSource === 'target'
       ) {
@@ -797,12 +826,12 @@ const evaluateCapabilities = async (
       }
       if (error instanceof IncompleteDiscoveryPaginationError) {
         const itemCount = check.count(error.result);
-        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
-        if (check.name === 'tools') discovered.tools = error.result.tools;
-        if (check.name === 'resources') discovered.resources = error.result.resources;
-        if (check.name === 'prompts') discovered.prompts = error.result.prompts;
+        if (check.name !== 'resourceTemplates') incompleteDiscovery.add(check.name);
+        discovered[check.name] = error.result[check.name];
+        discoveryStatuses[check.name] = 'partial';
+        paginationComplete[check.name] = false;
         if (check.name === 'tools') canAnalyzeToolSurface = true;
-        section.status = 'partial';
+        if (check.name !== 'resourceTemplates') section.status = 'partial';
         section.details.push({
           text: `⚠ ${check.method} pagination was incomplete (${itemCount} ${check.name} retained)`,
           context: failure.message,
@@ -821,9 +850,11 @@ const evaluateCapabilities = async (
         continue;
       }
       if (isDiscoveryPaginationFailure(error)) {
-        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
+        if (check.name !== 'resourceTemplates') incompleteDiscovery.add(check.name);
+        discoveryStatuses[check.name] = 'partial';
+        paginationComplete[check.name] = false;
         if (check.name === 'tools') canAnalyzeToolSurface = true;
-        section.status = 'partial';
+        if (check.name !== 'resourceTemplates') section.status = 'partial';
         section.details.push({
           text: `⚠ ${check.method} pagination did not complete`,
           context: failure.message,
@@ -836,9 +867,13 @@ const evaluateCapabilities = async (
         continue;
       }
       const methodNotFound = isMethodNotFound(error);
+      discoveryStatuses[check.name] = methodNotFound ? 'unsupported' : 'unavailable';
+      paginationComplete[check.name] = methodNotFound;
       if (!methodNotFound) {
-        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
-        section.status = 'partial';
+        if (check.name !== 'resourceTemplates') {
+          incompleteDiscovery.add(check.name);
+          section.status = 'partial';
+        }
       }
       if (check.name === 'tools') {
         canAnalyzeToolSurface = methodNotFound;
@@ -863,6 +898,14 @@ const evaluateCapabilities = async (
   return {
     section,
     targetAuthenticationFailures,
+    capabilityInventory: createCapabilityInventory({
+      testedEndpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
+      route: connection.usedProxy ? 'authenticated-proxy' : 'direct',
+      authentication,
+      discovered,
+      statuses: discoveryStatuses,
+      paginationComplete,
+    }),
     ...(canAnalyzeToolSurface ? {
       toolSurfaceAnalysis: analyzeToolSurface({
         ...discovered,
@@ -1350,8 +1393,13 @@ export async function evaluateServer(
     };
     onProgress(`Negotiated ${connection.protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''}.`);
 
-    onProgress('Exercising tools, resources, and prompts discovery...');
-    const capabilityEvaluation = await evaluateCapabilities(connection);
+    onProgress('Exercising tools, resources, resource templates, and prompts discovery...');
+    const capabilityEvaluation = await evaluateCapabilities(
+      connection,
+      oauthToken || hasExplicitTargetCredential(targetHeaders)
+        ? 'authenticated'
+        : 'unauthenticated'
+    );
     report.sections.capabilities = capabilityEvaluation.section;
     if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
       report.outcome = 'authorization-required';
@@ -1401,6 +1449,7 @@ export async function evaluateServer(
     if (capabilityEvaluation.toolSurfaceAnalysis) {
       report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
     }
+    report.capabilityInventory = capabilityEvaluation.capabilityInventory;
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';
     }

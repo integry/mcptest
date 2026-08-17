@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { CompatibilityMatrixV1 } from '../compatibility';
 import type { EvaluationReport } from '../utils/evaluation';
+import { validateCapabilityInventory } from '../utils/capabilityInventory';
 import { evaluateServer } from '../utils/evaluation';
 import {
   createPublicReport,
@@ -287,6 +288,18 @@ const redactEvaluationCredentials = (
   // from the credential. Preserve those configuration-owned strings while scrubbing target
   // evidence before it can influence compatibility or release-decision construction.
   const trustedEndpoint = new Set([endpoint, evaluation.serverUrl]);
+  let capabilityInventory: EvaluationReport['capabilityInventory'];
+  if (evaluation.capabilityInventory) {
+    try {
+      capabilityInventory = validateCapabilityInventory(redactStructuredCredentials(
+        evaluation.capabilityInventory,
+        credentials,
+        { preserveKeys: true }
+      ));
+    } catch {
+      // Fail closed: an inventory that no longer satisfies the public-safe contract is omitted.
+    }
+  }
   return {
     serverUrl: evaluation.serverUrl,
     ...(evaluation.authenticationUrl ? {
@@ -337,6 +350,7 @@ const redactEvaluationCredentials = (
         { preserveKeys: true, localString: isLocalToolAnalysisString }
       ) as EvaluationReport['toolSurfaceAnalysis'],
     } : {}),
+    ...(capabilityInventory ? { capabilityInventory } : {}),
   };
 };
 

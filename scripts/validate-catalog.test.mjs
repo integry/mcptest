@@ -4,6 +4,7 @@ import validator from './validate-catalog.js';
 const {
   detectedAuthType,
   endpointVariants,
+  mergeCapabilitySnapshots,
   probeSseEndpoint,
   probeStreamableEndpoint,
   validateSeed,
@@ -68,6 +69,18 @@ describe('catalog endpoint variants', () => {
 });
 
 describe('catalog protocol validation', () => {
+  it('retains a successful capability snapshot through later auth and network failures', () => {
+    const snapshot = { version: 1, observedAt: '2026-08-17T22:00:00.000Z' };
+    const previous = { secure: snapshot };
+    const retained = mergeCapabilitySnapshots(previous, [
+      { serverId: 'secure', status: 'online', errorCode: 'authentication_required' },
+      { serverId: 'offline', status: 'offline', errorCode: 'network_error' },
+    ]);
+
+    expect(retained.secure).toBe(snapshot);
+    expect(retained.secure.observedAt).toBe('2026-08-17T22:00:00.000Z');
+  });
+
   it('negotiates a stateless 2026 Streamable HTTP server', async () => {
     const requests = [];
     const fetch = async (_input, init = {}) => {
@@ -89,7 +102,7 @@ describe('catalog protocol validation', () => {
       protocolEra: 'stateless',
       protocolVersion: '2026-07-28',
     });
-    expect(requests.map(({ body }) => body.method)).toEqual(['server/discover']);
+    expect(requests.map(({ body }) => body.method)).toEqual(['server/discover', 'tools/list']);
     expect(requests[0].headers.get('mcp-method')).toBe('server/discover');
     expect(requests[0].headers.get('mcp-protocol-version')).toBe('2026-07-28');
   });
@@ -131,6 +144,7 @@ describe('catalog protocol validation', () => {
       'server/discover',
       'initialize',
       'notifications/initialized',
+      'tools/list',
     ]);
   });
 
@@ -253,7 +267,7 @@ describe('catalog protocol validation', () => {
       protocolEra: 'legacy',
       protocolVersion: '2025-06-18',
     });
-    expect(methods).toEqual(['initialize', 'notifications/initialized']);
+    expect(methods).toEqual(['initialize', 'notifications/initialized', 'tools/list']);
   });
 
   it('does not record a MIME-only event stream as legacy MCP', async () => {

@@ -9,6 +9,7 @@ const distRoot = path.join(projectRoot, 'dist');
 const indexPath = path.join(distRoot, 'index.html');
 const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
 const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.json');
+const capabilitiesPath = path.join(projectRoot, 'src', 'data', 'catalogCapabilities.json');
 const pageMetadataPath = path.join(projectRoot, 'src', 'data', 'pageMetadata.json');
 const learnArticlesPath = path.join(projectRoot, 'src', 'data', 'learnArticles.json');
 
@@ -60,7 +61,7 @@ function protocolLabel(era, version) {
   return 'Not yet negotiated';
 }
 
-function mergeCatalogServers(seeds, validationResults) {
+function mergeCatalogServers(seeds, validationResults, capabilitySnapshots = {}) {
   const validationByServerId = new Map(
     validationResults.map((result) => [result.serverId, result])
   );
@@ -88,8 +89,77 @@ function mergeCatalogServers(seeds, validationResults) {
       authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
+      capabilityInventory: capabilitySnapshots[seed.id],
     };
   });
+}
+
+function inventoryStatusText(section) {
+  const counts = `${section.retainedCount} retained of ${section.observedCount} observed`;
+  const omitted = section.omittedCount ? `; ${section.omittedCount} omitted` : '';
+  if (section.status === 'complete') return `Complete discovery: ${counts}${omitted}.`;
+  if (section.status === 'partial') return `Partial discovery: ${counts}${omitted}. More capabilities may exist.`;
+  if (section.status === 'unsupported') return 'This discovery method is unsupported.';
+  return 'Discovery was unavailable. This does not mean the server provides no capabilities.';
+}
+
+function renderArguments(argumentsList) {
+  if (!argumentsList?.length) return '';
+  return `<ul class="capability-argument-list">${argumentsList.map(argument => [
+    `<li><code>${escapeHtml(argument.name)}</code>`,
+    argument.type ? ` · ${escapeHtml(argument.type)}` : '',
+    ` · ${argument.required ? 'required' : 'optional'}`,
+    argument.description ? `<p>${escapeHtml(argument.description)}</p>` : '',
+    '</li>',
+  ].join('')).join('')}</ul>`;
+}
+
+function renderCapabilityInventory(server) {
+  const inventory = server.capabilityInventory;
+  if (!inventory) return '';
+  const groups = [
+    ['Tools', inventory.tools, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+      renderArguments(item.input),
+    ].join('')],
+    ['Resources', inventory.resources, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.title ? `<span class="capability-inventory-title">${escapeHtml(item.title)}</span>` : '',
+      item.mimeType ? `<span class="capability-inventory-mime">${escapeHtml(item.mimeType)}</span>` : '',
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+    ].join('')],
+    ['Resource templates', inventory.resourceTemplates, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.title ? `<span class="capability-inventory-title">${escapeHtml(item.title)}</span>` : '',
+      item.mimeType ? `<span class="capability-inventory-mime">${escapeHtml(item.mimeType)}</span>` : '',
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+    ].join('')],
+    ['Prompts', inventory.prompts, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+      renderArguments(item.arguments),
+    ].join('')],
+  ];
+  return [
+    '  <section class="card server-profile-section capability-inventory"><div class="card-body">',
+    '    <h2>Capabilities provided</h2>',
+    `    <p>Observed <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(inventory.observedAt)}</time> at <code>${escapeHtml(inventory.provenance.testedEndpoint)}</code> via ${escapeHtml(inventory.provenance.route)}; ${escapeHtml(inventory.authentication)} discovery.</p>`,
+    '    <div class="capability-inventory-grid">',
+    ...groups.map(([label, section, renderItem]) => [
+      '      <section class="capability-inventory-group">',
+      `        <h3>${escapeHtml(label)} provided by ${escapeHtml(server.name)}</h3>`,
+      `        <p class="capability-inventory-status capability-inventory-status-${escapeHtml(section.status)}">${escapeHtml(inventoryStatusText(section))}</p>`,
+      ...(section.items.length ? [
+        '        <ul class="capability-inventory-list">',
+        ...section.items.map(item => `          <li>${renderItem(item)}</li>`),
+        '        </ul>',
+      ] : []),
+      '      </section>',
+    ].join('\n')),
+    '    </div>',
+    '  </div></section>',
+  ].join('\n');
 }
 
 function validationStatusLabel(server) {
@@ -179,7 +249,6 @@ function renderServerFallback(server) {
     '  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><a href="/catalog">Server Catalog</a></nav>',
     '  <header class="server-profile-hero">',
     '    <div class="server-profile-identity"><div>',
-    '      <div class="server-profile-eyebrow">MCP server report</div>',
     `      <h1>${escapeHtml(server.name)}</h1>`,
     `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
@@ -215,6 +284,7 @@ function renderServerFallback(server) {
     `      <div><dt>Validation detail</dt><dd>${escapeHtml(validationDetail(server))}</dd></div>`,
     '    </dl>',
     '  </div></section>',
+    renderCapabilityInventory(server),
     '</article>',
   ].join('\n');
 }
@@ -258,6 +328,12 @@ function renderServerHtml(indexHtml, server) {
       { '@type': 'PropertyValue', name: 'Validation status', value: validationStatusLabel(server) },
       { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },
       { '@type': 'PropertyValue', name: 'Validation detail', value: validationDetail(server) },
+      ...(server.capabilityInventory ? [
+        { '@type': 'PropertyValue', name: 'Tools observed', value: server.capabilityInventory.tools.observedCount },
+        { '@type': 'PropertyValue', name: 'Resources observed', value: server.capabilityInventory.resources.observedCount },
+        { '@type': 'PropertyValue', name: 'Resource templates observed', value: server.capabilityInventory.resourceTemplates.observedCount },
+        { '@type': 'PropertyValue', name: 'Prompts observed', value: server.capabilityInventory.prompts.observedCount },
+      ] : []),
     ],
   };
 
@@ -625,6 +701,127 @@ function validateInputs(servers) {
   }
 }
 
+function assertExactKeys(value, allowed, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) throw new Error(`${label} contains unsafe field ${key}.`);
+  }
+}
+
+function assertSafeInventoryString(value, maxLength, label, optional = false) {
+  if (value === undefined && optional) return;
+  if (typeof value !== 'string' || !value || value.length > maxLength
+      || /[\u0000-\u001f\u007f-\u009f]/.test(value)
+      || value !== value.replace(/\s+/g, ' ').trim()) {
+    throw new Error(`${label} is not a canonical public-safe string.`);
+  }
+  const sanitized = value
+    .replace(/\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*([^\s,;&]+)/gi, '$1=[REDACTED]')
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g, '[REDACTED URI]');
+  if (sanitized !== value) throw new Error(`${label} contains unsanitized data.`);
+}
+
+function validateCapabilitySnapshots(snapshots, seeds) {
+  assertExactKeys(snapshots, Object.keys(snapshots), 'Catalog capability snapshots');
+  const seedsById = new Map(seeds.map(seed => [seed.id, seed]));
+  const identifier = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,127})$/;
+  const statuses = new Set(['complete', 'partial', 'unsupported', 'unavailable']);
+  const validateArgument = (argument, label) => {
+    assertExactKeys(argument, ['name', 'type', 'description', 'required'], label);
+    assertSafeInventoryString(argument.name, 128, `${label} name`);
+    if (!identifier.test(argument.name)) throw new Error(`${label} has an invalid name.`);
+    assertSafeInventoryString(argument.type, 64, `${label} type`, true);
+    if (argument.type && !argument.type.split(' | ').every(type => (
+      ['array', 'boolean', 'integer', 'null', 'number', 'object', 'string'].includes(type)
+    ))) throw new Error(`${label} type is invalid.`);
+    assertSafeInventoryString(argument.description, 600, `${label} description`, true);
+    if (typeof argument.required !== 'boolean') throw new Error(`${label} required flag is invalid.`);
+  };
+  for (const [serverId, inventory] of Object.entries(snapshots)) {
+    if (!seedsById.has(serverId)) throw new Error(`Capability snapshot references unknown server id: ${serverId}`);
+    assertExactKeys(inventory, ['version', 'observedAt', 'provenance', 'authentication', 'tools', 'resources', 'resourceTemplates', 'prompts'], `${serverId} inventory`);
+    if (inventory.version !== 1 || Number.isNaN(Date.parse(inventory.observedAt))) {
+      throw new Error(`${serverId} inventory version or timestamp is invalid.`);
+    }
+    assertExactKeys(inventory.provenance, ['testedEndpoint', 'route'], `${serverId} provenance`);
+    const endpoint = new URL(inventory.provenance.testedEndpoint);
+    const seedOrigin = new URL(seedsById.get(serverId).url).origin;
+    if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.origin !== seedOrigin
+        || endpoint.username || endpoint.password || endpoint.hash
+        || [...endpoint.searchParams.keys()].some(key => /(?:auth|code|cookie|credential|key|password|secret|session|signature|token)/i.test(key))) {
+      throw new Error(`${serverId} inventory endpoint does not match its catalog origin.`);
+    }
+    if (!['direct', 'authenticated-proxy'].includes(inventory.provenance.route)
+        || !['authenticated', 'unauthenticated'].includes(inventory.authentication)) {
+      throw new Error(`${serverId} inventory provenance is invalid.`);
+    }
+    for (const category of ['tools', 'resources', 'resourceTemplates', 'prompts']) {
+      const section = inventory[category];
+      assertExactKeys(section, ['status', 'observedCount', 'retainedCount', 'omittedCount', 'paginationComplete', 'items'], `${serverId} ${category}`);
+      if (!statuses.has(section.status) || !Array.isArray(section.items) || section.items.length > 100
+          || ![section.observedCount, section.retainedCount, section.omittedCount].every(Number.isInteger)
+          || section.retainedCount !== section.items.length
+          || section.observedCount !== section.retainedCount + section.omittedCount
+          || typeof section.paginationComplete !== 'boolean') {
+        throw new Error(`${serverId} ${category} metadata is invalid.`);
+      }
+      for (const [index, item] of section.items.entries()) {
+        const label = `${serverId} ${category}[${index}]`;
+        const itemKeys = category === 'tools'
+          ? ['name', 'description', 'input']
+          : category === 'prompts'
+            ? ['name', 'description', 'arguments']
+            : ['name', 'title', 'description', 'mimeType'];
+        assertExactKeys(item, itemKeys, label);
+        assertSafeInventoryString(item.name, 128, `${label} name`);
+        if (/[<>]/.test(item.name) || /\b[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(item.name)) {
+          throw new Error(`${label} has an unsafe name.`);
+        }
+        if ((category === 'tools' || category === 'prompts') && !identifier.test(item.name)) {
+          throw new Error(`${label} has an invalid name.`);
+        }
+        assertSafeInventoryString(item.title, 200, `${label} title`, true);
+        assertSafeInventoryString(item.description, 600, `${label} description`, true);
+        assertSafeInventoryString(item.mimeType, 128, `${label} MIME type`, true);
+        if (item.mimeType && !/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*charset=[A-Za-z0-9._-]+)?$/i.test(item.mimeType)) {
+          throw new Error(`${label} MIME type is invalid.`);
+        }
+        const argumentsList = category === 'tools' ? item.input : item.arguments;
+        if (argumentsList !== undefined) {
+          if (!Array.isArray(argumentsList) || argumentsList.length > 32) {
+            throw new Error(`${label} arguments are invalid.`);
+          }
+          argumentsList.forEach((argument, argumentIndex) => (
+            validateArgument(argument, `${label} argument[${argumentIndex}]`)
+          ));
+          const argumentNames = argumentsList.map(argument => argument.name.toLowerCase());
+          if (new Set(argumentNames).size !== argumentNames.length
+              || argumentsList.some((argument, argumentIndex) => argumentIndex > 0
+                && argumentsList[argumentIndex - 1].name.localeCompare(argument.name, 'en-US') > 0)) {
+            throw new Error(`${label} arguments are not deterministically ordered and unique.`);
+          }
+        }
+      }
+      const itemNames = section.items.map(item => item.name.toLowerCase());
+      if (new Set(itemNames).size !== itemNames.length
+          || section.items.some((item, index) => index > 0
+            && section.items[index - 1].name.localeCompare(item.name, 'en-US') > 0)) {
+        throw new Error(`${serverId} ${category} items are not deterministically ordered and unique.`);
+      }
+      if (Buffer.byteLength(JSON.stringify(section), 'utf8') > 32_000) {
+        throw new Error(`${serverId} ${category} exceeds the section byte limit.`);
+      }
+    }
+    if (Buffer.byteLength(JSON.stringify(inventory), 'utf8') > 96_000) {
+      throw new Error(`${serverId} inventory exceeds the aggregate byte limit.`);
+    }
+  }
+}
+
 function validateLearnArticles(learnData) {
   if (!learnData.index?.title || !learnData.index?.description || !learnData.index?.summary) {
     throw new Error('Learn SEO generation requires complete index metadata.');
@@ -672,11 +869,13 @@ function main() {
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
   const validationResults = JSON.parse(fs.readFileSync(validationPath, 'utf8'));
+  const capabilitySnapshots = JSON.parse(fs.readFileSync(capabilitiesPath, 'utf8'));
   const pageMetadata = JSON.parse(fs.readFileSync(pageMetadataPath, 'utf8'));
   const learnData = JSON.parse(fs.readFileSync(learnArticlesPath, 'utf8'));
   validateInputs(seeds);
+  validateCapabilitySnapshots(capabilitySnapshots, seeds);
   validateLearnArticles(learnData);
-  const servers = mergeCatalogServers(seeds, validationResults);
+  const servers = mergeCatalogServers(seeds, validationResults, capabilitySnapshots);
   const indexHtml = fs.readFileSync(indexPath, 'utf8');
 
   writeServerPages(indexHtml, servers);
@@ -699,4 +898,5 @@ module.exports = {
   renderMarkdown,
   serverPath,
   transportLabel,
+  validateCapabilitySnapshots,
 };

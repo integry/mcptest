@@ -150,6 +150,8 @@ export interface CatalogServer extends Omit<CatalogServerSeed, 'transport'> {
   checkedAt?: string;
   /** Optional validation detail surfaced to maintainers or debug views. */
   validationMessage?: string;
+  /** Durable, public-safe capability snapshot maintained separately from reachability evidence. */
+  capabilityInventory?: CapabilityInventoryV1;
 }
 
 /**
@@ -163,3 +165,4 @@ export interface CatalogFilters {
   /** Authentication-method filter. */
   oauth: OAuthFilter;
 }
+import type { CapabilityInventoryV1 } from './capabilityInventory';

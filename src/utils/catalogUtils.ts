@@ -1,5 +1,7 @@
 import serverCatalog from '../data/serverCatalog.json';
 import catalogValidation from '../data/catalogValidation.json';
+import catalogCapabilities from '../data/catalogCapabilities.json';
+import { validateCapabilityInventory } from './capabilityInventory';
 import {
   CATALOG_CATEGORY_ALL,
   type CatalogFilters,
@@ -21,6 +23,7 @@ const CATALOG_SEEDS = Array.isArray(serverCatalog) ? (serverCatalog as CatalogSe
 const CATALOG_VALIDATION = Array.isArray(catalogValidation)
   ? (catalogValidation as CatalogValidationResult[])
   : [];
+const CATALOG_CAPABILITIES = catalogCapabilities as Record<string, unknown>;
 
 const isValidationTransport = (transport: string | undefined): transport is CatalogValidationTransport => {
   return (
@@ -100,6 +103,9 @@ export const getCatalogServers = (): CatalogServer[] => {
       authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
+      ...(CATALOG_CAPABILITIES[seed.id]
+        ? { capabilityInventory: validateCapabilityInventory(CATALOG_CAPABILITIES[seed.id]) }
+        : {}),
     };
   });
 };

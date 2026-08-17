@@ -79,6 +79,36 @@ describe('generated server report Playground links', () => {
 });
 
 describe('generated page metadata', () => {
+  it('renders escaped literal capabilities and only aggregate inventory counts in JSON-LD', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    const section = (items) => ({
+      status: 'complete', observedCount: items.length, retainedCount: items.length,
+      omittedCount: 0, paginationComplete: true, items,
+    });
+    server.capabilityInventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://example.com/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: section([{ name: '<script>alert(1)</script>', description: 'safe & useful' }]),
+      resources: section([{ name: 'Records' }]),
+      resourceTemplates: section([{ name: 'Record template' }]),
+      prompts: section([{ name: 'summarize' }]),
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('Tools provided by Example Server');
+    expect(html).toContain('Resources provided by Example Server');
+    expect(html).toContain('Resource templates provided by Example Server');
+    expect(html).toContain('Prompts provided by Example Server');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('"name":"Tools observed","value":1');
+    const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
+    expect(structuredData).not.toContain('alert(1)');
+  });
+
   it('uses the server capability summary across search and social tags', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';

@@ -16,6 +16,157 @@ const CLIENT_NAME = 'mcptest-catalog-validator';
 
 const catalogPath = path.join(__dirname, '..', 'src', 'data', 'serverCatalog.json');
 const outputPath = path.join(__dirname, '..', 'src', 'data', 'catalogValidation.json');
+const capabilitiesPath = path.join(__dirname, '..', 'src', 'data', 'catalogCapabilities.json');
+
+const INVENTORY_ITEM_LIMIT = 100;
+const INVENTORY_ARGUMENT_LIMIT = 32;
+const INVENTORY_BYTE_LIMIT = 96_000;
+const INVENTORY_SECTION_BYTE_LIMIT = 32_000;
+const SAFE_IDENTIFIER = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,127})$/;
+
+function publicText(value, limit) {
+  if (typeof value !== 'string') return undefined;
+  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+    .replace(/\b(authorization|cookie|password|secret|access[_ -]?token|refresh[_ -]?token|api[_ -]?key|credential|session|token)\s*[:=]\s*([^\s,;&]+)/gi, '$1=[REDACTED]')
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g, '[REDACTED URI]');
+  return cleaned ? cleaned.slice(0, limit).trimEnd() : undefined;
+}
+
+function publicArguments(value, schemaMode) {
+  const source = schemaMode ? value?.properties : value;
+  if (!source || (schemaMode ? typeof source !== 'object' || Array.isArray(source) : !Array.isArray(source))) return undefined;
+  const required = new Set(schemaMode && Array.isArray(value.required) ? value.required : []);
+  const entries = schemaMode ? Object.entries(source) : source.map(item => [item?.name, item]);
+  const result = [];
+  const seen = new Set();
+  for (const [rawName, raw] of entries) {
+    const name = publicText(rawName, 128);
+    if (!name || !SAFE_IDENTIFIER.test(name) || !raw || typeof raw !== 'object' || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const type = typeof raw.type === 'string' && ['array', 'boolean', 'integer', 'null', 'number', 'object', 'string'].includes(raw.type)
+      ? raw.type
+      : undefined;
+    result.push({
+      name,
+      ...(type ? { type } : {}),
+      ...(publicText(raw.description, 600) ? { description: publicText(raw.description, 600) } : {}),
+      required: schemaMode ? required.has(rawName) : raw.required === true,
+    });
+  }
+  return result.sort((left, right) => left.name.localeCompare(right.name, 'en-US')).slice(0, INVENTORY_ARGUMENT_LIMIT);
+}
+
+function publicItems(category, values) {
+  const result = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    if (!raw || typeof raw !== 'object') continue;
+    const name = publicText(raw.name, 128);
+    if (!name || /\b[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(String(raw.name))
+        || ((category === 'tools' || category === 'prompts') && !SAFE_IDENTIFIER.test(name))
+        || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const description = publicText(raw.description, 600);
+    if (category === 'tools') result.push({
+      name,
+      ...(description ? { description } : {}),
+      ...(publicArguments(raw.inputSchema, true)?.length ? { input: publicArguments(raw.inputSchema, true) } : {}),
+    });
+    else if (category === 'prompts') result.push({
+      name,
+      ...(description ? { description } : {}),
+      ...(publicArguments(raw.arguments, false)?.length ? { arguments: publicArguments(raw.arguments, false) } : {}),
+    });
+    else result.push({
+      name,
+      ...(publicText(raw.title, 200) ? { title: publicText(raw.title, 200) } : {}),
+      ...(description ? { description } : {}),
+      ...(publicText(raw.mimeType, 128) ? { mimeType: publicText(raw.mimeType, 128) } : {}),
+    });
+  }
+  return result.sort((left, right) => left.name.localeCompare(right.name, 'en-US')).slice(0, INVENTORY_ITEM_LIMIT);
+}
+
+async function paginateDiscovery(client, category, firstCall, pageCall) {
+  let values = [];
+  let cursor;
+  const seen = new Set();
+  try {
+    for (let pageNumber = 0; pageNumber < 64; pageNumber += 1) {
+      const page = pageNumber === 0 ? await firstCall() : await pageCall(cursor);
+      if (!page || !Array.isArray(page[category])) throw new Error('Malformed discovery page');
+      values.push(...page[category]);
+      cursor = typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : undefined;
+      if (!cursor) return { status: 'complete', values, paginationComplete: true };
+      if (seen.has(cursor)) throw new Error('Repeated discovery cursor');
+      seen.add(cursor);
+    }
+    throw new Error('Discovery page limit reached');
+  } catch (error) {
+    if (error && (error.code === -32601 || /method not found/i.test(error.message || ''))) {
+      return { status: 'unsupported', values: [], paginationComplete: true };
+    }
+    return { status: values.length ? 'partial' : 'unavailable', values, paginationComplete: false };
+  }
+}
+
+function withDiscoveryTimeout(run, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(Object.assign(
+      new Error(`Capability discovery timed out after ${timeoutMs}ms`),
+      { code: 'REQUEST_TIMEOUT' }
+    )), timeoutMs);
+    Promise.resolve().then(run).then(
+      value => { clearTimeout(timeout); resolve(value); },
+      error => { clearTimeout(timeout); reject(error); }
+    );
+  });
+}
+
+async function discoverPublicInventory(client, endpoint, timeoutMs) {
+  const calls = {
+    tools: [() => withDiscoveryTimeout(() => client.listTools(), timeoutMs), cursor => withDiscoveryTimeout(() => client.listTools({ cursor }), timeoutMs)],
+    resources: [() => withDiscoveryTimeout(() => client.listResources(), timeoutMs), cursor => withDiscoveryTimeout(() => client.listResources({ cursor }), timeoutMs)],
+    resourceTemplates: [() => withDiscoveryTimeout(() => client.listResourceTemplates(), timeoutMs), cursor => withDiscoveryTimeout(() => client.listResourceTemplates({ cursor }), timeoutMs)],
+    prompts: [() => withDiscoveryTimeout(() => client.listPrompts(), timeoutMs), cursor => withDiscoveryTimeout(() => client.listPrompts({ cursor }), timeoutMs)],
+  };
+  const discovered = {};
+  for (const [category, [firstCall, pageCall]] of Object.entries(calls)) {
+    discovered[category] = await paginateDiscovery(client, category, firstCall, pageCall);
+  }
+  // Never replace a durable snapshot when any method or page failed.
+  if (Object.values(discovered).some(({ status }) => status === 'partial' || status === 'unavailable')) return undefined;
+  const inventory = {
+    version: 1,
+    observedAt: new Date().toISOString(),
+    provenance: { testedEndpoint: endpoint, route: 'direct' },
+    authentication: 'unauthenticated',
+  };
+  for (const [category, discovery] of Object.entries(discovered)) {
+    const items = publicItems(category, discovery.values);
+    inventory[category] = {
+      status: items.length === discovery.values.length ? discovery.status : 'partial',
+      observedCount: discovery.values.length,
+      retainedCount: items.length,
+      omittedCount: discovery.values.length - items.length,
+      paginationComplete: discovery.paginationComplete,
+      items,
+    };
+    while (inventory[category].items.length
+        && Buffer.byteLength(JSON.stringify(inventory[category]), 'utf8') > INVENTORY_SECTION_BYTE_LIMIT) {
+      inventory[category].items.pop();
+      inventory[category].retainedCount -= 1;
+      inventory[category].omittedCount += 1;
+      if (inventory[category].status === 'complete') inventory[category].status = 'partial';
+    }
+  }
+  return Buffer.byteLength(JSON.stringify(inventory), 'utf8') <= INVENTORY_BYTE_LIMIT
+    ? inventory
+    : undefined;
+}
 
 function requireRuntime() {
   if (typeof fetch !== 'function' || typeof AbortController !== 'function') {
@@ -171,6 +322,7 @@ async function probeStreamableEndpoint(
     await client.connect(transport, { timeout: timeoutMs });
     const era = client.getProtocolEra();
     const protocolVersion = client.getNegotiatedProtocolVersion();
+    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
 
     return {
       ...endpoint,
@@ -179,6 +331,7 @@ async function probeStreamableEndpoint(
       authChallenge: false,
       protocolEra: era === 'modern' ? 'stateless' : 'stateful',
       protocolVersion,
+      capabilityInventory,
       statusCode: responses.find(({ status }) => status >= 200 && status < 300)?.status,
       message: `Negotiated ${era === 'modern' ? 'stateless' : 'stateful'} MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
@@ -261,6 +414,7 @@ async function probeSseEndpoint(
     ]);
 
     const protocolVersion = client.getNegotiatedProtocolVersion();
+    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
     return {
       ...endpoint,
       reachable: true,
@@ -268,6 +422,7 @@ async function probeSseEndpoint(
       authChallenge: false,
       protocolEra: 'legacy',
       protocolVersion,
+      capabilityInventory,
       statusCode: responses.find(({ status }) => status >= 200 && status < 300)?.status,
       message: `Negotiated legacy MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
@@ -463,6 +618,9 @@ async function validateSeed(
     result.authorizationServers = authorizationEvidence.authorizationServers;
   }
   if (errorCode) result.errorCode = errorCode;
+  if (successfulProbe?.capabilityInventory) {
+    result.capabilityInventory = successfulProbe.capabilityInventory;
+  }
 
   return result;
 }
@@ -503,8 +661,25 @@ async function mapWithConcurrency(values, concurrency, worker) {
   return results;
 }
 
+function mergeCapabilitySnapshots(previous, results) {
+  const updated = { ...previous };
+  for (const result of results) {
+    if (result.capabilityInventory) updated[result.serverId] = result.capabilityInventory;
+  }
+  return Object.fromEntries(
+    Object.entries(updated).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
 function writeResults(results) {
-  fs.writeFileSync(outputPath, `${JSON.stringify(results, null, 2)}\n`, 'utf-8');
+  const validationResults = results.map(({ capabilityInventory, ...result }) => result);
+  fs.writeFileSync(outputPath, `${JSON.stringify(validationResults, null, 2)}\n`, 'utf-8');
+  const previous = fs.existsSync(capabilitiesPath)
+    ? JSON.parse(fs.readFileSync(capabilitiesPath, 'utf8'))
+    : {};
+  fs.writeFileSync(capabilitiesPath, `${JSON.stringify(
+    mergeCapabilitySnapshots(previous, results), null, 2
+  )}\n`, 'utf8');
 }
 
 async function main() {
@@ -537,6 +712,7 @@ module.exports = {
   detectedAuthType,
   discoverAuthorizationEvidence,
   endpointVariants,
+  mergeCapabilitySnapshots,
   probeSseEndpoint,
   probeStreamableEndpoint,
   validateSeed,

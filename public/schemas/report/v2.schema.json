@@ -37,6 +37,7 @@
     "releaseDecision": { "$ref": "#/$defs/releaseDecision" },
     "compatibility": { "$ref": "#/$defs/compatibility" },
     "toolSurfaceAnalysis": { "$ref": "#/$defs/toolSurfaceAnalysis" },
+    "capabilityInventory": { "$ref": "#/$defs/capabilityInventory" },
     "oauthTrace": { "$ref": "#/$defs/oauthTrace" },
     "sections": {
       "type": "array",
@@ -447,6 +448,94 @@
         "tool": { "type": "string" },
         "path": { "type": "string" },
         "detail": { "type": "string" }
+      }
+    },
+    "capabilityInventoryArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "required"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "required": { "type": "boolean" }
+      }
+    },
+    "capabilityInventoryResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "mimeType": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "capabilityInventorySectionBase": {
+      "type": "object",
+      "required": ["status", "observedCount", "retainedCount", "omittedCount", "paginationComplete", "items"],
+      "properties": {
+        "status": { "enum": ["complete", "partial", "unsupported", "unavailable"] },
+        "observedCount": { "type": "integer", "minimum": 0 },
+        "retainedCount": { "type": "integer", "minimum": 0 },
+        "omittedCount": { "type": "integer", "minimum": 0 },
+        "paginationComplete": { "type": "boolean" }
+      }
+    },
+    "capabilityInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "observedAt", "provenance", "authentication", "tools", "resources", "resourceTemplates", "prompts"],
+      "properties": {
+        "version": { "const": 1 },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["testedEndpoint", "route"],
+          "properties": {
+            "testedEndpoint": { "type": "string", "format": "uri" },
+            "route": { "enum": ["direct", "authenticated-proxy"] }
+          }
+        },
+        "authentication": { "enum": ["authenticated", "unauthenticated"] },
+        "tools": {
+          "allOf": [
+            { "$ref": "#/$defs/capabilityInventorySectionBase" },
+            { "properties": { "items": { "type": "array", "maxItems": 100, "items": {
+              "type": "object", "additionalProperties": false, "required": ["name"], "properties": {
+                "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+                "input": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/capabilityInventoryArgument" } }
+              }
+            } } } }
+          ]
+        },
+        "resources": {
+          "allOf": [
+            { "$ref": "#/$defs/capabilityInventorySectionBase" },
+            { "properties": { "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/capabilityInventoryResource" } } } }
+          ]
+        },
+        "resourceTemplates": {
+          "allOf": [
+            { "$ref": "#/$defs/capabilityInventorySectionBase" },
+            { "properties": { "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/capabilityInventoryResource" } } } }
+          ]
+        },
+        "prompts": {
+          "allOf": [
+            { "$ref": "#/$defs/capabilityInventorySectionBase" },
+            { "properties": { "items": { "type": "array", "maxItems": 100, "items": {
+              "type": "object", "additionalProperties": false, "required": ["name"], "properties": {
+                "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+                "arguments": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/capabilityInventoryArgument" } }
+              }
+            } } } }
+          ]
+        }
       }
     },
     "oauthTrace": {

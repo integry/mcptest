@@ -20,6 +20,7 @@ import {
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
+import CapabilitiesProvided from './CapabilitiesProvided';
 
 interface ReleaseReadinessReportProps {
   report: EvaluationReport;
@@ -345,6 +346,15 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           </>
         )}
       </section>
+
+      {report.capabilityInventory && (
+        <section className="release-section" aria-labelledby="release-capabilities-title">
+          <CapabilitiesProvided
+            inventory={report.capabilityInventory}
+            titleId="release-capabilities-title"
+          />
+        </section>
+      )}
 
       <section className="release-section" aria-labelledby="tool-surface-title">
         <div className="release-section-heading">
