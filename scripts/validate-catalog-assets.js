@@ -43,32 +43,35 @@ function validateSvg(contents) {
     try {
       const document = new JSDOM(contents, { contentType: 'image/svg+xml' }).window.document;
       let hasExternalResource = false;
-      let hasUnsupportedDataResource = false;
+      let hasEmbeddedDataResource = false;
       let hasExternalCssResource = false;
 
       for (const element of document.querySelectorAll('*')) {
         for (const attribute of element.attributes) {
           const value = attribute.value.trim();
           if (['href', 'src'].includes(attribute.localName.toLowerCase())) {
-            if (value.startsWith('#') || /^data:image\/(?:png|webp);base64,/i.test(value)) {
-              continue;
-            }
-            if (/^data:/i.test(value)) hasUnsupportedDataResource = true;
+            if (value.startsWith('#')) continue;
+            if (/^data:/i.test(value)) hasEmbeddedDataResource = true;
             else hasExternalResource = true;
           }
 
           if (containsExternalCssResource(value)) hasExternalCssResource = true;
+          if (containsEmbeddedCssResource(value)) hasEmbeddedDataResource = true;
         }
 
         if (element.localName.toLowerCase() === 'style'
           && containsExternalCssResource(element.textContent || '')) {
           hasExternalCssResource = true;
         }
+        if (element.localName.toLowerCase() === 'style'
+          && containsEmbeddedCssResource(element.textContent || '')) {
+          hasEmbeddedDataResource = true;
+        }
       }
 
       if (hasExternalResource) errors.push('references an external or executable resource');
       if (hasExternalCssResource) errors.push('loads an external resource from CSS');
-      if (hasUnsupportedDataResource) errors.push('contains an unsupported embedded data resource');
+      if (hasEmbeddedDataResource) errors.push('contains an embedded data resource');
     } catch {
       errors.push('must be well-formed XML');
     }
@@ -84,9 +87,17 @@ function containsExternalCssResource(value) {
 
   for (const match of value.matchAll(/\burl\(\s*(?:(["'])(.*?)\1|([^)]*))\s*\)/gi)) {
     const reference = (match[2] ?? match[3] ?? '').trim();
-    if (!reference.startsWith('#') && !/^data:image\/(?:png|webp);base64,/i.test(reference)) {
+    if (!reference.startsWith('#') && !/^data:/i.test(reference)) {
       return true;
     }
+  }
+  return false;
+}
+
+function containsEmbeddedCssResource(value) {
+  for (const match of value.matchAll(/\burl\(\s*(?:(["'])(.*?)\1|([^)]*))\s*\)/gi)) {
+    const reference = (match[2] ?? match[3] ?? '').trim();
+    if (/^data:/i.test(reference)) return true;
   }
   return false;
 }
