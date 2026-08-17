@@ -4366,6 +4366,14 @@ pre.bg-light code {
 }
 
 @media (max-width: 767.98px) {
+  /* Elevated cards sit too close to the viewport edge at this width. Their
+     shadows overlap vertically and read as dark bands down either side of the
+     playground, so keep the elevation treatment for larger screens only. */
+  .tab-content-panel .card,
+  .tab-content-panel .card:hover {
+    box-shadow: none;
+  }
+
   .first-connection-hero {
     grid-template-columns: 1fr;
     min-height: 0;
