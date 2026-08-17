@@ -3512,6 +3512,15 @@ span.health-indicator.health-indicator-gray {
   line-height: 1.55;
 }
 
+.catalog-server-heading {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.catalog-server-title-row h5 {
+  min-width: 0;
+}
+
 .catalog-server-url {
   display: block;
   overflow: hidden;
@@ -3999,7 +4008,7 @@ pre.bg-light code {
   }
 
   .main-content.p-3 {
-    padding: 0.75rem !important;
+    padding: 0.75rem 1rem !important;
   }
 
   .main-content::before {
@@ -4062,10 +4071,15 @@ pre.bg-light code {
 
   .catalog-filters {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .catalog-search-field {
     grid-column: auto;
+  }
+
+  .catalog-server-badges {
+    row-gap: 0.625rem;
   }
 
   .view-panel .container-fluid.py-4 > .row > .col {
