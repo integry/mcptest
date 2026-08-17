@@ -8,6 +8,7 @@ import {
   LEARN_INDEX_METADATA,
   getLearnArticleFromPath,
   getLearnArticleMetadata,
+  isLearnIndexPath,
 } from '../content/learnRegistry';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
@@ -112,7 +113,7 @@ export const useMetaTags = () => {
       });
     } else if (learnArticle) {
       applyMetadata(getLearnArticleMetadata(learnArticle));
-    } else if (location.pathname === '/learn' || location.pathname === '/learn/') {
+    } else if (isLearnIndexPath(location.pathname)) {
       applyMetadata({
         title: `${LEARN_INDEX_METADATA.title} | mcptest.io`,
         description: LEARN_INDEX_METADATA.description,

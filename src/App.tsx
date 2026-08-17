@@ -19,7 +19,11 @@ import LearnArticlePage from './components/learn/LearnArticlePage';
 import LearnIndex from './components/learn/LearnIndex';
 import LearnNotFound from './components/learn/LearnNotFound';
 import { getDocumentationPage } from './content/docsRegistry';
-import { getLearnArticle, getLearnArticleSlugFromPath } from './content/learnRegistry';
+import {
+  getLearnArticle,
+  getLearnArticleSlugFromPath,
+  isLearnIndexPath,
+} from './content/learnRegistry';
 // OAuth callback component
 import OAuthCallback from './components/OAuthCallback';
 import OAuthConfig from './components/OAuthConfig';
@@ -196,6 +200,12 @@ export const beginSavedCardOAuthFlow = async ({
       : {}),
     deferAuthorizedTraceOutcome: true,
   });
+};
+
+export const getLearnPageViewTitle = (path: string) => {
+  const article = getLearnArticle(getLearnArticleSlugFromPath(path));
+  if (article) return `Learn: ${article.title}`;
+  return isLearnIndexPath(path) ? 'Learn MCP' : 'Guide Not Found';
 };
 
 // Helper function to get the initial theme
@@ -456,8 +466,7 @@ function App() {
     }
 
     if (path === '/learn' || path.startsWith('/learn/')) {
-      const article = getLearnArticle(getLearnArticleSlugFromPath(path));
-      pageTitle = article ? `Learn: ${article.title}` : path === '/learn' ? 'Learn MCP' : 'Guide Not Found';
+      pageTitle = getLearnPageViewTitle(path);
       logPageView(path, pageTitle);
       return;
     }
@@ -1848,7 +1857,7 @@ function App() {
 
           {/* Learn View */}
           <div className={`view-panel ${activeView === 'learn' ? '' : 'd-none'}`} style={{ minHeight: '100%' }}>
-            {location.pathname === '/learn' || location.pathname === '/learn/' ? (
+            {isLearnIndexPath(location.pathname) ? (
               <LearnIndex />
             ) : selectedLearnArticle ? (
               <LearnArticlePage article={selectedLearnArticle} />

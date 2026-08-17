@@ -69,6 +69,9 @@ validateArticles([...LEARN_ARTICLES]);
 export const getLearnArticle = (slug: string | null | undefined) =>
   slug ? LEARN_ARTICLES.find(article => article.slug === slug) : undefined;
 
+export const isLearnIndexPath = (pathname: string) =>
+  pathname === '/learn' || pathname === '/learn/';
+
 export const getLearnArticleSlugFromPath = (pathname: string): string | undefined => {
   const match = pathname.match(/^\/learn\/([^/]+)\/?$/);
   if (!match) return undefined;
