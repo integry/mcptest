@@ -91,7 +91,7 @@ describe('SideNav dashboard rows', () => {
 
     expect(
       Array.from(container.querySelectorAll('.sidenav-section-label'), (label) => label.textContent)
-    ).toEqual(['Dashboards', 'Documentation', 'Learn']);
+    ).toEqual(['Dashboards', 'Resources']);
     expect(sidebarCss).not.toMatch(/text-transform:\s*uppercase/i);
 
     const sectionRuleStart = sidebarCss.indexOf('.sidenav-section-label {');
@@ -119,7 +119,7 @@ describe('SideNav dashboard rows', () => {
     });
   });
 
-  it('renders registry-driven Documentation and Learn navigation', () => {
+  it('renders only high-level resource destinations and keeps the guide hub active', () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter initialEntries={['/learn/mcp-clients-compared']}>
         <SideNav
@@ -142,10 +142,12 @@ describe('SideNav dashboard rows', () => {
     const hrefs = Array.from(container.querySelectorAll('a'), link => link.getAttribute('href'));
     expect(hrefs).toEqual(expect.arrayContaining([
       '/docs/what-is-mcp',
-      '/docs/remote-vs-local',
-      '/docs/testing-guide',
       '/docs/troubleshooting',
       '/learn',
+    ]));
+    expect(hrefs).not.toEqual(expect.arrayContaining([
+      '/docs/remote-vs-local',
+      '/docs/testing-guide',
       '/learn/mcp-clients-compared',
       '/learn/connect-remote-mcp-server',
       '/learn/oauth-for-mcp-explained',
@@ -153,6 +155,7 @@ describe('SideNav dashboard rows', () => {
       '/learn/designing-production-mcp-server',
       '/learn/mcp-server-trust-checklist',
     ]));
-    expect(container.querySelector('a[href="/learn/mcp-clients-compared"]')?.classList).toContain('active');
+    expect(container.querySelector('a[href="/learn"]')?.textContent).toContain('Guides & Tutorials');
+    expect(container.querySelector('a[href="/learn"]')?.classList).toContain('active');
   });
 });
