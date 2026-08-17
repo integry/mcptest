@@ -86,4 +86,14 @@ describe('catalog logo asset validation', () => {
     expect(errors).toContain('missing: logo file is missing: /server-logos/missing.svg');
     expect(errors).toContain('missing: generated fallback must not declare a logoSourceUrl');
   });
+
+  it('rejects WebP logo files', () => {
+    const directory = temporaryDirectory();
+    const webpPath = path.join(directory, 'logo.webp');
+    fs.writeFileSync(webpPath, Buffer.from('RIFF0000WEBP', 'ascii'));
+
+    expect(validateLogoFile(webpPath, '/server-logos/logo.webp')).toContain(
+      'must use SVG or PNG'
+    );
+  });
 });

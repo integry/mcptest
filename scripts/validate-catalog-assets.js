@@ -71,8 +71,8 @@ function validateLogoFile(filePath, logoUrl) {
   }
 
   const extension = path.extname(logoUrl).toLowerCase();
-  if (!['.svg', '.png', '.webp'].includes(extension)) {
-    errors.push('must use SVG, PNG, or WebP');
+  if (!['.svg', '.png'].includes(extension)) {
+    errors.push('must use SVG or PNG');
     return errors;
   }
 
