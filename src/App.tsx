@@ -15,14 +15,15 @@ import ReportView from './components/ReportView'; // New
 import CatalogView from './components/CatalogView';
 import ServerProfileView from './components/ServerProfileView';
 import Tabs from './components/Tabs'; // New
-// Documentation components
-import WhatIsMcp from './components/docs/WhatIsMcp';
-import RemoteVsLocal from './components/docs/RemoteVsLocal';
-import TestingGuide from './components/docs/TestingGuide';
-import Troubleshooting from './components/docs/Troubleshooting';
-import PrivacyPolicy from './components/docs/PrivacyPolicy';
-import TermsOfService from './components/docs/TermsOfService';
-import Contact from './components/docs/Contact';
+import LearnArticlePage from './components/learn/LearnArticlePage';
+import LearnIndex from './components/learn/LearnIndex';
+import LearnNotFound from './components/learn/LearnNotFound';
+import { getDocumentationPage } from './content/docsRegistry';
+import {
+  getLearnArticle,
+  getLearnArticleSlugFromPath,
+  isLearnIndexPath,
+} from './content/learnRegistry';
 // OAuth callback component
 import OAuthCallback from './components/OAuthCallback';
 import OAuthConfig from './components/OAuthConfig';
@@ -201,6 +202,12 @@ export const beginSavedCardOAuthFlow = async ({
   });
 };
 
+export const getLearnPageViewTitle = (path: string) => {
+  const article = getLearnArticle(getLearnArticleSlugFromPath(path));
+  if (article) return `Learn: ${article.title}`;
+  return isLearnIndexPath(path) ? 'Learn MCP' : 'Guide Not Found';
+};
+
 // Helper function to get the initial theme
 const getInitialTheme = (): 'light' | 'dark' => {
   // 1. Check for a saved theme in localStorage
@@ -219,10 +226,13 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog' | 'server-profile' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
+  }
+  if (path === '/learn' || path.startsWith('/learn/')) {
+    return 'learn';
   }
   if (path.startsWith('/space/')) {
     return 'dashboards';
@@ -342,6 +352,10 @@ function App() {
       return { activeView: 'docs' as const, activeDocPage: docPage };
     }
 
+    if (path === '/learn' || path.startsWith('/learn/')) {
+      return { activeView: 'learn' as const, activeDocPage: null };
+    }
+
     // Check for report routes
     if (path.startsWith('/report')) {
       return { activeView: 'report' as const, activeDocPage: null };
@@ -447,6 +461,12 @@ function App() {
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
       pageTitle = `Docs: ${docPage.replace(/-/g, ' ')}`;
+      logPageView(path, pageTitle);
+      return;
+    }
+
+    if (path === '/learn' || path.startsWith('/learn/')) {
+      pageTitle = getLearnPageViewTitle(path);
       logPageView(path, pageTitle);
       return;
     }
@@ -1715,6 +1735,10 @@ function App() {
   const selectedCatalogServer = selectedCatalogServerId
     ? getCatalogServerById(selectedCatalogServerId)
     : undefined;
+  const selectedDocumentationPage = getDocumentationPage(activeDocPage);
+  const DocumentationComponent = selectedDocumentationPage?.component;
+  const selectedLearnSlug = getLearnArticleSlugFromPath(location.pathname);
+  const selectedLearnArticle = getLearnArticle(selectedLearnSlug);
 
   // Check if we're on the OAuth callback page
   if (location.pathname === '/oauth/callback') {
@@ -1824,31 +1848,21 @@ function App() {
           
           {/* Documentation View */}
           <div className={`view-panel ${activeView === 'docs' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            <div className={activeDocPage === 'what-is-mcp' ? '' : 'd-none'}>
-              <WhatIsMcp />
-            </div>
-            <div className={activeDocPage === 'remote-vs-local' ? '' : 'd-none'}>
-              <RemoteVsLocal />
-            </div>
-            <div className={activeDocPage === 'testing-guide' ? '' : 'd-none'}>
-              <TestingGuide />
-            </div>
-            <div className={activeDocPage === 'troubleshooting' ? '' : 'd-none'}>
-              <Troubleshooting />
-            </div>
-            <div className={activeDocPage === 'privacy-policy' ? '' : 'd-none'}>
-              <PrivacyPolicy />
-            </div>
-            <div className={activeDocPage === 'terms-of-service' ? '' : 'd-none'}>
-              <TermsOfService />
-            </div>
-            <div className={activeDocPage === 'contact' ? '' : 'd-none'}>
-              <Contact />
-            </div>
-            {activeDocPage && !['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting', 'privacy-policy', 'terms-of-service', 'contact'].includes(activeDocPage) && (
+            {DocumentationComponent ? <DocumentationComponent /> : (
               <div className="alert alert-warning">
                 Documentation page not found. Please select a page from the navigation.
               </div>
+            )}
+          </div>
+
+          {/* Learn View */}
+          <div className={`view-panel ${activeView === 'learn' ? '' : 'd-none'}`} style={{ minHeight: '100%' }}>
+            {isLearnIndexPath(location.pathname) ? (
+              <LearnIndex />
+            ) : selectedLearnArticle ? (
+              <LearnArticlePage article={selectedLearnArticle} />
+            ) : (
+              <LearnNotFound />
             )}
           </div>
 
