@@ -2742,6 +2742,11 @@ span.health-indicator.health-indicator-gray {
   max-width: 100%;
 }
 
+.playground-tabs-wrapper {
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+
 .main-content::before {
   position: fixed;
   z-index: -1;
@@ -3507,6 +3512,15 @@ span.health-indicator.health-indicator-gray {
   line-height: 1.55;
 }
 
+.catalog-server-heading {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.catalog-server-title-row h5 {
+  min-width: 0;
+}
+
 .catalog-server-url {
   display: block;
   overflow: hidden;
@@ -3536,7 +3550,10 @@ span.health-indicator.health-indicator-gray {
 }
 
 .catalog-server-badges {
+  position: relative;
+  z-index: 2;
   gap: 0.5rem;
+  text-decoration: none;
 }
 
 .badge.catalog-metadata-badge {
@@ -3979,13 +3996,22 @@ pre.bg-light code {
   }
 
   .mobile-sidebar {
+    left: 0;
     width: min(88vw, 310px);
     padding: 1rem 0.75rem;
     background: var(--card-bg);
+    box-shadow: none;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .menu-open .mobile-sidebar {
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    transform: translateX(0);
   }
 
   .main-content.p-3 {
-    padding: 0.75rem !important;
+    padding: 0.75rem 1rem !important;
   }
 
   .main-content::before {
@@ -4048,10 +4074,51 @@ pre.bg-light code {
 
   .catalog-filters {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .catalog-search-field {
     grid-column: auto;
+  }
+
+  .catalog-server-card {
+    min-height: 0;
+  }
+
+  .catalog-server-card .card-body {
+    padding: 0.875rem;
+  }
+
+  .catalog-server-main > .d-flex {
+    gap: 0.75rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .catalog-server-description {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .catalog-server-badges {
+    flex-wrap: nowrap !important;
+    gap: 0.5rem;
+    overflow-x: auto;
+    margin-bottom: 0.75rem !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .catalog-server-badges::-webkit-scrollbar {
+    display: none;
+  }
+
+  .catalog-server-badges > .badge {
+    flex: 0 0 auto;
   }
 
   .view-panel .container-fluid.py-4 > .row > .col {
@@ -4366,6 +4433,64 @@ pre.bg-light code {
 }
 
 @media (max-width: 767.98px) {
+  .mobile-menu-toggle,
+  .mobile-menu-toggle:hover,
+  .mobile-menu-toggle:focus {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0.5rem;
+    color: #1e293b;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .mobile-menu-toggle:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  .hamburger,
+  .hamburger::before,
+  .hamburger::after {
+    background-color: currentColor;
+  }
+
+  :root[data-theme='dark'] .mobile-menu-toggle {
+    color: #e2e8f0;
+  }
+
+  .playground-tabs-wrapper {
+    width: 100%;
+    padding-inline: 0;
+  }
+
+  .playground-tabs-wrapper .nav-tabs {
+    margin-inline: 0;
+    box-shadow: none;
+  }
+
+  /* The desktop playground row compensates for Bootstrap column gutters with
+     negative margins and matching child padding. There are no columns in the
+     mobile idle layout, so those gutters only make its cards narrower than the
+     connection card above. */
+  .playground-layout {
+    margin-inline: 0;
+  }
+
+  .playground-layout > div {
+    padding-inline: 0;
+  }
+
+  /* Elevated cards sit too close to the viewport edge at this width. Their
+     shadows overlap vertically and read as dark bands down either side of the
+     playground, so keep the elevation treatment for larger screens only. */
+  .tab-content-panel .card,
+  .tab-content-panel .card:hover {
+    box-shadow: none;
+  }
+
   .first-connection-hero {
     grid-template-columns: 1fr;
     min-height: 0;
@@ -4377,9 +4502,48 @@ pre.bg-light code {
     display: none;
   }
 
+  .suggested-servers-panel--onboarding {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .suggested-servers-panel--onboarding > .suggested-servers-intro {
+    padding: 1.25rem 0 1rem;
+    text-align: left;
+  }
+
+  .suggested-servers-panel--onboarding > .card-header {
+    min-height: auto;
+    padding: 0.5rem 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .suggested-servers-panel--onboarding > .card-body {
+    padding: 0.25rem 0 0 !important;
+    background: transparent;
+  }
+
+  .suggested-servers-panel--onboarding > .card-footer {
+    padding: 0.85rem 0 !important;
+    border: 0;
+    background: transparent;
+    text-align: left !important;
+  }
+
+  .suggested-servers-panel--onboarding .suggested-server-row {
+    background: var(--card-bg);
+  }
+
   .awaiting-connection-tabs {
-    overflow-x: auto;
-    white-space: nowrap;
+    justify-content: space-between;
+    gap: clamp(0.5rem, 4vw, 2rem);
+    overflow-x: hidden;
+    text-align: center;
+    white-space: normal;
   }
 
   .awaiting-connection-empty {

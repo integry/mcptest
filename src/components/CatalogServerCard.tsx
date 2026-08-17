@@ -87,8 +87,8 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
                 className="catalog-server-logo flex-shrink-0"
               />
             )}
-            <div className="flex-grow-1" style={{ minWidth: 0 }}>
-              <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
+            <div className="catalog-server-heading">
+              <div className="catalog-server-title-row d-flex align-items-center justify-content-between gap-2 mb-1">
                 <h5 className="mb-0 text-truncate flex-grow-1">
                   <Link
                     className="catalog-server-title stretched-link"
@@ -115,7 +115,11 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
         </div>
 
         <div className="catalog-server-footer mt-auto">
-          <div className="catalog-server-badges d-flex flex-wrap align-items-center mb-3">
+          <Link
+            className="catalog-server-badges d-flex flex-wrap align-items-center mb-3"
+            to={getCatalogServerPath(server.id)}
+            aria-label={`View ${server.name} report`}
+          >
             <span className="badge catalog-metadata-badge catalog-metadata-badge--category">
               {server.category}
             </span>
@@ -149,9 +153,9 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({ server, on
                 Proxy required
               </span>
             )}
-          </div>
+          </Link>
 
-          <div className="catalog-card-actions">
+          <div className="catalog-card-actions align-items-center">
             <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
               View report
             </Link>
