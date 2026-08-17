@@ -427,6 +427,16 @@ export const validateCapabilityInventory = (value: unknown): CapabilityInventory
     if (retainedCount !== target.items.length || observedCount !== retainedCount + omittedCount) {
       throw new Error(`Capability inventory ${name} truncation metadata is not canonical.`);
     }
+    if (typeof source.paginationComplete !== 'boolean') {
+      throw new Error(`Capability inventory ${name} pagination metadata is invalid.`);
+    }
+    if (source.status === 'complete' && omittedCount !== 0) {
+      throw new Error(`Capability inventory ${name} status metadata is contradictory.`);
+    }
+    if ((source.status === 'unsupported' || source.status === 'unavailable')
+        && observedCount !== 0) {
+      throw new Error(`Capability inventory ${name} status metadata is contradictory.`);
+    }
     if ((source.status === 'complete' || source.status === 'unsupported')
         && source.paginationComplete !== true) {
       throw new Error(`Capability inventory ${name} pagination metadata is invalid.`);

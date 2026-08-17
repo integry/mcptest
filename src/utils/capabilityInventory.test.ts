@@ -122,4 +122,36 @@ describe('public-safe capability inventory', () => {
     });
     expect(inventory.prompts).toMatchObject({ status: 'partial', paginationComplete: false });
   });
+
+  it('rejects contradictory status and truncation metadata', () => {
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: 'https://example.com/mcp',
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses,
+      discovered: {
+        tools: [{ name: 'retained_tool' }],
+        resources: [],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    const completeWithOmission = structuredClone(inventory);
+    completeWithOmission.tools.observedCount += 1;
+    completeWithOmission.tools.omittedCount = 1;
+    expect(() => validateCapabilityInventory(completeWithOmission)).toThrow(
+      'status metadata is contradictory'
+    );
+
+    for (const status of ['unsupported', 'unavailable'] as const) {
+      const terminalWithObservation = structuredClone(inventory);
+      terminalWithObservation.tools.status = status;
+      terminalWithObservation.tools.paginationComplete = status === 'unsupported';
+      expect(() => validateCapabilityInventory(terminalWithObservation)).toThrow(
+        'status metadata is contradictory'
+      );
+    }
+  });
 });

@@ -34,6 +34,7 @@ function requestDiscoveryPage(client, method, cursor) {
 async function paginateDiscovery(client, category, method, timeoutMs) {
   let values = [];
   let cursor;
+  let successfulPages = 0;
   const seen = new Set();
   try {
     for (let pageNumber = 0; pageNumber < 64; pageNumber += 1) {
@@ -41,6 +42,7 @@ async function paginateDiscovery(client, category, method, timeoutMs) {
         () => requestDiscoveryPage(client, method, cursor), timeoutMs
       );
       if (!page || !Array.isArray(page[category])) throw new Error('Malformed discovery page');
+      successfulPages += 1;
       values.push(...page[category]);
       cursor = typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : undefined;
       if (!cursor) return { status: 'complete', values, paginationComplete: true };
@@ -49,11 +51,15 @@ async function paginateDiscovery(client, category, method, timeoutMs) {
     }
     throw new Error('Discovery page limit reached');
   } catch (error) {
-    if (!values.length && error
+    if (successfulPages === 0 && error
         && (error.code === -32601 || /method not found/i.test(error.message || ''))) {
       return { status: 'unsupported', values: [], paginationComplete: true };
     }
-    return { status: values.length ? 'partial' : 'unavailable', values, paginationComplete: false };
+    return {
+      status: successfulPages > 0 ? 'partial' : 'unavailable',
+      values,
+      paginationComplete: false,
+    };
   }
 }
 

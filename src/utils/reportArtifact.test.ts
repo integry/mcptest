@@ -399,6 +399,10 @@ describe('versioned public report artifacts', () => {
     expect(markdown).toContain('This discovery method is unsupported.');
     expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
 
+    const reportWithUnknownSectionField = JSON.parse(json);
+    reportWithUnknownSectionField.capabilityInventory.tools.rawUri = 'private://tenant/account';
+    expect(validatePublishedSchema(reportWithUnknownSectionField)).toBe(false);
+
     const unsafe = structuredClone(artifact);
     unsafe.capabilityInventory!.tools.items[0].description = 'Open private://tenant/account';
     expect(safeParsePublicReport(unsafe).success).toBe(false);

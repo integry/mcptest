@@ -501,6 +501,7 @@
         },
         "authentication": { "enum": ["authenticated", "unauthenticated"] },
         "tools": {
+          "unevaluatedProperties": false,
           "allOf": [
             { "$ref": "#/$defs/capabilityInventorySectionBase" },
             { "properties": { "items": { "type": "array", "maxItems": 100, "items": {
@@ -513,18 +514,21 @@
           ]
         },
         "resources": {
+          "unevaluatedProperties": false,
           "allOf": [
             { "$ref": "#/$defs/capabilityInventorySectionBase" },
             { "properties": { "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/capabilityInventoryResource" } } } }
           ]
         },
         "resourceTemplates": {
+          "unevaluatedProperties": false,
           "allOf": [
             { "$ref": "#/$defs/capabilityInventorySectionBase" },
             { "properties": { "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/capabilityInventoryResource" } } } }
           ]
         },
         "prompts": {
+          "unevaluatedProperties": false,
           "allOf": [
             { "$ref": "#/$defs/capabilityInventorySectionBase" },
             { "properties": { "items": { "type": "array", "maxItems": 100, "items": {

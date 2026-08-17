@@ -454,12 +454,25 @@ describe('catalog capability pagination and persistence', () => {
     }
   });
 
+  it('marks a page-two method-not-found partial after an empty successful first page', async () => {
+    const client = await connectedClient((_method, params) => {
+      if (params?.cursor) throw new Error('Method not found');
+      return { tools: [], nextCursor: 'tools-2' };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toEqual({ status: 'partial', values: [], paginationComplete: false });
+    } finally {
+      await client.close();
+    }
+  });
+
   it('writes only canonical sanitized inventories and preserves the last snapshot on rejection', async () => {
     const rawPages = {
       'tools/list': {
         tools: [{
           name: 'safe_tool',
-          description: 'client_secret=alpha id_token=beta private_key=gamma',
+          description: 'client_secret=alpha id_token=beta private_key=gamma passwd=delta',
           inputSchema: { type: 'object' },
           unknownToolField: 'discard me',
         }],
@@ -487,7 +500,7 @@ describe('catalog capability pagination and persistence', () => {
     expect(inventory).toBeDefined();
     expect(inventory.provenance.testedEndpoint).toBe('https://example.com/mcp');
     expect(inventory.tools.items[0].description).toBe(
-      'client_secret=[REDACTED] id_token=[REDACTED] private_key=[REDACTED]'
+      'client_secret=[REDACTED] id_token=[REDACTED] private_key=[REDACTED] passwd=[REDACTED]'
     );
     expect(inventory.resources.items).toEqual([{ name: 'Safe resource' }]);
     expect(inventory.resourceTemplates.items).toEqual([
@@ -520,5 +533,30 @@ describe('catalog capability pagination and persistence', () => {
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('deterministically trims a successful aggregate inventory instead of dropping it', async () => {
+    const description = 'x'.repeat(600);
+    const items = (prefix) => Array.from({ length: 100 }, (_, index) => ({
+      name: `${prefix}_${String(index).padStart(3, '0')}`,
+      description,
+    }));
+    const pages = {
+      'tools/list': { tools: items('tool') },
+      'resources/list': { resources: items('resource') },
+      'resources/templates/list': { resourceTemplates: items('template') },
+      'prompts/list': { prompts: items('prompt') },
+    };
+    const client = { request: async ({ method }) => pages[method] };
+
+    const first = await discoverPublicInventory(client, 'https://example.com/mcp', 1_000);
+    const second = await discoverPublicInventory(client, 'https://example.com/mcp', 1_000);
+
+    expect(first).toBeDefined();
+    expect(new TextEncoder().encode(JSON.stringify(first)).length).toBeLessThanOrEqual(96_000);
+    expect(first.tools.observedCount).toBe(100);
+    expect(first.tools.retainedCount + first.tools.omittedCount).toBe(100);
+    expect(Object.values(first).filter((value) => value?.status === 'partial').length).toBeGreaterThan(0);
+    expect({ ...second, observedAt: first.observedAt }).toEqual(first);
   });
 });
