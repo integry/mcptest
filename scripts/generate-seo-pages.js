@@ -226,6 +226,26 @@ function setNamedMeta(html, name, content) {
   );
 }
 
+function serverInitials(name) {
+  const words = String(name).match(/[\p{L}\p{N}]+/gu) || [];
+  const initials = words.length > 1
+    ? `${words[0][0]}${words[1][0]}`
+    : words[0]?.slice(0, 2) || '?';
+  return initials.toLocaleUpperCase();
+}
+
+function isLocalServerLogo(logoUrl) {
+  return typeof logoUrl === 'string' && logoUrl.startsWith('/server-logos/');
+}
+
+function renderServerLogo(server) {
+  if (isLocalServerLogo(server.logoUrl)) {
+    return `<span class="catalog-server-logo server-profile-logo" aria-hidden="true"><img src="${escapeHtml(server.logoUrl)}" alt="" /></span>`;
+  }
+
+  return `<span class="catalog-server-logo catalog-server-logo--fallback server-profile-logo" role="img" aria-label="${escapeHtml(server.name)} logo"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(serverInitials(server.name))}</span></span>`;
+}
+
 function renderServerFallback(server) {
   const homepageLink = server.homepageUrl
     ? `<a href="${escapeHtml(server.homepageUrl)}">Product documentation</a>`
@@ -248,7 +268,7 @@ function renderServerFallback(server) {
     `<article class="server-profile seo-server-fallback" data-server-id="${escapeHtml(server.id)}">`,
     '  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><a href="/catalog">Server Catalog</a></nav>',
     '  <header class="server-profile-hero">',
-    '    <div class="server-profile-identity"><div>',
+    `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
     `      <h1>${escapeHtml(server.name)}</h1>`,
     `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
@@ -306,8 +326,8 @@ function renderServerHtml(indexHtml, server) {
     server.seoDescription
       || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
   );
-  const imageUrl = server.logoUrl
-    ? (server.logoUrl.startsWith('http') ? server.logoUrl : `${SITE_URL}${server.logoUrl}`)
+  const imageUrl = isLocalServerLogo(server.logoUrl)
+    ? `${SITE_URL}${server.logoUrl}`
     : `${SITE_URL}/logo.png`;
   const structuredData = {
     '@context': 'https://schema.org',
@@ -896,6 +916,7 @@ module.exports = {
   renderStaticPageHtml,
   renderLearnArticleHtml,
   renderMarkdown,
+  renderServerLogo,
   serverPath,
   transportLabel,
   validateCapabilitySnapshots,

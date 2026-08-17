@@ -8,6 +8,12 @@ import type {
 
 export const SITE_URL = 'https://mcptest.io';
 
+export const getCatalogServerImageUrl = (logoUrl?: string): string => {
+  return logoUrl?.startsWith('/server-logos/')
+    ? `${SITE_URL}${logoUrl}`
+    : `${SITE_URL}/logo.png`;
+};
+
 export const getCatalogServerPath = (serverId: string): string => {
   return `/servers/${encodeURIComponent(serverId)}/`;
 };
@@ -100,9 +106,7 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
     title: `${server.name} MCP Server Report | mcptest.io`,
     description,
     canonicalUrl,
-    imageUrl: server.logoUrl?.startsWith('http')
-      ? server.logoUrl
-      : `${SITE_URL}${server.logoUrl || '/logo.png'}`,
+    imageUrl: getCatalogServerImageUrl(server.logoUrl),
     structuredData: {
       '@context': 'https://schema.org',
       '@type': 'WebAPI',

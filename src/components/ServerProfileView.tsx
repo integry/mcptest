@@ -7,6 +7,7 @@ import {
   formatProtocolEra,
 } from '../utils/catalogSeo';
 import CapabilitiesProvided from './CapabilitiesProvided';
+import { CatalogServerLogo } from './CatalogServerLogo';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -91,13 +92,11 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       <header className="server-profile-hero">
         <div className="server-profile-glow" aria-hidden="true"></div>
         <div className="server-profile-identity">
-          <div className="server-profile-logo" aria-hidden={!server.logoUrl}>
-            {server.logoUrl ? (
-              <img src={server.logoUrl} alt={`${server.name} logo`} />
-            ) : (
-              <i className="bi bi-cpu"></i>
-            )}
-          </div>
+          <CatalogServerLogo
+            name={server.name}
+            logoUrl={server.logoUrl}
+            className="server-profile-logo"
+          />
           <div>
             <h1>{server.name}</h1>
             <p>{server.description}</p>

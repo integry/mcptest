@@ -12,6 +12,22 @@ interface Env {
   GITHUB_OAUTH_CLIENT_SECRET?: string;
 }
 
+/**
+ * Keep this export while Cloudflare has Durable Objects registered under this
+ * script name. Removing an exported Durable Object class without an explicit
+ * migration causes every subsequent version upload to fail. This compatibility
+ * implementation intentionally leaves existing object storage untouched and
+ * fails closed if an old binding routes a request to it.
+ */
+export class HostedOAuthBroker {
+  async fetch(): Promise<Response> {
+    return new Response('Hosted OAuth broker is unavailable in this Worker version.', {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  }
+}
+
 export type OperatorOAuthProvider = 'figma' | 'slack' | 'github';
 
 export interface OperatorOAuthClient {
