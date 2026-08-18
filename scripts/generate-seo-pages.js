@@ -12,6 +12,12 @@ const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.
 const capabilitiesPath = path.join(projectRoot, 'src', 'data', 'catalogCapabilities.json');
 const pageMetadataPath = path.join(projectRoot, 'src', 'data', 'pageMetadata.json');
 const learnArticlesPath = path.join(projectRoot, 'src', 'data', 'learnArticles.json');
+const STANDALONE_CREDENTIAL = /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}|sk-(?:proj-)?[A-Za-z0-9_-]{20,255}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox(?:b|p|a|r|s)-[A-Za-z0-9-]{20,255}|npm_[A-Za-z0-9]{20,255}|glpat-[A-Za-z0-9_-]{20,255}|hf_[A-Za-z0-9]{20,255})(?![A-Za-z0-9])/g;
+
+function containsStandaloneCredential(value) {
+  STANDALONE_CREDENTIAL.lastIndex = 0;
+  return STANDALONE_CREDENTIAL.test(value);
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -746,9 +752,10 @@ function assertSafeInventoryString(value, maxLength, label, optional = false) {
     throw new Error(`${label} is not a canonical public-safe string.`);
   }
   const sanitized = value
-    .replace(/\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*([^\s,;&]+)/gi, '$1=[REDACTED]')
+    .replace(/\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*(?:\[REDACTED\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/gi, '$1=[REDACTED]')
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
     .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+    .replace(STANDALONE_CREDENTIAL, '[REDACTED]')
     .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g, '[REDACTED URI]');
   if (sanitized !== value) throw new Error(`${label} contains unsanitized data.`);
 }
@@ -778,9 +785,15 @@ function validateCapabilitySnapshots(snapshots, seeds) {
     assertExactKeys(inventory.provenance, ['testedEndpoint', 'route'], `${serverId} provenance`);
     const endpoint = new URL(inventory.provenance.testedEndpoint);
     const seedOrigin = new URL(seedsById.get(serverId).url).origin;
+    const endpointContainsCredential = [endpoint.pathname, ...endpoint.searchParams.values()]
+      .some(containsStandaloneCredential);
     if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.origin !== seedOrigin
         || endpoint.username || endpoint.password || endpoint.hash
-        || [...endpoint.searchParams.keys()].some(key => /(?:auth|code|cookie|credential|key|password|secret|session|signature|token)/i.test(key))) {
+        || endpointContainsCredential
+        || [...endpoint.searchParams.keys()].some(key => (
+          /(?:auth|code|cookie|credential|key|password|secret|session|signature|token)/i.test(key)
+          || /^(?:sig|x-amz-credential)$/i.test(key)
+        ))) {
       throw new Error(`${serverId} inventory endpoint does not match its catalog origin.`);
     }
     if (!['direct', 'authenticated-proxy'].includes(inventory.provenance.route)

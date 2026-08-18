@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, it } from 'vitest';
 import { validateCapabilityInventory } from '../src/utils/capabilityInventory';
@@ -393,6 +394,17 @@ describe('catalog protocol validation', () => {
 });
 
 describe('catalog capability pagination and persistence', () => {
+  it('runs the actual catalog package command through its TypeScript-aware entry point', () => {
+    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const output = execFileSync(
+      npm,
+      ['run', 'validate-catalog', '--', '--check-runtime'],
+      { cwd: path.join(import.meta.dirname, '..'), encoding: 'utf8' }
+    );
+
+    expect(output).toContain('Catalog validator runtime is ready.');
+  });
+
   it('uses actual Client transport behavior for multi-page success', async () => {
     const requests = [];
     const client = await connectedClient((method, params) => {
@@ -468,18 +480,22 @@ describe('catalog capability pagination and persistence', () => {
   });
 
   it('writes only canonical sanitized inventories and preserves the last snapshot on rejection', async () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted catalog secret';
     const rawPages = {
       'tools/list': {
         tools: [{
           name: 'safe_tool',
-          description: 'client_secret=alpha id_token=beta private_key=gamma passwd=delta',
+          description: `client_secret="${quotedSecret}" id_token=beta private_key=gamma passwd=delta ${githubToken}`,
           inputSchema: { type: 'object' },
           unknownToolField: 'discard me',
-        }],
+        }, { name: githubToken }],
       },
       'resources/list': {
         resources: [
           { name: '<script>alert(1)</script>', mimeType: 'text/html' },
+          { name: stripeKey },
           { name: 'Safe resource', mimeType: 'definitely not a MIME type', unknown: true },
         ],
       },
@@ -493,16 +509,19 @@ describe('catalog capability pagination and persistence', () => {
     };
     const inventory = await discoverPublicInventory(
       { request: async ({ method }) => rawPages[method] },
-      'https://example.com/mcp?access_token=secret',
+      `https://example.com/mcp?access_token=secret&sig=${stripeKey}`,
       1_000
     );
 
     expect(inventory).toBeDefined();
     expect(inventory.provenance.testedEndpoint).toBe('https://example.com/mcp');
     expect(inventory.tools.items[0].description).toBe(
-      'client_secret=[REDACTED] id_token=[REDACTED] private_key=[REDACTED] passwd=[REDACTED]'
+      'client_secret=[REDACTED] id_token=[REDACTED] private_key=[REDACTED] passwd=[REDACTED] [REDACTED]'
     );
-    expect(inventory.resources.items).toEqual([{ name: 'Safe resource' }]);
+    expect(inventory.resources.items).toEqual([
+      { name: '[REDACTED]' },
+      { name: 'Safe resource' },
+    ]);
     expect(inventory.resourceTemplates.items).toEqual([
       { name: 'Safe template', mimeType: 'application/json' },
     ]);
@@ -520,6 +539,10 @@ describe('catalog capability pagination and persistence', () => {
       );
       const written = JSON.parse(fs.readFileSync(capabilities, 'utf8'));
       expect(validateCapabilityInventory(written.safe)).toEqual(written.safe);
+      const persisted = JSON.stringify(written);
+      for (const secret of [githubToken, stripeKey, quotedSecret]) {
+        expect(persisted).not.toContain(secret);
+      }
 
       const lastSuccessfulSnapshot = fs.readFileSync(capabilities, 'utf8');
       await expect(writeResults(

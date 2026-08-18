@@ -639,6 +639,11 @@ async function writeResults(
 
 async function main() {
   if (!requireRuntime()) return;
+  if (process.argv.includes('--check-runtime')) {
+    await canonicalInventory();
+    console.log('Catalog validator runtime is ready.');
+    return;
+  }
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
   console.log(`Validating ${seeds.length} catalog servers with concurrency ${CONCURRENCY}...`);
@@ -673,6 +678,7 @@ module.exports = {
   probeSseEndpoint,
   probeStreamableEndpoint,
   requestDiscoveryPage,
+  main,
   validateCapabilitySnapshots,
   validateSeed,
   writeResults,

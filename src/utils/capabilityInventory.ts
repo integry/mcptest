@@ -36,9 +36,10 @@ export interface CreateCapabilityInventoryInput {
 }
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/g;
-const SECRET_ASSIGNMENT = /\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*([^\s,;&]+)/gi;
+const SECRET_ASSIGNMENT = /\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*(?:\[REDACTED\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/gi;
 const BEARER_VALUE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT_VALUE = /\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
+const STANDALONE_CREDENTIAL = /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}|sk-(?:proj-)?[A-Za-z0-9_-]{20,255}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox(?:b|p|a|r|s)-[A-Za-z0-9-]{20,255}|npm_[A-Za-z0-9]{20,255}|glpat-[A-Za-z0-9_-]{20,255}|hf_[A-Za-z0-9]{20,255})(?![A-Za-z0-9])/g;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,127})$/;
 const SAFE_MIME_TYPE = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*charset=[A-Za-z0-9._-]+)?$/i;
 const SCHEMA_TYPES = new Set(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string']);
@@ -55,13 +56,18 @@ const stableValue = (value: unknown): unknown => {
   return value;
 };
 
+const isSecretUrlParameter = (key: string): boolean => (
+  /(?:auth|code|cookie|credential|key|password|secret|session|signature|token)/i.test(key)
+  || /^(?:sig|x-amz-credential)$/i.test(key)
+);
+
 const redactUrlSecrets = (value: string): string => value.replace(/https?:\/\/[^\s<>]+/gi, (candidate) => {
   try {
     const url = new URL(candidate);
     if (url.username) url.username = '[REDACTED]';
     if (url.password) url.password = '[REDACTED]';
     for (const key of [...url.searchParams.keys()]) {
-      if (/(?:auth|code|cookie|credential|key|password|secret|session|signature|token)/i.test(key)) {
+      if (isSecretUrlParameter(key)) {
         url.searchParams.set(key, '[REDACTED]');
       }
     }
@@ -82,7 +88,8 @@ const cleanText = (
   const redacted = redactUrlSecrets(normalized)
     .replace(SECRET_ASSIGNMENT, '$1=[REDACTED]')
     .replace(BEARER_VALUE, '$1 [REDACTED]')
-    .replace(JWT_VALUE, '[REDACTED]');
+    .replace(JWT_VALUE, '[REDACTED]')
+    .replace(STANDALONE_CREDENTIAL, '[REDACTED]');
   if (!redacted) return { changed: value.length > 0 };
   const bounded = redacted.length > limit ? redacted.slice(0, limit).trimEnd() : redacted;
   return { value: bounded, changed: bounded !== value };
@@ -169,8 +176,9 @@ const sanitizeArguments = (
       ...(description.value ? { description: description.value } : {}),
       required: source === 'schema' ? required.has(propertyName) : value.required === true,
     };
-    changed ||= description.changed || byName.has(name);
-    if (!byName.has(name)) byName.set(name, argument);
+    const nameKey = name.toLowerCase();
+    changed ||= description.changed || byName.has(nameKey);
+    if (!byName.has(nameKey)) byName.set(nameKey, argument);
   }
   const sorted = [...byName.values()].sort((left, right) => left.name.localeCompare(right.name, 'en-US'));
   if (sorted.length > CAPABILITY_INVENTORY_ARGUMENT_LIMIT) changed = true;
@@ -289,11 +297,19 @@ const safeEndpoint = (value: string): string => {
   }
   url.username = '';
   url.password = '';
-  for (const key of [...url.searchParams.keys()]) {
-    if (/(?:auth|code|cookie|credential|key|password|secret|session|signature|token)/i.test(key)) {
-      url.searchParams.delete(key);
-    }
+  try {
+    const decodedPathname = decodeURIComponent(url.pathname);
+    if (cleanText(decodedPathname, 2_048).changed) url.pathname = '/[REDACTED]';
+  } catch {
+    url.pathname = '/[REDACTED]';
   }
+  const safeSearchParams = new URLSearchParams();
+  for (const [key, parameterValue] of url.searchParams) {
+    if (isSecretUrlParameter(key)) continue;
+    const cleanedParameter = cleanText(parameterValue, 2_048);
+    safeSearchParams.append(key, cleanedParameter.value ?? '');
+  }
+  url.search = safeSearchParams.toString();
   url.hash = '';
   return url.toString();
 };

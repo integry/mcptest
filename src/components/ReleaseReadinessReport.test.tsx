@@ -22,11 +22,14 @@ const authorizationReport: EvaluationReport = {
 
 describe('ReleaseReadinessReport', () => {
   it('renders safe capability names, summaries, provenance, and honest unavailable states', () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted React secret';
     const report: EvaluationReport = {
       ...authorizationReport,
       capabilityInventory: createCapabilityInventory({
         observedAt: '2026-08-17T22:00:00.000Z',
-        testedEndpoint: 'https://oauth.example/mcp',
+        testedEndpoint: `https://oauth.example/mcp?sig=${stripeKey}`,
         route: 'direct',
         authentication: 'authenticated',
         statuses: {
@@ -35,8 +38,11 @@ describe('ReleaseReadinessReport', () => {
         paginationComplete: { prompts: false },
         discovered: {
           tools: [{ name: 'search_records', description: 'Search public records', inputSchema: {
-            properties: { query: { type: 'string' } }, required: ['query'],
-          } }],
+            properties: {
+              query: { type: 'string', description: `client_secret="${quotedSecret}"` },
+            },
+            required: ['query'],
+          } }, { name: githubToken }],
           prompts: [{ name: 'summarize', arguments: [{ name: 'text', required: true }] }],
         },
       }),
@@ -53,6 +59,10 @@ describe('ReleaseReadinessReport', () => {
     expect(container.textContent).toContain('Discovery was unavailable. This does not mean the server provides no capabilities.');
     expect(container.textContent).toContain('This server does not support this discovery method.');
     expect(container.textContent).toContain('authenticated discovery');
+    expect(markup).toContain('[REDACTED]');
+    for (const secret of [githubToken, stripeKey, quotedSecret]) {
+      expect(markup).not.toContain(secret);
+    }
   });
 
   it('distinguishes incomplete discovery from completed sanitized and bounded inventories', () => {

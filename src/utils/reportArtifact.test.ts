@@ -408,6 +408,42 @@ describe('versioned public report artifacts', () => {
     expect(safeParsePublicReport(unsafe).success).toBe(false);
   });
 
+  it('keeps standalone and quoted credentials out of inventory JSON and Markdown', () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted report secret';
+    const report = publicReport();
+    report.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: `${report.serverUrl}&sig=${stripeKey}`,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'safe_tool',
+          description: `Use ${githubToken}; client_secret="${quotedSecret}"`,
+          inputSchema: { properties: { [stripeKey]: { type: 'string' } } },
+        }],
+        resources: [{ name: stripeKey }],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const outputs = [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ];
+    for (const output of outputs) {
+      expect(output).toContain('REDACTED');
+      for (const secret of [githubToken, stripeKey, quotedSecret]) {
+        expect(output).not.toContain(secret);
+      }
+    }
+  });
+
   it('describes Markdown inventory completeness using pagination and omission metadata', () => {
     const report = publicReport();
     report.capabilityInventory = createCapabilityInventory({

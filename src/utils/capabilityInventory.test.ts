@@ -75,6 +75,99 @@ describe('public-safe capability inventory', () => {
     expect(validateCapabilityInventory(inventory)).toEqual(inventory);
   });
 
+  it('redacts standalone credentials, quoted assignments, and signed endpoint values at every boundary', () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted value with spaces';
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: `https://example.com/mcp?tenant=public&label=ghp%5F${'a'.repeat(36)}&sig=${stripeKey}`,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses,
+      discovered: {
+        tools: [
+          { name: githubToken },
+          {
+            name: 'safe_tool',
+            description: `Never publish ${githubToken} or client_secret="${quotedSecret}".`,
+            inputSchema: {
+              properties: {
+                [stripeKey]: { type: 'string' },
+                safe_argument: { description: `Credential: ${stripeKey}` },
+              },
+            },
+          },
+        ],
+        resources: [
+          { name: stripeKey },
+          {
+            name: 'Safe resource',
+            title: githubToken,
+            description: `password='${quotedSecret}'`,
+            mimeType: stripeKey,
+          },
+        ],
+        resourceTemplates: [],
+        prompts: [
+          { name: stripeKey },
+          { name: 'safe_prompt', arguments: [{ name: githubToken }] },
+        ],
+      },
+    });
+
+    const serialized = JSON.stringify(inventory);
+    const endpoint = new URL(inventory.provenance.testedEndpoint);
+    expect(endpoint.searchParams.get('tenant')).toBe('public');
+    expect(endpoint.searchParams.get('label')).toBe('[REDACTED]');
+    expect(endpoint.searchParams.has('sig')).toBe(false);
+    expect(inventory.tools.items.map(({ name }) => name)).toEqual(['safe_tool']);
+    expect(inventory.tools.items[0].input?.map(({ name }) => name)).toEqual(['safe_argument']);
+    expect(inventory.resources.items).toEqual([
+      { name: '[REDACTED]' },
+      {
+        name: 'Safe resource',
+        title: '[REDACTED]',
+        description: 'password=[REDACTED]',
+      },
+    ]);
+    expect(inventory.prompts.items).toEqual([{ name: 'safe_prompt' }]);
+    for (const secret of [githubToken, stripeKey, quotedSecret]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(validateCapabilityInventory(inventory)).toEqual(inventory);
+  });
+
+  it('deduplicates argument names case-insensitively for canonical consumers', () => {
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: 'https://example.com/mcp',
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses,
+      discovered: {
+        tools: [{
+          name: 'case_distinct_arguments',
+          inputSchema: {
+            properties: {
+              Foo: { type: 'string' },
+              foo: { type: 'number' },
+            },
+          },
+        }],
+        resources: [],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    expect(inventory.tools.items[0].input).toEqual([
+      { name: 'Foo', type: 'string', required: false },
+    ]);
+    expect(inventory.tools.status).toBe('partial');
+    expect(validateCapabilityInventory(inventory)).toEqual(inventory);
+  });
+
   it('marks malformed, duplicate, truncated, and oversized sections partial', () => {
     const tools = Array.from({ length: CAPABILITY_INVENTORY_ITEM_LIMIT + 3 }, (_, index) => ({
       name: `tool_${String(index).padStart(3, '0')}`,

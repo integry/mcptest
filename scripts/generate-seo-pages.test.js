@@ -5,9 +5,11 @@ import learnData from '../src/data/learnArticles.json';
 import catalogSeeds from '../src/data/serverCatalog.json';
 import catalogValidation from '../src/data/catalogValidation.json';
 import catalogCapabilities from '../src/data/catalogCapabilities.json';
+import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 
 const {
   mergeCatalogServers, renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml,
+  validateCapabilitySnapshots,
 } = seoGenerator;
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
@@ -130,6 +132,73 @@ describe('generated page metadata', () => {
     expect(html).toContain('"name":"Tools observed","value":1');
     const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
     expect(structuredData).not.toContain('alert(1)');
+  });
+
+  it('keeps standalone and quoted credentials out of generated static HTML', () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted static secret';
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: `https://example.com/mcp?sig=${stripeKey}`,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'safe_tool',
+          description: `Use ${githubToken}; client_secret='${quotedSecret}'`,
+        }],
+        resources: [{ name: stripeKey }],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('[REDACTED]');
+    for (const secret of [githubToken, stripeKey, quotedSecret]) {
+      expect(html).not.toContain(secret);
+    }
+
+    const unsafeEndpointInventory = structuredClone(server.capabilityInventory);
+    unsafeEndpointInventory.provenance.testedEndpoint = `https://example.com/mcp?label=${githubToken}`;
+    expect(() => validateCapabilitySnapshots(
+      { 'example-server': unsafeEndpointInventory },
+      [server]
+    )).toThrow('inventory endpoint does not match its catalog origin');
+  });
+
+  it('accepts canonical inventories created from case-distinct argument names', () => {
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: 'https://example.com/mcp',
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'case_distinct_arguments',
+          inputSchema: {
+            properties: {
+              Foo: { type: 'string' },
+              foo: { type: 'number' },
+            },
+          },
+        }],
+        resources: [],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    expect(inventory.tools.items[0].input).toHaveLength(1);
+    expect(() => validateCapabilitySnapshots(
+      { 'example-server': inventory },
+      [catalogServer('https://example.com/mcp', 'streamable-http')]
+    )).not.toThrow();
   });
 
   it('distinguishes incomplete discovery from completed sanitized and bounded inventories', () => {
