@@ -4053,17 +4053,20 @@ button.badge.catalog-metadata-badge--category:focus-visible {
 
 .catalog-card-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
 .catalog-report-link {
-  min-width: 6.75rem;
+  min-width: min(100%, 6.75rem);
+  flex: 1 1 6.75rem;
 }
 
 .catalog-test-button.btn-outline-primary {
-  min-width: 8.75rem;
+  min-width: min(100%, 8.75rem);
+  flex: 1 1 8.75rem;
   box-shadow: none;
 }
 

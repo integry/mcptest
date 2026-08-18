@@ -114,4 +114,61 @@ describe('CatalogView', () => {
       root.unmount();
     });
   });
+
+  it.each([1024, 1100, 1150, 1440])(
+    'keeps both card actions within card bounds at %ipx with the sidebar and category rail visible',
+    (viewportWidth) => {
+      const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+      const actionRule = catalogCss.match(/\.catalog-card-actions\s*\{([^}]*)\}/)?.[1] ?? '';
+      const reportRule = catalogCss.match(/\.catalog-report-link\s*\{([^}]*)\}/)?.[1] ?? '';
+      const testRule =
+        catalogCss.match(/\.catalog-test-button\.btn-outline-primary\s*\{([^}]*)\}/)?.[1] ?? '';
+
+      const readFlexBasisInPixels = (rule: string): number => {
+        const basisInRem = Number(rule.match(/flex:\s*1\s+1\s+([\d.]+)rem/)?.[1]);
+        return basisInRem * 16;
+      };
+
+      expect(catalogCss).toMatch(/\.desktop-sidebar\s*\{[^}]*width:\s*264px;/s);
+      expect(catalogCss).toMatch(
+        /\.catalog-content-layout\s*\{[^}]*grid-template-columns:\s*minmax\(12rem, 14rem\) minmax\(0, 1fr\);[^}]*gap:\s*1rem;/s
+      );
+      expect(actionRule).toMatch(/flex-wrap:\s*wrap;/);
+      expect(reportRule).toMatch(/min-width:\s*min\(100%, 6\.75rem\);/);
+      expect(testRule).toMatch(/min-width:\s*min\(100%, 8\.75rem\);/);
+
+      const sidebarWidth = 264;
+      const mainHorizontalPadding = 2 * 16;
+      const categoryRailWidth = 14 * 16;
+      const catalogLayoutGap = 16;
+      const rowGutter = 16;
+      const cardBorder = 2;
+      const cardBodyHorizontalPadding = 2 * 16;
+      const resultsWidth =
+        viewportWidth -
+        sidebarWidth -
+        mainHorizontalPadding -
+        categoryRailWidth -
+        catalogLayoutGap;
+      const cardActionWidth =
+        (resultsWidth + rowGutter) / 2 -
+        rowGutter -
+        cardBorder -
+        cardBodyHorizontalPadding;
+      const actionBases = [
+        readFlexBasisInPixels(reportRule),
+        readFlexBasisInPixels(testRule),
+      ];
+
+      expect(actionBases.every(Number.isFinite)).toBe(true);
+      expect(Math.max(...actionBases)).toBeLessThanOrEqual(cardActionWidth);
+
+      const inlineActionsWidth = actionBases.reduce((total, width) => total + width, 0) + 16;
+      const actionRows = inlineActionsWidth <= cardActionWidth ? 1 : 2;
+      const laidOutActionWidths =
+        actionRows === 1 ? actionBases : actionBases.map(() => cardActionWidth);
+
+      expect(laidOutActionWidths.every((width) => width <= cardActionWidth)).toBe(true);
+    }
+  );
 });
