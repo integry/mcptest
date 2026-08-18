@@ -42,22 +42,30 @@ const getStatusDetails = (
   switch (status) {
     case 'online':
       return {
-        label: 'Online',
+        label: 'Online when last tested',
         className: 'catalog-status-dot--online',
-        tooltip: `Online. ${validationTime}`,
+        tooltip: `Online when last tested. ${validationTime}`,
       };
     case 'offline':
       return {
-        label: 'Offline',
+        label: 'Offline when last tested',
         className: 'catalog-status-dot--offline',
-        tooltip: `Offline. ${validationTime}`,
+        tooltip: `Offline when last tested. ${validationTime}`,
       };
     case 'unknown':
     default:
+      if (checkedAt) {
+        return {
+          label: 'Inconclusive when last tested',
+          className: 'catalog-status-dot--unknown',
+          tooltip: `Latest validation was inconclusive. ${validationTime}`,
+        };
+      }
+
       return {
-        label: 'Unknown',
+        label: 'Validation pending',
         className: 'catalog-status-dot--unknown',
-        tooltip: `Status unknown. ${validationTime}`,
+        tooltip: `Validation pending; live status not yet verified. ${validationTime}`,
       };
   }
 };

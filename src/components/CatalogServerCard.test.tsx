@@ -23,6 +23,7 @@ const server: CatalogServer = {
   authType: 'none',
   protocolEra: 'stateless',
   status: 'online',
+  checkedAt: '2026-08-17T12:00:00Z',
   browserAccess: 'direct',
   logoUrl: '/server-logos/example.svg',
   logoSourceKind: 'generated-fallback',
@@ -75,7 +76,9 @@ describe('CatalogServerCard presentation', () => {
     );
     expect(container.querySelector('.catalog-listing-source')?.textContent).toContain('Publisher');
     expect(container.querySelector('.catalog-listing-source')?.textContent).not.toContain('Verified');
-    expect(container.querySelector('.catalog-runtime-status')?.textContent).toContain('Online');
+    expect(container.querySelector('.catalog-runtime-status')?.textContent).toBe(
+      'Online when last tested'
+    );
     expect(container.querySelector('a a, a button, button a')).toBeNull();
     expect(buttons).toHaveLength(2);
     expect(buttons[0]?.textContent).toContain('Developer tools');
@@ -140,5 +143,34 @@ describe('CatalogServerCard presentation', () => {
     expect(reportLink?.getAttribute('aria-disabled')).toBeNull();
     expect(reportLink?.hasAttribute('disabled')).toBe(false);
     expect(testButton?.disabled).toBe(true);
+  });
+
+  it('qualifies recorded status and distinguishes inconclusive validation from pending', () => {
+    const statuses = [
+      {
+        server: { ...server, status: 'offline' as const, checkedAt: '2026-08-17T12:00:00Z' },
+        label: 'Offline when last tested',
+      },
+      {
+        server: { ...server, status: 'unknown' as const, checkedAt: '2026-08-17T12:00:00Z' },
+        label: 'Inconclusive when last tested',
+      },
+      {
+        server: { ...server, status: 'unknown' as const, checkedAt: undefined },
+        label: 'Validation pending',
+      },
+    ];
+
+    statuses.forEach(({ server: statusServer, label }) => {
+      const markup = renderToStaticMarkup(
+        <MemoryRouter>
+          <CatalogServerCard server={statusServer} onTest={vi.fn()} />
+        </MemoryRouter>
+      );
+      const container = document.createElement('div');
+      container.innerHTML = markup;
+
+      expect(container.querySelector('.catalog-runtime-status')?.textContent).toBe(label);
+    });
   });
 });
