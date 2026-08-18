@@ -473,6 +473,64 @@ describe('catalog capability pagination and persistence', () => {
     }
   });
 
+  it('treats an absent cursor from the actual Client as complete', async () => {
+    const client = await connectedClient(() => ({
+      tools: [{ name: 'only_tool', inputSchema: { type: 'object' } }],
+    }));
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'complete', paginationComplete: true });
+      expect(result.values.map(({ name }) => name)).toEqual(['only_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it.each([
+    ['null', null],
+    ['empty string', ''],
+    ['number', 42],
+    ['array', ['tools-2']],
+    ['object', { cursor: 'tools-2' }],
+  ])('retains an actual Client first page with a malformed %s cursor', async (_label, nextCursor) => {
+    const client = await connectedClient(() => ({
+      tools: [{ name: 'retained_tool', inputSchema: { type: 'object' } }],
+      nextCursor,
+    }));
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['retained_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it.each([
+    ['null', null],
+    ['empty string', ''],
+    ['number', 42],
+    ['array', ['tools-3']],
+    ['object', { cursor: 'tools-3' }],
+  ])('retains actual Client pages through a later malformed %s cursor', async (_label, nextCursor) => {
+    const client = await connectedClient((_method, params) => params?.cursor
+      ? {
+        tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+        nextCursor,
+      }
+      : {
+        tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
   it('retains actual Client pages and marks a repeated cursor partial', async () => {
     const client = await connectedClient((_method, params) => params?.cursor
       ? {

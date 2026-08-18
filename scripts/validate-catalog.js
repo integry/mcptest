@@ -9,10 +9,12 @@ const {
   discoverOAuthProtectedResourceMetadata,
   extractWWWAuthenticateParams,
 } = require('@modelcontextprotocol/client');
+const { z } = require('zod');
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const CONCURRENCY = 4;
 const CLIENT_NAME = 'mcptest-catalog-validator';
+const rawDiscoveryPageSchema = z.unknown();
 
 const catalogPath = path.join(__dirname, '..', 'src', 'data', 'serverCatalog.json');
 const outputPath = path.join(__dirname, '..', 'src', 'data', 'catalogValidation.json');
@@ -28,7 +30,7 @@ function requestDiscoveryPage(client, method, cursor) {
   return client.request({
     method,
     ...(cursor === undefined ? {} : { params: { cursor } }),
-  });
+  }, rawDiscoveryPageSchema);
 }
 
 async function paginateDiscovery(client, category, method, timeoutMs) {
@@ -44,8 +46,13 @@ async function paginateDiscovery(client, category, method, timeoutMs) {
       if (!page || !Array.isArray(page[category])) throw new Error('Malformed discovery page');
       successfulPages += 1;
       values.push(...page[category]);
-      cursor = typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : undefined;
-      if (!cursor) return { status: 'complete', values, paginationComplete: true };
+      if (!Object.prototype.hasOwnProperty.call(page, 'nextCursor')) {
+        return { status: 'complete', values, paginationComplete: true };
+      }
+      if (typeof page.nextCursor !== 'string' || page.nextCursor.length === 0) {
+        throw new Error('Malformed discovery cursor');
+      }
+      cursor = page.nextCursor;
       if (seen.has(cursor)) throw new Error('Repeated discovery cursor');
       seen.add(cursor);
     }

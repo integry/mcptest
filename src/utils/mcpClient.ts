@@ -1,6 +1,8 @@
 import { Client, type ProtocolEra } from '@modelcontextprotocol/client';
+import { z } from 'zod';
 
 const CLIENT_VERSION = '2.0.0';
+const rawCapabilityDiscoveryPageSchema = z.unknown();
 
 /**
  * Create a client that negotiates the 2026 stateless protocol when available
@@ -43,4 +45,4 @@ export const requestCapabilityDiscoveryPage = (
 ): Promise<unknown> => client.request({
   method,
   ...(cursor === undefined ? {} : { params: { cursor } }),
-});
+}, rawCapabilityDiscoveryPageSchema);
