@@ -1,4 +1,6 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -107,6 +109,41 @@ describe('CatalogServerCard presentation', () => {
     expect(endpoint?.textContent).toBe('api.enterprise-production-environment.company.com');
     expect(endpoint?.title).toBe(longUrl);
     expect(endpoint?.classList).toContain('text-truncate');
+  });
+
+  it('keeps a long title and runtime status within card bounds at 1024px', () => {
+    const longName = 'ExampleEnterpriseProductionEnvironmentServer';
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <CatalogServerCard
+          server={{ ...server, name: longName }}
+          onTest={vi.fn()}
+          onCategorySelect={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+
+    const title = container.querySelector<HTMLElement>('.catalog-server-title');
+    const runtimeStatus = container.querySelector<HTMLElement>('.catalog-runtime-status');
+    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const titleRule = catalogCss.match(/\.catalog-server-title\s*\{([^}]*)\}/)?.[1] ?? '';
+    const statusRule = catalogCss.match(/\.catalog-runtime-status\s*\{([^}]*)\}/)?.[1] ?? '';
+    const constrainedDesktopRule = catalogCss.match(
+      /@media \(min-width: (\d+)px\) and \(max-width: ([\d.]+)px\) \{\s*\.catalog-server-title-row\s*\{([^}]*)\}\s*\.catalog-server-name-source,\s*\.catalog-runtime-status\s*\{([^}]*)\}/
+    );
+    const viewportWidth = 1024;
+
+    expect(title?.textContent).toBe(longName);
+    expect(titleRule).toMatch(/overflow-wrap:\s*anywhere;/);
+    expect(runtimeStatus?.classList).not.toContain('flex-shrink-0');
+    expect(statusRule).toMatch(/min-width:\s*0;/);
+    expect(statusRule).toMatch(/max-width:\s*100%;/);
+    expect(constrainedDesktopRule?.[3]).toMatch(/flex-wrap:\s*wrap;/);
+    expect(constrainedDesktopRule?.[4]).toMatch(/flex-basis:\s*100%;/);
+    expect(viewportWidth).toBeGreaterThanOrEqual(Number(constrainedDesktopRule?.[1]));
+    expect(viewportWidth).toBeLessThanOrEqual(Number(constrainedDesktopRule?.[2]));
   });
 
   it('shows initials without a logo and keeps report access enabled offline', () => {

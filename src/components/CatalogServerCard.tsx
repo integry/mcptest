@@ -178,7 +178,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
                   )}
                 </div>
                 <span
-                  className="catalog-runtime-status flex-shrink-0"
+                  className="catalog-runtime-status"
                   title={statusDetails.tooltip}
                   aria-label={statusDetails.tooltip}
                 >

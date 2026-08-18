@@ -142,6 +142,7 @@ a:hover {
 
 .catalog-server-title {
   color: var(--text-color);
+  overflow-wrap: anywhere;
 }
 
 .catalog-server-title:hover {
@@ -3970,10 +3971,13 @@ a.catalog-listing-source:hover {
   display: inline-block;
   width: 0.6rem;
   height: 0.6rem;
+  flex: 0 0 0.6rem;
 }
 
 .catalog-runtime-status {
   display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 0.4rem;
   padding-top: 0.2rem;
@@ -4426,6 +4430,17 @@ pre.bg-light code {
 
   .docs-toc {
     display: none;
+  }
+}
+
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .catalog-server-title-row {
+    flex-wrap: wrap;
+  }
+
+  .catalog-server-name-source,
+  .catalog-runtime-status {
+    flex-basis: 100%;
   }
 }
 
