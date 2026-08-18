@@ -969,6 +969,66 @@ describe('dual-era server evaluation', () => {
     }
   );
 
+  it.each([
+    ['first', 'null', null, 1],
+    ['first', 'empty string', '', 1],
+    ['first', 'number', 42, 1],
+    ['first', 'array', ['tools-3'], 1],
+    ['first', 'object', { cursor: 'tools-3' }, 1],
+    ['later', 'null', null, 2],
+    ['later', 'empty string', '', 2],
+    ['later', 'number', 42, 2],
+    ['later', 'array', ['tools-3'], 2],
+    ['later', 'object', { cursor: 'tools-3' }, 2],
+  ] as const)(
+    'marks an actual SDK %s page with a malformed %s cursor partial',
+    async (pagePosition, _label, malformedCursor, retainedCount) => {
+      const client = await connectedSdkClient((method, params) => {
+        if (method === 'tools/list') {
+          if (pagePosition === 'later' && !params?.cursor) {
+            return {
+              tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+              nextCursor: 'tools-2',
+            };
+          }
+          return {
+            tools: [{
+              name: pagePosition === 'later' ? 'second_tool' : 'first_tool',
+              inputSchema: { type: 'object' },
+            }],
+            nextCursor: malformedCursor,
+          };
+        }
+        if (method === 'resources/list') return { resources: [] };
+        if (method === 'resources/templates/list') return { resourceTemplates: [] };
+        if (method === 'prompts/list') return { prompts: [] };
+        throw new Error(`Unexpected method ${method}`);
+      });
+      connectionMocks.attempt.mockResolvedValueOnce({
+        client,
+        url: 'https://mcp.example/mcp',
+        transportType: 'streamable-http',
+        protocolEra: 'legacy',
+      });
+
+      const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+      expect(report.outcome).toBe('partial');
+      expect(report.capabilityInventory.tools).toMatchObject({
+        status: 'partial',
+        retainedCount,
+        paginationComplete: false,
+      });
+      expect(report.capabilityInventory.tools.items.map(({ name }) => name)).toEqual(
+        retainedCount === 1 ? ['first_tool'] : ['first_tool', 'second_tool']
+      );
+      expect(report.sections.capabilities.details).toContainEqual(expect.objectContaining({
+        metadata: expect.objectContaining({ method: 'tools/list', paginationComplete: false }),
+      }));
+      await client.close();
+    }
+  );
+
   it('aggregates every discovery page before tool-surface analysis', async () => {
     const client = createClient();
     client.listTools

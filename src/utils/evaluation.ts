@@ -633,7 +633,7 @@ class IncompleteDiscoveryPaginationError extends Error {
   ) {
     super(nextCursor
       ? `Discovery pagination stopped before cursor ${nextCursor}: ${errorMessage(cause)}`
-      : `Discovery returned a malformed first page: ${errorMessage(cause)}`);
+      : `Discovery pagination was incomplete: ${errorMessage(cause)}`);
     this.name = 'IncompleteDiscoveryPaginationError';
   }
 }
@@ -670,9 +670,15 @@ const aggregateDiscoveryPages = async (
   }
 
   const items = [...initialItems];
-  let nextCursor = typeof initial.nextCursor === 'string' && initial.nextCursor
-    ? initial.nextCursor
-    : undefined;
+  if (Object.prototype.hasOwnProperty.call(initial, 'nextCursor')
+      && (typeof initial.nextCursor !== 'string' || initial.nextCursor.length === 0)) {
+    throw new IncompleteDiscoveryPaginationError(
+      { ...initial, [itemKey]: items },
+      undefined,
+      new Error(`The ${itemKey} discovery page returned a malformed nextCursor.`)
+    );
+  }
+  let nextCursor = initial.nextCursor as string | undefined;
   const seenCursors = new Set<string>();
   let pageCount = 1;
 
@@ -708,10 +714,16 @@ const aggregateDiscoveryPages = async (
       );
     }
     items.push(...(page as Record<string, unknown>)[itemKey] as unknown[]);
-    nextCursor = typeof (page as Record<string, unknown>).nextCursor === 'string'
-      && (page as Record<string, unknown>).nextCursor
-      ? (page as Record<string, unknown>).nextCursor as string
-      : undefined;
+    const pageRecord = page as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(pageRecord, 'nextCursor')
+        && (typeof pageRecord.nextCursor !== 'string' || pageRecord.nextCursor.length === 0)) {
+      throw new IncompleteDiscoveryPaginationError(
+        { ...initial, [itemKey]: items },
+        undefined,
+        new Error(`The ${itemKey} discovery page returned a malformed nextCursor.`)
+      );
+    }
+    nextCursor = pageRecord.nextCursor as string | undefined;
     pageCount += 1;
   }
 
