@@ -80,6 +80,25 @@ export const formatProtocolEra = (era: CatalogProtocolEra, version?: string): st
   }
 };
 
+export const formatCatalogTimestamp = (value: string): string => {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return value;
+  }
+
+  const date = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(timestamp);
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(timestamp);
+
+  return `${date} at ${time}`;
+};
+
 const truncateDescription = (value: string, maxLength = 158): string => {
   if (value.length <= maxLength) {
     return value;

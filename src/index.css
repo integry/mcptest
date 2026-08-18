@@ -347,12 +347,22 @@ a:hover {
   margin: 0;
 }
 
+.server-connection-specs {
+  padding: 0 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
 .server-spec-list > div {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   gap: 1rem;
   padding: 0.8rem 0;
   border-bottom: 1px solid var(--border-color);
+}
+
+.server-connection-specs > div:last-child {
+  border-bottom: 0;
 }
 
 .server-spec-list dt {
@@ -398,6 +408,23 @@ a:hover {
   overflow: hidden;
   color: var(--text-color);
   text-overflow: ellipsis;
+}
+
+.technical-string {
+  font-family: var(--font-family-mono);
+}
+
+.technical-string-url {
+  color: var(--text-accent);
+}
+
+.technical-string-inline {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.3rem;
+  background: var(--card-bg-secondary);
+  color: var(--text-accent);
 }
 
 .server-validation-state {
@@ -5578,10 +5605,7 @@ pre.bg-light code {
 }
 
 .capability-argument-list li {
-  padding: 0.25rem 0.45rem;
-  border: 1px solid var(--border-color);
-  border-radius: 0.4rem;
-  background: var(--card-bg);
+  padding: 0.15rem 0;
   color: var(--text-muted);
   font-size: 0.75rem;
 }

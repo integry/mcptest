@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
 import {
   formatCatalogAuth,
+  formatCatalogTimestamp,
   formatCatalogTransport,
   formatProtocolEra,
 } from '../utils/catalogSeo';
@@ -20,7 +21,7 @@ const formatCheckedAt = (checkedAt?: string) => {
   }
 
   const parsed = new Date(checkedAt);
-  return Number.isNaN(parsed.getTime()) ? checkedAt : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime()) ? checkedAt : formatCatalogTimestamp(checkedAt);
 };
 
 const statusLabel = (server: CatalogServer) => {
@@ -164,21 +165,21 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               </div>
             </div>
 
-            <dl className="server-spec-list">
+            <dl className="server-spec-list server-connection-specs">
               <div>
                 <dt>Remote endpoint</dt>
-                <dd><code>{server.url}</code></dd>
+                <dd><code className="technical-string technical-string-url">{server.url}</code></dd>
               </div>
               {server.validatedUrl && server.validatedUrl !== server.url && (
                 <div>
                   <dt>Live-validated endpoint</dt>
-                  <dd><code>{server.validatedUrl}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{server.validatedUrl}</code></dd>
                 </div>
               )}
               {server.browserUrl && server.browserUrl !== server.validatedUrl && (
                 <div>
                   <dt>Browser-verified endpoint</dt>
-                  <dd><code>{server.browserUrl}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{server.browserUrl}</code></dd>
                 </div>
               )}
               <div>
@@ -206,7 +207,9 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-endpoint-box">
               <div>
                 <span>Endpoint</span>
-                <code>{server.browserUrl || server.validatedUrl || server.url}</code>
+                <code className="technical-string technical-string-url">
+                  {server.browserUrl || server.validatedUrl || server.url}
+                </code>
               </div>
               <button
                 type="button"
@@ -280,13 +283,16 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               {server.requiredHeaders?.map((header) => (
                 <div key={header.name}>
                   <dt>Required header</dt>
-                  <dd><code>{header.name}</code>{header.description ? ` — ${header.description}` : ''}</dd>
+                  <dd>
+                    <code className="technical-string technical-string-inline">{header.name}</code>
+                    {header.description ? ` — ${header.description}` : ''}
+                  </dd>
                 </div>
               ))}
               {server.authorizationServers?.map((issuer) => (
                 <div key={issuer}>
                   <dt>Authorization server</dt>
-                  <dd><code>{issuer}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{issuer}</code></dd>
                 </div>
               ))}
             </dl>

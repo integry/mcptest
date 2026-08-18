@@ -4,6 +4,7 @@ import type {
   CapabilityInventorySectionV1,
   CapabilityInventoryV1,
 } from '../types/capabilityInventory';
+import { formatCatalogTimestamp } from '../utils/catalogSeo';
 
 interface CapabilitiesProvidedProps {
   inventory: CapabilityInventoryV1;
@@ -35,7 +36,7 @@ const ArgumentList: React.FC<{ arguments: CapabilityInventoryArgumentV1[] }> = (
   <ul className="capability-argument-list" aria-label="Safe argument summary">
     {values.map((argument) => (
       <li key={argument.name}>
-        <code>{argument.name}</code>
+        <code className="technical-string technical-string-inline">{argument.name}</code>
         {argument.type && <span> · {argument.type}</span>}
         <span> · {argument.required ? 'required' : 'optional'}</span>
         {argument.description && <p>{argument.description}</p>}
@@ -65,8 +66,9 @@ const CapabilitiesProvided: React.FC<CapabilitiesProvidedProps> = ({
       <div className="capability-inventory-heading">
         <Title id={titleId}>Capabilities provided</Title>
         <p>
-          Observed <time dateTime={inventory.observedAt}>{new Date(inventory.observedAt).toLocaleString()}</time>
-          {' '}at <code>{inventory.provenance.testedEndpoint}</code> via {inventory.provenance.route};
+          Observed <time dateTime={inventory.observedAt}>{formatCatalogTimestamp(inventory.observedAt)}</time>
+          {' '}at <code className="technical-string technical-string-url">{inventory.provenance.testedEndpoint}</code>
+          {' '}via {inventory.provenance.route};
           {' '}{inventory.authentication} discovery.
         </p>
       </div>

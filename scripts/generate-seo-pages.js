@@ -120,12 +120,26 @@ function inventoryStatusText(section) {
 function renderArguments(argumentsList) {
   if (!argumentsList?.length) return '';
   return `<ul class="capability-argument-list">${argumentsList.map(argument => [
-    `<li><code>${escapeHtml(argument.name)}</code>`,
+    `<li><code class="technical-string technical-string-inline">${escapeHtml(argument.name)}</code>`,
     argument.type ? ` · ${escapeHtml(argument.type)}` : '',
     ` · ${argument.required ? 'required' : 'optional'}`,
     argument.description ? `<p>${escapeHtml(argument.description)}</p>` : '',
     '</li>',
   ].join('')).join('')}</ul>`;
+}
+
+function formatDisplayTimestamp(value) {
+  if (!value) return value;
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) return value;
+
+  const date = new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  }).format(timestamp);
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: '2-digit',
+  }).format(timestamp);
+  return `${date} at ${time}`;
 }
 
 function renderCapabilityInventory(server) {
@@ -158,7 +172,7 @@ function renderCapabilityInventory(server) {
   return [
     '  <section class="card server-profile-section capability-inventory"><div class="card-body">',
     '    <h2>Capabilities provided</h2>',
-    `    <p>Observed <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(inventory.observedAt)}</time> at <code>${escapeHtml(inventory.provenance.testedEndpoint)}</code> via ${escapeHtml(inventory.provenance.route)}; ${escapeHtml(inventory.authentication)} discovery.</p>`,
+    `    <p>Observed <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(formatDisplayTimestamp(inventory.observedAt))}</time> at <code class="technical-string technical-string-url">${escapeHtml(inventory.provenance.testedEndpoint)}</code> via ${escapeHtml(inventory.provenance.route)}; ${escapeHtml(inventory.authentication)} discovery.</p>`,
     '    <div class="capability-inventory-grid">',
     ...groups.map(([label, section, renderItem]) => [
       '      <section class="capability-inventory-group">',
@@ -272,10 +286,10 @@ function renderServerFallback(server) {
     : '';
   const references = [homepageLink, sourceLink, registryLink].filter(Boolean).join(' · ');
   const requiredHeaders = (server.requiredHeaders || []).map((header) => (
-    `      <div><dt>Required header</dt><dd><code>${escapeHtml(header.name)}</code>${header.description ? ` — ${escapeHtml(header.description)}` : ''}</dd></div>`
+    `      <div><dt>Required header</dt><dd><code class="technical-string technical-string-inline">${escapeHtml(header.name)}</code>${header.description ? ` — ${escapeHtml(header.description)}` : ''}</dd></div>`
   ));
   const authorizationServers = (server.authorizationServers || []).map((issuer) => (
-    `      <div><dt>Authorization server</dt><dd><code>${escapeHtml(issuer)}</code></dd></div>`
+    `      <div><dt>Authorization server</dt><dd><code class="technical-string technical-string-url">${escapeHtml(issuer)}</code></dd></div>`
   ));
 
   return [
@@ -289,13 +303,13 @@ function renderServerFallback(server) {
     '  </header>',
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Connection specification</h2>',
-    '    <dl class="server-spec-list">',
-    `      <div><dt>Remote endpoint</dt><dd><code>${escapeHtml(server.url)}</code></dd></div>`,
+    '    <dl class="server-spec-list server-connection-specs">',
+    `      <div><dt>Remote endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(server.url)}</code></dd></div>`,
     ...(server.validatedUrl && server.validatedUrl !== server.url
-      ? [`      <div><dt>Live-validated endpoint</dt><dd><code>${escapeHtml(server.validatedUrl)}</code></dd></div>`]
+      ? [`      <div><dt>Live-validated endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(server.validatedUrl)}</code></dd></div>`]
       : []),
     ...(server.browserUrl && server.browserUrl !== server.validatedUrl
-      ? [`      <div><dt>Browser-verified endpoint</dt><dd><code>${escapeHtml(server.browserUrl)}</code></dd></div>`]
+      ? [`      <div><dt>Browser-verified endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(server.browserUrl)}</code></dd></div>`]
       : []),
     `      <div><dt>Browser access</dt><dd>${escapeHtml(server.browserAccess === 'direct' ? 'Direct browser connection verified' : server.browserAccess === 'proxy-required' ? 'Authenticated proxy required' : 'Not yet measured')}</dd></div>`,
     `      <div><dt>Declared MCP transport</dt><dd>${escapeHtml(transportLabel(server.declaredTransport))}</dd></div>`,
@@ -314,7 +328,7 @@ function renderServerFallback(server) {
     '    <h2>Latest validation evidence</h2>',
     '    <dl class="server-spec-list">',
     `      <div><dt>Validation status</dt><dd>${escapeHtml(validationStatusLabel(server))}</dd></div>`,
-    `      <div><dt>Validation checked at</dt><dd>${escapeHtml(server.checkedAt || 'Not yet validated')}</dd></div>`,
+    `      <div><dt>Validation checked at</dt><dd>${escapeHtml(server.checkedAt ? formatDisplayTimestamp(server.checkedAt) : 'Not yet validated')}</dd></div>`,
     `      <div><dt>Validation detail</dt><dd>${escapeHtml(validationDetail(server))}</dd></div>`,
     '    </dl>',
     '  </div></section>',

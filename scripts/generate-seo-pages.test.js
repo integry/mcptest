@@ -106,6 +106,7 @@ describe('generated page metadata', () => {
 
   it('renders escaped literal capabilities and only aggregate inventory counts in JSON-LD', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.checkedAt = '2026-08-18T00:32:48';
     const section = (items) => ({
       status: 'complete', observedCount: items.length, retainedCount: items.length,
       omittedCount: 0, paginationComplete: true, items,
@@ -115,7 +116,11 @@ describe('generated page metadata', () => {
       observedAt: '2026-08-17T22:00:00.000Z',
       provenance: { testedEndpoint: 'https://example.com/mcp', route: 'direct' },
       authentication: 'unauthenticated',
-      tools: section([{ name: '<script>alert(1)</script>', description: 'safe & useful' }]),
+      tools: section([{
+        name: '<script>alert(1)</script>',
+        description: 'safe & useful',
+        input: [{ name: 'libraryId', type: 'string', required: true }],
+      }]),
       resources: section([{ name: 'Records' }]),
       resourceTemplates: section([{ name: 'Record template' }]),
       prompts: section([{ name: 'summarize' }]),
@@ -129,6 +134,11 @@ describe('generated page metadata', () => {
     expect(html).toContain('Prompts provided by Example Server');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('Aug 18, 2026 at 12:32 AM');
+    expect(html).not.toContain('<dd>2026-08-18T00:32:48</dd>');
+    expect(html).toContain('server-spec-list server-connection-specs');
+    expect(html).toContain('<code class="technical-string technical-string-url">https://example.com/mcp</code>');
+    expect(html).toContain('<code class="technical-string technical-string-inline">libraryId</code>');
     expect(html).toContain('"name":"Tools observed","value":1');
     const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
     expect(structuredData).not.toContain('alert(1)');
