@@ -12,6 +12,7 @@ describe('ServerProfileView capability inventory', () => {
       id: 'example', name: 'Example', url: 'https://example.com/mcp', description: 'Example server',
       category: 'Testing', tags: [], declaredTransport: 'streamable-http', transport: 'streamable-http',
       requiresOAuth: false, declaredAuthType: 'none', authType: 'none', protocolEra: 'stateless', status: 'online',
+      logoUrl: '/server-logos/example.svg', logoSourceKind: 'generated-fallback', logoRetrievedAt: '2026-08-17',
       capabilityInventory: createCapabilityInventory({
         observedAt: '2026-08-17T22:00:00.000Z', testedEndpoint: 'https://example.com/mcp',
         route: 'direct', authentication: 'unauthenticated',
