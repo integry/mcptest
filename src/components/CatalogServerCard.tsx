@@ -42,7 +42,7 @@ const getStatusDetails = (
   switch (status) {
     case 'online':
       return {
-        label: 'Online when last tested',
+        label: 'Online',
         className: 'catalog-status-dot--online',
         tooltip: `Online when last tested. ${validationTime}`,
       };
@@ -257,7 +257,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
           )}
 
           <div className="catalog-card-actions align-items-center">
-            <Link className="btn btn-sm btn-primary catalog-report-link" to={getCatalogServerPath(server.id)}>
+            <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
               View report
             </Link>
             <button

@@ -3915,10 +3915,10 @@ span.health-indicator.health-indicator-gray {
 }
 
 .catalog-category-option[aria-pressed='true'] {
-  color: var(--primary-color);
+  color: var(--primary-hover);
   border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
   background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .catalog-category-option:focus-visible {
@@ -4126,13 +4126,26 @@ button.badge.catalog-metadata-badge--category:focus-visible {
 }
 
 .catalog-report-link {
-  min-width: min(100%, 6.75rem);
-  flex: 1 1 6.75rem;
+  color: var(--primary-color);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  text-underline-offset: 0.18em;
+}
+
+.catalog-report-link:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.catalog-report-link:focus-visible {
+  border-radius: 0.2rem;
+  outline: 0;
+  box-shadow: var(--focus-ring);
 }
 
 .catalog-test-button.btn-outline-primary {
-  min-width: min(100%, 8.75rem);
-  flex: 1 1 8.75rem;
+  margin-left: auto;
   box-shadow: none;
 }
 

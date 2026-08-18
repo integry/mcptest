@@ -69,7 +69,7 @@ describe('CatalogServerCard presentation', () => {
     );
     expect(container.querySelector('.catalog-server-footer .catalog-server-badges')).not.toBeNull();
     expect(container.querySelector('.catalog-server-footer .catalog-card-actions')).not.toBeNull();
-    expect(reportLink?.classList.contains('btn-primary')).toBe(true);
+    expect(reportLink?.classList.contains('btn')).toBe(false);
     expect(reportLink?.getAttribute('href')).toBe('/servers/example/');
     expect(badges?.tagName).toBe('DIV');
     expect(container.querySelector('.catalog-server-title')?.classList).not.toContain('stretched-link');
@@ -79,7 +79,7 @@ describe('CatalogServerCard presentation', () => {
     expect(container.querySelector('.catalog-listing-source')?.textContent).toContain('Publisher');
     expect(container.querySelector('.catalog-listing-source')?.textContent).not.toContain('Verified');
     expect(container.querySelector('.catalog-runtime-status')?.textContent).toBe(
-      'Online when last tested'
+      'Online'
     );
     expect(container.querySelector('a a, a button, button a')).toBeNull();
     expect(buttons).toHaveLength(2);
