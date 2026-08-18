@@ -97,18 +97,25 @@ const ClientSetup: React.FC<ClientSetupProps> = ({ server }) => {
                 </div>
               </div>
 
-              <div className="client-setup-code-wrap">
-                <pre tabIndex={0} aria-label={`${setup.label} configuration`}><code>{setup.copyText}</code></pre>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost client-setup-copy"
-                  onClick={() => copySetup(setup.id, setup.label, setup.copyText)}
-                  aria-label={`Copy ${setup.label} setup`}
-                >
-                  <i className="bi bi-copy" aria-hidden="true"></i>
-                  <span>Copy</span>
-                </button>
-              </div>
+              {setup.supported ? (
+                <div className="client-setup-code-wrap">
+                  <pre tabIndex={0} aria-label={`${setup.label} configuration`}><code>{setup.copyText}</code></pre>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost client-setup-copy"
+                    onClick={() => copySetup(setup.id, setup.label, setup.copyText)}
+                    aria-label={`Copy ${setup.label} setup`}
+                  >
+                    <i className="bi bi-copy" aria-hidden="true"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="alert alert-warning client-setup-unsupported" role="status">
+                  <strong>Setup unavailable</strong>
+                  <p className="mb-0">{setup.copyText}</p>
+                </div>
+              )}
 
               <p className="client-setup-auth">{setup.authSummary}</p>
               <ul className="client-setup-notes">

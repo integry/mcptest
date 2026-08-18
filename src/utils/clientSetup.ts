@@ -28,6 +28,7 @@ export interface ClientSetup {
   copyText: string;
   format: ClientSetupFormat;
   supported: boolean;
+  unsupportedReasons: string[];
   endpoint: PreferredCatalogEndpoint;
   authSummary: string;
   notes: string[];
@@ -37,6 +38,13 @@ interface HeaderTemplate {
   name: string;
   environmentVariable: string;
   valueTemplate: string;
+  secret: boolean;
+  required: boolean;
+}
+
+interface HeaderRequirements {
+  headers: HeaderTemplate[];
+  unsupportedReasons: string[];
 }
 
 const CLIENT_DOCUMENTATION = {
@@ -119,15 +127,17 @@ const placeholderFromDescription = (header: CatalogRequiredHeader): string | und
 };
 
 const exactHeaderTemplate = (
-  server: CatalogServer,
   authType: CatalogAuthType,
   header: CatalogRequiredHeader
 ): HeaderTemplate | undefined => {
   // Reject malformed HTTP field names rather than putting them into a command or config.
   if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(header.name)) return undefined;
 
-  const environmentVariable = placeholderFromDescription(header)
-    || toEnvironmentVariable(server.id, authType);
+  const documentedPlaceholder = placeholderFromDescription(header);
+  // A header name alone does not establish its complete value syntax. Require
+  // publisher metadata to name the value instead of inventing one.
+  if (!documentedPlaceholder) return undefined;
+  const environmentVariable = documentedPlaceholder;
   const placeholder = `<${environmentVariable}>`;
   const description = header.description || '';
   const exactAuthorization = description.match(
@@ -141,29 +151,61 @@ const exactHeaderTemplate = (
     valueTemplate = `Bearer ${placeholder}`;
   }
 
-  return { name: header.name, environmentVariable, valueTemplate };
+  return {
+    name: header.name,
+    environmentVariable,
+    valueTemplate,
+    secret: header.secret === true,
+    required: header.required !== false,
+  };
+};
+
+const headerRequirements = (
+  server: CatalogServer,
+  authType: CatalogAuthType
+): HeaderRequirements => {
+  const credentialAuth = CREDENTIAL_AUTH_TYPES.has(authType);
+  const headers: HeaderTemplate[] = [];
+  const unsupportedReasons: string[] = [];
+
+  for (const header of server.requiredHeaders || []) {
+    const selectedCredentialHeader = credentialAuth && header.secret === true;
+    if (header.required === false && !selectedCredentialHeader) continue;
+    const template = exactHeaderTemplate(authType, header);
+    if (template) {
+      headers.push(template);
+      continue;
+    }
+    const requirement = header.required === false ? 'credential' : 'required';
+    unsupportedReasons.push(
+      `The ${requirement} header ${header.name} cannot be represented faithfully because its name or value placeholder is not fully documented.`
+    );
+  }
+
+  // Authorization: Bearer is defined by the auth type itself. API key/token
+  // header names are not, so those combinations need publisher guidance.
+  if (authType === 'bearer-token' && !headers.some((header) => header.secret)) {
+    const environmentVariable = toEnvironmentVariable(server.id, authType);
+    headers.unshift({
+      name: 'Authorization',
+      environmentVariable,
+      valueTemplate: `Bearer <${environmentVariable}>`,
+      secret: true,
+      required: true,
+    });
+  } else if (credentialAuth && !headers.some((header) => header.secret)) {
+    unsupportedReasons.push(
+      `The catalog does not document the credential header required for ${authTypeLabel(authType)} authentication.`
+    );
+  }
+
+  return { headers, unsupportedReasons };
 };
 
 const credentialHeader = (
   server: CatalogServer,
   authType: CatalogAuthType
-): HeaderTemplate | undefined => {
-  if (!CREDENTIAL_AUTH_TYPES.has(authType)) return undefined;
-  const documented = server.requiredHeaders?.find((header) => header.secret);
-  if (documented) return exactHeaderTemplate(server, authType, documented);
-
-  // Authorization: Bearer is defined by the auth type itself. API key/token
-  // header names are not, so those combinations need publisher guidance.
-  if (authType === 'bearer-token') {
-    const environmentVariable = toEnvironmentVariable(server.id, authType);
-    return {
-      name: 'Authorization',
-      environmentVariable,
-      valueTemplate: `Bearer <${environmentVariable}>`,
-    };
-  }
-  return undefined;
-};
+): HeaderTemplate | undefined => headerRequirements(server, authType).headers.find((header) => header.secret);
 
 const replacePlaceholder = (template: string, replacement: string): string => {
   return template.replace(/<[A-Z][A-Z0-9_]{1,63}>/, replacement);
@@ -311,11 +353,29 @@ const commonNotes = (
   return notes;
 };
 
+const unsupportedCopyText = (label: string, reasons: string[]): string => {
+  return `${label} setup is unavailable for this catalog entry. ${reasons.join(' ')} Consult the publisher and client documentation before configuring this server.`;
+};
+
+const appendHeaderNotes = (
+  notes: string[],
+  requirements: HeaderRequirements,
+  noteForHeader: (header: HeaderTemplate) => string
+): void => {
+  for (const header of requirements.headers) notes.push(noteForHeader(header));
+  for (const reason of requirements.unsupportedReasons) notes.push(`Unsupported setup: ${reason}`);
+};
+
+const headerInputNote = (header: HeaderTemplate): string => {
+  if (header.secret) return secureStorageNote(header);
+  return `Set ${header.environmentVariable} to the publisher-required value for the ${header.name} header.`;
+};
+
 const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): ClientSetup => {
   const key = sanitizeClientSetupKey(server.id);
   const selectedAuthType = setupAuthType(server);
   const registration = preRegisteredOAuth(server);
-  const header = credentialHeader(server, selectedAuthType);
+  const requirements = headerRequirements(server, selectedAuthType);
   const transport = endpoint.transport === 'legacy-sse' ? 'sse' : 'http';
   const clientIdEnvironment = registration
     ? oauthEnvironmentVariable(registration.clientId, `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_ID`)
@@ -332,9 +392,7 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
       '--client-secret',
       ...(callbackPort ? [`--callback-port ${callbackPort}`] : []),
     ] : []),
-    ...(header ? [
-      `--header ${shellHeaderArgument(header)}`,
-    ] : []),
+    ...requirements.headers.map((header) => `--header ${shellHeaderArgument(header)}`),
     quoteShellArgument(key),
     quoteShellArgument(endpoint.url),
   ].join(' ');
@@ -347,17 +405,16 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
       && server.oauthRegistration?.mode !== 'unavailable-or-use-alternative') {
     notes.push('After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.');
   }
-  if (header) notes.push(secureStorageNote(header));
-  if (CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header) {
-    notes.push('The catalog does not document the credential header, so add it through Claude Code only after checking the publisher documentation.');
-  }
+  appendHeaderNotes(notes, requirements, headerInputNote);
+  const supported = requirements.unsupportedReasons.length === 0;
   return {
     id: 'claude-code', label: 'Claude Code', heading: 'Claude Code setup',
     documentationUrl: CLIENT_DOCUMENTATION['claude-code'],
     documentationLabel: 'Claude Code MCP documentation',
     location: 'Run in a terminal. This user-scoped entry is available across projects.',
-    copyText: command, format: 'shell',
-    supported: !(CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header), endpoint,
+    copyText: supported ? command : unsupportedCopyText('Claude Code', requirements.unsupportedReasons),
+    format: supported ? 'shell' : 'text',
+    supported, unsupportedReasons: requirements.unsupportedReasons, endpoint,
     authSummary: authSummary(server, selectedAuthType), notes,
   };
 };
@@ -366,15 +423,16 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
   const key = sanitizeClientSetupKey(server.id);
   const selectedAuthType = setupAuthType(server);
   const registration = preRegisteredOAuth(server);
-  const header = credentialHeader(server, selectedAuthType);
+  const requirements = headerRequirements(server, selectedAuthType);
   if (endpoint.transport === 'legacy-sse') {
+    const unsupportedReasons = ['Codex CLI supports Streamable HTTP remote servers, not legacy SSE endpoints.'];
     return {
       id: 'codex-cli', label: 'Codex CLI', heading: 'Codex CLI setup',
       documentationUrl: CLIENT_DOCUMENTATION['codex-cli'],
       documentationLabel: 'Codex MCP documentation',
       location: 'Review the endpoint in the publisher documentation before editing Codex configuration.',
       copyText: 'Codex CLI supports Streamable HTTP remote servers, not legacy SSE endpoints. Use a publisher-documented Streamable HTTP endpoint if one is available.',
-      format: 'text', supported: false, endpoint,
+      format: 'text', supported: false, unsupportedReasons, endpoint,
       authSummary: authSummary(server, selectedAuthType),
       notes: commonNotes(server, endpoint, selectedAuthType),
     };
@@ -384,14 +442,15 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
     const remote = registration.codexMcpRemote;
     const notes = commonNotes(server, endpoint, selectedAuthType);
     if (!remote) {
-      notes.push('Native direct setup is unsupported because Codex does not accept the required static OAuth client secret. No secret option is fabricated.');
+      const unsupportedReasons = ['Codex does not accept the required static OAuth client secret.'];
+      notes.push(`Unsupported setup: ${unsupportedReasons[0]} No secret option is fabricated.`);
       return {
         id: 'codex-cli', label: 'Codex CLI', heading: 'Codex CLI setup',
         documentationUrl: CLIENT_DOCUMENTATION['codex-cli'],
         documentationLabel: 'Codex MCP documentation',
         location: 'Use a publisher-documented compatibility bridge, or choose a client with native pre-registered OAuth support.',
         copyText: 'Native direct Codex setup is unsupported for this pre-registered OAuth server.',
-        format: 'text', supported: false, endpoint,
+        format: 'text', supported: false, unsupportedReasons, endpoint,
         authSummary: authSummary(server, selectedAuthType), notes,
       };
     }
@@ -430,12 +489,21 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
     notes.push(`Register this exact Codex redirect URL: ${oauthRedirects(registration, 'codex-cli').join(', ')}.`);
     notes.push(`This is ${server.name}'s publisher-documented mcp-remote compatibility setup. The publisher warns that mcp-remote is experimental community software; review it before use.`);
     notes.push(`Store ${clientIdEnvironment} and ${clientSecretEnvironment} in a protected environment or secret manager; never commit their values.`);
+    if (requirements.headers.length > 0) {
+      requirements.unsupportedReasons.push(
+        `The required headers ${requirements.headers.map(({ name }) => name).join(', ')} cannot be added faithfully to the publisher-documented mcp-remote bridge configuration.`
+      );
+    }
+    appendHeaderNotes(notes, requirements, headerInputNote);
+    const supported = requirements.unsupportedReasons.length === 0;
     return {
       id: 'codex-cli', label: 'Codex CLI', heading: 'Codex CLI setup',
       documentationUrl: CLIENT_DOCUMENTATION['codex-cli'],
       documentationLabel: 'Codex MCP documentation',
       location: 'Add to ~/.codex/config.toml. This publisher-documented bridge requires Node.js and a POSIX sh environment.',
-      copyText, format: 'toml', supported: true, endpoint,
+      copyText: supported ? copyText : unsupportedCopyText('Codex CLI', requirements.unsupportedReasons),
+      format: supported ? 'toml' : 'text', supported,
+      unsupportedReasons: requirements.unsupportedReasons, endpoint,
       authSummary: authSummary(server, selectedAuthType), notes,
     };
   }
@@ -443,20 +511,31 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
   let copyText: string;
   let format: ClientSetupFormat = 'shell';
   let location = 'Run in a terminal; Codex stores the entry in ~/.codex/config.toml.';
-  let fullValueEnvironment: string | undefined;
-  if (header && header.valueTemplate === `Bearer <${header.environmentVariable}>`) {
-    copyText = `codex mcp add ${quoteShellArgument(key)} --url ${quoteShellArgument(endpoint.url)} --bearer-token-env-var ${quoteShellArgument(header.environmentVariable)}`;
-  } else if (header) {
+  const fullValueEnvironments = new Map<HeaderTemplate, string>();
+  const [onlyHeader] = requirements.headers;
+  if (requirements.headers.length === 1
+      && onlyHeader.valueTemplate === `Bearer <${onlyHeader.environmentVariable}>`) {
+    copyText = `codex mcp add ${quoteShellArgument(key)} --url ${quoteShellArgument(endpoint.url)} --bearer-token-env-var ${quoteShellArgument(onlyHeader.environmentVariable)}`;
+  } else if (requirements.headers.length > 0) {
     // env_http_headers reads the complete header value from the environment,
     // preserving non-Bearer schemes such as PagerDuty's "Token token=".
-    fullValueEnvironment = `${header.environmentVariable}_HEADER`;
+    for (const header of requirements.headers) {
+      fullValueEnvironments.set(header, `${header.environmentVariable}_HEADER`);
+    }
+    const serializedHeaders = requirements.headers.map((header) => (
+      `${serializeTomlString(header.name)} = ${serializeTomlString(fullValueEnvironments.get(header)!)}`
+    )).join(', ');
     copyText = [
       `[mcp_servers.${key}]`,
       `url = ${serializeTomlString(endpoint.url)}`,
-      `env_http_headers = { ${serializeTomlString(header.name)} = ${serializeTomlString(fullValueEnvironment)} }`,
+      `env_http_headers = { ${serializedHeaders} }`,
     ].join('\n');
     format = 'toml';
-    location = `Add to ~/.codex/config.toml, then securely set ${fullValueEnvironment} to ${completeHeaderValueDescription(header)}.`;
+    const environmentGuidance = requirements.headers.map((header) => {
+      const environmentVariable = fullValueEnvironments.get(header)!;
+      return `${environmentVariable} to ${completeHeaderValueDescription(header)}`;
+    }).join('; ');
+    location = `Add to ~/.codex/config.toml, then ${requirements.headers.every(({ secret }) => secret) ? 'securely set' : 'set'} ${environmentGuidance}.`;
   } else {
     copyText = `codex mcp add ${quoteShellArgument(key)} --url ${quoteShellArgument(endpoint.url)}`;
   }
@@ -465,19 +544,20 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
     copyText += `\ncodex mcp login ${quoteShellArgument(key)}`;
   }
   const notes = commonNotes(server, endpoint, selectedAuthType);
-  if (header) {
-    notes.push(fullValueEnvironment
+  appendHeaderNotes(notes, requirements, (header) => {
+    const fullValueEnvironment = fullValueEnvironments.get(header);
+    return fullValueEnvironment
       ? secureCompleteHeaderStorageNote(header, fullValueEnvironment)
-      : secureStorageNote(header));
-  }
-  if (CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header) {
-    notes.push('Codex cannot be configured faithfully because the catalog does not identify the credential header. Check the publisher documentation.');
-  }
+      : headerInputNote(header);
+  });
+  const supported = requirements.unsupportedReasons.length === 0;
   return {
     id: 'codex-cli', label: 'Codex CLI', heading: 'Codex CLI setup',
     documentationUrl: CLIENT_DOCUMENTATION['codex-cli'],
     documentationLabel: 'Codex MCP documentation', location,
-    copyText, format, supported: !(CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header),
+    copyText: supported ? copyText : unsupportedCopyText('Codex CLI', requirements.unsupportedReasons),
+    format: supported ? format : 'text', supported,
+    unsupportedReasons: requirements.unsupportedReasons,
     endpoint, authSummary: authSummary(server, selectedAuthType), notes,
   };
 };
@@ -486,7 +566,7 @@ const cursorSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   const key = sanitizeClientSetupKey(server.id);
   const selectedAuthType = setupAuthType(server);
   const registration = preRegisteredOAuth(server);
-  const header = credentialHeader(server, selectedAuthType);
+  const requirements = headerRequirements(server, selectedAuthType);
   const config: Record<string, unknown> = { url: endpoint.url };
   if (registration) {
     const clientIdEnvironment = oauthEnvironmentVariable(
@@ -501,10 +581,12 @@ const cursorSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
       CLIENT_ID: `\${env:${clientIdEnvironment}}`,
       CLIENT_SECRET: `\${env:${clientSecretEnvironment}}`,
     };
-  } else if (header) {
-    config.headers = {
-      [header.name]: replacePlaceholder(header.valueTemplate, `\${env:${header.environmentVariable}}`),
-    };
+  }
+  if (requirements.headers.length > 0) {
+    config.headers = Object.fromEntries(requirements.headers.map((header) => [
+      header.name,
+      replacePlaceholder(header.valueTemplate, `\${env:${header.environmentVariable}}`),
+    ]));
   }
   const notes = commonNotes(server, endpoint, selectedAuthType);
   if (endpoint.transport === 'legacy-sse') {
@@ -513,17 +595,19 @@ const cursorSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   if (registration) {
     notes.push(`Register this exact Cursor redirect URL: ${oauthRedirects(registration, 'cursor').join(', ')}.`);
     notes.push('Cursor Static OAuth reads the client ID and secret from the named environment variables; never commit either value.');
-  } else if (header) notes.push(secureStorageNote(header));
-  if (CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header) {
-    notes.push('The credential header is not documented, so this config contains only the URL. Add authentication only from publisher guidance.');
   }
+  appendHeaderNotes(notes, requirements, headerInputNote);
+  const supported = requirements.unsupportedReasons.length === 0;
   return {
     id: 'cursor', label: 'Cursor', heading: 'Cursor setup',
     documentationUrl: CLIENT_DOCUMENTATION.cursor,
     documentationLabel: 'Cursor MCP documentation',
     location: 'Add to .cursor/mcp.json for this project, or ~/.cursor/mcp.json for all projects.',
-    copyText: jsonConfig({ mcpServers: { [key]: config } }), format: 'json',
-    supported: !(CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header),
+    copyText: supported
+      ? jsonConfig({ mcpServers: { [key]: config } })
+      : unsupportedCopyText('Cursor', requirements.unsupportedReasons),
+    format: supported ? 'json' : 'text', supported,
+    unsupportedReasons: requirements.unsupportedReasons,
     endpoint, authSummary: authSummary(server, selectedAuthType), notes,
   };
 };
@@ -532,34 +616,33 @@ const vsCodeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   const key = sanitizeClientSetupKey(server.id);
   const selectedAuthType = setupAuthType(server);
   const registration = preRegisteredOAuth(server);
-  const header = credentialHeader(server, selectedAuthType);
+  const requirements = headerRequirements(server, selectedAuthType);
   const config: Record<string, unknown> = {
     type: endpoint.transport === 'legacy-sse' ? 'sse' : 'http',
     url: endpoint.url,
   };
   const root: Record<string, unknown> = { servers: { [key]: config } };
-  if (header) {
-    const inputId = header.environmentVariable.toLowerCase();
-    config.headers = {
-      [header.name]: replacePlaceholder(header.valueTemplate, `\${input:${inputId}}`),
-    };
-    root.inputs = [{
-      type: 'promptString', id: inputId,
+  if (requirements.headers.length > 0) {
+    config.headers = Object.fromEntries(requirements.headers.map((header) => {
+      const inputId = header.environmentVariable.toLowerCase();
+      return [header.name, replacePlaceholder(header.valueTemplate, `\${input:${inputId}}`)];
+    }));
+    root.inputs = requirements.headers.map((header) => ({
+      type: 'promptString', id: header.environmentVariable.toLowerCase(),
       description: `${header.environmentVariable} for ${server.name}`,
-      password: true,
-    }];
+      password: header.secret,
+    }));
   }
   const notes = commonNotes(server, endpoint, selectedAuthType);
   if (registration) {
     const redirects = oauthRedirects(registration, 'vs-code');
     notes.push(`Register both exact VS Code redirect URLs: ${redirects.join(' and ')}. Keep the trailing slash on ${redirects[0]}.`);
     notes.push('Start the server after adding it. VS Code detects that Dynamic Client Registration is unavailable and natively prompts first for the client ID and then for the client secret; it stores the credentials securely and manages token refresh.');
-  } else if (header) {
-    notes.push(`VS Code requests ${header.environmentVariable} as a masked input; use a secret manager and do not put a default value in mcp.json. The ${header.name} syntax remains ${header.valueTemplate}.`);
   }
-  if (CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header) {
-    notes.push('The credential header is not documented, so this config contains only the endpoint. Use “MCP: Add Server” after consulting publisher guidance.');
-  }
+  appendHeaderNotes(notes, requirements, (header) => header.secret
+    ? `VS Code requests ${header.environmentVariable} as a masked input; use a secret manager and do not put a default value in mcp.json. The ${header.name} syntax remains ${header.valueTemplate}.`
+    : `VS Code requests the publisher-required ${header.name} value through the ${header.environmentVariable} input.`);
+  const supported = requirements.unsupportedReasons.length === 0;
   return {
     id: 'vs-code', label: 'VS Code', heading: 'VS Code setup',
     documentationUrl: CLIENT_DOCUMENTATION['vs-code'],
@@ -567,8 +650,9 @@ const vsCodeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
     location: registration
       ? 'Run “MCP: Add Server”, choose HTTP, enter this URL and name, then choose Workspace or Global scope. VS Code will prompt for the registered credentials when the server starts.'
       : 'Add to .vscode/mcp.json, or run “MCP: Open User Configuration” for a private user-level entry.',
-    copyText: jsonConfig(root), format: 'json',
-    supported: !(CREDENTIAL_AUTH_TYPES.has(selectedAuthType) && !header),
+    copyText: supported ? jsonConfig(root) : unsupportedCopyText('VS Code', requirements.unsupportedReasons),
+    format: supported ? 'json' : 'text', supported,
+    unsupportedReasons: requirements.unsupportedReasons,
     endpoint, authSummary: authSummary(server, selectedAuthType), notes,
   };
 };

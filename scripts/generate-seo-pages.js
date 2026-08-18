@@ -297,7 +297,9 @@ function renderClientSetups(server) {
       `    <section class="client-setup-panel" data-client="${escapeHtml(setup.id)}">`,
       `      <h3>${escapeHtml(setup.heading)}</h3>`,
       `      <p>${escapeHtml(setup.location)}</p>`,
-      `      <pre aria-label="${escapeHtml(setup.label)} configuration"><code class="language-${escapeHtml(setup.format)}">${escapeHtml(setup.copyText)}</code></pre>`,
+      setup.supported
+        ? `      <pre aria-label="${escapeHtml(setup.label)} configuration"><code class="language-${escapeHtml(setup.format)}">${escapeHtml(setup.copyText)}</code></pre>`
+        : `      <div class="alert alert-warning client-setup-unsupported" role="status"><strong>Setup unavailable</strong><p>${escapeHtml(setup.copyText)}</p></div>`,
       `      <p>${escapeHtml(setup.authSummary)}</p>`,
       `      <ul>${setup.notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`,
       `      <p><a href="${escapeHtml(setup.documentationUrl)}">${escapeHtml(setup.documentationLabel)}</a></p>`,

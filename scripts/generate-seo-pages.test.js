@@ -125,6 +125,24 @@ describe('generated page metadata', () => {
     );
   });
 
+  it('renders unsupported static setups as non-executable guidance', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.authType = 'api-key';
+    server.declaredAuthType = 'api-key';
+    server.requiredHeaders = [{
+      name: 'X-Region', description: 'Select the account region',
+      required: true, secret: false,
+    }];
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html.match(/<strong>Setup unavailable<\/strong>/g)).toHaveLength(4);
+    expect(html).toContain('required header X-Region');
+    expect(html).not.toContain('claude mcp add');
+    expect(html).not.toContain('codex mcp add');
+    expect(html).not.toContain('aria-label="Claude Code configuration"');
+  });
+
   it('renders static Asana setup parity from typed registration evidence', () => {
     const asana = mergeCatalogServers(
       catalogSeeds, catalogValidation, catalogCapabilities
@@ -147,6 +165,11 @@ describe('generated page metadata', () => {
       catalogSeeds, catalogValidation, catalogCapabilities
     ).find(({ id }) => id === 'pagerduty');
     expect(pagerduty).toBeDefined();
+    expect(pagerduty.oauthRegistration).toMatchObject({
+      clientId: { required: false },
+      clientSecret: { required: false },
+      callback: { required: false, redirectUrls: {} },
+    });
 
     const html = renderServerHtml(indexHtml, pagerduty);
     expect(html).toContain('Token token=&lt;PAGERDUTY_API_TOKEN&gt;');

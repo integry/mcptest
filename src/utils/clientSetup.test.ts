@@ -139,6 +139,16 @@ describe('client setup transports and authentication', () => {
     expect(pagerduty).toBeDefined();
     const setups = generateClientSetups(pagerduty!);
 
+    expect(pagerduty!.oauthRegistration).toMatchObject({
+      mode: 'unavailable-or-use-alternative',
+      clientId: { required: false },
+      clientSecret: { required: false },
+      callback: { required: false, redirectUrls: {} },
+      alternativeAuthType: 'api-token',
+    });
+    expect(pagerduty!.oauthRegistration?.clientId.environmentVariable).toBeUndefined();
+    expect(pagerduty!.oauthRegistration?.clientSecret.environmentVariable).toBeUndefined();
+
     expect(setups[0].copyText).toContain(
       `--header 'Authorization: Token token='"\${PAGERDUTY_API_TOKEN}"`
     );
@@ -225,6 +235,52 @@ describe('client setup transports and authentication', () => {
     );
   });
 
+  it('serializes every required secret and non-secret header for every client', () => {
+    const setups = generateClientSetups(makeServer({
+      id: 'multi-header', declaredAuthType: 'api-key', authType: 'api-key',
+      requiredHeaders: [
+        {
+          name: 'X-API-Key', description: 'Primary credential: <PRIMARY_API_KEY>',
+          required: true, secret: true,
+        },
+        {
+          name: 'X-API-Secret', description: 'Secondary credential: <SECONDARY_API_SECRET>',
+          required: true, secret: true,
+        },
+        {
+          name: 'X-Account-Region', description: 'Account region: <ACCOUNT_REGION>',
+          required: true, secret: false,
+        },
+      ],
+    }));
+
+    expect(setups.every(({ supported }) => supported)).toBe(true);
+    for (const headerName of ['X-API-Key', 'X-API-Secret', 'X-Account-Region']) {
+      expect(setups[0].copyText).toContain(`--header '${headerName}: '`);
+      expect(setups[1].copyText).toContain(`"${headerName}"`);
+    }
+    expect(setups[0].copyText.match(/--header/g)).toHaveLength(3);
+    expect(setups[1].copyText).toContain('"PRIMARY_API_KEY_HEADER"');
+    expect(setups[1].copyText).toContain('"SECONDARY_API_SECRET_HEADER"');
+    expect(setups[1].copyText).toContain('"ACCOUNT_REGION_HEADER"');
+
+    const cursor = JSON.parse(setups[2].copyText).mcpServers['multi-header'];
+    expect(cursor.headers).toEqual({
+      'X-API-Key': '${env:PRIMARY_API_KEY}',
+      'X-API-Secret': '${env:SECONDARY_API_SECRET}',
+      'X-Account-Region': '${env:ACCOUNT_REGION}',
+    });
+    const vscode = JSON.parse(setups[3].copyText);
+    expect(vscode.servers['multi-header'].headers).toEqual({
+      'X-API-Key': '${input:primary_api_key}',
+      'X-API-Secret': '${input:secondary_api_secret}',
+      'X-Account-Region': '${input:account_region}',
+    });
+    expect(vscode.inputs.map(({ password }: { password: boolean }) => password)).toEqual([
+      true, true, false,
+    ]);
+  });
+
   it('keeps non-Bearer alternative authorization syntax exact', () => {
     const setups = generateClientSetups(makeServer({
       id: 'pagerduty', requiresOAuth: true,
@@ -249,6 +305,12 @@ describe('client setup transports and authentication', () => {
       }],
     }));
     expect(setups.every(({ supported }) => !supported)).toBe(true);
+    expect(setups.every(({ format }) => format === 'text')).toBe(true);
+    expect(setups.every(({ copyText }) => copyText.includes('setup is unavailable'))).toBe(true);
+    expect(setups.every(({ copyText }) => !copyText.includes('https://canonical.example/mcp'))).toBe(true);
+    expect(setups.every(({ unsupportedReasons }) => (
+      unsupportedReasons.some((reason) => reason.includes('X-Region'))
+    ))).toBe(true);
     expect(setups.flatMap(({ notes }) => notes).join(' ')).toContain('Required header X-Region');
     expect(setups.flatMap(({ notes }) => notes).join(' ')).toContain('does not document');
   });

@@ -81,6 +81,26 @@ describe('ClientSetup accessibility and copying', () => {
     expect(view.querySelector('[role="status"]')?.textContent).toContain('Select the Claude Code setup text');
   });
 
+  it('renders unsupported setups as guidance without a runnable copy action', () => {
+    const view = renderSetup({
+      ...server,
+      declaredAuthType: 'api-key',
+      authType: 'api-key',
+      requiredHeaders: [{
+        name: 'X-Region', description: 'Select the account region',
+        required: true, secret: false,
+      }],
+    });
+    const selectedPanel = view.querySelector('.client-setup-panel:not([hidden])');
+
+    expect(selectedPanel?.querySelector('.client-setup-unsupported')?.textContent)
+      .toContain('Setup unavailable');
+    expect(selectedPanel?.textContent).toContain('required header X-Region');
+    expect(selectedPanel?.querySelector('pre')).toBeNull();
+    expect(selectedPanel?.querySelector('.client-setup-copy')).toBeNull();
+    expect(selectedPanel?.textContent).not.toContain('claude mcp add');
+  });
+
   it('hydrates accurate Asana registration instructions in all client panels', () => {
     const asana = getCatalogServerById('asana');
     expect(asana).toBeDefined();

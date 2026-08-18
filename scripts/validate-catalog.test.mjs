@@ -212,6 +212,13 @@ describe('catalog seed provenance validation', () => {
       expect(seed).toBeDefined();
       expect(validateCatalogSeed(seed).oauthRegistration).toBeDefined();
     }
+    const pagerduty = catalogSeeds.find(({ id }) => id === 'pagerduty');
+    expect(pagerduty.oauthRegistration).toMatchObject({
+      clientId: { required: false },
+      clientSecret: { required: false },
+      callback: { required: false, redirectUrls: {} },
+      alternativeAuthType: 'api-token',
+    });
   });
 });
 

@@ -512,11 +512,11 @@
     "alternativeAuthTypes": ["api-token"],
     "oauthRegistration": {
       "mode": "unavailable-or-use-alternative",
-      "clientId": { "required": true, "environmentVariable": "PAGERDUTY_CLIENT_ID" },
-      "clientSecret": { "required": true, "environmentVariable": "PAGERDUTY_CLIENT_SECRET" },
+      "clientId": { "required": false },
+      "clientSecret": { "required": false },
       "callback": {
-        "required": true,
-        "redirectUrls": { "claude-code": ["http://localhost:8080/callback"] }
+        "required": false,
+        "redirectUrls": {}
       },
       "alternativeAuthType": "api-token",
       "evidenceUrl": "https://support.pagerduty.com/main/docs/pagerduty-mcp-server"
