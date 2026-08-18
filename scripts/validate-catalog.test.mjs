@@ -15,6 +15,7 @@ const {
   paginateDiscovery,
   probeSseEndpoint,
   probeStreamableEndpoint,
+  validateCatalogSeed,
   validateSeed,
   writeResults,
 } = validator;
@@ -110,6 +111,47 @@ describe('catalog endpoint variants', () => {
       url: 'https://example.com/mcp',
       transport: 'streamable-http',
     });
+  });
+});
+
+describe('catalog seed provenance validation', () => {
+  it('accepts HTTPS publisher evidence and exact MCP Registry records', () => {
+    expect(validateCatalogSeed({
+      id: 'publisher',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+    })).toMatchObject({ id: 'publisher' });
+
+    const registryUrl = 'https://registry.modelcontextprotocol.io/v0.1/servers/example';
+    expect(validateCatalogSeed({
+      id: 'registry',
+      registryUrl,
+      listingSource: { kind: 'mcp-registry', url: registryUrl },
+    })).toMatchObject({ id: 'registry' });
+  });
+
+  it.each([
+    [{ id: 'missing' }, 'listingSource is required'],
+    [
+      { id: 'kind', listingSource: { kind: 'verified' } },
+      'listingSource.kind must be publisher, mcp-registry, or community',
+    ],
+    [
+      { id: 'http', listingSource: { kind: 'community', url: 'http://example.com' } },
+      'listingSource.url must be a valid HTTPS URL',
+    ],
+    [
+      {
+        id: 'mismatch',
+        registryUrl: 'https://registry.modelcontextprotocol.io/v0.1/servers/a',
+        listingSource: {
+          kind: 'mcp-registry',
+          url: 'https://registry.modelcontextprotocol.io/v0.1/servers/b',
+        },
+      },
+      'MCP Registry provenance must reuse registryUrl',
+    ],
+  ])('rejects invalid provenance: %s', (seed, message) => {
+    expect(() => validateCatalogSeed(seed)).toThrow(message);
   });
 });
 
@@ -255,6 +297,7 @@ describe('catalog protocol validation', () => {
         url: 'https://example.com',
         transport: 'streamable-http',
         authType: 'none',
+        listingSource: { kind: 'community' },
       },
       { fetchImpl: fetch, timeoutMs: 1_000 }
     );

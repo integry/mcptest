@@ -18,6 +18,7 @@ const server: CatalogServer = {
   description: 'An example remote MCP server.',
   category: 'Developer Tools',
   tags: ['example', 'tools'],
+  listingSource: { kind: 'community' },
   declaredTransport: 'streamable-http',
   transport: 'unknown',
   requiresOAuth: true,

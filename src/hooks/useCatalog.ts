@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { CATALOG_CATEGORY_ALL, type OAuthFilter } from '../types/catalog';
+import {
+  CATALOG_CATEGORY_ALL,
+  type CatalogSortOrder,
+  type OAuthFilter,
+} from '../types/catalog';
 import {
   filterCatalogServers,
+  getCatalogCategoryCounts,
   getCatalogCategories,
   getCatalogServers,
+  sortCatalogServers,
 } from '../utils/catalogUtils';
 import { logEvent } from '../utils/analytics';
 
@@ -19,14 +25,24 @@ const isOAuthFilter = (value: string | null): value is OAuthFilter => {
 };
 
 const normalizeSearchQuery = (searchQuery: string) => searchQuery.trim();
+const isCatalogSortOrder = (value: string | null): value is CatalogSortOrder => {
+  return (
+    value === 'catalog-order' ||
+    value === 'name' ||
+    value === 'recently-tested' ||
+    value === 'browser-ready'
+  );
+};
+
 const DEFAULT_CATALOG_FILTERS = {
   searchQuery: '',
   oauthFilter: 'all' as OAuthFilter,
   category: CATALOG_CATEGORY_ALL,
+  sortOrder: 'catalog-order' as CatalogSortOrder,
 };
 const SEARCH_ANALYTICS_DEBOUNCE_MS = 500;
 const SEARCH_PARAM_SYNC_DEBOUNCE_MS = 300;
-const CATALOG_PARAM_KEYS = ['q', 'auth', 'category'];
+const CATALOG_PARAM_KEYS = ['q', 'auth', 'category', 'sort'];
 
 const getOAuthFilterFromParams = (params: URLSearchParams): OAuthFilter => {
   const authParam = params.get('auth');
@@ -43,6 +59,11 @@ const getCategoryFromParams = (params: URLSearchParams, categories: string[]) =>
   return categories.includes(categoryParam) ? categoryParam : CATALOG_CATEGORY_ALL;
 };
 
+const getSortOrderFromParams = (params: URLSearchParams): CatalogSortOrder => {
+  const sortParam = params.get('sort');
+  return isCatalogSortOrder(sortParam) ? sortParam : 'catalog-order';
+};
+
 export const getCatalogFiltersFromParams = (
   params: URLSearchParams,
   categories: string[] = []
@@ -51,13 +72,15 @@ export const getCatalogFiltersFromParams = (
     searchQuery: normalizeSearchQuery(params.get('q') ?? ''),
     oauthFilter: getOAuthFilterFromParams(params),
     category: getCategoryFromParams(params, categories),
+    sortOrder: getSortOrderFromParams(params),
   };
 };
 
 export const buildCatalogSearchParams = (
   searchQuery: string,
   oauthFilter: OAuthFilter,
-  category: string
+  category: string,
+  sortOrder: CatalogSortOrder = 'catalog-order'
 ) => {
   const params = new URLSearchParams();
   const normalizedQuery = normalizeSearchQuery(searchQuery);
@@ -72,6 +95,10 @@ export const buildCatalogSearchParams = (
 
   if (category !== CATALOG_CATEGORY_ALL) {
     params.set('category', category);
+  }
+
+  if (sortOrder !== 'catalog-order') {
+    params.set('sort', sortOrder);
   }
 
   return params;
@@ -104,9 +131,11 @@ export const useCatalog = () => {
   const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
   const [category, setCategoryState] = useState(initialFilters.category);
+  const [sortOrder, setSortOrderState] = useState<CatalogSortOrder>(initialFilters.sortOrder);
   const lastLoggedSearchQueryRef = useRef(normalizeSearchQuery(initialFilters.searchQuery));
   const searchAnalyticsTimeoutRef = useRef<number | null>(null);
   const searchParamSyncTimeoutRef = useRef<number | null>(null);
+  const pushNextCatalogParamsRef = useRef(false);
   const onCatalogRoute = isCatalogRoute(location.pathname);
   const normalizedSearchQuery = useMemo(
     () => normalizeSearchQuery(searchQuery),
@@ -132,7 +161,13 @@ export const useCatalog = () => {
   }, []);
 
   const syncCatalogParams = useCallback(
-    (nextSearchQuery: string, nextOauthFilter: OAuthFilter, nextCategory: string) => {
+    (
+      nextSearchQuery: string,
+      nextOauthFilter: OAuthFilter,
+      nextCategory: string,
+      nextSortOrder: CatalogSortOrder,
+      replace: boolean
+    ) => {
       if (!onCatalogRoute) {
         return;
       }
@@ -140,11 +175,12 @@ export const useCatalog = () => {
       const nextParams = buildCatalogSearchParams(
         nextSearchQuery,
         nextOauthFilter,
-        nextCategory
+        nextCategory,
+        nextSortOrder
       );
 
       if (!catalogParamsMatch(searchParams, nextParams)) {
-        setSearchParams(nextParams, { replace: true });
+        setSearchParams(nextParams, { replace });
       }
     },
     [onCatalogRoute, searchParams, setSearchParams]
@@ -167,11 +203,15 @@ export const useCatalog = () => {
     setCategoryState((current) =>
       current === nextFilters.category ? current : nextFilters.category
     );
+    setSortOrderState((current) =>
+      current === nextFilters.sortOrder ? current : nextFilters.sortOrder
+    );
 
     const normalizedParams = buildCatalogSearchParams(
       nextFilters.searchQuery,
       nextFilters.oauthFilter,
-      nextFilters.category
+      nextFilters.category,
+      nextFilters.sortOrder
     );
 
     if (!catalogParamsMatch(searchParams, normalizedParams)) {
@@ -217,7 +257,15 @@ export const useCatalog = () => {
 
     const timeoutId = window.setTimeout(() => {
       searchParamSyncTimeoutRef.current = null;
-      syncCatalogParams(normalizedSearchQuery, oauthFilter, category);
+      const shouldPushHistory = pushNextCatalogParamsRef.current;
+      pushNextCatalogParamsRef.current = false;
+      syncCatalogParams(
+        normalizedSearchQuery,
+        oauthFilter,
+        category,
+        sortOrder,
+        !shouldPushHistory
+      );
     }, SEARCH_PARAM_SYNC_DEBOUNCE_MS);
 
     searchParamSyncTimeoutRef.current = timeoutId;
@@ -233,6 +281,7 @@ export const useCatalog = () => {
     normalizedSearchQuery,
     oauthFilter,
     onCatalogRoute,
+    sortOrder,
     syncCatalogParams,
   ]);
 
@@ -248,6 +297,7 @@ export const useCatalog = () => {
         return;
       }
 
+      pushNextCatalogParamsRef.current = true;
       setOauthFilterState(nextOauthFilter);
       logEvent('catalog_filter_auth', { filter: nextOauthFilter });
     },
@@ -260,29 +310,55 @@ export const useCatalog = () => {
         return;
       }
 
+      pushNextCatalogParamsRef.current = true;
       setCategoryState(nextCategory);
       logEvent('catalog_filter_category', { category: nextCategory });
     },
     [category]
   );
 
+  const setSortOrder = useCallback(
+    (nextSortOrder: CatalogSortOrder) => {
+      if (nextSortOrder === sortOrder) {
+        return;
+      }
+
+      pushNextCatalogParamsRef.current = true;
+      setSortOrderState(nextSortOrder);
+      logEvent('catalog_sort', { sort: nextSortOrder });
+    },
+    [sortOrder]
+  );
+
+  const categoryCounts = useMemo(() => {
+    return getCatalogCategoryCounts(
+      allServers,
+      { query: normalizedSearchQuery, oauthFilter },
+      categories
+    );
+  }, [allServers, categories, normalizedSearchQuery, oauthFilter]);
+
   const filteredServers = useMemo(() => {
-    return filterCatalogServers(allServers, {
+    const matchingServers = filterCatalogServers(allServers, {
       query: normalizedSearchQuery,
       category,
       oauthFilter,
     });
-  }, [allServers, normalizedSearchQuery, category, oauthFilter]);
+    return sortCatalogServers(matchingServers, sortOrder);
+  }, [allServers, normalizedSearchQuery, category, oauthFilter, sortOrder]);
 
   return {
     allServers,
     filteredServers,
     categories,
+    categoryCounts,
     searchQuery,
     setSearchQuery,
     oauthFilter,
     setOauthFilter,
     category,
     setCategory,
+    sortOrder,
+    setSortOrder,
   };
 };
