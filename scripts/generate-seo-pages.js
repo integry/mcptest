@@ -996,7 +996,7 @@ function main() {
   console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${learnData.articles.length} Learn articles, sitemap.xml, and robots.txt.`);
 }
 
-if (require.main === module) {
+if (require.main === module || process.argv[1] === __filename) {
   main();
 }
 
