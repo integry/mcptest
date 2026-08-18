@@ -9,6 +9,7 @@
   --text-color: #111827;
   --text-muted: #6b7280;
   --text-accent: #374151;
+  --catalog-secondary-text: #4b5563;
   --primary-color: #047857;
   --primary-hover: #065f46;
   --primary-light: #059669;
@@ -50,6 +51,7 @@
   --text-color: #f8fafc;
   --text-muted: #94a3b8;
   --text-accent: #cbd5e1;
+  --catalog-secondary-text: #cbd5e1;
   --primary-color: #36e0aa;
   --primary-hover: #64efc0;
   --primary-light: #8ff5d0;
@@ -163,6 +165,27 @@ a:hover {
   font-size: 0.875rem;
 }
 
+.server-profile-breadcrumb .breadcrumb {
+  --bs-breadcrumb-divider: '\203A';
+}
+
+.server-profile-breadcrumb-parent a {
+  color: var(--text-muted);
+}
+
+.server-profile-breadcrumb-parent a:hover {
+  color: var(--text-color);
+}
+
+.server-profile-breadcrumb .server-profile-breadcrumb-current {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.server-profile-breadcrumb .breadcrumb-item + .breadcrumb-item::before {
+  color: var(--text-muted);
+}
+
 .server-profile-hero {
   position: relative;
   overflow: hidden;
@@ -250,6 +273,10 @@ a:hover {
   flex-direction: column;
   gap: 0.65rem;
   min-width: 190px;
+}
+
+.server-profile-actions .server-profile-action {
+  border-radius: var(--button-radius);
 }
 
 .server-profile-signal-grid {
@@ -347,12 +374,22 @@ a:hover {
   margin: 0;
 }
 
+.server-connection-specs {
+  padding: 0 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
 .server-spec-list > div {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   gap: 1rem;
   padding: 0.8rem 0;
   border-bottom: 1px solid var(--border-color);
+}
+
+.server-connection-specs > div:last-child {
+  border-bottom: 0;
 }
 
 .server-spec-list dt {
@@ -398,6 +435,33 @@ a:hover {
   overflow: hidden;
   color: var(--text-color);
   text-overflow: ellipsis;
+}
+
+.server-endpoint-copy {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0.5rem;
+  border: 0;
+}
+
+.technical-string {
+  font-family: var(--font-family-mono);
+}
+
+.technical-string-url {
+  color: var(--text-accent);
+}
+
+.technical-string-inline {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.3rem;
+  background: var(--card-bg-secondary);
+  color: var(--text-accent);
 }
 
 .server-validation-state {
@@ -3853,10 +3917,10 @@ span.health-indicator.health-indicator-gray {
 }
 
 .catalog-category-option[aria-pressed='true'] {
-  color: var(--primary-color);
+  color: var(--primary-hover);
   border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
   background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .catalog-category-option:focus-visible {
@@ -3947,6 +4011,13 @@ span.health-indicator.health-indicator-gray {
   white-space: nowrap;
 }
 
+.catalog-listing-source-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 0.7rem;
+  stroke-width: 1.5;
+}
+
 a.catalog-listing-source:hover {
   color: var(--primary-color);
   text-decoration: underline;
@@ -3963,6 +4034,7 @@ a.catalog-listing-source:hover {
   display: block;
   overflow: hidden;
   max-width: 100%;
+  color: var(--catalog-secondary-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3984,6 +4056,10 @@ a.catalog-listing-source:hover {
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 600;
+}
+
+.catalog-runtime-status--online {
+  color: var(--success-color);
 }
 
 .catalog-status-dot--online {
@@ -4064,13 +4140,26 @@ button.badge.catalog-metadata-badge--category:focus-visible {
 }
 
 .catalog-report-link {
-  min-width: min(100%, 6.75rem);
-  flex: 1 1 6.75rem;
+  color: var(--catalog-secondary-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  text-underline-offset: 0.18em;
+}
+
+.catalog-report-link:hover {
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+
+.catalog-report-link:focus-visible {
+  border-radius: 0.2rem;
+  outline: 0;
+  box-shadow: var(--focus-ring);
 }
 
 .catalog-test-button.btn-outline-primary {
-  min-width: min(100%, 8.75rem);
-  flex: 1 1 8.75rem;
+  margin-left: auto;
   box-shadow: none;
 }
 
@@ -5486,6 +5575,108 @@ pre.bg-light code {
 }
 
 .release-empty-success { color: var(--success-color); }
+
+.capability-inventory {
+  min-width: 0;
+}
+
+.capability-inventory-heading {
+  margin-bottom: 1rem;
+}
+
+.capability-inventory-heading h2,
+.capability-inventory-heading h3 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+}
+
+.capability-inventory-heading p {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.capability-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.capability-inventory-group {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  background: var(--card-bg-secondary);
+}
+
+.capability-inventory-group h3,
+.capability-inventory-group h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.capability-inventory-status {
+  margin: 0.3rem 0 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.capability-inventory-status-partial { color: var(--warning-color); }
+.capability-inventory-status-unavailable { color: var(--text-muted); }
+
+.capability-inventory-list,
+.capability-argument-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.capability-inventory-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.capability-inventory-list > li {
+  min-width: 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border-color);
+  overflow-wrap: anywhere;
+}
+
+.capability-inventory-list > li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.capability-inventory-list strong,
+.capability-inventory-title,
+.capability-inventory-mime {
+  display: block;
+}
+
+.capability-inventory-title { margin-top: 0.15rem; }
+.capability-inventory-mime { color: var(--text-muted); font-family: var(--font-family-mono); font-size: 0.75rem; }
+.capability-inventory-list p { margin: 0.3rem 0 0; color: var(--text-muted); }
+
+.capability-argument-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.capability-argument-list li {
+  padding: 0.15rem 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.capability-argument-list p { width: 100%; }
+
+@media (max-width: 767.98px) {
+  .capability-inventory-grid { grid-template-columns: 1fr; }
+}
 
 .report-history {
   margin-top: 1rem;

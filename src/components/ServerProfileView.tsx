@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
 import {
   formatCatalogAuth,
+  formatCatalogTimestamp,
   formatCatalogTransport,
   formatProtocolEra,
 } from '../utils/catalogSeo';
+import CapabilitiesProvided from './CapabilitiesProvided';
 import { CatalogServerLogo } from './CatalogServerLogo';
 
 interface ServerProfileViewProps {
@@ -19,7 +21,7 @@ const formatCheckedAt = (checkedAt?: string) => {
   }
 
   const parsed = new Date(checkedAt);
-  return Number.isNaN(parsed.getTime()) ? checkedAt : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime()) ? checkedAt : formatCatalogTimestamp(checkedAt);
 };
 
 const statusLabel = (server: CatalogServer) => {
@@ -83,8 +85,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
     <article className="server-profile">
       <nav aria-label="Breadcrumb" className="server-profile-breadcrumb">
         <ol className="breadcrumb mb-0">
-          <li className="breadcrumb-item"><Link to="/catalog">Server Catalog</Link></li>
-          <li className="breadcrumb-item active" aria-current="page">{server.name}</li>
+          <li className="breadcrumb-item server-profile-breadcrumb-parent">
+            <Link to="/catalog">Server Catalog</Link>
+          </li>
+          <li className="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">
+            {server.name}
+          </li>
         </ol>
       </nav>
 
@@ -103,12 +109,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
 
         <div className="server-profile-actions">
-          <button className="btn btn-primary" type="button" onClick={() => onTestServer(server)}>
+          <button className="btn btn-primary server-profile-action" type="button" onClick={() => onTestServer(server)}>
             <i className="bi bi-play-fill me-1" aria-hidden="true"></i>
             Test in Playground
           </button>
           {server.homepageUrl && (
-            <a className="btn btn-outline-secondary" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
+            <a className="btn btn-outline-secondary server-profile-action" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
               Product site <i className="bi bi-box-arrow-up-right ms-1" aria-hidden="true"></i>
             </a>
           )}
@@ -163,21 +169,21 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               </div>
             </div>
 
-            <dl className="server-spec-list">
+            <dl className="server-spec-list server-connection-specs">
               <div>
                 <dt>Remote endpoint</dt>
-                <dd><code>{server.url}</code></dd>
+                <dd><code className="technical-string technical-string-url">{server.url}</code></dd>
               </div>
               {server.validatedUrl && server.validatedUrl !== server.url && (
                 <div>
                   <dt>Live-validated endpoint</dt>
-                  <dd><code>{server.validatedUrl}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{server.validatedUrl}</code></dd>
                 </div>
               )}
               {server.browserUrl && server.browserUrl !== server.validatedUrl && (
                 <div>
                   <dt>Browser-verified endpoint</dt>
-                  <dd><code>{server.browserUrl}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{server.browserUrl}</code></dd>
                 </div>
               )}
               <div>
@@ -205,11 +211,13 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-endpoint-box">
               <div>
                 <span>Endpoint</span>
-                <code>{server.browserUrl || server.validatedUrl || server.url}</code>
+                <code className="technical-string technical-string-url">
+                  {server.browserUrl || server.validatedUrl || server.url}
+                </code>
               </div>
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-ghost server-endpoint-copy"
                 onClick={() => navigator.clipboard?.writeText(server.browserUrl || server.validatedUrl || server.url)}
                 aria-label={`Copy ${server.name} MCP endpoint`}
               >
@@ -244,6 +252,19 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </aside>
       </div>
 
+      {server.capabilityInventory && (
+        <section className="card server-profile-section" aria-labelledby="server-capabilities-title">
+          <div className="card-body">
+            <CapabilitiesProvided
+              inventory={server.capabilityInventory}
+              serverName={server.name}
+              titleId="server-capabilities-title"
+              titleLevel={2}
+            />
+          </div>
+        </section>
+      )}
+
       <section className="card server-profile-section">
         <div className="card-body">
           <div className="server-section-heading">
@@ -266,13 +287,16 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               {server.requiredHeaders?.map((header) => (
                 <div key={header.name}>
                   <dt>Required header</dt>
-                  <dd><code>{header.name}</code>{header.description ? ` — ${header.description}` : ''}</dd>
+                  <dd>
+                    <code className="technical-string technical-string-inline">{header.name}</code>
+                    {header.description ? ` — ${header.description}` : ''}
+                  </dd>
                 </div>
               ))}
               {server.authorizationServers?.map((issuer) => (
                 <div key={issuer}>
                   <dt>Authorization server</dt>
-                  <dd><code>{issuer}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{issuer}</code></dd>
                 </div>
               ))}
             </dl>

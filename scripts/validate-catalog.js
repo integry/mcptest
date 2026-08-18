@@ -16,6 +16,97 @@ const CLIENT_NAME = 'mcptest-catalog-validator';
 
 const catalogPath = path.join(__dirname, '..', 'src', 'data', 'serverCatalog.json');
 const outputPath = path.join(__dirname, '..', 'src', 'data', 'catalogValidation.json');
+const capabilitiesPath = path.join(__dirname, '..', 'src', 'data', 'catalogCapabilities.json');
+
+let canonicalInventoryPromise;
+function canonicalInventory() {
+  canonicalInventoryPromise ||= import('../src/utils/capabilityInventory.ts');
+  return canonicalInventoryPromise;
+}
+
+function requestDiscoveryPage(client, method, cursor) {
+  return client.request({
+    method,
+    ...(cursor === undefined ? {} : { params: { cursor } }),
+  });
+}
+
+async function paginateDiscovery(client, category, method, timeoutMs) {
+  let values = [];
+  let cursor;
+  let successfulPages = 0;
+  const seen = new Set();
+  try {
+    for (let pageNumber = 0; pageNumber < 64; pageNumber += 1) {
+      const page = await withDiscoveryTimeout(
+        () => requestDiscoveryPage(client, method, cursor), timeoutMs
+      );
+      if (!page || !Array.isArray(page[category])) throw new Error('Malformed discovery page');
+      successfulPages += 1;
+      values.push(...page[category]);
+      cursor = typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : undefined;
+      if (!cursor) return { status: 'complete', values, paginationComplete: true };
+      if (seen.has(cursor)) throw new Error('Repeated discovery cursor');
+      seen.add(cursor);
+    }
+    throw new Error('Discovery page limit reached');
+  } catch (error) {
+    if (successfulPages === 0 && error
+        && (error.code === -32601 || /method not found/i.test(error.message || ''))) {
+      return { status: 'unsupported', values: [], paginationComplete: true };
+    }
+    return {
+      status: successfulPages > 0 ? 'partial' : 'unavailable',
+      values,
+      paginationComplete: false,
+    };
+  }
+}
+
+function withDiscoveryTimeout(run, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(Object.assign(
+      new Error(`Capability discovery timed out after ${timeoutMs}ms`),
+      { code: 'REQUEST_TIMEOUT' }
+    )), timeoutMs);
+    Promise.resolve().then(run).then(
+      value => { clearTimeout(timeout); resolve(value); },
+      error => { clearTimeout(timeout); reject(error); }
+    );
+  });
+}
+
+async function discoverPublicInventory(client, endpoint, timeoutMs) {
+  const calls = {
+    tools: 'tools/list',
+    resources: 'resources/list',
+    resourceTemplates: 'resources/templates/list',
+    prompts: 'prompts/list',
+  };
+  const discovered = {};
+  for (const [category, method] of Object.entries(calls)) {
+    discovered[category] = await paginateDiscovery(client, category, method, timeoutMs);
+  }
+  // Never replace a durable snapshot when any method or page failed.
+  if (Object.values(discovered).some(({ status }) => status === 'partial' || status === 'unavailable')) return undefined;
+  const { createCapabilityInventory, validateCapabilityInventory } = await canonicalInventory();
+  const inventory = createCapabilityInventory({
+    observedAt: new Date(),
+    testedEndpoint: endpoint,
+    route: 'direct',
+    authentication: 'unauthenticated',
+    discovered: Object.fromEntries(Object.entries(discovered).map(
+      ([category, discovery]) => [category, discovery.values]
+    )),
+    statuses: Object.fromEntries(Object.entries(discovered).map(
+      ([category, discovery]) => [category, discovery.status]
+    )),
+    paginationComplete: Object.fromEntries(Object.entries(discovered).map(
+      ([category, discovery]) => [category, discovery.paginationComplete]
+    )),
+  });
+  return validateCapabilityInventory(inventory);
+}
 
 function requireRuntime() {
   if (typeof fetch !== 'function' || typeof AbortController !== 'function') {
@@ -216,6 +307,7 @@ async function probeStreamableEndpoint(
     await client.connect(transport, { timeout: timeoutMs });
     const era = client.getProtocolEra();
     const protocolVersion = client.getNegotiatedProtocolVersion();
+    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
 
     return {
       ...endpoint,
@@ -224,6 +316,7 @@ async function probeStreamableEndpoint(
       authChallenge: false,
       protocolEra: era === 'modern' ? 'stateless' : 'stateful',
       protocolVersion,
+      capabilityInventory,
       statusCode: responses.find(({ status }) => status >= 200 && status < 300)?.status,
       message: `Negotiated ${era === 'modern' ? 'stateless' : 'stateful'} MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
@@ -306,6 +399,7 @@ async function probeSseEndpoint(
     ]);
 
     const protocolVersion = client.getNegotiatedProtocolVersion();
+    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
     return {
       ...endpoint,
       reachable: true,
@@ -313,6 +407,7 @@ async function probeSseEndpoint(
       authChallenge: false,
       protocolEra: 'legacy',
       protocolVersion,
+      capabilityInventory,
       statusCode: responses.find(({ status }) => status >= 200 && status < 300)?.status,
       message: `Negotiated legacy MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
@@ -509,6 +604,9 @@ async function validateSeed(
     result.authorizationServers = authorizationEvidence.authorizationServers;
   }
   if (errorCode) result.errorCode = errorCode;
+  if (successfulProbe?.capabilityInventory) {
+    result.capabilityInventory = successfulProbe.capabilityInventory;
+  }
 
   return result;
 }
@@ -549,12 +647,49 @@ async function mapWithConcurrency(values, concurrency, worker) {
   return results;
 }
 
-function writeResults(results) {
-  fs.writeFileSync(outputPath, `${JSON.stringify(results, null, 2)}\n`, 'utf-8');
+function mergeCapabilitySnapshots(previous, results) {
+  const updated = { ...previous };
+  for (const result of results) {
+    if (result.capabilityInventory) updated[result.serverId] = result.capabilityInventory;
+  }
+  return Object.fromEntries(
+    Object.entries(updated).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+async function validateCapabilitySnapshots(snapshots) {
+  const { validateCapabilityInventory } = await canonicalInventory();
+  return Object.fromEntries(Object.entries(snapshots).map(([serverId, inventory]) => [
+    serverId,
+    validateCapabilityInventory(inventory),
+  ]));
+}
+
+async function writeResults(
+  results,
+  paths = { validation: outputPath, capabilities: capabilitiesPath }
+) {
+  const validationResults = results.map(({ capabilityInventory, ...result }) => result);
+  const previous = fs.existsSync(paths.capabilities)
+    ? JSON.parse(fs.readFileSync(paths.capabilities, 'utf8'))
+    : {};
+  // Validate the complete merged file before either durable output is replaced.
+  const capabilities = await validateCapabilitySnapshots(
+    mergeCapabilitySnapshots(previous, results)
+  );
+  const validationJson = `${JSON.stringify(validationResults, null, 2)}\n`;
+  const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;
+  fs.writeFileSync(paths.validation, validationJson, 'utf-8');
+  fs.writeFileSync(paths.capabilities, capabilitiesJson, 'utf8');
 }
 
 async function main() {
   if (!requireRuntime()) return;
+  if (process.argv.includes('--check-runtime')) {
+    await canonicalInventory();
+    console.log('Catalog validator runtime is ready.');
+    return;
+  }
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
   validateCatalogSeeds(seeds);
@@ -568,7 +703,7 @@ async function main() {
     return result;
   });
 
-  writeResults(results);
+  await writeResults(results);
   console.log(`Catalog validation results written to ${path.relative(process.cwd(), outputPath)}`);
 }
 
@@ -582,11 +717,18 @@ if (require.main === module) {
 module.exports = {
   declaredAuthType,
   detectedAuthType,
+  discoverPublicInventory,
   discoverAuthorizationEvidence,
   endpointVariants,
+  mergeCapabilitySnapshots,
+  paginateDiscovery,
   probeSseEndpoint,
   probeStreamableEndpoint,
+  requestDiscoveryPage,
+  main,
+  validateCapabilitySnapshots,
   validateCatalogSeed,
   validateCatalogSeeds,
   validateSeed,
+  writeResults,
 };

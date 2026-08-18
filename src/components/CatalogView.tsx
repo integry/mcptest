@@ -101,7 +101,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           </div>
 
           <div className="catalog-sort-field">
-            <label className="form-label" htmlFor={`${idPrefix}-catalog-sort`}>
+            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-sort`}>
               Sort
             </label>
             <select
@@ -112,7 +112,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             >
               {SORT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  Sort: {option.label}
                 </option>
               ))}
             </select>

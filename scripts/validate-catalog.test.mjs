@@ -1,14 +1,60 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, it } from 'vitest';
+import { validateCapabilityInventory } from '../src/utils/capabilityInventory';
 import validator from './validate-catalog.js';
 
 const {
   detectedAuthType,
+  discoverPublicInventory,
   endpointVariants,
+  mergeCapabilitySnapshots,
+  paginateDiscovery,
   probeSseEndpoint,
   probeStreamableEndpoint,
   validateCatalogSeed,
   validateSeed,
+  writeResults,
 } = validator;
+
+async function connectedClient(listHandler) {
+  const client = new Client(
+    { name: 'catalog-pagination-test', version: '1.0.0' },
+    { versionNegotiation: { mode: 'legacy' } }
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  serverTransport.onmessage = async (message) => {
+    if (!('method' in message) || !('id' in message)) return;
+    if (message.method === 'initialize') {
+      await serverTransport.send({
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          protocolVersion: '2025-06-18',
+          capabilities: { tools: {}, resources: {}, prompts: {} },
+          serverInfo: { name: 'pagination-test-server', version: '1.0.0' },
+        },
+      });
+      return;
+    }
+    try {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id, result: await listHandler(message.method, message.params),
+      });
+    } catch (error) {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id,
+        error: { code: -32603, message: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  };
+  await serverTransport.start();
+  await client.connect(clientTransport);
+  return client;
+}
 
 function jsonRpcResponse(body, result, options = {}) {
   return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), {
@@ -110,15 +156,27 @@ describe('catalog seed provenance validation', () => {
 });
 
 describe('catalog protocol validation', () => {
+  it('retains a successful capability snapshot through later auth and network failures', () => {
+    const snapshot = { version: 1, observedAt: '2026-08-17T22:00:00.000Z' };
+    const previous = { secure: snapshot };
+    const retained = mergeCapabilitySnapshots(previous, [
+      { serverId: 'secure', status: 'online', errorCode: 'authentication_required' },
+      { serverId: 'offline', status: 'offline', errorCode: 'network_error' },
+    ]);
+
+    expect(retained.secure).toBe(snapshot);
+    expect(retained.secure.observedAt).toBe('2026-08-17T22:00:00.000Z');
+  });
+
   it('negotiates a stateless 2026 Streamable HTTP server', async () => {
     const requests = [];
     const fetch = async (_input, init = {}) => {
       const body = JSON.parse(String(init.body));
       requests.push({ body, headers: new Headers(init.headers) });
-      return jsonRpcResponse(body, {
-        supportedVersions: ['2026-07-28'],
-        capabilities: { tools: {} },
-      });
+      const result = body.method === 'server/discover'
+        ? { supportedVersions: ['2026-07-28'], capabilities: { tools: {} } }
+        : { [body.method === 'resources/templates/list' ? 'resourceTemplates' : body.method.split('/')[0]]: [] };
+      return jsonRpcResponse(body, result);
     };
 
     const result = await probeStreamableEndpoint(
@@ -131,7 +189,9 @@ describe('catalog protocol validation', () => {
       protocolEra: 'stateless',
       protocolVersion: '2026-07-28',
     });
-    expect(requests.map(({ body }) => body.method)).toEqual(['server/discover']);
+    expect(requests.map(({ body }) => body.method)).toEqual([
+      'server/discover', 'tools/list', 'resources/list', 'resources/templates/list', 'prompts/list',
+    ]);
     expect(requests[0].headers.get('mcp-method')).toBe('server/discover');
     expect(requests[0].headers.get('mcp-protocol-version')).toBe('2026-07-28');
   });
@@ -148,11 +208,14 @@ describe('catalog protocol validation', () => {
       }
       if (!('id' in body)) return new Response(null, { status: 202 });
 
-      return jsonRpcResponse(body, {
+      const result = body.method === 'initialize' ? {
         protocolVersion: '2025-06-18',
         capabilities: { tools: {} },
         serverInfo: { name: 'stateful-test-server', version: '1.0.0' },
-      }, {
+      } : {
+        [body.method === 'resources/templates/list' ? 'resourceTemplates' : body.method.split('/')[0]]: [],
+      };
+      return jsonRpcResponse(body, result, {
         headers: body.method === 'initialize'
           ? { 'Mcp-Session-Id': 'catalog-session' }
           : {},
@@ -173,6 +236,10 @@ describe('catalog protocol validation', () => {
       'server/discover',
       'initialize',
       'notifications/initialized',
+      'tools/list',
+      'resources/list',
+      'resources/templates/list',
+      'prompts/list',
     ]);
   });
 
@@ -281,6 +348,13 @@ describe('catalog protocol validation', () => {
             serverInfo: { name: 'legacy-test-server', version: '1.0.0' },
           },
         })}\n\n`));
+      } else if ('id' in body) {
+        const itemKey = body.method === 'resources/templates/list'
+          ? 'resourceTemplates'
+          : body.method.split('/')[0];
+        streamController.enqueue(encoder.encode(`event: message\ndata: ${JSON.stringify({
+          jsonrpc: '2.0', id: body.id, result: { [itemKey]: [] },
+        })}\n\n`));
       }
       return new Response(null, { status: 202 });
     };
@@ -296,7 +370,10 @@ describe('catalog protocol validation', () => {
       protocolEra: 'legacy',
       protocolVersion: '2025-06-18',
     });
-    expect(methods).toEqual(['initialize', 'notifications/initialized']);
+    expect(methods).toEqual([
+      'initialize', 'notifications/initialized', 'tools/list', 'resources/list',
+      'resources/templates/list', 'prompts/list',
+    ]);
   });
 
   it('does not record a MIME-only event stream as legacy MCP', async () => {
@@ -356,5 +433,196 @@ describe('catalog protocol validation', () => {
       [{ alive: true, authChallenge: false }],
       { oauthMetadata: true }
     )).toBe('none');
+  });
+});
+
+describe('catalog capability pagination and persistence', () => {
+  it('runs the actual catalog package command through its TypeScript-aware entry point', () => {
+    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const output = execFileSync(
+      npm,
+      ['run', 'validate-catalog', '--', '--check-runtime'],
+      { cwd: path.join(import.meta.dirname, '..'), encoding: 'utf8' }
+    );
+
+    expect(output).toContain('Catalog validator runtime is ready.');
+  });
+
+  it('uses actual Client transport behavior for multi-page success', async () => {
+    const requests = [];
+    const client = await connectedClient((method, params) => {
+      requests.push({ method, params });
+      if (method !== 'tools/list') throw new Error(`Unexpected method ${method}`);
+      return params?.cursor === 'tools-2'
+        ? { tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }] }
+        : {
+          tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+          nextCursor: 'tools-2',
+        };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'complete', paginationComplete: true });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+      expect(requests).toEqual([
+        { method: 'tools/list', params: undefined },
+        { method: 'tools/list', params: { cursor: 'tools-2' } },
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('retains actual Client pages and marks a repeated cursor partial', async () => {
+    const client = await connectedClient((_method, params) => params?.cursor
+      ? {
+        tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      }
+      : {
+        tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('retains page one with partial status when actual Client page two fails', async () => {
+    const client = await connectedClient((_method, params) => {
+      if (params?.cursor) throw new Error('page two unavailable');
+      return {
+        tools: [{ name: 'retained_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['retained_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('marks a page-two method-not-found partial after an empty successful first page', async () => {
+    const client = await connectedClient((_method, params) => {
+      if (params?.cursor) throw new Error('Method not found');
+      return { tools: [], nextCursor: 'tools-2' };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toEqual({ status: 'partial', values: [], paginationComplete: false });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('writes only canonical sanitized inventories and preserves the last snapshot on rejection', async () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted catalog secret';
+    const rawPages = {
+      'tools/list': {
+        tools: [{
+          name: 'safe_tool',
+          description: `client_secret="${quotedSecret}" id_token=beta private_key=gamma passwd=delta ${githubToken}`,
+          inputSchema: { type: 'object' },
+          unknownToolField: 'discard me',
+        }, { name: githubToken }],
+      },
+      'resources/list': {
+        resources: [
+          { name: '<script>alert(1)</script>', mimeType: 'text/html' },
+          { name: stripeKey },
+          { name: 'Safe resource', mimeType: 'definitely not a MIME type', unknown: true },
+        ],
+      },
+      'resources/templates/list': {
+        resourceTemplates: [
+          { name: '<img src=x onerror=alert(1)>', mimeType: 'text/plain' },
+          { name: 'Safe template', mimeType: 'application/json', uriTemplate: 'secret://tenant/{id}' },
+        ],
+      },
+      'prompts/list': { prompts: [{ name: 'safe_prompt', unknownPromptField: true }] },
+    };
+    const inventory = await discoverPublicInventory(
+      { request: async ({ method }) => rawPages[method] },
+      `https://example.com/mcp?access_token=secret&sig=${stripeKey}`,
+      1_000
+    );
+
+    expect(inventory).toBeDefined();
+    expect(inventory.provenance.testedEndpoint).toBe('https://example.com/mcp');
+    expect(inventory.tools.items[0].description).toBe(
+      'client_secret=[REDACTED] id_token=[REDACTED] private_key=[REDACTED] passwd=[REDACTED] [REDACTED]'
+    );
+    expect(inventory.resources.items).toEqual([
+      { name: '[REDACTED]' },
+      { name: 'Safe resource' },
+    ]);
+    expect(inventory.resourceTemplates.items).toEqual([
+      { name: 'Safe template', mimeType: 'application/json' },
+    ]);
+    expect(JSON.stringify(inventory)).not.toMatch(/<script|onerror|unknownToolField|unknownPromptField|tenant/);
+    expect(validateCapabilityInventory(inventory)).toEqual(inventory);
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-'));
+    const capabilities = path.join(directory, 'catalogCapabilities.json');
+    const validation = path.join(directory, 'catalogValidation.json');
+    fs.writeFileSync(capabilities, '{}\n');
+    try {
+      await writeResults(
+        [{ serverId: 'safe', status: 'online', capabilityInventory: inventory }],
+        { capabilities, validation }
+      );
+      const written = JSON.parse(fs.readFileSync(capabilities, 'utf8'));
+      expect(validateCapabilityInventory(written.safe)).toEqual(written.safe);
+      const persisted = JSON.stringify(written);
+      for (const secret of [githubToken, stripeKey, quotedSecret]) {
+        expect(persisted).not.toContain(secret);
+      }
+
+      const lastSuccessfulSnapshot = fs.readFileSync(capabilities, 'utf8');
+      await expect(writeResults(
+        [{
+          serverId: 'unsafe', status: 'online',
+          capabilityInventory: { ...inventory, unknownInventoryField: true },
+        }],
+        { capabilities, validation }
+      )).rejects.toThrow('unsafe or non-canonical');
+      expect(fs.readFileSync(capabilities, 'utf8')).toBe(lastSuccessfulSnapshot);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('deterministically trims a successful aggregate inventory instead of dropping it', async () => {
+    const description = 'x'.repeat(600);
+    const items = (prefix) => Array.from({ length: 100 }, (_, index) => ({
+      name: `${prefix}_${String(index).padStart(3, '0')}`,
+      description,
+    }));
+    const pages = {
+      'tools/list': { tools: items('tool') },
+      'resources/list': { resources: items('resource') },
+      'resources/templates/list': { resourceTemplates: items('template') },
+      'prompts/list': { prompts: items('prompt') },
+    };
+    const client = { request: async ({ method }) => pages[method] };
+
+    const first = await discoverPublicInventory(client, 'https://example.com/mcp', 1_000);
+    const second = await discoverPublicInventory(client, 'https://example.com/mcp', 1_000);
+
+    expect(first).toBeDefined();
+    expect(new TextEncoder().encode(JSON.stringify(first)).length).toBeLessThanOrEqual(96_000);
+    expect(first.tools.observedCount).toBe(100);
+    expect(first.tools.retainedCount + first.tools.omittedCount).toBe(100);
+    expect(Object.values(first).filter((value) => value?.status === 'partial').length).toBeGreaterThan(0);
+    expect({ ...second, observedAt: first.observedAt }).toEqual(first);
   });
 });

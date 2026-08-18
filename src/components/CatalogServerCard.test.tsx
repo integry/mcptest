@@ -46,6 +46,14 @@ describe('CatalogServerCard presentation', () => {
       container.querySelectorAll<HTMLElement>('.catalog-metadata-badge')
     );
     const reportLink = container.querySelector<HTMLAnchorElement>('.catalog-report-link');
+    const listingSourceIcon = container.querySelector<SVGElement>(
+      '.catalog-listing-source-icon'
+    );
+    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const listingSourceIconRule =
+      catalogCss.match(/\.catalog-listing-source-icon\s*\{([^}]*)\}/)?.[1] ?? '';
+    const onlineStatusRule =
+      catalogCss.match(/\.catalog-runtime-status--online\s*\{([^}]*)\}/)?.[1] ?? '';
     const badges = container.querySelector<HTMLElement>('.catalog-server-badges');
     const buttons = container.querySelectorAll<HTMLButtonElement>('button');
 
@@ -63,13 +71,14 @@ describe('CatalogServerCard presentation', () => {
       'Browser ready'
     );
     expect(container.querySelector('.catalog-status-dot--online')).not.toBeNull();
+    expect(container.querySelector('.catalog-runtime-status--online')).not.toBeNull();
     expect(container.querySelector('.catalog-refresh')).toBeNull();
     expect(container.querySelector('.catalog-server-footer')?.classList.contains('mt-auto')).toBe(
       true
     );
     expect(container.querySelector('.catalog-server-footer .catalog-server-badges')).not.toBeNull();
     expect(container.querySelector('.catalog-server-footer .catalog-card-actions')).not.toBeNull();
-    expect(reportLink?.classList.contains('btn-primary')).toBe(true);
+    expect(reportLink?.classList.contains('btn')).toBe(false);
     expect(reportLink?.getAttribute('href')).toBe('/servers/example/');
     expect(badges?.tagName).toBe('DIV');
     expect(container.querySelector('.catalog-server-title')?.classList).not.toContain('stretched-link');
@@ -78,8 +87,11 @@ describe('CatalogServerCard presentation', () => {
     );
     expect(container.querySelector('.catalog-listing-source')?.textContent).toContain('Publisher');
     expect(container.querySelector('.catalog-listing-source')?.textContent).not.toContain('Verified');
+    expect(listingSourceIcon?.getAttribute('stroke-width')).toBe('1.5');
+    expect(listingSourceIconRule).toMatch(/stroke-width:\s*1\.5;/);
+    expect(onlineStatusRule).toMatch(/color:\s*var\(--success-color\);/);
     expect(container.querySelector('.catalog-runtime-status')?.textContent).toBe(
-      'Online when last tested'
+      'Online'
     );
     expect(container.querySelector('a a, a button, button a')).toBeNull();
     expect(buttons).toHaveLength(2);
@@ -105,10 +117,15 @@ describe('CatalogServerCard presentation', () => {
     const container = document.createElement('div');
     container.innerHTML = markup;
     const endpoint = container.querySelector<HTMLElement>('.catalog-server-url');
+    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const endpointRule =
+      catalogCss.match(/\.catalog-server-url\s*\{([^}]*)\}/)?.[1] ?? '';
 
     expect(endpoint?.textContent).toBe('api.enterprise-production-environment.company.com');
     expect(endpoint?.title).toBe(longUrl);
     expect(endpoint?.classList).toContain('text-truncate');
+    expect(endpoint?.classList).not.toContain('text-muted');
+    expect(endpointRule).toMatch(/color:\s*var\(--catalog-secondary-text\);/);
   });
 
   it('keeps a long title and runtime status within card bounds at 1024px', () => {

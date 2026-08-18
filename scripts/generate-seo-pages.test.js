@@ -2,8 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
 import learnData from '../src/data/learnArticles.json';
+import catalogSeeds from '../src/data/serverCatalog.json';
+import catalogValidation from '../src/data/catalogValidation.json';
+import catalogCapabilities from '../src/data/catalogCapabilities.json';
+import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 
-const { renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml } = seoGenerator;
+const {
+  mergeCatalogServers, renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml,
+  validateCapabilitySnapshots,
+} = seoGenerator;
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
 function catalogServer(url, declaredTransport) {
@@ -82,6 +89,169 @@ describe('generated server report Playground links', () => {
 });
 
 describe('generated page metadata', () => {
+  it('renders observed catalog capability names and descriptions as literal server HTML', () => {
+    const server = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ capabilityInventory }) => capabilityInventory?.tools.items.some(
+      ({ description }) => description
+    ));
+    const observedTool = server?.capabilityInventory?.tools.items.find(({ description }) => description);
+
+    expect(server).toBeDefined();
+    expect(observedTool).toBeDefined();
+    const html = renderServerHtml(indexHtml, server);
+    expect(html).toContain(`<strong>${observedTool.name}</strong>`);
+    expect(html).toContain(`<p>${observedTool.description}</p>`);
+  });
+
+  it('renders escaped literal capabilities and only aggregate inventory counts in JSON-LD', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.checkedAt = '2026-08-18T00:32:48';
+    const section = (items) => ({
+      status: 'complete', observedCount: items.length, retainedCount: items.length,
+      omittedCount: 0, paginationComplete: true, items,
+    });
+    server.capabilityInventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://example.com/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: section([{
+        name: '<script>alert(1)</script>',
+        description: 'safe & useful',
+        input: [{ name: 'libraryId', type: 'string', required: true }],
+      }]),
+      resources: section([{ name: 'Records' }]),
+      resourceTemplates: section([{ name: 'Record template' }]),
+      prompts: section([{ name: 'summarize' }]),
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('Tools provided by Example Server');
+    expect(html).toContain('Resources provided by Example Server');
+    expect(html).toContain('Resource templates provided by Example Server');
+    expect(html).toContain('Prompts provided by Example Server');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('Aug 18, 2026 at 12:32 AM');
+    expect(html).not.toContain('<dd>2026-08-18T00:32:48</dd>');
+    expect(html).toContain('server-spec-list server-connection-specs');
+    expect(html).toContain('<code class="technical-string technical-string-url technical-string-inline">https://example.com/mcp</code>');
+    expect(html).toContain('<code class="technical-string technical-string-inline">libraryId</code>');
+    expect(html).toContain('server-profile-breadcrumb-parent');
+    expect(html).toContain('server-profile-breadcrumb-current');
+    expect(html).toContain('"name":"Tools observed","value":1');
+    const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
+    expect(structuredData).not.toContain('alert(1)');
+  });
+
+  it('keeps standalone and quoted credentials out of generated static HTML', () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted static secret';
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: `https://example.com/mcp?sig=${stripeKey}`,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'safe_tool',
+          description: `Use ${githubToken}; client_secret='${quotedSecret}'`,
+        }],
+        resources: [{ name: stripeKey }],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('[REDACTED]');
+    for (const secret of [githubToken, stripeKey, quotedSecret]) {
+      expect(html).not.toContain(secret);
+    }
+
+    const unsafeEndpointInventory = structuredClone(server.capabilityInventory);
+    unsafeEndpointInventory.provenance.testedEndpoint = `https://example.com/mcp?label=${githubToken}`;
+    expect(() => validateCapabilitySnapshots(
+      { 'example-server': unsafeEndpointInventory },
+      [server]
+    )).toThrow('inventory endpoint does not match its catalog origin');
+  });
+
+  it('accepts canonical inventories created from case-distinct argument names', () => {
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: 'https://example.com/mcp',
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'case_distinct_arguments',
+          inputSchema: {
+            properties: {
+              Foo: { type: 'string' },
+              foo: { type: 'number' },
+            },
+          },
+        }],
+        resources: [],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    expect(inventory.tools.items[0].input).toHaveLength(1);
+    expect(() => validateCapabilitySnapshots(
+      { 'example-server': inventory },
+      [catalogServer('https://example.com/mcp', 'streamable-http')]
+    )).not.toThrow();
+  });
+
+  it('distinguishes incomplete discovery from completed sanitized and bounded inventories', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.capabilityInventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://example.com/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: {
+        status: 'partial', observedCount: 1, retainedCount: 1,
+        omittedCount: 0, paginationComplete: true, items: [{ name: 'search' }],
+      },
+      resources: {
+        status: 'partial', observedCount: 2, retainedCount: 1,
+        omittedCount: 1, paginationComplete: true, items: [{ name: 'Public records' }],
+      },
+      resourceTemplates: {
+        status: 'partial', observedCount: 1, retainedCount: 1,
+        omittedCount: 0, paginationComplete: false, items: [{ name: 'Record template' }],
+      },
+      prompts: {
+        status: 'complete', observedCount: 0, retainedCount: 0,
+        omittedCount: 0, paginationComplete: true, items: [],
+      },
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain(
+      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
+    );
+    expect(html).toContain(
+      'Discovery completed; bounded inventory: 1 retained of 2 observed; 1 omitted.'
+    );
+    expect(html).toContain(
+      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
+    );
+    expect(html.match(/Partial discovery:/g)).toHaveLength(1);
+  });
+
   it('uses the absolute local logo in social metadata and static profile markup', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     const html = renderServerHtml(indexHtml, server);

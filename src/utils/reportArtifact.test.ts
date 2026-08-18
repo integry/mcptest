@@ -16,6 +16,7 @@ import {
   validatePublicReport,
 } from './reportArtifact';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
+import { createCapabilityInventory } from './capabilityInventory';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
@@ -371,6 +372,111 @@ const expandedPublicArtifact = (): Record<string, any> => ({
 });
 
 describe('versioned public report artifacts', () => {
+  it('persists the optional canonical inventory in JSON and semantic Markdown', () => {
+    const report = publicReport();
+    report.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: report.serverUrl,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'unsupported', prompts: 'complete' },
+      discovered: {
+        tools: [{ name: 'search_records', description: 'Search records' }],
+        resources: [{ name: 'Records', uri: 'private://tenant/records' }],
+        prompts: [{ name: 'summarize' }],
+      },
+    });
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.capabilityInventory?.tools.items[0].name).toBe('search_records');
+    expect(json).toContain('"capabilityInventory"');
+    expect(json).not.toContain('private://tenant/records');
+    expect(markdown).toContain('## Capabilities provided');
+    expect(markdown).toContain('### Resource templates');
+    expect(markdown).toContain('This discovery method is unsupported.');
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+
+    const reportWithUnknownSectionField = JSON.parse(json);
+    reportWithUnknownSectionField.capabilityInventory.tools.rawUri = 'private://tenant/account';
+    expect(validatePublishedSchema(reportWithUnknownSectionField)).toBe(false);
+
+    const unsafe = structuredClone(artifact);
+    unsafe.capabilityInventory!.tools.items[0].description = 'Open private://tenant/account';
+    expect(safeParsePublicReport(unsafe).success).toBe(false);
+  });
+
+  it('keeps standalone and quoted credentials out of inventory JSON and Markdown', () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted report secret';
+    const report = publicReport();
+    report.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: `${report.serverUrl}&sig=${stripeKey}`,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'safe_tool',
+          description: `Use ${githubToken}; client_secret="${quotedSecret}"`,
+          inputSchema: { properties: { [stripeKey]: { type: 'string' } } },
+        }],
+        resources: [{ name: stripeKey }],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const outputs = [
+      serializePublicReportJson(artifact),
+      serializePublicReportMarkdown(artifact),
+    ];
+    for (const output of outputs) {
+      expect(output).toContain('REDACTED');
+      for (const secret of [githubToken, stripeKey, quotedSecret]) {
+        expect(output).not.toContain(secret);
+      }
+    }
+  });
+
+  it('describes Markdown inventory completeness using pagination and omission metadata', () => {
+    const report = publicReport();
+    report.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: report.serverUrl,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: {
+        tools: 'complete', resources: 'complete', resourceTemplates: 'partial', prompts: 'complete',
+      },
+      paginationComplete: { resourceTemplates: false },
+      discovered: {
+        tools: [{ name: 'search_records', description: 'Use client_secret=not-public' }],
+        resources: Array.from({ length: 101 }, (_, index) => ({ name: `Resource ${index}` })),
+        resourceTemplates: [{ name: 'Record template' }],
+        prompts: [],
+      },
+    });
+
+    const markdown = serializePublicReportMarkdown(createPublicReport(report, FIXED_OPTIONS));
+
+    expect(markdown).toContain(
+      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
+    );
+    expect(markdown).toContain(
+      'Discovery completed; bounded inventory: 100 retained of 101 observed; 1 omitted.'
+    );
+    expect(markdown).toContain(
+      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
+    );
+    expect(markdown.match(/Partial discovery:/g)).toHaveLength(1);
+  });
+
   it.each(Object.entries(GOLDEN_REPORTS))('matches the %s JSON and Markdown golden', (name, makeReport) => {
     const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
     expect({
