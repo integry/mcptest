@@ -49,9 +49,11 @@ function validateSvg(contents) {
       for (const element of document.querySelectorAll('*')) {
         for (const attribute of element.attributes) {
           const value = attribute.value.trim();
+          if (containsDataUrl(value)) hasEmbeddedDataResource = true;
+
           if (['href', 'src'].includes(attribute.localName.toLowerCase())) {
             if (value.startsWith('#')) continue;
-            if (/^data:/i.test(value)) hasEmbeddedDataResource = true;
+            if (containsDataUrl(value)) hasEmbeddedDataResource = true;
             else hasExternalResource = true;
           }
 
@@ -80,6 +82,10 @@ function validateSvg(contents) {
     errors.push('must contain an SVG root with a viewBox');
   }
   return errors;
+}
+
+function containsDataUrl(value) {
+  return /(?:^|[^a-z0-9+.-])data:/i.test(value);
 }
 
 function containsExternalCssResource(value) {
