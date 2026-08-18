@@ -365,7 +365,8 @@ export const useConnection = (
     setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
     urlToConnect?: string, // Optional URL parameter
     forceUseProxy?: boolean, // Optional proxy override
-    protocolEraHint?: 'stateless' | 'stateful' | 'legacy'
+    protocolEraHint?: 'stateless' | 'stateful' | 'legacy',
+    preferredTransport?: TransportType
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
@@ -515,7 +516,8 @@ export const useConnection = (
         requestHeaders,
         false,
         protocolEraHint,
-        observeOAuthRetryRequest('direct')
+        observeOAuthRetryRequest('direct'),
+        ...(preferredTransport ? [preferredTransport] : [])
       );
     };
 
@@ -553,7 +555,8 @@ export const useConnection = (
         targetHeaders,
         true,
         protocolEraHint,
-        observeOAuthRetryRequest('proxy')
+        observeOAuthRetryRequest('proxy'),
+        ...(preferredTransport ? [preferredTransport] : [])
       );
     };
 

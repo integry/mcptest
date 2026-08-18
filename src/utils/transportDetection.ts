@@ -458,7 +458,10 @@ const siblingEndpoint = (value: URL, fromSegment: string, toSegment: string): UR
   return sibling;
 };
 
-const directCandidates = (endpoint: URL): TransportCandidate[] => {
+const directCandidates = (
+  endpoint: URL,
+  preferredTransport?: TransportType
+): TransportCandidate[] => {
   const candidates: TransportCandidate[] = [];
   const seen = new Set<string>();
   const add = (url: URL, transportType: TransportType) => {
@@ -473,6 +476,10 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
   const normalizedPath = endpoint.pathname.replace(/\/+$/, '');
 
   const streamableHttpOnly = isAuthoritativeStreamableHttpOnlyProvider(endpoint.toString());
+
+  // Catalog evidence can definitively contradict a conventional path suffix.
+  // Try that exact endpoint/transport first, while retaining ordinary fallbacks.
+  if (preferredTransport) add(endpoint, preferredTransport);
 
   if (normalizedPath.endsWith('/sse')) {
     const httpSibling = siblingEndpoint(endpoint, 'sse', 'mcp');
@@ -518,10 +525,11 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
  */
 export const getTransportCandidates = (
   serverUrl: string,
-  usesProxy = false
+  usesProxy = false,
+  preferredTransport?: TransportType
 ): TransportCandidate[] => {
   const outerUrl = new URL(serverUrl);
-  if (!usesProxy) return directCandidates(outerUrl);
+  if (!usesProxy) return directCandidates(outerUrl, preferredTransport);
 
   const targetValue = outerUrl.searchParams.get('target');
   if (!targetValue) {
@@ -529,7 +537,7 @@ export const getTransportCandidates = (
   }
 
   const targetUrl = new URL(targetValue);
-  return directCandidates(targetUrl).map((candidate) => {
+  return directCandidates(targetUrl, preferredTransport).map((candidate) => {
     const proxyUrl = new URL(outerUrl);
     proxyUrl.searchParams.set('target', candidate.url);
     return { ...candidate, url: proxyUrl.toString() };
@@ -624,9 +632,10 @@ export async function attemptParallelConnections(
   requestHeaders?: HeadersInit,
   usesProxy = false,
   protocolEraHint?: 'stateless' | 'stateful' | 'legacy',
-  onRequest?: (request: ObservedTransportRequest) => void
+  onRequest?: (request: ObservedTransportRequest) => void,
+  preferredTransport?: TransportType
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
-  const candidates = getTransportCandidates(serverUrl, usesProxy);
+  const candidates = getTransportCandidates(serverUrl, usesProxy, preferredTransport);
   const clients: Client[] = [];
   const transportOptionsFor = (
     candidate: TransportCandidate,

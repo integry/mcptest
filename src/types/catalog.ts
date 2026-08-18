@@ -78,6 +78,13 @@ export interface CatalogRequiredHeader {
   name: string;
   /** Short setup guidance that is safe to render publicly. */
   description?: string;
+  /**
+   * Complete publisher-documented header value, written with exactly one named
+   * credential placeholder such as `Bearer <SERVICE_TOKEN>` or
+   * `Token token=<SERVICE_TOKEN>`. Generated setups reproduce this value
+   * verbatim, so it must never contain a real credential.
+   */
+  valueTemplate?: string;
   /** Whether the header must be supplied for a successful MCP connection. */
   required?: boolean;
   /** Whether the value is a credential and must never be stored or rendered. */
@@ -91,6 +98,52 @@ export interface CatalogAlternativeEndpoint {
   authType?: CatalogAuthType;
   /** Public-safe explanation of when a client should use this endpoint. */
   description: string;
+}
+
+/** How an OAuth client obtains registration credentials for a hosted server. */
+export type CatalogOAuthRegistrationMode =
+  | 'automatic'
+  | 'pre-registered-required'
+  | 'unavailable-or-use-alternative';
+
+/** MCP clients whose publisher-documented OAuth callbacks can be cataloged. */
+export type CatalogOAuthClientId = 'claude-code' | 'codex-cli' | 'cursor' | 'vs-code';
+
+export interface CatalogOAuthCredentialRequirement {
+  /** Whether the client must receive this value before it can start OAuth. */
+  required: boolean;
+  /** Public environment-variable name used in generated setup; never the credential value. */
+  environmentVariable?: string;
+}
+
+export interface CatalogOAuthCallbackRequirement {
+  /** Whether the OAuth app must have a callback registered before setup. */
+  required: boolean;
+  /** Exact publisher-documented redirect URLs, grouped by client. */
+  redirectUrls?: Partial<Record<CatalogOAuthClientId, string[]>>;
+}
+
+export interface CatalogOAuthMcpRemoteSetup {
+  /** OAuth resource passed to the publisher-documented mcp-remote bridge. */
+  resourceUrl: string;
+  /** Exact loopback callback URL used by the publisher-documented bridge. */
+  callbackUrl: string;
+  /** Static loopback port used by mcp-remote for the registered callback. */
+  callbackPort: number;
+}
+
+/** Publisher evidence that setup generators consume without parsing prose caveats. */
+export interface CatalogOAuthRegistrationEvidence {
+  mode: CatalogOAuthRegistrationMode;
+  clientId: CatalogOAuthCredentialRequirement;
+  clientSecret: CatalogOAuthCredentialRequirement;
+  callback: CatalogOAuthCallbackRequirement;
+  /** Credential method preferred when automatic OAuth registration is unavailable. */
+  alternativeAuthType?: CatalogAuthType;
+  /** Publisher-documented compatibility bridge for clients without native static OAuth. */
+  codexMcpRemote?: CatalogOAuthMcpRemoteSetup;
+  /** HTTPS publisher page supporting these registration requirements. */
+  evidenceUrl: string;
 }
 
 /**
@@ -126,6 +179,8 @@ export interface CatalogServerSeed {
   authType?: CatalogAuthType;
   /** Additional publisher-supported credential methods; the primary method remains recommended. */
   alternativeAuthTypes?: CatalogAuthType[];
+  /** Typed publisher evidence for OAuth client registration and callback requirements. */
+  oauthRegistration?: CatalogOAuthRegistrationEvidence;
   /** Non-secret header requirements documented by the server publisher. */
   requiredHeaders?: CatalogRequiredHeader[];
   /** Publisher-documented regional or authentication-specific endpoint alternatives. */

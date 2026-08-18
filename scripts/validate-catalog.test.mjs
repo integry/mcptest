@@ -4,6 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, it } from 'vitest';
+import catalogSeeds from '../src/data/serverCatalog.json';
 import { validateCapabilityInventory } from '../src/utils/capabilityInventory';
 import validator from './validate-catalog.js';
 
@@ -165,6 +166,189 @@ describe('catalog seed provenance validation', () => {
     ],
   ])('rejects invalid provenance: %s', (seed, message) => {
     expect(() => validateCatalogSeed(seed)).toThrow(message);
+  });
+
+  it('accepts complete header value templates with one named placeholder', () => {
+    const requiredHeaders = [
+      { name: 'Authorization', valueTemplate: 'ApiKey <SERVICE_KEY>', required: true, secret: true },
+      { name: 'X-Service-Key', valueTemplate: 'key=<SERVICE_KEY>; version=2', secret: true },
+      { name: 'X-Account-Region', valueTemplate: '<ACCOUNT_REGION>' },
+      { name: 'X-Legacy', description: 'Prose-only metadata stays valid catalog data' },
+    ];
+    expect(validateCatalogSeed({
+      id: 'header-server',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders,
+    }).requiredHeaders).toEqual(requiredHeaders);
+  });
+
+  it.each([
+    ['a CRLF injection', 'ApiKey <SERVICE_KEY>\r\nX-Injected: 1'],
+    ['a control character', 'ApiKey <SERVICE_KEY>\u0007'],
+    ['two placeholders', 'ApiKey <SERVICE_KEY> <SERVICE_SECRET>'],
+    ['no placeholder', 'ApiKey static-value'],
+    ['an unnamed placeholder', 'ApiKey <>'],
+    ['a lowercase placeholder', 'ApiKey <service_key>'],
+    ['an unbalanced bracket', 'ApiKey <SERVICE_KEY> >'],
+    ['surrounding whitespace', ' ApiKey <SERVICE_KEY> '],
+    ['a non-string value', 42],
+  ])('rejects a header value template with %s', (_case, valueTemplate) => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-header',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: [{ name: 'Authorization', valueTemplate, required: true, secret: true }],
+    })).toThrow('must be the complete header value with exactly one <NAMED_PLACEHOLDER>');
+  });
+
+  it('rejects malformed required header entries', () => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-header-name',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: [{ name: 'Bad Header', valueTemplate: '<SERVICE_KEY>' }],
+    })).toThrow('requiredHeaders entries need a valid HTTP header name');
+
+    expect(() => validateCatalogSeed({
+      id: 'bad-header-shape',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: { name: 'Authorization' },
+    })).toThrow('requiredHeaders must be an array');
+  });
+
+  it('validates typed OAuth registration evidence and its alternative auth link', () => {
+    const registration = {
+      mode: 'pre-registered-required',
+      clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
+      clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
+      callback: {
+        required: true,
+        redirectUrls: { 'vs-code': ['http://127.0.0.1:33418/'] },
+      },
+      evidenceUrl: 'https://example.com/oauth-registration',
+    };
+    expect(validateCatalogSeed({
+      id: 'oauth-server', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      oauthRegistration: registration,
+    }).oauthRegistration).toEqual(registration);
+
+    expect(() => validateCatalogSeed({
+      id: 'bad-callback', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      oauthRegistration: {
+        ...registration,
+        callback: { required: true, redirectUrls: { cursor: ['not-a-url'] } },
+      },
+    })).toThrow('OAuth callback URLs must be absolute and credential-free');
+
+    expect(() => validateCatalogSeed({
+      id: 'missing-alternative', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      alternativeAuthTypes: ['api-token'],
+      oauthRegistration: {
+        ...registration,
+        mode: 'unavailable-or-use-alternative',
+        alternativeAuthType: 'api-key',
+      },
+    })).toThrow('requires a cataloged alternativeAuthType');
+  });
+
+  it.each([
+    ['wrong host', 'http://127.0.0.1:8080/callback'],
+    ['IPv6 host', 'http://[::1]:8080/callback'],
+    ['alternate path', 'http://localhost:8080/oauth/callback'],
+    ['query string', 'http://localhost:8080/callback?source=test'],
+    ['fragment', 'http://localhost:8080/callback#test'],
+    ['credentials', 'http://user:pass@localhost:8080/callback'],
+    ['implicit port', 'http://localhost/callback'],
+    ['default port', 'http://localhost:80/callback'],
+  ])('rejects Claude Code callback evidence with a %s', (_case, callbackUrl) => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-claude-callback',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: {
+          required: true,
+          redirectUrls: { 'claude-code': [callbackUrl] },
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow(/Claude Code callback URLs must match|absolute and credential-free/);
+  });
+
+  it.each([
+    ['wrong host', 'http://127.0.0.1:3334/oauth/callback'],
+    ['IPv6 host', 'http://[::1]:3334/oauth/callback'],
+    ['wrong path', 'http://localhost:3334/wrong-path'],
+    ['query string', 'http://localhost:3334/oauth/callback?source=test'],
+    ['fragment', 'http://localhost:3334/oauth/callback#test'],
+    ['credentials', 'http://user:pass@localhost:3334/oauth/callback'],
+    ['implicit port', 'http://localhost/oauth/callback'],
+    ['default port', 'http://localhost:80/oauth/callback'],
+  ])('rejects matching Codex redirect and bridge callbacks with a %s', (_case, callbackUrl) => {
+    const callbackPort = callbackUrl.includes(':80/') ? 80 : 3334;
+    expect(() => validateCatalogSeed({
+      id: 'bad-codex-callback',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: {
+          required: true,
+          redirectUrls: { 'codex-cli': [callbackUrl] },
+        },
+        codexMcpRemote: {
+          resourceUrl: 'https://example.com',
+          callbackUrl,
+          callbackPort,
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow(/Codex mcp-remote callback URLs must match|absolute and credential-free/);
+  });
+
+  it('keeps the Codex callback port consistent with the exact callback URL', () => {
+    const callbackUrl = 'http://localhost:3334/oauth/callback';
+    expect(() => validateCatalogSeed({
+      id: 'bad-codex-port',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: { required: true, redirectUrls: { 'codex-cli': [callbackUrl] } },
+        codexMcpRemote: {
+          resourceUrl: 'https://example.com',
+          callbackUrl,
+          callbackPort: 4444,
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow('callbackPort must match callbackUrl');
+  });
+
+  it('accepts the production Asana and PagerDuty OAuth registration evidence', () => {
+    for (const serverId of ['asana', 'pagerduty']) {
+      const seed = catalogSeeds.find(({ id }) => id === serverId);
+      expect(seed).toBeDefined();
+      expect(validateCatalogSeed(seed).oauthRegistration).toBeDefined();
+    }
+    const pagerduty = catalogSeeds.find(({ id }) => id === 'pagerduty');
+    expect(pagerduty.oauthRegistration).toMatchObject({
+      clientId: { required: false },
+      clientSecret: { required: false },
+      callback: { required: false, redirectUrls: {} },
+      alternativeAuthType: 'api-token',
+    });
   });
 });
 
