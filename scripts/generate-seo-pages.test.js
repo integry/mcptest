@@ -108,6 +108,21 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('<unsafe>');
     expect(html).toContain('Canonical catalog endpoint'.toLowerCase());
     expect(html).toContain('client will request authorization');
+    expect(html).toContain('After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.');
+    expect(html).not.toContain('claude mcp login');
+  });
+
+  it('renders Claude authentication options before the server name and URL', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.id = 'private-data';
+    server.authType = 'bearer-token';
+    server.declaredAuthType = 'bearer-token';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain(
+      `claude mcp add --transport http --scope user --header 'Authorization: Bearer '&quot;\${PRIVATE_DATA_TOKEN}&quot; 'private-data' 'https://example.com/mcp'`
+    );
   });
 
   it('renders observed catalog capability names and descriptions as literal server HTML', () => {

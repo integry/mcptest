@@ -230,16 +230,16 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
     'claude mcp add',
     `--transport ${transport}`,
     '--scope user',
-    quoteShellArgument(key),
-    quoteShellArgument(endpoint.url),
     ...(header ? [
       `--header ${shellHeaderArgument(header)}`,
     ] : []),
+    quoteShellArgument(key),
+    quoteShellArgument(endpoint.url),
   ].join(' ');
-  const copyText = server.authType === 'oauth'
-    ? `${command}\nclaude mcp login ${quoteShellArgument(key)}`
-    : command;
   const notes = commonNotes(server, endpoint);
+  if (server.authType === 'oauth') {
+    notes.push('After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.');
+  }
   if (header) notes.push(secureStorageNote(header));
   if (CREDENTIAL_AUTH_TYPES.has(server.authType) && !header) {
     notes.push('The catalog does not document the credential header, so add it through Claude Code only after checking the publisher documentation.');
@@ -249,7 +249,7 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
     documentationUrl: CLIENT_DOCUMENTATION['claude-code'],
     documentationLabel: 'Claude Code MCP documentation',
     location: 'Run in a terminal. This user-scoped entry is available across projects.',
-    copyText, format: 'shell',
+    copyText: command, format: 'shell',
     supported: !(CREDENTIAL_AUTH_TYPES.has(server.authType) && !header), endpoint,
     authSummary: authSummary(server), notes,
   };

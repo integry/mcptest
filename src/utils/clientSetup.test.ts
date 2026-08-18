@@ -89,7 +89,13 @@ describe('client setup transports and authentication', () => {
       expect(setup.copyText.toLowerCase()).not.toContain('client-secret');
       expect(setup.copyText.toLowerCase()).not.toContain('client_secret');
     }
-    expect(setups[0].copyText).toContain('claude mcp login');
+    expect(setups[0].copyText).toBe(
+      "claude mcp add --transport http --scope user 'example-server' 'https://canonical.example/mcp'"
+    );
+    expect(setups[0].copyText).not.toContain('claude mcp login');
+    expect(setups[0].notes).toContain(
+      'After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.'
+    );
     expect(setups[1].copyText).toContain('codex mcp login');
   });
 
@@ -97,7 +103,9 @@ describe('client setup transports and authentication', () => {
     const bearer = generateClientSetups(makeServer({
       id: 'private-data', declaredAuthType: 'bearer-token', authType: 'bearer-token',
     }));
-    expect(bearer[0].copyText).toContain(`'Authorization: Bearer '"\${PRIVATE_DATA_TOKEN}"`);
+    expect(bearer[0].copyText).toBe(
+      `claude mcp add --transport http --scope user --header 'Authorization: Bearer '"\${PRIVATE_DATA_TOKEN}" 'private-data' 'https://canonical.example/mcp'`
+    );
     expect(bearer[1].copyText).toContain('--bearer-token-env-var');
     expect(bearer[2].copyText).toContain('Bearer ${env:PRIVATE_DATA_TOKEN}');
     expect(bearer[3].copyText).toContain('${input:private_data_token}');
