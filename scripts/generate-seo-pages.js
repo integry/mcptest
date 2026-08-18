@@ -98,7 +98,15 @@ function inventoryStatusText(section) {
   const counts = `${section.retainedCount} retained of ${section.observedCount} observed`;
   const omitted = section.omittedCount ? `; ${section.omittedCount} omitted` : '';
   if (section.status === 'complete') return `Complete discovery: ${counts}${omitted}.`;
-  if (section.status === 'partial') return `Partial discovery: ${counts}${omitted}. More capabilities may exist.`;
+  if (section.status === 'partial' && !section.paginationComplete) {
+    return `Partial discovery: ${counts}${omitted}. More capabilities may exist.`;
+  }
+  if (section.status === 'partial' && section.omittedCount > 0) {
+    return `Discovery completed; bounded inventory: ${counts}${omitted}.`;
+  }
+  if (section.status === 'partial') {
+    return `Discovery completed; sanitized inventory: ${counts}. Capability details were sanitized for public display.`;
+  }
   if (section.status === 'unsupported') return 'This discovery method is unsupported.';
   return 'Discovery was unavailable. This does not mean the server provides no capabilities.';
 }

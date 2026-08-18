@@ -16,7 +16,15 @@ const statusMessage = <T,>(section: CapabilityInventorySectionV1<T>): string => 
   const count = `${section.retainedCount} retained of ${section.observedCount} observed`;
   const omitted = section.omittedCount > 0 ? `; ${section.omittedCount} omitted` : '';
   if (section.status === 'complete') return `Complete discovery: ${count}${omitted}.`;
-  if (section.status === 'partial') return `Partial discovery: ${count}${omitted}. More capabilities may exist.`;
+  if (section.status === 'partial' && !section.paginationComplete) {
+    return `Partial discovery: ${count}${omitted}. More capabilities may exist.`;
+  }
+  if (section.status === 'partial' && section.omittedCount > 0) {
+    return `Discovery completed; bounded inventory: ${count}${omitted}.`;
+  }
+  if (section.status === 'partial') {
+    return `Discovery completed; sanitized inventory: ${count}. Capability details were sanitized for public display.`;
+  }
   if (section.status === 'unsupported') return 'This server does not support this discovery method.';
   return 'Discovery was unavailable. This does not mean the server provides no capabilities.';
 };

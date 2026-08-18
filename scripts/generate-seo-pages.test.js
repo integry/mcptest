@@ -132,6 +132,45 @@ describe('generated page metadata', () => {
     expect(structuredData).not.toContain('alert(1)');
   });
 
+  it('distinguishes incomplete discovery from completed sanitized and bounded inventories', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.capabilityInventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://example.com/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: {
+        status: 'partial', observedCount: 1, retainedCount: 1,
+        omittedCount: 0, paginationComplete: true, items: [{ name: 'search' }],
+      },
+      resources: {
+        status: 'partial', observedCount: 2, retainedCount: 1,
+        omittedCount: 1, paginationComplete: true, items: [{ name: 'Public records' }],
+      },
+      resourceTemplates: {
+        status: 'partial', observedCount: 1, retainedCount: 1,
+        omittedCount: 0, paginationComplete: false, items: [{ name: 'Record template' }],
+      },
+      prompts: {
+        status: 'complete', observedCount: 0, retainedCount: 0,
+        omittedCount: 0, paginationComplete: true, items: [],
+      },
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain(
+      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
+    );
+    expect(html).toContain(
+      'Discovery completed; bounded inventory: 1 retained of 2 observed; 1 omitted.'
+    );
+    expect(html).toContain(
+      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
+    );
+    expect(html.match(/Partial discovery:/g)).toHaveLength(1);
+  });
+
   it('uses the absolute local logo in social metadata and static profile markup', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     const html = renderServerHtml(indexHtml, server);

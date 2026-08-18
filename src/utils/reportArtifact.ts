@@ -2087,7 +2087,35 @@ const inventoryStatusLabel = (
   section: NonNullable<PublicReport['capabilityInventory']>['tools']
 ): string => {
   const omitted = section.omittedCount > 0 ? `; ${section.omittedCount} omitted` : '';
-  return `${section.status}; ${section.retainedCount} retained of ${section.observedCount} observed${omitted}`;
+  const counts = `${section.retainedCount} retained of ${section.observedCount} observed`;
+  if (section.status === 'complete') return `Complete discovery: ${counts}${omitted}.`;
+  if (section.status === 'partial' && !section.paginationComplete) {
+    return `Partial discovery: ${counts}${omitted}. More capabilities may exist.`;
+  }
+  if (section.status === 'partial' && section.omittedCount > 0) {
+    return `Discovery completed; bounded inventory: ${counts}${omitted}.`;
+  }
+  if (section.status === 'partial') {
+    return `Discovery completed; sanitized inventory: ${counts}. Capability details were sanitized for public display.`;
+  }
+  if (section.status === 'unsupported') return 'This discovery method is unsupported.';
+  return 'Discovery was unavailable. This does not mean the server provides no capabilities.';
+};
+
+const emptyInventoryLabel = (
+  section: NonNullable<PublicReport['capabilityInventory']>['tools']
+): string => {
+  if (section.status === 'complete') return 'No capabilities were reported.';
+  if (section.status === 'unsupported') return 'This discovery method is unsupported.';
+  if (section.status === 'unavailable') {
+    return 'Capabilities are unavailable; this does not mean the server provides none.';
+  }
+  if (!section.paginationComplete) {
+    return 'No retained capabilities are available from this incomplete discovery.';
+  }
+  return section.omittedCount > 0
+    ? 'No capabilities were retained in this completed, bounded inventory.'
+    : 'No capabilities were retained in this completed, sanitized inventory.';
 };
 
 const argumentSummary = (
@@ -2187,13 +2215,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       if (section.items.length > 0) {
         lines.push(...section.items.map((item) => `- ${formatItem(item as never)}`), '');
       } else {
-        lines.push(section.status === 'complete'
-          ? 'No capabilities were reported.'
-          : section.status === 'unsupported'
-            ? 'This discovery method is unsupported.'
-            : section.status === 'unavailable'
-              ? 'Capabilities are unavailable; this does not mean the server provides none.'
-              : 'No retained capabilities are available from this partial result.', '');
+        lines.push(emptyInventoryLabel(section), '');
       }
     }
   }

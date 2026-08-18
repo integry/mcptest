@@ -408,6 +408,39 @@ describe('versioned public report artifacts', () => {
     expect(safeParsePublicReport(unsafe).success).toBe(false);
   });
 
+  it('describes Markdown inventory completeness using pagination and omission metadata', () => {
+    const report = publicReport();
+    report.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: report.serverUrl,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: {
+        tools: 'complete', resources: 'complete', resourceTemplates: 'partial', prompts: 'complete',
+      },
+      paginationComplete: { resourceTemplates: false },
+      discovered: {
+        tools: [{ name: 'search_records', description: 'Use client_secret=not-public' }],
+        resources: Array.from({ length: 101 }, (_, index) => ({ name: `Resource ${index}` })),
+        resourceTemplates: [{ name: 'Record template' }],
+        prompts: [],
+      },
+    });
+
+    const markdown = serializePublicReportMarkdown(createPublicReport(report, FIXED_OPTIONS));
+
+    expect(markdown).toContain(
+      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
+    );
+    expect(markdown).toContain(
+      'Discovery completed; bounded inventory: 100 retained of 101 observed; 1 omitted.'
+    );
+    expect(markdown).toContain(
+      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
+    );
+    expect(markdown.match(/Partial discovery:/g)).toHaveLength(1);
+  });
+
   it.each(Object.entries(GOLDEN_REPORTS))('matches the %s JSON and Markdown golden', (name, makeReport) => {
     const artifact = createPublicReport(makeReport(), FIXED_OPTIONS);
     expect({

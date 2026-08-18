@@ -55,6 +55,45 @@ describe('ReleaseReadinessReport', () => {
     expect(container.textContent).toContain('authenticated discovery');
   });
 
+  it('distinguishes incomplete discovery from completed sanitized and bounded inventories', () => {
+    const report: EvaluationReport = {
+      ...authorizationReport,
+      capabilityInventory: createCapabilityInventory({
+        observedAt: '2026-08-17T22:00:00.000Z',
+        testedEndpoint: 'https://oauth.example/mcp',
+        route: 'direct',
+        authentication: 'authenticated',
+        statuses: {
+          tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'partial',
+        },
+        paginationComplete: { prompts: false },
+        discovered: {
+          tools: [{ name: 'search_records', description: 'Use client_secret=not-public' }],
+          resources: Array.from({ length: 101 }, (_, index) => ({ name: `Resource ${index}` })),
+          resourceTemplates: [],
+          prompts: [{ name: 'summarize' }],
+        },
+      }),
+    };
+    const markup = renderToStaticMarkup(
+      <ReleaseReadinessReport report={report} expandedItems={new Set()} onToggleItem={() => undefined} />
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+    const statuses = [...container.querySelectorAll('.capability-inventory-status')]
+      .map((element) => element.textContent);
+
+    expect(statuses).toContain(
+      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
+    );
+    expect(statuses).toContain(
+      'Discovery completed; bounded inventory: 100 retained of 101 observed; 1 omitted.'
+    );
+    expect(statuses).toContain(
+      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
+    );
+  });
+
   it('renders the primary hierarchy and never exposes a score behind the authorization gate', () => {
     const markup = renderToStaticMarkup(
       <ReleaseReadinessReport
