@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 import { getCatalogServers } from '../utils/catalogUtils';
+import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import type { CatalogProtocolEra } from '../types/catalog';
 import { CatalogServerLogo } from './CatalogServerLogo';
 
@@ -53,7 +54,7 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
         <small className="text-muted d-block mb-3">Connect to a curated public endpoint and inspect the negotiated protocol.</small>
         <ul className="suggested-server-grid">
         {suggestedCatalogServers.map((server) => {
-          const connectUrl = server.browserUrl || server.validatedUrl || server.url;
+          const connectUrl = getPreferredCatalogEndpoint(server).url;
           return (
           <li key={server.id} className="suggested-server-row">
             <button

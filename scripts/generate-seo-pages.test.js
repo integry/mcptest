@@ -89,6 +89,27 @@ describe('generated server report Playground links', () => {
 });
 
 describe('generated page metadata', () => {
+  it('renders the same four literal, escaped client setup sections', () => {
+    const server = catalogServer('https://example.com/mcp?label=<unsafe>', 'streamable-http');
+    server.id = 'unsafe-id';
+    server.name = 'Unsafe <Server>';
+    server.authType = 'oauth';
+    server.declaredAuthType = 'oauth';
+    server.requiresOAuth = true;
+
+    const html = renderServerHtml(indexHtml, server);
+
+    for (const heading of ['Claude Code setup', 'Codex CLI setup', 'Cursor setup', 'VS Code setup']) {
+      expect(html).toContain(`<h3>${heading}</h3>`);
+    }
+    expect(html).toContain('claude mcp add');
+    expect(html).toContain('codex mcp add');
+    expect(html).toContain('&lt;unsafe&gt;');
+    expect(html).not.toContain('<unsafe>');
+    expect(html).toContain('Canonical catalog endpoint'.toLowerCase());
+    expect(html).toContain('client will request authorization');
+  });
+
   it('renders observed catalog capability names and descriptions as literal server HTML', () => {
     const server = mergeCatalogServers(
       catalogSeeds, catalogValidation, catalogCapabilities

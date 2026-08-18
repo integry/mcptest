@@ -46,6 +46,7 @@ import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, p
 import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
+import { getPreferredCatalogEndpoint } from './utils/clientSetup';
 import {
   TransportConnectionError,
   attemptParallelConnections,
@@ -642,7 +643,7 @@ function App() {
     const newTab: ConnectionTab = {
       id: uuidv4(),
       title: server.name,
-      serverUrl: server.browserUrl || server.validatedUrl || server.url,
+      serverUrl: getPreferredCatalogEndpoint(server).url,
       connectionStatus: 'Disconnected',
       useProxy: server.browserAccess !== 'direct',
       autoConnect: server.authType === 'none' || server.authType === 'oauth',

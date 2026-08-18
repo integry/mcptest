@@ -2,6 +2,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+  generateClientSetups,
+  getPreferredCatalogEndpoint,
+} = require('../src/utils/clientSetup.ts');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -29,6 +33,13 @@ function escapeHtml(value) {
 
 function escapeXml(value) {
   return escapeHtml(value).replace(/'/g, '&apos;');
+}
+
+function safeJsonForHtml(value) {
+  return JSON.stringify(value)
+    .replace(/&/g, '\\u0026')
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e');
 }
 
 function serverPath(serverId) {
@@ -218,7 +229,7 @@ function detectedAuthenticationLabel(server) {
 }
 
 function playgroundPath(server) {
-  const endpoint = server.browserUrl || server.validatedUrl || server.url;
+  const endpoint = getPreferredCatalogEndpoint(server).url;
   const transport = server.transport === 'unknown'
     ? server.declaredTransport
     : server.transport;
@@ -275,6 +286,25 @@ function renderServerLogo(server) {
   }
 
   return `<span class="catalog-server-logo catalog-server-logo--fallback server-profile-logo" role="img" aria-label="${escapeHtml(server.name)} logo"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(serverInitials(server.name))}</span></span>`;
+}
+
+function renderClientSetups(server) {
+  const setups = generateClientSetups(server);
+  return [
+    '  <section class="card server-profile-section client-setup seo-client-setup"><div class="card-body">',
+    '    <h2>Connect this server to your client</h2>',
+    ...setups.map(setup => [
+      `    <section class="client-setup-panel" data-client="${escapeHtml(setup.id)}">`,
+      `      <h3>${escapeHtml(setup.heading)}</h3>`,
+      `      <p>${escapeHtml(setup.location)}</p>`,
+      `      <pre aria-label="${escapeHtml(setup.label)} configuration"><code class="language-${escapeHtml(setup.format)}">${escapeHtml(setup.copyText)}</code></pre>`,
+      `      <p>${escapeHtml(setup.authSummary)}</p>`,
+      `      <ul>${setup.notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`,
+      `      <p><a href="${escapeHtml(setup.documentationUrl)}">${escapeHtml(setup.documentationLabel)}</a></p>`,
+      '    </section>',
+    ].join('\n')),
+    '  </div></section>',
+  ].join('\n');
 }
 
 function renderServerFallback(server) {
@@ -342,6 +372,7 @@ function renderServerFallback(server) {
     ] : []),
     `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
+    renderClientSetups(server),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Latest validation evidence</h2>',
     '    <dl class="server-spec-list">',
@@ -426,7 +457,7 @@ function renderServerHtml(indexHtml, server) {
     `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`
   );
 
-  const safeJson = JSON.stringify(structuredData).replace(/<\//g, '<\\/');
+  const safeJson = safeJsonForHtml(structuredData);
   html = html.replace(
     '</head>',
     `    <script id="server-structured-data" type="application/ld+json">${safeJson}</script>\n  </head>`
@@ -462,7 +493,7 @@ function renderStaticPageHtml(indexHtml, pathname, metadata, options = {}) {
     `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`
   );
   if (options.structuredData) {
-    const safeJson = JSON.stringify(options.structuredData).replace(/<\//g, '<\\/');
+    const safeJson = safeJsonForHtml(options.structuredData);
     html = html.replace(
       '</head>',
       `    <script id="server-structured-data" type="application/ld+json">${safeJson}</script>\n  </head>`
@@ -976,6 +1007,7 @@ module.exports = {
   renderLearnArticleHtml,
   renderMarkdown,
   renderServerLogo,
+  renderClientSetups,
   serverPath,
   transportLabel,
   validateCapabilitySnapshots,

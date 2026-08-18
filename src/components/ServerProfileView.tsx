@@ -9,6 +9,8 @@ import {
 } from '../utils/catalogSeo';
 import CapabilitiesProvided from './CapabilitiesProvided';
 import { CatalogServerLogo } from './CatalogServerLogo';
+import ClientSetup from './ClientSetup';
+import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -85,6 +87,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
     : server.status === 'offline'
       ? 'server-status-offline'
       : 'server-status-unknown';
+  const preferredEndpoint = getPreferredCatalogEndpoint(server);
 
   return (
     <article className="server-profile">
@@ -233,13 +236,13 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               <div>
                 <span>Endpoint</span>
                 <code className="technical-string technical-string-url">
-                  {server.browserUrl || server.validatedUrl || server.url}
+                  {preferredEndpoint.url}
                 </code>
               </div>
               <button
                 type="button"
                 className="btn btn-sm btn-ghost server-endpoint-copy"
-                onClick={() => navigator.clipboard?.writeText(server.browserUrl || server.validatedUrl || server.url)}
+                onClick={() => navigator.clipboard?.writeText(preferredEndpoint.url)}
                 aria-label={`Copy ${server.name} MCP endpoint`}
               >
                 <i className="bi bi-copy" aria-hidden="true"></i>
@@ -272,6 +275,8 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           </div>
         </aside>
       </div>
+
+      <ClientSetup server={server} />
 
       {server.capabilityInventory && (
         <section className="card server-profile-section" aria-labelledby="server-capabilities-title">
