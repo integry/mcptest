@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { CatalogServer } from '../types/catalog';
 import { getCatalogServerById } from './catalogUtils';
 import {
@@ -46,7 +50,11 @@ const makePreRegisteredServer = (
     clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
     clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
     callback: { required: true, redirectUrls },
-    codexMcpRemote: { resourceUrl: 'https://canonical.example', callbackPort: 3334 },
+    codexMcpRemote: {
+      resourceUrl: 'https://canonical.example',
+      callbackUrl: 'http://localhost:3334/oauth/callback',
+      callbackPort: 3334,
+    },
     evidenceUrl: 'https://example.com/oauth-registration',
   },
 });
@@ -72,6 +80,31 @@ describe('client setup endpoint selection', () => {
     expect(getPreferredCatalogEndpoint(server)).toMatchObject({
       url: 'https://canonical.example/mcp', provenance: 'canonical',
     });
+  });
+
+  it('trusts a definitive Streamable HTTP observation for a validated /sse URL', () => {
+    const endpoint = getPreferredCatalogEndpoint(makeServer({
+      url: 'https://example.com/sse',
+      validatedUrl: 'https://example.com/sse',
+      declaredTransport: 'legacy-sse',
+      transport: 'streamable-http',
+    }));
+
+    expect(endpoint).toMatchObject({
+      url: 'https://example.com/sse',
+      transport: 'streamable-http',
+    });
+  });
+
+  it('infers Streamable HTTP from /mcp when validation reports both before declaration fallback', () => {
+    const endpoint = getPreferredCatalogEndpoint(makeServer({
+      url: 'https://example.com/mcp',
+      validatedUrl: 'https://example.com/mcp',
+      declaredTransport: 'legacy-sse',
+      transport: 'both',
+    }));
+
+    expect(endpoint.transport).toBe('streamable-http');
   });
 
   it('sanitizes special identifiers and serializes special URLs', () => {
@@ -192,6 +225,63 @@ describe('client setup transports and authentication', () => {
     expect(setups.every(({ supported, format }) => !supported && format === 'text')).toBe(true);
     expect(setups.every(({ copyText }) => copyText.includes('setup is unavailable'))).toBe(true);
     expect(setups.flatMap(({ notes }) => notes).join(' ')).not.toMatch(/redirect URL:\s*\./);
+  });
+
+  it.each([
+    ['wrong host', 'http://127.0.0.1:3334/oauth/callback'],
+    ['wrong path', 'http://localhost:3334/wrong-path'],
+  ])('rejects a same-port Codex redirect with the %s', (_case, redirectUrl) => {
+    const redirects = structuredClone(documentedRedirects);
+    redirects['codex-cli'] = [redirectUrl];
+
+    const codex = generateClientSetups(makePreRegisteredServer(redirects))[1];
+
+    expect(codex).toMatchObject({ supported: false, format: 'text' });
+    expect(codex.copyText).not.toContain('mcp-remote@latest');
+  });
+
+  it('JSON-serializes quoted and backslashed Codex credentials at bridge execution time', () => {
+    const codex = generateClientSetups(makePreRegisteredServer())[1];
+    const lines = codex.copyText.split('\n');
+    const argsStart = lines.indexOf('args = [');
+    const argsEnd = lines.indexOf(']', argsStart);
+    const args = lines.slice(argsStart + 1, argsEnd).map((line) => (
+      JSON.parse(line.trim().replace(/,$/, '')) as string
+    ));
+    const temporaryBin = mkdtempSync(join(tmpdir(), 'mcptest-codex-bridge-'));
+    const fakeNpx = join(temporaryBin, 'npx');
+    writeFileSync(
+      fakeNpx,
+      '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify(process.argv.slice(2)));\n',
+      'utf8'
+    );
+    chmodSync(fakeNpx, 0o755);
+    const clientId = 'synthetic-client"quote\\backslash';
+    const clientSecret = 'synthetic-secret\\backslash"quote';
+
+    try {
+      const output = execFileSync(process.execPath, args, {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${temporaryBin}:${process.env.PATH || ''}`,
+          EXAMPLE_CLIENT_ID: clientId,
+          EXAMPLE_CLIENT_SECRET: clientSecret,
+        },
+      });
+      const npxArgs = JSON.parse(output) as string[];
+      const clientInfoIndex = npxArgs.indexOf('--static-oauth-client-info') + 1;
+
+      expect(clientInfoIndex).toBeGreaterThan(0);
+      expect(JSON.parse(npxArgs[clientInfoIndex])).toEqual({
+        client_id: clientId,
+        client_secret: clientSecret,
+      });
+      expect(codex.copyText).not.toContain(clientId);
+      expect(codex.copyText).not.toContain(clientSecret);
+    } finally {
+      rmSync(temporaryBin, { recursive: true, force: true });
+    }
   });
 
   it('prefers PagerDuty API tokens when automatic OAuth registration is unavailable', () => {

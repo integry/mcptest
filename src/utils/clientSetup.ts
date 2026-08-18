@@ -90,11 +90,42 @@ const toEnvironmentVariable = (serverId: string, authType: CatalogAuthType): str
   return `${prefix}_TOKEN`;
 };
 
-const effectiveTransport = (server: CatalogServer, endpoint: string): CatalogTransport => {
-  if (/\/sse\/?(?:[?#].*)?$/i.test(endpoint)) return 'legacy-sse';
-  if (server.transport === 'streamable-http' || server.transport === 'legacy-sse') {
-    return server.transport;
+const normalizedEndpointUrl = (value: string): string | undefined => {
+  try {
+    return new URL(value).href;
+  } catch {
+    return undefined;
   }
+};
+
+/** Resolve transport evidence for one selected endpoint, in evidence priority order. */
+export const resolveCatalogEndpointTransport = (
+  server: CatalogServer,
+  endpoint: string
+): CatalogTransport => {
+  const observedTransport = server.transport === 'streamable-http'
+    || server.transport === 'legacy-sse'
+    ? server.transport
+    : undefined;
+  const normalizedEndpoint = normalizedEndpointUrl(endpoint);
+  const normalizedValidatedUrl = server.validatedUrl
+    ? normalizedEndpointUrl(server.validatedUrl)
+    : undefined;
+  // A validated URL ties the validation transport to that exact endpoint. Older
+  // validation records without one describe the selected catalog endpoint.
+  const observedTransportApplies = observedTransport && (
+    !normalizedValidatedUrl || normalizedValidatedUrl === normalizedEndpoint
+  );
+  if (observedTransportApplies) return observedTransport;
+
+  let normalizedPath = '';
+  try {
+    normalizedPath = new URL(endpoint).pathname.replace(/\/+$/, '').toLowerCase();
+  } catch {
+    // Catalog validation handles malformed URLs. Preserve deterministic fallback here.
+  }
+  if (normalizedPath.endsWith('/sse')) return 'legacy-sse';
+  if (normalizedPath.endsWith('/mcp')) return 'streamable-http';
   return server.declaredTransport;
 };
 
@@ -110,7 +141,7 @@ export const getPreferredCatalogEndpoint = (server: CatalogServer): PreferredCat
     url,
     provenance,
     provenanceLabel: PROVENANCE_LABELS[provenance],
-    transport: effectiveTransport(server, url),
+    transport: resolveCatalogEndpointTransport(server, url),
   };
 };
 
@@ -281,19 +312,48 @@ const explicitRedirectPort = (value: string): number | undefined => {
   return port && Number.isInteger(port) && port <= 65535 ? port : undefined;
 };
 
+interface NormalizedLoopbackCallback {
+  protocol: string;
+  hostname: string;
+  port: number;
+  pathname: string;
+}
+
+const normalizeLoopbackCallback = (value: string): NormalizedLoopbackCallback | undefined => {
+  try {
+    const parsed = new URL(value);
+    const port = explicitRedirectPort(value);
+    const loopback = parsed.hostname === 'localhost'
+      || parsed.hostname === '127.0.0.1'
+      || parsed.hostname === '[::1]';
+    if (parsed.protocol !== 'http:' || !loopback || !port
+        || parsed.username || parsed.password || parsed.hash) return undefined;
+    return {
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      port,
+      pathname: parsed.pathname,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+const sameNormalizedCallback = (left: string, right: string): boolean => {
+  const normalizedLeft = normalizeLoopbackCallback(left);
+  const normalizedRight = normalizeLoopbackCallback(right);
+  return Boolean(normalizedLeft && normalizedRight
+    && normalizedLeft.protocol === normalizedRight.protocol
+    && normalizedLeft.hostname === normalizedRight.hostname
+    && normalizedLeft.port === normalizedRight.port
+    && normalizedLeft.pathname === normalizedRight.pathname);
+};
+
 const loopbackRedirects = (urls: string[]): Array<{ url: string; port: number }> => {
   const redirects: Array<{ url: string; port: number }> = [];
   for (const value of urls) {
-    try {
-      const parsed = new URL(value);
-      const loopback = parsed.hostname === 'localhost'
-        || parsed.hostname === '127.0.0.1'
-        || parsed.hostname === '[::1]';
-      const port = explicitRedirectPort(value);
-      if (loopback && port) redirects.push({ url: value, port });
-    } catch {
-      // usableRedirects normally filters this first; remain defensive for direct callers.
-    }
+    const normalized = normalizeLoopbackCallback(value);
+    if (normalized) redirects.push({ url: value, port: normalized.port });
   }
   return redirects;
 };
@@ -506,12 +566,13 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
     } catch {
       // Treat malformed bridge evidence as unsupported without throwing during rendering.
     }
+    const bridgeCallback = normalizeLoopbackCallback(remote.callbackUrl);
     const usableRemote = usableResource
+      && bridgeCallback
       && Number.isInteger(remote.callbackPort)
-      && remote.callbackPort >= 1
-      && remote.callbackPort <= 65535;
+      && remote.callbackPort === bridgeCallback.port;
     const matchingRedirects = usableRemote
-      ? codexRedirects.filter(({ port }) => port === remote.callbackPort)
+      ? codexRedirects.filter(({ url }) => sameNormalizedCallback(url, remote.callbackUrl))
       : [];
     if (matchingRedirects.length === 0) {
       const unsupportedReasons = [
@@ -537,26 +598,23 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
       registration.clientSecret,
       `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_SECRET`
     );
-    const staticClientInfo = JSON.stringify({
-      client_id: `$${clientIdEnvironment}`,
-      client_secret: `$${clientSecretEnvironment}`,
-    });
-    const shellClientInfo = `"${staticClientInfo.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-    const bridgeCommand = [
-      'npx -y mcp-remote@latest',
-      quoteShellArgument(endpoint.url),
-      String(remote.callbackPort),
-      '--static-oauth-client-info',
-      shellClientInfo,
-      '--resource',
-      quoteShellArgument(remote.resourceUrl),
+    const bridgeRuntimeScript = [
+      'const { spawnSync } = require("node:child_process");',
+      'const [endpoint, callbackPort, resource] = process.argv.slice(1);',
+      `const clientInfo = JSON.stringify({ client_id: process.env[${JSON.stringify(clientIdEnvironment)}], client_secret: process.env[${JSON.stringify(clientSecretEnvironment)}] });`,
+      'const result = spawnSync("npx", ["-y", "mcp-remote@latest", endpoint, callbackPort, "--static-oauth-client-info", clientInfo, "--resource", resource], { stdio: "inherit" });',
+      'if (result.error) throw result.error;',
+      'process.exit(result.status === null ? 1 : result.status);',
     ].join(' ');
     const copyText = [
       `[mcp_servers.${key}]`,
-      'command = "sh"',
+      'command = "node"',
       'args = [',
-      '  "-c",',
-      `  ${serializeTomlString(bridgeCommand)}`,
+      '  "-e",',
+      `  ${serializeTomlString(bridgeRuntimeScript)},`,
+      `  ${serializeTomlString(endpoint.url)},`,
+      `  ${serializeTomlString(String(remote.callbackPort))},`,
+      `  ${serializeTomlString(remote.resourceUrl)}`,
       ']',
       `env_vars = [${serializeTomlString(clientIdEnvironment)}, ${serializeTomlString(clientSecretEnvironment)}]`,
     ].join('\n');
@@ -576,7 +634,7 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
       id: 'codex-cli', label: 'Codex CLI', heading: 'Codex CLI setup',
       documentationUrl: CLIENT_DOCUMENTATION['codex-cli'],
       documentationLabel: 'Codex MCP documentation',
-      location: 'Add to ~/.codex/config.toml. This publisher-documented bridge requires Node.js and a POSIX sh environment.',
+      location: 'Add to ~/.codex/config.toml. This publisher-documented bridge requires Node.js, which serializes the OAuth client information at execution time.',
       copyText: supported ? copyText : unsupportedCopyText('Codex CLI', requirements.unsupportedReasons),
       format: supported ? 'toml' : 'text', supported,
       unsupportedReasons: requirements.unsupportedReasons, endpoint,

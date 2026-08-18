@@ -119,6 +119,8 @@ export interface CatalogOAuthCallbackRequirement {
 export interface CatalogOAuthMcpRemoteSetup {
   /** OAuth resource passed to the publisher-documented mcp-remote bridge. */
   resourceUrl: string;
+  /** Exact loopback callback URL used by the publisher-documented bridge. */
+  callbackUrl: string;
   /** Static loopback port used by mcp-remote for the registered callback. */
   callbackPort: number;
 }

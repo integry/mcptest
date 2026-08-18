@@ -126,7 +126,11 @@ describe('ClientSetup accessibility and copying', () => {
         clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
         clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
         callback: { required: true, redirectUrls: {} },
-        codexMcpRemote: { resourceUrl: 'https://example.com', callbackPort: 3334 },
+        codexMcpRemote: {
+          resourceUrl: 'https://example.com',
+          callbackUrl: 'http://localhost:3334/oauth/callback',
+          callbackPort: 3334,
+        },
         evidenceUrl: 'https://example.com/oauth-registration',
       },
     });

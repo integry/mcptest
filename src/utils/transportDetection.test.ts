@@ -65,6 +65,17 @@ afterEach(() => {
 });
 
 describe('transport candidate generation', () => {
+  it('tries definitive endpoint transport evidence before a contradictory path suffix', () => {
+    expect(getTransportCandidates(
+      'https://example.com/sse',
+      false,
+      'streamable-http'
+    ).slice(0, 2)).toEqual([
+      { url: 'https://example.com/sse', transportType: 'streamable-http' },
+      { url: 'https://example.com/sse/', transportType: 'streamable-http' },
+    ]);
+  });
+
   it('uses only Streamable HTTP candidates for Slack MCP', () => {
     expect(getTransportCandidates('https://mcp.slack.com/mcp')).toEqual([
       { url: 'https://mcp.slack.com/mcp', transportType: 'streamable-http' },

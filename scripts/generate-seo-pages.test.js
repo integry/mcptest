@@ -74,6 +74,28 @@ describe('generated server report Playground links', () => {
     });
   });
 
+  it('uses definitive Streamable HTTP evidence for a validated /sse endpoint', () => {
+    const server = catalogServer('https://example.com/sse', 'legacy-sse');
+    server.validatedUrl = 'https://example.com/sse';
+    server.transport = 'streamable-http';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('href="/server/https://example.com/sse/mcp"');
+    expect(html).toContain('claude mcp add --transport http');
+  });
+
+  it('uses /mcp inference when validation reports both despite a legacy declaration', () => {
+    const server = catalogServer('https://example.com/mcp', 'legacy-sse');
+    server.validatedUrl = 'https://example.com/mcp';
+    server.transport = 'both';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('href="/server/https://example.com/mcp/mcp"');
+    expect(html).toContain('claude mcp add --transport http');
+  });
+
   it('uses the browser-verified endpoint ahead of a server-only validation endpoint', () => {
     const server = catalogServer('https://example.com', 'streamable-http');
     server.validatedUrl = 'https://example.com/mcp';
@@ -170,7 +192,11 @@ describe('generated page metadata', () => {
       clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
       clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
       callback: { required: true, redirectUrls: {} },
-      codexMcpRemote: { resourceUrl: 'https://example.com', callbackPort: 3334 },
+      codexMcpRemote: {
+        resourceUrl: 'https://example.com',
+        callbackUrl: 'http://localhost:3334/oauth/callback',
+        callbackPort: 3334,
+      },
       evidenceUrl: 'https://example.com/oauth-registration',
     };
 

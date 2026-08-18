@@ -133,6 +133,41 @@ function toUrl(value) {
   }
 }
 
+function explicitUrlPort(value) {
+  const authority = typeof value === 'string'
+    ? value.match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i)?.[1]
+    : undefined;
+  const portText = authority?.match(/:(\d+)$/)?.[1];
+  const port = portText ? Number(portText) : undefined;
+  return port && Number.isInteger(port) && port <= 65535 ? port : undefined;
+}
+
+function normalizedLoopbackCallback(value) {
+  const url = typeof value === 'string' ? toUrl(value) : null;
+  const port = explicitUrlPort(value);
+  const loopback = url && (
+    url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+  );
+  if (!url || url.protocol !== 'http:' || !loopback || !port
+      || url.username || url.password || url.hash) return null;
+  return {
+    protocol: url.protocol,
+    hostname: url.hostname,
+    port,
+    pathname: url.pathname,
+  };
+}
+
+function sameNormalizedCallback(left, right) {
+  const a = normalizedLoopbackCallback(left);
+  const b = normalizedLoopbackCallback(right);
+  return Boolean(a && b
+    && a.protocol === b.protocol
+    && a.hostname === b.hostname
+    && a.port === b.port
+    && a.pathname === b.pathname);
+}
+
 const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community']);
 const OAUTH_REGISTRATION_MODES = new Set([
   'automatic',
@@ -215,15 +250,20 @@ function validateOAuthRegistration(seed, label) {
 
   if (registration.codexMcpRemote !== undefined) {
     const remote = registration.codexMcpRemote;
+    const callbackUrl = remote && normalizedLoopbackCallback(remote.callbackUrl);
     if (!remote || typeof remote !== 'object' || Array.isArray(remote)
         || !isHttpsUrl(remote.resourceUrl)
+        || !callbackUrl
         || !Number.isInteger(remote.callbackPort)
         || remote.callbackPort < 1 || remote.callbackPort > 65535) {
       throw new Error(`${label}: oauthRegistration.codexMcpRemote is invalid`);
     }
+    if (remote.callbackPort !== callbackUrl.port) {
+      throw new Error(`${label}: codexMcpRemote.callbackPort must match callbackUrl`);
+    }
     const codexCallbacks = callback.redirectUrls?.['codex-cli'] || [];
-    if (!codexCallbacks.some((value) => toUrl(value)?.port === String(remote.callbackPort))) {
-      throw new Error(`${label}: codexMcpRemote.callbackPort must match a Codex redirect URL`);
+    if (!codexCallbacks.some((value) => sameNormalizedCallback(value, remote.callbackUrl))) {
+      throw new Error(`${label}: codexMcpRemote.callbackUrl must exactly match a Codex redirect URL`);
     }
   }
 }

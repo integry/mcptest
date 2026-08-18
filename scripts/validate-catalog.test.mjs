@@ -206,6 +206,56 @@ describe('catalog seed provenance validation', () => {
     })).toThrow('requires a cataloged alternativeAuthType');
   });
 
+  it.each([
+    ['wrong host', 'http://127.0.0.1:3334/oauth/callback'],
+    ['wrong path', 'http://localhost:3334/wrong-path'],
+  ])('rejects Codex bridge evidence with a same-port %s redirect', (_case, redirectUrl) => {
+    const callbackUrl = 'http://localhost:3334/oauth/callback';
+    expect(() => validateCatalogSeed({
+      id: 'bad-codex-callback',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: {
+          required: true,
+          redirectUrls: { 'codex-cli': [redirectUrl] },
+        },
+        codexMcpRemote: {
+          resourceUrl: 'https://example.com',
+          callbackUrl,
+          callbackPort: 3334,
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow('callbackUrl must exactly match a Codex redirect URL');
+  });
+
+  it('keeps the Codex callback port consistent with the exact callback URL', () => {
+    const callbackUrl = 'http://localhost:3334/oauth/callback';
+    expect(() => validateCatalogSeed({
+      id: 'bad-codex-port',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: { required: true, redirectUrls: { 'codex-cli': [callbackUrl] } },
+        codexMcpRemote: {
+          resourceUrl: 'https://example.com',
+          callbackUrl,
+          callbackPort: 4444,
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow('callbackPort must match callbackUrl');
+  });
+
   it('accepts the production Asana and PagerDuty OAuth registration evidence', () => {
     for (const serverId of ['asana', 'pagerduty']) {
       const seed = catalogSeeds.find(({ id }) => id === serverId);

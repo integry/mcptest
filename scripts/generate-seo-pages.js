@@ -229,12 +229,9 @@ function detectedAuthenticationLabel(server) {
 }
 
 function playgroundPath(server) {
-  const endpoint = getPreferredCatalogEndpoint(server).url;
-  const transport = server.transport === 'unknown'
-    ? server.declaredTransport
-    : server.transport;
-  const transportMethod = /\/sse\/?$/.test(endpoint) || transport === 'legacy-sse' ? 'sse' : 'mcp';
-  return `/server/${endpoint}/${transportMethod}`;
+  const endpoint = getPreferredCatalogEndpoint(server);
+  const transportMethod = endpoint.transport === 'legacy-sse' ? 'sse' : 'mcp';
+  return `/server/${endpoint.url}/${transportMethod}`;
 }
 
 function truncate(value, maxLength = 158) {

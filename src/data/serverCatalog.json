@@ -406,7 +406,11 @@
           "codex-cli": ["http://localhost:3334/oauth/callback"]
         }
       },
-      "codexMcpRemote": { "resourceUrl": "https://mcp.asana.com/v2", "callbackPort": 3334 },
+      "codexMcpRemote": {
+        "resourceUrl": "https://mcp.asana.com/v2",
+        "callbackUrl": "http://localhost:3334/oauth/callback",
+        "callbackPort": 3334
+      },
       "evidenceUrl": "https://developers.asana.com/docs/connecting-mcp-clients-to-asanas-v2-server"
     },
     "logoUrl": "/server-logos/asana.svg",

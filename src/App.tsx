@@ -545,6 +545,11 @@ function App() {
   // Server URL and result share handlers
   const handleServerUrlConnection = (serverUrl: string, transportMethod?: string) => {
     logEvent('server_url_connection', { serverUrl, transportMethod });
+    const preferredTransport = transportMethod === 'mcp'
+      ? 'streamable-http'
+      : transportMethod === 'sse'
+        ? 'legacy-sse'
+        : undefined;
     
     // Find or create a tab for this server
     let targetTab = tabs.find(tab => tab.serverUrl === serverUrl);
@@ -556,6 +561,7 @@ function App() {
         title: `Server: ${serverUrl}`,
         serverUrl: serverUrl,
         connectionStatus: 'Disconnected',
+        transportType: preferredTransport,
         useProxy: true,
       };
       setTabs(prev => [...prev, targetTab!]);
@@ -567,7 +573,8 @@ function App() {
     // Update the tab's server URL and trigger connection
     handleUpdateTab(targetTab.id, { 
       serverUrl: serverUrl,
-      title: `Server: ${serverUrl}`
+      title: `Server: ${serverUrl}`,
+      transportType: preferredTransport,
     });
   };
 
@@ -640,11 +647,13 @@ function App() {
       protocol_era: server.protocolEra,
     });
 
+    const preferredEndpoint = getPreferredCatalogEndpoint(server);
     const newTab: ConnectionTab = {
       id: uuidv4(),
       title: server.name,
-      serverUrl: getPreferredCatalogEndpoint(server).url,
+      serverUrl: preferredEndpoint.url,
       connectionStatus: 'Disconnected',
+      transportType: preferredEndpoint.transport,
       useProxy: server.browserAccess !== 'direct',
       autoConnect: server.authType === 'none' || server.authType === 'oauth',
       catalogAuthType: server.authType,

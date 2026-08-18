@@ -186,11 +186,26 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       : undefined;
   }, [tab.catalogProtocolEra]);
 
+  const preferredTransportRef = useRef(
+    tab.transportType
+      ? { endpoint: tab.serverUrl, transport: tab.transportType }
+      : undefined
+  );
+  const getPreferredTransportHint = useCallback((urlToConnect: string) => {
+    return urlToConnect === preferredTransportRef.current?.endpoint
+      ? preferredTransportRef.current.transport
+      : undefined;
+  }, []);
+
   const handleServerUrlChange = useCallback((nextServerUrl: string) => {
     setServerUrl(nextServerUrl);
     if (catalogProtocolEndpointRef.current && nextServerUrl !== catalogProtocolEndpointRef.current) {
       catalogProtocolEndpointRef.current = undefined;
       onUpdateTab(tab.id, { catalogProtocolEra: undefined });
+    }
+    if (preferredTransportRef.current && nextServerUrl !== preferredTransportRef.current.endpoint) {
+      preferredTransportRef.current = undefined;
+      onUpdateTab(tab.id, { transportType: undefined });
     }
   }, [onUpdateTab, setServerUrl, tab.id]);
 
@@ -283,7 +298,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResponses,
           tab.serverUrl,
           tab.useProxy, // Pass the current tab's useProxy value
-          getCatalogProtocolEraHint(tab.serverUrl)
+          getCatalogProtocolEraHint(tab.serverUrl),
+          getPreferredTransportHint(tab.serverUrl)
         );
       }, 100);
     }
@@ -297,6 +313,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     addLogEntry, 
     handleConnect,
     getCatalogProtocolEraHint,
+    getPreferredTransportHint,
     onUpdateTab,
     setTools,
     setResources,
@@ -641,11 +658,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResponses,
           tab.serverUrl,
           tab.useProxy,
-          getCatalogProtocolEraHint(tab.serverUrl)
+          getCatalogProtocolEraHint(tab.serverUrl),
+          getPreferredTransportHint(tab.serverUrl)
         );
       }, 500); // 500ms delay to ensure token is available
     }
-  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, getCatalogProtocolEraHint, setTools, setResources, setResponses, onUpdateTab]);
+  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, getCatalogProtocolEraHint, getPreferredTransportHint, setTools, setResources, setResponses, onUpdateTab]);
   
   // Effect to handle OAuth callback logs
   useEffect(() => {
@@ -712,7 +730,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         || protocolEraHint === 'stateful'
         || protocolEraHint === 'legacy'
         ? protocolEraHint
-        : getCatalogProtocolEraHint(requestedUrl)
+        : getCatalogProtocolEraHint(requestedUrl),
+      getPreferredTransportHint(requestedUrl)
     );
   };
 
