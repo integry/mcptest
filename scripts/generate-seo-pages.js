@@ -172,7 +172,7 @@ function renderCapabilityInventory(server) {
   return [
     '  <section class="card server-profile-section capability-inventory"><div class="card-body">',
     '    <h2>Capabilities provided</h2>',
-    `    <p>Observed <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(formatDisplayTimestamp(inventory.observedAt))}</time> at <code class="technical-string technical-string-url">${escapeHtml(inventory.provenance.testedEndpoint)}</code> via ${escapeHtml(inventory.provenance.route)}; ${escapeHtml(inventory.authentication)} discovery.</p>`,
+    `    <p>Observed <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(formatDisplayTimestamp(inventory.observedAt))}</time> at <code class="technical-string technical-string-url technical-string-inline">${escapeHtml(inventory.provenance.testedEndpoint)}</code> via ${escapeHtml(inventory.provenance.route)}; ${escapeHtml(inventory.authentication)} discovery.</p>`,
     '    <div class="capability-inventory-grid">',
     ...groups.map(([label, section, renderItem]) => [
       '      <section class="capability-inventory-group">',
@@ -294,7 +294,7 @@ function renderServerFallback(server) {
 
   return [
     `<article class="server-profile seo-server-fallback" data-server-id="${escapeHtml(server.id)}">`,
-    '  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><a href="/catalog">Server Catalog</a></nav>',
+    `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server Catalog</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
     '  <header class="server-profile-hero">',
     `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
     `      <h1>${escapeHtml(server.name)}</h1>`,

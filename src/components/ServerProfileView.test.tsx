@@ -45,7 +45,13 @@ describe('ServerProfileView capability inventory', () => {
     expect(markup).not.toContain('12:32:48');
     expect(markup).toContain('server-spec-list server-connection-specs');
     expect(markup).toContain('technical-string technical-string-url');
+    expect(markup).toContain('technical-string technical-string-url technical-string-inline');
     expect(markup).toContain('technical-string technical-string-inline');
+    expect(markup.match(/server-profile-action"/g)).toHaveLength(2);
+    expect(markup).toContain('server-profile-breadcrumb-parent');
+    expect(markup).toContain('server-profile-breadcrumb-current');
+    expect(markup).toContain('btn btn-sm btn-ghost server-endpoint-copy');
+    expect(markup).not.toContain('btn btn-sm btn-outline-secondary');
     expect(markup).not.toContain('rounded-pill');
     expect(markup).not.toContain('dangerouslySetInnerHTML');
   });

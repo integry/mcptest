@@ -137,8 +137,10 @@ describe('generated page metadata', () => {
     expect(html).toContain('Aug 18, 2026 at 12:32 AM');
     expect(html).not.toContain('<dd>2026-08-18T00:32:48</dd>');
     expect(html).toContain('server-spec-list server-connection-specs');
-    expect(html).toContain('<code class="technical-string technical-string-url">https://example.com/mcp</code>');
+    expect(html).toContain('<code class="technical-string technical-string-url technical-string-inline">https://example.com/mcp</code>');
     expect(html).toContain('<code class="technical-string technical-string-inline">libraryId</code>');
+    expect(html).toContain('server-profile-breadcrumb-parent');
+    expect(html).toContain('server-profile-breadcrumb-current');
     expect(html).toContain('"name":"Tools observed","value":1');
     const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
     expect(structuredData).not.toContain('alert(1)');

@@ -110,6 +110,23 @@ describe('server connection grouping', () => {
   });
 });
 
+describe('server profile controls', () => {
+  it('keeps hero actions rectangular and the endpoint copy action borderless', () => {
+    expect(declaration(ruleFor('.server-profile-actions .server-profile-action')!.body, 'border-radius'))
+      .toBe('var(--button-radius)');
+    expect(declaration(ruleFor('.server-endpoint-copy')!.body, 'border')).toBe('0');
+  });
+
+  it('gives breadcrumb levels distinct interactive treatments', () => {
+    expect(declaration(ruleFor('.server-profile-breadcrumb-parent a')!.body, 'color'))
+      .toBe('var(--text-muted)');
+    expect(declaration(ruleFor('.server-profile-breadcrumb-parent a:hover')!.body, 'color'))
+      .toBe('var(--text-color)');
+    expect(declaration(ruleFor('.server-profile-breadcrumb .server-profile-breadcrumb-current')!.body, 'color'))
+      .toBe('var(--text-color)');
+  });
+});
+
 describe('grouped actions', () => {
   it('spaces grouped buttons instead of sharing their borders', () => {
     const group = ruleFor('.panel-actions, .result-actions, .btn-group')!.body;

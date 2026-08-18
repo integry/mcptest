@@ -85,8 +85,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
     <article className="server-profile">
       <nav aria-label="Breadcrumb" className="server-profile-breadcrumb">
         <ol className="breadcrumb mb-0">
-          <li className="breadcrumb-item"><Link to="/catalog">Server Catalog</Link></li>
-          <li className="breadcrumb-item active" aria-current="page">{server.name}</li>
+          <li className="breadcrumb-item server-profile-breadcrumb-parent">
+            <Link to="/catalog">Server Catalog</Link>
+          </li>
+          <li className="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">
+            {server.name}
+          </li>
         </ol>
       </nav>
 
@@ -105,12 +109,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
 
         <div className="server-profile-actions">
-          <button className="btn btn-primary" type="button" onClick={() => onTestServer(server)}>
+          <button className="btn btn-primary server-profile-action" type="button" onClick={() => onTestServer(server)}>
             <i className="bi bi-play-fill me-1" aria-hidden="true"></i>
             Test in Playground
           </button>
           {server.homepageUrl && (
-            <a className="btn btn-outline-secondary" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
+            <a className="btn btn-outline-secondary server-profile-action" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
               Product site <i className="bi bi-box-arrow-up-right ms-1" aria-hidden="true"></i>
             </a>
           )}
@@ -213,7 +217,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               </div>
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-ghost server-endpoint-copy"
                 onClick={() => navigator.clipboard?.writeText(server.browserUrl || server.validatedUrl || server.url)}
                 aria-label={`Copy ${server.name} MCP endpoint`}
               >

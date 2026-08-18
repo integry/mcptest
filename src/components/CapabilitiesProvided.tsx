@@ -67,7 +67,7 @@ const CapabilitiesProvided: React.FC<CapabilitiesProvidedProps> = ({
         <Title id={titleId}>Capabilities provided</Title>
         <p>
           Observed <time dateTime={inventory.observedAt}>{formatCatalogTimestamp(inventory.observedAt)}</time>
-          {' '}at <code className="technical-string technical-string-url">{inventory.provenance.testedEndpoint}</code>
+          {' '}at <code className="technical-string technical-string-url technical-string-inline">{inventory.provenance.testedEndpoint}</code>
           {' '}via {inventory.provenance.route};
           {' '}{inventory.authentication} discovery.
         </p>

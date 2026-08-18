@@ -163,6 +163,27 @@ a:hover {
   font-size: 0.875rem;
 }
 
+.server-profile-breadcrumb .breadcrumb {
+  --bs-breadcrumb-divider: '\203A';
+}
+
+.server-profile-breadcrumb-parent a {
+  color: var(--text-muted);
+}
+
+.server-profile-breadcrumb-parent a:hover {
+  color: var(--text-color);
+}
+
+.server-profile-breadcrumb .server-profile-breadcrumb-current {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.server-profile-breadcrumb .breadcrumb-item + .breadcrumb-item::before {
+  color: var(--text-muted);
+}
+
 .server-profile-hero {
   position: relative;
   overflow: hidden;
@@ -250,6 +271,10 @@ a:hover {
   flex-direction: column;
   gap: 0.65rem;
   min-width: 190px;
+}
+
+.server-profile-actions .server-profile-action {
+  border-radius: var(--button-radius);
 }
 
 .server-profile-signal-grid {
@@ -408,6 +433,16 @@ a:hover {
   overflow: hidden;
   color: var(--text-color);
   text-overflow: ellipsis;
+}
+
+.server-endpoint-copy {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0.5rem;
+  border: 0;
 }
 
 .technical-string {
