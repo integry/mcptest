@@ -147,6 +147,43 @@ describe('generated page metadata', () => {
     );
   });
 
+  it('renders a documented ApiKey scheme exactly in the static setups', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.id = 'key-service';
+    server.authType = 'api-key';
+    server.declaredAuthType = 'api-key';
+    server.requiredHeaders = [{
+      name: 'Authorization', description: 'Service credential',
+      valueTemplate: 'ApiKey <SERVICE_KEY>', required: true, secret: true,
+    }];
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain(
+      `claude mcp add --transport http --scope user --header 'Authorization: ApiKey '&quot;\${SERVICE_KEY}&quot; 'key-service' 'https://example.com/mcp'`
+    );
+    expect(html).toContain('ApiKey ${env:SERVICE_KEY}');
+    expect(html).toContain('ApiKey ${input:service_key}');
+    expect(html).toContain('including the required syntax ApiKey &lt;credential&gt;');
+    expect(html).not.toContain('<strong>Setup unavailable</strong>');
+  });
+
+  it('renders prose-only credential metadata as unsupported static setups', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.authType = 'api-key';
+    server.declaredAuthType = 'api-key';
+    server.requiredHeaders = [{
+      name: 'Authorization', description: 'Send the key as ApiKey <SERVICE_KEY>',
+      required: true, secret: true,
+    }];
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html.match(/<strong>Setup unavailable<\/strong>/g)).toHaveLength(4);
+    expect(html).not.toContain('claude mcp add');
+    expect(html).not.toContain('${env:SERVICE_KEY}');
+  });
+
   it('renders unsupported static setups as non-executable guidance', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.authType = 'api-key';

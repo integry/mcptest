@@ -376,8 +376,8 @@ describe('client setup transports and authentication', () => {
     const apiKey = generateClientSetups(makeServer({
       id: 'key-service', declaredAuthType: 'api-key', authType: 'api-key',
       requiredHeaders: [{
-        name: 'X-API-Key', description: 'Required credential: <KEY_SERVICE_API_KEY>',
-        required: true, secret: true,
+        name: 'X-API-Key', description: 'Required credential',
+        valueTemplate: '<KEY_SERVICE_API_KEY>', required: true, secret: true,
       }],
     }));
     expect(apiKey[0].copyText).toContain(`'X-API-Key: '"\${KEY_SERVICE_API_KEY}"`);
@@ -388,8 +388,8 @@ describe('client setup transports and authentication', () => {
     const codex = generateClientSetups(makeServer({
       id: 'key-service', declaredAuthType: 'api-key', authType: 'api-key',
       requiredHeaders: [{
-        name: 'X-API-Key', description: 'Required credential: <KEY_SERVICE_API_KEY>',
-        required: true, secret: true,
+        name: 'X-API-Key', description: 'Required credential',
+        valueTemplate: '<KEY_SERVICE_API_KEY>', required: true, secret: true,
       }],
     }))[1];
 
@@ -411,7 +411,8 @@ describe('client setup transports and authentication', () => {
       id: 'pagerduty', declaredAuthType: 'api-token', authType: 'api-token',
       requiredHeaders: [{
         name: 'Authorization',
-        description: 'PagerDuty API token syntax: Token token=<PAGERDUTY_API_TOKEN>',
+        description: 'PagerDuty API token syntax',
+        valueTemplate: 'Token token=<PAGERDUTY_API_TOKEN>',
         required: true, secret: true,
       }],
     }))[1];
@@ -434,16 +435,16 @@ describe('client setup transports and authentication', () => {
       id: 'multi-header', declaredAuthType: 'api-key', authType: 'api-key',
       requiredHeaders: [
         {
-          name: 'X-API-Key', description: 'Primary credential: <PRIMARY_API_KEY>',
-          required: true, secret: true,
+          name: 'X-API-Key', description: 'Primary credential',
+          valueTemplate: '<PRIMARY_API_KEY>', required: true, secret: true,
         },
         {
-          name: 'X-API-Secret', description: 'Secondary credential: <SECONDARY_API_SECRET>',
-          required: true, secret: true,
+          name: 'X-API-Secret', description: 'Secondary credential',
+          valueTemplate: '<SECONDARY_API_SECRET>', required: true, secret: true,
         },
         {
-          name: 'X-Account-Region', description: 'Account region: <ACCOUNT_REGION>',
-          required: true, secret: false,
+          name: 'X-Account-Region', description: 'Account region',
+          valueTemplate: '<ACCOUNT_REGION>', required: true, secret: false,
         },
       ],
     }));
@@ -482,13 +483,121 @@ describe('client setup transports and authentication', () => {
       alternativeAuthTypes: ['api-token'],
       requiredHeaders: [{
         name: 'Authorization',
-        description: 'Optional PagerDuty API token syntax: Token token=<PAGERDUTY_API_TOKEN>',
+        description: 'Optional PagerDuty API token syntax',
+        valueTemplate: 'Token token=<PAGERDUTY_API_TOKEN>',
         required: false, secret: true,
       }],
     }));
     const renderedGuidance = setups.flatMap(({ notes }) => notes).join('\n');
     expect(renderedGuidance).toContain('Token token=<PAGERDUTY_API_TOKEN>');
     expect(renderedGuidance).toContain('secret manager');
+  });
+
+  it('preserves a documented ApiKey authorization scheme in every client', () => {
+    const setups = generateClientSetups(makeServer({
+      id: 'key-service', declaredAuthType: 'api-key', authType: 'api-key',
+      requiredHeaders: [{
+        name: 'Authorization', description: 'Service credential',
+        valueTemplate: 'ApiKey <SERVICE_KEY>', required: true, secret: true,
+      }],
+    }));
+
+    expect(setups.every(({ supported }) => supported)).toBe(true);
+    expect(setups[0].copyText).toBe(
+      `claude mcp add --transport http --scope user --header 'Authorization: ApiKey '"\${SERVICE_KEY}" 'key-service' 'https://canonical.example/mcp'`
+    );
+    expect(setups[1].copyText).toBe([
+      '[mcp_servers.key-service]',
+      'url = "https://canonical.example/mcp"',
+      'env_http_headers = { "Authorization" = "SERVICE_KEY_HEADER" }',
+    ].join('\n'));
+    expect(setups[1].location).toContain(
+      'SERVICE_KEY_HEADER to the complete Authorization header value, including the required syntax ApiKey <credential>'
+    );
+    expect(JSON.parse(setups[2].copyText).mcpServers['key-service'].headers).toEqual({
+      Authorization: 'ApiKey ${env:SERVICE_KEY}',
+    });
+    expect(JSON.parse(setups[3].copyText).servers['key-service'].headers).toEqual({
+      Authorization: 'ApiKey ${input:service_key}',
+    });
+    expect(setups[3].notes.join('\n')).toContain(
+      'The Authorization syntax remains ApiKey <SERVICE_KEY>.'
+    );
+    // Codex keeps the complete value in one environment variable, so the scheme
+    // has to survive in its guidance instead of the configuration text.
+    expect(setups[1].notes.join('\n')).toContain('including the required syntax ApiKey <credential>');
+    for (const setup of [setups[0], setups[2], setups[3]]) {
+      expect(setup.copyText).toContain('ApiKey ');
+    }
+  });
+
+  it('preserves a prefixed and suffixed value outside the Authorization header', () => {
+    const setups = generateClientSetups(makeServer({
+      id: 'key-service', declaredAuthType: 'api-key', authType: 'api-key',
+      requiredHeaders: [{
+        name: 'X-Service-Key', description: 'Service credential',
+        valueTemplate: 'key=<SERVICE_KEY>; version=2', required: true, secret: true,
+      }],
+    }));
+
+    expect(setups.every(({ supported }) => supported)).toBe(true);
+    expect(setups[0].copyText).toContain(
+      `--header 'X-Service-Key: key='"\${SERVICE_KEY}"'; version=2'`
+    );
+    expect(setups[1].copyText).toContain('env_http_headers = { "X-Service-Key" = "SERVICE_KEY_HEADER" }');
+    expect(setups[1].location).toContain('including the required syntax key=<credential>; version=2');
+    expect(JSON.parse(setups[2].copyText).mcpServers['key-service'].headers).toEqual({
+      'X-Service-Key': 'key=${env:SERVICE_KEY}; version=2',
+    });
+    expect(JSON.parse(setups[3].copyText).servers['key-service'].headers).toEqual({
+      'X-Service-Key': 'key=${input:service_key}; version=2',
+    });
+  });
+
+  it.each([
+    ['api-key' as const, 'Send the key as ApiKey <SERVICE_KEY>'],
+    ['bearer-token' as const, 'Send the token as Token token=<SERVICE_KEY>'],
+  ])('marks %s setups unsupported when prose names a credential without its syntax', (
+    authType, description
+  ) => {
+    const setups = generateClientSetups(makeServer({
+      id: 'key-service', declaredAuthType: authType, authType,
+      requiredHeaders: [{
+        name: 'Authorization', description, required: true, secret: true,
+      }],
+    }));
+
+    expect(setups.every(({ supported }) => !supported)).toBe(true);
+    expect(setups.every(({ format }) => format === 'text')).toBe(true);
+    expect(setups.every(({ copyText }) => !copyText.includes('SERVICE_KEY'))).toBe(true);
+    expect(setups.every(({ copyText }) => !copyText.includes('https://canonical.example/mcp'))).toBe(true);
+    expect(setups.every(({ unsupportedReasons }) => unsupportedReasons.some((reason) => (
+      reason.includes('Authorization') && reason.includes('complete value syntax')
+    )))).toBe(true);
+    // A default scheme must not contradict the header the catalog documented.
+    expect(setups.flatMap(({ notes }) => notes).join('\n')).not.toContain('Bearer <');
+  });
+
+  it.each([
+    ['a CRLF injection', 'ApiKey <SERVICE_KEY>\r\nX-Injected: 1'],
+    ['a control character', 'ApiKey <SERVICE_KEY>\u0007'],
+    ['two placeholders', 'ApiKey <SERVICE_KEY> <SERVICE_SECRET>'],
+    ['no placeholder', 'ApiKey static-value'],
+    ['an unnamed placeholder', 'ApiKey <>'],
+    ['an unbalanced bracket', 'ApiKey <SERVICE_KEY> >'],
+    ['surrounding whitespace', ' ApiKey <SERVICE_KEY> '],
+  ])('rejects a header value template with %s', (_label, valueTemplate) => {
+    const setups = generateClientSetups(makeServer({
+      id: 'key-service', declaredAuthType: 'api-key', authType: 'api-key',
+      requiredHeaders: [{
+        name: 'Authorization', description: 'Service credential',
+        valueTemplate, required: true, secret: true,
+      }],
+    }));
+
+    expect(setups.every(({ supported }) => !supported)).toBe(true);
+    expect(setups.every(({ copyText }) => !copyText.includes('ApiKey'))).toBe(true);
+    expect(setups.every(({ copyText }) => !copyText.includes('X-Injected'))).toBe(true);
   });
 
   it('preserves required-header guidance and does not invent missing API-key syntax', () => {

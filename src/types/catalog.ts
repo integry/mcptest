@@ -78,6 +78,13 @@ export interface CatalogRequiredHeader {
   name: string;
   /** Short setup guidance that is safe to render publicly. */
   description?: string;
+  /**
+   * Complete publisher-documented header value, written with exactly one named
+   * credential placeholder such as `Bearer <SERVICE_TOKEN>` or
+   * `Token token=<SERVICE_TOKEN>`. Generated setups reproduce this value
+   * verbatim, so it must never contain a real credential.
+   */
+  valueTemplate?: string;
   /** Whether the header must be supplied for a successful MCP connection. */
   required?: boolean;
   /** Whether the value is a credential and must never be stored or rendered. */

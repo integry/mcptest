@@ -168,6 +168,52 @@ describe('catalog seed provenance validation', () => {
     expect(() => validateCatalogSeed(seed)).toThrow(message);
   });
 
+  it('accepts complete header value templates with one named placeholder', () => {
+    const requiredHeaders = [
+      { name: 'Authorization', valueTemplate: 'ApiKey <SERVICE_KEY>', required: true, secret: true },
+      { name: 'X-Service-Key', valueTemplate: 'key=<SERVICE_KEY>; version=2', secret: true },
+      { name: 'X-Account-Region', valueTemplate: '<ACCOUNT_REGION>' },
+      { name: 'X-Legacy', description: 'Prose-only metadata stays valid catalog data' },
+    ];
+    expect(validateCatalogSeed({
+      id: 'header-server',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders,
+    }).requiredHeaders).toEqual(requiredHeaders);
+  });
+
+  it.each([
+    ['a CRLF injection', 'ApiKey <SERVICE_KEY>\r\nX-Injected: 1'],
+    ['a control character', 'ApiKey <SERVICE_KEY>\u0007'],
+    ['two placeholders', 'ApiKey <SERVICE_KEY> <SERVICE_SECRET>'],
+    ['no placeholder', 'ApiKey static-value'],
+    ['an unnamed placeholder', 'ApiKey <>'],
+    ['a lowercase placeholder', 'ApiKey <service_key>'],
+    ['an unbalanced bracket', 'ApiKey <SERVICE_KEY> >'],
+    ['surrounding whitespace', ' ApiKey <SERVICE_KEY> '],
+    ['a non-string value', 42],
+  ])('rejects a header value template with %s', (_case, valueTemplate) => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-header',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: [{ name: 'Authorization', valueTemplate, required: true, secret: true }],
+    })).toThrow('must be the complete header value with exactly one <NAMED_PLACEHOLDER>');
+  });
+
+  it('rejects malformed required header entries', () => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-header-name',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: [{ name: 'Bad Header', valueTemplate: '<SERVICE_KEY>' }],
+    })).toThrow('requiredHeaders entries need a valid HTTP header name');
+
+    expect(() => validateCatalogSeed({
+      id: 'bad-header-shape',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: { name: 'Authorization' },
+    })).toThrow('requiredHeaders must be an array');
+  });
+
   it('validates typed OAuth registration evidence and its alternative auth link', () => {
     const registration = {
       mode: 'pre-registered-required',

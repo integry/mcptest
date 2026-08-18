@@ -171,6 +171,39 @@ function validateOAuthCredentialRequirement(value, label, field) {
   }
 }
 
+const HEADER_FIELD_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/**
+ * A header value template must be the complete, publisher-documented value with
+ * exactly one named credential placeholder. Reject control characters, CRLF,
+ * surrounding whitespace, and ambiguous or malformed templates so generation
+ * never emits a partial credential.
+ */
+function isHeaderValueTemplate(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256) return false;
+  if (!/^[\x20-\x7e]+$/.test(value) || value !== value.trim()) return false;
+  const placeholders = value.match(/<[^<>]*>/g) || [];
+  if (placeholders.length !== 1 || !/^<[A-Z][A-Z0-9_]{1,63}>$/.test(placeholders[0])) return false;
+  return !/[<>]/.test(value.replace(placeholders[0], ''));
+}
+
+function validateRequiredHeaders(seed, label) {
+  const headers = seed.requiredHeaders;
+  if (headers === undefined) return;
+  if (!Array.isArray(headers)) {
+    throw new Error(`${label}: requiredHeaders must be an array`);
+  }
+  for (const header of headers) {
+    if (!header || typeof header !== 'object' || Array.isArray(header)
+        || !HEADER_FIELD_NAME.test(header.name || '')) {
+      throw new Error(`${label}: requiredHeaders entries need a valid HTTP header name`);
+    }
+    if (header.valueTemplate !== undefined && !isHeaderValueTemplate(header.valueTemplate)) {
+      throw new Error(`${label}: requiredHeaders.valueTemplate for ${header.name} must be the complete header value with exactly one <NAMED_PLACEHOLDER>`);
+    }
+  }
+}
+
 function validateOAuthRegistration(seed, label) {
   const registration = seed.oauthRegistration;
   if (registration === undefined) return;
@@ -276,6 +309,7 @@ function validateCatalogSeed(seed, index = 0) {
     }
   }
 
+  validateRequiredHeaders(seed, label);
   validateOAuthRegistration(seed, label);
 
   return seed;

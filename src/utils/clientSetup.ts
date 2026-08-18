@@ -153,39 +153,42 @@ export const quoteShellArgument = (value: string): string => {
 /** TOML basic-string serialization; JSON string escaping is valid TOML here. */
 export const serializeTomlString = (value: string): string => JSON.stringify(String(value));
 
-const placeholderFromDescription = (header: CatalogRequiredHeader): string | undefined => {
-  return header.description?.match(/<([A-Z][A-Z0-9_]{1,63})>/)?.[1];
+/**
+ * Accept only a complete, unambiguous header value template: printable ASCII
+ * without control characters or CRLF, no surrounding whitespace, and exactly
+ * one named credential placeholder. Anything else is rejected so a partial or
+ * ambiguous value never reaches a generated command or configuration file.
+ */
+const parseHeaderValueTemplate = (
+  value: unknown
+): { environmentVariable: string; valueTemplate: string } | undefined => {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256) return undefined;
+  // Printable ASCII only; this rejects CR, LF, tabs, and other control characters.
+  if (!/^[\x20-\x7e]+$/.test(value)) return undefined;
+  if (value !== value.trim()) return undefined;
+  const placeholders = value.match(/<[^<>]*>/g) || [];
+  if (placeholders.length !== 1) return undefined;
+  const environmentVariable = placeholders[0].match(/^<([A-Z][A-Z0-9_]{1,63})>$/)?.[1];
+  if (!environmentVariable) return undefined;
+  // A stray angle bracket outside the placeholder makes the template ambiguous.
+  if (/[<>]/.test(value.replace(placeholders[0], ''))) return undefined;
+  return { environmentVariable, valueTemplate: value };
 };
 
-const exactHeaderTemplate = (
-  authType: CatalogAuthType,
-  header: CatalogRequiredHeader
-): HeaderTemplate | undefined => {
+const exactHeaderTemplate = (header: CatalogRequiredHeader): HeaderTemplate | undefined => {
   // Reject malformed HTTP field names rather than putting them into a command or config.
   if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(header.name)) return undefined;
 
-  const documentedPlaceholder = placeholderFromDescription(header);
-  // A header name alone does not establish its complete value syntax. Require
-  // publisher metadata to name the value instead of inventing one.
-  if (!documentedPlaceholder) return undefined;
-  const environmentVariable = documentedPlaceholder;
-  const placeholder = `<${environmentVariable}>`;
-  const description = header.description || '';
-  const exactAuthorization = description.match(
-    new RegExp(`\\b(Bearer\\s+|Token\\s+token=)${placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
-  );
-
-  let valueTemplate = placeholder;
-  if (exactAuthorization) {
-    valueTemplate = `${exactAuthorization[1]}${placeholder}`;
-  } else if (header.name.toLowerCase() === 'authorization' && authType === 'bearer-token') {
-    valueTemplate = `Bearer ${placeholder}`;
-  }
+  // Typed publisher metadata is the only source of header value syntax. Prose is
+  // never parsed for it, so a documented scheme prefix can neither be dropped nor
+  // contradicted; legacy entries without a template are reported as unsupported.
+  const documented = parseHeaderValueTemplate(header.valueTemplate);
+  if (!documented) return undefined;
 
   return {
     name: header.name,
-    environmentVariable,
-    valueTemplate,
+    environmentVariable: documented.environmentVariable,
+    valueTemplate: documented.valueTemplate,
     secret: header.secret === true,
     required: header.required !== false,
   };
@@ -202,20 +205,24 @@ const headerRequirements = (
   for (const header of server.requiredHeaders || []) {
     const selectedCredentialHeader = credentialAuth && header.secret === true;
     if (header.required === false && !selectedCredentialHeader) continue;
-    const template = exactHeaderTemplate(authType, header);
+    const template = exactHeaderTemplate(header);
     if (template) {
       headers.push(template);
       continue;
     }
     const requirement = header.required === false ? 'credential' : 'required';
     unsupportedReasons.push(
-      `The ${requirement} header ${header.name} cannot be represented faithfully because its name or value placeholder is not fully documented.`
+      `The ${requirement} header ${header.name} cannot be represented faithfully because the catalog does not document its complete value syntax.`
     );
   }
 
   // Authorization: Bearer is defined by the auth type itself. API key/token
-  // header names are not, so those combinations need publisher guidance.
-  if (authType === 'bearer-token' && !headers.some((header) => header.secret)) {
+  // header names are not, so those combinations need publisher guidance. Neither
+  // applies once documented headers were rejected: the catalog described this
+  // server's credential syntax, so a default must not contradict it.
+  const missingCredential = unsupportedReasons.length === 0
+    && !headers.some((header) => header.secret);
+  if (missingCredential && authType === 'bearer-token') {
     const environmentVariable = toEnvironmentVariable(server.id, authType);
     headers.unshift({
       name: 'Authorization',
@@ -224,7 +231,7 @@ const headerRequirements = (
       secret: true,
       required: true,
     });
-  } else if (credentialAuth && !headers.some((header) => header.secret)) {
+  } else if (missingCredential && credentialAuth) {
     unsupportedReasons.push(
       `The catalog does not document the credential header required for ${authTypeLabel(authType)} authentication.`
     );
