@@ -6,7 +6,10 @@ import { logEvent } from '../utils/analytics';
 import ConnectionPanel from './ConnectionPanel';
 import { UnifiedPanel } from './UnifiedPanel';
 import { RecentServersPanel } from './RecentServersPanel';
-import { SuggestedServersPanel } from './SuggestedServersPanel';
+import {
+  SuggestedServersPanel,
+  type SuggestedServerSelection,
+} from './SuggestedServersPanel';
 import ParamsPanel from './ParamsPanel';
 import OutputPanel from './OutputPanel';
 import OAuthConfig from './OAuthConfig';
@@ -712,7 +715,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   };
 
   // Wrapper function to handle connect
-  const handleConnectWrapper = (urlToConnect?: string, protocolEraHint?: string) => {
+  const handleConnectWrapper = (
+    urlToConnect?: string,
+    protocolEraHint?: string,
+    preferredTransportHint?: ConnectionTab['preferredTransportHint']
+  ) => {
     const requestedUrl = urlToConnect || serverUrl;
     return handleConnect(
       setTools,
@@ -725,8 +732,27 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         || protocolEraHint === 'legacy'
         ? protocolEraHint
         : getCatalogProtocolEraHint(requestedUrl),
-      getPreferredTransportHint(requestedUrl)
+      preferredTransportHint ?? getPreferredTransportHint(requestedUrl)
     );
+  };
+
+  const handleSuggestedServerSelect = ({
+    endpoint,
+    protocolEra,
+  }: SuggestedServerSelection) => {
+    let title = endpoint.url;
+    try {
+      title = new URL(endpoint.url).hostname;
+    } catch {
+      // Catalog validation reports malformed URLs; retain the URL as a safe fallback.
+    }
+    setServerUrl(endpoint.url);
+    onUpdateTab(tab.id, {
+      serverUrl: endpoint.url,
+      title,
+      preferredTransportHint: endpoint.transport,
+    });
+    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport);
   };
 
   useEffect(() => {
@@ -978,8 +1004,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             {!showFirstConnectionOnboarding && <AwaitingConnectionPanel />}
             {isFirstConnection ? (
               <SuggestedServersPanel
-                setServerUrl={handleServerUrlChange}
-                handleConnect={handleConnectWrapper}
+                onServerSelect={handleSuggestedServerSelect}
                 isConnected={isConnected}
                 isConnecting={isConnecting}
                 showOnboardingIntro={showFirstConnectionOnboarding}
@@ -1000,8 +1025,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 )}
                 <div className={recentServers.length > 0 ? 'col-md-6' : 'col-12'}>
                   <SuggestedServersPanel
-                    setServerUrl={handleServerUrlChange}
-                    handleConnect={handleConnectWrapper}
+                    onServerSelect={handleSuggestedServerSelect}
                     isConnected={isConnected}
                     isConnecting={isConnecting}
                   />

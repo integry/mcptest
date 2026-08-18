@@ -11,6 +11,23 @@ vi.mock('../utils/transportDetection', async (importOriginal) => {
   return { ...actual, attemptParallelConnections: connectionMocks.attempt };
 });
 
+vi.mock('../utils/catalogUtils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/catalogUtils')>();
+  return {
+    ...actual,
+    getCatalogServers: () => actual.getCatalogServers().map((server) => (
+      server.id === 'coingecko'
+        ? {
+            ...server,
+            browserUrl: 'https://mcp.api.coingecko.com/sse',
+            validatedUrl: 'https://mcp.api.coingecko.com/sse',
+            transport: 'streamable-http' as const,
+          }
+        : server
+    )),
+  };
+});
+
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ currentUser: null, loading: false }),
 }));
@@ -181,6 +198,33 @@ describe('endpoint-scoped preferred transport hints', () => {
     expect(view.onUpdateTab.mock.calls.some(([, updates]) => (
       Object.prototype.hasOwnProperty.call(updates, 'preferredTransportHint')
     ))).toBe(false);
+    view.unmount();
+  });
+
+  it('uses definitive Streamable HTTP evidence for a suggested /sse endpoint', async () => {
+    const view = renderNewTab(false);
+    const firstConnectionButton = Array.from(view.container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Connect your first server')
+    );
+    act(() => firstConnectionButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    const suggestedServerButton = Array.from(view.container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('CoinGecko')
+    );
+    expect(suggestedServerButton).toBeDefined();
+    await act(async () => {
+      suggestedServerButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const endpoint = 'https://mcp.api.coingecko.com/sse';
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[0][7]).toBe('streamable-http');
+    expect(view.onUpdateTab).toHaveBeenCalledWith('new-tab', {
+      serverUrl: endpoint,
+      title: 'mcp.api.coingecko.com',
+      preferredTransportHint: 'streamable-http',
+    });
     view.unmount();
   });
 
