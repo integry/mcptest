@@ -11,7 +11,11 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
-    "logoUrl": "/context7-logo.png",
+    "logoUrl": "/server-logos/context7.svg",
+    "logoSourceUrl": "https://github.com/upstash/context7/blob/master/public/context7-icon.svg",
+    "logoSourceKind": "publisher-repository",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Context7 project mark from the publisher repository; trademark rights remain with the publisher.",
     "homepageUrl": "https://context7.com"
   },
   {
@@ -26,7 +30,11 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
-    "logoUrl": "/deepwiki-logo.png",
+    "logoUrl": "/server-logos/deepwiki.png",
+    "logoSourceUrl": "https://deepwiki.com/apple-icon.png",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "DeepWiki site mark; trademark rights remain with the publisher.",
     "homepageUrl": "https://deepwiki.com"
   },
   {
@@ -41,7 +49,11 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
-    "logoUrl": "/coingecko-logo.png",
+    "logoUrl": "/server-logos/coingecko.png",
+    "logoSourceUrl": "https://www.coingecko.com/en/branding",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Used for product identification under CoinGecko brand guidance.",
     "homepageUrl": "https://www.coingecko.com"
   },
   {
@@ -54,7 +66,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
-    "logoUrl": "/semgrep-logo.svg",
+    "logoUrl": "/server-logos/semgrep.svg",
+    "logoSourceUrl": "https://semgrep.dev/build/assets/favicon-CIx-xpG_.svg",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Semgrep site icon; trademark rights remain with the publisher.",
     "homepageUrl": "https://semgrep.dev",
     "sourceUrl": "https://github.com/semgrep/mcp"
   },
@@ -68,6 +84,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/github.svg",
+    "logoSourceUrl": "https://github.githubassets.com/favicons/favicon.svg",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "GitHub mark used for identification subject to the GitHub Logo Policy.",
     "homepageUrl": "https://github.com",
     "sourceUrl": "https://github.com/github/github-mcp-server"
   },
@@ -81,6 +102,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/linear.svg",
+    "logoSourceUrl": "https://linear.app/static/favicon.svg?v=2",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Linear brand icon; use is subject to Linear brand guidelines.",
     "homepageUrl": "https://linear.app"
   },
   {
@@ -88,11 +114,17 @@
     "name": "Notion",
     "url": "https://mcp.notion.com/mcp",
     "description": "Remote MCP server for Notion pages, databases, comments, and workspace search.",
+    "seoDescription": "Inspect the Notion MCP server. Connect to explore capabilities, test queries, and debug interactions with Notion pages, databases, and workspaces.",
     "category": "Productivity",
     "tags": ["official", "notion", "docs", "databases", "workspace", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/notion.png",
+    "logoSourceUrl": "https://www.notion.com/front-static/logo-ios.png",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Notion site icon; trademark rights remain with Notion.",
     "homepageUrl": "https://www.notion.com",
     "sourceUrl": "https://github.com/makenotion/notion-mcp-server"
   },
@@ -106,6 +138,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/sentry.svg",
+    "logoSourceUrl": "https://github.com/getsentry/sentry/blob/master/src/sentry/static/sentry/images/logos/logo-sentry.svg",
+    "logoSourceKind": "publisher-repository",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Sentry project mark from the publisher repository; trademark rights remain with Sentry.",
     "homepageUrl": "https://sentry.io"
   },
   {
@@ -118,6 +155,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/atlassian.svg",
+    "logoSourceUrl": "https://wac-cdn.atlassian.com/misc-assets/adg4-nav/AtlassianHeaderLogo.svg",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Atlassian brand asset; trademark rights remain with Atlassian.",
     "homepageUrl": "https://www.atlassian.com"
   },
   {
@@ -130,6 +172,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/paypal.png",
+    "logoSourceUrl": "https://www.paypalobjects.com/marketing/web/icons/monogram/pp258.png",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official PayPal monogram; trademark rights remain with PayPal.",
     "homepageUrl": "https://developer.paypal.com"
   },
   {
@@ -142,6 +189,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/stripe.svg",
+    "logoSourceUrl": "https://images.stripeassets.com/fzn2n1nzq965/1hgcBNd12BfT9VLgbId7By/01d91920114b124fb4cf6d448f9f06eb/favicon.svg",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Stripe newsroom brand asset; trademark rights remain with Stripe.",
     "homepageUrl": "https://stripe.com"
   },
   {
@@ -154,6 +206,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/slack.svg",
+    "logoSourceUrl": "https://a.slack-edge.com/38f0e7c/marketing/img/nav/logo.svg",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Slack media asset; trademark rights remain with Slack.",
     "homepageUrl": "https://slack.com"
   },
   {
@@ -161,11 +218,17 @@
     "name": "Cloudflare",
     "url": "https://mcp.cloudflare.com/mcp",
     "description": "Remote MCP server for Cloudflare Workers, D1, R2, DNS, and account APIs.",
+    "seoDescription": "Inspect the Cloudflare MCP server. Explore tools for managing workers, DNS, and edge capabilities. Test and debug your endpoint instantly.",
     "category": "Cloud",
     "tags": ["official", "cloudflare", "workers", "dns", "infrastructure", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/cloudflare.svg",
+    "logoSourceUrl": "https://cf-assets.www.cloudflare.com/slt3lc6tev37/1wf4qdGsPqa2UUSEoa4Yyg/3250a65f210bbb7062ab4dd9a9bdf213/logo-cloudflare-dark.svg",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Cloudflare logo asset; trademark rights remain with Cloudflare.",
     "homepageUrl": "https://www.cloudflare.com"
   },
   {
@@ -178,6 +241,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/figma.svg",
+    "logoSourceUrl": "https://static.figma.com/app/icon/2/favicon.svg",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Figma brand icon; use is subject to Figma brand guidelines.",
     "homepageUrl": "https://www.figma.com"
   },
   {
@@ -190,6 +258,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/supabase.svg",
+    "logoSourceUrl": "https://github.com/supabase/supabase/blob/master/apps/studio/public/img/libraries/supabase-icon.svg",
+    "logoSourceKind": "publisher-repository",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Supabase project icon from the publisher repository; trademark rights remain with Supabase.",
     "homepageUrl": "https://supabase.com"
   },
   {
@@ -197,11 +270,17 @@
     "name": "Neon",
     "url": "https://mcp.neon.tech/mcp",
     "description": "Remote MCP server for Neon Postgres projects, branches, SQL, and documentation.",
+    "seoDescription": "Inspect the Neon Serverless Postgres MCP server. Test database queries, explore schema capabilities, and debug your remote MCP connection.",
     "category": "Databases",
     "tags": ["official", "neon", "postgres", "database", "branches", "oauth"],
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/neon.svg",
+    "logoSourceUrl": "https://neon.com/favicon/favicon.svg",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Neon site icon; trademark rights remain with Neon.",
     "homepageUrl": "https://neon.com"
   },
   {
@@ -215,6 +294,11 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
+    "logoUrl": "/server-logos/mdn.svg",
+    "logoSourceUrl": "https://developer.mozilla.org/favicon.svg",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official MDN site icon; trademark rights remain with Mozilla.",
     "homepageUrl": "https://developer.mozilla.org"
   },
   {
@@ -228,6 +312,10 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
+    "logoUrl": "/server-logos/yahoo-finance.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Locally generated YF monogram because no reusable publisher asset with clear third-party usage terms was identified; it is not an official Yahoo mark.",
     "homepageUrl": "https://finance.yahoo.com"
   },
   {
@@ -240,6 +328,11 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "logoUrl": "/server-logos/vercel.svg",
+    "logoSourceUrl": "https://github.com/vercel/vercel/blob/main/packages/next/test/fixtures/00-build-time-traces/public/vercel.svg",
+    "logoSourceKind": "publisher-repository",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Vercel brand asset from the publisher repository; trademark rights remain with Vercel.",
     "homepageUrl": "https://vercel.com/docs/mcp/vercel-mcp",
     "sourceUrl": "https://github.com/vercel/vercel-mcp-overview",
     "registryName": "com.vercel/vercel-mcp",
@@ -258,6 +351,11 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
+    "logoUrl": "/server-logos/mcp-registry.svg",
+    "logoSourceUrl": "https://modelcontextprotocol.io/favicon.svg",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official Model Context Protocol site mark used for the official registry server.",
     "homepageUrl": "https://run.mcp.com.ai",
     "sourceUrl": "https://github.com/modelcontextprotocol/registry",
     "registryName": "ai.com.mcp/registry",
@@ -275,6 +373,11 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
+    "logoUrl": "/server-logos/inference-sh.png",
+    "logoSourceUrl": "https://inference.sh/favicon.svg",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official inference.sh site icon; trademark rights remain with the publisher.",
     "homepageUrl": "https://inference.sh",
     "registryName": "ac.inference.sh/mcp",
     "registryVersion": "2.0.1",
@@ -291,6 +394,11 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
+    "logoUrl": "/server-logos/tandem-docs.png",
+    "logoSourceUrl": "https://github.com/frumu-ai/tandem/blob/main/apps/tandem-desktop/src-tauri/icons/128x128@2x.png",
+    "logoSourceKind": "publisher-repository",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Tandem project icon from the publisher repository; trademark rights remain with the publisher.",
     "homepageUrl": "https://tandem.ac/docs-mcp",
     "sourceUrl": "https://github.com/frumu-ai/tandem",
     "registryName": "ac.tandem/docs-mcp",
@@ -315,6 +423,11 @@
         "secret": true
       }
     ],
+    "logoUrl": "/server-logos/agentdm.png",
+    "logoSourceUrl": "https://agentdm.ai/apple-icon.png",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official AgentDM site icon; trademark rights remain with the publisher.",
     "homepageUrl": "https://agentdm.ai",
     "sourceUrl": "https://github.com/agentdmai/agentdm",
     "registryName": "ai.agentdm/agentdm",
@@ -339,6 +452,11 @@
         "secret": true
       }
     ],
+    "logoUrl": "/server-logos/adadvisor.png",
+    "logoSourceUrl": "https://www.adadvisor.ai/apple-touch-icon.png",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Official AdAdvisor site icon; trademark rights remain with the publisher.",
     "homepageUrl": "https://www.adadvisor.ai/docs/user-guide/getting-started-with-mcp",
     "registryName": "ai.adadvisor/mcp-server",
     "registryVersion": "1.0.1",
@@ -362,6 +480,10 @@
         "secret": true
       }
     ],
+    "logoUrl": "/server-logos/inferventis.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Locally generated I monogram because no attributable public publisher mark was available; it is not an official Inferventis mark.",
     "homepageUrl": "https://inferventis.ai",
     "sourceUrl": "https://github.com/Bankee-ai/inferventis",
     "registryName": "ai.bankee/inferventis-mcp",
@@ -379,6 +501,10 @@
     "transport": "legacy-sse",
     "requiresOAuth": false,
     "authType": "none",
+    "logoUrl": "/server-logos/agentra.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-08-17",
+    "logoLicenseNote": "Locally generated A monogram because no attributable public publisher mark was available; it is not an official Agentra mark.",
     "registryName": "ai.agentrapay/agentra",
     "registryVersion": "1.0.0",
     "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/ai.agentrapay%2Fagentra/versions/1.0.0"

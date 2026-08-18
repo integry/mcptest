@@ -107,21 +107,22 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
           </li>
         </ul>
         {activeTab === 'result' && props.lastResult && (
-          <div className="d-flex align-items-center pe-3">
-            <div className="btn-group position-relative" role="group">
-              <button
-                className="btn btn-sm btn-outline-secondary"
-                style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
-                onClick={() => setIsFullscreen(true)}
-                title="Fullscreen"
-                aria-label="View result in fullscreen"
-              >
-                <i className="bi bi-arrows-fullscreen"></i>
-              </button>
-              {props.lastResult.callContext && props.serverUrl && (
+          <div className="d-flex align-items-center pe-3 panel-actions">
+            {/* Individual icon buttons, spaced — never welded into a strip */}
+            <button
+              className="btn btn-sm btn-ghost"
+              style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+              onClick={() => setIsFullscreen(true)}
+              title="Fullscreen"
+              aria-label="View result in fullscreen"
+            >
+              <i className="bi bi-arrows-fullscreen"></i>
+            </button>
+            {props.lastResult.callContext && props.serverUrl && (
+              <div className="position-relative">
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-secondary"
+                  className="btn btn-sm btn-ghost"
                   style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                   onClick={handleShareResult}
                   title="Share result link"
@@ -130,30 +131,30 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                 >
                   {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
                 </button>
-              )}
-              {shareStatus !== 'idle' && (
-                <div className="notification-tooltip" style={{right: 0}} aria-live="polite">
-                  {shareMessage}
-                </div>
-              )}
-            </div>
-            
+                {shareStatus !== 'idle' && (
+                  <div className="notification-tooltip" style={{right: 0}} aria-live="polite">
+                    {shareMessage}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Add to Dashboard button/dropdown */}
             {props.lastResult.callContext && props.spaces.length > 0 && (
               props.spaces.length === 1 ? (
                 <button
-                  className="btn btn-sm btn-outline-primary ms-2"
+                  className="btn btn-sm btn-ghost"
                   style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                   title={`Add to dashboard: ${props.spaces[0].name}`}
                   onClick={() => handleAddToSpace(props.spaces[0].id)}
                   aria-label="Add result to dashboard"
                 >
-                  <i className="bi bi-plus-square"></i> Add to dashboard
+                  <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
                 </button>
               ) : (
-                <div className="dropdown ms-2">
+                <div className="dropdown">
                   <button
-                    className="btn btn-sm btn-outline-primary dropdown-toggle"
+                    className="btn btn-sm btn-ghost dropdown-toggle"
                     style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                     type="button"
                     id={`dropdownAddToSpace-result`}
@@ -162,7 +163,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                     title="Add to Dashboard..."
                     aria-label="Add result to dashboard"
                   >
-                    <i className="bi bi-plus-square me-1"></i>Add to dashboard
+                    <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
                   </button>
                   <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-result`}>
                     {props.spaces.map(space => (

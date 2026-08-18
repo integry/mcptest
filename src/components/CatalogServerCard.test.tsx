@@ -20,6 +20,9 @@ const server: CatalogServer = {
   protocolEra: 'stateless',
   status: 'online',
   browserAccess: 'direct',
+  logoUrl: '/server-logos/example.svg',
+  logoSourceKind: 'generated-fallback',
+  logoRetrievedAt: '2026-08-17',
 };
 
 describe('CatalogServerCard presentation', () => {
@@ -36,6 +39,7 @@ describe('CatalogServerCard presentation', () => {
       container.querySelectorAll<HTMLElement>('.catalog-metadata-badge')
     );
     const reportLink = container.querySelector<HTMLAnchorElement>('.catalog-report-link');
+    const badgesLink = container.querySelector<HTMLAnchorElement>('.catalog-server-badges');
     const buttons = container.querySelectorAll<HTMLButtonElement>('button');
 
     expect(metadataBadges.map((badge) => badge.textContent)).toEqual([
@@ -59,6 +63,8 @@ describe('CatalogServerCard presentation', () => {
     expect(container.querySelector('.catalog-server-footer .catalog-server-badges')).not.toBeNull();
     expect(container.querySelector('.catalog-server-footer .catalog-card-actions')).not.toBeNull();
     expect(reportLink?.classList.contains('btn')).toBe(false);
+    expect(badgesLink?.getAttribute('href')).toBe('/servers/example/');
+    expect(badgesLink?.getAttribute('aria-label')).toBe('View Example server report');
     expect(container.querySelector('.catalog-server-title')?.classList).toContain('stretched-link');
     expect(container.querySelector('.catalog-server-description')?.classList).not.toContain(
       'text-muted'

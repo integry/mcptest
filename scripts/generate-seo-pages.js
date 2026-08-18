@@ -9,6 +9,8 @@ const distRoot = path.join(projectRoot, 'dist');
 const indexPath = path.join(distRoot, 'index.html');
 const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
 const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.json');
+const pageMetadataPath = path.join(projectRoot, 'src', 'data', 'pageMetadata.json');
+const learnArticlesPath = path.join(projectRoot, 'src', 'data', 'learnArticles.json');
 
 function escapeHtml(value) {
   return String(value)
@@ -154,6 +156,26 @@ function setNamedMeta(html, name, content) {
   );
 }
 
+function serverInitials(name) {
+  const words = String(name).match(/[\p{L}\p{N}]+/gu) || [];
+  const initials = words.length > 1
+    ? `${words[0][0]}${words[1][0]}`
+    : words[0]?.slice(0, 2) || '?';
+  return initials.toLocaleUpperCase();
+}
+
+function isLocalServerLogo(logoUrl) {
+  return typeof logoUrl === 'string' && logoUrl.startsWith('/server-logos/');
+}
+
+function renderServerLogo(server) {
+  if (isLocalServerLogo(server.logoUrl)) {
+    return `<span class="catalog-server-logo server-profile-logo" aria-hidden="true"><img src="${escapeHtml(server.logoUrl)}" alt="" /></span>`;
+  }
+
+  return `<span class="catalog-server-logo catalog-server-logo--fallback server-profile-logo" role="img" aria-label="${escapeHtml(server.name)} logo"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(serverInitials(server.name))}</span></span>`;
+}
+
 function renderServerFallback(server) {
   const homepageLink = server.homepageUrl
     ? `<a href="${escapeHtml(server.homepageUrl)}">Product documentation</a>`
@@ -176,8 +198,7 @@ function renderServerFallback(server) {
     `<article class="server-profile seo-server-fallback" data-server-id="${escapeHtml(server.id)}">`,
     '  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><a href="/catalog">Server Catalog</a></nav>',
     '  <header class="server-profile-hero">',
-    '    <div class="server-profile-identity"><div>',
-    '      <div class="server-profile-eyebrow">MCP server report</div>',
+    `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
     `      <h1>${escapeHtml(server.name)}</h1>`,
     `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
@@ -231,10 +252,11 @@ function renderServerHtml(indexHtml, server) {
   const canonicalUrl = `${SITE_URL}${serverPath(server.id)}`;
   const title = `${server.name} MCP Server Report | mcptest.io`;
   const description = truncate(
-    `${server.name} MCP server connection report: ${transportLabel(server.declaredTransport)}, ${protocolLabel(server.protocolEra, server.protocolVersion)}, ${authenticationLabel(server.authType)}, endpoint details, and live-test status.`
+    server.seoDescription
+      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
   );
-  const imageUrl = server.logoUrl
-    ? (server.logoUrl.startsWith('http') ? server.logoUrl : `${SITE_URL}${server.logoUrl}`)
+  const imageUrl = isLocalServerLogo(server.logoUrl)
+    ? `${SITE_URL}${server.logoUrl}`
     : `${SITE_URL}/logo.png`;
   const structuredData = {
     '@context': 'https://schema.org',
@@ -263,6 +285,7 @@ function renderServerHtml(indexHtml, server) {
   html = setNamedMeta(html, 'twitter:card', 'summary');
   html = setNamedMeta(html, 'twitter:title', title);
   html = setNamedMeta(html, 'twitter:description', description);
+  html = setNamedMeta(html, 'twitter:image', imageUrl);
   html = setPropertyMeta(html, 'og:title', title);
   html = setPropertyMeta(html, 'og:description', description);
   html = setPropertyMeta(html, 'og:url', canonicalUrl);
@@ -287,6 +310,232 @@ function renderServerHtml(indexHtml, server) {
   return html;
 }
 
+function renderStaticPageHtml(indexHtml, pathname, metadata, options = {}) {
+  const canonicalUrl = `${SITE_URL}${pathname}`;
+  const imageUrl = `${SITE_URL}/logo.png`;
+  let html = indexHtml.replace(
+    /<title>[^<]*<\/title>/i,
+    `<title>${escapeHtml(metadata.title)}</title>`
+  );
+  html = setNamedMeta(html, 'description', metadata.description);
+  html = setNamedMeta(html, 'twitter:card', 'summary');
+  html = setNamedMeta(html, 'twitter:title', metadata.title);
+  html = setNamedMeta(html, 'twitter:description', metadata.description);
+  html = setNamedMeta(html, 'twitter:image', imageUrl);
+  html = setPropertyMeta(html, 'og:title', metadata.title);
+  html = setPropertyMeta(html, 'og:description', metadata.description);
+  html = setPropertyMeta(html, 'og:url', canonicalUrl);
+  html = setPropertyMeta(html, 'og:image', imageUrl);
+  html = setPropertyMeta(html, 'og:type', options.type || 'website');
+  html = replaceOrInsertHead(
+    html,
+    /<link\s+[^>]*rel=["']canonical["'][^>]*>/i,
+    `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`
+  );
+  if (options.structuredData) {
+    const safeJson = JSON.stringify(options.structuredData).replace(/<\//g, '<\\/');
+    html = html.replace(
+      '</head>',
+      `    <script id="server-structured-data" type="application/ld+json">${safeJson}</script>\n  </head>`
+    );
+  }
+  if (options.fallbackHtml) {
+    html = html.replace(
+      '<div id="root"></div>',
+      `<div id="root">\n${options.fallbackHtml}\n    </div>`
+    );
+  }
+  return html;
+}
+
+function renderInlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => (
+      `<a href="${escapeHtml(href)}">${label}</a>`
+    ))
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function isTableSeparator(line) {
+  const cells = line.trim().replace(/^\||\|$/g, '').split('|');
+  return cells.length > 1 && cells.every(cell => /^\s*:?-{3,}:?\s*$/.test(cell));
+}
+
+function renderMarkdown(markdown) {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const html = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    if (line.startsWith('```')) {
+      const language = line.slice(3).trim();
+      const code = [];
+      index += 1;
+      while (index < lines.length && !lines[index].startsWith('```')) {
+        code.push(lines[index]);
+        index += 1;
+      }
+      index += 1;
+      html.push(`<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    const heading = line.match(/^(#{2,6})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      index += 1;
+      continue;
+    }
+
+    if (
+      line.includes('|') &&
+      index + 1 < lines.length &&
+      isTableSeparator(lines[index + 1])
+    ) {
+      const headerCells = line.trim().replace(/^\||\|$/g, '').split('|');
+      const rows = [];
+      index += 2;
+      while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
+        rows.push(lines[index].trim().replace(/^\||\|$/g, '').split('|'));
+        index += 1;
+      }
+      html.push([
+        '<table><thead><tr>',
+        ...headerCells.map(cell => `<th>${renderInlineMarkdown(cell.trim())}</th>`),
+        '</tr></thead><tbody>',
+        ...rows.map(cells => `<tr>${cells.map(cell => `<td>${renderInlineMarkdown(cell.trim())}</td>`).join('')}</tr>`),
+        '</tbody></table>',
+      ].join(''));
+      continue;
+    }
+
+    const listMatch = line.match(/^\s*(?:([-*])|(\d+)\.)\s+(.+)$/);
+    if (listMatch) {
+      const ordered = Boolean(listMatch[2]);
+      const tag = ordered ? 'ol' : 'ul';
+      const items = [];
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*(?:([-*])|(\d+)\.)\s+(.+)$/);
+        if (!item || Boolean(item[2]) !== ordered) break;
+        items.push(item[3]);
+        index += 1;
+      }
+      html.push(`<${tag}>${items.map(item => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</${tag}>`);
+      continue;
+    }
+
+    const paragraph = [line.trim()];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index].trim() &&
+      !lines[index].startsWith('```') &&
+      !/^(#{2,6})\s+/.test(lines[index]) &&
+      !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[index]) &&
+      !(lines[index].includes('|') && index + 1 < lines.length && isTableSeparator(lines[index + 1]))
+    ) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+    html.push(`<p>${renderInlineMarkdown(paragraph.join(' '))}</p>`);
+  }
+
+  return html.join('\n');
+}
+
+function getRelatedLearnArticles(article, articles) {
+  const bySlug = new Map(articles.map(item => [item.slug, item]));
+  return article.relatedSlugs.map(slug => bySlug.get(slug)).filter(Boolean);
+}
+
+function renderLearnIndexFallback(learnData) {
+  return [
+    '<main class="learn-page learn-index seo-learn-fallback">',
+    '  <header class="learn-hero">',
+    '    <p class="learn-kicker">Guides</p>',
+    `    <h1>${escapeHtml(learnData.index.title)}</h1>`,
+    `    <p>${escapeHtml(learnData.index.summary)}</p>`,
+    '  </header>',
+    '  <div class="learn-grid">',
+    ...learnData.articles.map(article => [
+      '    <article class="learn-card">',
+      `      <p>${escapeHtml(article.category)} · ${article.readingTimeMinutes} min read</p>`,
+      `      <h2><a href="/learn/${escapeHtml(article.slug)}">${escapeHtml(article.title)}</a></h2>`,
+      `      <p>${escapeHtml(article.summary)}</p>`,
+      `      <p>Reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
+      '    </article>',
+    ].join('\n')),
+    '  </div>',
+    '</main>',
+  ].join('\n');
+}
+
+function renderLearnArticleFallback(article, articles) {
+  const related = getRelatedLearnArticles(article, articles);
+  return [
+    `<article class="learn-page learn-article seo-learn-fallback" data-article-slug="${escapeHtml(article.slug)}">`,
+    `  <nav class="learn-breadcrumb" aria-label="Breadcrumb"><a href="/learn">Learn</a><span>/</span><span aria-current="page">${escapeHtml(article.title)}</span></nav>`,
+    '  <header class="learn-article-header">',
+    `    <p class="learn-kicker">${escapeHtml(article.category)}</p>`,
+    `    <h1>${escapeHtml(article.title)}</h1>`,
+    `    <p>${escapeHtml(article.summary)}</p>`,
+    `    <p>${article.readingTimeMinutes} min read · Last reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
+    '  </header>',
+    `  <div class="learn-markdown">${renderMarkdown(article.content)}</div>`,
+    '  <footer class="learn-article-footer">',
+    '    <section><h2>Sources</h2><ul>',
+    ...article.sourceLinks.map(source => `      <li><a href="${escapeHtml(source.url)}">${escapeHtml(source.title)}</a></li>`),
+    '    </ul></section>',
+    '    <section><h2>Related guides</h2><ul>',
+    ...related.map(item => `      <li><a href="/learn/${escapeHtml(item.slug)}">${escapeHtml(item.title)}</a></li>`),
+    '    </ul></section>',
+    '  </footer>',
+    '</article>',
+  ].join('\n');
+}
+
+function getLearnArticleStructuredData(article) {
+  const canonicalUrl = `${SITE_URL}/learn/${article.slug}`;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    description: article.summary,
+    mainEntityOfPage: canonicalUrl,
+    url: canonicalUrl,
+    dateModified: article.lastReviewed,
+    articleSection: article.category,
+    author: { '@type': 'Organization', name: 'mcptest.io', url: SITE_URL },
+    publisher: {
+      '@type': 'Organization',
+      name: 'mcptest.io',
+      url: SITE_URL,
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` },
+    },
+    citation: article.sourceLinks.map(({ url }) => url),
+    isPartOf: { '@type': 'CollectionPage', name: 'Learn MCP', url: `${SITE_URL}/learn` },
+  };
+}
+
+function renderLearnArticleHtml(indexHtml, article, articles) {
+  return renderStaticPageHtml(indexHtml, `/learn/${article.slug}`, {
+    title: `${article.title} | mcptest.io`,
+    description: article.summary,
+  }, {
+    type: 'article',
+    structuredData: getLearnArticleStructuredData(article),
+    fallbackHtml: renderLearnArticleFallback(article, articles),
+  });
+}
+
 function writeServerPages(indexHtml, servers) {
   for (const server of servers) {
     const outputDirectory = path.join(distRoot, 'servers', server.id);
@@ -299,7 +548,45 @@ function writeServerPages(indexHtml, servers) {
   }
 }
 
-function writeSitemap(servers) {
+function writeStaticPages(indexHtml, docsMetadata) {
+  for (const [slug, metadata] of Object.entries(docsMetadata)) {
+    const pathname = `/docs/${slug}`;
+    const outputDirectory = path.join(distRoot, 'docs', slug);
+    fs.mkdirSync(outputDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDirectory, 'index.html'),
+      renderStaticPageHtml(indexHtml, pathname, metadata),
+      'utf8'
+    );
+  }
+}
+
+function writeLearnPages(indexHtml, learnData) {
+  const learnDirectory = path.join(distRoot, 'learn');
+  fs.mkdirSync(learnDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(learnDirectory, 'index.html'),
+    renderStaticPageHtml(indexHtml, '/learn', {
+      title: `${learnData.index.title} | mcptest.io`,
+      description: learnData.index.description,
+    }, {
+      fallbackHtml: renderLearnIndexFallback(learnData),
+    }),
+    'utf8'
+  );
+
+  for (const article of learnData.articles) {
+    const outputDirectory = path.join(learnDirectory, article.slug);
+    fs.mkdirSync(outputDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDirectory, 'index.html'),
+      renderLearnArticleHtml(indexHtml, article, learnData.articles),
+      'utf8'
+    );
+  }
+}
+
+function writeSitemap(servers, learnData) {
   const staticPaths = [
     '/',
     '/catalog',
@@ -308,13 +595,21 @@ function writeSitemap(servers) {
     '/docs/remote-vs-local',
     '/docs/testing-guide',
     '/docs/troubleshooting',
+    '/learn',
   ];
-  const paths = [...staticPaths, ...servers.map((server) => serverPath(server.id))];
   const lastModified = new Date().toISOString().slice(0, 10);
-  const entries = paths.map((pathname) => [
+  const paths = [
+    ...staticPaths.map(pathname => ({ pathname, lastModified })),
+    ...learnData.articles.map(article => ({
+      pathname: `/learn/${article.slug}`,
+      lastModified: article.lastReviewed,
+    })),
+    ...servers.map(server => ({ pathname: serverPath(server.id), lastModified })),
+  ];
+  const entries = paths.map(({ pathname, lastModified: entryLastModified }) => [
     '  <url>',
     `    <loc>${escapeXml(`${SITE_URL}${pathname === '/' ? '' : pathname}`)}</loc>`,
-    `    <lastmod>${lastModified}</lastmod>`,
+    `    <lastmod>${entryLastModified}</lastmod>`,
     '  </url>',
   ].join('\n'));
   const sitemap = [
@@ -349,6 +644,46 @@ function validateInputs(servers) {
   }
 }
 
+function validateLearnArticles(learnData) {
+  if (!learnData.index?.title || !learnData.index?.description || !learnData.index?.summary) {
+    throw new Error('Learn SEO generation requires complete index metadata.');
+  }
+  const slugs = new Set();
+  for (const article of learnData.articles || []) {
+    const required = [
+      article.title,
+      article.summary,
+      article.slug,
+      article.category,
+      article.readingTimeMinutes,
+      article.lastReviewed,
+      article.content,
+      article.relatedSlugs,
+      article.sourceLinks,
+    ];
+    if (required.some(value => value === undefined || value === null || value === '')) {
+      throw new Error(`Learn SEO generation requires complete article metadata: ${JSON.stringify(article)}`);
+    }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug) || slugs.has(article.slug)) {
+      throw new Error(`Learn article slug must be unique and safe: ${article.slug}`);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(article.lastReviewed)) {
+      throw new Error(`Learn article last-reviewed date is invalid: ${article.slug}`);
+    }
+    if (!Array.isArray(article.sourceLinks) || article.sourceLinks.length === 0) {
+      throw new Error(`Learn article requires source links: ${article.slug}`);
+    }
+    slugs.add(article.slug);
+  }
+  for (const article of learnData.articles) {
+    for (const relatedSlug of article.relatedSlugs) {
+      if (!slugs.has(relatedSlug)) {
+        throw new Error(`Learn article ${article.slug} references unknown article ${relatedSlug}.`);
+      }
+    }
+  }
+}
+
 function main() {
   if (!fs.existsSync(indexPath)) {
     throw new Error('dist/index.html is missing; run Vite before generating SEO pages.');
@@ -356,18 +691,32 @@ function main() {
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
   const validationResults = JSON.parse(fs.readFileSync(validationPath, 'utf8'));
+  const pageMetadata = JSON.parse(fs.readFileSync(pageMetadataPath, 'utf8'));
+  const learnData = JSON.parse(fs.readFileSync(learnArticlesPath, 'utf8'));
   validateInputs(seeds);
+  validateLearnArticles(learnData);
   const servers = mergeCatalogServers(seeds, validationResults);
   const indexHtml = fs.readFileSync(indexPath, 'utf8');
 
   writeServerPages(indexHtml, servers);
-  writeSitemap(servers);
+  writeStaticPages(indexHtml, pageMetadata.docs);
+  writeLearnPages(indexHtml, learnData);
+  writeSitemap(servers, learnData);
 
-  console.log(`Generated ${servers.length} server profile documents, sitemap.xml, and robots.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${learnData.articles.length} Learn articles, sitemap.xml, and robots.txt.`);
 }
 
 if (require.main === module) {
   main();
 }
 
-module.exports = { mergeCatalogServers, renderServerHtml, serverPath, transportLabel };
+module.exports = {
+  mergeCatalogServers,
+  renderServerHtml,
+  renderStaticPageHtml,
+  renderLearnArticleHtml,
+  renderMarkdown,
+  renderServerLogo,
+  serverPath,
+  transportLabel,
+};

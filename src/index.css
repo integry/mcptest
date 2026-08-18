@@ -33,6 +33,12 @@
   --box-shadow-lg: 0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -2px rgba(15, 23, 42, 0.08);
   --box-shadow-xl: 0 12px 24px -8px rgba(15, 23, 42, 0.16);
   --border-radius: 0.9rem;
+  /* One button shape for the whole app: soft rectangles, never pills. A
+     developer tool is grid-heavy, so buttons should echo the panels they sit
+     in. --button-radius-sm is reserved for buttons nested inside another
+     bordered container (segmented control items, inline-edit icons). */
+  --button-radius: 0.5rem;
+  --button-radius-sm: 0.375rem;
   --accent-gradient: linear-gradient(120deg, #047857, #0f766e);
 }
 
@@ -202,7 +208,7 @@ a:hover {
   min-width: 0;
 }
 
-.server-profile-logo {
+.catalog-server-logo.server-profile-logo {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -553,7 +559,7 @@ a:hover {
 
 /* Buttons */
 .btn {
-  border-radius: var(--border-radius);
+  border-radius: var(--button-radius);
   padding: 0.5rem 1rem;
   font-weight: 500;
   font-size: 0.875rem;
@@ -638,30 +644,34 @@ a:hover {
   color: white;
 }
 
-/* Outline buttons */
+/* Outline buttons
+   An outline button always wears one palette: its border and its label are the
+   same colour, and hovering tints the background instead of flooding it. A
+   neutral border wrapped around coloured text reads as a disabled control
+   trying to look active, so those combinations are never allowed. */
+
+/* Brand / active secondary */
 .btn-outline-primary {
   color: var(--primary-color);
   border-color: var(--primary-color);
   background-color: transparent;
 }
 .btn-outline-primary:hover {
-  background-color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 10%, transparent);
   border-color: var(--primary-color);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(34, 197, 94, 0.2);
+  color: var(--primary-color);
 }
 
+/* Neutral / default secondary */
 .btn-outline-secondary {
-  color: var(--secondary-color);
-  border-color: var(--secondary-color);
+  color: var(--text-accent);
+  border-color: var(--input-border);
   background-color: transparent;
 }
 .btn-outline-secondary:hover {
-  background-color: var(--secondary-color);
+  background-color: var(--card-bg-secondary);
   border-color: var(--secondary-color);
-  color: white;
-  transform: translateY(-1px);
+  color: var(--text-color);
 }
 
 .btn-outline-danger {
@@ -670,10 +680,9 @@ a:hover {
   background-color: transparent;
 }
 .btn-outline-danger:hover {
-  background-color: var(--danger-color);
+  background-color: color-mix(in srgb, var(--danger-color) 10%, transparent);
   border-color: var(--danger-color);
-  color: white;
-  transform: translateY(-1px);
+  color: var(--danger-color);
 }
 
 .btn-outline-success {
@@ -682,10 +691,9 @@ a:hover {
   background-color: transparent;
 }
 .btn-outline-success:hover {
-  background-color: var(--success-color);
+  background-color: color-mix(in srgb, var(--success-color) 10%, transparent);
   border-color: var(--success-color);
-  color: white;
-  transform: translateY(-1px);
+  color: var(--success-color);
 }
 
 /* Forms */
@@ -755,12 +763,14 @@ a:hover {
   cursor: pointer;
 }
 
-/* Badges */
+/* Badges
+   Badges are read-only status, not controls. They stay smaller, tighter and
+   softer than any button so nobody tries to click one. */
 .badge {
-  border-radius: 0.5rem;
-  padding: 0.4em 0.75em;
-  font-weight: 500;
-  font-size: 0.8rem;
+  border-radius: var(--button-radius-sm);
+  padding: 0.22em 0.5em;
+  font-weight: 600;
+  font-size: 0.72rem;
   letter-spacing: 0;
 }
 .bg-success { 
@@ -783,9 +793,43 @@ a:hover {
   background-color: var(--warning-color) !important; 
   color: var(--body-bg) !important;
 }
-.bg-light { 
-  background-color: var(--card-bg-secondary) !important; 
+.bg-light {
+  background-color: var(--card-bg-secondary) !important;
   color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* On a badge the same palette is used as a soft wash: a solid fill next to a
+   solid button is indistinguishable from one, which invites a click that will
+   never happen. Non-badge elements keep the heavy fills above. */
+.badge.bg-success {
+  background-color: color-mix(in srgb, var(--success-color) 14%, var(--card-bg)) !important;
+  color: var(--success-color) !important;
+}
+.badge.bg-danger {
+  background-color: color-mix(in srgb, var(--danger-color) 14%, var(--card-bg)) !important;
+  color: var(--danger-color) !important;
+}
+.badge.bg-primary {
+  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--card-bg)) !important;
+  color: var(--primary-color) !important;
+}
+.badge.bg-info {
+  background-color: color-mix(in srgb, var(--info-color) 14%, var(--card-bg)) !important;
+  color: var(--info-color) !important;
+}
+.badge.bg-warning {
+  background-color: color-mix(in srgb, var(--warning-color) 16%, var(--card-bg)) !important;
+  color: var(--warning-color) !important;
+}
+.badge.bg-secondary,
+.badge.bg-dark {
+  background-color: color-mix(in srgb, var(--secondary-color) 16%, var(--card-bg)) !important;
+  color: var(--text-accent) !important;
+}
+.badge.bg-light {
+  background-color: var(--card-bg-secondary) !important;
+  color: var(--text-accent) !important;
   border: 1px solid var(--border-color) !important;
 }
 
@@ -1010,7 +1054,7 @@ input, textarea, select {
 .sidenav-section-label {
   padding: 0.875rem 0.875rem 0.25rem;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.4;
   letter-spacing: 0;
@@ -1587,11 +1631,11 @@ select {
   line-height: 1 !important;
 }
 
-/* Small button adjustments */
+/* Small button adjustments — same shape as a full-size button, just tighter */
 .btn-sm {
   padding: .375rem .75rem;
   font-size: .8125rem;
-  border-radius: .25rem;
+  border-radius: var(--button-radius);
 }
 
 /* Override for card header buttons specifically */
@@ -1701,7 +1745,7 @@ select {
   color: var(--text-color);
   cursor: pointer;
   padding: 0.25rem;
-  border-radius: var(--border-radius);
+  border-radius: var(--button-radius);
 }
 
 .mobile-close-btn:hover {
@@ -1925,12 +1969,12 @@ select {
   transition: max-height 0.3s ease-in-out;
 }
 
-.tool-result-content .btn-group {
+.tool-result-content .result-actions {
   opacity: 0.8;
   transition: opacity 0.2s ease;
 }
 
-.tool-result-content:hover .btn-group {
+.tool-result-content:hover .result-actions {
   opacity: 1;
 }
 
@@ -1975,11 +2019,11 @@ select {
 }
 
 /* Dashboards mode specific styling */
-.spaces-mode .tool-result-content .btn-group {
+.spaces-mode .tool-result-content .result-actions {
   opacity: 0.8;
 }
 
-.spaces-mode .tool-result-content:hover .btn-group {
+.spaces-mode .tool-result-content:hover .result-actions {
   opacity: 1;
 }
 
@@ -2004,9 +2048,8 @@ select {
   display: block;
 }
 
-.spaces-mode .btn-group {
+.spaces-mode .result-actions {
   margin-bottom: 0.5rem;
-  border-radius: 0.25rem;
 }
 
 /* Remove card body padding in spaces */
@@ -2217,36 +2260,227 @@ span.health-indicator.health-indicator-gray {
 
 /* Dashboard Controls Styling */
 .dashboard-controls {
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
-.dashboard-controls .btn-group {
+/* Subtle vertical rule separating logical toolbar groups */
+.toolbar-divider {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1px;
+  height: 1.5rem;
+  margin: 0 0.25rem;
+  background-color: var(--border-color);
+}
+
+/* --- Segmented Control (iOS/macOS style pill) --- */
+.segmented-control {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.125rem;
+  padding: 0.1875rem;
   background-color: var(--card-bg-secondary);
-  padding: 0.125rem;
   border-radius: 0.5rem;
-  box-shadow: inset 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-.dashboard-controls .btn-group .btn {
-  min-width: 2.5rem;
-  padding: 0.375rem 0.5rem;
-  font-weight: 600;
-  transition: all 0.2s ease;
+/* Keep the pill the same height as the neutral buttons flanking it */
+.dashboard-controls .btn-sm,
+.dashboard-controls .segmented-control {
+  height: 2.125rem;
 }
 
-.dashboard-controls .btn-group .btn-primary {
-  background: var(--accent-gradient);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+.dashboard-controls .btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.dashboard-controls .btn-group .btn-outline-primary {
+.segmented-control-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 0.375rem;
+  background-color: transparent;
+  color: var(--text-muted);
+  line-height: 1;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.segmented-control-item:hover:not(.active) {
+  color: var(--text-color);
+  background-color: rgba(15, 23, 42, 0.04);
+}
+
+:root[data-theme='dark'] .segmented-control-item:hover:not(.active) {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.segmented-control-item.active {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme='dark'] .segmented-control-item.active {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.segmented-control-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* --- Icon Consistency --- */
+/* Outline SVG icons share the same 1.5px stroke weight as the icon font */
+.icon-outline {
+  stroke-width: 1.5;
+  vertical-align: middle;
+}
+
+/* Keep icon-font glyphs at a single, unamplified weight so they do not read
+   heavier than the outline SVGs sitting next to them. */
+.dashboard-controls .bi,
+.card-header .bi {
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1;
+  vertical-align: middle;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Neutral-until-hover destructive button --- */
+.btn-danger-hover:hover,
+.btn-danger-hover:focus-visible,
+.btn-danger-hover:active {
+  color: var(--danger-color) !important;
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+
+:root[data-theme='dark'] .btn-danger-hover:hover,
+:root[data-theme='dark'] .btn-danger-hover:focus-visible,
+:root[data-theme='dark'] .btn-danger-hover:active {
+  background-color: rgba(248, 113, 113, 0.14) !important;
+}
+
+/* --- Ghost buttons (no border; the icon and label rest on the background) --- */
+.btn-ghost {
+  border: none;
+  border-radius: var(--button-radius);
+  background-color: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* A soft grey wash is the only affordance the button needs on hover */
+.btn-ghost:hover,
+.btn-ghost:focus-visible {
+  background-color: rgba(15, 23, 42, 0.06);
+  color: var(--text-color);
+}
+
+:root[data-theme='dark'] .btn-ghost:hover,
+:root[data-theme='dark'] .btn-ghost:focus-visible {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.btn-ghost:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn-ghost.show,
+.btn-ghost:active {
+  background-color: rgba(15, 23, 42, 0.08);
+  color: var(--text-color);
+}
+
+:root[data-theme='dark'] .btn-ghost.show,
+:root[data-theme='dark'] .btn-ghost:active {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Disabled ghost buttons stay flat rather than dimming a border into view */
+.btn-ghost:disabled,
+.btn-ghost.disabled {
   background-color: transparent;
   color: var(--text-muted);
 }
 
-.dashboard-controls .btn-group .btn-outline-primary:hover {
-  background-color: rgba(34, 197, 94, 0.1);
+/* The caret on a ghost dropdown toggle adds visual noise at this size */
+.btn-ghost.dropdown-toggle::after {
+  display: none;
+}
+
+/* --- Grouped actions --- */
+/* Related actions are spaced, never welded together with shared borders.
+   Anything that still reaches for Bootstrap's .btn-group gets pulled apart
+   here so a stray group can't reintroduce the old glued-strip look. */
+.panel-actions,
+.result-actions,
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-group > .btn,
+.btn-group > .dropdown > .btn {
+  margin-left: 0 !important;
+  border-radius: var(--button-radius) !important;
+}
+
+/* --- Inline edit (input + confirm/cancel as one component) --- */
+/* The border and the focus ring belong to the wrapper; the input and the two
+   icon buttons inside it are borderless so only one outline is ever drawn. */
+.inline-edit-group {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 0;
+  padding: 0.125rem 0.125rem 0.125rem 0.5rem;
+  border: 1px solid var(--input-border);
+  border-radius: var(--button-radius);
+  background-color: var(--input-bg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.inline-edit-group:focus-within {
+  border-color: var(--input-focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.inline-edit-group .form-control,
+.inline-edit-group .form-control:focus {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.25rem 0;
+  border: 0 !important;
+  border-radius: 0;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.inline-edit-group .btn {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.4rem !important;
+  border: none;
+  border-radius: var(--button-radius-sm);
+  line-height: 1;
+}
+
+.inline-edit-group .btn-confirm {
   color: var(--primary-color);
+}
+
+.inline-edit-group .btn-confirm:hover,
+.inline-edit-group .btn-confirm:focus-visible {
+  color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 12%, transparent);
 }
 
 /* Dark mode tab fixes */
@@ -2400,9 +2634,10 @@ span.health-indicator.health-indicator-gray {
   letter-spacing: 0;
 }
 
+/* A circle here would be a third button shape in the header */
 .app-theme-toggle {
-  border: 1px solid var(--border-color);
-  border-radius: 50%;
+  border: 1px solid var(--input-border);
+  border-radius: var(--button-radius);
   background: var(--card-bg);
 }
 
@@ -2495,6 +2730,307 @@ span.health-indicator.health-indicator-gray {
   background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg)) !important;
 }
 
+.sidenav-content-list {
+  min-width: 0;
+  margin-left: 0.45rem;
+}
+
+/* Guides are an editorial surface within the Resources hub. */
+.learn-page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: clamp(0.5rem, 2vw, 1.5rem) 0 3rem;
+}
+
+.learn-hero,
+.learn-article-header {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+  padding: clamp(1.5rem, 4vw, 3.5rem);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 22%, var(--border-color));
+  border-radius: calc(var(--border-radius) * 1.35);
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--accent-cyan) 13%, transparent), transparent 38%),
+    linear-gradient(120deg, color-mix(in srgb, var(--primary-color) 8%, transparent), transparent 45%),
+    var(--card-bg);
+  box-shadow: var(--box-shadow-lg);
+}
+
+.learn-hero h1,
+.learn-article-header h1 {
+  max-width: 850px;
+  margin-bottom: 0.8rem;
+  font-size: clamp(2.1rem, 6vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
+}
+
+.learn-hero > p:last-child,
+.learn-article-summary {
+  max-width: 760px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+}
+
+.learn-kicker {
+  margin: 0 0 0.7rem;
+  color: var(--primary-color);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.learn-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.learn-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+  box-shadow: var(--box-shadow);
+}
+
+.learn-card h2 {
+  margin: 0.75rem 0 0.65rem;
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+}
+
+.learn-card h2 a {
+  color: var(--text-color);
+}
+
+.learn-card h2 a:hover,
+.learn-card h2 a:focus-visible {
+  color: var(--primary-color);
+}
+
+.learn-card > p {
+  color: var(--text-muted);
+}
+
+.learn-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.learn-reviewed {
+  margin-top: auto;
+  margin-bottom: 0.65rem;
+  padding-top: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.learn-card-related {
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.learn-card-related > span:first-child {
+  font-weight: 650;
+}
+
+.learn-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.35rem 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.learn-article {
+  width: min(960px, 100%);
+}
+
+.learn-article-header h1 {
+  font-size: clamp(2rem, 5vw, 3.4rem);
+}
+
+.learn-article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 1.5rem 0 0;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.learn-article-meta > div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.learn-article-meta dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.learn-article-meta dd {
+  margin: 0;
+  color: var(--text-accent);
+  font-weight: 650;
+}
+
+.learn-markdown {
+  padding: clamp(1rem, 4vw, 2.6rem);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+  box-shadow: var(--box-shadow);
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.learn-markdown h2 {
+  margin: 2.7rem 0 1rem;
+  padding-top: 0.2rem;
+  font-size: clamp(1.45rem, 3vw, 1.9rem);
+}
+
+.learn-markdown > h2:first-child {
+  margin-top: 0;
+}
+
+.learn-markdown h3 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.22rem;
+}
+
+.learn-markdown p,
+.learn-markdown li {
+  color: var(--text-accent);
+}
+
+.learn-markdown strong {
+  color: var(--text-color);
+}
+
+.learn-markdown table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin: 1.25rem 0 1.75rem;
+  border-collapse: collapse;
+  -webkit-overflow-scrolling: touch;
+}
+
+.learn-markdown th,
+.learn-markdown td {
+  min-width: 9rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.learn-markdown th {
+  background: var(--card-bg-secondary);
+  color: var(--text-color);
+  font-size: 0.85rem;
+}
+
+.learn-markdown pre {
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.65rem;
+  background: var(--card-bg-secondary);
+  color: var(--text-color);
+  font-family: var(--font-family-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.learn-markdown :not(pre) > code {
+  padding: 0.12em 0.32em;
+  border: 1px solid var(--border-color);
+  border-radius: 0.3rem;
+  background: var(--card-bg-secondary);
+  color: var(--text-color);
+  font-family: var(--font-family-mono);
+  font-size: 0.85em;
+}
+
+.learn-markdown a[target='_blank']::after,
+.learn-article-footer a[target='_blank']::after {
+  margin-left: 0.2em;
+  content: '↗';
+  font-size: 0.75em;
+}
+
+.learn-article-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.learn-article-footer section {
+  padding: 1.4rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+}
+
+.learn-article-footer h2 {
+  font-size: 1.1rem;
+}
+
+.learn-article-footer ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.learn-article-footer li + li {
+  margin-top: 0.4rem;
+}
+
+.learn-not-found {
+  max-width: 720px;
+  padding-top: 3rem;
+  text-align: center;
+}
+
+@media (max-width: 767.98px) {
+  .learn-grid,
+  .learn-article-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .learn-hero,
+  .learn-article-header {
+    padding: 1.4rem;
+  }
+
+  .learn-markdown {
+    padding: 1.15rem;
+  }
+
+  .learn-markdown th,
+  .learn-markdown td {
+    min-width: 8rem;
+    padding: 0.6rem;
+  }
+}
+
 .main-content.p-3 {
   padding: clamp(1rem, 2vw, 1.8rem) !important;
 }
@@ -2505,6 +3041,11 @@ span.health-indicator.health-indicator-gray {
 .playground-layout {
   min-width: 0;
   max-width: 100%;
+}
+
+.playground-tabs-wrapper {
+  margin: 0 0 0.75rem;
+  padding: 0;
 }
 
 .main-content::before {
@@ -2589,7 +3130,7 @@ span.health-indicator.health-indicator-gray {
   flex-wrap: nowrap;
   padding: 0;
   border: 0;
-  border-radius: 0.625rem;
+  border-radius: var(--button-radius);
   background: transparent;
   box-shadow: none;
 }
@@ -2604,7 +3145,7 @@ span.health-indicator.health-indicator-gray {
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--input-border) !important;
   border-right: 0 !important;
-  border-radius: 0.625rem 0 0 0.625rem !important;
+  border-radius: var(--button-radius) 0 0 var(--button-radius) !important;
   background: var(--input-bg) !important;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   font-family: var(--font-family-mono);
@@ -2619,7 +3160,7 @@ span.health-indicator.health-indicator-gray {
 
 .connection-console .input-group .btn {
   min-width: 7rem;
-  border-radius: 0 0.625rem 0.625rem 0 !important;
+  border-radius: 0 var(--button-radius) var(--button-radius) 0 !important;
   box-shadow: none;
 }
 
@@ -2858,14 +3399,38 @@ span.health-indicator.health-indicator-gray {
 }
 
 .suggested-server-logo,
-.catalog-server-logo {
+.catalog-server-card-logo {
+  display: grid;
+  place-items: center;
   width: 3rem;
   height: 3rem;
   padding: 0.3rem;
-  object-fit: contain;
   border: 1px solid var(--border-color);
   border-radius: 0.72rem;
   background: rgba(255, 255, 255, 0.94);
+}
+
+.suggested-server-logo img,
+.catalog-server-card-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.catalog-server-logo--fallback {
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
+  color: var(--primary-color);
+}
+
+.catalog-server-logo-initials {
+  font-size: 0.92rem;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.server-profile-logo .catalog-server-logo-initials {
+  font-size: 1.65rem;
 }
 
 .suggested-server-copy {
@@ -3272,6 +3837,15 @@ span.health-indicator.health-indicator-gray {
   line-height: 1.55;
 }
 
+.catalog-server-heading {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.catalog-server-title-row h5 {
+  min-width: 0;
+}
+
 .catalog-server-url {
   display: block;
   overflow: hidden;
@@ -3301,7 +3875,10 @@ span.health-indicator.health-indicator-gray {
 }
 
 .catalog-server-badges {
+  position: relative;
+  z-index: 2;
   gap: 0.5rem;
+  text-decoration: none;
 }
 
 .badge.catalog-metadata-badge {
@@ -3366,7 +3943,6 @@ span.health-indicator.health-indicator-gray {
   position: relative;
   z-index: 2;
   min-width: 6.75rem;
-  border-width: 2px;
   box-shadow: none;
 }
 
@@ -3414,7 +3990,7 @@ span.health-indicator.health-indicator-gray {
 .badge {
   border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
   font-family: var(--font-family-sans-serif);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -3676,9 +4252,13 @@ pre.bg-light code {
   color: #052e16 !important;
 }
 
-:root[data-theme='dark'] .catalog-server-logo,
+:root[data-theme='dark'] .catalog-server-card-logo,
 :root[data-theme='dark'] .suggested-server-logo {
   background: #f7fffc;
+}
+
+:root[data-theme='dark'] .catalog-server-logo--fallback {
+  background: color-mix(in srgb, var(--primary-color) 18%, var(--card-bg));
 }
 
 :root[data-theme='dark'] .catalog-metadata-badge {
@@ -3745,13 +4325,22 @@ pre.bg-light code {
   }
 
   .mobile-sidebar {
+    left: 0;
     width: min(88vw, 310px);
     padding: 1rem 0.75rem;
     background: var(--card-bg);
+    box-shadow: none;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .menu-open .mobile-sidebar {
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    transform: translateX(0);
   }
 
   .main-content.p-3 {
-    padding: 0.75rem !important;
+    padding: 0.75rem 1rem !important;
   }
 
   .main-content::before {
@@ -3780,7 +4369,7 @@ pre.bg-light code {
   .connection-console .input-group .btn {
     width: 100%;
     min-width: 0;
-    border-radius: 0.62rem !important;
+    border-radius: var(--button-radius) !important;
   }
 
   .connection-console .input-group .form-control {
@@ -3814,10 +4403,51 @@ pre.bg-light code {
 
   .catalog-filters {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .catalog-search-field {
     grid-column: auto;
+  }
+
+  .catalog-server-card {
+    min-height: 0;
+  }
+
+  .catalog-server-card .card-body {
+    padding: 0.875rem;
+  }
+
+  .catalog-server-main > .d-flex {
+    gap: 0.75rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .catalog-server-description {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .catalog-server-badges {
+    flex-wrap: nowrap !important;
+    gap: 0.5rem;
+    overflow-x: auto;
+    margin-bottom: 0.75rem !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .catalog-server-badges::-webkit-scrollbar {
+    display: none;
+  }
+
+  .catalog-server-badges > .badge {
+    flex: 0 0 auto;
   }
 
   .view-panel .container-fluid.py-4 > .row > .col {
@@ -4071,7 +4701,7 @@ pre.bg-light code {
 
 .request-actions .btn {
   min-height: 2.55rem;
-  border-radius: 0.52rem;
+  border-radius: var(--button-radius);
   font-family: var(--font-family-sans-serif);
   font-size: 0.8rem;
   font-weight: 700;
@@ -4132,6 +4762,64 @@ pre.bg-light code {
 }
 
 @media (max-width: 767.98px) {
+  .mobile-menu-toggle,
+  .mobile-menu-toggle:hover,
+  .mobile-menu-toggle:focus {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0.5rem;
+    color: #1e293b;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .mobile-menu-toggle:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  .hamburger,
+  .hamburger::before,
+  .hamburger::after {
+    background-color: currentColor;
+  }
+
+  :root[data-theme='dark'] .mobile-menu-toggle {
+    color: #e2e8f0;
+  }
+
+  .playground-tabs-wrapper {
+    width: 100%;
+    padding-inline: 0;
+  }
+
+  .playground-tabs-wrapper .nav-tabs {
+    margin-inline: 0;
+    box-shadow: none;
+  }
+
+  /* The desktop playground row compensates for Bootstrap column gutters with
+     negative margins and matching child padding. There are no columns in the
+     mobile idle layout, so those gutters only make its cards narrower than the
+     connection card above. */
+  .playground-layout {
+    margin-inline: 0;
+  }
+
+  .playground-layout > div {
+    padding-inline: 0;
+  }
+
+  /* Elevated cards sit too close to the viewport edge at this width. Their
+     shadows overlap vertically and read as dark bands down either side of the
+     playground, so keep the elevation treatment for larger screens only. */
+  .tab-content-panel .card,
+  .tab-content-panel .card:hover {
+    box-shadow: none;
+  }
+
   .first-connection-hero {
     grid-template-columns: 1fr;
     min-height: 0;
@@ -4143,9 +4831,48 @@ pre.bg-light code {
     display: none;
   }
 
+  .suggested-servers-panel--onboarding {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .suggested-servers-panel--onboarding > .suggested-servers-intro {
+    padding: 1.25rem 0 1rem;
+    text-align: left;
+  }
+
+  .suggested-servers-panel--onboarding > .card-header {
+    min-height: auto;
+    padding: 0.5rem 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .suggested-servers-panel--onboarding > .card-body {
+    padding: 0.25rem 0 0 !important;
+    background: transparent;
+  }
+
+  .suggested-servers-panel--onboarding > .card-footer {
+    padding: 0.85rem 0 !important;
+    border: 0;
+    background: transparent;
+    text-align: left !important;
+  }
+
+  .suggested-servers-panel--onboarding .suggested-server-row {
+    background: var(--card-bg);
+  }
+
   .awaiting-connection-tabs {
-    overflow-x: auto;
-    white-space: nowrap;
+    justify-content: space-between;
+    gap: clamp(0.5rem, 4vw, 2rem);
+    overflow-x: hidden;
+    text-align: center;
+    white-space: normal;
   }
 
   .awaiting-connection-empty {
@@ -5001,7 +5728,7 @@ pre.bg-light code {
   gap: 0.75rem;
   padding: 0.6rem;
   border: 1px solid var(--border-color);
-  border-radius: 0.55rem;
+  border-radius: var(--button-radius);
   background: var(--card-bg-secondary);
   color: var(--text-color);
   text-align: left;
