@@ -160,6 +160,27 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('no OAuth secret belongs in this configuration');
   });
 
+  it('renders missing callback evidence as unsupported for all four static setups', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.authType = 'oauth';
+    server.declaredAuthType = 'oauth';
+    server.requiresOAuth = true;
+    server.oauthRegistration = {
+      mode: 'pre-registered-required',
+      clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
+      clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
+      callback: { required: true, redirectUrls: {} },
+      codexMcpRemote: { resourceUrl: 'https://example.com', callbackPort: 3334 },
+      evidenceUrl: 'https://example.com/oauth-registration',
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+    expect(html.match(/<strong>Setup unavailable<\/strong>/g)).toHaveLength(4);
+    expect(html).not.toContain('claude mcp add');
+    expect(html).not.toContain('mcp-remote@latest');
+    expect(html).not.toMatch(/redirect URL:\s*\./);
+  });
+
   it('renders static PagerDuty API-token and EU endpoint parity', () => {
     const pagerduty = mergeCatalogServers(
       catalogSeeds, catalogValidation, catalogCapabilities

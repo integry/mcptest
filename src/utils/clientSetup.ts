@@ -257,18 +257,52 @@ const oauthRedirects = (
   clientId: CatalogOAuthClientId
 ): string[] => registration.callback.redirectUrls?.[clientId] || [];
 
-const loopbackPort = (urls: string[]): number | undefined => {
-  for (const value of urls) {
+const usableRedirects = (
+  registration: CatalogOAuthRegistrationEvidence,
+  clientId: CatalogOAuthClientId,
+  protocols: string[]
+): string[] => {
+  const usable = oauthRedirects(registration, clientId).filter((value) => {
     try {
       const url = new URL(value);
-      if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.port) {
-        return Number(url.port);
-      }
+      return protocols.includes(url.protocol) && !url.username && !url.password && !url.hash;
     } catch {
       // Catalog validation reports malformed callback evidence. Keep generation non-throwing.
+      return false;
+    }
+  });
+  return [...new Set(usable)];
+};
+
+const explicitRedirectPort = (value: string): number | undefined => {
+  const authority = value.match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i)?.[1];
+  const portText = authority?.match(/:(\d+)$/)?.[1];
+  const port = portText ? Number(portText) : undefined;
+  return port && Number.isInteger(port) && port <= 65535 ? port : undefined;
+};
+
+const loopbackRedirects = (urls: string[]): Array<{ url: string; port: number }> => {
+  const redirects: Array<{ url: string; port: number }> = [];
+  for (const value of urls) {
+    try {
+      const parsed = new URL(value);
+      const loopback = parsed.hostname === 'localhost'
+        || parsed.hostname === '127.0.0.1'
+        || parsed.hostname === '[::1]';
+      const port = explicitRedirectPort(value);
+      if (loopback && port) redirects.push({ url: value, port });
+    } catch {
+      // usableRedirects normally filters this first; remain defensive for direct callers.
     }
   }
-  return undefined;
+  return redirects;
+};
+
+const redirectRegistrationNote = (clientLabel: string, redirects: string[]): string => {
+  if (redirects.length === 1) {
+    return `Register this exact ${clientLabel} redirect URL: ${redirects[0]}.`;
+  }
+  return `Register these exact ${clientLabel} redirect URLs: ${redirects.join(', ')}.`;
 };
 
 const authSummary = (server: CatalogServer, selectedAuthType = setupAuthType(server)): string => {
@@ -380,9 +414,15 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   const clientIdEnvironment = registration
     ? oauthEnvironmentVariable(registration.clientId, `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_ID`)
     : undefined;
-  const callbackPort = registration
-    ? loopbackPort(oauthRedirects(registration, 'claude-code'))
-    : undefined;
+  const claudeRedirects = registration
+    ? loopbackRedirects(usableRedirects(registration, 'claude-code', ['http:']))
+    : [];
+  const callbackPort = claudeRedirects[0]?.port;
+  if (registration && claudeRedirects.length === 0) {
+    requirements.unsupportedReasons.push(
+      'The catalog does not document a usable Claude Code loopback redirect URL with an explicit port.'
+    );
+  }
   const command = [
     'claude mcp add',
     `--transport ${transport}`,
@@ -397,11 +437,12 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
     quoteShellArgument(endpoint.url),
   ].join(' ');
   const notes = commonNotes(server, endpoint, selectedAuthType);
-  if (registration) {
-    const redirects = oauthRedirects(registration, 'claude-code');
-    notes.push(`Register this exact Claude Code redirect URL: ${redirects.join(', ')}.`);
+  if (registration && claudeRedirects.length > 0) {
+    notes.push(redirectRegistrationNote(
+      'Claude Code', claudeRedirects.map(({ url }) => url)
+    ));
     notes.push('The bare --client-secret option opens Claude Code\'s masked prompt; the secret is stored securely instead of appearing in the command or configuration file.');
-  } else if (server.authType === 'oauth'
+  } else if (!registration && server.authType === 'oauth'
       && server.oauthRegistration?.mode !== 'unavailable-or-use-alternative') {
     notes.push('After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.');
   }
@@ -455,6 +496,39 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
       };
     }
 
+    const codexRedirects = loopbackRedirects(
+      usableRedirects(registration, 'codex-cli', ['http:'])
+    );
+    let usableResource = false;
+    try {
+      const resource = new URL(remote.resourceUrl);
+      usableResource = resource.protocol === 'https:' && !resource.username && !resource.password;
+    } catch {
+      // Treat malformed bridge evidence as unsupported without throwing during rendering.
+    }
+    const usableRemote = usableResource
+      && Number.isInteger(remote.callbackPort)
+      && remote.callbackPort >= 1
+      && remote.callbackPort <= 65535;
+    const matchingRedirects = usableRemote
+      ? codexRedirects.filter(({ port }) => port === remote.callbackPort)
+      : [];
+    if (matchingRedirects.length === 0) {
+      const unsupportedReasons = [
+        'The catalog does not document matching usable Codex redirect and mcp-remote bridge callback evidence.',
+      ];
+      notes.push(`Unsupported setup: ${unsupportedReasons[0]} No bridge command is fabricated.`);
+      return {
+        id: 'codex-cli', label: 'Codex CLI', heading: 'Codex CLI setup',
+        documentationUrl: CLIENT_DOCUMENTATION['codex-cli'],
+        documentationLabel: 'Codex MCP documentation',
+        location: 'Use a publisher-documented compatibility bridge, or choose a client with native pre-registered OAuth support.',
+        copyText: unsupportedCopyText('Codex CLI', unsupportedReasons),
+        format: 'text', supported: false, unsupportedReasons, endpoint,
+        authSummary: authSummary(server, selectedAuthType), notes,
+      };
+    }
+
     const clientIdEnvironment = oauthEnvironmentVariable(
       registration.clientId,
       `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_ID`
@@ -486,7 +560,9 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
       ']',
       `env_vars = [${serializeTomlString(clientIdEnvironment)}, ${serializeTomlString(clientSecretEnvironment)}]`,
     ].join('\n');
-    notes.push(`Register this exact Codex redirect URL: ${oauthRedirects(registration, 'codex-cli').join(', ')}.`);
+    notes.push(redirectRegistrationNote(
+      'Codex', matchingRedirects.map(({ url }) => url)
+    ));
     notes.push(`This is ${server.name}'s publisher-documented mcp-remote compatibility setup. The publisher warns that mcp-remote is experimental community software; review it before use.`);
     notes.push(`Store ${clientIdEnvironment} and ${clientSecretEnvironment} in a protected environment or secret manager; never commit their values.`);
     if (requirements.headers.length > 0) {
@@ -567,6 +643,14 @@ const cursorSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   const selectedAuthType = setupAuthType(server);
   const registration = preRegisteredOAuth(server);
   const requirements = headerRequirements(server, selectedAuthType);
+  const cursorRedirects = registration
+    ? usableRedirects(registration, 'cursor', ['http:', 'https:', 'cursor:'])
+    : [];
+  if (registration && cursorRedirects.length === 0) {
+    requirements.unsupportedReasons.push(
+      'The catalog does not document a usable Cursor redirect URL.'
+    );
+  }
   const config: Record<string, unknown> = { url: endpoint.url };
   if (registration) {
     const clientIdEnvironment = oauthEnvironmentVariable(
@@ -592,8 +676,8 @@ const cursorSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   if (endpoint.transport === 'legacy-sse') {
     notes.push('This URL is a legacy SSE endpoint; Cursor determines the remote transport from the endpoint.');
   }
-  if (registration) {
-    notes.push(`Register this exact Cursor redirect URL: ${oauthRedirects(registration, 'cursor').join(', ')}.`);
+  if (registration && cursorRedirects.length > 0) {
+    notes.push(redirectRegistrationNote('Cursor', cursorRedirects));
     notes.push('Cursor Static OAuth reads the client ID and secret from the named environment variables; never commit either value.');
   }
   appendHeaderNotes(notes, requirements, headerInputNote);
@@ -617,6 +701,14 @@ const vsCodeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   const selectedAuthType = setupAuthType(server);
   const registration = preRegisteredOAuth(server);
   const requirements = headerRequirements(server, selectedAuthType);
+  const vsCodeRedirects = registration
+    ? usableRedirects(registration, 'vs-code', ['http:', 'https:'])
+    : [];
+  if (registration && vsCodeRedirects.length === 0) {
+    requirements.unsupportedReasons.push(
+      'The catalog does not document a usable VS Code redirect URL.'
+    );
+  }
   const config: Record<string, unknown> = {
     type: endpoint.transport === 'legacy-sse' ? 'sse' : 'http',
     url: endpoint.url,
@@ -634,9 +726,8 @@ const vsCodeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
     }));
   }
   const notes = commonNotes(server, endpoint, selectedAuthType);
-  if (registration) {
-    const redirects = oauthRedirects(registration, 'vs-code');
-    notes.push(`Register both exact VS Code redirect URLs: ${redirects.join(' and ')}. Keep the trailing slash on ${redirects[0]}.`);
+  if (registration && vsCodeRedirects.length > 0) {
+    notes.push(redirectRegistrationNote('VS Code', vsCodeRedirects));
     notes.push('Start the server after adding it. VS Code detects that Dynamic Client Registration is unavailable and natively prompts first for the client ID and then for the client secret; it stores the credentials securely and manages token refresh.');
   }
   appendHeaderNotes(notes, requirements, (header) => header.secret

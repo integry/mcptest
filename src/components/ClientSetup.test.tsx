@@ -115,6 +115,28 @@ describe('ClientSetup accessibility and copying', () => {
     expect(text).not.toContain('no OAuth secret belongs in this configuration');
   });
 
+  it('hydrates missing callback evidence as unsupported for all four clients', () => {
+    const view = renderSetup({
+      ...server,
+      requiresOAuth: true,
+      declaredAuthType: 'oauth',
+      authType: 'oauth',
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
+        clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
+        callback: { required: true, redirectUrls: {} },
+        codexMcpRemote: { resourceUrl: 'https://example.com', callbackPort: 3334 },
+        evidenceUrl: 'https://example.com/oauth-registration',
+      },
+    });
+
+    expect(view.querySelectorAll('.client-setup-unsupported')).toHaveLength(4);
+    expect(view.querySelectorAll('.client-setup-panel pre')).toHaveLength(0);
+    expect(view.querySelectorAll('.client-setup-copy')).toHaveLength(0);
+    expect(view.textContent).not.toMatch(/redirect URL:\s*\./);
+  });
+
   it('hydrates the PagerDuty API-token alternative and EU guidance', () => {
     const pagerduty = getCatalogServerById('pagerduty');
     expect(pagerduty).toBeDefined();

@@ -28,6 +28,29 @@ const makeServer = (overrides: Partial<CatalogServer> = {}): CatalogServer => ({
   ...overrides,
 });
 
+const documentedRedirects = {
+  'claude-code': ['http://localhost:8080/callback'],
+  'codex-cli': ['http://localhost:3334/oauth/callback'],
+  cursor: ['cursor://anysphere.cursor-mcp/oauth/callback'],
+  'vs-code': ['http://127.0.0.1:33418/', 'https://vscode.dev/redirect'],
+};
+
+const makePreRegisteredServer = (
+  redirectUrls: Partial<typeof documentedRedirects> = structuredClone(documentedRedirects)
+): CatalogServer => makeServer({
+  requiresOAuth: true,
+  declaredAuthType: 'oauth',
+  authType: 'oauth',
+  oauthRegistration: {
+    mode: 'pre-registered-required',
+    clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
+    clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
+    callback: { required: true, redirectUrls },
+    codexMcpRemote: { resourceUrl: 'https://canonical.example', callbackPort: 3334 },
+    evidenceUrl: 'https://example.com/oauth-registration',
+  },
+});
+
 describe('client setup endpoint selection', () => {
   it('uses browser, live validation, and canonical evidence in that order', () => {
     const server = makeServer({
@@ -112,6 +135,9 @@ describe('client setup transports and authentication', () => {
       claude.copyText.indexOf("'asana'")
     );
     expect(claude.notes.join(' ')).toContain('masked prompt');
+    expect(claude.notes).toContain(
+      'Register this exact Claude Code redirect URL: http://localhost:8080/callback.'
+    );
 
     expect(codex.copyText).toContain('[mcp_servers.asana]');
     expect(codex.copyText).toContain('mcp-remote@latest');
@@ -126,12 +152,46 @@ describe('client setup transports and authentication', () => {
     expect(`${vscode.location} ${vscode.notes.join(' ')}`).toContain('natively prompts');
     expect(vscode.notes.join(' ')).toContain('http://127.0.0.1:33418/');
     expect(vscode.notes.join(' ')).toContain('https://vscode.dev/redirect');
+    expect(vscode.notes).toContain(
+      'Register these exact VS Code redirect URLs: http://127.0.0.1:33418/, https://vscode.dev/redirect.'
+    );
 
     const rendered = [claude, codex, cursor, vscode]
       .map((setup) => `${setup.copyText} ${setup.authSummary} ${setup.notes.join(' ')}`)
       .join('\n');
     expect(rendered).not.toContain('no OAuth secret belongs in this configuration');
     expect(rendered).not.toContain('the client will request authorization');
+  });
+
+  it.each([
+    ['claude-code', 0],
+    ['codex-cli', 1],
+    ['cursor', 2],
+    ['vs-code', 3],
+  ] as const)('marks only %s unsupported when its callback evidence is absent', (clientId, index) => {
+    const redirectUrls = structuredClone(documentedRedirects);
+    delete redirectUrls[clientId];
+
+    const setups = generateClientSetups(makePreRegisteredServer(redirectUrls));
+    expect(setups[index]).toMatchObject({ id: clientId, supported: false, format: 'text' });
+    expect(setups[index].unsupportedReasons.join(' ')).toMatch(/redirect|callback/);
+    expect(setups[index].copyText).toContain('setup is unavailable');
+    expect(setups.filter((_, setupIndex) => setupIndex !== index).every(({ supported }) => supported))
+      .toBe(true);
+    expect(setups.flatMap(({ notes }) => notes).join(' ')).not.toMatch(/redirect URL:\s*\./);
+  });
+
+  it('rejects unusable callback evidence for all four pre-registered OAuth setups', () => {
+    const setups = generateClientSetups(makePreRegisteredServer({
+      'claude-code': ['https://localhost:8080/callback'],
+      'codex-cli': ['http://localhost:4444/oauth/callback'],
+      cursor: ['file:///cursor/callback'],
+      'vs-code': ['cursor://anysphere.cursor-mcp/oauth/callback'],
+    }));
+
+    expect(setups.every(({ supported, format }) => !supported && format === 'text')).toBe(true);
+    expect(setups.every(({ copyText }) => copyText.includes('setup is unavailable'))).toBe(true);
+    expect(setups.flatMap(({ notes }) => notes).join(' ')).not.toMatch(/redirect URL:\s*\./);
   });
 
   it('prefers PagerDuty API tokens when automatic OAuth registration is unavailable', () => {
