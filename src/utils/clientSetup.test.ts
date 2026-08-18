@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogServer } from '../types/catalog';
+import { getCatalogServerById } from './catalogUtils';
 import {
   generateClientSetups,
   getPreferredCatalogEndpoint,
@@ -97,6 +98,63 @@ describe('client setup transports and authentication', () => {
       'After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.'
     );
     expect(setups[1].copyText).toContain('codex mcp login');
+  });
+
+  it('uses Asana publisher evidence for every pre-registered OAuth client', () => {
+    const asana = getCatalogServerById('asana');
+    expect(asana).toBeDefined();
+    const [claude, codex, cursor, vscode] = generateClientSetups(asana!);
+
+    expect(claude.copyText).toBe(
+      'claude mcp add --transport http --scope user --client-id "${ASANA_CLIENT_ID}" --client-secret --callback-port 8080 \'asana\' \'https://mcp.asana.com/v2/mcp\''
+    );
+    expect(claude.copyText.indexOf('--callback-port 8080')).toBeLessThan(
+      claude.copyText.indexOf("'asana'")
+    );
+    expect(claude.notes.join(' ')).toContain('masked prompt');
+
+    expect(codex.copyText).toContain('[mcp_servers.asana]');
+    expect(codex.copyText).toContain('mcp-remote@latest');
+    expect(codex.copyText).toContain('ASANA_CLIENT_ID');
+    expect(codex.copyText).toContain('ASANA_CLIENT_SECRET');
+    expect(codex.copyText).not.toContain('codex mcp login');
+
+    expect(JSON.parse(cursor.copyText).mcpServers.asana.auth).toEqual({
+      CLIENT_ID: '${env:ASANA_CLIENT_ID}',
+      CLIENT_SECRET: '${env:ASANA_CLIENT_SECRET}',
+    });
+    expect(`${vscode.location} ${vscode.notes.join(' ')}`).toContain('natively prompts');
+    expect(vscode.notes.join(' ')).toContain('http://127.0.0.1:33418/');
+    expect(vscode.notes.join(' ')).toContain('https://vscode.dev/redirect');
+
+    const rendered = [claude, codex, cursor, vscode]
+      .map((setup) => `${setup.copyText} ${setup.authSummary} ${setup.notes.join(' ')}`)
+      .join('\n');
+    expect(rendered).not.toContain('no OAuth secret belongs in this configuration');
+    expect(rendered).not.toContain('the client will request authorization');
+  });
+
+  it('prefers PagerDuty API tokens when automatic OAuth registration is unavailable', () => {
+    const pagerduty = getCatalogServerById('pagerduty');
+    expect(pagerduty).toBeDefined();
+    const setups = generateClientSetups(pagerduty!);
+
+    expect(setups[0].copyText).toContain(
+      `--header 'Authorization: Token token='"\${PAGERDUTY_API_TOKEN}"`
+    );
+    expect(setups[1].copyText).toContain('env_http_headers = { "Authorization"');
+    expect(JSON.parse(setups[2].copyText).mcpServers.pagerduty.headers.Authorization)
+      .toBe('Token token=${env:PAGERDUTY_API_TOKEN}');
+    expect(JSON.parse(setups[3].copyText).servers.pagerduty.headers.Authorization)
+      .toBe('Token token=${input:pagerduty_api_token}');
+
+    for (const setup of setups) {
+      const rendered = `${setup.copyText} ${setup.authSummary} ${setup.notes.join(' ')}`;
+      expect(rendered).toContain('Token token=<PAGERDUTY_API_TOKEN>');
+      expect(rendered).toContain('https://mcp.eu.pagerduty.com/mcp');
+      expect(rendered).not.toContain('no OAuth secret belongs in this configuration');
+      expect(rendered).not.toContain('codex mcp login');
+    }
   });
 
   it('uses named secure placeholders for Bearer and API-key headers', () => {

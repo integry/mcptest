@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CatalogServer } from '../types/catalog';
+import { getCatalogServerById } from '../utils/catalogUtils';
 import ClientSetup from './ClientSetup';
 
 const server: CatalogServer = {
@@ -27,11 +28,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const renderSetup = () => {
+const renderSetup = (setupServer: CatalogServer = server) => {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
-  act(() => root?.render(<ClientSetup server={server} />));
+  act(() => root?.render(<ClientSetup server={setupServer} />));
   return container;
 };
 
@@ -79,5 +80,30 @@ describe('ClientSetup accessibility and copying', () => {
     expect(pre?.tabIndex).toBe(0);
     expect(view.querySelector('[role="status"]')?.textContent).toContain('Select the Claude Code setup text');
   });
-});
 
+  it('hydrates accurate Asana registration instructions in all client panels', () => {
+    const asana = getCatalogServerById('asana');
+    expect(asana).toBeDefined();
+    const text = renderSetup(asana!).textContent || '';
+
+    expect(text).toContain('--client-id "${ASANA_CLIENT_ID}" --client-secret --callback-port 8080');
+    expect(text).toContain('mcp-remote@latest');
+    expect(text).toContain('CLIENT_SECRET');
+    expect(text).toContain('http://127.0.0.1:33418/');
+    expect(text).toContain('https://vscode.dev/redirect');
+    expect(text).toContain('natively prompts first for the client ID');
+    expect(text).not.toContain('no OAuth secret belongs in this configuration');
+  });
+
+  it('hydrates the PagerDuty API-token alternative and EU guidance', () => {
+    const pagerduty = getCatalogServerById('pagerduty');
+    expect(pagerduty).toBeDefined();
+    const text = renderSetup(pagerduty!).textContent || '';
+
+    expect(text).toContain('Token token=');
+    expect(text).toContain('PAGERDUTY_API_TOKEN');
+    expect(text).toContain('https://mcp.eu.pagerduty.com/mcp');
+    expect(text).toContain('automatic OAuth client registration is unavailable');
+    expect(text).not.toContain('no OAuth secret belongs in this configuration');
+  });
+});

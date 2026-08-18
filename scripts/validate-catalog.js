@@ -134,10 +134,98 @@ function toUrl(value) {
 }
 
 const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community']);
+const OAUTH_REGISTRATION_MODES = new Set([
+  'automatic',
+  'pre-registered-required',
+  'unavailable-or-use-alternative',
+]);
+const OAUTH_CLIENT_IDS = new Set(['claude-code', 'codex-cli', 'cursor', 'vs-code']);
+const CATALOG_AUTH_TYPES = new Set([
+  'none', 'oauth', 'bearer-token', 'api-token', 'api-key', 'unknown',
+]);
 
 function isHttpsUrl(value) {
   const url = typeof value === 'string' ? toUrl(value) : null;
   return Boolean(url && url.protocol === 'https:');
+}
+
+function validateOAuthCredentialRequirement(value, label, field) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+      || typeof value.required !== 'boolean') {
+    throw new Error(`${label}: oauthRegistration.${field}.required must be boolean`);
+  }
+  if (value.environmentVariable !== undefined
+      && !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.environmentVariable)) {
+    throw new Error(`${label}: oauthRegistration.${field}.environmentVariable is invalid`);
+  }
+}
+
+function validateOAuthRegistration(seed, label) {
+  const registration = seed.oauthRegistration;
+  if (registration === undefined) return;
+  if (!registration || typeof registration !== 'object' || Array.isArray(registration)) {
+    throw new Error(`${label}: oauthRegistration must be an object`);
+  }
+  if (!seed.requiresOAuth && seed.authType !== 'oauth') {
+    throw new Error(`${label}: oauthRegistration requires OAuth authentication`);
+  }
+  if (!OAUTH_REGISTRATION_MODES.has(registration.mode)) {
+    throw new Error(`${label}: oauthRegistration.mode is invalid`);
+  }
+  if (!isHttpsUrl(registration.evidenceUrl)) {
+    throw new Error(`${label}: oauthRegistration.evidenceUrl must be a valid HTTPS URL`);
+  }
+  validateOAuthCredentialRequirement(registration.clientId, label, 'clientId');
+  validateOAuthCredentialRequirement(registration.clientSecret, label, 'clientSecret');
+
+  const callback = registration.callback;
+  if (!callback || typeof callback !== 'object' || Array.isArray(callback)
+      || typeof callback.required !== 'boolean') {
+    throw new Error(`${label}: oauthRegistration.callback.required must be boolean`);
+  }
+  const redirectEntries = Object.entries(callback.redirectUrls || {});
+  if (callback.required && redirectEntries.length === 0) {
+    throw new Error(`${label}: required OAuth callback metadata needs redirectUrls`);
+  }
+  for (const [clientId, urls] of redirectEntries) {
+    if (!OAUTH_CLIENT_IDS.has(clientId) || !Array.isArray(urls) || urls.length === 0) {
+      throw new Error(`${label}: oauthRegistration.callback.redirectUrls is invalid`);
+    }
+    for (const value of urls) {
+      const url = typeof value === 'string' ? toUrl(value) : null;
+      if (!url || url.username || url.password
+          || !['http:', 'https:', 'cursor:'].includes(url.protocol)) {
+        throw new Error(`${label}: OAuth callback URLs must be absolute and credential-free`);
+      }
+    }
+  }
+
+  if (registration.mode === 'pre-registered-required'
+      && (!registration.clientId.required || !registration.clientSecret.required
+        || !registration.callback.required)) {
+    throw new Error(`${label}: pre-registered OAuth requires client ID, secret, and callback metadata`);
+  }
+  if (registration.mode === 'unavailable-or-use-alternative') {
+    if (!CATALOG_AUTH_TYPES.has(registration.alternativeAuthType)
+        || registration.alternativeAuthType === 'oauth'
+        || !seed.alternativeAuthTypes?.includes(registration.alternativeAuthType)) {
+      throw new Error(`${label}: unavailable OAuth registration requires a cataloged alternativeAuthType`);
+    }
+  }
+
+  if (registration.codexMcpRemote !== undefined) {
+    const remote = registration.codexMcpRemote;
+    if (!remote || typeof remote !== 'object' || Array.isArray(remote)
+        || !isHttpsUrl(remote.resourceUrl)
+        || !Number.isInteger(remote.callbackPort)
+        || remote.callbackPort < 1 || remote.callbackPort > 65535) {
+      throw new Error(`${label}: oauthRegistration.codexMcpRemote is invalid`);
+    }
+    const codexCallbacks = callback.redirectUrls?.['codex-cli'] || [];
+    if (!codexCallbacks.some((value) => toUrl(value)?.port === String(remote.callbackPort))) {
+      throw new Error(`${label}: codexMcpRemote.callbackPort must match a Codex redirect URL`);
+    }
+  }
 }
 
 function validateCatalogSeed(seed, index = 0) {
@@ -165,6 +253,8 @@ function validateCatalogSeed(seed, index = 0) {
       throw new Error(`${label}: MCP Registry provenance must reuse registryUrl`);
     }
   }
+
+  validateOAuthRegistration(seed, label);
 
   return seed;
 }

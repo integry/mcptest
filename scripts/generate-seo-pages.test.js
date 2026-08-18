@@ -125,6 +125,37 @@ describe('generated page metadata', () => {
     );
   });
 
+  it('renders static Asana setup parity from typed registration evidence', () => {
+    const asana = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ id }) => id === 'asana');
+    expect(asana).toBeDefined();
+
+    const html = renderServerHtml(indexHtml, asana);
+    expect(html).toContain('--client-id &quot;${ASANA_CLIENT_ID}&quot; --client-secret --callback-port 8080');
+    expect(html.indexOf('--callback-port 8080')).toBeLessThan(html.indexOf("'asana'"));
+    expect(html).toContain('mcp-remote@latest');
+    expect(html).toContain('${env:ASANA_CLIENT_SECRET}');
+    expect(html).toContain('http://127.0.0.1:33418/');
+    expect(html).toContain('https://vscode.dev/redirect');
+    expect(html).toContain('natively prompts first for the client ID');
+    expect(html).not.toContain('no OAuth secret belongs in this configuration');
+  });
+
+  it('renders static PagerDuty API-token and EU endpoint parity', () => {
+    const pagerduty = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ id }) => id === 'pagerduty');
+    expect(pagerduty).toBeDefined();
+
+    const html = renderServerHtml(indexHtml, pagerduty);
+    expect(html).toContain('Token token=&lt;PAGERDUTY_API_TOKEN&gt;');
+    expect(html).toContain('https://mcp.eu.pagerduty.com/mcp');
+    expect(html).toContain('automatic OAuth client registration is unavailable');
+    expect(html).not.toContain('no OAuth secret belongs in this configuration');
+    expect(html).not.toContain('codex mcp login');
+  });
+
   it('renders observed catalog capability names and descriptions as literal server HTML', () => {
     const server = mergeCatalogServers(
       catalogSeeds, catalogValidation, catalogCapabilities

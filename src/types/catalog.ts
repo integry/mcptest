@@ -93,6 +93,50 @@ export interface CatalogAlternativeEndpoint {
   description: string;
 }
 
+/** How an OAuth client obtains registration credentials for a hosted server. */
+export type CatalogOAuthRegistrationMode =
+  | 'automatic'
+  | 'pre-registered-required'
+  | 'unavailable-or-use-alternative';
+
+/** MCP clients whose publisher-documented OAuth callbacks can be cataloged. */
+export type CatalogOAuthClientId = 'claude-code' | 'codex-cli' | 'cursor' | 'vs-code';
+
+export interface CatalogOAuthCredentialRequirement {
+  /** Whether the client must receive this value before it can start OAuth. */
+  required: boolean;
+  /** Public environment-variable name used in generated setup; never the credential value. */
+  environmentVariable?: string;
+}
+
+export interface CatalogOAuthCallbackRequirement {
+  /** Whether the OAuth app must have a callback registered before setup. */
+  required: boolean;
+  /** Exact publisher-documented redirect URLs, grouped by client. */
+  redirectUrls?: Partial<Record<CatalogOAuthClientId, string[]>>;
+}
+
+export interface CatalogOAuthMcpRemoteSetup {
+  /** OAuth resource passed to the publisher-documented mcp-remote bridge. */
+  resourceUrl: string;
+  /** Static loopback port used by mcp-remote for the registered callback. */
+  callbackPort: number;
+}
+
+/** Publisher evidence that setup generators consume without parsing prose caveats. */
+export interface CatalogOAuthRegistrationEvidence {
+  mode: CatalogOAuthRegistrationMode;
+  clientId: CatalogOAuthCredentialRequirement;
+  clientSecret: CatalogOAuthCredentialRequirement;
+  callback: CatalogOAuthCallbackRequirement;
+  /** Credential method preferred when automatic OAuth registration is unavailable. */
+  alternativeAuthType?: CatalogAuthType;
+  /** Publisher-documented compatibility bridge for clients without native static OAuth. */
+  codexMcpRemote?: CatalogOAuthMcpRemoteSetup;
+  /** HTTPS publisher page supporting these registration requirements. */
+  evidenceUrl: string;
+}
+
 /**
  * Hand-curated or crawled catalog entry before validation data is merged in.
  * This is the source-of-truth shape for seed files maintained outside the UI.
@@ -126,6 +170,8 @@ export interface CatalogServerSeed {
   authType?: CatalogAuthType;
   /** Additional publisher-supported credential methods; the primary method remains recommended. */
   alternativeAuthTypes?: CatalogAuthType[];
+  /** Typed publisher evidence for OAuth client registration and callback requirements. */
+  oauthRegistration?: CatalogOAuthRegistrationEvidence;
   /** Non-secret header requirements documented by the server publisher. */
   requiredHeaders?: CatalogRequiredHeader[];
   /** Publisher-documented regional or authentication-specific endpoint alternatives. */

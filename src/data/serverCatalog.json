@@ -393,6 +393,22 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "oauthRegistration": {
+      "mode": "pre-registered-required",
+      "clientId": { "required": true, "environmentVariable": "ASANA_CLIENT_ID" },
+      "clientSecret": { "required": true, "environmentVariable": "ASANA_CLIENT_SECRET" },
+      "callback": {
+        "required": true,
+        "redirectUrls": {
+          "claude-code": ["http://localhost:8080/callback"],
+          "cursor": ["cursor://anysphere.cursor-mcp/oauth/callback"],
+          "vs-code": ["http://127.0.0.1:33418/", "https://vscode.dev/redirect"],
+          "codex-cli": ["http://localhost:3334/oauth/callback"]
+        }
+      },
+      "codexMcpRemote": { "resourceUrl": "https://mcp.asana.com/v2", "callbackPort": 3334 },
+      "evidenceUrl": "https://developers.asana.com/docs/connecting-mcp-clients-to-asanas-v2-server"
+    },
     "logoUrl": "/server-logos/asana.svg",
     "logoSourceUrl": "https://github.com/simple-icons/simple-icons/blob/develop/icons/asana.svg",
     "logoSourceKind": "simple-icons",
@@ -494,6 +510,17 @@
     "requiresOAuth": true,
     "authType": "oauth",
     "alternativeAuthTypes": ["api-token"],
+    "oauthRegistration": {
+      "mode": "unavailable-or-use-alternative",
+      "clientId": { "required": true, "environmentVariable": "PAGERDUTY_CLIENT_ID" },
+      "clientSecret": { "required": true, "environmentVariable": "PAGERDUTY_CLIENT_SECRET" },
+      "callback": {
+        "required": true,
+        "redirectUrls": { "claude-code": ["http://localhost:8080/callback"] }
+      },
+      "alternativeAuthType": "api-token",
+      "evidenceUrl": "https://support.pagerduty.com/main/docs/pagerduty-mcp-server"
+    },
     "requiredHeaders": [{ "name": "Authorization", "description": "Optional PagerDuty API token syntax: Token token=<PAGERDUTY_API_TOKEN>", "required": false, "secret": true }],
     "alternativeEndpoints": [{ "url": "https://mcp.eu.pagerduty.com/mcp", "authType": "oauth", "description": "Use for PagerDuty EU service-region accounts" }],
     "logoUrl": "/server-logos/pagerduty.svg",

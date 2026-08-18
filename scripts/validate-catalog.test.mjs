@@ -4,6 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, it } from 'vitest';
+import catalogSeeds from '../src/data/serverCatalog.json';
 import { validateCapabilityInventory } from '../src/utils/capabilityInventory';
 import validator from './validate-catalog.js';
 
@@ -165,6 +166,52 @@ describe('catalog seed provenance validation', () => {
     ],
   ])('rejects invalid provenance: %s', (seed, message) => {
     expect(() => validateCatalogSeed(seed)).toThrow(message);
+  });
+
+  it('validates typed OAuth registration evidence and its alternative auth link', () => {
+    const registration = {
+      mode: 'pre-registered-required',
+      clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
+      clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
+      callback: {
+        required: true,
+        redirectUrls: { 'vs-code': ['http://127.0.0.1:33418/'] },
+      },
+      evidenceUrl: 'https://example.com/oauth-registration',
+    };
+    expect(validateCatalogSeed({
+      id: 'oauth-server', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      oauthRegistration: registration,
+    }).oauthRegistration).toEqual(registration);
+
+    expect(() => validateCatalogSeed({
+      id: 'bad-callback', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      oauthRegistration: {
+        ...registration,
+        callback: { required: true, redirectUrls: { cursor: ['not-a-url'] } },
+      },
+    })).toThrow('OAuth callback URLs must be absolute and credential-free');
+
+    expect(() => validateCatalogSeed({
+      id: 'missing-alternative', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      alternativeAuthTypes: ['api-token'],
+      oauthRegistration: {
+        ...registration,
+        mode: 'unavailable-or-use-alternative',
+        alternativeAuthType: 'api-key',
+      },
+    })).toThrow('requires a cataloged alternativeAuthType');
+  });
+
+  it('accepts the production Asana and PagerDuty OAuth registration evidence', () => {
+    for (const serverId of ['asana', 'pagerduty']) {
+      const seed = catalogSeeds.find(({ id }) => id === serverId);
+      expect(seed).toBeDefined();
+      expect(validateCatalogSeed(seed).oauthRegistration).toBeDefined();
+    }
   });
 });
 
