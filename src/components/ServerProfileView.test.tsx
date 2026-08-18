@@ -11,6 +11,7 @@ describe('ServerProfileView capability inventory', () => {
     const server: CatalogServer = {
       id: 'example', name: 'Example', url: 'https://example.com/mcp', description: 'Example server',
       category: 'Testing', tags: [], declaredTransport: 'streamable-http', transport: 'streamable-http',
+      listingSource: { kind: 'community' },
       requiresOAuth: false, declaredAuthType: 'none', authType: 'none', protocolEra: 'stateless', status: 'online',
       logoUrl: '/server-logos/example.svg', logoSourceKind: 'generated-fallback', logoRetrievedAt: '2026-08-17',
       capabilityInventory: createCapabilityInventory({
