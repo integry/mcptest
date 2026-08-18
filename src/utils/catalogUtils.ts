@@ -7,6 +7,7 @@ import {
   type CatalogProtocolEra,
   type CatalogServer,
   type CatalogServerSeed,
+  type CatalogSortOrder,
   type CatalogValidationResult,
   type CatalogValidationTransport,
   type OAuthFilter,
@@ -147,6 +148,99 @@ export const filterCatalogServers = (
 
     return true;
   });
+};
+
+const compareCatalogNames = (a: CatalogServer, b: CatalogServer): number => {
+  return a.name.localeCompare(b.name);
+};
+
+const getValidCheckedAt = (server: CatalogServer): number | null => {
+  if (!server.checkedAt) {
+    return null;
+  }
+
+  const timestamp = Date.parse(server.checkedAt);
+  return Number.isNaN(timestamp) ? null : timestamp;
+};
+
+const BROWSER_ACCESS_RANK = {
+  direct: 0,
+  'proxy-required': 1,
+  unknown: 2,
+} as const;
+
+/**
+ * Stable-sort a copy of catalog results. Source data is never mutated and the
+ * original index remains the final deterministic tie breaker.
+ */
+export const sortCatalogServers = (
+  servers: CatalogServer[],
+  order: CatalogSortOrder
+): CatalogServer[] => {
+  const indexedServers = servers.map((server, originalIndex) => ({ server, originalIndex }));
+
+  if (order === 'catalog-order') {
+    return indexedServers.map(({ server }) => server);
+  }
+
+  indexedServers.sort((a, b) => {
+    if (order === 'recently-tested') {
+      const aCheckedAt = getValidCheckedAt(a.server);
+      const bCheckedAt = getValidCheckedAt(b.server);
+
+      if (aCheckedAt !== null && bCheckedAt === null) return -1;
+      if (aCheckedAt === null && bCheckedAt !== null) return 1;
+      if (aCheckedAt !== null && bCheckedAt !== null && aCheckedAt !== bCheckedAt) {
+        return bCheckedAt - aCheckedAt;
+      }
+    }
+
+    if (order === 'browser-ready') {
+      const aRank = BROWSER_ACCESS_RANK[a.server.browserAccess ?? 'unknown'];
+      const bRank = BROWSER_ACCESS_RANK[b.server.browserAccess ?? 'unknown'];
+
+      if (aRank !== bRank) return aRank - bRank;
+    }
+
+    const nameComparison = compareCatalogNames(a.server, b.server);
+    return nameComparison || a.originalIndex - b.originalIndex;
+  });
+
+  return indexedServers.map(({ server }) => server);
+};
+
+export interface CatalogCategoryCount {
+  category: string;
+  count: number;
+}
+
+/**
+ * Count categories after search/auth filtering while intentionally ignoring
+ * the selected category. Supplying the full category set keeps zero rows in
+ * the facet navigation.
+ */
+export const getCatalogCategoryCounts = (
+  servers: CatalogServer[],
+  filters: CatalogFilterInput,
+  categories: string[] = getCatalogCategories(servers)
+): { all: number; categories: CatalogCategoryCount[] } => {
+  const matchingServers = filterCatalogServers(servers, {
+    ...filters,
+    category: CATALOG_CATEGORY_ALL,
+  });
+  const counts = new Map<string, number>();
+
+  matchingServers.forEach((server) => {
+    counts.set(server.category, (counts.get(server.category) ?? 0) + 1);
+  });
+
+  return {
+    all: matchingServers.length,
+    categories: categories.map((category) => ({
+      category,
+      count: counts.get(category) ?? 0,
+    })),
+  };
 };
 
 export const getCatalogCategories = (servers: CatalogServer[]): string[] => {
