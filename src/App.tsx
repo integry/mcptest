@@ -561,7 +561,7 @@ function App() {
         title: `Server: ${serverUrl}`,
         serverUrl: serverUrl,
         connectionStatus: 'Disconnected',
-        transportType: preferredTransport,
+        preferredTransportHint: preferredTransport,
         useProxy: true,
       };
       setTabs(prev => [...prev, targetTab!]);
@@ -571,10 +571,10 @@ function App() {
     setActiveTabId(targetTab.id);
     
     // Update the tab's server URL and trigger connection
-    handleUpdateTab(targetTab.id, { 
+    handleUpdateTab(targetTab.id, {
       serverUrl: serverUrl,
       title: `Server: ${serverUrl}`,
-      transportType: preferredTransport,
+      ...(preferredTransport ? { preferredTransportHint: preferredTransport } : {}),
     });
   };
 
@@ -653,7 +653,7 @@ function App() {
       title: server.name,
       serverUrl: preferredEndpoint.url,
       connectionStatus: 'Disconnected',
-      transportType: preferredEndpoint.transport,
+      preferredTransportHint: preferredEndpoint.transport,
       useProxy: server.browserAccess !== 'direct',
       autoConnect: server.authType === 'none' || server.authType === 'oauth',
       catalogAuthType: server.authType,

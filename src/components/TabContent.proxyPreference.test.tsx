@@ -35,6 +35,33 @@ const setInputValue = (input: HTMLInputElement, value: string) => {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
+const renderTab = (tab: ConnectionTab, onUpdateTab = vi.fn()) => {
+  const container = document.createElement('div');
+  const root: Root = createRoot(container);
+  const render = (nextTab: ConnectionTab) => {
+    root.render(
+      <MemoryRouter>
+        <TabContent
+          tab={nextTab}
+          isActive
+          onUpdateTab={onUpdateTab}
+          spaces={[]}
+          onAddCardToSpace={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+  };
+
+  act(() => render(tab));
+
+  return {
+    container,
+    onUpdateTab,
+    rerender: (nextTab: ConnectionTab) => act(() => render(nextTab)),
+    unmount: () => act(() => root.unmount()),
+  };
+};
+
 const renderNewTab = (useProxy = true) => {
   const tab: ConnectionTab = {
     id: 'new-tab',
@@ -43,27 +70,7 @@ const renderNewTab = (useProxy = true) => {
     connectionStatus: 'Disconnected',
     useProxy,
   };
-  const container = document.createElement('div');
-  const root: Root = createRoot(container);
-
-  act(() => {
-    root.render(
-      <MemoryRouter>
-        <TabContent
-          tab={tab}
-          isActive
-          onUpdateTab={vi.fn()}
-          spaces={[]}
-          onAddCardToSpace={vi.fn()}
-        />
-      </MemoryRouter>
-    );
-  });
-
-  return {
-    container,
-    unmount: () => act(() => root.unmount()),
-  };
+  return renderTab(tab);
 };
 
 const connectToSlack = async (container: HTMLElement) => {
@@ -97,6 +104,7 @@ describe('rendered anonymous proxy preference', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
@@ -128,6 +136,98 @@ describe('rendered anonymous proxy preference', () => {
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(false);
     expect(view.container.textContent).toContain('MCP Server Connection Failed');
     expect(view.container.textContent).not.toContain('mcptest proxy authentication required');
+    view.unmount();
+  });
+});
+
+describe('endpoint-scoped preferred transport hints', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    connectionMocks.attempt.mockReset();
+    connectionMocks.attempt.mockRejectedValue(new Error('Connection failed'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('uses the hint for the initial auto-connect without treating it as negotiated output', async () => {
+    vi.useFakeTimers();
+    const endpoint = 'https://initial.example/mcp';
+    const tab: ConnectionTab = {
+      id: 'initial-auto-connect',
+      title: 'Initial connection',
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      transportType: 'legacy-sse',
+      preferredTransportHint: 'streamable-http',
+      autoConnect: true,
+      useProxy: false,
+    };
+    const view = renderTab(tab);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[0][7]).toBe('streamable-http');
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, expect.objectContaining({
+      transportType: null,
+    }));
+    expect(view.onUpdateTab.mock.calls.some(([, updates]) => (
+      Object.prototype.hasOwnProperty.call(updates, 'preferredTransportHint')
+    ))).toBe(false);
+    view.unmount();
+  });
+
+  it('uses a transport hint added after the matching tab is already mounted', async () => {
+    const endpoint = 'https://existing.example/sse';
+    const tab: ConnectionTab = {
+      id: 'existing-tab',
+      title: 'Existing connection',
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      transportType: 'streamable-http',
+      useProxy: false,
+    };
+    const view = renderTab(tab);
+
+    view.rerender({ ...tab, preferredTransportHint: 'legacy-sse' });
+    const connectButton = view.container.querySelector<HTMLButtonElement>('#connectBtn');
+    expect(connectButton?.disabled).toBe(false);
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[0][7]).toBe('legacy-sse');
+    view.unmount();
+  });
+
+  it('clears the hint when the tab endpoint changes', () => {
+    const tab: ConnectionTab = {
+      id: 'edited-endpoint',
+      title: 'Edited endpoint',
+      serverUrl: 'https://before.example/mcp',
+      connectionStatus: 'Disconnected',
+      preferredTransportHint: 'streamable-http',
+      useProxy: false,
+    };
+    const view = renderTab(tab);
+    view.onUpdateTab.mockClear();
+
+    const input = view.container.querySelector<HTMLInputElement>('#serverUrl');
+    expect(input).not.toBeNull();
+    act(() => setInputValue(input!, 'https://after.example/sse'));
+
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, {
+      preferredTransportHint: undefined,
+    });
     view.unmount();
   });
 });

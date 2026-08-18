@@ -186,16 +186,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       : undefined;
   }, [tab.catalogProtocolEra]);
 
-  const preferredTransportRef = useRef(
-    tab.transportType
-      ? { endpoint: tab.serverUrl, transport: tab.transportType }
-      : undefined
-  );
   const getPreferredTransportHint = useCallback((urlToConnect: string) => {
-    return urlToConnect === preferredTransportRef.current?.endpoint
-      ? preferredTransportRef.current.transport
+    return urlToConnect === tab.serverUrl
+      ? tab.preferredTransportHint
       : undefined;
-  }, []);
+  }, [tab.preferredTransportHint, tab.serverUrl]);
 
   const handleServerUrlChange = useCallback((nextServerUrl: string) => {
     setServerUrl(nextServerUrl);
@@ -203,11 +198,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       catalogProtocolEndpointRef.current = undefined;
       onUpdateTab(tab.id, { catalogProtocolEra: undefined });
     }
-    if (preferredTransportRef.current && nextServerUrl !== preferredTransportRef.current.endpoint) {
-      preferredTransportRef.current = undefined;
-      onUpdateTab(tab.id, { transportType: undefined });
+    if (nextServerUrl !== tab.serverUrl && tab.preferredTransportHint) {
+      onUpdateTab(tab.id, { preferredTransportHint: undefined });
     }
-  }, [onUpdateTab, setServerUrl, tab.id]);
+  }, [onUpdateTab, setServerUrl, tab.id, tab.preferredTransportHint, tab.serverUrl]);
 
   const {
     tools,
