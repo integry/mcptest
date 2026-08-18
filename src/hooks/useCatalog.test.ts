@@ -123,7 +123,7 @@ describe('catalog query params', () => {
     });
   });
 
-  it.each(['bearer-token', 'api-key'] as const)('accepts the %s auth filter', (auth) => {
+  it.each(['bearer-token', 'api-token', 'api-key'] as const)('accepts the %s auth filter', (auth) => {
     const filters = getCatalogFiltersFromParams(new URLSearchParams(`auth=${auth}`), categories);
 
     expect(filters.oauthFilter).toBe(auth);

@@ -57,6 +57,11 @@ const browserAccessLabel = (server: CatalogServer) => {
   return 'Browser access not yet measured';
 };
 
+const alternativeAuthLabel = (server: CatalogServer) => {
+  const alternatives = server.alternativeAuthTypes?.map(formatCatalogAuth) ?? [];
+  return alternatives.length ? `Also supports ${alternatives.join(' and ')}` : authEvidenceNote(server);
+};
+
 const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer }) => {
   if (!server) {
     return (
@@ -140,7 +145,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         <div className="server-signal-card">
           <span className="server-signal-label">Authentication</span>
           <strong>{formatCatalogAuth(server.authType)}</strong>
-          <small>{authEvidenceNote(server)}</small>
+          <small>{alternativeAuthLabel(server)}</small>
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Protocol lifecycle</span>
@@ -198,6 +203,22 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
                 <dt>Credential flow</dt>
                 <dd>{formatCatalogAuth(server.authType)}</dd>
               </div>
+              {server.alternativeAuthTypes?.map((authType) => (
+                <div key={authType}>
+                  <dt>Alternative credential</dt>
+                  <dd>{formatCatalogAuth(authType)}</dd>
+                </div>
+              ))}
+              {server.alternativeEndpoints?.map((endpoint) => (
+                <div key={endpoint.url}>
+                  <dt>Alternative endpoint</dt>
+                  <dd>
+                    <code className="technical-string technical-string-url">{endpoint.url}</code>
+                    {' — '}{endpoint.description}
+                    {endpoint.authType ? ` (${formatCatalogAuth(endpoint.authType)})` : ''}
+                  </dd>
+                </div>
+              ))}
               <div>
                 <dt>Protocol lifecycle</dt>
                 <dd>{formatProtocolEra(server.protocolEra, server.protocolVersion)}</dd>
@@ -279,6 +300,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <div className="d-flex flex-wrap gap-3">
             {server.homepageUrl && <a href={server.homepageUrl} target="_blank" rel="noopener noreferrer">Product documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.sourceUrl && <a href={server.sourceUrl} target="_blank" rel="noopener noreferrer">Source repository <i className="bi bi-arrow-up-right"></i></a>}
+            {server.listingSource.url && server.listingSource.url !== server.homepageUrl && <a href={server.listingSource.url} target="_blank" rel="noopener noreferrer">Official listing documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.registryUrl && <a href={server.registryUrl} target="_blank" rel="noopener noreferrer">Official MCP Registry record <i className="bi bi-arrow-up-right"></i></a>}
             <Link to="/docs/testing-guide">MCP testing guide <i className="bi bi-arrow-right"></i></Link>
           </div>
@@ -300,6 +322,14 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
                 </div>
               ))}
             </dl>
+          ) : null}
+          {server.caveats?.length ? (
+            <div className="mt-4">
+              <h3 className="h6">Provider guidance</h3>
+              <ul className="mb-0">
+                {server.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
+              </ul>
+            </div>
           ) : null}
         </div>
       </section>

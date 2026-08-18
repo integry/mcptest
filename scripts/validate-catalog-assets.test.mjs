@@ -68,6 +68,21 @@ describe('catalog logo asset validation', () => {
     expect(validateCatalogAssets(catalog)).toEqual([]);
   });
 
+  it('rejects dead Simple Icons provenance URLs with v-prefixed version tags', () => {
+    const canva = catalog.find(seed => seed.id === 'canva');
+    const errors = validateCatalogAssets(catalog.map(seed => (
+      seed.id === 'canva'
+        ? {
+            ...seed,
+            logoSourceUrl: 'https://github.com/simple-icons/simple-icons/blob/v15.16.0/icons/canva.svg',
+          }
+        : seed
+    )));
+
+    expect(canva).toBeDefined();
+    expect(errors).toContain('canva: Simple Icons version tags must not have a leading v');
+  });
+
   it('rejects unsafe SVG behaviors and external resources', () => {
     expect(validateSvg('<svg viewBox="0 0 1 1"><script>alert(1)</script></svg>')).toContain(
       'contains unsafe <script element'
