@@ -106,7 +106,7 @@ describe('CatalogServerCard presentation', () => {
     expect(endpoint?.classList).toContain('text-truncate');
   });
 
-  it('shows accessible initials without a logo and keeps report access enabled offline', () => {
+  it('shows initials without a logo and keeps report access enabled offline', () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <CatalogServerCard
@@ -114,6 +114,7 @@ describe('CatalogServerCard presentation', () => {
             ...server,
             name: 'Example Server',
             status: 'offline',
+            logoUrl: '',
             listingSource: {
               kind: 'mcp-registry',
               url: 'https://registry.modelcontextprotocol.io/v0.1/servers/example',
@@ -127,12 +128,14 @@ describe('CatalogServerCard presentation', () => {
     const container = document.createElement('div');
     container.innerHTML = markup;
 
-    const initials = container.querySelector<HTMLElement>('.catalog-server-initials');
+    const logo = container.querySelector<HTMLElement>('[data-catalog-server-logo]');
+    const initials = logo?.querySelector<HTMLElement>('.catalog-server-logo-initials');
     const reportLink = container.querySelector<HTMLAnchorElement>('.catalog-report-link');
     const testButton = container.querySelector<HTMLButtonElement>('.catalog-test-button');
 
     expect(initials?.textContent).toBe('ES');
-    expect(initials?.getAttribute('aria-label')).toBe('Example Server initials logo');
+    expect(logo?.getAttribute('aria-hidden')).toBe('true');
+    expect(logo?.querySelector('img')).toBeNull();
     expect(container.querySelector('.catalog-listing-source')?.textContent).toContain('MCP Registry');
     expect(reportLink?.getAttribute('aria-disabled')).toBeNull();
     expect(reportLink?.hasAttribute('disabled')).toBe(false);
