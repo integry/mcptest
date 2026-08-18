@@ -305,54 +305,35 @@ const usableRedirects = (
   return [...new Set(usable)];
 };
 
-const explicitRedirectPort = (value: string): number | undefined => {
-  const authority = value.match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i)?.[1];
-  const portText = authority?.match(/:(\d+)$/)?.[1];
-  const port = portText ? Number(portText) : undefined;
-  return port && Number.isInteger(port) && port <= 65535 ? port : undefined;
-};
-
-interface NormalizedLoopbackCallback {
-  protocol: string;
-  hostname: string;
+interface ExactPortCallback {
   port: number;
-  pathname: string;
 }
 
-const normalizeLoopbackCallback = (value: string): NormalizedLoopbackCallback | undefined => {
+const exactPortCallback = (
+  value: string,
+  pathname: '/callback' | '/oauth/callback'
+): ExactPortCallback | undefined => {
   try {
     const parsed = new URL(value);
-    const port = explicitRedirectPort(value);
-    const loopback = parsed.hostname === 'localhost'
-      || parsed.hostname === '127.0.0.1'
-      || parsed.hostname === '[::1]';
-    if (parsed.protocol !== 'http:' || !loopback || !port
-        || parsed.username || parsed.password || parsed.hash) return undefined;
-    return {
-      protocol: parsed.protocol,
-      hostname: parsed.hostname,
-      port,
-      pathname: parsed.pathname,
-    };
+    const port = Number(parsed.port);
+    if (!parsed.port || !Number.isInteger(port) || port < 1 || port > 65535
+        || parsed.protocol !== 'http:' || parsed.hostname !== 'localhost'
+        || parsed.pathname !== pathname || parsed.search || parsed.hash
+        || parsed.username || parsed.password
+        || value !== `http://localhost:${port}${pathname}`) return undefined;
+    return { port };
   } catch {
     return undefined;
   }
 };
 
-const sameNormalizedCallback = (left: string, right: string): boolean => {
-  const normalizedLeft = normalizeLoopbackCallback(left);
-  const normalizedRight = normalizeLoopbackCallback(right);
-  return Boolean(normalizedLeft && normalizedRight
-    && normalizedLeft.protocol === normalizedRight.protocol
-    && normalizedLeft.hostname === normalizedRight.hostname
-    && normalizedLeft.port === normalizedRight.port
-    && normalizedLeft.pathname === normalizedRight.pathname);
-};
-
-const loopbackRedirects = (urls: string[]): Array<{ url: string; port: number }> => {
+const exactCallbackRedirects = (
+  urls: string[],
+  pathname: '/callback' | '/oauth/callback'
+): Array<{ url: string; port: number }> => {
   const redirects: Array<{ url: string; port: number }> = [];
   for (const value of urls) {
-    const normalized = normalizeLoopbackCallback(value);
+    const normalized = exactPortCallback(value, pathname);
     if (normalized) redirects.push({ url: value, port: normalized.port });
   }
   return redirects;
@@ -475,7 +456,9 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
     ? oauthEnvironmentVariable(registration.clientId, `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_ID`)
     : undefined;
   const claudeRedirects = registration
-    ? loopbackRedirects(usableRedirects(registration, 'claude-code', ['http:']))
+    ? exactCallbackRedirects(
+      usableRedirects(registration, 'claude-code', ['http:']), '/callback'
+    )
     : [];
   const callbackPort = claudeRedirects[0]?.port;
   if (registration && claudeRedirects.length === 0) {
@@ -556,8 +539,8 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
       };
     }
 
-    const codexRedirects = loopbackRedirects(
-      usableRedirects(registration, 'codex-cli', ['http:'])
+    const codexRedirects = exactCallbackRedirects(
+      usableRedirects(registration, 'codex-cli', ['http:']), '/oauth/callback'
     );
     let usableResource = false;
     try {
@@ -566,13 +549,13 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
     } catch {
       // Treat malformed bridge evidence as unsupported without throwing during rendering.
     }
-    const bridgeCallback = normalizeLoopbackCallback(remote.callbackUrl);
+    const bridgeCallback = exactPortCallback(remote.callbackUrl, '/oauth/callback');
     const usableRemote = usableResource
       && bridgeCallback
       && Number.isInteger(remote.callbackPort)
       && remote.callbackPort === bridgeCallback.port;
     const matchingRedirects = usableRemote
-      ? codexRedirects.filter(({ url }) => sameNormalizedCallback(url, remote.callbackUrl))
+      ? codexRedirects.filter(({ url }) => url === remote.callbackUrl)
       : [];
     if (matchingRedirects.length === 0) {
       const unsupportedReasons = [

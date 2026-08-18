@@ -207,10 +207,44 @@ describe('catalog seed provenance validation', () => {
   });
 
   it.each([
+    ['wrong host', 'http://127.0.0.1:8080/callback'],
+    ['IPv6 host', 'http://[::1]:8080/callback'],
+    ['alternate path', 'http://localhost:8080/oauth/callback'],
+    ['query string', 'http://localhost:8080/callback?source=test'],
+    ['fragment', 'http://localhost:8080/callback#test'],
+    ['credentials', 'http://user:pass@localhost:8080/callback'],
+    ['implicit port', 'http://localhost/callback'],
+    ['default port', 'http://localhost:80/callback'],
+  ])('rejects Claude Code callback evidence with a %s', (_case, callbackUrl) => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-claude-callback',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: {
+          required: true,
+          redirectUrls: { 'claude-code': [callbackUrl] },
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow(/Claude Code callback URLs must match|absolute and credential-free/);
+  });
+
+  it.each([
     ['wrong host', 'http://127.0.0.1:3334/oauth/callback'],
+    ['IPv6 host', 'http://[::1]:3334/oauth/callback'],
     ['wrong path', 'http://localhost:3334/wrong-path'],
-  ])('rejects Codex bridge evidence with a same-port %s redirect', (_case, redirectUrl) => {
-    const callbackUrl = 'http://localhost:3334/oauth/callback';
+    ['query string', 'http://localhost:3334/oauth/callback?source=test'],
+    ['fragment', 'http://localhost:3334/oauth/callback#test'],
+    ['credentials', 'http://user:pass@localhost:3334/oauth/callback'],
+    ['implicit port', 'http://localhost/oauth/callback'],
+    ['default port', 'http://localhost:80/oauth/callback'],
+  ])('rejects matching Codex redirect and bridge callbacks with a %s', (_case, callbackUrl) => {
+    const callbackPort = callbackUrl.includes(':80/') ? 80 : 3334;
     expect(() => validateCatalogSeed({
       id: 'bad-codex-callback',
       requiresOAuth: true,
@@ -222,16 +256,16 @@ describe('catalog seed provenance validation', () => {
         clientSecret: { required: true },
         callback: {
           required: true,
-          redirectUrls: { 'codex-cli': [redirectUrl] },
+          redirectUrls: { 'codex-cli': [callbackUrl] },
         },
         codexMcpRemote: {
           resourceUrl: 'https://example.com',
           callbackUrl,
-          callbackPort: 3334,
+          callbackPort,
         },
         evidenceUrl: 'https://example.com/oauth',
       },
-    })).toThrow('callbackUrl must exactly match a Codex redirect URL');
+    })).toThrow(/Codex mcp-remote callback URLs must match|absolute and credential-free/);
   });
 
   it('keeps the Codex callback port consistent with the exact callback URL', () => {

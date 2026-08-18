@@ -133,39 +133,15 @@ function toUrl(value) {
   }
 }
 
-function explicitUrlPort(value) {
-  const authority = typeof value === 'string'
-    ? value.match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i)?.[1]
-    : undefined;
-  const portText = authority?.match(/:(\d+)$/)?.[1];
-  const port = portText ? Number(portText) : undefined;
-  return port && Number.isInteger(port) && port <= 65535 ? port : undefined;
-}
-
-function normalizedLoopbackCallback(value) {
+function exactPortCallback(value, pathname) {
   const url = typeof value === 'string' ? toUrl(value) : null;
-  const port = explicitUrlPort(value);
-  const loopback = url && (
-    url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
-  );
-  if (!url || url.protocol !== 'http:' || !loopback || !port
-      || url.username || url.password || url.hash) return null;
-  return {
-    protocol: url.protocol,
-    hostname: url.hostname,
-    port,
-    pathname: url.pathname,
-  };
-}
-
-function sameNormalizedCallback(left, right) {
-  const a = normalizedLoopbackCallback(left);
-  const b = normalizedLoopbackCallback(right);
-  return Boolean(a && b
-    && a.protocol === b.protocol
-    && a.hostname === b.hostname
-    && a.port === b.port
-    && a.pathname === b.pathname);
+  const port = url && Number(url.port);
+  if (!url || !url.port || !Number.isInteger(port) || port < 1 || port > 65535
+      || url.protocol !== 'http:' || url.hostname !== 'localhost'
+      || url.pathname !== pathname || url.search || url.hash
+      || url.username || url.password
+      || value !== `http://localhost:${port}${pathname}`) return null;
+  return { port };
 }
 
 const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community']);
@@ -232,6 +208,12 @@ function validateOAuthRegistration(seed, label) {
           || !['http:', 'https:', 'cursor:'].includes(url.protocol)) {
         throw new Error(`${label}: OAuth callback URLs must be absolute and credential-free`);
       }
+      if (clientId === 'claude-code' && !exactPortCallback(value, '/callback')) {
+        throw new Error(`${label}: Claude Code callback URLs must match http://localhost:<explicit-port>/callback`);
+      }
+      if (clientId === 'codex-cli' && !exactPortCallback(value, '/oauth/callback')) {
+        throw new Error(`${label}: Codex mcp-remote callback URLs must match http://localhost:<explicit-port>/oauth/callback`);
+      }
     }
   }
 
@@ -250,7 +232,7 @@ function validateOAuthRegistration(seed, label) {
 
   if (registration.codexMcpRemote !== undefined) {
     const remote = registration.codexMcpRemote;
-    const callbackUrl = remote && normalizedLoopbackCallback(remote.callbackUrl);
+    const callbackUrl = remote && exactPortCallback(remote.callbackUrl, '/oauth/callback');
     if (!remote || typeof remote !== 'object' || Array.isArray(remote)
         || !isHttpsUrl(remote.resourceUrl)
         || !callbackUrl
@@ -262,7 +244,7 @@ function validateOAuthRegistration(seed, label) {
       throw new Error(`${label}: codexMcpRemote.callbackPort must match callbackUrl`);
     }
     const codexCallbacks = callback.redirectUrls?.['codex-cli'] || [];
-    if (!codexCallbacks.some((value) => sameNormalizedCallback(value, remote.callbackUrl))) {
+    if (!codexCallbacks.includes(remote.callbackUrl)) {
       throw new Error(`${label}: codexMcpRemote.callbackUrl must exactly match a Codex redirect URL`);
     }
   }

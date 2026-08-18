@@ -40,7 +40,9 @@ const documentedRedirects = {
 };
 
 const makePreRegisteredServer = (
-  redirectUrls: Partial<typeof documentedRedirects> = structuredClone(documentedRedirects)
+  redirectUrls: Partial<typeof documentedRedirects> = structuredClone(documentedRedirects),
+  codexCallbackUrl = 'http://localhost:3334/oauth/callback',
+  codexCallbackPort = 3334
 ): CatalogServer => makeServer({
   requiresOAuth: true,
   declaredAuthType: 'oauth',
@@ -52,8 +54,8 @@ const makePreRegisteredServer = (
     callback: { required: true, redirectUrls },
     codexMcpRemote: {
       resourceUrl: 'https://canonical.example',
-      callbackUrl: 'http://localhost:3334/oauth/callback',
-      callbackPort: 3334,
+      callbackUrl: codexCallbackUrl,
+      callbackPort: codexCallbackPort,
     },
     evidenceUrl: 'https://example.com/oauth-registration',
   },
@@ -228,13 +230,55 @@ describe('client setup transports and authentication', () => {
   });
 
   it.each([
-    ['wrong host', 'http://127.0.0.1:3334/oauth/callback'],
-    ['wrong path', 'http://localhost:3334/wrong-path'],
-  ])('rejects a same-port Codex redirect with the %s', (_case, redirectUrl) => {
+    ['wrong host', 'http://127.0.0.1:8080/callback'],
+    ['IPv6 host', 'http://[::1]:8080/callback'],
+    ['alternate path', 'http://localhost:8080/oauth/callback'],
+    ['query string', 'http://localhost:8080/callback?source=test'],
+    ['fragment', 'http://localhost:8080/callback#test'],
+    ['credentials', 'http://user:pass@localhost:8080/callback'],
+    ['implicit port', 'http://localhost/callback'],
+    ['default port', 'http://localhost:80/callback'],
+  ])('rejects a Claude Code callback with a %s', (_case, redirectUrl) => {
     const redirects = structuredClone(documentedRedirects);
-    redirects['codex-cli'] = [redirectUrl];
+    redirects['claude-code'] = [redirectUrl];
 
-    const codex = generateClientSetups(makePreRegisteredServer(redirects))[1];
+    const [claude, codex, cursor, vscode] = generateClientSetups(
+      makePreRegisteredServer(redirects)
+    );
+
+    expect(claude).toMatchObject({ supported: false, format: 'text' });
+    expect(claude.copyText).not.toContain('claude mcp add');
+    expect([codex, cursor, vscode].every(({ supported }) => supported)).toBe(true);
+  });
+
+  it.each([
+    ['wrong host', 'http://127.0.0.1:3334/oauth/callback'],
+    ['IPv6 host', 'http://[::1]:3334/oauth/callback'],
+    ['wrong path', 'http://localhost:3334/wrong-path'],
+    ['query string', 'http://localhost:3334/oauth/callback?source=test'],
+    ['fragment', 'http://localhost:3334/oauth/callback#test'],
+    ['credentials', 'http://user:pass@localhost:3334/oauth/callback'],
+    ['implicit port', 'http://localhost/oauth/callback'],
+    ['default port', 'http://localhost:80/oauth/callback'],
+  ])('rejects matching Codex redirect and bridge callbacks with a %s', (_case, callbackUrl) => {
+    const redirects = structuredClone(documentedRedirects);
+    redirects['codex-cli'] = [callbackUrl];
+    const callbackPort = callbackUrl.includes(':80/') ? 80 : 3334;
+
+    const codex = generateClientSetups(
+      makePreRegisteredServer(redirects, callbackUrl, callbackPort)
+    )[1];
+
+    expect(codex).toMatchObject({ supported: false, format: 'text' });
+    expect(codex.copyText).not.toContain('mcp-remote@latest');
+  });
+
+  it('rejects a Codex callbackPort mismatch during setup generation', () => {
+    const codex = generateClientSetups(makePreRegisteredServer(
+      structuredClone(documentedRedirects),
+      'http://localhost:3334/oauth/callback',
+      4444
+    ))[1];
 
     expect(codex).toMatchObject({ supported: false, format: 'text' });
     expect(codex.copyText).not.toContain('mcp-remote@latest');
