@@ -13,6 +13,13 @@ describe('ServerProfileView capability inventory', () => {
       category: 'Testing', tags: [], declaredTransport: 'streamable-http', transport: 'streamable-http',
       listingSource: { kind: 'community' },
       requiresOAuth: false, declaredAuthType: 'none', authType: 'none', protocolEra: 'stateless', status: 'online',
+      alternativeAuthTypes: ['bearer-token'],
+      alternativeEndpoints: [{
+        url: 'https://example.com/token-mcp',
+        authType: 'bearer-token',
+        description: 'Use when supplying a token directly',
+      }],
+      caveats: ['Confirm consequential actions before submission.'],
       checkedAt: '2026-08-18T00:32:48', homepageUrl: 'https://example.com',
       logoUrl: '/server-logos/example.svg', logoSourceKind: 'generated-fallback', logoRetrievedAt: '2026-08-17',
       capabilityInventory: createCapabilityInventory({
@@ -47,6 +54,11 @@ describe('ServerProfileView capability inventory', () => {
     expect(markup).toContain('technical-string technical-string-url');
     expect(markup).toContain('technical-string technical-string-url technical-string-inline');
     expect(markup).toContain('technical-string technical-string-inline');
+    expect(markup).toContain('Also supports Bearer token');
+    expect(markup).toContain('Alternative credential');
+    expect(markup).toContain('https://example.com/token-mcp');
+    expect(markup).toContain('Provider guidance');
+    expect(markup).toContain('Confirm consequential actions before submission.');
     expect(markup.match(/server-profile-action"/g)).toHaveLength(2);
     expect(markup).toContain('server-profile-breadcrumb-parent');
     expect(markup).toContain('server-profile-breadcrumb-current');

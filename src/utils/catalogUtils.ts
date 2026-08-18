@@ -40,6 +40,7 @@ const isCatalogAuthType = (authType: string | undefined): authType is CatalogAut
     authType === 'none' ||
     authType === 'oauth' ||
     authType === 'bearer-token' ||
+    authType === 'api-token' ||
     authType === 'api-key' ||
     authType === 'unknown'
   );
@@ -58,7 +59,7 @@ const getDeclaredAuthType = (seed: CatalogServerSeed): CatalogAuthType => {
 };
 
 const getSearchText = (server: CatalogServer): string => {
-  return [
+  const searchText = [
     server.name,
     server.description,
     server.url,
@@ -68,8 +69,21 @@ const getSearchText = (server: CatalogServer): string => {
     server.protocolEra,
     server.protocolVersion,
     server.registryName,
+    ...(server.alternativeAuthTypes ?? []),
+    ...(server.alternativeEndpoints ?? []).flatMap(({ url, authType, description }) => [
+      url,
+      authType,
+      description,
+    ]),
+    ...(server.caveats ?? []),
     ...server.tags,
   ].join(' ').toLowerCase();
+
+  return `${searchText} ${searchText.replace(/-/g, ' ')}`;
+};
+
+const supportsAuthType = (server: CatalogServer, authType: CatalogAuthType): boolean => {
+  return server.authType === authType || server.alternativeAuthTypes?.includes(authType) === true;
 };
 
 export const getCatalogServers = (): CatalogServer[] => {
@@ -80,7 +94,9 @@ export const getCatalogServers = (): CatalogServer[] => {
   return CATALOG_SEEDS.map((seed) => {
     const validation = validationByServerId.get(seed.id);
     const declaredAuthType = getDeclaredAuthType(seed);
-    const authType = declaredAuthType === 'api-key' || declaredAuthType === 'bearer-token'
+    const authType = declaredAuthType === 'api-key'
+      || declaredAuthType === 'api-token'
+      || declaredAuthType === 'bearer-token'
       ? declaredAuthType
       : isCatalogAuthType(validation?.authType)
         ? validation.authType
@@ -137,19 +153,23 @@ export const filterCatalogServers = (
     }
 
     if (oauthFilter === 'oauth') {
-      return server.authType === 'oauth';
+      return supportsAuthType(server, 'oauth');
     }
 
     if (oauthFilter === 'bearer-token') {
-      return server.authType === 'bearer-token';
+      return supportsAuthType(server, 'bearer-token');
     }
 
     if (oauthFilter === 'api-key') {
-      return server.authType === 'api-key';
+      return supportsAuthType(server, 'api-key');
+    }
+
+    if (oauthFilter === 'api-token') {
+      return supportsAuthType(server, 'api-token');
     }
 
     if (oauthFilter === 'no-auth') {
-      return server.authType === 'none';
+      return supportsAuthType(server, 'none');
     }
 
     return true;

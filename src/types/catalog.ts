@@ -19,7 +19,13 @@ export type CatalogValidationTransport = CatalogTransport | 'both' | 'unknown';
 export type CatalogProtocolEra = 'stateless' | 'stateful' | 'legacy' | 'unknown';
 
 /** Credential mechanism declared by a listing or detected during validation. */
-export type CatalogAuthType = 'none' | 'oauth' | 'bearer-token' | 'api-key' | 'unknown';
+export type CatalogAuthType =
+  | 'none'
+  | 'oauth'
+  | 'bearer-token'
+  | 'api-token'
+  | 'api-key'
+  | 'unknown';
 
 /**
  * Reachability state for a catalog server after validation. The unknown state
@@ -51,7 +57,13 @@ export type CatalogSortOrder =
 /**
  * Authentication-method filter used by the searchable catalog UI.
  */
-export type OAuthFilter = 'all' | 'oauth' | 'bearer-token' | 'api-key' | 'no-auth';
+export type OAuthFilter =
+  | 'all'
+  | 'oauth'
+  | 'bearer-token'
+  | 'api-token'
+  | 'api-key'
+  | 'no-auth';
 
 /** Provenance category for a self-hosted catalog logo. */
 export type CatalogLogoSourceKind =
@@ -70,6 +82,15 @@ export interface CatalogRequiredHeader {
   required?: boolean;
   /** Whether the value is a credential and must never be stored or rendered. */
   secret?: boolean;
+}
+
+export interface CatalogAlternativeEndpoint {
+  /** Publisher-documented endpoint used for a regional or authentication-specific connection. */
+  url: string;
+  /** Authentication method associated with this endpoint, when it differs from the primary flow. */
+  authType?: CatalogAuthType;
+  /** Public-safe explanation of when a client should use this endpoint. */
+  description: string;
 }
 
 /**
@@ -103,8 +124,16 @@ export interface CatalogServerSeed {
   requiresOAuth: boolean;
   /** Declared authentication method; requiresOAuth remains for older seed compatibility. */
   authType?: CatalogAuthType;
+  /** Additional publisher-supported credential methods; the primary method remains recommended. */
+  alternativeAuthTypes?: CatalogAuthType[];
   /** Non-secret header requirements documented by the server publisher. */
   requiredHeaders?: CatalogRequiredHeader[];
+  /** Publisher-documented regional or authentication-specific endpoint alternatives. */
+  alternativeEndpoints?: CatalogAlternativeEndpoint[];
+  /** Prevent validation from synthesizing conventional child or sibling endpoint paths. */
+  exactEndpointOnly?: boolean;
+  /** Provider limitations and safety guidance that must remain visible on profiles. */
+  caveats?: string[];
   /** Self-hosted logo path used by every catalog, profile, and SEO surface. */
   logoUrl: string;
   /** HTTPS page or asset from which the self-hosted logo was retrieved. */

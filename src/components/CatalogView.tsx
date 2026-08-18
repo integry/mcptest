@@ -17,6 +17,7 @@ const OAUTH_FILTER_OPTIONS: Array<{ value: OAuthFilter; label: string }> = [
   { value: 'no-auth', label: 'No auth' },
   { value: 'oauth', label: 'OAuth' },
   { value: 'bearer-token', label: 'Bearer' },
+  { value: 'api-token', label: 'API token' },
   { value: 'api-key', label: 'API key' },
 ];
 

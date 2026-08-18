@@ -58,6 +58,8 @@ export const formatCatalogAuth = (authType: CatalogAuthType): string => {
       return 'OAuth 2.1';
     case 'bearer-token':
       return 'Bearer token';
+    case 'api-token':
+      return 'API token';
     case 'api-key':
       return 'API key';
     default:
@@ -147,6 +149,11 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
           name: 'Authentication',
           value: formatCatalogAuth(server.authType),
         },
+        ...(server.alternativeAuthTypes ?? []).map((authType) => ({
+          '@type': 'PropertyValue' as const,
+          name: 'Alternative authentication',
+          value: formatCatalogAuth(authType),
+        })),
         {
           '@type': 'PropertyValue',
           name: 'MCP protocol lifecycle',

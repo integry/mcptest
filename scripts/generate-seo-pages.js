@@ -54,6 +54,7 @@ function isValidationTransport(transport) {
 function authenticationLabel(authType) {
   if (authType === 'oauth') return 'OAuth 2.1';
   if (authType === 'bearer-token') return 'Bearer token';
+  if (authType === 'api-token') return 'API token';
   if (authType === 'api-key') return 'API key';
   if (authType === 'none') return 'No authentication';
   return 'Not yet verified';
@@ -75,7 +76,9 @@ function mergeCatalogServers(seeds, validationResults, capabilitySnapshots = {})
   return seeds.map((seed) => {
     const validation = validationByServerId.get(seed.id);
     const declaredAuthType = seed.authType || (seed.requiresOAuth ? 'oauth' : 'none');
-    const authType = declaredAuthType === 'api-key' || declaredAuthType === 'bearer-token'
+    const authType = declaredAuthType === 'api-key'
+      || declaredAuthType === 'api-token'
+      || declaredAuthType === 'bearer-token'
       ? declaredAuthType
       : validation?.authType || declaredAuthType;
 
@@ -284,9 +287,18 @@ function renderServerFallback(server) {
   const registryLink = server.registryUrl
     ? `<a href="${escapeHtml(server.registryUrl)}">Official MCP Registry record</a>`
     : '';
-  const references = [homepageLink, sourceLink, registryLink].filter(Boolean).join(' · ');
+  const listingLink = server.listingSource?.url && server.listingSource.url !== server.homepageUrl
+    ? `<a href="${escapeHtml(server.listingSource.url)}">Official listing documentation</a>`
+    : '';
+  const references = [homepageLink, sourceLink, listingLink, registryLink].filter(Boolean).join(' · ');
   const requiredHeaders = (server.requiredHeaders || []).map((header) => (
     `      <div><dt>Required header</dt><dd><code class="technical-string technical-string-inline">${escapeHtml(header.name)}</code>${header.description ? ` — ${escapeHtml(header.description)}` : ''}</dd></div>`
+  ));
+  const alternativeAuthTypes = (server.alternativeAuthTypes || []).map((authType) => (
+    `      <div><dt>Alternative authentication</dt><dd>${escapeHtml(authenticationLabel(authType))}</dd></div>`
+  ));
+  const alternativeEndpoints = (server.alternativeEndpoints || []).map((endpoint) => (
+    `      <div><dt>Alternative endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(endpoint.url)}</code> — ${escapeHtml(endpoint.description)}${endpoint.authType ? ` (${escapeHtml(authenticationLabel(endpoint.authType))})` : ''}</dd></div>`
   ));
   const authorizationServers = (server.authorizationServers || []).map((issuer) => (
     `      <div><dt>Authorization server</dt><dd><code class="technical-string technical-string-url">${escapeHtml(issuer)}</code></dd></div>`
@@ -316,12 +328,18 @@ function renderServerFallback(server) {
     `      <div><dt>Live-validated MCP transport</dt><dd>${escapeHtml(transportLabel(server.transport))} — ${escapeHtml(validationTransportNote(server))}</dd></div>`,
     `      <div><dt>Declared authentication</dt><dd>${escapeHtml(authenticationLabel(server.declaredAuthType))}</dd></div>`,
     `      <div><dt>Detected authentication</dt><dd>${escapeHtml(detectedAuthenticationLabel(server))}</dd></div>`,
+    ...alternativeAuthTypes,
+    ...alternativeEndpoints,
     `      <div><dt>Protocol lifecycle</dt><dd>${escapeHtml(protocolLabel(server.protocolEra, server.protocolVersion))}</dd></div>`,
     ...requiredHeaders,
     ...authorizationServers,
     `      <div><dt>Category</dt><dd>${escapeHtml(server.category)}</dd></div>`,
     '    </dl>',
     `    <p>${references}</p>`,
+    ...(server.caveats?.length ? [
+      '    <h3>Provider guidance</h3>',
+      `    <ul>${server.caveats.map(caveat => `<li>${escapeHtml(caveat)}</li>`).join('')}</ul>`,
+    ] : []),
     `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
     '  <section class="card server-profile-section"><div class="card-body">',
@@ -372,6 +390,12 @@ function renderServerHtml(indexHtml, server) {
       { '@type': 'PropertyValue', name: 'Live-validated MCP transport', value: transportLabel(server.transport) },
       { '@type': 'PropertyValue', name: 'Declared authentication', value: authenticationLabel(server.declaredAuthType) },
       { '@type': 'PropertyValue', name: 'Detected authentication', value: detectedAuthenticationLabel(server) },
+      ...(server.alternativeAuthTypes || []).map(authType => ({
+        '@type': 'PropertyValue', name: 'Alternative authentication', value: authenticationLabel(authType),
+      })),
+      ...(server.alternativeEndpoints || []).map(endpoint => ({
+        '@type': 'PropertyValue', name: 'Alternative endpoint', value: endpoint.url,
+      })),
       { '@type': 'PropertyValue', name: 'MCP protocol lifecycle', value: protocolLabel(server.protocolEra, server.protocolVersion) },
       { '@type': 'PropertyValue', name: 'Validation status', value: validationStatusLabel(server) },
       { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },

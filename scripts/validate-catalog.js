@@ -215,6 +215,8 @@ function endpointVariants(seed) {
 
   add(seedUrl.toString(), seed.transport);
 
+  if (seed.exactEndpointOnly) return candidates;
+
   const normalizedPath = seedUrl.pathname.replace(/\/+$/, '');
   if (!normalizedPath) {
     const httpUrl = new URL(seedUrl);
@@ -510,7 +512,9 @@ function declaredAuthType(seed) {
 
 function detectedAuthType(seed, probes, authorizationEvidence) {
   const declared = declaredAuthType(seed);
-  if (declared === 'api-key' || declared === 'bearer-token') return declared;
+  if (declared === 'api-key' || declared === 'api-token' || declared === 'bearer-token') {
+    return declared;
+  }
   if (probes.some((probe) => probe.alive && !probe.authChallenge)) return declared;
   if (authorizationEvidence.oauthMetadata) return 'oauth';
   if (probes.some((probe) => probe.authChallenge)) {
@@ -670,12 +674,15 @@ async function writeResults(
   paths = { validation: outputPath, capabilities: capabilitiesPath }
 ) {
   const validationResults = results.map(({ capabilityInventory, ...result }) => result);
+  const activeServerIds = new Set(results.map(({ serverId }) => serverId));
   const previous = fs.existsSync(paths.capabilities)
     ? JSON.parse(fs.readFileSync(paths.capabilities, 'utf8'))
     : {};
   // Validate the complete merged file before either durable output is replaced.
   const capabilities = await validateCapabilitySnapshots(
-    mergeCapabilitySnapshots(previous, results)
+    Object.fromEntries(Object.entries(mergeCapabilitySnapshots(previous, results)).filter(
+      ([serverId]) => activeServerIds.has(serverId)
+    ))
   );
   const validationJson = `${JSON.stringify(validationResults, null, 2)}\n`;
   const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;

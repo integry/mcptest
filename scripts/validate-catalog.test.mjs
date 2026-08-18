@@ -97,6 +97,19 @@ describe('catalog endpoint variants', () => {
     });
   });
 
+  it('does not invent child paths for an exact-only origin endpoint', () => {
+    const variants = endpointVariants({
+      url: 'https://mcp.example.com/',
+      transport: 'streamable-http',
+      exactEndpointOnly: true,
+    });
+
+    expect(variants).toEqual([
+      { url: 'https://mcp.example.com/', transport: 'streamable-http' },
+    ]);
+    expect(variants.some(({ url }) => url.endsWith('/mcp'))).toBe(false);
+  });
+
   it('tests the exact URL with both transports when the declared transport and path differ', () => {
     const variants = endpointVariants({
       url: 'https://example.com/mcp',
@@ -596,6 +609,32 @@ describe('catalog capability pagination and persistence', () => {
         { capabilities, validation }
       )).rejects.toThrow('unsafe or non-canonical');
       expect(fs.readFileSync(capabilities, 'utf8')).toBe(lastSuccessfulSnapshot);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('drops capability snapshots for servers absent from the current validation batch', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-prune-'));
+    const capabilities = path.join(directory, 'catalogCapabilities.json');
+    const validation = path.join(directory, 'catalogValidation.json');
+    const inventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://removed.example/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+      resources: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+      resourceTemplates: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+      prompts: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+    };
+    fs.writeFileSync(capabilities, `${JSON.stringify({ removed: inventory }, null, 2)}\n`);
+    try {
+      await writeResults(
+        [{ serverId: 'remaining', status: 'online' }],
+        { capabilities, validation }
+      );
+      expect(JSON.parse(fs.readFileSync(capabilities, 'utf8'))).toEqual({});
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

@@ -6,6 +6,8 @@ import {
   getCatalogServers,
   sortCatalogServers,
 } from './catalogUtils';
+import catalogValidation from '../data/catalogValidation.json';
+import catalogCapabilities from '../data/catalogCapabilities.json';
 
 const server = (
   id: string,
@@ -37,6 +39,7 @@ describe('catalog authentication metadata', () => {
     server('public', 'none'),
     server('oauth', 'oauth'),
     server('bearer', 'bearer-token'),
+    server('api-token', 'api-token'),
     server('api-key', 'api-key'),
   ];
 
@@ -44,6 +47,7 @@ describe('catalog authentication metadata', () => {
     ['no-auth', 'public'],
     ['oauth', 'oauth'],
     ['bearer-token', 'bearer'],
+    ['api-token', 'api-token'],
     ['api-key', 'api-key'],
   ] as const)('filters %s servers', (authFilter, expectedId) => {
     expect(filterCatalogServers(servers, { oauthFilter: authFilter }).map(({ id }) => id))
@@ -53,21 +57,64 @@ describe('catalog authentication metadata', () => {
   it('merges every expanded seed into the UI-facing catalog', () => {
     const catalog = getCatalogServers();
 
-    expect(catalog).toHaveLength(26);
-    expect(catalog.find(({ id }) => id === 'adadvisor')).toMatchObject({
-      authType: 'bearer-token',
-      declaredAuthType: 'bearer-token',
-    });
-    expect(catalog.find(({ id }) => id === 'inferventis')).toMatchObject({
-      authType: 'api-key',
-      declaredAuthType: 'api-key',
-    });
-    expect(catalog.find(({ id }) => id === 'agentra')).toMatchObject({
-      declaredTransport: 'legacy-sse',
-    });
+    expect(catalog).toHaveLength(33);
+    expect(catalogValidation).toHaveLength(33);
+    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(33);
+    expect(catalog.find(({ id }) => id === 'asana')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'canva')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'gitlab')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'miro')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'circleci')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'pagerduty')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'airtable')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'clickup')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'intercom')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'docusign-developer')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'calendly')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'hugging-face')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'upwork')).toBeDefined();
+    expect(catalog.find(({ id }) => id === 'inference-sh')).toBeUndefined();
+    expect(catalog.find(({ id }) => id === 'tandem-docs')).toBeUndefined();
+    expect(catalog.find(({ id }) => id === 'agentdm')).toBeUndefined();
+    expect(catalog.find(({ id }) => id === 'adadvisor')).toBeUndefined();
+    expect(catalog.find(({ id }) => id === 'inferventis')).toBeUndefined();
+    expect(catalog.find(({ id }) => id === 'agentra')).toBeUndefined();
+    expect(catalogValidation.find(({ serverId }) => serverId === 'inference-sh')).toBeUndefined();
+    expect(catalogValidation.find(({ serverId }) => serverId === 'tandem-docs')).toBeUndefined();
+    expect(catalogValidation.find(({ serverId }) => serverId === 'agentdm')).toBeUndefined();
+    expect(catalogValidation.find(({ serverId }) => serverId === 'adadvisor')).toBeUndefined();
+    expect(catalogValidation.find(({ serverId }) => serverId === 'inferventis')).toBeUndefined();
+    expect(catalogValidation.find(({ serverId }) => serverId === 'agentra')).toBeUndefined();
+    expect(catalogCapabilities).not.toHaveProperty('inference-sh');
+    expect(catalogCapabilities).not.toHaveProperty('tandem-docs');
+    expect(catalogCapabilities).not.toHaveProperty('agentdm');
+    expect(catalogCapabilities).not.toHaveProperty('adadvisor');
+    expect(catalogCapabilities).not.toHaveProperty('inferventis');
+    expect(catalogCapabilities).not.toHaveProperty('agentra');
     expect(catalog.every(({ listingSource }) => Boolean(listingSource?.kind))).toBe(true);
     expect(catalog.every(({ logoUrl }) => logoUrl.startsWith('/server-logos/'))).toBe(true);
     expect(JSON.stringify(catalog)).not.toMatch(/"logoUrl":"https?:/);
+  });
+
+  it('searches and filters alternative authentication methods', () => {
+    const oauthWithToken = server('hybrid', 'oauth', {
+      alternativeAuthTypes: ['bearer-token'],
+    });
+
+    expect(filterCatalogServers([oauthWithToken], { query: 'bearer token' })).toEqual([
+      oauthWithToken,
+    ]);
+    expect(filterCatalogServers([oauthWithToken], { oauthFilter: 'bearer-token' })).toEqual([
+      oauthWithToken,
+    ]);
+    expect(filterCatalogServers([oauthWithToken], { oauthFilter: 'oauth' })).toEqual([
+      oauthWithToken,
+    ]);
+
+    const pagerDuty = getCatalogServers().find(({ id }) => id === 'pagerduty');
+    expect(pagerDuty).toBeDefined();
+    expect(filterCatalogServers([pagerDuty!], { query: 'api token' })).toEqual([pagerDuty]);
+    expect(filterCatalogServers([pagerDuty!], { oauthFilter: 'api-token' })).toEqual([pagerDuty]);
   });
 });
 

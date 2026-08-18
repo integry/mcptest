@@ -19,6 +19,7 @@ const isOAuthFilter = (value: string | null): value is OAuthFilter => {
     value === 'all' ||
     value === 'oauth' ||
     value === 'bearer-token' ||
+    value === 'api-token' ||
     value === 'api-key' ||
     value === 'no-auth'
   );
