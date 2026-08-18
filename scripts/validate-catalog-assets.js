@@ -31,6 +31,16 @@ function isHttpsUrl(value) {
   }
 }
 
+function hasInvalidSimpleIconsVersionTag(value) {
+  try {
+    const url = new URL(value);
+    return url.hostname === 'github.com'
+      && /^\/simple-icons\/simple-icons\/blob\/v\d[^/]*\/icons\/[^/]+\.svg$/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function validateSvg(contents) {
   const errors = [];
   const forbiddenElements = contents.match(/<(?:script|foreignObject|iframe|object|embed)\b/i);
@@ -204,6 +214,9 @@ function validateCatalogAssets(
       }
     } else if (!isHttpsUrl(seed.logoSourceUrl)) {
       errors.push(`${label}: sourced logo requires an HTTPS logoSourceUrl`);
+    } else if (seed.logoSourceKind === 'simple-icons'
+      && hasInvalidSimpleIconsVersionTag(seed.logoSourceUrl)) {
+      errors.push(`${label}: Simple Icons version tags must not have a leading v`);
     }
   }
 
