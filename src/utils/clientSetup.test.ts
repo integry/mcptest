@@ -122,6 +122,51 @@ describe('client setup transports and authentication', () => {
     expect(apiKey[3].copyText).toContain('${input:key_service_api_key}');
   });
 
+  it('uses one Codex environment variable for a raw API-key header value', () => {
+    const codex = generateClientSetups(makeServer({
+      id: 'key-service', declaredAuthType: 'api-key', authType: 'api-key',
+      requiredHeaders: [{
+        name: 'X-API-Key', description: 'Required credential: <KEY_SERVICE_API_KEY>',
+        required: true, secret: true,
+      }],
+    }))[1];
+
+    expect(codex.copyText).toBe([
+      '[mcp_servers.key-service]',
+      'url = "https://canonical.example/mcp"',
+      'env_http_headers = { "X-API-Key" = "KEY_SERVICE_API_KEY_HEADER" }',
+    ].join('\n'));
+    expect(codex.location).toBe(
+      'Add to ~/.codex/config.toml, then securely set KEY_SERVICE_API_KEY_HEADER to the raw credential value, which is the complete X-API-Key header value.'
+    );
+    expect(codex.notes).toContain(
+      'Store KEY_SERVICE_API_KEY_HEADER in your operating system keychain, secret manager, or protected environment; never commit the value. Set it to the raw credential value, which is the complete X-API-Key header value.'
+    );
+  });
+
+  it('uses one Codex environment variable for a complete prefixed header value', () => {
+    const codex = generateClientSetups(makeServer({
+      id: 'pagerduty', declaredAuthType: 'api-token', authType: 'api-token',
+      requiredHeaders: [{
+        name: 'Authorization',
+        description: 'PagerDuty API token syntax: Token token=<PAGERDUTY_API_TOKEN>',
+        required: true, secret: true,
+      }],
+    }))[1];
+
+    expect(codex.copyText).toBe([
+      '[mcp_servers.pagerduty]',
+      'url = "https://canonical.example/mcp"',
+      'env_http_headers = { "Authorization" = "PAGERDUTY_API_TOKEN_HEADER" }',
+    ].join('\n'));
+    expect(codex.location).toBe(
+      'Add to ~/.codex/config.toml, then securely set PAGERDUTY_API_TOKEN_HEADER to the complete Authorization header value, including the required syntax Token token=<credential>.'
+    );
+    expect(codex.notes).toContain(
+      'Store PAGERDUTY_API_TOKEN_HEADER in your operating system keychain, secret manager, or protected environment; never commit the value. Set it to the complete Authorization header value, including the required syntax Token token=<credential>.'
+    );
+  });
+
   it('keeps non-Bearer alternative authorization syntax exact', () => {
     const setups = generateClientSetups(makeServer({
       id: 'pagerduty', requiresOAuth: true,

@@ -194,6 +194,20 @@ const secureStorageNote = (header: HeaderTemplate): string => {
   return `Store ${header.environmentVariable} in your operating system keychain, secret manager, or protected environment; never commit the value. The ${header.name} header syntax is ${header.valueTemplate}.`;
 };
 
+const completeHeaderValueDescription = (header: HeaderTemplate): string => {
+  const credentialMarker = `<${header.environmentVariable}>`;
+  return header.valueTemplate === credentialMarker
+    ? `the raw credential value, which is the complete ${header.name} header value`
+    : `the complete ${header.name} header value, including the required syntax ${header.valueTemplate.replace(credentialMarker, '<credential>')}`;
+};
+
+const secureCompleteHeaderStorageNote = (
+  header: HeaderTemplate,
+  environmentVariable: string
+): string => {
+  return `Store ${environmentVariable} in your operating system keychain, secret manager, or protected environment; never commit the value. Set it to ${completeHeaderValueDescription(header)}.`;
+};
+
 const commonNotes = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): string[] => {
   const notes = [`Using ${endpoint.provenanceLabel.toLowerCase()}: ${endpoint.url}`];
   if (server.authType === 'oauth') {
@@ -273,19 +287,20 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
   let copyText: string;
   let format: ClientSetupFormat = 'shell';
   let location = 'Run in a terminal; Codex stores the entry in ~/.codex/config.toml.';
+  let fullValueEnvironment: string | undefined;
   if (header && header.valueTemplate === `Bearer <${header.environmentVariable}>`) {
     copyText = `codex mcp add ${quoteShellArgument(key)} --url ${quoteShellArgument(endpoint.url)} --bearer-token-env-var ${quoteShellArgument(header.environmentVariable)}`;
   } else if (header) {
     // env_http_headers reads the complete header value from the environment,
     // preserving non-Bearer schemes such as PagerDuty's "Token token=".
-    const fullValueEnvironment = `${header.environmentVariable}_HEADER`;
+    fullValueEnvironment = `${header.environmentVariable}_HEADER`;
     copyText = [
       `[mcp_servers.${key}]`,
       `url = ${serializeTomlString(endpoint.url)}`,
       `env_http_headers = { ${serializeTomlString(header.name)} = ${serializeTomlString(fullValueEnvironment)} }`,
     ].join('\n');
     format = 'toml';
-    location = `Add to ~/.codex/config.toml, then set ${fullValueEnvironment} securely to the complete ${header.valueTemplate} header value.`;
+    location = `Add to ~/.codex/config.toml, then securely set ${fullValueEnvironment} to ${completeHeaderValueDescription(header)}.`;
   } else {
     copyText = `codex mcp add ${quoteShellArgument(key)} --url ${quoteShellArgument(endpoint.url)}`;
   }
@@ -293,7 +308,11 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
     copyText += `\ncodex mcp login ${quoteShellArgument(key)}`;
   }
   const notes = commonNotes(server, endpoint);
-  if (header) notes.push(secureStorageNote(header));
+  if (header) {
+    notes.push(fullValueEnvironment
+      ? secureCompleteHeaderStorageNote(header, fullValueEnvironment)
+      : secureStorageNote(header));
+  }
   if (CREDENTIAL_AUTH_TYPES.has(server.authType) && !header) {
     notes.push('Codex cannot be configured faithfully because the catalog does not identify the credential header. Check the publisher documentation.');
   }
