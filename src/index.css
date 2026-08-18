@@ -9,6 +9,7 @@
   --text-color: #111827;
   --text-muted: #6b7280;
   --text-accent: #374151;
+  --catalog-secondary-text: #4b5563;
   --primary-color: #047857;
   --primary-hover: #065f46;
   --primary-light: #059669;
@@ -50,6 +51,7 @@
   --text-color: #f8fafc;
   --text-muted: #94a3b8;
   --text-accent: #cbd5e1;
+  --catalog-secondary-text: #cbd5e1;
   --primary-color: #36e0aa;
   --primary-hover: #64efc0;
   --primary-light: #8ff5d0;
@@ -4009,6 +4011,13 @@ span.health-indicator.health-indicator-gray {
   white-space: nowrap;
 }
 
+.catalog-listing-source-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 0.7rem;
+  stroke-width: 1.5;
+}
+
 a.catalog-listing-source:hover {
   color: var(--primary-color);
   text-decoration: underline;
@@ -4025,6 +4034,7 @@ a.catalog-listing-source:hover {
   display: block;
   overflow: hidden;
   max-width: 100%;
+  color: var(--catalog-secondary-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4046,6 +4056,10 @@ a.catalog-listing-source:hover {
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 600;
+}
+
+.catalog-runtime-status--online {
+  color: var(--success-color);
 }
 
 .catalog-status-dot--online {
@@ -4126,15 +4140,15 @@ button.badge.catalog-metadata-badge--category:focus-visible {
 }
 
 .catalog-report-link {
-  color: var(--primary-color);
+  color: var(--catalog-secondary-text);
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   text-underline-offset: 0.18em;
 }
 
 .catalog-report-link:hover {
-  color: var(--primary-hover);
+  color: var(--primary-color);
   text-decoration: underline;
 }
 

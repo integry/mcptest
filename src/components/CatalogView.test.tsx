@@ -128,9 +128,12 @@ describe('CatalogView', () => {
 
     expect(actionRule).toMatch(/justify-content:\s*space-between;/);
     expect(actionRule).toMatch(/flex-wrap:\s*wrap;/);
+    expect(reportRule).toMatch(/color:\s*var\(--catalog-secondary-text\);/);
+    expect(reportRule).toMatch(/font-weight:\s*500;/);
     expect(reportRule).toMatch(/text-decoration:\s*none;/);
     expect(reportRule).not.toMatch(/flex:/);
     expect(reportHoverRule).toMatch(/text-decoration:\s*underline;/);
+    expect(reportHoverRule).toMatch(/color:\s*var\(--primary-color\);/);
     expect(testRule).toMatch(/margin-left:\s*auto;/);
     expect(testRule).not.toMatch(/flex:/);
   });
