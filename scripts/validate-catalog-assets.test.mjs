@@ -109,6 +109,34 @@ describe('catalog logo asset validation', () => {
     expect(validateSvg(svg)).toContain('contains an embedded data resource');
   });
 
+  it.each([
+    [
+      'an indirect href assignment',
+      '<set attributeName="href" to="data:image/png;base64,AAAA" />',
+    ],
+    [
+      'a data URI among srcset candidates',
+      '<image srcset="#local 1x, data:image/png;base64,AAAA 2x" />',
+    ],
+    ['a data attribute', '<image data="data:image/png;base64,AAAA" />'],
+    ['a poster attribute', '<image poster="DATA:image/png;base64,AAAA" />'],
+    [
+      'an XML-character-reference-encoded assignment',
+      '<set attributeName="href" to="d&#97;ta&#58;image/png;base64,AAAA" />',
+    ],
+  ])('rejects data URLs from %s', (_label, element) => {
+    expect(validateSvg(`<svg viewBox="0 0 1 1">${element}</svg>`)).toContain(
+      'contains an embedded data resource'
+    );
+  });
+
+  it('accepts self-contained vectors and fragment-only references', () => {
+    const svg = '<svg viewBox="0 0 1 1"><defs><path id="mark" d="M0 0h1v1z" /></defs>'
+      + '<use href="#mark" fill="url(#gradient)" /></svg>';
+
+    expect(validateSvg(svg)).toEqual([]);
+  });
+
   it('rejects duplicate ids, non-local paths, and invalid provenance', () => {
     const first = catalog[0];
     const errors = validateCatalogAssets([
