@@ -141,6 +141,37 @@ describe('dual-era server evaluation', () => {
     expect(proxyHeaders.get('x-mcp-authorization')).toBe('Bearer oauth-access-token');
   });
 
+  it('retains non-authentication proxy failure provenance in a failed report', async () => {
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new Error('Direct CORS failure'))
+      .mockRejectedValueOnce(new TransportConnectionError(
+        [new Error('Proxy returned a gateway error')],
+        [{
+          candidateUrl: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
+          error: new Error('Proxy returned a gateway error'),
+          observedRequests: [{
+            method: 'POST',
+            url: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
+            status: 502,
+            responseSource: 'proxy',
+            retryAfter: '12',
+            outcome: 'failed',
+          }],
+        }]
+      ));
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('failed');
+    expect(report.sections.protocol.details[0].metadata).toMatchObject({
+      routeFailures: expect.arrayContaining([
+        expect.objectContaining({
+          route: 'authenticated proxy', status: 502, responseSource: 'proxy', retryAfter: '12',
+        }),
+      ]),
+    });
+  });
+
   it('rewrites only a terminal conventional path for comparison probes', () => {
     const probeUrl = getEvaluationTransportProbeUrl(
       'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
