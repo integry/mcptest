@@ -70,16 +70,18 @@ describe('transport candidate generation', () => {
       'https://example.com/sse',
       false,
       'streamable-http'
-    ).slice(0, 2)).toEqual([
+    )).toEqual([
       { url: 'https://example.com/sse', transportType: 'streamable-http' },
-      { url: 'https://example.com/sse/', transportType: 'streamable-http' },
     ]);
   });
 
-  it('uses only Streamable HTTP candidates for Slack MCP', () => {
-    expect(getTransportCandidates('https://mcp.slack.com/mcp')).toEqual([
+  it('uses only the catalog-selected Streamable HTTP transport', () => {
+    expect(getTransportCandidates(
+      'https://mcp.slack.com/mcp',
+      false,
+      'streamable-http'
+    )).toEqual([
       { url: 'https://mcp.slack.com/mcp', transportType: 'streamable-http' },
-      { url: 'https://mcp.slack.com/mcp/', transportType: 'streamable-http' },
     ]);
   });
   it('strictly redacts challenge parameters and credential variants in metadata URLs', () => {

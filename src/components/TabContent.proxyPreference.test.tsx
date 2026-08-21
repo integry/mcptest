@@ -29,7 +29,7 @@ vi.mock('../utils/catalogUtils', async (importOriginal) => {
 });
 
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ currentUser: null, loading: false }),
+  useAuth: () => ({ currentUser: null, loading: false, loginWithGoogle: vi.fn() }),
 }));
 
 vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
@@ -134,6 +134,7 @@ describe('rendered anonymous proxy preference', () => {
     expect(connectionMocks.attempt).toHaveBeenCalledOnce();
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(true);
     expect(view.container.textContent).toContain('mcptest proxy authentication required');
+    expect(view.container.textContent).toContain('Sign in with Google to use the proxy');
     expect(view.container.textContent).not.toContain('MCP Server Connection Failed');
 
     const connectionPanel = view.container.querySelector('.connection-console');
@@ -144,14 +145,15 @@ describe('rendered anonymous proxy preference', () => {
     view.unmount();
   });
 
-  it('shows the generic direct failure from an explicitly opted-out new tab', async () => {
+  it('shows the browser/CORS diagnosis from an explicitly opted-out new tab', async () => {
     const view = renderNewTab(false);
 
     await connectToSlack(view.container);
 
     expect(connectionMocks.attempt).toHaveBeenCalledOnce();
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(false);
-    expect(view.container.textContent).toContain('MCP Server Connection Failed');
+    expect(view.container.textContent).toContain('Browser access blocked');
+    expect(view.container.textContent).toContain('Automatically use proxy for CORS errors');
     expect(view.container.textContent).not.toContain('mcptest proxy authentication required');
     view.unmount();
   });

@@ -1036,7 +1036,16 @@ describe('connection URL finalization', () => {
     expect(oauthMocks.begin).not.toHaveBeenCalled();
     expect(view.connection.needsOAuthConfig).toBe(false);
     expect(view.connection.oauthPrerequisite).toBeNull();
-    expect(view.connection.connectionError).not.toBeNull();
+    expect(view.connection.connectionError).toMatchObject({
+      transportEvidence: 'streamable-http',
+      expectedAuthentication: 'oauth',
+      attempts: [expect.objectContaining({
+        route: 'direct',
+        candidateUrl: endpoint,
+        failureKind: 'browser-unreadable',
+        browserUnreadable: true,
+      })],
+    });
     view.unmount();
   });
 
