@@ -26,27 +26,64 @@ This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP 
    VITE_PROXY_URL=https://mcptest-cors-proxy.your-account.workers.dev
    ```
 
-### Operator-owned OAuth clients
+## Operator-owned and hosted OAuth clients
 
-Providers such as Slack and GitHub require a fixed confidential host application, while Figma
-requires an approved catalog client. The Worker exposes a server-only configuration seam for
-those deployments. Configure both values with encrypted Worker secrets, never with frontend
-`VITE_` variables or checked-in Wrangler variables:
+Hosted OAuth is free and is enabled only for these exact provider/target pairs:
+
+- Slack: `https://mcp.slack.com/mcp` with issuer `https://mcp.slack.com`
+- GitHub: `https://api.githubcopilot.com/mcp` with issuer `https://github.com/login/oauth`
+
+Create the provider applications using the official [Slack MCP setup](https://docs.slack.dev/ai/slack-mcp-server/)
+and [GitHub OAuth application setup](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app).
+Both applications must register this exact redirect URI:
+
+```text
+https://cors-proxy-worker.livecart.workers.dev/oauth/hosted/callback
+```
+
+Slack and GitHub require fixed confidential host applications, while Figma requires an approved
+catalog client. Set provider credentials, scope policies, and the hosted-flow encryption key in
+server-side Worker bindings. The commands below use encrypted Worker secrets for every value; never
+put confidential values in `wrangler.toml`, Pages variables, frontend `.env` files, or build arguments:
 
 ```bash
 wrangler secret put SLACK_OAUTH_CLIENT_ID
 wrangler secret put SLACK_OAUTH_CLIENT_SECRET
+wrangler secret put SLACK_OAUTH_SCOPES
 wrangler secret put GITHUB_OAUTH_CLIENT_ID
 wrangler secret put GITHUB_OAUTH_CLIENT_SECRET
+wrangler secret put GITHUB_OAUTH_SCOPES
 wrangler secret put FIGMA_OAUTH_CLIENT_ID
 wrangler secret put FIGMA_OAUTH_CLIENT_SECRET
+wrangler secret put HOSTED_OAUTH_ENCRYPTION_KEY
 ```
 
-`getOperatorOAuthClient` intentionally has no browser endpoint. A deployment that activates one
-of these clients must keep authorization-code exchange and the client secret inside the Worker and
-must never serialize the secret into responses, URLs, reports, logs, or browser storage. Without
-that deployment-specific server flow, the UI truthfully reports the provider prerequisite and keeps
-the supported bearer-token alternative available where the provider offers one.
+`HOSTED_OAUTH_ENCRYPTION_KEY` is a base64url-encoded 32-byte random key. Configure
+`HOSTED_OAUTH_CALLBACK_URL` and `PUBLIC_APP_ORIGIN` as non-secret Worker bindings, and keep the
+`HOSTED_OAUTH_BROKER` Durable Object binding and migration from `wrangler.toml`.
+
+`SLACK_OAUTH_SCOPES` and `GITHUB_OAUTH_SCOPES` are explicit, space-separated least-privilege
+allowlists for the corresponding operator application. Configure only scopes that the application
+is approved to request and that are required for the MCP tools mcptest.io intends to expose. The
+Worker uses this list when a provider challenge omits `scope`, rejects challenge scopes outside the
+list, and refuses to start hosted OAuth when the binding is absent, invalid, or contains a scope the
+trusted MCP resource does not advertise. It never falls back to an empty request or to every scope
+advertised by the provider.
+
+Authorization transactions expire after 10 minutes and are single-use. Provider access and refresh
+tokens are AES-256-GCM encrypted in Durable Object storage, never returned to browser code, and
+refreshed server-side 60 seconds before provider expiry. The browser receives only an opaque grant
+reference, kept in `sessionStorage` for the current tab; the reference expires server-side after 30
+days and is valid only for the same Firebase user and exact normalized MCP target. The proxy resolves
+that reference and places the provider access token on the existing isolated target-authorization
+channel. Firebase credentials are never forwarded to the MCP target.
+
+If a provider app or secret is missing, the endpoint returns `provider_not_configured`; the UI does
+not offer a confidential-client form as a fallback. Figma hosted OAuth remains disabled until
+mcptest.io is approved for the Figma MCP Catalog. The Figma operator-client configuration remains
+server-only; its client secret must never be serialized into responses, URLs, reports, logs, or
+browser storage. The UI keeps supported bearer-token alternatives available where providers offer
+them.
 
 ## Usage
 

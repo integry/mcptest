@@ -1963,6 +1963,7 @@ function App() {
       {needsOAuthConfig && oauthConfigServerUrl && (
         <OAuthConfig 
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             setNeedsOAuthConfig(false);

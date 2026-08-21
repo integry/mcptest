@@ -475,6 +475,8 @@ const directCandidates = (
   };
   const normalizedPath = endpoint.pathname.replace(/\/+$/, '');
 
+  // Authoritative provider policy prevents probing invented legacy /sse
+  // siblings for services, such as Slack MCP, that support Streamable HTTP only.
   const streamableHttpOnly = isAuthoritativeStreamableHttpOnlyProvider(endpoint.toString());
 
   // Catalog evidence can definitively contradict a conventional path suffix.

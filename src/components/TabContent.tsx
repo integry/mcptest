@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
 import { logEvent } from '../utils/analytics';
+import { useAuth } from '../context/AuthContext';
 
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
@@ -40,6 +41,17 @@ const normalizeConnectionTarget = (value: string): string => {
   }
 };
 
+export const savePlaygroundOAuthReturnState = (tabId: string): void => {
+  const activeTabs = localStorage.getItem('mcpConnectionTabs');
+  if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
+  sessionStorage.setItem('oauth_tab_id', tabId);
+  sessionStorage.setItem('oauth_return_view', JSON.stringify({
+    activeView: 'playground',
+    activeTabId: tabId,
+    timestamp: Date.now()
+  }));
+};
+
 // Helper to load history from localStorage
 const loadData = <T extends {}>(key: string, defaultValue: T): T => {
   try {
@@ -74,6 +86,7 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace }) => {
+  const { currentUser } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
@@ -91,6 +104,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   } | null>(null);
   const nextBearerAttemptId = useRef(0);
   const startedBearerAttemptId = useRef<number | null>(null);
+  const saveOAuthReturnState = useCallback(() => {
+    savePlaygroundOAuthReturnState(tab.id);
+  }, [tab.id]);
   const [hasStartedFirstConnection, setHasStartedFirstConnection] = useState(() => Boolean(
     tab.serverUrl || tab.autoConnect || tab.resultShareData
   ));
@@ -958,6 +974,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       {needsOAuthConfig && oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
             setPrerequisiteBearerCredential({
@@ -967,17 +984,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             });
             clearOAuthConfigNeed();
           } : undefined}
+          onBeforeHostedAuthorization={saveOAuthReturnState}
           onConfigured={async () => {
             clearOAuthConfigNeed();
             try {
-              const activeTabs = localStorage.getItem('mcpConnectionTabs');
-              if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
-              sessionStorage.setItem('oauth_tab_id', tab.id);
-              sessionStorage.setItem('oauth_return_view', JSON.stringify({
-                activeView: 'playground',
-                activeTabId: tab.id,
-                timestamp: Date.now()
-              }));
+              saveOAuthReturnState();
 
               addLogEntry({
                 type: 'info',

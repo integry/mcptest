@@ -15,6 +15,7 @@ import {
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
+  HostedGrantRejectedError,
   isProxyAuthenticationRequired,
   isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
@@ -29,6 +30,10 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import {
+  clearHostedOAuthAuthorization,
+  loadHostedOAuthAuthorization,
+} from '../utils/hostedOAuth';
 import {
   createReportSnapshot,
   deleteAllReportSnapshots,
@@ -388,6 +393,7 @@ const ReportView: React.FC = () => {
 
     // Get the exact resource's issuer-bound OAuth access token if available.
     const oauthAccessToken = loadOAuthAuthorization(urlToTest)?.accessToken;
+    const hostedGrant = loadHostedOAuthAuthorization(urlToTest)?.grant;
     
     // Get Firebase auth token
     const token = await currentUser.getIdToken();
@@ -399,14 +405,32 @@ const ReportView: React.FC = () => {
     
     try {
       const evaluationStartedAt = Date.now();
-      const reportData = await evaluateServer(
-        urlToTest,
-        token,
-        onProgress,
-        oauthAccessToken,
-        targetHeaders,
-        authorizationContext
-      );
+      let reportData: EvaluationReport;
+      try {
+        reportData = await evaluateServer(
+          urlToTest,
+          token,
+          onProgress,
+          oauthAccessToken,
+          targetHeaders,
+          authorizationContext,
+          hostedGrant
+        );
+      } catch (error) {
+        if (!hostedGrant || !(error instanceof HostedGrantRejectedError)) throw error;
+
+        clearHostedOAuthAuthorization(urlToTest);
+        onProgress('The stored hosted OAuth authorization expired or belongs to another user. Requesting authorization again...');
+        reportData = await evaluateServer(
+          urlToTest,
+          token,
+          onProgress,
+          oauthAccessToken,
+          targetHeaders,
+          authorizationContext,
+          null
+        );
+      }
       if (isTargetAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
           authenticationUrl: reportData.authenticationUrl || reportData.serverUrl,
@@ -476,14 +500,18 @@ const ReportView: React.FC = () => {
     handleRunReportRef.current = handleRunReport;
   }, [handleRunReport]);
 
-  const startOAuth = useCallback(async (authenticationUrl: string) => {
-    setOAuthAction('authorize');
-    setOAuthError(null);
+  const saveOAuthReturnState = useCallback((authenticationUrl: string) => {
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
       activeView: 'report',
       serverUrl: authenticationUrl,
       timestamp: Date.now()
     }));
+  }, []);
+
+  const startOAuth = useCallback(async (authenticationUrl: string) => {
+    setOAuthAction('authorize');
+    setOAuthError(null);
+    saveOAuthReturnState(authenticationUrl);
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
@@ -523,16 +551,12 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, [currentUser]);
+  }, [currentUser, saveOAuthReturnState]);
 
   const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('configure');
     setOAuthError(null);
-    sessionStorage.setItem('oauth_return_view', JSON.stringify({
-      activeView: 'report',
-      serverUrl: authenticationUrl,
-      timestamp: Date.now()
-    }));
+    saveOAuthReturnState(authenticationUrl);
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
@@ -569,7 +593,7 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, [currentUser]);
+  }, [currentUser, saveOAuthReturnState]);
 
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresProxyAuthentication = report
@@ -965,6 +989,7 @@ const ReportView: React.FC = () => {
       {oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
             const configuredServerUrl = oauthConfigServerUrl;
@@ -977,6 +1002,7 @@ const ReportView: React.FC = () => {
               { Authorization: `Bearer ${token}` }
             );
           } : undefined}
+          onBeforeHostedAuthorization={() => saveOAuthReturnState(oauthConfigServerUrl)}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);

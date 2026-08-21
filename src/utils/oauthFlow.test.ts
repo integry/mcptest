@@ -1437,6 +1437,7 @@ describe('OAuth provider interoperability matrix', () => {
       kind: 'pre_registered_client_required',
       providerName: 'GitHub',
       canConfigureClient: false,
+      hostedProvider: 'github',
       supportsBearerToken: true,
     });
     const trace = getStoredOAuthTrace(target, sessionStorage);

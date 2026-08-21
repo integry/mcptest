@@ -252,7 +252,8 @@ export const getEvaluationPercentage = (report: EvaluationReport): number => {
 export function getEvaluationProxyHeaders(
   requestHeaders: HeadersInit | undefined,
   firebaseToken: string,
-  oauthToken?: string | null
+  oauthToken?: string | null,
+  hostedGrant?: string | null
 ): Headers {
   const headers = new Headers(requestHeaders);
   headers.set('Authorization', `Bearer ${firebaseToken}`);
@@ -260,6 +261,7 @@ export function getEvaluationProxyHeaders(
   if (oauthToken) {
     headers.set('X-MCP-Authorization', `Bearer ${oauthToken}`);
   }
+  if (hostedGrant) headers.set('X-MCP-Hosted-Grant', hostedGrant);
 
   return headers;
 }
@@ -551,16 +553,65 @@ class EvaluationConnectionError extends Error {
   }
 }
 
+export class HostedGrantRejectedError extends Error {
+  constructor(readonly cause: unknown) {
+    super('The stored hosted OAuth authorization is no longer valid.');
+    this.name = 'HostedGrantRejectedError';
+  }
+}
+
+const isHostedGrantInvalidTokenRejection = (error: unknown): boolean => {
+  const errors = error instanceof EvaluationConnectionError
+    ? error.failures.map((failure) => failure.error)
+    : [error];
+
+  return errors.some((nestedError) => {
+    const observedChallenge = getObservedAuthenticationChallenge(nestedError);
+    const challenge = Object.entries(observedChallenge?.responseHeaders || {}).find(([name]) => (
+      name.toLowerCase() === 'www-authenticate'
+    ))?.[1];
+
+    return observedChallenge?.source === 'proxy'
+      && (observedChallenge.status === 401 || observedChallenge.status === 403)
+      && typeof challenge === 'string'
+      && /^HostedGrant\b/i.test(challenge)
+      && /\berror\s*=\s*"?invalid_token"?/i.test(challenge);
+  });
+};
+
 const connectForEvaluation = async (
   serverUrl: string,
   firebaseToken: string,
   oauthToken: string | null,
   targetHeaders: HeadersInit | undefined,
   onProgress: (message: string) => void,
-  pendingRetry?: PendingAuthenticatedMcpRetry
+  pendingRetry?: PendingAuthenticatedMcpRetry,
+  hostedGrant?: string | null
 ): Promise<ConnectedEvaluation> => {
   const abortController = new AbortController();
   const directStartedAt = Date.now();
+
+  if (hostedGrant) {
+    const proxyUrl = getProxyUrl();
+    if (!proxyUrl) throw new Error('Hosted OAuth requires the authenticated proxy.');
+    const proxyStartedAt = Date.now();
+    onProgress('Connecting through the authenticated proxy with the server-side OAuth grant...');
+    const proxyConnectionUrl = new URL(proxyUrl);
+    proxyConnectionUrl.searchParams.set('target', serverUrl);
+    const proxiedTargetHeaders = new Headers(targetHeaders);
+    proxiedTargetHeaders.set('X-MCP-Hosted-Grant', hostedGrant);
+    try {
+      const proxied = await attemptParallelConnections(
+        proxyConnectionUrl.toString(), abortController.signal, firebaseToken,
+        proxiedTargetHeaders, true, undefined, pendingRetry?.observeRequest('proxy')
+      );
+      return { ...proxied, usedProxy: true };
+    } catch (proxyError) {
+      throw new EvaluationConnectionError([
+        makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt),
+      ]);
+    }
+  }
 
   try {
     onProgress('Attempting direct MCP negotiation...');
@@ -1153,12 +1204,16 @@ const performanceSection = (durationMs: number): EvaluationSection => {
 const evaluationAuthorizationEvidence = (
   oauthToken: string | null,
   targetHeaders?: HeadersInit,
+  hostedGrant?: string | null,
   authorizationContext?: EvaluationAuthorizationContext
 ): Record<string, unknown> => {
   const schemes = new Set<'oauth' | 'bearer' | 'api-key'>();
   const credentialProvenance: string[] = [];
 
-  if (oauthToken) {
+  if (hostedGrant) {
+    schemes.add('oauth');
+    credentialProvenance.push('hosted-grant');
+  } else if (oauthToken) {
     schemes.add('oauth');
     credentialProvenance.push('cached-oauth');
   }
@@ -1201,15 +1256,20 @@ export async function evaluateServer(
   oauthAccessToken?: string | null,
   targetHeaders?: HeadersInit,
   authorizationContext?: EvaluationAuthorizationContext,
-  options: EvaluationOptions = {}
+  hostedGrantOrOptions?: string | null | EvaluationOptions
 ): Promise<EvaluationReport> {
   const serverUrl = normalizeServerUrl(inputUrl);
+  const hostedGrant = typeof hostedGrantOrOptions === 'string' ? hostedGrantOrOptions : null;
+  const options = typeof hostedGrantOrOptions === 'object' && hostedGrantOrOptions !== null
+    ? hostedGrantOrOptions
+    : {};
   const runtime = options.runtime ?? 'browser';
   // An explicitly entered bearer or API-key credential is the selected target
   // authentication mode. Never combine it with, or replace it by, cached OAuth.
   const oauthToken = hasExplicitTargetCredential(targetHeaders)
     ? null
     : oauthAccessToken || null;
+  const selectedHostedGrant = hasExplicitTargetCredential(targetHeaders) ? null : hostedGrant;
   const report: EvaluationReport = {
     serverUrl,
     outcome: 'scored',
@@ -1218,7 +1278,7 @@ export async function evaluateServer(
   };
   let connection: ConnectedEvaluation | null = null;
   const connectionStartedAt = Date.now();
-  const pendingRetry = oauthToken && typeof sessionStorage !== 'undefined'
+  const pendingRetry = (oauthToken || selectedHostedGrant) && typeof sessionStorage !== 'undefined'
     ? resumePendingAuthenticatedMcpRetry({
         targetUrl: serverUrl,
         storage: sessionStorage,
@@ -1235,7 +1295,8 @@ export async function evaluateServer(
       oauthToken,
       targetHeaders,
       onProgress,
-      pendingRetry
+      pendingRetry,
+      selectedHostedGrant
     );
   } catch (error) {
     const message = errorMessage(error);
@@ -1263,6 +1324,9 @@ export async function evaluateServer(
         },
       } : {}),
     });
+    if (selectedHostedGrant && isHostedGrantInvalidTokenRejection(error)) {
+      throw new HostedGrantRejectedError(error);
+    }
     if (targetAuthFailure) {
       report.outcome = 'authorization-required';
       report.authenticationRequirement = {
@@ -1399,7 +1463,12 @@ export async function evaluateServer(
             endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
             route: connection.usedProxy ? 'authenticated proxy' : 'direct',
             evaluationRuntime: runtime,
-            ...evaluationAuthorizationEvidence(oauthToken, targetHeaders, authorizationContext),
+            ...evaluationAuthorizationEvidence(
+              oauthToken,
+              targetHeaders,
+              selectedHostedGrant,
+              authorizationContext
+            ),
           },
         },
         {

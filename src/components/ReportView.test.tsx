@@ -1,7 +1,10 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EvaluationReport } from '../utils/evaluation';
+import {
+  HostedGrantRejectedError,
+  type EvaluationReport,
+} from '../utils/evaluation';
 import ReportView, {
   getAuthorizationGateOptions,
   getOAuthTraceForEvaluation,
@@ -36,6 +39,20 @@ const challengedReport = (challenge: string): EvaluationReport => ({
 });
 
 const oauthAuthorizationDetail = { text: 'OAuth authorization is required' };
+
+const storeHostedGrant = (
+  serverUrl: string,
+  grant: string,
+  issuer = 'https://github.com/login/oauth'
+): void => {
+  const url = new URL(serverUrl);
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  const resource = `${url.origin}${url.pathname}`;
+  sessionStorage.setItem(
+    `mcp_hosted_oauth_v1:${encodeURIComponent(resource)}`,
+    JSON.stringify({ grant, issuer })
+  );
+};
 
 describe('report static credential delivery', () => {
   it('uses the Authorization header and advertised scheme for an ApiKey challenge', () => {
@@ -124,6 +141,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 const oauthMocks = vi.hoisted(() => ({
   begin: vi.fn(),
+  beginHosted: vi.fn(),
   prepare: vi.fn(),
 }));
 const evaluationMocks = vi.hoisted(() => ({
@@ -158,6 +176,14 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
   };
 });
 
+vi.mock('../utils/hostedOAuth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/hostedOAuth')>();
+  return {
+    ...actual,
+    beginHostedOAuthFlow: oauthMocks.beginHosted,
+  };
+});
+
 vi.mock('../utils/evaluation', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/evaluation')>();
   return {
@@ -181,6 +207,7 @@ describe('ReportView OAuth discovery', () => {
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
     authMocks.getIdToken.mockReset().mockResolvedValue('firebase-session-token');
     oauthMocks.begin.mockReset().mockResolvedValue('REDIRECT');
+    oauthMocks.beginHosted.mockReset().mockResolvedValue(undefined);
     oauthMocks.prepare.mockReset().mockResolvedValue(undefined);
     evaluationMocks.evaluate.mockReset().mockResolvedValue({
       serverUrl: 'https://api.githubcopilot.com/mcp/',
@@ -240,6 +267,57 @@ describe('ReportView OAuth discovery', () => {
     );
   });
 
+  it.each([
+    ['an expired hosted grant', 401],
+    ['a hosted grant bound to another Firebase user', 403],
+  ] as const)('clears only %s and retries once without it', async (_, status) => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const unrelatedTarget = 'https://mcp.slack.com/mcp';
+    storeHostedGrant(target, `rejected-${status}`);
+    storeHostedGrant(unrelatedTarget, 'unrelated-grant', 'https://mcp.slack.com');
+    evaluationMocks.evaluate
+      .mockRejectedValueOnce(new HostedGrantRejectedError(new Error(`HTTP ${status}`)))
+      .mockResolvedValueOnce({
+        serverUrl: target,
+        authenticationUrl: target,
+        outcome: 'authorization-required',
+        finalScore: 0,
+        sections: {
+          auth: {
+            name: 'Authorization Required',
+            description: 'OAuth authorization is required',
+            score: 0,
+            maxScore: 0,
+            details: [oauthAuthorizationDetail],
+          },
+        },
+      });
+
+    const container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(<ReportView />);
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Run Report')
+    );
+    await act(async () => {
+      runButton?.click();
+    });
+
+    expect(evaluationMocks.evaluate).toHaveBeenCalledTimes(2);
+    expect(evaluationMocks.evaluate.mock.calls[0][6]).toBe(`rejected-${status}`);
+    expect(evaluationMocks.evaluate.mock.calls[1][6]).toBeNull();
+    expect(sessionStorage.getItem(
+      `mcp_hosted_oauth_v1:${encodeURIComponent('https://api.githubcopilot.com/mcp')}`
+    )).toBeNull();
+    expect(sessionStorage.getItem(
+      `mcp_hosted_oauth_v1:${encodeURIComponent('https://mcp.slack.com/mcp')}`
+    )).toContain('unrelated-grant');
+    expect(container.textContent).toContain('Authorize and run report');
+  });
+
   it('passes ephemeral challenge metadata and scope into report OAuth discovery', async () => {
     const metadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/?token=challenge-secret';
     evaluationMocks.evaluate.mockImplementationOnce(async () => {
@@ -296,7 +374,7 @@ describe('ReportView OAuth discovery', () => {
     }).join('\n')).not.toContain('challenge-secret');
   });
 
-  it('uses challenge metadata and authenticated proxy fallback before showing GitHub prerequisites', async () => {
+  it('uses challenge metadata and authenticated proxy fallback before showing hosted GitHub and PAT paths', async () => {
     const target = 'https://api.githubcopilot.com/mcp/';
     const metadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
     const issuer = 'https://github.com/login/oauth';
@@ -381,9 +459,24 @@ describe('ReportView OAuth discovery', () => {
     expect(directCalls).toContain(authorizationMetadataUrl);
     expect(proxyTargets).toEqual([authorizationMetadataUrl]);
     expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Authorize with GitHub');
     expect(container.textContent).toContain('GitHub host application required');
     expect(container.textContent).toContain('Use a GitHub personal access token');
     expect(container.querySelector('#clientId')).toBeNull();
+    expect(container.querySelector('#clientSecret')).toBeNull();
+    sessionStorage.removeItem('oauth_return_view');
+    const hostedAuthorizeButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Authorize with GitHub')
+    );
+    await act(async () => {
+      hostedAuthorizeButton?.click();
+    });
+    expect(oauthMocks.beginHosted).toHaveBeenCalledOnce();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null')).toEqual(
+      expect.objectContaining({ activeView: 'report', serverUrl: target })
+    );
+
     const bearerInput = container.querySelector<HTMLInputElement>(
       '#oauth-prerequisite-bearer-token'
     );

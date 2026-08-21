@@ -4,10 +4,14 @@
   "description": "CORS proxy worker for MCP Test with authentication",
   "main": "src/index.ts",
   "scripts": {
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && WRANGLER_WRITE_LOGS=false wrangler deploy --dry-run --outdir dist",
+    "dry-run": "WRANGLER_WRITE_LOGS=false wrangler deploy --dry-run --outdir dist",
+    "check": "npm run test && npm run typecheck && npm run dry-run",
+    "build": "npm run check",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:production": "node scripts/require-production-branch.mjs && npm run deploy",
     "tail": "wrangler tail"
   },
   "keywords": [
@@ -23,7 +27,11 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260809.1",
+    "@types/node": "^24.0.0",
+    "jsdom": "^26.1.0",
     "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7",
     "wrangler": "^4.120.0"
   }
 }
