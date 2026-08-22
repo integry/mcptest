@@ -8,7 +8,6 @@ export interface OAuthProviderPolicy {
   documentationUrl: string;
   registrationUrl?: string;
   registrationMode: 'provider-approved' | 'operator-confidential';
-  streamableHttpOnly?: boolean;
   supportsBearerToken?: boolean;
   bearerTokenName?: string;
   /** Exact endpoint whose otherwise opaque rejection is covered by provider policy. */
@@ -33,7 +32,6 @@ const PROVIDER_POLICIES: readonly OAuthProviderPolicy[] = [
     documentationUrl: 'https://docs.slack.dev/ai/slack-mcp-server/',
     registrationUrl: 'https://api.slack.com/apps',
     registrationMode: 'operator-confidential',
-    streamableHttpOnly: true,
   },
   {
     id: 'github',
@@ -79,10 +77,6 @@ export const getOAuthProviderPolicy = (
     ? targetPolicy
     : undefined;
 };
-
-export const isAuthoritativeStreamableHttpOnlyProvider = (serverUrl: string): boolean => (
-  getOAuthProviderPolicy(serverUrl)?.streamableHttpOnly === true
-);
 
 export const isPolicyRegistrationApprovalRejection = (
   policy: OAuthProviderPolicy | undefined,

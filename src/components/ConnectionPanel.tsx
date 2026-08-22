@@ -6,6 +6,10 @@ import type { CatalogAuthType } from '../types/catalog';
 import { getServerUrl } from '../utils/urlUtils';
 import { useShare } from '../hooks/useShare';
 import { useAuth } from '../context/AuthContext';
+import type {
+  ConnectionErrorDetails,
+  DiagnosticTransportEvidence,
+} from '../utils/connectionDiagnostics';
 
 // List of suggested servers to randomly select from
 const SUGGESTED_SERVERS = [
@@ -29,7 +33,7 @@ interface ConnectionPanelProps {
   handleConnect: () => void;
   handleDisconnect: () => void;
   handleAbortConnection: () => void;
-  connectionError?: { error: string; serverUrl: string; timestamp: Date; details?: string } | null;
+  connectionError?: ConnectionErrorDetails | null;
   clearConnectionError?: () => void;
   useProxy?: boolean;
   setUseProxy?: (useProxy: boolean) => void;
@@ -39,6 +43,7 @@ interface ConnectionPanelProps {
   oauthUserInfo?: any; // User info from OAuth
   isOAuthConnection?: boolean; // Whether current connection uses OAuth
   catalogAuthType?: CatalogAuthType;
+  diagnosticTransport?: DiagnosticTransportEvidence;
   credentialHeader?: string;
   credentialValue?: string;
   setCredentialValue?: (value: string) => void;
@@ -71,6 +76,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   oauthUserInfo,
   isOAuthConnection,
   catalogAuthType,
+  diagnosticTransport,
   credentialHeader,
   credentialValue = '',
   setCredentialValue,
@@ -380,7 +386,22 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
         
         {connectionError && (
           <ConnectionErrorCard
-            errorDetails={connectionError}
+            errorDetails={{
+              ...connectionError,
+              transportEvidence: connectionError.transportEvidence || diagnosticTransport || 'unknown',
+              expectedAuthentication: connectionError.expectedAuthentication || (catalogAuthType === 'oauth'
+                ? 'oauth'
+                : catalogAuthType === 'bearer-token'
+                  ? 'bearer-token'
+                  : catalogAuthType === 'api-key' || catalogAuthType === 'api-token'
+                    ? 'api-key'
+                    : catalogAuthType === 'none'
+                      ? 'none'
+                      : 'unknown'),
+              supportsBearerToken: connectionError.supportsBearerToken
+                || catalogAuthType === 'bearer-token',
+              serverReachable: connectionError.serverReachable,
+            }}
             onRetry={() => handleConnect()}
             onDismiss={clearConnectionError}
             useProxy={useProxy}

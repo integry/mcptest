@@ -13,6 +13,7 @@ import {
   type CatalogValidationResult,
   type CatalogValidationTransport,
   type OAuthFilter,
+  type CatalogTransport,
 } from '../types/catalog';
 
 type CatalogFilterInput = Partial<Omit<CatalogFilters, 'oauth'>> & {
@@ -25,6 +26,23 @@ const CATALOG_VALIDATION = Array.isArray(catalogValidation)
   ? (catalogValidation as CatalogValidationResult[])
   : [];
 const CATALOG_CAPABILITIES = catalogCapabilities as Record<string, unknown>;
+
+export interface CatalogEndpointDiagnosticEvidence {
+  transport: CatalogValidationTransport | CatalogTransport;
+  authType: CatalogAuthType;
+  supportsBearerToken: boolean;
+  serverReachable: boolean;
+}
+
+const normalizedEndpointKey = (value: string): string | undefined => {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+};
 
 const isValidationTransport = (transport: string | undefined): transport is CatalogValidationTransport => {
   return (
@@ -129,6 +147,52 @@ export const getCatalogServers = (): CatalogServer[] => {
 
 export const getCatalogServerById = (serverId: string): CatalogServer | undefined => {
   return getCatalogServers().find((server) => server.id === serverId);
+};
+
+/**
+ * Resolve only exact catalog endpoints. Hostname or path heuristics would turn
+ * unrelated user URLs into authoritative transport/auth evidence.
+ */
+export const getCatalogEndpointDiagnosticEvidence = (
+  endpoint: string
+): CatalogEndpointDiagnosticEvidence | undefined => {
+  const endpointKey = normalizedEndpointKey(endpoint);
+  if (!endpointKey) return undefined;
+
+  for (const server of getCatalogServers()) {
+    const primaryUrls = [server.url, server.browserUrl, server.validatedUrl].filter(
+      (value): value is string => Boolean(value)
+    );
+    if (primaryUrls.some((value) => normalizedEndpointKey(value) === endpointKey)) {
+      const validatedEndpointMatches = server.validatedUrl
+        && normalizedEndpointKey(server.validatedUrl) === endpointKey;
+      return {
+        transport: validatedEndpointMatches && server.transport !== 'unknown'
+          ? server.transport
+          : server.declaredTransport,
+        authType: server.authType,
+        supportsBearerToken: server.authType === 'bearer-token'
+          || server.alternativeAuthTypes?.includes('bearer-token') === true,
+        serverReachable: server.status === 'online' && Boolean(validatedEndpointMatches),
+      };
+    }
+
+    const alternative = server.alternativeEndpoints?.find(({ url }) => (
+      normalizedEndpointKey(url) === endpointKey
+    ));
+    if (alternative) {
+      return {
+        transport: server.declaredTransport,
+        authType: alternative.authType || server.authType,
+        supportsBearerToken: alternative.authType === 'bearer-token'
+          || server.authType === 'bearer-token'
+          || server.alternativeAuthTypes?.includes('bearer-token') === true,
+        serverReachable: server.status === 'online'
+          && normalizedEndpointKey(server.validatedUrl || '') === endpointKey,
+      };
+    }
+  }
+  return undefined;
 };
 
 export const filterCatalogServers = (

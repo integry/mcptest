@@ -21,6 +21,7 @@ import { useLogEntries } from '../hooks/useLogEntries';
 import { useConnection } from '../hooks/useConnection';
 import { useToolsAndResources } from '../hooks/useToolsAndResources';
 import { useResourceAccess } from '../hooks/useResourceAccess';
+import { useAuth } from '../context/AuthContext';
 
 // Import Utils
 import { parseUriTemplateArgs } from '../utils/uriUtils';
@@ -74,6 +75,7 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace }) => {
+  const { loginWithGoogle } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
@@ -946,6 +948,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             oauthUserInfo={oauthUserInfo}
             isOAuthConnection={isOAuthConnection}
             catalogAuthType={tab.catalogAuthType}
+            diagnosticTransport={tab.preferredTransportHint || 'unknown'}
             credentialHeader={credentialHeader}
             credentialValue={catalogCredential}
             setCredentialValue={setCatalogCredential}
@@ -959,6 +962,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
           prerequisite={oauthPrerequisite || undefined}
+          onSignIn={oauthPrerequisite?.kind === 'proxy_authentication_required'
+            ? loginWithGoogle
+            : undefined}
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
             setPrerequisiteBearerCredential({
               targetUrl: normalizeConnectionTarget(oauthConfigServerUrl),

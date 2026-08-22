@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogAuthType, CatalogServer } from '../types/catalog';
 import {
   filterCatalogServers,
+  getCatalogEndpointDiagnosticEvidence,
   getCatalogCategoryCounts,
   getCatalogServers,
   sortCatalogServers,
@@ -94,6 +95,17 @@ describe('catalog authentication metadata', () => {
     expect(catalog.every(({ listingSource }) => Boolean(listingSource?.kind))).toBe(true);
     expect(catalog.every(({ logoUrl }) => logoUrl.startsWith('/server-logos/'))).toBe(true);
     expect(JSON.stringify(catalog)).not.toMatch(/"logoUrl":"https?:/);
+  });
+
+  it('resolves exact Upwork catalog transport and OAuth evidence without a provider rule', () => {
+    expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/mcp')).toEqual({
+      transport: 'streamable-http',
+      authType: 'oauth',
+      supportsBearerToken: false,
+      serverReachable: true,
+    });
+    expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/mcp/')).toBeUndefined();
+    expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/custom')).toBeUndefined();
   });
 
   it('searches and filters alternative authentication methods', () => {

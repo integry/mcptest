@@ -23,6 +23,12 @@ import {
   resumeOAuthFlightRecorder,
   resumePendingAuthenticatedMcpRetry,
 } from '../utils/oauthTrace';
+import {
+  collectConnectionAttemptFacts,
+  type ConnectionErrorDetails,
+  type ConnectionFailureEvidence,
+} from '../utils/connectionDiagnostics';
+import { getCatalogEndpointDiagnosticEvidence } from '../utils/catalogUtils';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
@@ -130,7 +136,7 @@ export const useConnection = (
   const [protocolVersion, setProtocolVersion] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
-  const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
+  const [connectionError, setConnectionError] = useState<ConnectionErrorDetails | null>(null);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
@@ -370,6 +376,27 @@ export const useConnection = (
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    const catalogEndpointEvidence = getCatalogEndpointDiagnosticEvidence(targetUrl);
+    const effectivePreferredTransport = preferredTransport
+      || (catalogEndpointEvidence?.transport === 'streamable-http'
+        || catalogEndpointEvidence?.transport === 'legacy-sse'
+        ? catalogEndpointEvidence.transport
+        : undefined);
+    const diagnosticTransportEvidence = preferredTransport
+      || catalogEndpointEvidence?.transport
+      || effectivePreferredTransport
+      || 'unknown';
+    const expectedAuthentication: ConnectionErrorDetails['expectedAuthentication'] =
+      catalogEndpointEvidence?.authType === 'oauth'
+        ? 'oauth'
+        : catalogEndpointEvidence?.authType === 'bearer-token'
+          ? 'bearer-token'
+          : catalogEndpointEvidence?.authType === 'api-key'
+            || catalogEndpointEvidence?.authType === 'api-token'
+            ? 'api-key'
+            : catalogEndpointEvidence?.authType === 'none'
+              ? 'none'
+              : 'unknown';
     // Proxy fallback is the default preference. Authentication availability
     // controls whether it can execute, not whether the preference is enabled.
     // Only a persisted or per-attempt explicit false opts out.
@@ -442,6 +469,7 @@ export const useConnection = (
     let oauthTrace = pendingOAuthRetry ? storedRetryTrace : undefined;
     let oauthRetryPending = Boolean(pendingOAuthRetry);
     let proxyLoginPrerequisiteRequired = false;
+    const diagnosticFailures: ConnectionFailureEvidence[] = [];
     let connectionAttemptStartedAt = Date.now();
     const reloadLatestOAuthTrace = (): OAuthFlightRecorder | undefined => {
       const storedTrace = resumeOAuthFlightRecorder(targetUrl, sessionStorage);
@@ -517,7 +545,7 @@ export const useConnection = (
         false,
         protocolEraHint,
         observeOAuthRetryRequest('direct'),
-        ...(preferredTransport ? [preferredTransport] : [])
+        ...(effectivePreferredTransport ? [effectivePreferredTransport] : [])
       );
     };
 
@@ -556,7 +584,7 @@ export const useConnection = (
         true,
         protocolEraHint,
         observeOAuthRetryRequest('proxy'),
-        ...(preferredTransport ? [preferredTransport] : [])
+        ...(effectivePreferredTransport ? [effectivePreferredTransport] : [])
       );
     };
 
@@ -567,6 +595,7 @@ export const useConnection = (
         const result = await withConnectionTimeout(connectDirectly());
         return { result, usedProxy: false };
       } catch (error: any) {
+        diagnosticFailures.push({ route: 'direct', error });
         const directResponseWasUnreadable = endedWithoutReadableHttpResponse(error);
         const proxyConfigured = Boolean(import.meta.env.VITE_PROXY_URL);
 
@@ -574,8 +603,13 @@ export const useConnection = (
         // the target is down or merely blocked by CORS. When proxy fallback is
         // enabled, use the authenticated proxy as the observation path.
         if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && currentUser) {
-          const result = await withConnectionTimeout(connectViaProxy());
-          return { result, usedProxy: true };
+          try {
+            const result = await withConnectionTimeout(connectViaProxy());
+            return { result, usedProxy: true };
+          } catch (proxyError) {
+            diagnosticFailures.push({ route: 'proxy', error: proxyError });
+            throw proxyError;
+          }
         }
 
         if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && !currentUser) {
@@ -793,7 +827,16 @@ export const useConnection = (
             setConnectionError({
               error: `OAuth authorization failed: ${message}`,
               serverUrl: targetUrl,
-              timestamp: new Date()
+              timestamp: new Date(),
+              attempts: collectConnectionAttemptFacts(
+                diagnosticFailures,
+                targetUrl,
+                effectivePreferredTransport
+              ),
+              transportEvidence: diagnosticTransportEvidence,
+              expectedAuthentication: 'oauth',
+              supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
+              serverReachable: catalogEndpointEvidence?.serverReachable,
             });
             addLogEntry({ type: 'error', data: `OAuth authorization failed: ${message}` });
             return;
@@ -862,7 +905,18 @@ export const useConnection = (
                 error: errorDetails,
                 serverUrl: targetUrl,
                 timestamp: new Date(),
-                details: error.stack || error.toString()
+                details: error.stack || error.toString(),
+                attempts: collectConnectionAttemptFacts(
+                  diagnosticFailures.length > 0
+                    ? diagnosticFailures
+                    : [{ route: connectionRoute, error }],
+                  targetUrl,
+                  effectivePreferredTransport
+                ),
+                transportEvidence: diagnosticTransportEvidence,
+                expectedAuthentication,
+                supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
+                serverReachable: catalogEndpointEvidence?.serverReachable,
             });
             addLogEntry({ type: 'error', data: `Connection failed: ${errorDetails}` });
         }

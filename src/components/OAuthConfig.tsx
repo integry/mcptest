@@ -12,6 +12,7 @@ interface OAuthConfigProps {
   onCancel: () => void;
   prerequisite?: OAuthPrerequisite;
   onBearerToken?: (token: string) => void | Promise<void>;
+  onSignIn?: () => void | Promise<void>;
 }
 
 const OAuthConfig: React.FC<OAuthConfigProps> = ({
@@ -20,6 +21,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   onCancel,
   prerequisite,
   onBearerToken,
+  onSignIn,
 }) => {
   const [clientId, setClientId] = useState('');
   const [bearerToken, setBearerToken] = useState('');
@@ -86,6 +88,18 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
             ? 'mcptest.io opened this prerequisite only after the proxy returned its own authentication response. Target OAuth discovery has not started.'
             : 'mcptest.io connected without credentials first and only opened this panel after the MCP target returned an HTTP authentication challenge.'}
         </p>
+
+        {isProxyAuthenticationPrerequisite && onSignIn && (
+          <div className="mb-4">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void onSignIn()}
+            >
+              Sign in with Google to use the proxy
+            </button>
+          </div>
+        )}
 
         {prerequisite?.kind === 'provider_approval_required' && (
           <p>

@@ -7,7 +7,6 @@ import {
 import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
-import { isAuthoritativeStreamableHttpOnlyProvider } from './oauthProviderPolicy';
 import {
   createLegacyMcpClient,
   createNegotiatingMcpClient,
@@ -21,6 +20,7 @@ export interface TransportCandidate {
 
 export interface TransportCandidateFailure {
   candidateUrl: string;
+  transportType?: TransportType;
   error: unknown;
   observedRequests?: readonly ObservedTransportRequest[];
 }
@@ -61,6 +61,8 @@ export interface ObservedTransportRequest {
   startedAt?: string;
   durationMs?: number;
   status?: number;
+  /** Who produced a proxied HTTP response, when the proxy exposes provenance. */
+  responseSource?: ProxyAuthenticationSource;
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -408,6 +410,12 @@ const observeAuthenticationResponses = (
   try {
     response = await fetch(input, init);
     attemptedRequest.status = response.status;
+    if (!usesProxy) {
+      attemptedRequest.responseSource = 'target';
+    } else {
+      const source = response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)?.toLowerCase();
+      if (source === 'target' || source === 'proxy') attemptedRequest.responseSource = source;
+    }
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
   } catch (error) {
@@ -473,28 +481,30 @@ const directCandidates = (
       candidates.push(candidate);
     }
   };
+  const addExact = (url: URL, transportType: TransportType) => {
+    const candidate = { url: url.toString(), transportType };
+    const key = `${candidate.transportType}:${candidate.url}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(candidate);
+  };
   const normalizedPath = endpoint.pathname.replace(/\/+$/, '');
 
-  const streamableHttpOnly = isAuthoritativeStreamableHttpOnlyProvider(endpoint.toString());
-
-  // Catalog evidence can definitively contradict a conventional path suffix.
-  // Try that exact endpoint/transport first, while retaining ordinary fallbacks.
-  if (preferredTransport) add(endpoint, preferredTransport);
+  // A catalog-selected endpoint is authoritative transport evidence. Keep its
+  // exact path and do not invent a sibling transport endpoint.
+  if (preferredTransport) {
+    addExact(endpoint, preferredTransport);
+    return candidates;
+  }
 
   if (normalizedPath.endsWith('/sse')) {
     const httpSibling = siblingEndpoint(endpoint, 'sse', 'mcp');
-    if (streamableHttpOnly) {
-      if (httpSibling) add(httpSibling, 'streamable-http');
-    } else {
-      add(endpoint, 'legacy-sse');
-      if (httpSibling) add(httpSibling, 'streamable-http');
-    }
+    add(endpoint, 'legacy-sse');
+    if (httpSibling) add(httpSibling, 'streamable-http');
   } else if (normalizedPath.endsWith('/mcp')) {
     add(endpoint, 'streamable-http');
-    if (!streamableHttpOnly) {
-      const sseSibling = siblingEndpoint(endpoint, 'mcp', 'sse');
-      if (sseSibling) add(sseSibling, 'legacy-sse');
-    }
+    const sseSibling = siblingEndpoint(endpoint, 'mcp', 'sse');
+    if (sseSibling) add(sseSibling, 'legacy-sse');
   } else if (!normalizedPath) {
     // Some publishers serve MCP directly at the origin, while others use the
     // conventional /mcp or /sse paths. Preserve both possibilities.
@@ -502,17 +512,15 @@ const directCandidates = (
     const httpEndpoint = new URL(endpoint);
     httpEndpoint.pathname = '/mcp';
     add(httpEndpoint, 'streamable-http');
-    if (!streamableHttpOnly) {
-      add(endpoint, 'legacy-sse');
-      const sseEndpoint = new URL(endpoint);
-      sseEndpoint.pathname = '/sse';
-      add(sseEndpoint, 'legacy-sse');
-    }
+    add(endpoint, 'legacy-sse');
+    const sseEndpoint = new URL(endpoint);
+    sseEndpoint.pathname = '/sse';
+    add(sseEndpoint, 'legacy-sse');
   } else {
     // A non-standard path is an endpoint, not a base URL. Never append a
     // transport path to it; try both transports at the exact location.
     add(endpoint, 'streamable-http');
-    if (!streamableHttpOnly) add(endpoint, 'legacy-sse');
+    add(endpoint, 'legacy-sse');
   }
 
   return candidates;
@@ -572,6 +580,7 @@ const firstSuccessful = <T,>(
   attempts: Array<{
     promise: Promise<T>;
     candidateUrl: string;
+    transportType: TransportType;
     observedRequests: readonly ObservedTransportRequest[];
   }>,
   candidateFailures: TransportCandidateFailure[]
@@ -580,10 +589,10 @@ const firstSuccessful = <T,>(
     const errors: unknown[] = [];
     let remaining = attempts.length;
 
-    for (const { promise, candidateUrl, observedRequests } of attempts) {
+    for (const { promise, candidateUrl, transportType, observedRequests } of attempts) {
       promise.then(resolve).catch((error) => {
         errors.push(error);
-        candidateFailures.push({ candidateUrl, error, observedRequests });
+        candidateFailures.push({ candidateUrl, transportType, error, observedRequests });
         remaining -= 1;
         if (remaining === 0) {
           reject(new TransportConnectionError(errors, [...candidateFailures]));
@@ -783,7 +792,12 @@ export async function attemptParallelConnections(
             candidateGroup.map((candidate) => {
               const observedRequests: ObservedTransportRequest[] = [];
               const promise = attemptConnection(candidate, observedRequests);
-              return { promise, candidateUrl: candidate.url, observedRequests };
+              return {
+                promise,
+                candidateUrl: candidate.url,
+                transportType: candidate.transportType,
+                observedRequests,
+              };
             }),
             candidateFailures
           ),
