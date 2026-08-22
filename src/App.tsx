@@ -181,7 +181,7 @@ export const beginSavedCardOAuthFlow = async ({
   discoveryProxyApplicable: boolean;
   startFlow?: typeof beginOAuthFlow;
 }) => {
-  const discoveryProxyToken = discoveryProxyApplicable && proxyUrl && currentUser
+  const discoveryProxyToken = proxyUrl && currentUser
     ? await currentUser.getIdToken()
     : undefined;
 
@@ -194,6 +194,14 @@ export const beginSavedCardOAuthFlow = async ({
     ...(discoveryProxyApplicable && proxyUrl && discoveryProxyToken
       ? {
           discoveryProxy: {
+            url: proxyUrl,
+            authorizationToken: discoveryProxyToken,
+          },
+        }
+      : {}),
+    ...(proxyUrl
+      ? {
+          tokenProxy: {
             url: proxyUrl,
             authorizationToken: discoveryProxyToken,
           },

@@ -8,6 +8,7 @@ This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP 
 - **CORS Headers**: Automatically adds appropriate CORS headers to all responses
 - **Security**: Validates target URLs and only allows HTTP/HTTPS protocols
 - **Preflight Handling**: Properly handles OPTIONS preflight requests
+- **Hosted OAuth Exchange**: Proactively exchanges authorization codes and refresh tokens through an issuer-bound, authenticated `/oauth/token` route for providers without browser CORS
 
 ## Setup
 
@@ -42,11 +43,11 @@ wrangler secret put FIGMA_OAUTH_CLIENT_ID
 wrangler secret put FIGMA_OAUTH_CLIENT_SECRET
 ```
 
-`getOperatorOAuthClient` intentionally has no browser endpoint. A deployment that activates one
-of these clients must keep authorization-code exchange and the client secret inside the Worker and
-must never serialize the secret into responses, URLs, reports, logs, or browser storage. Without
-that deployment-specific server flow, the UI truthfully reports the provider prerequisite and keeps
-the supported bearer-token alternative available where the provider offers one.
+The `/oauth/token` route resolves these values only after authenticating the mcptest user and
+rediscovering the issuer's token endpoint. It injects confidential client authentication into the
+upstream request inside the Worker and never serializes the secret into responses, URLs, reports,
+logs, or browser storage. Without configured values, the UI reports the operator prerequisite and
+keeps the supported bearer-token alternative available where the provider offers one.
 
 ## Usage
 
@@ -62,6 +63,13 @@ Example:
 GET https://mcptest-cors-proxy.workers.dev/?target=https://api.example.com/data
 Authorization: Bearer <firebase-jwt-token>
 ```
+
+The OAuth token route is reserved for `https://mcptest.io`. It accepts only authenticated
+form-urlencoded `POST` requests, derives the upstream endpoint from OAuth/OIDC discovery for the
+validated issuer, checks that it exactly matches the browser's persisted endpoint binding, blocks
+private and unrelated targets, and returns a minimized no-store JSON response. Authorization codes,
+PKCE verifiers, refresh tokens, Firebase credentials, form bodies, and client secrets are never put
+in a URL or log.
 
 ## Development
 

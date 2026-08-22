@@ -1090,7 +1090,7 @@ export const createOAuthTraceFetch = (
     });
     if (responseOrigin.source === 'proxy') {
       throw new ProxyOwnedOAuthDiscoveryResponseError(
-        `Authenticated proxy returned its own HTTP ${response.status} response during OAuth discovery.`
+        `Authenticated proxy returned its own HTTP ${response.status} response during ${oauthRequestLabel(type).toLowerCase()}.`
       );
     }
     return response;

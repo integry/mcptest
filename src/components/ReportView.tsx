@@ -506,6 +506,14 @@ const ReportView: React.FC = () => {
               },
             }
           : {}),
+        ...(proxyUrl
+          ? {
+              tokenProxy: {
+                url: proxyUrl,
+                authorizationToken: discoveryProxyToken,
+              },
+            }
+          : {}),
         deferAuthorizedTraceOutcome: true,
       });
       if (result === 'AUTHORIZED') {

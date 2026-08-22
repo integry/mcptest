@@ -1,7 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { completeOAuthFlow } from '../utils/oauthFlow';
+import {
+  OAuthProxyAuthenticationRequiredError,
+  completeOAuthFlow,
+} from '../utils/oauthFlow';
 import { getSpaceUrl } from '../utils/urlUtils';
+import { useAuth } from '../context/AuthContext';
 
 interface OAuthReturnView {
   activeView?: string;
@@ -21,6 +25,7 @@ interface OAuthNavigationState {
 const OAuthCallback: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const processingRef = useRef(false);
 
   useEffect(() => {
@@ -47,7 +52,25 @@ const OAuthCallback: React.FC = () => {
           `${location.pathname}${location.search}`,
           window.location.origin
         );
-        const { serverUrl } = await completeOAuthFlow(callbackUrl);
+        const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+        let proxyToken: string | undefined;
+        if (proxyUrl && currentUser) {
+          try {
+            proxyToken = await currentUser.getIdToken();
+          } catch {
+            throw new OAuthProxyAuthenticationRequiredError();
+          }
+        }
+        const { serverUrl } = await completeOAuthFlow(callbackUrl, {
+          ...(proxyUrl
+            ? {
+                tokenProxy: {
+                  url: proxyUrl,
+                  authorizationToken: proxyToken,
+                },
+              }
+            : {}),
+        });
         addOAuthLog('info', 'OAuth authorization completed successfully.');
 
         let targetPath = '/';
@@ -96,7 +119,7 @@ const OAuthCallback: React.FC = () => {
     };
 
     void handleOAuthCallback();
-  }, [location.pathname, location.search, navigate]);
+  }, [currentUser, location.pathname, location.search, navigate]);
 
   return (
     <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">

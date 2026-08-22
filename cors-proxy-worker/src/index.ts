@@ -1,7 +1,7 @@
 // CORS Proxy Worker with Authentication
 // This worker provides a CORS proxy for authenticated users only
 
-interface Env {
+export interface Env {
   FIREBASE_PROJECT_ID: string;
   /** Server-only operator OAuth configuration. Set these with `wrangler secret put`. */
   FIGMA_OAUTH_CLIENT_ID?: string;
@@ -66,11 +66,339 @@ const REQUIRED_CORS_REQUEST_HEADERS = [
   'Mcp-Name',
   'Mcp-Session-Id',
   'X-MCP-Authorization',
+  'X-MCP-OAuth-Issuer',
+  'X-MCP-OAuth-Token-Endpoint',
   'x-api-key',
 ];
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 type ProxyResponseSource = 'proxy' | 'target';
+
+const HOSTED_ORIGIN = 'https://mcptest.io';
+const OAUTH_TOKEN_PATH = '/oauth/token';
+const OAUTH_FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded';
+const MAX_OAUTH_FORM_BYTES = 32 * 1024;
+
+type TokenRouteDependencies = {
+  fetchImpl?: (request: Request) => Promise<Response>;
+  verifyToken?: (token: string, projectId: string) => Promise<string | null>;
+};
+
+const oauthCorsHeaders = (
+  request: Request,
+  source: ProxyResponseSource = 'proxy'
+): Record<string, string> => {
+  const origin = request.headers.get('Origin');
+  return {
+    ...(origin === HOSTED_ORIGIN ? { 'Access-Control-Allow-Origin': HOSTED_ORIGIN } : {}),
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': [
+      'Accept',
+      'Authorization',
+      'Content-Type',
+      'X-MCP-OAuth-Issuer',
+      'X-MCP-OAuth-Token-Endpoint',
+    ].join(', '),
+    'Access-Control-Expose-Headers': PROXY_RESPONSE_SOURCE_HEADER,
+    'Cache-Control': 'no-store',
+    'Vary': 'Origin',
+    [PROXY_RESPONSE_SOURCE_HEADER]: source,
+  };
+};
+
+const oauthRouteError = (
+  request: Request,
+  message: string,
+  status: number
+): Response => new Response(message, {
+  status,
+  headers: {
+    ...oauthCorsHeaders(request, 'proxy'),
+    'Content-Type': 'text/plain; charset=utf-8',
+  },
+});
+
+const parseIpv4 = (hostname: string): number[] | undefined => {
+  const parts = hostname.split('.');
+  if (parts.length !== 4 || parts.some(part => !/^\d+$/.test(part))) return undefined;
+  const octets = parts.map(Number);
+  return octets.every(part => part >= 0 && part <= 255) ? octets : undefined;
+};
+
+const isForbiddenOAuthHostname = (hostnameValue: string): boolean => {
+  const hostname = hostnameValue.toLowerCase().replace(/^\[|\]$/g, '');
+  if (
+    hostname === 'localhost'
+    || hostname.endsWith('.localhost')
+    || hostname.endsWith('.local')
+    || hostname.endsWith('.internal')
+    || hostname === '::1'
+    || hostname.startsWith('fe8')
+    || hostname.startsWith('fe9')
+    || hostname.startsWith('fea')
+    || hostname.startsWith('feb')
+    || hostname.startsWith('fc')
+    || hostname.startsWith('fd')
+  ) return true;
+
+  const ipv4 = parseIpv4(hostname);
+  if (!ipv4) return false;
+  const [first, second] = ipv4;
+  return first === 0
+    || first === 10
+    || first === 127
+    || (first === 100 && second >= 64 && second <= 127)
+    || (first === 169 && second === 254)
+    || (first === 172 && second >= 16 && second <= 31)
+    || (first === 192 && second === 0)
+    || (first === 192 && second === 168)
+    || (first === 198 && (second === 18 || second === 19))
+    || first >= 224;
+};
+
+const parsePublicHttpsUrl = (value: string, label: string): URL => {
+  const url = new URL(value);
+  if (
+    url.protocol !== 'https:'
+    || url.username
+    || url.password
+    || url.hash
+    || isForbiddenOAuthHostname(url.hostname)
+  ) {
+    throw new Error(`${label} must be a public HTTPS URL`);
+  }
+  return url;
+};
+
+const organizationalDomain = (hostname: string): string => {
+  const labels = hostname.toLowerCase().split('.');
+  if (labels.length <= 2) return labels.join('.');
+  const lastTwo = labels.slice(-2).join('.');
+  const commonMultiLabelSuffixes = new Set([
+    'co.uk', 'com.au', 'co.jp', 'co.nz', 'com.br', 'com.mx',
+    'github.io', 'pages.dev', 'workers.dev',
+  ]);
+  return commonMultiLabelSuffixes.has(lastTwo)
+    ? labels.slice(-3).join('.')
+    : lastTwo;
+};
+
+const tokenEndpointIsBoundToIssuer = (issuer: URL, tokenEndpoint: URL): boolean => (
+  issuer.origin === tokenEndpoint.origin
+  || organizationalDomain(issuer.hostname) === organizationalDomain(tokenEndpoint.hostname)
+);
+
+const buildAuthorizationServerDiscoveryUrls = (issuer: URL): URL[] => {
+  if (issuer.pathname === '/') {
+    return [
+      new URL('/.well-known/oauth-authorization-server', issuer.origin),
+      new URL('/.well-known/openid-configuration', issuer.origin),
+    ];
+  }
+  const path = issuer.pathname.endsWith('/')
+    ? issuer.pathname.slice(0, -1)
+    : issuer.pathname;
+  return [
+    new URL(`/.well-known/oauth-authorization-server${path}`, issuer.origin),
+    new URL(`/.well-known/openid-configuration${path}`, issuer.origin),
+    new URL(`${path}/.well-known/openid-configuration`, issuer.origin),
+  ];
+};
+
+interface WorkerAuthorizationMetadata {
+  issuer: string;
+  token_endpoint: string;
+  token_endpoint_auth_methods_supported?: string[];
+}
+
+const discoverWorkerAuthorizationMetadata = async (
+  issuer: URL,
+  expectedIssuer: string,
+  fetchImpl: (request: Request) => Promise<Response>
+): Promise<WorkerAuthorizationMetadata> => {
+  for (const discoveryUrl of buildAuthorizationServerDiscoveryUrls(issuer)) {
+    const response = await fetchTargetRequest(new Request(discoveryUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+    }), fetchImpl);
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      if (response.status >= 400 && response.status < 500) continue;
+      throw new Error('Authorization-server discovery failed');
+    }
+    const contentType = response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+    if (contentType !== 'application/json') {
+      await response.body?.cancel().catch(() => {});
+      throw new Error('Authorization-server discovery returned an unsupported content type');
+    }
+    const metadata = await response.json() as Partial<WorkerAuthorizationMetadata>;
+    if (metadata.issuer !== expectedIssuer || typeof metadata.token_endpoint !== 'string') {
+      throw new Error('Authorization-server discovery issuer mismatch');
+    }
+    return metadata as WorkerAuthorizationMetadata;
+  }
+  throw new Error('Authorization-server metadata is unavailable');
+};
+
+const operatorProviderForIssuer = (issuer: URL): OperatorOAuthProvider | undefined => {
+  const hostname = issuer.hostname.toLowerCase();
+  if (hostname === 'api.figma.com') return 'figma';
+  if (hostname === 'slack.com' || hostname.endsWith('.slack.com')) return 'slack';
+  if (hostname === 'github.com' || hostname.endsWith('.github.com')) return 'github';
+  return undefined;
+};
+
+const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'refresh_token' => {
+  if (params.has('client_secret')) {
+    throw new Error('Browser-supplied OAuth client secrets are not accepted');
+  }
+  const grantType = params.get('grant_type');
+  const commonRequired = ['client_id', 'resource'];
+  const grantRequired = grantType === 'authorization_code'
+    ? ['code', 'code_verifier', 'redirect_uri']
+    : grantType === 'refresh_token'
+      ? ['refresh_token']
+      : undefined;
+  if (!grantRequired || [...commonRequired, ...grantRequired].some(name => !params.get(name))) {
+    throw new Error('OAuth token form is missing required parameters or uses an unsupported grant');
+  }
+  parsePublicHttpsUrl(params.get('resource')!, 'OAuth resource');
+  if (grantType === 'authorization_code') {
+    const redirect = new URL(params.get('redirect_uri')!);
+    if (redirect.protocol !== 'https:' && redirect.hostname !== 'localhost' && redirect.hostname !== '127.0.0.1') {
+      throw new Error('OAuth redirect_uri must use HTTPS or localhost');
+    }
+    if (
+      params.get('client_id') === 'https://mcptest.io/oauth/client-metadata.json'
+      && redirect.toString() !== 'https://mcptest.io/oauth/callback'
+    ) {
+      throw new Error('OAuth redirect_uri does not match the published client metadata');
+    }
+  }
+  return grantType as 'authorization_code' | 'refresh_token';
+};
+
+const applyOperatorClientAuthentication = (
+  env: Env,
+  issuer: URL,
+  metadata: WorkerAuthorizationMetadata,
+  params: URLSearchParams,
+  targetHeaders: Headers,
+  originalBody: string
+): string => {
+  const provider = operatorProviderForIssuer(issuer);
+  const operatorClient = provider ? getOperatorOAuthClient(env, provider) : undefined;
+  const methods = metadata.token_endpoint_auth_methods_supported || [];
+  if (!operatorClient || params.get('client_id') !== operatorClient.clientId) {
+    if (methods.length > 0 && !methods.includes('none')) {
+      throw new Error('This authorization server requires an operator-configured confidential OAuth client');
+    }
+    return originalBody;
+  }
+
+  if (methods.length === 0 || methods.includes('client_secret_basic')) {
+    const basic = btoa(`${encodeURIComponent(operatorClient.clientId)}:${encodeURIComponent(operatorClient.clientSecret)}`);
+    targetHeaders.set('Authorization', `Basic ${basic}`);
+  } else if (methods.includes('client_secret_post')) {
+    params.set('client_secret', operatorClient.clientSecret);
+  } else {
+    throw new Error('Operator OAuth client authentication method is unsupported');
+  }
+  return params.toString();
+};
+
+export async function handleOAuthTokenRequest(
+  request: Request,
+  env: Env,
+  dependencies: TokenRouteDependencies = {}
+): Promise<Response> {
+  if (request.headers.get('Origin') !== HOSTED_ORIGIN) {
+    return oauthRouteError(request, 'Error: OAuth token proxy origin is not allowed.', 403);
+  }
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: oauthCorsHeaders(request) });
+  }
+  if (request.method !== 'POST') {
+    return oauthRouteError(request, 'Error: OAuth token proxy requires POST.', 405);
+  }
+  const mediaType = request.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== OAUTH_FORM_CONTENT_TYPE) {
+    return oauthRouteError(request, 'Error: OAuth token proxy requires form-urlencoded content.', 415);
+  }
+  const authorization = request.headers.get('Authorization');
+  const firebaseToken = authorization?.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : undefined;
+  if (!firebaseToken) {
+    return oauthRouteError(request, 'Error: Authentication required. Sign in to mcptest.', 401);
+  }
+  const verifyToken = dependencies.verifyToken || verifyFirebaseToken;
+  if (!await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID)) {
+    return oauthRouteError(request, 'Error: Invalid authentication token. Sign in again.', 401);
+  }
+
+  try {
+    const issuerHeader = request.headers.get('X-MCP-OAuth-Issuer');
+    const expectedEndpointHeader = request.headers.get('X-MCP-OAuth-Token-Endpoint');
+    if (!issuerHeader || !expectedEndpointHeader) {
+      return oauthRouteError(request, 'Error: Validated OAuth issuer binding is required.', 400);
+    }
+    const issuer = parsePublicHttpsUrl(issuerHeader, 'OAuth issuer');
+    if (issuer.search) {
+      return oauthRouteError(request, 'Error: OAuth issuer must not contain a query.', 400);
+    }
+    const fetchImpl = dependencies.fetchImpl || fetch;
+    const metadata = await discoverWorkerAuthorizationMetadata(issuer, issuerHeader, fetchImpl);
+    const tokenEndpoint = parsePublicHttpsUrl(metadata.token_endpoint, 'OAuth token endpoint');
+    if (
+      tokenEndpoint.toString() !== new URL(expectedEndpointHeader).toString()
+      || !tokenEndpointIsBoundToIssuer(issuer, tokenEndpoint)
+    ) {
+      return oauthRouteError(request, 'Error: OAuth issuer/token-endpoint binding mismatch.', 400);
+    }
+
+    const body = await request.text();
+    if (new TextEncoder().encode(body).byteLength > MAX_OAUTH_FORM_BYTES) {
+      return oauthRouteError(request, 'Error: OAuth token form is too large.', 413);
+    }
+    const params = new URLSearchParams(body);
+    validateTokenForm(params);
+    const targetHeaders = new Headers({
+      Accept: 'application/json',
+      'Content-Type': OAUTH_FORM_CONTENT_TYPE,
+    });
+    const targetBody = applyOperatorClientAuthentication(
+      env,
+      issuer,
+      metadata,
+      params,
+      targetHeaders,
+      body
+    );
+    const targetResponse = await fetchTargetRequest(new Request(tokenEndpoint, {
+      method: 'POST',
+      headers: targetHeaders,
+      body: targetBody,
+      redirect: 'manual',
+    }), fetchImpl);
+    const responseType = targetResponse.headers.get('Content-Type') || 'application/json';
+    if (responseType.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
+      await targetResponse.body?.cancel().catch(() => {});
+      return oauthRouteError(request, 'Error: OAuth token endpoint returned an unsupported content type.', 502);
+    }
+    return new Response(targetResponse.body, {
+      status: targetResponse.status,
+      statusText: targetResponse.statusText,
+      headers: {
+        ...oauthCorsHeaders(request, 'target'),
+        'Content-Type': responseType,
+      },
+    });
+  } catch {
+    return oauthRouteError(request, 'Error: Could not complete the bound OAuth token request.', 502);
+  }
+}
 
 export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   const headers = new Headers(requestHeaders);
@@ -162,13 +490,17 @@ let publicKeysCacheExpiry = 0;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === OAUTH_TOKEN_PATH) {
+      return handleOAuthTokenRequest(request, env);
+    }
+
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
     }
 
     // Extract the target URL from query string
-    const url = new URL(request.url);
     const targetUrl = url.searchParams.get('target');
 
     if (!targetUrl) {
@@ -197,25 +529,14 @@ export default {
       });
     }
 
-    // Verify authentication - check both Authorization header and query parameter
+    // Verify authentication from the header only. Proxy credentials must never
+    // be placed in URLs, including for streaming transports.
     let token: string | null = null;
-    let tokenFromQueryParam = false;
     
     // First check Authorization header
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7);
-    }
-    
-    // If no header, check query parameter (for SSE support)
-    if (!token) {
-      const authParam = url.searchParams.get('auth');
-      if (authParam) {
-        // URL decode the token since it's passed as a query parameter
-        token = decodeURIComponent(authParam);
-        tokenFromQueryParam = true;
-        console.log('Using auth token from query parameter');
-      }
     }
     
     if (!token) {

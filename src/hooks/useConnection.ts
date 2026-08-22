@@ -725,7 +725,7 @@ export const useConnection = (
 
           try {
             const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
-            const discoveryProxyToken = shouldUseProxy && proxyUrl && currentUser
+            const discoveryProxyToken = proxyUrl && currentUser
               ? await currentUser.getIdToken()
               : undefined;
             const result = await beginOAuthFlow(targetUrl, {
@@ -737,6 +737,14 @@ export const useConnection = (
               ...(shouldUseProxy && proxyUrl && discoveryProxyToken
                 ? {
                     discoveryProxy: {
+                      url: proxyUrl,
+                      authorizationToken: discoveryProxyToken,
+                    },
+                  }
+                : {}),
+              ...(proxyUrl
+                ? {
+                    tokenProxy: {
                       url: proxyUrl,
                       authorizationToken: discoveryProxyToken,
                     },
