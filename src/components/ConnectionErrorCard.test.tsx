@@ -119,6 +119,93 @@ describe('evidence-based connection diagnostics', () => {
     expect(container.textContent).not.toContain('Browser access blocked');
   });
 
+  it.each([404, 500])(
+    'prefers a readable proxy-observed HTTP %s over opaque direct-browser attempts',
+    (status) => {
+      const container = renderError({
+        expectedAuthentication: 'none',
+        serverReachable: undefined,
+        attempts: [
+          unreadableAttempt('https://example.com/mcp'),
+          {
+            route: 'proxy',
+            candidateUrl: 'https://example.com/mcp',
+            transportType: 'streamable-http',
+            method: 'POST',
+            status,
+            responseSource: 'target',
+            browserUnreadable: false,
+            failureKind: 'http',
+            message: `HTTP ${status}`,
+          },
+        ],
+      });
+
+      expect(container.textContent).toContain(`MCP endpoint returned HTTP ${status}`);
+      expect(container.textContent).toContain('The authenticated proxy observed a readable response');
+      expect(container.textContent).not.toContain('Browser access blocked');
+      expect(container.textContent).not.toContain('The browser received a readable response');
+    }
+  );
+
+  it('does not present a proxy-owned infrastructure response as the target response', () => {
+    const container = renderError({
+      expectedAuthentication: 'none',
+      serverReachable: undefined,
+      attempts: [
+        unreadableAttempt('https://example.com/mcp'),
+        {
+          route: 'proxy',
+          candidateUrl: 'https://example.com/mcp',
+          transportType: 'streamable-http',
+          method: 'POST',
+          status: 500,
+          responseSource: 'proxy',
+          browserUnreadable: false,
+          failureKind: 'http',
+          message: 'Proxy infrastructure failed',
+        },
+      ],
+    });
+
+    expect(container.textContent).toContain('Browser access blocked');
+    expect(container.textContent).toContain('HTTP 500 from mcptest proxy');
+    expect(container.textContent).not.toContain('MCP endpoint returned HTTP 500');
+  });
+
+  it('keeps target OAuth ahead of a proxy-login challenge', () => {
+    const container = renderError({
+      attempts: [
+        unreadableAttempt(),
+        {
+          route: 'proxy',
+          candidateUrl: 'https://mcp.upwork.com/mcp',
+          transportType: 'streamable-http',
+          method: 'POST',
+          status: 401,
+          authenticationSource: 'proxy',
+          browserUnreadable: false,
+          failureKind: 'authentication',
+          message: 'Authenticated proxy returned HTTP 401',
+        },
+        {
+          route: 'proxy',
+          candidateUrl: 'https://mcp.upwork.com/mcp',
+          transportType: 'streamable-http',
+          method: 'POST',
+          status: 401,
+          authenticationSource: 'target',
+          browserUnreadable: false,
+          failureKind: 'authentication',
+          message: 'MCP target returned HTTP 401',
+        },
+      ],
+    });
+
+    expect(container.textContent).toContain('OAuth authorization required');
+    expect(container.textContent).not.toContain('mcptest proxy authentication required');
+  });
+
   it.each([
     ['timeout', 'MCP connection timed out'],
     ['abort', 'MCP connection aborted'],

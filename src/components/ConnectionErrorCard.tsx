@@ -26,9 +26,10 @@ interface Diagnosis {
 
 const attemptResult = (attempt: ConnectionAttemptFact): string => {
   if (attempt.status !== undefined) {
-    const owner = attempt.authenticationSource === 'target'
+    const responseSource = attempt.responseSource || attempt.authenticationSource;
+    const owner = responseSource === 'target'
       ? ' from target'
-      : attempt.authenticationSource === 'proxy'
+      : responseSource === 'proxy'
         ? ' from mcptest proxy'
         : '';
     return `HTTP ${attempt.status}${owner}`;
@@ -83,6 +84,23 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
     };
   }
 
+  const readableHttp = attempts.find(({ route, status, authenticationSource, responseSource }) => (
+    status !== undefined
+    && authenticationSource !== 'proxy'
+    && (route === 'direct' || responseSource === 'target')
+  ));
+  if (readableHttp) {
+    const observer = readableHttp.route === 'proxy'
+      ? 'The authenticated proxy observed'
+      : 'The browser received';
+    return {
+      badge: `HTTP ${readableHttp.status}`,
+      heading: `MCP endpoint returned HTTP ${readableHttp.status}`,
+      summary: `${observer} a readable response for the exact candidate endpoint. Diagnose the HTTP status and path rather than treating it as a CORS failure.`,
+      alertClass: 'alert-danger border-danger',
+    };
+  }
+
   const directAttempts = attempts.filter(({ route }) => route === 'direct');
   const allDirectBrowserUnreadable = directAttempts.length > 0
     && directAttempts.every(({ browserUnreadable }) => browserUnreadable);
@@ -100,16 +118,6 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
           ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, but the browser evidence alone cannot establish current server reachability.'
         : 'Every direct browser attempt ended without a readable HTTP response. Cross-origin policy or a rejected preflight may be hiding the target response; this evidence does not show that the server is down.',
       alertClass: 'alert-warning border-warning',
-    };
-  }
-
-  const readableHttp = attempts.find(({ status }) => status !== undefined);
-  if (readableHttp) {
-    return {
-      badge: `HTTP ${readableHttp.status}`,
-      heading: `MCP endpoint returned HTTP ${readableHttp.status}`,
-      summary: `The browser received a readable response from the exact candidate endpoint. Diagnose the HTTP status and path rather than treating it as a CORS failure.`,
-      alertClass: 'alert-danger border-danger',
     };
   }
 

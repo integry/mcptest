@@ -26,6 +26,7 @@ export interface ConnectionAttemptFact {
   method?: string;
   status?: number;
   authenticationSource?: 'proxy' | 'target';
+  responseSource?: 'proxy' | 'target';
   browserUnreadable: boolean;
   failureKind: ConnectionFailureKind;
   message: string;
@@ -110,6 +111,9 @@ const factFromCandidateFailure = (
     ...(challenge?.method || request?.method ? { method: challenge?.method || request?.method } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(challenge?.source ? { authenticationSource: challenge.source } : {}),
+    ...(request?.responseSource || challenge?.source
+      ? { responseSource: request?.responseSource || challenge?.source }
+      : {}),
     browserUnreadable: failureKind === 'browser-unreadable',
     failureKind,
     message: errorMessage(failure.error),
@@ -190,6 +194,7 @@ export const collectConnectionAttemptFacts = (
       fact.method,
       fact.status,
       fact.authenticationSource,
+      fact.responseSource,
       fact.failureKind,
       fact.message,
     ].join('|');

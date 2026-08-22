@@ -43,6 +43,7 @@ describe('connection attempt evidence', () => {
       method: 'POST',
       status: 401,
       authenticationSource: 'target',
+      responseSource: 'target',
       browserUnreadable: false,
       failureKind: 'authentication',
       message: 'MCP target returned HTTP 401',

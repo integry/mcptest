@@ -61,6 +61,8 @@ export interface ObservedTransportRequest {
   startedAt?: string;
   durationMs?: number;
   status?: number;
+  /** Who produced a proxied HTTP response, when the proxy exposes provenance. */
+  responseSource?: ProxyAuthenticationSource;
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -408,6 +410,12 @@ const observeAuthenticationResponses = (
   try {
     response = await fetch(input, init);
     attemptedRequest.status = response.status;
+    if (!usesProxy) {
+      attemptedRequest.responseSource = 'target';
+    } else {
+      const source = response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)?.toLowerCase();
+      if (source === 'target' || source === 'proxy') attemptedRequest.responseSource = source;
+    }
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
   } catch (error) {
