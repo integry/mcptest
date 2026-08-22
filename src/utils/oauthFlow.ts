@@ -658,6 +658,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     this.redirectUrl = options.redirectUrl || getOAuthCallbackUrl();
     this.redirect = options.redirect || defaultRedirect;
     this.trace = options.trace;
+    const preferDynamicRegistration = providerPrefersDynamicRegistration(this.serverUrl);
     let persistedState = this.readState();
     const clientsWithSecrets = Object.entries(persistedState.clients || {}).filter(
       ([, client]) => Boolean(client.client_secret)
@@ -670,6 +671,19 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
             const { client_secret: _discardedSecret, ...publicClient } = client;
             return [issuer, publicClient];
           }
+        )),
+      };
+      this.writeState(persistedState);
+    }
+    const obsoleteCimdClients = Object.entries(persistedState.clients || {}).filter(
+      ([, client]) => !client.registeredManually && client.client_id === OAUTH_CLIENT_METADATA_URL
+    );
+    if (preferDynamicRegistration && obsoleteCimdClients.length > 0) {
+      const obsoleteIssuers = new Set(obsoleteCimdClients.map(([issuer]) => issuer));
+      persistedState = {
+        ...persistedState,
+        clients: Object.fromEntries(Object.entries(persistedState.clients || {}).filter(
+          ([issuer]) => !obsoleteIssuers.has(issuer)
         )),
       };
       this.writeState(persistedState);
@@ -687,7 +701,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     const productionCallback = `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`;
     this.clientMetadataUrl = options.clientMetadataUrl ?? (
       this.redirectUrl === productionCallback
-      && !providerPrefersDynamicRegistration(this.serverUrl)
+      && !preferDynamicRegistration
         ? OAUTH_CLIENT_METADATA_URL
         : undefined
     );

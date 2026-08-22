@@ -378,10 +378,6 @@ describe('SDK OAuth registration order', () => {
     const registrationEndpoint = 'https://www.upwork.com/register';
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     let redirectUrl: URL | undefined;
-    const provider = new BrowserOAuthProvider(serverUrl, {
-      redirectUrl: 'https://mcptest.io/oauth/callback',
-      redirect: (url) => { redirectUrl = url; },
-    });
     const fetchFn: FetchLike = async (input, init) => {
       const url = String(input);
       calls.push({ url, init });
@@ -408,7 +404,22 @@ describe('SDK OAuth registration order', () => {
       return new Response('Not found', { status: 404 });
     };
 
+    const rejectedCimdProvider = new BrowserOAuthProvider(serverUrl, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      clientMetadataUrl: OAUTH_CLIENT_METADATA_URL,
+      redirect: vi.fn(),
+    });
+    await expect(auth(rejectedCimdProvider, { serverUrl, fetchFn })).resolves.toBe('REDIRECT');
+    expect(rejectedCimdProvider.clientInformation({ issuer })?.client_id)
+      .toBe(OAUTH_CLIENT_METADATA_URL);
+
+    const provider = new BrowserOAuthProvider(serverUrl, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      redirect: (url) => { redirectUrl = url; },
+    });
+
     expect(provider.clientMetadataUrl).toBeUndefined();
+    expect(provider.clientInformation({ issuer })).toBeUndefined();
     await expect(auth(provider, { serverUrl, fetchFn })).resolves.toBe('REDIRECT');
 
     expect(redirectUrl?.searchParams.get('client_id')).toBe('upwork-dcr-client-id');
