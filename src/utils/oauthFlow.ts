@@ -25,6 +25,7 @@ import {
   getOAuthProviderPolicy,
   isPolicyRegistrationApprovalRejection,
   providerForbidsDynamicRegistration,
+  providerPrefersDynamicRegistration,
   type OAuthProviderPolicy,
 } from './oauthProviderPolicy';
 
@@ -409,9 +410,7 @@ const buildOAuthPrerequisite = (
     pkceS256: Boolean(metadata?.code_challenge_methods_supported?.includes('S256')),
     publicClientSecretSupported,
     ...(policy ? {
-      configurationMode: policy.registrationMode === 'operator-confidential'
-        ? 'operator-confidential' as const
-        : 'provider-approved' as const,
+      configurationMode: policy.registrationMode,
       supportsBearerToken: policy.supportsBearerToken,
       bearerTokenName: policy.bearerTokenName,
     } : { configurationMode: 'browser-public' as const }),
@@ -687,7 +686,10 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
     const productionCallback = `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`;
     this.clientMetadataUrl = options.clientMetadataUrl ?? (
-      this.redirectUrl === productionCallback ? OAUTH_CLIENT_METADATA_URL : undefined
+      this.redirectUrl === productionCallback
+      && !providerPrefersDynamicRegistration(this.serverUrl)
+        ? OAUTH_CLIENT_METADATA_URL
+        : undefined
     );
   }
 

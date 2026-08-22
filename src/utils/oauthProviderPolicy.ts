@@ -1,4 +1,4 @@
-export type KnownOAuthProviderId = 'figma' | 'slack' | 'github';
+export type KnownOAuthProviderId = 'figma' | 'slack' | 'github' | 'upwork';
 
 export interface OAuthProviderPolicy {
   id: KnownOAuthProviderId;
@@ -7,7 +7,9 @@ export interface OAuthProviderPolicy {
   issuerHosts: readonly string[];
   documentationUrl: string;
   registrationUrl?: string;
-  registrationMode: 'provider-approved' | 'operator-confidential';
+  registrationMode: 'browser-public' | 'provider-approved' | 'operator-confidential';
+  /** Prefer DCR when a provider advertises both DCR and a non-working CIMD path. */
+  preferDynamicRegistration?: boolean;
   supportsBearerToken?: boolean;
   bearerTokenName?: string;
   /** Exact endpoint whose otherwise opaque rejection is covered by provider policy. */
@@ -43,6 +45,15 @@ const PROVIDER_POLICIES: readonly OAuthProviderPolicy[] = [
     registrationMode: 'operator-confidential',
     supportsBearerToken: true,
     bearerTokenName: 'GitHub personal access token',
+  },
+  {
+    id: 'upwork',
+    name: 'Upwork',
+    targetHosts: ['mcp.upwork.com'],
+    issuerHosts: ['mcp.upwork.com'],
+    documentationUrl: 'https://www.upwork.com/ai/mcp',
+    registrationMode: 'browser-public',
+    preferDynamicRegistration: true,
   },
 ] as const;
 
@@ -104,3 +115,8 @@ export const providerForbidsDynamicRegistration = (
   serverUrl: string,
   issuer?: string
 ): boolean => getOAuthProviderPolicy(serverUrl, issuer)?.registrationMode === 'operator-confidential';
+
+export const providerPrefersDynamicRegistration = (
+  serverUrl: string,
+  issuer?: string
+): boolean => getOAuthProviderPolicy(serverUrl, issuer)?.preferDynamicRegistration === true;

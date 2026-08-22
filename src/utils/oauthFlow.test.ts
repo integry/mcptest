@@ -372,6 +372,52 @@ describe('SDK OAuth registration order', () => {
     expect(calls.some(({ url }) => url === `${ISSUER_A}register`)).toBe(false);
   });
 
+  it('prefers Upwork DCR over its advertised but rejected CIMD path in production', async () => {
+    const serverUrl = 'https://mcp.upwork.com/mcp';
+    const issuer = 'https://mcp.upwork.com';
+    const registrationEndpoint = 'https://www.upwork.com/register';
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    let redirectUrl: URL | undefined;
+    const provider = new BrowserOAuthProvider(serverUrl, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      redirect: (url) => { redirectUrl = url; },
+    });
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: serverUrl, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse({
+          issuer,
+          authorization_endpoint: 'https://www.upwork.com/ab/account-security/oauth2/authorize',
+          token_endpoint: 'https://www.upwork.com/api/v3/oauth2/token',
+          registration_endpoint: registrationEndpoint,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+          client_id_metadata_document_supported: true,
+        });
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return jsonResponse({
+          ...JSON.parse(String(init.body)),
+          client_id: 'upwork-dcr-client-id',
+        }, { status: 201 });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    expect(provider.clientMetadataUrl).toBeUndefined();
+    await expect(auth(provider, { serverUrl, fetchFn })).resolves.toBe('REDIRECT');
+
+    expect(redirectUrl?.searchParams.get('client_id')).toBe('upwork-dcr-client-id');
+    expect(calls).toContainEqual(expect.objectContaining({
+      url: registrationEndpoint,
+      init: expect.objectContaining({ method: 'POST' }),
+    }));
+  });
+
   it('falls back to DCR when CIMD is not advertised', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     let redirectUrl: URL | undefined;
