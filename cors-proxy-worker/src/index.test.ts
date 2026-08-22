@@ -203,7 +203,7 @@ describe('proxy target credential forwarding', () => {
 describe('hosted OAuth token route', () => {
   const issuer = 'https://auth.example.com/';
   const discoveryUrl = 'https://auth.example.com/.well-known/oauth-authorization-server';
-  const tokenEndpoint = 'https://auth.example.com/token';
+  const tokenEndpoint = 'https://tokens.example.net/token';
   const formBody = [
     'grant_type=authorization_code',
     'code=single-use-code',
@@ -228,7 +228,7 @@ describe('hosted OAuth token route', () => {
     }
   );
 
-  it('derives the target from issuer discovery and sends the exact public-client form once', async () => {
+  it('uses the exact cross-domain token endpoint advertised by issuer metadata', async () => {
     const requests: Request[] = [];
     const fetchImpl = async (request: Request) => {
       requests.push(request);
@@ -296,13 +296,15 @@ describe('hosted OAuth token route', () => {
   it('keeps confidential operator secrets server-side', async () => {
     const slackIssuer = 'https://slack.com/';
     const slackTokenEndpoint = 'https://slack.com/api/oauth.v2.access';
+    const operatorClientId = 'operator client:plus+percent%&';
+    const operatorClientSecret = 'operator secret:/+?%&=';
     const requests: Request[] = [];
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code: 'slack-code',
       code_verifier: 'slack-verifier',
       redirect_uri: 'https://mcptest.io/oauth/callback',
-      client_id: 'operator-client',
+      client_id: operatorClientId,
       resource: 'https://mcp.slack.com/mcp',
     }).toString();
     const request = new Request('https://proxy.mcptest.test/oauth/token', {
@@ -325,8 +327,9 @@ describe('hosted OAuth token route', () => {
           token_endpoint_auth_methods_supported: ['client_secret_basic'],
         }), { headers: { 'Content-Type': 'application/json' } });
       }
-      expect(targetRequest.headers.get('authorization')).toMatch(/^Basic /);
-      expect(targetRequest.headers.get('authorization')).not.toContain('firebase-credential');
+      expect(targetRequest.headers.get('authorization')).toBe(
+        `Basic ${btoa('operator+client%3Aplus%2Bpercent%25%26:operator+secret%3A%2F%2B%3F%25%26%3D')}`
+      );
       expect(await targetRequest.text()).toBe(body);
       return new Response(JSON.stringify({ access_token: 'slack-access', token_type: 'Bearer' }), {
         headers: { 'Content-Type': 'application/json' },
@@ -335,13 +338,46 @@ describe('hosted OAuth token route', () => {
 
     const response = await handleOAuthTokenRequest(request, {
       FIREBASE_PROJECT_ID: 'test-project',
-      SLACK_OAUTH_CLIENT_ID: 'operator-client',
-      SLACK_OAUTH_CLIENT_SECRET: 'operator-secret',
+      SLACK_OAUTH_CLIENT_ID: operatorClientId,
+      SLACK_OAUTH_CLIENT_SECRET: operatorClientSecret,
     }, { fetchImpl, verifyToken: async () => 'user-1' });
 
     expect(response.status).toBe(200);
     expect(requests.filter(targetRequest => targetRequest.url === slackTokenEndpoint)).toHaveLength(1);
-    expect(await response.text()).not.toContain('operator-secret');
+    expect(await response.text()).not.toContain(operatorClientSecret);
+  });
+
+  it.each([
+    'javascript://localhost/callback',
+    'ftp://127.0.0.1/callback',
+  ])('rejects a non-HTTP loopback redirect URI: %s', async redirectUri => {
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: redirectUri,
+      client_id: 'loopback-client',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: tokenEndpoint,
+        token_endpoint_auth_methods_supported: ['none'],
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
   });
 
   it('rejects signed-out and cross-origin callers without discovery', async () => {

@@ -170,24 +170,6 @@ const parsePublicHttpsUrl = (value: string, label: string): URL => {
   return url;
 };
 
-const organizationalDomain = (hostname: string): string => {
-  const labels = hostname.toLowerCase().split('.');
-  if (labels.length <= 2) return labels.join('.');
-  const lastTwo = labels.slice(-2).join('.');
-  const commonMultiLabelSuffixes = new Set([
-    'co.uk', 'com.au', 'co.jp', 'co.nz', 'com.br', 'com.mx',
-    'github.io', 'pages.dev', 'workers.dev',
-  ]);
-  return commonMultiLabelSuffixes.has(lastTwo)
-    ? labels.slice(-3).join('.')
-    : lastTwo;
-};
-
-const tokenEndpointIsBoundToIssuer = (issuer: URL, tokenEndpoint: URL): boolean => (
-  issuer.origin === tokenEndpoint.origin
-  || organizationalDomain(issuer.hostname) === organizationalDomain(tokenEndpoint.hostname)
-);
-
 const buildAuthorizationServerDiscoveryUrls = (issuer: URL): URL[] => {
   if (issuer.pathname === '/') {
     return [
@@ -266,7 +248,9 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
   parsePublicHttpsUrl(params.get('resource')!, 'OAuth resource');
   if (grantType === 'authorization_code') {
     const redirect = new URL(params.get('redirect_uri')!);
-    if (redirect.protocol !== 'https:' && redirect.hostname !== 'localhost' && redirect.hostname !== '127.0.0.1') {
+    const isHttpLoopback = redirect.protocol === 'http:'
+      && (redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1');
+    if (redirect.protocol !== 'https:' && !isHttpLoopback) {
       throw new Error('OAuth redirect_uri must use HTTPS or localhost');
     }
     if (
@@ -277,6 +261,11 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
     }
   }
   return grantType as 'authorization_code' | 'refresh_token';
+};
+
+const encodeFormComponent = (value: string): string => {
+  const encoded = new URLSearchParams({ value }).toString();
+  return encoded.slice('value='.length);
 };
 
 const applyOperatorClientAuthentication = (
@@ -298,7 +287,7 @@ const applyOperatorClientAuthentication = (
   }
 
   if (methods.length === 0 || methods.includes('client_secret_basic')) {
-    const basic = btoa(`${encodeURIComponent(operatorClient.clientId)}:${encodeURIComponent(operatorClient.clientSecret)}`);
+    const basic = btoa(`${encodeFormComponent(operatorClient.clientId)}:${encodeFormComponent(operatorClient.clientSecret)}`);
     targetHeaders.set('Authorization', `Basic ${basic}`);
   } else if (methods.includes('client_secret_post')) {
     params.set('client_secret', operatorClient.clientSecret);
@@ -351,10 +340,7 @@ export async function handleOAuthTokenRequest(
     const fetchImpl = dependencies.fetchImpl || fetch;
     const metadata = await discoverWorkerAuthorizationMetadata(issuer, issuerHeader, fetchImpl);
     const tokenEndpoint = parsePublicHttpsUrl(metadata.token_endpoint, 'OAuth token endpoint');
-    if (
-      tokenEndpoint.toString() !== new URL(expectedEndpointHeader).toString()
-      || !tokenEndpointIsBoundToIssuer(issuer, tokenEndpoint)
-    ) {
+    if (tokenEndpoint.toString() !== new URL(expectedEndpointHeader).toString()) {
       return oauthRouteError(request, 'Error: OAuth issuer/token-endpoint binding mismatch.', 400);
     }
 
