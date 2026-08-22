@@ -213,7 +213,11 @@ describe('hosted OAuth token route', () => {
     'resource=https%3A%2F%2Fmcp.example.com%2Fmcp',
   ].join('&');
 
-  const tokenRequest = (body = formBody, tokenEndpointHeader = tokenEndpoint) => new Request(
+  const tokenRequest = (
+    body = formBody,
+    tokenEndpointHeader = tokenEndpoint,
+    issuerHeader = issuer
+  ) => new Request(
     'https://proxy.mcptest.test/oauth/token',
     {
       method: 'POST',
@@ -221,7 +225,7 @@ describe('hosted OAuth token route', () => {
         Origin: 'https://mcptest.io',
         Authorization: 'Bearer firebase-credential',
         'Content-Type': 'application/x-www-form-urlencoded',
-        'X-MCP-OAuth-Issuer': issuer,
+        'X-MCP-OAuth-Issuer': issuerHeader,
         'X-MCP-OAuth-Token-Endpoint': tokenEndpointHeader,
       },
       body,
@@ -293,6 +297,97 @@ describe('hosted OAuth token route', () => {
     expect(requests[0].url).toBe(discoveryUrl);
   });
 
+  it.each([
+    ['IPv4-mapped loopback IPv6', 'https://[::ffff:127.0.0.1]/'],
+    ['IPv4-mapped link-local IPv6', 'https://[::ffff:169.254.169.254]/'],
+    ['NAT64-mapped loopback IPv6', 'https://[64:ff9b::127.0.0.1]/'],
+    ['unspecified IPv6', 'https://[::]/'],
+    ['reserved documentation IPv6', 'https://[2001:db8::1]/'],
+    ['short IPv4 loopback', 'https://127.1/'],
+    ['octal IPv4 loopback', 'https://0177.0.0.1/'],
+    ['hexadecimal IPv4 loopback', 'https://0x7f000001/'],
+    ['integer IPv4 loopback', 'https://2130706433/'],
+    ['hexadecimal IPv4 link-local', 'https://0xa9fea9fe/'],
+  ])('rejects a forbidden issuer before discovery: %s', async (_, forbiddenIssuer) => {
+    const fetchImpl = vi.fn();
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(formBody, tokenEndpoint, forbiddenIssuer),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['IPv4-mapped loopback IPv6', 'https://[::ffff:127.0.0.1]/token'],
+    ['IPv4-mapped link-local IPv6', 'https://[::ffff:169.254.169.254]/token'],
+    ['unspecified IPv6', 'https://[::]/token'],
+    ['reserved documentation IPv6', 'https://[2001:db8::1]/token'],
+    ['short IPv4 loopback', 'https://127.1/token'],
+    ['octal IPv4 loopback', 'https://0177.0.0.1/token'],
+    ['hexadecimal IPv4 link-local', 'https://0xa9fea9fe/token'],
+  ])('rejects a forbidden advertised token endpoint before token fetch: %s', async (_, forbiddenEndpoint) => {
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: forbiddenEndpoint,
+        token_endpoint_auth_methods_supported: ['none'],
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(formBody, forbiddenEndpoint),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+  });
+
+  it.each([
+    ['public IPv4 issuer', 'https://8.8.8.8/', tokenEndpoint],
+    ['public IPv6 issuer', 'https://[2606:4700:4700::1111]/', tokenEndpoint],
+    ['public IPv4 token endpoint', issuer, 'https://1.1.1.1/token'],
+    ['public IPv6 token endpoint', issuer, 'https://[2606:4700:4700::1001]/token'],
+    ['public IPv4-mapped endpoint', issuer, 'https://[::ffff:8.8.8.8]/token'],
+  ])('allows a public OAuth host: %s', async (_, publicIssuer, publicTokenEndpoint) => {
+    const expectedDiscoveryUrl = new URL('/.well-known/oauth-authorization-server', publicIssuer).toString();
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === expectedDiscoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer: publicIssuer,
+          token_endpoint: publicTokenEndpoint,
+          token_endpoint_auth_methods_supported: ['none'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ access_token: 'public-host-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(formBody, publicTokenEndpoint, publicIssuer),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(request => request.url)).toEqual([
+      expectedDiscoveryUrl,
+      new URL(publicTokenEndpoint).toString(),
+    ]);
+  });
+
   it('keeps confidential operator secrets server-side', async () => {
     const slackIssuer = 'https://slack.com/';
     const slackTokenEndpoint = 'https://slack.com/api/oauth.v2.access';
@@ -350,7 +445,14 @@ describe('hosted OAuth token route', () => {
   it.each([
     'javascript://localhost/callback',
     'ftp://127.0.0.1/callback',
-  ])('rejects a non-HTTP loopback redirect URI: %s', async redirectUri => {
+    'https://user@client.example/callback',
+    'https://user:password@client.example/callback',
+    'https://@client.example/callback',
+    'https://client.example/callback#fragment',
+    'https://client.example/callback#',
+    'http://user@localhost/callback',
+    'http://127.0.0.1/callback#fragment',
+  ])('rejects an unsafe redirect URI: %s', async redirectUri => {
     const requests: Request[] = [];
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -378,6 +480,44 @@ describe('hosted OAuth token route', () => {
     expect(response.status).toBe(502);
     expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
     expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+  });
+
+  it.each([
+    'https://client.example/callback',
+    'http://localhost:5173/callback',
+    'http://127.0.0.1:5173/callback',
+  ])('preserves a valid redirect URI: %s', async redirectUri => {
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: redirectUri,
+      client_id: 'loopback-client',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['none'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ access_token: 'redirect-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl, tokenEndpoint]);
   });
 
   it('rejects signed-out and cross-origin callers without discovery', async () => {

@@ -125,35 +125,128 @@ const parseIpv4 = (hostname: string): number[] | undefined => {
   return octets.every(part => part >= 0 && part <= 255) ? octets : undefined;
 };
 
+const ipv4ToNumber = (octets: number[]): number => (
+  (((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256) + octets[3]
+);
+
+const ipv4IsInCidr = (octets: number[], network: number[], prefixLength: number): boolean => {
+  const divisor = 2 ** (32 - prefixLength);
+  return Math.floor(ipv4ToNumber(octets) / divisor) === Math.floor(ipv4ToNumber(network) / divisor);
+};
+
+const isForbiddenIpv4 = (octets: number[]): boolean => [
+  [[0, 0, 0, 0], 8],
+  [[10, 0, 0, 0], 8],
+  [[100, 64, 0, 0], 10],
+  [[127, 0, 0, 0], 8],
+  [[169, 254, 0, 0], 16],
+  [[172, 16, 0, 0], 12],
+  [[192, 0, 0, 0], 24],
+  [[192, 0, 2, 0], 24],
+  [[192, 88, 99, 0], 24],
+  [[192, 168, 0, 0], 16],
+  [[198, 18, 0, 0], 15],
+  [[198, 51, 100, 0], 24],
+  [[203, 0, 113, 0], 24],
+  [[224, 0, 0, 0], 4],
+  [[240, 0, 0, 0], 4],
+].some(([network, prefixLength]) => {
+  // These two anycast services are the globally reachable exceptions in 192.0.0.0/24.
+  if (octets[0] === 192 && octets[1] === 0 && octets[2] === 0 && (octets[3] === 9 || octets[3] === 10)) {
+    return false;
+  }
+  return ipv4IsInCidr(octets, network as number[], prefixLength as number);
+});
+
+const parseIpv6 = (hostname: string): number[] | undefined => {
+  const address = hostname.replace(/^\[|\]$/g, '');
+  if (!address.includes(':')) return undefined;
+  const halves = address.split('::');
+  if (halves.length > 2) return undefined;
+  const leading = halves[0] ? halves[0].split(':') : [];
+  const trailing = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const omittedCount = 8 - leading.length - trailing.length;
+  if ((halves.length === 1 && omittedCount !== 0) || omittedCount < (halves.length === 2 ? 1 : 0)) {
+    return undefined;
+  }
+  const groups = [
+    ...leading,
+    ...Array.from({ length: omittedCount }, () => '0'),
+    ...trailing,
+  ];
+  if (groups.length !== 8 || groups.some(group => !/^[0-9a-f]{1,4}$/i.test(group))) {
+    return undefined;
+  }
+  return groups.map(group => parseInt(group, 16));
+};
+
+const ipv6IsInCidr = (groups: number[], network: number[], prefixLength: number): boolean => {
+  const completeGroups = Math.floor(prefixLength / 16);
+  for (let index = 0; index < completeGroups; index += 1) {
+    if (groups[index] !== network[index]) return false;
+  }
+  const remainingBits = prefixLength % 16;
+  if (remainingBits === 0) return true;
+  const mask = (0xffff << (16 - remainingBits)) & 0xffff;
+  return (groups[completeGroups] & mask) === (network[completeGroups] & mask);
+};
+
+const isForbiddenIpv6 = (groups: number[]): boolean => {
+  // IPv4-mapped IPv6 literals are normalized by URL to hexadecimal groups.
+  // Classify their embedded address exactly as an IPv4 literal.
+  if (ipv6IsInCidr(groups, [0, 0, 0, 0, 0, 0xffff, 0, 0], 96)) {
+    return isForbiddenIpv4([
+      groups[6] >> 8,
+      groups[6] & 0xff,
+      groups[7] >> 8,
+      groups[7] & 0xff,
+    ]);
+  }
+  if (ipv6IsInCidr(groups, [0x64, 0xff9b, 0, 0, 0, 0, 0, 0], 96)) {
+    return isForbiddenIpv4([
+      groups[6] >> 8,
+      groups[6] & 0xff,
+      groups[7] >> 8,
+      groups[7] & 0xff,
+    ]);
+  }
+
+  return [
+    [[0, 0, 0, 0, 0, 0, 0, 0], 8], // Reserved, including unspecified and loopback.
+    [[0x64, 0xff9b, 1, 0, 0, 0, 0, 0], 48], // Local-use IPv4 translation.
+    [[0x100, 0, 0, 0, 0, 0, 0, 0], 64], // Discard-only.
+    [[0x2001, 0, 0, 0, 0, 0, 0, 0], 32], // Teredo.
+    [[0x2001, 2, 0, 0, 0, 0, 0, 0], 48], // Benchmarking.
+    [[0x2001, 0x10, 0, 0, 0, 0, 0, 0], 28], // ORCHID.
+    [[0x2001, 0x20, 0, 0, 0, 0, 0, 0], 28], // ORCHIDv2.
+    [[0x2001, 0xdb8, 0, 0, 0, 0, 0, 0], 32], // Documentation.
+    [[0x2002, 0, 0, 0, 0, 0, 0, 0], 16], // Deprecated 6to4.
+    [[0x3fff, 0, 0, 0, 0, 0, 0, 0], 20], // Documentation.
+    [[0x5f00, 0, 0, 0, 0, 0, 0, 0], 16], // Segment-routing SIDs.
+    [[0xfc00, 0, 0, 0, 0, 0, 0, 0], 7], // Unique-local.
+    [[0xfe80, 0, 0, 0, 0, 0, 0, 0], 10], // Link-local.
+    [[0xfec0, 0, 0, 0, 0, 0, 0, 0], 10], // Deprecated site-local.
+    [[0xff00, 0, 0, 0, 0, 0, 0, 0], 8], // Multicast.
+  ].some(([network, prefixLength]) => ipv6IsInCidr(
+    groups,
+    network as number[],
+    prefixLength as number
+  ));
+};
+
 const isForbiddenOAuthHostname = (hostnameValue: string): boolean => {
-  const hostname = hostnameValue.toLowerCase().replace(/^\[|\]$/g, '');
+  const hostname = hostnameValue.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   if (
     hostname === 'localhost'
     || hostname.endsWith('.localhost')
     || hostname.endsWith('.local')
     || hostname.endsWith('.internal')
-    || hostname === '::1'
-    || hostname.startsWith('fe8')
-    || hostname.startsWith('fe9')
-    || hostname.startsWith('fea')
-    || hostname.startsWith('feb')
-    || hostname.startsWith('fc')
-    || hostname.startsWith('fd')
   ) return true;
 
   const ipv4 = parseIpv4(hostname);
-  if (!ipv4) return false;
-  const [first, second] = ipv4;
-  return first === 0
-    || first === 10
-    || first === 127
-    || (first === 100 && second >= 64 && second <= 127)
-    || (first === 169 && second === 254)
-    || (first === 172 && second >= 16 && second <= 31)
-    || (first === 192 && second === 0)
-    || (first === 192 && second === 168)
-    || (first === 198 && (second === 18 || second === 19))
-    || first >= 224;
+  if (ipv4) return isForbiddenIpv4(ipv4);
+  const ipv6 = parseIpv6(hostname);
+  return ipv6 ? isForbiddenIpv6(ipv6) : false;
 };
 
 const parsePublicHttpsUrl = (value: string, label: string): URL => {
@@ -247,10 +340,17 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
   }
   parsePublicHttpsUrl(params.get('resource')!, 'OAuth resource');
   if (grantType === 'authorization_code') {
-    const redirect = new URL(params.get('redirect_uri')!);
+    const redirectValue = params.get('redirect_uri')!;
+    const redirect = new URL(redirectValue);
+    const redirectHasUserinfo = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*@/i.test(redirectValue.trim());
+    const redirectHasFragment = redirectValue.includes('#');
     const isHttpLoopback = redirect.protocol === 'http:'
       && (redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1');
-    if (redirect.protocol !== 'https:' && !isHttpLoopback) {
+    if (
+      (redirect.protocol !== 'https:' && !isHttpLoopback)
+      || redirectHasUserinfo
+      || redirectHasFragment
+    ) {
       throw new Error('OAuth redirect_uri must use HTTPS or localhost');
     }
     if (
