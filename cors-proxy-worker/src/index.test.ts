@@ -444,6 +444,53 @@ describe('hosted OAuth token route', () => {
     await expect(response.json()).resolves.toMatchObject({ access_token: 'target-access-token' });
   });
 
+  it('relays form-encoded opaque client IDs with dynamic Basic authentication', async () => {
+    const clientId = 'client id:percent%+&café';
+    const clientSecret = 'dynamic secret';
+    const encode = (value: string): string => (
+      new URLSearchParams({ value }).toString().slice('value='.length)
+    );
+    const authorization = `Basic ${btoa(`${encode(clientId)}:${encode(clientSecret)}`)}`;
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set('X-MCP-OAuth-Client-Authorization', authorization);
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      expect(targetRequest.headers.get('authorization')).toBe(authorization);
+      expect(new URLSearchParams(await targetRequest.text()).has('client_id')).toBe(false);
+      return new Response(JSON.stringify({ access_token: 'dynamic-access-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      discoveryUrl,
+      tokenEndpoint,
+    ]);
+  });
+
   it('rejects an issuer/token-endpoint mismatch before a target token request', async () => {
     const requests: Request[] = [];
     const fetchImpl = async (request: Request) => {

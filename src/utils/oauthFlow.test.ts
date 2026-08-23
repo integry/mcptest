@@ -10,6 +10,7 @@ import {
   BrowserOAuthProvider,
   OAUTH_CLIENT_METADATA_URL,
   OAuthCimdInteroperabilityError,
+  OAuthProxyAuthenticationRequiredError,
   OAuthStateMismatchError,
   beginOAuthFlow,
   clearOAuthTokens,
@@ -2343,6 +2344,50 @@ describe('hosted dynamic client registration relay', () => {
     );
   });
 
+  it('never exposes a stored dynamic client secret after the hosted relay becomes unavailable', async () => {
+    let authorizationUrl: URL | undefined;
+    const clientSecret = 'relay-only-session-secret';
+    const proxyFetch = vi.fn(async () => jsonResponse({
+      redirect_uris: ['https://mcptest.io/oauth/callback'],
+      client_id: 'relay-only-client',
+      client_secret: clientSecret,
+      token_endpoint_auth_method: 'client_secret_post',
+    }, {
+      status: 201,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+    }));
+
+    await expect(beginOAuthFlow(supabaseServer, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn: supabaseDiscoveryFetch,
+      tokenProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-session',
+        fetchFn: proxyFetch,
+      },
+      redirect: url => { authorizationUrl = url; },
+    })).resolves.toBe('REDIRECT');
+
+    const directFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(init?.body || '')).not.toContain(clientSecret);
+      return supabaseDiscoveryFetch(String(input), init);
+    });
+    const state = authorizationUrl!.searchParams.get('state');
+
+    await expect(completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=relay-code&state=${state}`,
+      {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: directFetch,
+      }
+    )).rejects.toBeInstanceOf(OAuthProxyAuthenticationRequiredError);
+
+    expect(proxyFetch).toHaveBeenCalledOnce();
+    for (const [, init] of directFetch.mock.calls) {
+      expect(String(init?.body || '')).not.toContain(clientSecret);
+    }
+  });
+
   it('surfaces a direct browser CORS failure as dynamic registration CORS', async () => {
     const directFetch: FetchLike = async (input, init) => {
       if (String(input) === supabaseRegistration && init?.method === 'POST') {
@@ -2368,15 +2413,16 @@ describe('hosted dynamic client registration relay', () => {
     });
   });
 
-  it('preserves abort signals and de-duplicates concurrent hosted registration', async () => {
-    const controller = new AbortController();
-    const proxyFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      expect(init?.signal).toBe(controller.signal);
-      await Promise.resolve();
-      return jsonResponse({
-        redirect_uris: ['https://mcptest.io/oauth/callback'],
-        client_id: 'one-client',
-      }, { headers: { 'X-MCP-Proxy-Response-Source': 'target' } });
+  it('preserves each caller abort signal while de-duplicating hosted registration', async () => {
+    const activeController = new AbortController();
+    const abortedController = new AbortController();
+    let resolveRelay!: (response: Response) => void;
+    let relaySignal: AbortSignal | null | undefined;
+    const proxyFetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).not.toBe(activeController.signal);
+      expect(init?.signal).not.toBe(abortedController.signal);
+      relaySignal = init?.signal;
+      return new Promise<Response>(resolve => { resolveRelay = resolve; });
     });
     const authenticate = vi.fn(async (
       provider: OAuthClientProvider,
@@ -2393,20 +2439,33 @@ describe('hosted dynamic client registration relay', () => {
           code_challenge_methods_supported: ['S256'],
         },
       });
-      const init: RequestInit = {
+      const requestInit: Omit<RequestInit, 'signal'> = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           redirect_uris: ['https://mcptest.io/oauth/callback'],
           client_name: 'mcptest.io MCP Inspector',
         }),
-        signal: controller.signal,
       };
-      const responses = await Promise.all([
-        options.fetchFn!(supabaseRegistration, init),
-        options.fetchFn!(supabaseRegistration, init),
-      ]);
-      await Promise.all(responses.map(response => response.json()));
+      const activeRequest = options.fetchFn!(supabaseRegistration, {
+        ...requestInit,
+        signal: activeController.signal,
+      });
+      const abortedRequest = options.fetchFn!(supabaseRegistration, {
+        ...requestInit,
+        signal: abortedController.signal,
+      });
+      await vi.waitFor(() => expect(proxyFetch).toHaveBeenCalledOnce());
+      abortedController.abort();
+      await expect(abortedRequest).rejects.toMatchObject({ name: 'AbortError' });
+      expect(relaySignal?.aborted).toBe(false);
+      resolveRelay(jsonResponse({
+        redirect_uris: ['https://mcptest.io/oauth/callback'],
+        client_id: 'one-client',
+      }, { headers: { 'X-MCP-Proxy-Response-Source': 'target' } }));
+      await expect(activeRequest.then(response => response.json())).resolves.toMatchObject({
+        client_id: 'one-client',
+      });
       return 'REDIRECT' as const;
     });
 

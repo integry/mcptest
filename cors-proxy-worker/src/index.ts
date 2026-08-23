@@ -533,6 +533,10 @@ const encodeFormComponent = (value: string): string => {
   return encoded.slice('value='.length);
 };
 
+const decodeFormComponent = (value: string): string => (
+  decodeURIComponent(value.replace(/\+/g, ' '))
+);
+
 const applyOperatorClientAuthentication = (
   env: Env,
   issuer: URL,
@@ -556,7 +560,11 @@ const applyOperatorClientAuthentication = (
         throw new Error('Dynamic OAuth client authentication method is unsupported');
       }
       const decoded = atob(dynamicClientAuthorization.slice('Basic '.length));
-      if (!decoded.startsWith(`${params.get('client_id')}:`)) {
+      const delimiter = decoded.indexOf(':');
+      if (
+        delimiter < 0
+        || decodeFormComponent(decoded.slice(0, delimiter)) !== params.get('client_id')
+      ) {
         throw new Error('Dynamic OAuth client authentication does not match client_id');
       }
       targetHeaders.set('Authorization', dynamicClientAuthorization);

@@ -703,7 +703,63 @@ const oauthJsonRequestBody = async (
   throw new Error('Hosted dynamic client registration is missing its JSON body.');
 };
 
-const pendingRegistrationRequests = new Map<string, Promise<Response>>();
+interface PendingRegistrationRequest {
+  controller: AbortController;
+  promise: Promise<Response>;
+  activeCallers: number;
+  settled: boolean;
+}
+
+const pendingRegistrationRequests = new Map<string, PendingRegistrationRequest>();
+
+const registrationAbortReason = (signal: AbortSignal): unknown => (
+  signal.reason ?? new DOMException('This operation was aborted', 'AbortError')
+);
+
+const awaitRegistrationRequest = (
+  pending: PendingRegistrationRequest,
+  signal?: AbortSignal | null
+): Promise<Response> => {
+  if (signal?.aborted) return Promise.reject(registrationAbortReason(signal));
+
+  pending.activeCallers += 1;
+  return new Promise<Response>((resolve, reject) => {
+    let waiting = true;
+    const finishWaiting = (): boolean => {
+      if (!waiting) return false;
+      waiting = false;
+      signal?.removeEventListener('abort', abort);
+      pending.activeCallers -= 1;
+      if (pending.activeCallers === 0 && !pending.settled) {
+        pending.controller.abort(signal?.reason);
+      }
+      return true;
+    };
+    const abort = (): void => {
+      if (finishWaiting()) reject(registrationAbortReason(signal!));
+    };
+
+    signal?.addEventListener('abort', abort, { once: true });
+    pending.promise.then(
+      response => {
+        if (finishWaiting()) resolve(response);
+      },
+      error => {
+        if (finishWaiting()) reject(error);
+      }
+    );
+  });
+};
+
+const cloneRegistrationResponse = (response: Response): Response => {
+  const clone = response.clone();
+  return markOAuthTraceResponseOrigin(clone, {
+    route: 'proxy',
+    source: response.headers.get('x-mcp-proxy-response-source') === 'target'
+      ? 'target'
+      : 'proxy',
+  });
+};
 
 const createOAuthRegistrationFetch = (
   provider: BrowserOAuthProvider,
@@ -744,15 +800,11 @@ const createOAuthRegistrationFetch = (
   // The body is part of an in-memory de-duplication key only. It is never
   // persisted, traced, logged, placed in a URL, or exposed as an error.
   const requestKey = `${issuer}\n${new URL(registrationEndpoint!).toString()}\n${body}`;
+  const callerSignal = init?.signal || request?.signal;
+  if (callerSignal?.aborted) throw registrationAbortReason(callerSignal);
   const existing = pendingRegistrationRequests.get(requestKey);
   if (existing) {
-    const response = (await existing).clone();
-    return markOAuthTraceResponseOrigin(response, {
-      route: 'proxy',
-      source: response.headers.get('x-mcp-proxy-response-source') === 'target'
-        ? 'target'
-        : 'proxy',
-    });
+    return cloneRegistrationResponse(await awaitRegistrationRequest(existing, callerSignal));
   }
 
   const relay = new URL(proxy.url);
@@ -767,13 +819,14 @@ const createOAuthRegistrationFetch = (
     // Equality assertion only: the Worker rediscovers and selects the target.
     'x-mcp-oauth-registration-endpoint': new URL(registrationEndpoint!).toString(),
   });
+  const controller = new AbortController();
   const relayRequest = (async (): Promise<Response> => {
     try {
       const response = await (proxy.fetchFn || fetch)(relay, {
         method: 'POST',
         headers,
         body,
-        signal: init?.signal || request?.signal,
+        signal: controller.signal,
         credentials: 'omit',
         redirect: 'error',
       });
@@ -788,18 +841,28 @@ const createOAuthRegistrationFetch = (
       throw markOAuthTraceErrorOrigin(relayError, { route: 'proxy', source: 'proxy' });
     }
   })();
-  pendingRegistrationRequests.set(requestKey, relayRequest);
-  try {
-    const response = (await relayRequest).clone();
-    return markOAuthTraceResponseOrigin(response, {
-      route: 'proxy',
-      source: response.headers.get('x-mcp-proxy-response-source') === 'target'
-        ? 'target'
-        : 'proxy',
-    });
-  } finally {
-    pendingRegistrationRequests.delete(requestKey);
-  }
+  const pending: PendingRegistrationRequest = {
+    controller,
+    promise: relayRequest,
+    activeCallers: 0,
+    settled: false,
+  };
+  pendingRegistrationRequests.set(requestKey, pending);
+  void relayRequest.then(
+    () => {
+      pending.settled = true;
+      if (pendingRegistrationRequests.get(requestKey) === pending) {
+        pendingRegistrationRequests.delete(requestKey);
+      }
+    },
+    () => {
+      pending.settled = true;
+      if (pendingRegistrationRequests.get(requestKey) === pending) {
+        pendingRegistrationRequests.delete(requestKey);
+      }
+    }
+  );
+  return cloneRegistrationResponse(await awaitRegistrationRequest(pending, callerSignal));
 };
 
 const createOAuthTokenProxyFetch = (
@@ -1050,6 +1113,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     if (storedClient?.registeredManually) return undefined;
     if (!storedClient) return undefined;
     this.trace?.registerSecret(storedClient.client_secret);
+    if (storedClient.client_secret && !this.hostedTokenRelayAvailable) {
+      throw new OAuthProxyAuthenticationRequiredError();
+    }
     return storedClient;
   }
 
