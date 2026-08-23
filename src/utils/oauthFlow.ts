@@ -1093,14 +1093,16 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     const callbackUrl = new URL(this.redirectUrl);
     const supportedTokenAuthMethods = this.discoveryState()
       ?.authorizationServerMetadata?.token_endpoint_auth_methods_supported;
+    // RFC 8414 defaults omitted metadata to client_secret_basic. Only select
+    // that confidential default when the authenticated hosted relay can use it.
     const tokenEndpointAuthMethod = this.hostedTokenRelayAvailable
-      && supportedTokenAuthMethods?.length
-      && !supportedTokenAuthMethods.includes('none')
-      ? supportedTokenAuthMethods.includes('client_secret_post')
-        ? 'client_secret_post'
-        : supportedTokenAuthMethods.includes('client_secret_basic')
-          ? 'client_secret_basic'
-          : 'none'
+      ? supportedTokenAuthMethods === undefined
+        ? 'client_secret_basic'
+        : supportedTokenAuthMethods.includes('client_secret_post')
+          ? 'client_secret_post'
+          : supportedTokenAuthMethods.includes('client_secret_basic')
+            ? 'client_secret_basic'
+            : 'none'
       : 'none';
     if (callbackUrl.toString() === `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`) {
       const { client_id: _clientId, ...metadata } = publishedClientMetadata;

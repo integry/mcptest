@@ -587,7 +587,7 @@ describe('SDK OAuth registration order', () => {
     expect(calls.filter(({ url }) => url === registrationEndpoint)).toHaveLength(0);
   });
 
-  it('falls back to DCR when CIMD is not advertised', async () => {
+  it('falls back to public DCR when CIMD and token auth metadata are omitted', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     let redirectUrl: URL | undefined;
     const provider = new BrowserOAuthProvider(SERVER_URL, {
@@ -2324,6 +2324,88 @@ describe('hosted dynamic client registration relay', () => {
     ]));
     expect(JSON.stringify(trace)).not.toContain('supabase-session-secret');
     expect(localStorage.length).toBe(0);
+  });
+
+  it('preserves the client_secret_basic default end to end when AS metadata omits token auth methods', async () => {
+    const target = 'https://mcp.omitted-auth.example/mcp';
+    const issuer = 'https://auth.omitted-auth.example';
+    const registrationEndpoint = `${issuer}/register`;
+    const tokenEndpoint = `${issuer}/token`;
+    const authorizationEndpoint = `${issuer}/authorize`;
+    const clientSecret = 'default-basic-session-secret';
+    let authorizationUrl: URL | undefined;
+    const directFetch: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse({
+          issuer,
+          authorization_endpoint: authorizationEndpoint,
+          token_endpoint: tokenEndpoint,
+          registration_endpoint: registrationEndpoint,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        });
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        throw new Error('Hosted DCR must not be sent directly from the browser.');
+      }
+      if (url === tokenEndpoint && init?.method === 'POST') {
+        throw new Error('A confidential token request must not be sent directly from the browser.');
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const proxyFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/oauth/register')) {
+        const submitted = JSON.parse(String(init?.body));
+        expect(submitted.token_endpoint_auth_method).toBe('client_secret_basic');
+        return jsonResponse({
+          redirect_uris: submitted.redirect_uris,
+          client_id: 'default-basic-client',
+          client_secret: clientSecret,
+        }, {
+          status: 201,
+          headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+        });
+      }
+
+      expect(url).toBe('https://proxy.mcptest.test/oauth/token');
+      expect(new Headers(init?.headers).get('x-mcp-oauth-client-authorization'))
+        .toMatch(/^Basic /);
+      expect(String(init?.body)).not.toContain(clientSecret);
+      return jsonResponse({ access_token: 'default-basic-access', token_type: 'Bearer' }, {
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    });
+    const hostedProxy = {
+      url: 'https://proxy.mcptest.test/',
+      authorizationToken: 'firebase-session',
+      fetchFn: proxyFetch,
+    };
+
+    await expect(beginOAuthFlow(target, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn: directFetch,
+      tokenProxy: hostedProxy,
+      redirect: url => { authorizationUrl = url; },
+    })).resolves.toBe('REDIRECT');
+
+    expect(authorizationUrl?.searchParams.get('client_id')).toBe('default-basic-client');
+    const state = authorizationUrl!.searchParams.get('state');
+    await expect(completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=default-basic-code&state=${state}`,
+      {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: directFetch,
+        tokenProxy: hostedProxy,
+      }
+    )).resolves.toMatchObject({ serverUrl: target });
+
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(loadOAuthAuthorization(target)?.accessToken).toBe('default-basic-access');
   });
 
   it('does not retry a readable registration rejection', async () => {
