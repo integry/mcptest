@@ -225,7 +225,6 @@ const isForbiddenIpv6 = (groups: number[]): boolean => {
       [[0x2001, 1, 0, 0, 0, 0, 0, 3], 128], // DNS-SD registration anycast.
       [[0x2001, 3, 0, 0, 0, 0, 0, 0], 32], // AMT.
       [[0x2001, 4, 0x112, 0, 0, 0, 0, 0], 48], // AS112-v6.
-      [[0x2001, 0x20, 0, 0, 0, 0, 0, 0], 28], // ORCHIDv2.
       [[0x2001, 0x30, 0, 0, 0, 0, 0, 0], 28], // Drone Remote ID DETs.
     ].some(([network, prefixLength]) => ipv6IsInCidr(
       groups,
@@ -330,11 +329,12 @@ const discoverWorkerAuthorizationMetadata = async (
 };
 
 const operatorProviderForIssuer = (issuer: URL): OperatorOAuthProvider | undefined => {
-  const hostname = issuer.hostname.toLowerCase();
-  if (hostname === 'api.figma.com') return 'figma';
-  if (hostname === 'slack.com' || hostname.endsWith('.slack.com')) return 'slack';
-  if (hostname === 'github.com' || hostname.endsWith('.github.com')) return 'github';
-  return undefined;
+  const approvedIssuers: Record<string, OperatorOAuthProvider> = {
+    'https://api.figma.com/': 'figma',
+    'https://slack.com/': 'slack',
+    'https://github.com/login/oauth': 'github',
+  };
+  return approvedIssuers[issuer.toString()];
 };
 
 const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'refresh_token' => {

@@ -303,6 +303,7 @@ describe('hosted OAuth token route', () => {
     ['NAT64-mapped loopback IPv6', 'https://[64:ff9b::127.0.0.1]/'],
     ['unspecified IPv6', 'https://[::]/'],
     ['reserved IETF protocol assignment IPv6', 'https://[2001:100::1]/'],
+    ['ORCHIDv2 IPv6', 'https://[2001:20::1]/'],
     ['reserved documentation IPv6', 'https://[2001:db8::1]/'],
     ['unallocated IPv6', 'https://[4000::1]/'],
     ['short IPv4 loopback', 'https://127.1/'],
@@ -360,7 +361,7 @@ describe('hosted OAuth token route', () => {
     ['public IPv4 issuer', 'https://8.8.8.8/', tokenEndpoint],
     ['public IPv6 issuer', 'https://[2606:4700:4700::1111]/', tokenEndpoint],
     ['global AMT protocol assignment', 'https://[2001:3::1]/', tokenEndpoint],
-    ['global ORCHIDv2 protocol assignment', 'https://[2001:20::1]/', tokenEndpoint],
+    ['global Drone Remote ID protocol assignment', 'https://[2001:30::1]/', tokenEndpoint],
     ['public IPv4 token endpoint', issuer, 'https://1.1.1.1/token'],
     ['public IPv6 token endpoint', issuer, 'https://[2606:4700:4700::1001]/token'],
     ['public IPv4-mapped endpoint', issuer, 'https://[::ffff:8.8.8.8]/token'],
@@ -434,7 +435,7 @@ describe('hosted OAuth token route', () => {
 
   it('keeps confidential operator secrets server-side', async () => {
     const slackIssuer = 'https://slack.com/';
-    const slackTokenEndpoint = 'https://slack.com/api/oauth.v2.access';
+    const slackTokenEndpoint = 'https://tokens.example.net/slack/access';
     const operatorClientId = 'operator client:plus+percent%&';
     const operatorClientSecret = 'operator secret:/+?%&=';
     const requests: Request[] = [];
@@ -484,6 +485,49 @@ describe('hosted OAuth token route', () => {
     expect(response.status).toBe(200);
     expect(requests.filter(targetRequest => targetRequest.url === slackTokenEndpoint)).toHaveLength(1);
     expect(await response.text()).not.toContain(operatorClientSecret);
+  });
+
+  it('does not authenticate an endpoint advertised by a provider subdomain issuer', async () => {
+    const unapprovedIssuer = 'https://attacker.slack.com/';
+    const advertisedEndpoint = 'https://tokens.example.net/collect';
+    const operatorClientId = 'operator-client';
+    const operatorClientSecret = 'operator-secret';
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'attacker-code',
+      code_verifier: 'attacker-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: operatorClientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url.includes('/.well-known/')) {
+        return new Response(JSON.stringify({
+          issuer: unapprovedIssuer,
+          token_endpoint: advertisedEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new Error('Unapproved token endpoint must not be fetched');
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body, advertisedEndpoint, unapprovedIssuer),
+      {
+        FIREBASE_PROJECT_ID: 'test-project',
+        SLACK_OAUTH_CLIENT_ID: operatorClientId,
+        SLACK_OAUTH_CLIENT_SECRET: operatorClientSecret,
+      },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      'https://attacker.slack.com/.well-known/oauth-authorization-server',
+    ]);
+    expect(requests[0].headers.get('authorization')).toBeNull();
   });
 
   it.each([
