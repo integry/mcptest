@@ -8,8 +8,6 @@ export interface OAuthProviderPolicy {
   documentationUrl: string;
   registrationUrl?: string;
   registrationMode: 'browser-public' | 'provider-approved' | 'operator-confidential';
-  /** Prefer DCR when a provider advertises both DCR and a non-working CIMD path. */
-  preferDynamicRegistration?: boolean;
   supportsBearerToken?: boolean;
   bearerTokenName?: string;
   /** Exact endpoint whose otherwise opaque rejection is covered by provider policy. */
@@ -53,7 +51,6 @@ const PROVIDER_POLICIES: readonly OAuthProviderPolicy[] = [
     issuerHosts: ['mcp.upwork.com'],
     documentationUrl: 'https://www.upwork.com/ai/mcp',
     registrationMode: 'browser-public',
-    preferDynamicRegistration: true,
   },
 ] as const;
 
@@ -115,8 +112,3 @@ export const providerForbidsDynamicRegistration = (
   serverUrl: string,
   issuer?: string
 ): boolean => getOAuthProviderPolicy(serverUrl, issuer)?.registrationMode === 'operator-confidential';
-
-export const providerPrefersDynamicRegistration = (
-  serverUrl: string,
-  issuer?: string
-): boolean => getOAuthProviderPolicy(serverUrl, issuer)?.preferDynamicRegistration === true;

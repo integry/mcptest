@@ -160,6 +160,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${issuer}authorize`,
               token_endpoint: `${issuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           provider.saveTokens(
@@ -176,6 +177,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${otherIssuer}authorize`,
               token_endpoint: `${otherIssuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           otherProvider.saveTokens(
@@ -323,6 +325,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${issuer}authorize`,
               token_endpoint: `${issuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           provider.saveTokens(
@@ -386,6 +389,7 @@ describe('connection URL finalization', () => {
           authorization_endpoint: `${issuer}authorize`,
           token_endpoint: `${issuer}token`,
           response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
         },
       });
       provider.saveTokens(
@@ -461,6 +465,7 @@ describe('connection URL finalization', () => {
         authorization_endpoint: `${issuer}authorize`,
         token_endpoint: `${issuer}token`,
         response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
       },
     });
     provider.saveTokens(
@@ -506,6 +511,7 @@ describe('connection URL finalization', () => {
         authorization_endpoint: `${issuer}authorize`,
         token_endpoint: `${issuer}token`,
         response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
       },
     });
     provider.saveTokens(
@@ -588,6 +594,7 @@ describe('connection URL finalization', () => {
           authorization_endpoint: `${issuer}authorize`,
           token_endpoint: `${issuer}token`,
           response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
         },
       });
       provider.saveTokens(
@@ -652,6 +659,7 @@ describe('connection URL finalization', () => {
           authorization_endpoint: `${issuer}authorize`,
           token_endpoint: `${issuer}token`,
           response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
         },
       });
       provider.saveTokens(
@@ -737,6 +745,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${issuer}authorize`,
               token_endpoint: `${issuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           callbackState = provider.state();
@@ -962,7 +971,7 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
-  it('does not acquire or supply a discovery proxy when proxy fallback is disabled', async () => {
+  it('keeps discovery and token exchange direct outside the production origin', async () => {
     const endpoint = 'https://direct-discovery.example/mcp';
     const getIdToken = vi.fn().mockResolvedValue('proxy-session-token');
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
@@ -984,6 +993,9 @@ describe('connection URL finalization', () => {
     expect(getIdToken).not.toHaveBeenCalled();
     expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
       discoveryProxy: expect.anything(),
+    }));
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
+      tokenProxy: expect.anything(),
     }));
     view.unmount();
   });

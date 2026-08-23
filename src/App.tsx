@@ -61,6 +61,7 @@ import {
 import {
   beginOAuthFlow,
   clearOAuthTokens,
+  getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
@@ -181,7 +182,11 @@ export const beginSavedCardOAuthFlow = async ({
   discoveryProxyApplicable: boolean;
   startFlow?: typeof beginOAuthFlow;
 }) => {
-  const discoveryProxyToken = discoveryProxyApplicable && proxyUrl && currentUser
+  const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+  const proxyAuthenticationRequired = Boolean(
+    (discoveryProxyApplicable && proxyUrl) || tokenProxyUrl
+  );
+  const discoveryProxyToken = proxyAuthenticationRequired && currentUser
     ? await currentUser.getIdToken()
     : undefined;
 
@@ -195,6 +200,14 @@ export const beginSavedCardOAuthFlow = async ({
       ? {
           discoveryProxy: {
             url: proxyUrl,
+            authorizationToken: discoveryProxyToken,
+          },
+        }
+      : {}),
+    ...(tokenProxyUrl
+      ? {
+          tokenProxy: {
+            url: tokenProxyUrl,
             authorizationToken: discoveryProxyToken,
           },
         }

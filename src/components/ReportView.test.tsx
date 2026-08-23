@@ -238,6 +238,10 @@ describe('ReportView OAuth discovery', () => {
         deferAuthorizedTraceOutcome: true,
       })
     );
+    expect(oauthMocks.begin).toHaveBeenCalledWith(
+      'https://api.githubcopilot.com/mcp/',
+      expect.not.objectContaining({ tokenProxy: expect.anything() })
+    );
   });
 
   it('passes ephemeral challenge metadata and scope into report OAuth discovery', async () => {

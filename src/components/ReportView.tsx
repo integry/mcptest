@@ -7,6 +7,7 @@ import ReleaseReadinessReport from './ReleaseReadinessReport';
 import ReportHistory from './ReportHistory';
 import {
   beginOAuthFlow,
+  getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
@@ -487,6 +488,7 @@ const ReportView: React.FC = () => {
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+      const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
       const discoveryProxyToken = proxyUrl && currentUser
         ? await currentUser.getIdToken()
         : undefined;
@@ -502,6 +504,14 @@ const ReportView: React.FC = () => {
           ? {
               discoveryProxy: {
                 url: proxyUrl,
+                authorizationToken: discoveryProxyToken,
+              },
+            }
+          : {}),
+        ...(tokenProxyUrl
+          ? {
+              tokenProxy: {
+                url: tokenProxyUrl,
                 authorizationToken: discoveryProxyToken,
               },
             }

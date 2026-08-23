@@ -1,7 +1,7 @@
 // CORS Proxy Worker with Authentication
 // This worker provides a CORS proxy for authenticated users only
 
-interface Env {
+export interface Env {
   FIREBASE_PROJECT_ID: string;
   /** Server-only operator OAuth configuration. Set these with `wrangler secret put`. */
   FIGMA_OAUTH_CLIENT_ID?: string;
@@ -66,11 +66,464 @@ const REQUIRED_CORS_REQUEST_HEADERS = [
   'Mcp-Name',
   'Mcp-Session-Id',
   'X-MCP-Authorization',
+  'X-MCP-OAuth-Issuer',
+  'X-MCP-OAuth-Token-Endpoint',
   'x-api-key',
 ];
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 type ProxyResponseSource = 'proxy' | 'target';
+
+const HOSTED_ORIGIN = 'https://mcptest.io';
+const OAUTH_TOKEN_PATH = '/oauth/token';
+const OAUTH_FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded';
+const MAX_OAUTH_FORM_BYTES = 32 * 1024;
+
+type TokenRouteDependencies = {
+  fetchImpl?: (request: Request) => Promise<Response>;
+  verifyToken?: (token: string, projectId: string) => Promise<string | null>;
+};
+
+const oauthCorsHeaders = (
+  request: Request,
+  source: ProxyResponseSource = 'proxy'
+): Record<string, string> => {
+  const origin = request.headers.get('Origin');
+  return {
+    ...(origin === HOSTED_ORIGIN ? { 'Access-Control-Allow-Origin': HOSTED_ORIGIN } : {}),
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': [
+      'Accept',
+      'Authorization',
+      'Content-Type',
+      'X-MCP-OAuth-Issuer',
+      'X-MCP-OAuth-Token-Endpoint',
+    ].join(', '),
+    'Access-Control-Expose-Headers': PROXY_RESPONSE_SOURCE_HEADER,
+    'Cache-Control': 'no-store',
+    'Vary': 'Origin',
+    [PROXY_RESPONSE_SOURCE_HEADER]: source,
+  };
+};
+
+const oauthRouteError = (
+  request: Request,
+  message: string,
+  status: number
+): Response => new Response(message, {
+  status,
+  headers: {
+    ...oauthCorsHeaders(request, 'proxy'),
+    'Content-Type': 'text/plain; charset=utf-8',
+  },
+});
+
+const parseIpv4 = (hostname: string): number[] | undefined => {
+  const parts = hostname.split('.');
+  if (parts.length !== 4 || parts.some(part => !/^\d+$/.test(part))) return undefined;
+  const octets = parts.map(Number);
+  return octets.every(part => part >= 0 && part <= 255) ? octets : undefined;
+};
+
+const ipv4ToNumber = (octets: number[]): number => (
+  (((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256) + octets[3]
+);
+
+const ipv4IsInCidr = (octets: number[], network: number[], prefixLength: number): boolean => {
+  const divisor = 2 ** (32 - prefixLength);
+  return Math.floor(ipv4ToNumber(octets) / divisor) === Math.floor(ipv4ToNumber(network) / divisor);
+};
+
+const isForbiddenIpv4 = (octets: number[]): boolean => [
+  [[0, 0, 0, 0], 8],
+  [[10, 0, 0, 0], 8],
+  [[100, 64, 0, 0], 10],
+  [[127, 0, 0, 0], 8],
+  [[169, 254, 0, 0], 16],
+  [[172, 16, 0, 0], 12],
+  [[192, 0, 0, 0], 24],
+  [[192, 0, 2, 0], 24],
+  [[192, 88, 99, 0], 24],
+  [[192, 168, 0, 0], 16],
+  [[198, 18, 0, 0], 15],
+  [[198, 51, 100, 0], 24],
+  [[203, 0, 113, 0], 24],
+  [[224, 0, 0, 0], 4],
+  [[240, 0, 0, 0], 4],
+].some(([network, prefixLength]) => {
+  // These two anycast services are the globally reachable exceptions in 192.0.0.0/24.
+  if (octets[0] === 192 && octets[1] === 0 && octets[2] === 0 && (octets[3] === 9 || octets[3] === 10)) {
+    return false;
+  }
+  return ipv4IsInCidr(octets, network as number[], prefixLength as number);
+});
+
+const parseIpv6 = (hostname: string): number[] | undefined => {
+  const address = hostname.replace(/^\[|\]$/g, '');
+  if (!address.includes(':')) return undefined;
+  const halves = address.split('::');
+  if (halves.length > 2) return undefined;
+  const leading = halves[0] ? halves[0].split(':') : [];
+  const trailing = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const omittedCount = 8 - leading.length - trailing.length;
+  if ((halves.length === 1 && omittedCount !== 0) || omittedCount < (halves.length === 2 ? 1 : 0)) {
+    return undefined;
+  }
+  const groups = [
+    ...leading,
+    ...Array.from({ length: omittedCount }, () => '0'),
+    ...trailing,
+  ];
+  if (groups.length !== 8 || groups.some(group => !/^[0-9a-f]{1,4}$/i.test(group))) {
+    return undefined;
+  }
+  return groups.map(group => parseInt(group, 16));
+};
+
+const ipv6IsInCidr = (groups: number[], network: number[], prefixLength: number): boolean => {
+  const completeGroups = Math.floor(prefixLength / 16);
+  for (let index = 0; index < completeGroups; index += 1) {
+    if (groups[index] !== network[index]) return false;
+  }
+  const remainingBits = prefixLength % 16;
+  if (remainingBits === 0) return true;
+  const mask = (0xffff << (16 - remainingBits)) & 0xffff;
+  return (groups[completeGroups] & mask) === (network[completeGroups] & mask);
+};
+
+const isForbiddenIpv6 = (groups: number[]): boolean => {
+  // IPv4-mapped IPv6 literals are normalized by URL to hexadecimal groups.
+  // Classify their embedded address exactly as an IPv4 literal.
+  if (ipv6IsInCidr(groups, [0, 0, 0, 0, 0, 0xffff, 0, 0], 96)) {
+    return isForbiddenIpv4([
+      groups[6] >> 8,
+      groups[6] & 0xff,
+      groups[7] >> 8,
+      groups[7] & 0xff,
+    ]);
+  }
+  if (ipv6IsInCidr(groups, [0x64, 0xff9b, 0, 0, 0, 0, 0, 0], 96)) {
+    return isForbiddenIpv4([
+      groups[6] >> 8,
+      groups[6] & 0xff,
+      groups[7] >> 8,
+      groups[7] & 0xff,
+    ]);
+  }
+
+  // IPv6 global unicast space is currently allocated from 2000::/3. Default
+  // every other native IPv6 literal to forbidden instead of relying on an
+  // inevitably incomplete list of reserved and special-purpose ranges.
+  if (!ipv6IsInCidr(groups, [0x2000, 0, 0, 0, 0, 0, 0, 0], 3)) return true;
+
+  // IANA reserves 2001::/23 for protocol assignments and marks the parent
+  // range non-global unless a more-specific allocation says otherwise.
+  if (ipv6IsInCidr(groups, [0x2001, 0, 0, 0, 0, 0, 0, 0], 23)) {
+    const globallyReachableExceptions = [
+      [[0x2001, 1, 0, 0, 0, 0, 0, 1], 128], // PCP anycast.
+      [[0x2001, 1, 0, 0, 0, 0, 0, 2], 128], // TURN anycast.
+      [[0x2001, 1, 0, 0, 0, 0, 0, 3], 128], // DNS-SD registration anycast.
+      [[0x2001, 3, 0, 0, 0, 0, 0, 0], 32], // AMT.
+      [[0x2001, 4, 0x112, 0, 0, 0, 0, 0], 48], // AS112-v6.
+      [[0x2001, 0x30, 0, 0, 0, 0, 0, 0], 28], // Drone Remote ID DETs.
+    ].some(([network, prefixLength]) => ipv6IsInCidr(
+      groups,
+      network as number[],
+      prefixLength as number
+    ));
+    if (!globallyReachableExceptions) return true;
+  }
+
+  return [
+    [[0x2001, 0, 0, 0, 0, 0, 0, 0], 32], // Teredo.
+    [[0x2001, 0xdb8, 0, 0, 0, 0, 0, 0], 32], // Documentation.
+    [[0x2002, 0, 0, 0, 0, 0, 0, 0], 16], // Deprecated 6to4.
+    [[0x3fff, 0, 0, 0, 0, 0, 0, 0], 20], // Documentation.
+  ].some(([network, prefixLength]) => ipv6IsInCidr(
+    groups,
+    network as number[],
+    prefixLength as number
+  ));
+};
+
+const isForbiddenOAuthHostname = (hostnameValue: string): boolean => {
+  const hostname = hostnameValue.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (
+    hostname === 'localhost'
+    || hostname.endsWith('.localhost')
+    || hostname.endsWith('.local')
+    || hostname.endsWith('.internal')
+  ) return true;
+
+  const ipv4 = parseIpv4(hostname);
+  if (ipv4) return isForbiddenIpv4(ipv4);
+  const ipv6 = parseIpv6(hostname);
+  return ipv6 ? isForbiddenIpv6(ipv6) : false;
+};
+
+const parsePublicHttpsUrl = (value: string, label: string): URL => {
+  const url = new URL(value);
+  if (
+    url.protocol !== 'https:'
+    || url.username
+    || url.password
+    || url.hash
+    || isForbiddenOAuthHostname(url.hostname)
+  ) {
+    throw new Error(`${label} must be a public HTTPS URL`);
+  }
+  return url;
+};
+
+const buildAuthorizationServerDiscoveryUrls = (issuer: URL): URL[] => {
+  if (issuer.pathname === '/') {
+    return [
+      new URL('/.well-known/oauth-authorization-server', issuer.origin),
+      new URL('/.well-known/openid-configuration', issuer.origin),
+    ];
+  }
+  const path = issuer.pathname.endsWith('/')
+    ? issuer.pathname.slice(0, -1)
+    : issuer.pathname;
+  return [
+    new URL(`/.well-known/oauth-authorization-server${path}`, issuer.origin),
+    new URL(`/.well-known/openid-configuration${path}`, issuer.origin),
+    new URL(`${path}/.well-known/openid-configuration`, issuer.origin),
+  ];
+};
+
+interface WorkerAuthorizationMetadata {
+  issuer: string;
+  token_endpoint: string;
+  token_endpoint_auth_methods_supported?: string[];
+}
+
+const discoverWorkerAuthorizationMetadata = async (
+  issuer: URL,
+  expectedIssuer: string,
+  fetchImpl: (request: Request) => Promise<Response>
+): Promise<WorkerAuthorizationMetadata> => {
+  for (const discoveryUrl of buildAuthorizationServerDiscoveryUrls(issuer)) {
+    const response = await fetchTargetRequest(new Request(discoveryUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+    }), fetchImpl);
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      if (response.status >= 400 && response.status < 500) continue;
+      throw new Error('Authorization-server discovery failed');
+    }
+    const contentType = response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+    if (contentType !== 'application/json') {
+      await response.body?.cancel().catch(() => {});
+      throw new Error('Authorization-server discovery returned an unsupported content type');
+    }
+    const metadata = await response.json() as Partial<WorkerAuthorizationMetadata>;
+    if (metadata.issuer !== expectedIssuer || typeof metadata.token_endpoint !== 'string') {
+      throw new Error('Authorization-server discovery issuer mismatch');
+    }
+    return metadata as WorkerAuthorizationMetadata;
+  }
+  throw new Error('Authorization-server metadata is unavailable');
+};
+
+const operatorProviderForIssuer = (issuer: URL): OperatorOAuthProvider | undefined => {
+  const approvedIssuers: Record<string, OperatorOAuthProvider> = {
+    'https://api.figma.com/': 'figma',
+    'https://mcp.slack.com/': 'slack',
+    'https://github.com/login/oauth': 'github',
+  };
+  return approvedIssuers[issuer.toString()];
+};
+
+const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'refresh_token' => {
+  const securitySensitiveParameters = [
+    'grant_type',
+    'client_id',
+    'resource',
+    'code',
+    'code_verifier',
+    'redirect_uri',
+    'refresh_token',
+  ];
+  if (securitySensitiveParameters.some(name => params.getAll(name).length > 1)) {
+    throw new Error('OAuth token form contains duplicate security-sensitive parameters');
+  }
+  if (params.has('client_secret')) {
+    throw new Error('Browser-supplied OAuth client secrets are not accepted');
+  }
+  const grantType = params.get('grant_type');
+  const commonRequired = ['client_id', 'resource'];
+  const grantRequired = grantType === 'authorization_code'
+    ? ['code', 'code_verifier', 'redirect_uri']
+    : grantType === 'refresh_token'
+      ? ['refresh_token']
+      : undefined;
+  if (!grantRequired || [...commonRequired, ...grantRequired].some(name => !params.get(name))) {
+    throw new Error('OAuth token form is missing required parameters or uses an unsupported grant');
+  }
+  parsePublicHttpsUrl(params.get('resource')!, 'OAuth resource');
+  if (grantType === 'authorization_code') {
+    const redirectValue = params.get('redirect_uri')!;
+    const redirect = new URL(redirectValue);
+    const redirectHasUserinfo = Boolean(redirect.username || redirect.password)
+      || /^[a-z][a-z\d+.-]*:[\\/]*[^\\/?#]*@/i.test(redirectValue.trim());
+    const redirectHasFragment = redirectValue.includes('#');
+    const redirectHostname = redirect.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const redirectIpv4 = parseIpv4(redirectHostname);
+    const redirectIpv6 = parseIpv6(redirectHostname);
+    const isLoopbackHost = redirectHostname === 'localhost'
+      || redirectIpv4?.[0] === 127
+      || Boolean(redirectIpv6 && ipv6IsInCidr(
+        redirectIpv6,
+        [0, 0, 0, 0, 0, 0, 0, 1],
+        128
+      ));
+    const isHttpLoopback = redirect.protocol === 'http:' && isLoopbackHost;
+    if (
+      (redirect.protocol !== 'https:' && !isHttpLoopback)
+      || redirectHasUserinfo
+      || redirectHasFragment
+    ) {
+      throw new Error('OAuth redirect_uri must use HTTPS or localhost');
+    }
+    if (
+      params.get('client_id') === 'https://mcptest.io/oauth/client-metadata.json'
+      && redirect.toString() !== 'https://mcptest.io/oauth/callback'
+    ) {
+      throw new Error('OAuth redirect_uri does not match the published client metadata');
+    }
+  }
+  return grantType as 'authorization_code' | 'refresh_token';
+};
+
+const encodeFormComponent = (value: string): string => {
+  const encoded = new URLSearchParams({ value }).toString();
+  return encoded.slice('value='.length);
+};
+
+const applyOperatorClientAuthentication = (
+  env: Env,
+  issuer: URL,
+  metadata: WorkerAuthorizationMetadata,
+  params: URLSearchParams,
+  targetHeaders: Headers,
+  originalBody: string
+): string => {
+  const provider = operatorProviderForIssuer(issuer);
+  const operatorClient = provider ? getOperatorOAuthClient(env, provider) : undefined;
+  const methods = metadata.token_endpoint_auth_methods_supported || [];
+  if (!operatorClient || params.get('client_id') !== operatorClient.clientId) {
+    if (methods.length > 0 && !methods.includes('none')) {
+      throw new Error('This authorization server requires an operator-configured confidential OAuth client');
+    }
+    return originalBody;
+  }
+
+  if (methods.length === 0 || methods.includes('client_secret_basic')) {
+    const basic = btoa(`${encodeFormComponent(operatorClient.clientId)}:${encodeFormComponent(operatorClient.clientSecret)}`);
+    targetHeaders.set('Authorization', `Basic ${basic}`);
+  } else if (methods.includes('client_secret_post')) {
+    params.set('client_secret', operatorClient.clientSecret);
+  } else {
+    throw new Error('Operator OAuth client authentication method is unsupported');
+  }
+  return params.toString();
+};
+
+export async function handleOAuthTokenRequest(
+  request: Request,
+  env: Env,
+  dependencies: TokenRouteDependencies = {}
+): Promise<Response> {
+  if (request.headers.get('Origin') !== HOSTED_ORIGIN) {
+    return oauthRouteError(request, 'Error: OAuth token proxy origin is not allowed.', 403);
+  }
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: oauthCorsHeaders(request) });
+  }
+  if (request.method !== 'POST') {
+    return oauthRouteError(request, 'Error: OAuth token proxy requires POST.', 405);
+  }
+  const mediaType = request.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== OAUTH_FORM_CONTENT_TYPE) {
+    return oauthRouteError(request, 'Error: OAuth token proxy requires form-urlencoded content.', 415);
+  }
+  const authorization = request.headers.get('Authorization');
+  const firebaseToken = authorization?.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : undefined;
+  if (!firebaseToken) {
+    return oauthRouteError(request, 'Error: Authentication required. Sign in to mcptest.', 401);
+  }
+  const verifyToken = dependencies.verifyToken || verifyFirebaseToken;
+  if (!await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID)) {
+    return oauthRouteError(request, 'Error: Invalid authentication token. Sign in again.', 401);
+  }
+
+  try {
+    const issuerHeader = request.headers.get('X-MCP-OAuth-Issuer');
+    const expectedEndpointHeader = request.headers.get('X-MCP-OAuth-Token-Endpoint');
+    if (!issuerHeader || !expectedEndpointHeader) {
+      return oauthRouteError(request, 'Error: Validated OAuth issuer binding is required.', 400);
+    }
+    const issuer = parsePublicHttpsUrl(issuerHeader, 'OAuth issuer');
+    if (issuer.search) {
+      return oauthRouteError(request, 'Error: OAuth issuer must not contain a query.', 400);
+    }
+    const body = await request.text();
+    if (new TextEncoder().encode(body).byteLength > MAX_OAUTH_FORM_BYTES) {
+      return oauthRouteError(request, 'Error: OAuth token form is too large.', 413);
+    }
+    const params = new URLSearchParams(body);
+    validateTokenForm(params);
+    const fetchImpl = dependencies.fetchImpl || fetch;
+    const metadata = await discoverWorkerAuthorizationMetadata(issuer, issuerHeader, fetchImpl);
+    const tokenEndpoint = parsePublicHttpsUrl(metadata.token_endpoint, 'OAuth token endpoint');
+    if (tokenEndpoint.toString() !== new URL(expectedEndpointHeader).toString()) {
+      return oauthRouteError(request, 'Error: OAuth issuer/token-endpoint binding mismatch.', 400);
+    }
+
+    const targetHeaders = new Headers({
+      Accept: 'application/json',
+      'Content-Type': OAUTH_FORM_CONTENT_TYPE,
+    });
+    const targetBody = applyOperatorClientAuthentication(
+      env,
+      issuer,
+      metadata,
+      params,
+      targetHeaders,
+      body
+    );
+    const targetResponse = await fetchImpl(new Request(tokenEndpoint, {
+      method: 'POST',
+      headers: targetHeaders,
+      body: targetBody,
+      redirect: 'manual',
+    }));
+    if (targetResponse.status >= 300 && targetResponse.status < 400) {
+      await targetResponse.body?.cancel().catch(() => {});
+      throw new Error('OAuth token endpoint redirects are not allowed');
+    }
+    const responseType = targetResponse.headers.get('Content-Type') || 'application/json';
+    if (responseType.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
+      await targetResponse.body?.cancel().catch(() => {});
+      return oauthRouteError(request, 'Error: OAuth token endpoint returned an unsupported content type.', 502);
+    }
+    return new Response(targetResponse.body, {
+      status: targetResponse.status,
+      statusText: targetResponse.statusText,
+      headers: {
+        ...oauthCorsHeaders(request, 'target'),
+        'Content-Type': responseType,
+      },
+    });
+  } catch {
+    return oauthRouteError(request, 'Error: Could not complete the bound OAuth token request.', 502);
+  }
+}
 
 export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   const headers = new Headers(requestHeaders);
@@ -162,13 +615,17 @@ let publicKeysCacheExpiry = 0;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === OAUTH_TOKEN_PATH) {
+      return handleOAuthTokenRequest(request, env);
+    }
+
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
     }
 
     // Extract the target URL from query string
-    const url = new URL(request.url);
     const targetUrl = url.searchParams.get('target');
 
     if (!targetUrl) {
@@ -197,25 +654,14 @@ export default {
       });
     }
 
-    // Verify authentication - check both Authorization header and query parameter
+    // Verify authentication from the header only. Proxy credentials must never
+    // be placed in URLs, including for streaming transports.
     let token: string | null = null;
-    let tokenFromQueryParam = false;
     
     // First check Authorization header
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7);
-    }
-    
-    // If no header, check query parameter (for SSE support)
-    if (!token) {
-      const authParam = url.searchParams.get('auth');
-      if (authParam) {
-        // URL decode the token since it's passed as a query parameter
-        token = decodeURIComponent(authParam);
-        tokenFromQueryParam = true;
-        console.log('Using auth token from query parameter');
-      }
     }
     
     if (!token) {
