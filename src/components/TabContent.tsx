@@ -641,8 +641,23 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   // Wrapper function to handle resource access and save history
   // Effect to handle OAuth callback reconnection
+  const isHandlingReconnect = useRef(false);
   useEffect(() => {
+    if (!tab.shouldReconnect) {
+      isHandlingReconnect.current = false;
+      return;
+    }
+
     if (tab.shouldReconnect && !isConnecting && connectionStatus === 'Disconnected') {
+      if (isHandlingReconnect.current) return;
+      // Result-share and catalog tabs may already have scheduled their normal
+      // auto-connect effect. Let that path win instead of connecting twice.
+      if (hasAutoConnected.current) {
+        onUpdateTab(tab.id, { shouldReconnect: false });
+        return;
+      }
+      isHandlingReconnect.current = true;
+      hasAutoConnected.current = true;
       console.log('[OAuth] Reconnecting after successful authentication...');
       // Clear the shouldReconnect flag
       onUpdateTab(tab.id, { shouldReconnect: false });

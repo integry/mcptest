@@ -33,6 +33,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
 });
 
 import OAuthCallback from './OAuthCallback';
+import { OAUTH_RECONNECT_REQUEST_KEY } from '../utils/oauthReconnect';
 
 beforeAll(() => {
   (
@@ -59,6 +60,7 @@ describe('OAuthCallback authentication restoration', () => {
     if (root) act(() => root?.unmount());
     root = undefined;
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it('waits for a signed-in user to be restored before completing the hosted callback', async () => {
@@ -97,7 +99,88 @@ describe('OAuthCallback authentication restoration', () => {
       },
     });
     expect(callbackMocks.navigate).toHaveBeenCalledWith('/', {
-      state: { oauthSuccess: true },
+      state: {
+        oauthSuccess: true,
+        authorizedServerUrl: 'https://mcp.example/mcp',
+      },
+      replace: true,
+    });
+    expect(JSON.parse(sessionStorage.getItem(OAUTH_RECONNECT_REQUEST_KEY) || '{}')).toEqual({
+      serverUrl: 'https://mcp.example/mcp',
+    });
+    expect(sessionStorage.getItem(OAUTH_RECONNECT_REQUEST_KEY)).not.toContain(
+      'restored-firebase-token'
+    );
+  });
+
+  it.each([
+    {
+      label: 'dashboard',
+      returnView: {
+        activeView: 'dashboards',
+        selectedSpaceId: 'space-1',
+        selectedSpaceName: 'My Space',
+      },
+      path: '/space/my-space',
+      state: {
+        oauthSuccess: true,
+        authorizedServerUrl: 'https://mcp.example/mcp',
+        fromOAuthReturn: true,
+        targetSpaceId: 'space-1',
+      },
+    },
+    {
+      label: 'report',
+      returnView: {
+        activeView: 'report',
+        serverUrl: 'https://report-target.example/mcp',
+      },
+      path: '/report/https%3A%2F%2Freport-target.example%2Fmcp',
+      state: {
+        oauthSuccess: true,
+        authorizedServerUrl: 'https://mcp.example/mcp',
+        fromOAuthReturn: true,
+        serverUrl: 'https://report-target.example/mcp',
+      },
+    },
+  ])('preserves the saved $label return destination', async ({ returnView, path, state }) => {
+    sessionStorage.setItem('oauth_return_view', JSON.stringify(returnView));
+    authState.loading = false;
+    const container = document.createElement('div');
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<OAuthCallback />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(callbackMocks.navigate).toHaveBeenCalledWith(path, {
+      state,
+      replace: true,
+    });
+  });
+
+  it('uses navigation state when session storage cannot persist the reconnect request', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage is unavailable', 'SecurityError');
+    });
+    authState.loading = false;
+    const container = document.createElement('div');
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<OAuthCallback />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(callbackMocks.complete).toHaveBeenCalledOnce();
+    expect(callbackMocks.navigate).toHaveBeenCalledWith('/', {
+      state: {
+        oauthSuccess: true,
+        authorizedServerUrl: 'https://mcp.example/mcp',
+      },
       replace: true,
     });
   });
