@@ -718,6 +718,7 @@ const registrationAbortReason = (signal: AbortSignal): unknown => (
 
 const awaitRegistrationRequest = (
   pending: PendingRegistrationRequest,
+  requestKey: string,
   signal?: AbortSignal | null
 ): Promise<Response> => {
   if (signal?.aborted) return Promise.reject(registrationAbortReason(signal));
@@ -731,6 +732,11 @@ const awaitRegistrationRequest = (
       signal?.removeEventListener('abort', abort);
       pending.activeCallers -= 1;
       if (pending.activeCallers === 0 && !pending.settled) {
+        // Make an orphaned relay non-joinable before aborting it. Some fetch
+        // implementations do not reject promptly (or at all) after abort.
+        if (pendingRegistrationRequests.get(requestKey) === pending) {
+          pendingRegistrationRequests.delete(requestKey);
+        }
         pending.controller.abort(signal?.reason);
       }
       return true;
@@ -804,7 +810,11 @@ const createOAuthRegistrationFetch = (
   if (callerSignal?.aborted) throw registrationAbortReason(callerSignal);
   const existing = pendingRegistrationRequests.get(requestKey);
   if (existing) {
-    return cloneRegistrationResponse(await awaitRegistrationRequest(existing, callerSignal));
+    return cloneRegistrationResponse(await awaitRegistrationRequest(
+      existing,
+      requestKey,
+      callerSignal
+    ));
   }
 
   const relay = new URL(proxy.url);
@@ -862,7 +872,11 @@ const createOAuthRegistrationFetch = (
       }
     }
   );
-  return cloneRegistrationResponse(await awaitRegistrationRequest(pending, callerSignal));
+  return cloneRegistrationResponse(await awaitRegistrationRequest(
+    pending,
+    requestKey,
+    callerSignal
+  ));
 };
 
 const createOAuthTokenProxyFetch = (

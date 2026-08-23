@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import proxyWorker, {
   HostedOAuthBroker,
@@ -968,6 +969,14 @@ describe('hosted issuer-bound OAuth registration route', () => {
     token_endpoint_auth_methods_supported: ['client_secret_post'],
   }), { headers: { 'Content-Type': 'application/json' } });
 
+  it('enforces public-Internet routing for production outbound fetches', () => {
+    const workerConfiguration = readFileSync('wrangler.toml', 'utf8');
+
+    expect(workerConfiguration).toMatch(
+      /^compatibility_flags\s*=\s*\[[^\]]*"global_fetch_strictly_public"[^\]]*\]/m
+    );
+  });
+
   it('rediscovers and posts once to an exact cross-domain advertised endpoint', async () => {
     const requests: Request[] = [];
     const resolveHostname = vi.fn(async () => ['203.0.114.10']);
@@ -1057,6 +1066,41 @@ describe('hosted issuer-bound OAuth registration route', () => {
 
     expect(response.status).toBe(502);
     expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+  });
+
+  it('fails closed when outbound DNS rebinds privately after public validation', async () => {
+    const deliveredRequests: Request[] = [];
+    const outboundAddresses = new Map([
+      ['api.supabase.com', '203.0.114.10'],
+      ['registrations.example.net', '127.0.0.1'],
+    ]);
+    const fetchImpl = async (request: Request): Promise<Response> => {
+      const address = outboundAddresses.get(new URL(request.url).hostname);
+      // Models global_fetch_strictly_public rejecting the connection chosen by
+      // the runtime resolver before any HTTP request reaches a private target.
+      if (address === '127.0.0.1') {
+        throw new TypeError('Network destination is not publicly routable');
+      }
+      deliveredRequests.push(request);
+      if (request.url === discoveryUrl) return metadataResponse();
+      throw new Error(`Unexpected public request to ${request.url}`);
+    };
+
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl,
+        // The preflight sees a public address; the independent outbound
+        // resolver above changes only the registration hop to loopback.
+        resolveHostname: async () => ['203.0.114.10'],
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(502);
+    expect(deliveredRequests.map(request => request.url)).toEqual([discoveryUrl]);
+    expect(outboundAddresses.get('registrations.example.net')).toBe('127.0.0.1');
   });
 
   it.each([

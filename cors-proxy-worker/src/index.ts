@@ -88,9 +88,10 @@ const MAX_OAUTH_RESPONSE_BYTES = 64 * 1024;
 const MAX_OAUTH_METADATA_BYTES = 64 * 1024;
 
 type OAuthRouteDependencies = {
+  /** Test seam for the runtime's global, strictly-public fetch primitive. */
   fetchImpl?: (request: Request) => Promise<Response>;
   verifyToken?: (token: string, projectId: string) => Promise<string | null>;
-  /** Test seam; production uses DNS-over-HTTPS and rejects every non-public answer. */
+  /** Test seam; production also preflights DNS and rejects every non-public answer. */
   resolveHostname?: (hostname: string) => Promise<string[]>;
 };
 
@@ -344,6 +345,10 @@ const assertPublicResolvedUrl = async (
   ) {
     throw new Error('OAuth destination DNS resolved to a non-public address');
   }
+  // Production global fetches are additionally forced through Cloudflare's
+  // public-Internet path by global_fetch_strictly_public in wrangler.toml.
+  // That connection-time enforcement remains authoritative if DNS changes
+  // after this defense-in-depth preflight.
 };
 
 const readBoundedBody = async (

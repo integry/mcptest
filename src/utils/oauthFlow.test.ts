@@ -2482,4 +2482,75 @@ describe('hosted dynamic client registration relay', () => {
 
     expect(proxyFetch).toHaveBeenCalledOnce();
   });
+
+  it('starts a fresh registration relay before an orphaned cancelled relay settles', async () => {
+    const firstController = new AbortController();
+    const relayResolvers: Array<(response: Response) => void> = [];
+    const relaySignals: AbortSignal[] = [];
+    const proxyFetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      relaySignals.push(init?.signal as AbortSignal);
+      return new Promise<Response>(resolve => { relayResolvers.push(resolve); });
+    });
+    const authenticate = vi.fn(async (
+      provider: OAuthClientProvider,
+      options: AuthOptions
+    ) => {
+      await provider.saveDiscoveryState?.({
+        authorizationServerUrl: supabaseIssuer,
+        authorizationServerMetadata: {
+          issuer: supabaseIssuer,
+          authorization_endpoint: supabaseAuthorize,
+          token_endpoint: supabaseToken,
+          registration_endpoint: supabaseRegistration,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        },
+      });
+      const requestInit: RequestInit = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['https://mcptest.io/oauth/callback'],
+          client_name: 'mcptest.io MCP Inspector',
+        }),
+      };
+      const cancelledRequest = options.fetchFn!(supabaseRegistration, {
+        ...requestInit,
+        signal: firstController.signal,
+      });
+      await vi.waitFor(() => expect(proxyFetch).toHaveBeenCalledOnce());
+      firstController.abort();
+      await expect(cancelledRequest).rejects.toMatchObject({ name: 'AbortError' });
+      expect(relaySignals[0].aborted).toBe(true);
+
+      const freshRequest = options.fetchFn!(supabaseRegistration, requestInit);
+      await vi.waitFor(() => expect(proxyFetch).toHaveBeenCalledTimes(2));
+      expect(relaySignals[1].aborted).toBe(false);
+      relayResolvers[1](jsonResponse({
+        redirect_uris: ['https://mcptest.io/oauth/callback'],
+        client_id: 'fresh-client',
+      }, { headers: { 'X-MCP-Proxy-Response-Source': 'target' } }));
+      await expect(freshRequest.then(response => response.json())).resolves.toMatchObject({
+        client_id: 'fresh-client',
+      });
+
+      // Settle the obsolete relay after the replacement to exercise the old
+      // promise's identity-safe cleanup without deleting the fresh entry.
+      relayResolvers[0](jsonResponse({ client_id: 'cancelled-client' }));
+      return 'REDIRECT' as const;
+    });
+
+    await expect(beginOAuthFlow(supabaseServer, {
+      authenticate,
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      tokenProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-session',
+        fetchFn: proxyFetch,
+      },
+      redirect: vi.fn(),
+    })).resolves.toBe('REDIRECT');
+
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
+  });
 });
