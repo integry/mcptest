@@ -434,8 +434,8 @@ describe('hosted OAuth token route', () => {
   );
 
   it('keeps confidential operator secrets server-side', async () => {
-    const slackIssuer = 'https://slack.com/';
-    const slackTokenEndpoint = 'https://tokens.example.net/slack/access';
+    const slackIssuer = 'https://mcp.slack.com/';
+    const slackTokenEndpoint = 'https://slack.com/api/oauth.v2.user.access';
     const operatorClientId = 'operator client:plus+percent%&';
     const operatorClientSecret = 'operator secret:/+?%&=';
     const requests: Request[] = [];

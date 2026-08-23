@@ -331,7 +331,7 @@ const discoverWorkerAuthorizationMetadata = async (
 const operatorProviderForIssuer = (issuer: URL): OperatorOAuthProvider | undefined => {
   const approvedIssuers: Record<string, OperatorOAuthProvider> = {
     'https://api.figma.com/': 'figma',
-    'https://slack.com/': 'slack',
+    'https://mcp.slack.com/': 'slack',
     'https://github.com/login/oauth': 'github',
   };
   return approvedIssuers[issuer.toString()];
