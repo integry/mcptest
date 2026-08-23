@@ -203,6 +203,65 @@ describe('endpoint-scoped preferred transport hints', () => {
     view.unmount();
   });
 
+  it('uses the normal connection path once for an OAuth reconnect request', async () => {
+    vi.useFakeTimers();
+    const endpoint = 'https://mcp.example/mcp';
+    const tab: ConnectionTab = {
+      id: 'oauth-reconnect',
+      title: endpoint,
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      shouldReconnect: true,
+      useProxy: true,
+    };
+    const view = renderTab(tab);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, { shouldReconnect: false });
+
+    view.rerender(tab);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
+  it('does not duplicate an OAuth reconnect when auto-connect is already pending', async () => {
+    vi.useFakeTimers();
+    const endpoint = 'https://mcp.example/mcp';
+    const tab: ConnectionTab = {
+      id: 'oauth-auto-reconnect',
+      title: endpoint,
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      shouldReconnect: true,
+      autoConnect: true,
+      useProxy: true,
+    };
+    const view = renderTab(tab);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, { shouldReconnect: false });
+
+    view.rerender(tab);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
   it('uses definitive Streamable HTTP evidence for a suggested /sse endpoint', async () => {
     const view = renderNewTab(false);
     const firstConnectionButton = Array.from(view.container.querySelectorAll('button')).find(
