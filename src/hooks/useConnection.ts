@@ -11,6 +11,7 @@ import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import {
   beginOAuthFlow,
+  getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   getProxyAuthenticationPrerequisite,
   isOAuthClientConfigurationRequired,
@@ -725,7 +726,11 @@ export const useConnection = (
 
           try {
             const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
-            const discoveryProxyToken = proxyUrl && currentUser
+            const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+            const proxyAuthenticationRequired = Boolean(
+              (shouldUseProxy && proxyUrl) || tokenProxyUrl
+            );
+            const discoveryProxyToken = proxyAuthenticationRequired && currentUser
               ? await currentUser.getIdToken()
               : undefined;
             const result = await beginOAuthFlow(targetUrl, {
@@ -742,10 +747,10 @@ export const useConnection = (
                     },
                   }
                 : {}),
-              ...(proxyUrl
+              ...(tokenProxyUrl
                 ? {
                     tokenProxy: {
-                      url: proxyUrl,
+                      url: tokenProxyUrl,
                       authorizationToken: discoveryProxyToken,
                     },
                   }

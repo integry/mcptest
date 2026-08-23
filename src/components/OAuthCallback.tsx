@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   OAuthProxyAuthenticationRequiredError,
   completeOAuthFlow,
+  getHostedOAuthTokenProxyUrl,
 } from '../utils/oauthFlow';
 import { getSpaceUrl } from '../utils/urlUtils';
 import { useAuth } from '../context/AuthContext';
@@ -25,11 +26,11 @@ interface OAuthNavigationState {
 const OAuthCallback: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, loading } = useAuth();
   const processingRef = useRef(false);
 
   useEffect(() => {
-    if (processingRef.current) return;
+    if (loading || processingRef.current) return;
     processingRef.current = true;
 
     const addOAuthLog = (type: 'info' | 'error' | 'warning', message: string) => {
@@ -53,8 +54,9 @@ const OAuthCallback: React.FC = () => {
           window.location.origin
         );
         const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+        const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
         let proxyToken: string | undefined;
-        if (proxyUrl && currentUser) {
+        if (tokenProxyUrl && currentUser) {
           try {
             proxyToken = await currentUser.getIdToken();
           } catch {
@@ -62,10 +64,10 @@ const OAuthCallback: React.FC = () => {
           }
         }
         const { serverUrl } = await completeOAuthFlow(callbackUrl, {
-          ...(proxyUrl
+          ...(tokenProxyUrl
             ? {
                 tokenProxy: {
-                  url: proxyUrl,
+                  url: tokenProxyUrl,
                   authorizationToken: proxyToken,
                 },
               }
@@ -119,7 +121,7 @@ const OAuthCallback: React.FC = () => {
     };
 
     void handleOAuthCallback();
-  }, [currentUser, location.pathname, location.search, navigate]);
+  }, [currentUser, loading, location.pathname, location.search, navigate]);
 
   return (
     <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">

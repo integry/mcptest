@@ -9,6 +9,7 @@ import {
   beginOAuthFlow,
   clearOAuthTokens,
   completeOAuthFlow,
+  getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
@@ -360,6 +361,15 @@ describe('BrowserOAuthProvider', () => {
       redirect_uris: ['https://mcptest.io/oauth/callback'],
       token_endpoint_auth_method: 'none',
     });
+  });
+
+  it('enables the hosted token proxy only on the production origin', () => {
+    const proxyUrl = 'https://proxy.mcptest.test/';
+
+    expect(getHostedOAuthTokenProxyUrl(proxyUrl, 'https://mcptest.io')).toBe(proxyUrl);
+    expect(getHostedOAuthTokenProxyUrl(proxyUrl, 'https://preview.mcptest.io')).toBeUndefined();
+    expect(getHostedOAuthTokenProxyUrl(proxyUrl, 'http://localhost:5173')).toBeUndefined();
+    expect(getHostedOAuthTokenProxyUrl(undefined, 'https://mcptest.io')).toBeUndefined();
   });
 });
 

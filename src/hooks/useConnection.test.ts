@@ -971,7 +971,7 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
-  it('keeps discovery direct while preparing authenticated hosted token exchange', async () => {
+  it('keeps discovery and token exchange direct outside the production origin', async () => {
     const endpoint = 'https://direct-discovery.example/mcp';
     const getIdToken = vi.fn().mockResolvedValue('proxy-session-token');
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
@@ -990,15 +990,12 @@ describe('connection URL finalization', () => {
       await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
     });
 
-    expect(getIdToken).toHaveBeenCalledOnce();
+    expect(getIdToken).not.toHaveBeenCalled();
     expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
       discoveryProxy: expect.anything(),
     }));
-    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.objectContaining({
-      tokenProxy: {
-        url: 'https://proxy.mcptest.test/',
-        authorizationToken: 'proxy-session-token',
-      },
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
+      tokenProxy: expect.anything(),
     }));
     view.unmount();
   });

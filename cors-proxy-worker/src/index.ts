@@ -342,7 +342,8 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
   if (grantType === 'authorization_code') {
     const redirectValue = params.get('redirect_uri')!;
     const redirect = new URL(redirectValue);
-    const redirectHasUserinfo = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*@/i.test(redirectValue.trim());
+    const redirectHasUserinfo = Boolean(redirect.username || redirect.password)
+      || /^[a-z][a-z\d+.-]*:[\\/]*[^\\/?#]*@/i.test(redirectValue.trim());
     const redirectHasFragment = redirectValue.includes('#');
     const isHttpLoopback = redirect.protocol === 'http:'
       && (redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1');

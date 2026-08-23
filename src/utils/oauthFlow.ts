@@ -49,6 +49,11 @@ const PRODUCTION_ORIGIN = 'https://mcptest.io';
 export const OAUTH_CALLBACK_PATH = '/oauth/callback';
 export const OAUTH_CLIENT_METADATA_URL = `${PRODUCTION_ORIGIN}/oauth/client-metadata.json`;
 
+export const getHostedOAuthTokenProxyUrl = (
+  proxyUrl: string | undefined,
+  origin = window.location.origin
+): string | undefined => origin === PRODUCTION_ORIGIN ? proxyUrl : undefined;
+
 const OAUTH_SERVER_URL_KEY = 'oauth_server_url';
 const OAUTH_STORE_PREFIX = 'mcp_oauth_v2:';
 
