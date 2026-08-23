@@ -4,6 +4,7 @@ import {
   getObservedAuthenticationChallenge,
   TransportConnectionError,
   type ObservedTransportRequest,
+  type SafeTargetErrorDetail,
   type TransportCandidateFailure,
 } from './transportDetection';
 
@@ -30,6 +31,7 @@ export interface ConnectionAttemptFact {
   browserUnreadable: boolean;
   failureKind: ConnectionFailureKind;
   message: string;
+  targetError?: SafeTargetErrorDetail;
 }
 
 export interface ConnectionFailureEvidence {
@@ -101,6 +103,7 @@ const factFromCandidateFailure = (
       ? (failure.error as { status: number }).status
       : undefined);
   const failureKind = classifyFailure(failure.error, status);
+  const targetError = challenge?.targetError || request?.targetError;
 
   return {
     route,
@@ -117,6 +120,7 @@ const factFromCandidateFailure = (
     browserUnreadable: failureKind === 'browser-unreadable',
     failureKind,
     message: errorMessage(failure.error),
+    ...(targetError ? { targetError } : {}),
   };
 };
 
@@ -161,6 +165,7 @@ const collectErrorFacts = (
     ...(challenge?.method ? { method: challenge.method } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(challenge?.source ? { authenticationSource: challenge.source } : {}),
+    ...(challenge?.targetError ? { targetError: challenge.targetError } : {}),
     browserUnreadable: failureKind === 'browser-unreadable',
     failureKind,
     message: errorMessage(error),
@@ -197,6 +202,8 @@ export const collectConnectionAttemptFacts = (
       fact.responseSource,
       fact.failureKind,
       fact.message,
+      fact.targetError?.code,
+      fact.targetError?.message,
     ].join('|');
     if (!unique.has(key)) unique.set(key, fact);
   }

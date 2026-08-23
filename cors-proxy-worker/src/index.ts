@@ -539,6 +539,31 @@ export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   headers.delete('CF-RAY');
   headers.delete('CF-Visitor');
 
+  stripBrowserContextHeaders(headers);
+
+  return headers;
+}
+
+/**
+ * Removes browser provenance that has no meaning on the Worker's
+ * server-to-server hop. Prefix checks intentionally cover current and future
+ * Sec-Fetch and Sec-CH-UA variants, while Headers provides case-insensitive
+ * names for both checks and deletion.
+ */
+export function stripBrowserContextHeaders(headers: Headers): Headers {
+  for (const name of [...headers.keys()]) {
+    const normalizedName = name.toLowerCase();
+    if (
+      normalizedName === 'origin'
+      || normalizedName === 'referer'
+      || normalizedName === 'priority'
+      || normalizedName.startsWith('sec-fetch-')
+      || normalizedName.startsWith('sec-ch-ua')
+    ) {
+      headers.delete(name);
+    }
+  }
+
   return headers;
 }
 
@@ -549,6 +574,13 @@ export async function fetchTargetRequest(
   let currentRequest = request;
 
   for (let redirectCount = 0; redirectCount <= MAX_TARGET_REDIRECTS; redirectCount += 1) {
+    // Sanitize at the final forwarding boundary as well as in the authenticated
+    // route. This keeps GET/SSE calls and every same-origin redirect hop from
+    // carrying or reintroducing browser-only headers.
+    currentRequest = new Request(currentRequest, {
+      headers: stripBrowserContextHeaders(new Headers(currentRequest.headers)),
+      redirect: 'manual',
+    });
     const response = await fetchImpl(currentRequest.clone());
     if (!REDIRECT_STATUSES.has(response.status)) return response;
 

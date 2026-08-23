@@ -32,7 +32,12 @@ const attemptResult = (attempt: ConnectionAttemptFact): string => {
       : responseSource === 'proxy'
         ? ' from mcptest proxy'
         : '';
-    return `HTTP ${attempt.status}${owner}`;
+    const detail = attempt.targetError
+      ? ` — ${attempt.targetError.code !== undefined
+        ? `${typeof attempt.targetError.code === 'number' ? 'JSON-RPC ' : ''}${attempt.targetError.code}: `
+        : ''}${attempt.targetError.message}`
+      : '';
+    return `HTTP ${attempt.status}${owner}${detail}`;
   }
   switch (attempt.failureKind) {
     case 'browser-unreadable': return 'Browser response unreadable';

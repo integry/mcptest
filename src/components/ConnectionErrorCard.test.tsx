@@ -148,6 +148,41 @@ describe('evidence-based connection diagnostics', () => {
     }
   );
 
+  it('renders a bounded sanitized JSON-RPC target message with proxy provenance', () => {
+    const container = renderError({
+      expectedAuthentication: 'none',
+      serverUrl: 'https://mcp.cloudflare.com/mcp',
+      attempts: [
+        unreadableAttempt('https://mcp.cloudflare.com/mcp'),
+        {
+          route: 'proxy',
+          candidateUrl: 'https://mcp.cloudflare.com/mcp',
+          transportType: 'streamable-http',
+          method: 'POST',
+          status: 403,
+          responseSource: 'target',
+          browserUnreadable: false,
+          failureKind: 'authentication',
+          message: 'MCP target returned HTTP 403',
+          targetError: {
+            code: -32000,
+            message: 'Invalid Origin: mcptest.io; Authorization: [REDACTED]',
+          },
+        },
+      ],
+    });
+    const text = container.textContent || '';
+
+    expect(text).toContain('Authenticated proxy');
+    expect(text).toContain('https://mcp.cloudflare.com/mcp');
+    expect(text).toContain('HTTP 403 from target');
+    expect(text).toContain('JSON-RPC -32000: Invalid Origin: mcptest.io');
+    expect(text).toContain('[REDACTED]');
+    expect(text).not.toContain('firebase-jwt');
+    expect(text).not.toContain('target-secret');
+    expect(text).not.toContain('<html>');
+  });
+
   it('does not present a proxy-owned infrastructure response as the target response', () => {
     const container = renderError({
       expectedAuthentication: 'none',
