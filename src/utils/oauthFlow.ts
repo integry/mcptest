@@ -710,13 +710,12 @@ interface PendingRegistrationRequest {
   settled: boolean;
 }
 
-const pendingRegistrationRequests = new Map<string, PendingRegistrationRequest>();
-
 const registrationAbortReason = (signal: AbortSignal): unknown => (
   signal.reason ?? new DOMException('This operation was aborted', 'AbortError')
 );
 
 const awaitRegistrationRequest = (
+  pendingRequests: Map<string, PendingRegistrationRequest>,
   pending: PendingRegistrationRequest,
   requestKey: string,
   signal?: AbortSignal | null
@@ -734,8 +733,8 @@ const awaitRegistrationRequest = (
       if (pending.activeCallers === 0 && !pending.settled) {
         // Make an orphaned relay non-joinable before aborting it. Some fetch
         // implementations do not reject promptly (or at all) after abort.
-        if (pendingRegistrationRequests.get(requestKey) === pending) {
-          pendingRegistrationRequests.delete(requestKey);
+        if (pendingRequests.get(requestKey) === pending) {
+          pendingRequests.delete(requestKey);
         }
         pending.controller.abort(signal?.reason);
       }
@@ -767,10 +766,11 @@ const cloneRegistrationResponse = (response: Response): Response => {
   });
 };
 
-const createOAuthRegistrationFetch = (
+const createOAuthRegistrationFetchForPendingContext = (
   provider: BrowserOAuthProvider,
   proxy: OAuthTokenProxyOptions | undefined,
-  directFetch: FetchLike
+  directFetch: FetchLike,
+  pendingRegistrationRequests: Map<string, PendingRegistrationRequest>
 ): FetchLike => async (input, init) => {
   const { method, request, url } = requestMethodAndUrl(input, init);
   const requestHeaders = new Headers(init?.headers || request?.headers);
@@ -811,6 +811,7 @@ const createOAuthRegistrationFetch = (
   const existing = pendingRegistrationRequests.get(requestKey);
   if (existing) {
     return cloneRegistrationResponse(await awaitRegistrationRequest(
+      pendingRegistrationRequests,
       existing,
       requestKey,
       callerSignal
@@ -873,11 +874,23 @@ const createOAuthRegistrationFetch = (
     }
   );
   return cloneRegistrationResponse(await awaitRegistrationRequest(
+    pendingRegistrationRequests,
     pending,
     requestKey,
     callerSignal
   ));
 };
+
+const createOAuthRegistrationFetch = (
+  provider: BrowserOAuthProvider,
+  proxy: OAuthTokenProxyOptions | undefined,
+  directFetch: FetchLike
+): FetchLike => createOAuthRegistrationFetchForPendingContext(
+  provider,
+  proxy,
+  directFetch,
+  new Map()
+);
 
 const createOAuthTokenProxyFetch = (
   provider: BrowserOAuthProvider,

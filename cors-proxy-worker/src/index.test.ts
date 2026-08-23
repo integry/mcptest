@@ -446,7 +446,13 @@ describe('hosted OAuth token route', () => {
     await expect(response.json()).resolves.toMatchObject({ access_token: 'target-access-token' });
   });
 
-  it('relays form-encoded opaque client IDs with dynamic Basic authentication', async () => {
+  it.each([
+    ['advertises client_secret_basic', ['client_secret_basic']],
+    ['omits token endpoint authentication methods', undefined],
+  ])('relays form-encoded opaque client IDs with dynamic Basic authentication when metadata %s', async (
+    _,
+    tokenEndpointAuthMethods
+  ) => {
     const clientId = 'client id:percent%+&café';
     const clientSecret = 'dynamic secret';
     const encode = (value: string): string => (
@@ -470,7 +476,9 @@ describe('hosted OAuth token route', () => {
         return new Response(JSON.stringify({
           issuer,
           token_endpoint: tokenEndpoint,
-          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+          ...(tokenEndpointAuthMethods
+            ? { token_endpoint_auth_methods_supported: tokenEndpointAuthMethods }
+            : {}),
         }), { headers: { 'Content-Type': 'application/json' } });
       }
       expect(targetRequest.headers.get('authorization')).toBe(authorization);

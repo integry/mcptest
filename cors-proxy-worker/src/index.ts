@@ -558,7 +558,7 @@ const applyOperatorClientAuthentication = (
     const browserSecret = params.get('client_secret');
     if (dynamicClientAuthorization) {
       if (
-        !methods.includes('client_secret_basic')
+        (methods.length > 0 && !methods.includes('client_secret_basic'))
         || !dynamicClientAuthorization.startsWith('Basic ')
         || dynamicClientAuthorization.length > 8192
       ) {

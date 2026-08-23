@@ -2413,6 +2413,92 @@ describe('hosted dynamic client registration relay', () => {
     });
   });
 
+  it('keeps concurrent registration responses isolated across relay endpoints and credentials', async () => {
+    const otherServer = 'https://mcp-secondary.supabase.com/mcp';
+    let resolveFirstRelay!: (response: Response) => void;
+    let resolveSecondRelay!: (response: Response) => void;
+    const firstProxyFetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe('https://relay-one.mcptest.test/oauth/register');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer firebase-session-one');
+      return new Promise<Response>(resolve => { resolveFirstRelay = resolve; });
+    });
+    const secondProxyFetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe('https://relay-two.mcptest.test/oauth/register');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer firebase-session-two');
+      return new Promise<Response>(resolve => { resolveSecondRelay = resolve; });
+    });
+    const receivedClientIds: string[] = [];
+    const authenticate = async (
+      provider: OAuthClientProvider,
+      options: AuthOptions
+    ): Promise<'REDIRECT'> => {
+      await provider.saveDiscoveryState?.({
+        authorizationServerUrl: supabaseIssuer,
+        authorizationServerMetadata: {
+          issuer: supabaseIssuer,
+          authorization_endpoint: supabaseAuthorize,
+          token_endpoint: supabaseToken,
+          registration_endpoint: supabaseRegistration,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        },
+      });
+      const response = await options.fetchFn!(supabaseRegistration, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['https://mcptest.io/oauth/callback'],
+          client_name: 'mcptest.io MCP Inspector',
+        }),
+      });
+      const registration = await response.json() as { client_id: string };
+      receivedClientIds.push(registration.client_id);
+      return 'REDIRECT';
+    };
+
+    const firstFlow = beginOAuthFlow(supabaseServer, {
+      authenticate,
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      tokenProxy: {
+        url: 'https://relay-one.mcptest.test/',
+        authorizationToken: 'firebase-session-one',
+        fetchFn: firstProxyFetch,
+      },
+      redirect: vi.fn(),
+    });
+    await vi.waitFor(() => expect(firstProxyFetch).toHaveBeenCalledOnce());
+
+    const secondFlow = beginOAuthFlow(otherServer, {
+      authenticate,
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      tokenProxy: {
+        url: 'https://relay-two.mcptest.test/',
+        authorizationToken: 'firebase-session-two',
+        fetchFn: secondProxyFetch,
+      },
+      redirect: vi.fn(),
+    });
+    await vi.waitFor(() => expect(secondProxyFetch).toHaveBeenCalledOnce());
+
+    resolveFirstRelay(jsonResponse(
+      { client_id: 'first-relay-client' },
+      { headers: { 'X-MCP-Proxy-Response-Source': 'target' } }
+    ));
+    resolveSecondRelay(jsonResponse(
+      { client_id: 'second-relay-client' },
+      { headers: { 'X-MCP-Proxy-Response-Source': 'target' } }
+    ));
+    await expect(Promise.all([firstFlow, secondFlow])).resolves.toEqual([
+      'REDIRECT',
+      'REDIRECT',
+    ]);
+    expect(receivedClientIds).toEqual(expect.arrayContaining([
+      'first-relay-client',
+      'second-relay-client',
+    ]));
+    expect(receivedClientIds).toHaveLength(2);
+  });
+
   it('preserves each caller abort signal while de-duplicating hosted registration', async () => {
     const activeController = new AbortController();
     const abortedController = new AbortController();
