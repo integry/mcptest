@@ -86,6 +86,17 @@ const MAX_OAUTH_FORM_BYTES = 32 * 1024;
 const MAX_OAUTH_REGISTRATION_BYTES = 16 * 1024;
 const MAX_OAUTH_RESPONSE_BYTES = 64 * 1024;
 const MAX_OAUTH_METADATA_BYTES = 64 * 1024;
+const MAX_DYNAMIC_CLIENT_ID_LENGTH = 2048;
+const MAX_DYNAMIC_CLIENT_SECRET_LENGTH = 4096;
+// URLSearchParams can encode one UTF-16 code unit as three UTF-8 bytes, each
+// represented by a three-character percent escape. Keep every credential that
+// passes registration validation usable with client_secret_basic.
+const MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT = 9;
+const MAX_DYNAMIC_CLIENT_BASIC_AUTHORIZATION_LENGTH = 'Basic '.length + 4 * Math.ceil((
+  MAX_DYNAMIC_CLIENT_ID_LENGTH * MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT
+  + 1
+  + MAX_DYNAMIC_CLIENT_SECRET_LENGTH * MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT
+) / 3);
 
 type OAuthRouteDependencies = {
   /** Test seam for the runtime's global, strictly-public fetch primitive. */
@@ -473,6 +484,7 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
   const securitySensitiveParameters = [
     'grant_type',
     'client_id',
+    'client_secret',
     'resource',
     'code',
     'code_verifier',
@@ -493,8 +505,8 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
     throw new Error('OAuth token form is missing required parameters or uses an unsupported grant');
   }
   if (
-    params.get('client_id')!.length > 2048
-    || (params.get('client_secret')?.length || 0) > 4096
+    params.get('client_id')!.length > MAX_DYNAMIC_CLIENT_ID_LENGTH
+    || (params.get('client_secret')?.length || 0) > MAX_DYNAMIC_CLIENT_SECRET_LENGTH
   ) {
     throw new Error('OAuth client credentials are too large');
   }
@@ -560,7 +572,7 @@ const applyOperatorClientAuthentication = (
       if (
         (methods.length > 0 && !methods.includes('client_secret_basic'))
         || !dynamicClientAuthorization.startsWith('Basic ')
-        || dynamicClientAuthorization.length > 8192
+        || dynamicClientAuthorization.length > MAX_DYNAMIC_CLIENT_BASIC_AUTHORIZATION_LENGTH
       ) {
         throw new Error('Dynamic OAuth client authentication method is unsupported');
       }
@@ -574,6 +586,7 @@ const applyOperatorClientAuthentication = (
       }
       targetHeaders.set('Authorization', dynamicClientAuthorization);
       params.delete('client_id');
+      params.delete('client_secret');
     } else if (browserSecret) {
       if (methods.length > 0 && !methods.includes('client_secret_post')) {
         throw new Error('Dynamic OAuth client authentication method is unsupported');
@@ -650,6 +663,12 @@ export async function handleOAuthTokenRequest(
     }
     const params = new URLSearchParams(body);
     validateTokenForm(params);
+    const dynamicClientAuthorization = request.headers.get(
+      'X-MCP-OAuth-Client-Authorization'
+    );
+    if (dynamicClientAuthorization && params.has('client_secret')) {
+      throw new Error('OAuth token request contains multiple client authentication methods');
+    }
     const fetchImpl = dependencies.fetchImpl || fetch;
     const metadata = await discoverWorkerAuthorizationMetadata(
       issuer,
@@ -680,7 +699,7 @@ export async function handleOAuthTokenRequest(
       params,
       targetHeaders,
       body,
-      request.headers.get('X-MCP-OAuth-Client-Authorization')
+      dynamicClientAuthorization
     );
     const targetResponse = await fetchImpl(new Request(tokenEndpoint, {
       method: 'POST',
@@ -767,9 +786,11 @@ const validateRegistrationRequest = (value: unknown): RegistrationRequestBody =>
   }
   if (
     body.token_endpoint_auth_method !== undefined
-    && body.token_endpoint_auth_method !== 'none'
+    && !['none', 'client_secret_basic', 'client_secret_post'].includes(
+      String(body.token_endpoint_auth_method)
+    )
   ) {
-    throw new Error('OAuth registration must request public-client token authentication');
+    throw new Error('OAuth registration requests an unsupported token authentication method');
   }
   if (
     body.grant_types !== undefined
@@ -839,21 +860,36 @@ const sanitizeRegistrationError = (value: unknown): Record<string, string> => {
 
 const sanitizeRegistrationSuccess = (
   value: unknown,
-  requestBody: RegistrationRequestBody
+  requestBody: RegistrationRequestBody,
+  metadata: WorkerAuthorizationMetadata
 ): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('OAuth registration response must be a JSON object');
   }
   const input = value as Record<string, unknown>;
-  if (!isBoundedString(input.client_id, 2048)) {
+  if (!isBoundedString(input.client_id, MAX_DYNAMIC_CLIENT_ID_LENGTH)) {
     throw new Error('OAuth registration response has an invalid client_id');
+  }
+  for (const [field, returnedValue] of Object.entries(input)) {
+    if (!REGISTRATION_REQUEST_KEYS.has(field)) continue;
+    const requestedValue = requestBody[field];
+    const matchesRequest = Array.isArray(requestedValue)
+      ? Array.isArray(returnedValue)
+        && returnedValue.length === requestedValue.length
+        && [...returnedValue].sort().every((item, index) => (
+          item === [...requestedValue].sort()[index]
+        ))
+      : returnedValue === requestedValue;
+    if (!matchesRequest) {
+      throw new Error(`OAuth registration response conflicts with requested ${field}`);
+    }
   }
   const output: Record<string, unknown> = {
     ...requestBody,
     client_id: input.client_id,
   };
   if (input.client_secret !== undefined) {
-    if (!isBoundedString(input.client_secret, 4096)) {
+    if (!isBoundedString(input.client_secret, MAX_DYNAMIC_CLIENT_SECRET_LENGTH)) {
       throw new Error('OAuth registration response has an invalid client_secret');
     }
     output.client_secret = input.client_secret;
@@ -865,17 +901,26 @@ const sanitizeRegistrationSuccess = (
     }
     output[field] = input[field];
   }
-  if (input.token_endpoint_auth_method !== undefined) {
-    if (!['none', 'client_secret_basic', 'client_secret_post'].includes(
-      String(input.token_endpoint_auth_method)
-    )) {
-      throw new Error('OAuth registration response selected an unsupported token authentication method');
-    }
-    if (input.token_endpoint_auth_method !== 'none' && !output.client_secret) {
-      throw new Error('OAuth registration response requires a missing client_secret');
-    }
-    output.token_endpoint_auth_method = input.token_endpoint_auth_method;
+  const effectiveTokenAuthMethod = input.token_endpoint_auth_method
+    ?? requestBody.token_endpoint_auth_method
+    ?? 'client_secret_basic';
+  if (
+    typeof effectiveTokenAuthMethod !== 'string'
+    || !['none', 'client_secret_basic', 'client_secret_post'].includes(effectiveTokenAuthMethod)
+  ) {
+    throw new Error('OAuth registration response selected an unsupported token authentication method');
   }
+  const supportedMethods = metadata.token_endpoint_auth_methods_supported || [];
+  if (supportedMethods.length > 0 && !supportedMethods.includes(effectiveTokenAuthMethod)) {
+    throw new Error('OAuth registration response selected an unadvertised token authentication method');
+  }
+  if (effectiveTokenAuthMethod !== 'none' && !output.client_secret) {
+    throw new Error('OAuth registration response requires a missing client_secret');
+  }
+  if (effectiveTokenAuthMethod === 'none' && output.client_secret) {
+    throw new Error('OAuth registration response returned a client_secret for a public client');
+  }
+  output.token_endpoint_auth_method = effectiveTokenAuthMethod;
   return output;
 };
 
@@ -955,6 +1000,20 @@ export async function handleOAuthRegistrationRequest(
       fetchImpl,
       dependencies
     );
+    const requestedTokenAuthMethod = typeof registrationBody.token_endpoint_auth_method === 'string'
+      ? registrationBody.token_endpoint_auth_method
+      : 'client_secret_basic';
+    const supportedTokenAuthMethods = metadata.token_endpoint_auth_methods_supported || [];
+    if (
+      supportedTokenAuthMethods.length > 0
+      && !supportedTokenAuthMethods.includes(requestedTokenAuthMethod)
+    ) {
+      return oauthRouteError(
+        request,
+        'Error: OAuth registration token authentication method is not advertised.',
+        400
+      );
+    }
     if (typeof metadata.registration_endpoint !== 'string') {
       return oauthRouteError(request, 'Error: Authorization server does not advertise registration.', 400);
     }
@@ -1000,7 +1059,7 @@ export async function handleOAuthRegistrationRequest(
       return oauthRouteError(request, 'Error: OAuth registration endpoint returned invalid JSON.', 502);
     }
     const sanitized = targetResponse.ok
-      ? sanitizeRegistrationSuccess(providerJson, registrationBody)
+      ? sanitizeRegistrationSuccess(providerJson, registrationBody, metadata)
       : sanitizeRegistrationError(providerJson);
     return new Response(JSON.stringify(sanitized), {
       status: targetResponse.status,

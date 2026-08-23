@@ -802,7 +802,17 @@ const createOAuthRegistrationFetchForPendingContext = (
   }
   if (!proxy.authorizationToken) throw new OAuthProxyAuthenticationRequiredError();
 
-  const body = await oauthJsonRequestBody(request, init);
+  let body = await oauthJsonRequestBody(request, init);
+  try {
+    const registrationMetadata = JSON.parse(body) as Record<string, unknown>;
+    if (registrationMetadata && typeof registrationMetadata === 'object') {
+      registrationMetadata.token_endpoint_auth_method =
+        provider.clientMetadata.token_endpoint_auth_method;
+      body = JSON.stringify(registrationMetadata);
+    }
+  } catch {
+    // Preserve malformed input so the Worker remains the single validation boundary.
+  }
   // The body is part of an in-memory de-duplication key only. It is never
   // persisted, traced, logged, placed in a URL, or exposed as an error.
   const requestKey = `${issuer}\n${new URL(registrationEndpoint!).toString()}\n${body}`;
@@ -1081,9 +1091,20 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     const callbackUrl = new URL(this.redirectUrl);
+    const supportedTokenAuthMethods = this.discoveryState()
+      ?.authorizationServerMetadata?.token_endpoint_auth_methods_supported;
+    const tokenEndpointAuthMethod = this.hostedTokenRelayAvailable
+      && supportedTokenAuthMethods?.length
+      && !supportedTokenAuthMethods.includes('none')
+      ? supportedTokenAuthMethods.includes('client_secret_post')
+        ? 'client_secret_post'
+        : supportedTokenAuthMethods.includes('client_secret_basic')
+          ? 'client_secret_basic'
+          : 'none'
+      : 'none';
     if (callbackUrl.toString() === `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`) {
       const { client_id: _clientId, ...metadata } = publishedClientMetadata;
-      return metadata as OAuthClientMetadata;
+      return { ...metadata, token_endpoint_auth_method: tokenEndpointAuthMethod } as OAuthClientMetadata;
     }
     return {
       redirect_uris: [callbackUrl.toString()],
@@ -1092,7 +1113,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
       logo_uri: `${callbackUrl.origin}/logo.png`,
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
-      token_endpoint_auth_method: 'none',
+      token_endpoint_auth_method: tokenEndpointAuthMethod,
       application_type: 'web',
     };
   }
@@ -1244,24 +1265,28 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     if (isDynamicRegistration) {
       const supportedMethods = this.discoveryState()
         ?.authorizationServerMetadata?.token_endpoint_auth_methods_supported || [];
+      const effectiveTokenAuthMethod = clientInformation.token_endpoint_auth_method
+        || this.clientMetadata.token_endpoint_auth_method
+        || 'client_secret_basic';
       if (
-        !clientInformation.client_secret
-        && supportedMethods.length > 0
-        && !supportedMethods.includes('none')
+        supportedMethods.length > 0
+        && !supportedMethods.includes(effectiveTokenAuthMethod)
       ) {
         throw new Error(
-          'Dynamic registration did not issue the credential required by the authorization server. An operator-confidential OAuth client is required.'
+          'Dynamic registration selected a token authentication method that the authorization server does not advertise.'
         );
       }
       if (
-        clientInformation.client_secret
-        && supportedMethods.length > 0
-        && !supportedMethods.some(method => (
-          method === 'client_secret_basic' || method === 'client_secret_post'
-        ))
+        effectiveTokenAuthMethod !== 'none'
+        && !clientInformation.client_secret
       ) {
         throw new Error(
-          'The authorization server requires an unsupported operator-confidential token authentication method.'
+          'Dynamic registration did not issue the credential required by its selected token authentication method.'
+        );
+      }
+      if (effectiveTokenAuthMethod === 'none' && clientInformation.client_secret) {
+        throw new Error(
+          'Dynamic registration returned a client secret for a public-client token authentication method.'
         );
       }
     }

@@ -501,6 +501,82 @@ describe('hosted OAuth token route', () => {
     ]);
   });
 
+  it('rejects mixed dynamic Basic and form client authentication before discovery', async () => {
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: 'dynamic-client',
+      client_secret: 'form-secret',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set(
+      'X-MCP-OAuth-Client-Authorization',
+      `Basic ${btoa('dynamic-client:basic-secret')}`
+    );
+    const fetchImpl = vi.fn();
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('relays Basic credentials at the registration length boundaries', async () => {
+    const clientId = '\u0800'.repeat(2048);
+    const clientSecret = '\u0800'.repeat(4096);
+    const encode = (value: string): string => (
+      new URLSearchParams({ value }).toString().slice('value='.length)
+    );
+    const authorization = `Basic ${btoa(`${encode(clientId)}:${encode(clientSecret)}`)}`;
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set('X-MCP-OAuth-Client-Authorization', authorization);
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      expect(targetRequest.headers.get('authorization')).toBe(authorization);
+      expect(new URLSearchParams(await targetRequest.text()).has('client_secret')).toBe(false);
+      return new Response(JSON.stringify({ access_token: 'boundary-access-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(authorization).toHaveLength(73738);
+    expect(response.status).toBe(200);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      discoveryUrl,
+      tokenEndpoint,
+    ]);
+  });
+
   it('rejects an issuer/token-endpoint mismatch before a target token request', async () => {
     const requests: Request[] = [];
     const fetchImpl = async (request: Request) => {
@@ -946,7 +1022,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
   const registrationEndpoint = 'https://registrations.example.net/platform/oauth/apps/register';
   const registrationBody = {
     redirect_uris: ['https://mcptest.io/oauth/callback'],
-    token_endpoint_auth_method: 'none',
+    token_endpoint_auth_method: 'client_secret_post',
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
     application_type: 'web',
@@ -1037,6 +1113,57 @@ describe('hosted issuer-bound OAuth registration route', () => {
     expect(resolveHostname).toHaveBeenCalledWith('registrations.example.net');
   });
 
+  it.each([
+    ['redirect_uris', ['https://attacker.example/callback']],
+    ['grant_types', ['client_credentials']],
+    ['response_types', ['token']],
+    ['application_type', 'native'],
+  ])('rejects provider-returned %s that conflicts with the safe request', async (
+    field,
+    conflictingValue
+  ) => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              ...registrationBody,
+              [field]: conflictingValue,
+              client_id: 'conflicting-client',
+              client_secret: 'session-only-secret',
+              token_endpoint_auth_method: 'client_secret_post',
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+  });
+
+  it('rejects the provider-selected token authentication method unless it is advertised', async () => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              ...registrationBody,
+              client_id: 'wrong-method-client',
+              client_secret: 'session-only-secret',
+              token_endpoint_auth_method: 'client_secret_basic',
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+  });
+
   it('rejects an asserted endpoint mismatch before credential-bearing registration', async () => {
     const requests: Request[] = [];
     const response = await handleOAuthRegistrationRequest(
@@ -1115,7 +1242,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
   it.each([
     ['unknown metadata', { ...registrationBody, software_statement: 'dangerous' }],
     ['arbitrary callback', { ...registrationBody, redirect_uris: ['https://attacker.example/callback'] }],
-    ['confidential request', { ...registrationBody, token_endpoint_auth_method: 'client_secret_post' }],
+    ['unsupported auth method', { ...registrationBody, token_endpoint_auth_method: 'private_key_jwt' }],
     ['unsupported grant', { ...registrationBody, grant_types: ['client_credentials'] }],
   ])('rejects invalid JSON registration schema: %s', async (_, body) => {
     const fetchImpl = vi.fn();

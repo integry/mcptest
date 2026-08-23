@@ -114,6 +114,34 @@ describe('BrowserOAuthProvider', () => {
     expect(sessionStorage.getItem('oauth_access_token_mcp.example')).toBe('token-b');
   });
 
+  it('rejects a dynamic client whose selected token auth method is not advertised', () => {
+    const provider = new BrowserOAuthProvider(SERVER_URL, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      hostedTokenRelayAvailable: true,
+      redirect: vi.fn(),
+    });
+    provider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        registration_endpoint: `${ISSUER_A}register`,
+        response_types_supported: ['code'],
+        token_endpoint_auth_methods_supported: ['client_secret_post'],
+      },
+    });
+
+    expect(() => provider.saveClientInformation({
+      client_id: 'dynamic-client',
+      client_secret: 'session-secret',
+      redirect_uris: ['https://mcptest.io/oauth/callback'],
+      token_endpoint_auth_method: 'client_secret_basic',
+      issuer: ISSUER_A,
+    }, { issuer: ISSUER_A })).toThrow(/does not advertise/);
+    expect(provider.clientInformation({ issuer: ISSUER_A })).toBeUndefined();
+  });
+
   it('loads and clears tokens by exact resource and discovered issuer', () => {
     const serverA = 'https://mcp.example/resource-a';
     const serverB = 'https://mcp.example/resource-b';
@@ -2231,6 +2259,7 @@ describe('hosted dynamic client registration relay', () => {
         expect(new Headers(init?.headers).get('x-mcp-oauth-registration-endpoint'))
           .toBe(supabaseRegistration);
         const submitted = JSON.parse(String(init?.body));
+        expect(submitted.token_endpoint_auth_method).toBe('client_secret_post');
         return jsonResponse({
           ...submitted,
           client_id: 'supabase-dynamic-client',
