@@ -578,9 +578,14 @@ const applyOperatorClientAuthentication = (
       }
       const decoded = atob(dynamicClientAuthorization.slice('Basic '.length));
       const delimiter = decoded.indexOf(':');
+      const decodedClientSecret = delimiter >= 0
+        ? decodeFormComponent(decoded.slice(delimiter + 1))
+        : '';
       if (
         delimiter < 0
         || decodeFormComponent(decoded.slice(0, delimiter)) !== params.get('client_id')
+        || decodedClientSecret.length < 1
+        || decodedClientSecret.length > MAX_DYNAMIC_CLIENT_SECRET_LENGTH
       ) {
         throw new Error('Dynamic OAuth client authentication does not match client_id');
       }

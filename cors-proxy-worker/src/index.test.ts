@@ -577,6 +577,43 @@ describe('hosted OAuth token route', () => {
     ]);
   });
 
+  it('rejects an oversized Basic secret even when the client ID is short', async () => {
+    const clientId = 'short-client';
+    const encode = (value: string): string => (
+      new URLSearchParams({ value }).toString().slice('value='.length)
+    );
+    const authorization = `Basic ${btoa(`${encode(clientId)}:${encode('s'.repeat(4097))}`)}`;
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set('X-MCP-OAuth-Client-Authorization', authorization);
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: tokenEndpoint,
+        token_endpoint_auth_methods_supported: ['client_secret_basic'],
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([discoveryUrl]);
+  });
+
   it('rejects an issuer/token-endpoint mismatch before a target token request', async () => {
     const requests: Request[] = [];
     const fetchImpl = async (request: Request) => {

@@ -2455,6 +2455,48 @@ describe('hosted dynamic client registration relay', () => {
     );
   });
 
+  it('surfaces a Worker-rejected relay login as a proxy-authentication prerequisite', async () => {
+    const proxyFetch = vi.fn(async () => jsonResponse({
+      error: 'invalid_authentication_token',
+    }, {
+      status: 401,
+      headers: { 'X-MCP-Proxy-Response-Source': 'proxy' },
+    }));
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(supabaseServer, {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: supabaseDiscoveryFetch,
+        tokenProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'rejected-firebase-session',
+          fetchFn: proxyFetch,
+        },
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(proxyFetch).toHaveBeenCalledOnce();
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'proxy_authentication_required',
+      providerName: 'mcptest proxy',
+    });
+    expect((caught as { cause?: unknown }).cause)
+      .toBeInstanceOf(OAuthProxyAuthenticationRequiredError);
+    expect(getStoredOAuthTrace(supabaseServer, sessionStorage)?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'dynamic_client_registration',
+          outcome: 'failed',
+          provenance: 'authenticated_proxy',
+          route: 'proxy',
+        }),
+      ])
+    );
+  });
+
   it('never exposes a stored dynamic client secret after the hosted relay becomes unavailable', async () => {
     let authorizationUrl: URL | undefined;
     const clientSecret = 'relay-only-session-secret';

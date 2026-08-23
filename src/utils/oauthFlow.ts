@@ -854,6 +854,9 @@ const createOAuthRegistrationFetchForPendingContext = (
       const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
         ? 'target'
         : 'proxy';
+      if (response.status === 401 && source === 'proxy') {
+        throw new OAuthProxyAuthenticationRequiredError();
+      }
       return markOAuthTraceResponseOrigin(response, { route: 'proxy', source });
     } catch (error) {
       const relayError = error instanceof TypeError
