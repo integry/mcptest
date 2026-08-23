@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import proxyWorker, {
   HostedOAuthBroker,
@@ -970,7 +971,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
   }), { headers: { 'Content-Type': 'application/json' } });
 
   it('enforces public-Internet routing for production outbound fetches', () => {
-    const workerConfiguration = readFileSync('wrangler.toml', 'utf8');
+    const workerConfiguration = readFileSync(new NodeURL('../wrangler.toml', import.meta.url), 'utf8');
 
     expect(workerConfiguration).toMatch(
       /^compatibility_flags\s*=\s*\[[^\]]*"global_fetch_strictly_public"[^\]]*\]/m
