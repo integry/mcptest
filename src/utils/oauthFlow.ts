@@ -235,6 +235,14 @@ const issuerForDiscovery = (discovery?: OAuthDiscoveryState): string | undefined
   || discovery?.authorizationServerUrl
 );
 
+const assertPkceS256Discovery = (discovery?: OAuthDiscoveryState): void => {
+  if (!discovery?.authorizationServerMetadata?.code_challenge_methods_supported?.includes('S256')) {
+    throw new Error(
+      'Incompatible authorization server: validated metadata does not advertise PKCE S256 support.'
+    );
+  }
+};
+
 const providerGuidance = (serverUrl: string, issuer?: string): {
   name: string;
   documentationUrl?: string;
@@ -1014,6 +1022,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   redirectToAuthorization(authorizationUrl: URL): void | Promise<void> {
+    if (this.enforcePkceS256) {
+      assertPkceS256Discovery(this.discoveryState());
+    }
     const selectedClientId = authorizationUrl.searchParams.get('client_id');
     if (this.clientMetadataUrl && selectedClientId === this.clientMetadataUrl) {
       this.trace?.record({
@@ -1057,14 +1068,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   saveDiscoveryState(discovery: OAuthDiscoveryState): void {
-    if (
-      this.enforcePkceS256
-      && !discovery.authorizationServerMetadata?.code_challenge_methods_supported?.includes('S256')
-    ) {
-      throw new Error(
-        'Incompatible authorization server: validated metadata does not advertise PKCE S256 support.'
-      );
-    }
+    if (this.enforcePkceS256) assertPkceS256Discovery(discovery);
     this.resourceMetadataUrlOverride = discovery.resourceMetadataUrl
       || this.resourceMetadataUrlOverride;
     this.trace?.trackResourceMetadataUrl(discovery.resourceMetadataUrl);
@@ -1140,6 +1144,11 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
       ...discovery,
       resourceMetadataUrl: this.resourceMetadataUrlOverride,
     };
+  }
+
+  validatePersistedDiscoveryState(): void {
+    const discovery = this.readState().discovery;
+    if (this.enforcePkceS256 && discovery) assertPkceS256Discovery(discovery);
   }
 
   usesClientMetadataDocument(issuer?: string): boolean {
@@ -1355,6 +1364,7 @@ export const beginOAuthFlow = async (
     if (options.tokenProxy && !options.tokenProxy.authorizationToken) {
       throw new OAuthProxyAuthenticationRequiredError();
     }
+    provider.validatePersistedDiscoveryState();
     const result = await authenticate(provider, {
       serverUrl: normalizedServerUrl,
       fetchFn,

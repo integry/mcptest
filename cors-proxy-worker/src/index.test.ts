@@ -302,6 +302,7 @@ describe('hosted OAuth token route', () => {
     ['IPv4-mapped link-local IPv6', 'https://[::ffff:169.254.169.254]/'],
     ['NAT64-mapped loopback IPv6', 'https://[64:ff9b::127.0.0.1]/'],
     ['unspecified IPv6', 'https://[::]/'],
+    ['reserved IETF protocol assignment IPv6', 'https://[2001:100::1]/'],
     ['reserved documentation IPv6', 'https://[2001:db8::1]/'],
     ['unallocated IPv6', 'https://[4000::1]/'],
     ['short IPv4 loopback', 'https://127.1/'],
@@ -327,6 +328,7 @@ describe('hosted OAuth token route', () => {
     ['IPv4-mapped loopback IPv6', 'https://[::ffff:127.0.0.1]/token'],
     ['IPv4-mapped link-local IPv6', 'https://[::ffff:169.254.169.254]/token'],
     ['unspecified IPv6', 'https://[::]/token'],
+    ['reserved IETF protocol assignment IPv6', 'https://[2001:100::1]/token'],
     ['reserved documentation IPv6', 'https://[2001:db8::1]/token'],
     ['unallocated IPv6', 'https://[4000::1]/token'],
     ['short IPv4 loopback', 'https://127.1/token'],
@@ -357,6 +359,8 @@ describe('hosted OAuth token route', () => {
   it.each([
     ['public IPv4 issuer', 'https://8.8.8.8/', tokenEndpoint],
     ['public IPv6 issuer', 'https://[2606:4700:4700::1111]/', tokenEndpoint],
+    ['global AMT protocol assignment', 'https://[2001:3::1]/', tokenEndpoint],
+    ['global ORCHIDv2 protocol assignment', 'https://[2001:20::1]/', tokenEndpoint],
     ['public IPv4 token endpoint', issuer, 'https://1.1.1.1/token'],
     ['public IPv6 token endpoint', issuer, 'https://[2606:4700:4700::1001]/token'],
     ['public IPv4-mapped endpoint', issuer, 'https://[::ffff:8.8.8.8]/token'],
@@ -526,7 +530,7 @@ describe('hosted OAuth token route', () => {
 
     expect(response.status).toBe(502);
     expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
-    expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+    expect(requests).toHaveLength(0);
   });
 
   it.each([
@@ -565,6 +569,80 @@ describe('hosted OAuth token route', () => {
 
     expect(response.status).toBe(200);
     expect(requests.map(request => request.url)).toEqual([discoveryUrl, tokenEndpoint]);
+  });
+
+  it.each([
+    'http://[::1]:5173/callback',
+    'http://127.42.3.4:5173/callback',
+    'http://127.1:5173/callback',
+  ])('preserves an explicit HTTP IP loopback redirect URI: %s', async redirectUri => {
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: redirectUri,
+      client_id: 'loopback-client',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['none'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ access_token: 'loopback-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl, tokenEndpoint]);
+  });
+
+  it.each((() => {
+    const duplicateAuthorizationCodeForm = (name: string, value: string): string => {
+      const params = new URLSearchParams(formBody);
+      params.append(name, value);
+      return params.toString();
+    };
+    const refreshParams = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: 'first-refresh-token',
+      client_id: 'public-client',
+      resource: 'https://mcp.example.com/mcp',
+    });
+    refreshParams.append('refresh_token', 'second-refresh-token');
+    return [
+      ['grant_type', duplicateAuthorizationCodeForm('grant_type', 'refresh_token')],
+      ['client_id', duplicateAuthorizationCodeForm('client_id', 'attacker-client')],
+      ['resource', duplicateAuthorizationCodeForm('resource', 'https://attacker.example/mcp')],
+      ['code', duplicateAuthorizationCodeForm('code', 'second-code')],
+      ['code_verifier', duplicateAuthorizationCodeForm('code_verifier', 'second-verifier')],
+      ['redirect_uri', duplicateAuthorizationCodeForm('redirect_uri', 'https://attacker.example/callback')],
+      ['refresh_token', refreshParams.toString()],
+    ];
+  })())('rejects duplicate %s before authorization-server discovery', async (_, body) => {
+    const fetchImpl = vi.fn();
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('rejects signed-out and cross-origin callers without discovery', async () => {

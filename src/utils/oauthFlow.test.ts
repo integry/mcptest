@@ -273,6 +273,7 @@ describe('BrowserOAuthProvider', () => {
         authorization_endpoint: `${ISSUER_A}authorize`,
         token_endpoint: `${ISSUER_A}token`,
         response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
       },
     });
     provider.saveTokens(
@@ -424,6 +425,58 @@ describe('SDK OAuth registration order', () => {
       fetchFn,
       redirect,
     })).rejects.toThrow(/S256/);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('rejects persisted metadata without S256 before authentication can reuse it', async () => {
+    const persistedProvider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
+    persistedProvider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+    const authenticate = vi.fn().mockResolvedValue('AUTHORIZED');
+    const redirect = vi.fn();
+
+    await expect(beginOAuthFlow(SERVER_URL, { authenticate, redirect })).rejects.toThrow(/S256/);
+
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('revalidates persisted S256 metadata immediately before authorization redirect', () => {
+    const redirect = vi.fn();
+    const enforcedProvider = new BrowserOAuthProvider(SERVER_URL, {
+      redirect,
+      enforcePkceS256: true,
+    });
+    enforcedProvider.saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
+      },
+    });
+    new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() }).saveDiscoveryState({
+      authorizationServerUrl: ISSUER_A,
+      authorizationServerMetadata: {
+        issuer: ISSUER_A,
+        authorization_endpoint: `${ISSUER_A}authorize`,
+        token_endpoint: `${ISSUER_A}token`,
+        response_types_supported: ['code'],
+      },
+    });
+
+    expect(() => enforcedProvider.redirectToAuthorization(
+      new URL(`${ISSUER_A}authorize`)
+    )).toThrow(/S256/);
     expect(redirect).not.toHaveBeenCalled();
   });
 
@@ -1111,6 +1164,7 @@ describe('OAuth flight recorder integration', () => {
         authorization_endpoint: `${ISSUER_A}authorize`,
         token_endpoint: `${ISSUER_A}token`,
         response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
       },
     });
     saveManualOAuthClient(SERVER_URL, 'manual-client');
@@ -1211,6 +1265,7 @@ describe('OAuth flight recorder integration', () => {
         authorization_endpoint: `${ISSUER_A}authorize`,
         token_endpoint: `${ISSUER_A}token`,
         response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
       },
     });
     provider.saveClientInformation(

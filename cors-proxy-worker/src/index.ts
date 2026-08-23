@@ -216,11 +216,27 @@ const isForbiddenIpv6 = (groups: number[]): boolean => {
   // inevitably incomplete list of reserved and special-purpose ranges.
   if (!ipv6IsInCidr(groups, [0x2000, 0, 0, 0, 0, 0, 0, 0], 3)) return true;
 
+  // IANA reserves 2001::/23 for protocol assignments and marks the parent
+  // range non-global unless a more-specific allocation says otherwise.
+  if (ipv6IsInCidr(groups, [0x2001, 0, 0, 0, 0, 0, 0, 0], 23)) {
+    const globallyReachableExceptions = [
+      [[0x2001, 1, 0, 0, 0, 0, 0, 1], 128], // PCP anycast.
+      [[0x2001, 1, 0, 0, 0, 0, 0, 2], 128], // TURN anycast.
+      [[0x2001, 1, 0, 0, 0, 0, 0, 3], 128], // DNS-SD registration anycast.
+      [[0x2001, 3, 0, 0, 0, 0, 0, 0], 32], // AMT.
+      [[0x2001, 4, 0x112, 0, 0, 0, 0, 0], 48], // AS112-v6.
+      [[0x2001, 0x20, 0, 0, 0, 0, 0, 0], 28], // ORCHIDv2.
+      [[0x2001, 0x30, 0, 0, 0, 0, 0, 0], 28], // Drone Remote ID DETs.
+    ].some(([network, prefixLength]) => ipv6IsInCidr(
+      groups,
+      network as number[],
+      prefixLength as number
+    ));
+    if (!globallyReachableExceptions) return true;
+  }
+
   return [
     [[0x2001, 0, 0, 0, 0, 0, 0, 0], 32], // Teredo.
-    [[0x2001, 2, 0, 0, 0, 0, 0, 0], 48], // Benchmarking.
-    [[0x2001, 0x10, 0, 0, 0, 0, 0, 0], 28], // ORCHID.
-    [[0x2001, 0x20, 0, 0, 0, 0, 0, 0], 28], // ORCHIDv2.
     [[0x2001, 0xdb8, 0, 0, 0, 0, 0, 0], 32], // Documentation.
     [[0x2002, 0, 0, 0, 0, 0, 0, 0], 16], // Deprecated 6to4.
     [[0x3fff, 0, 0, 0, 0, 0, 0, 0], 20], // Documentation.
@@ -322,6 +338,18 @@ const operatorProviderForIssuer = (issuer: URL): OperatorOAuthProvider | undefin
 };
 
 const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'refresh_token' => {
+  const securitySensitiveParameters = [
+    'grant_type',
+    'client_id',
+    'resource',
+    'code',
+    'code_verifier',
+    'redirect_uri',
+    'refresh_token',
+  ];
+  if (securitySensitiveParameters.some(name => params.getAll(name).length > 1)) {
+    throw new Error('OAuth token form contains duplicate security-sensitive parameters');
+  }
   if (params.has('client_secret')) {
     throw new Error('Browser-supplied OAuth client secrets are not accepted');
   }
@@ -342,8 +370,17 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
     const redirectHasUserinfo = Boolean(redirect.username || redirect.password)
       || /^[a-z][a-z\d+.-]*:[\\/]*[^\\/?#]*@/i.test(redirectValue.trim());
     const redirectHasFragment = redirectValue.includes('#');
-    const isHttpLoopback = redirect.protocol === 'http:'
-      && (redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1');
+    const redirectHostname = redirect.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const redirectIpv4 = parseIpv4(redirectHostname);
+    const redirectIpv6 = parseIpv6(redirectHostname);
+    const isLoopbackHost = redirectHostname === 'localhost'
+      || redirectIpv4?.[0] === 127
+      || Boolean(redirectIpv6 && ipv6IsInCidr(
+        redirectIpv6,
+        [0, 0, 0, 0, 0, 0, 0, 1],
+        128
+      ));
+    const isHttpLoopback = redirect.protocol === 'http:' && isLoopbackHost;
     if (
       (redirect.protocol !== 'https:' && !isHttpLoopback)
       || redirectHasUserinfo
@@ -435,6 +472,12 @@ export async function handleOAuthTokenRequest(
     if (issuer.search) {
       return oauthRouteError(request, 'Error: OAuth issuer must not contain a query.', 400);
     }
+    const body = await request.text();
+    if (new TextEncoder().encode(body).byteLength > MAX_OAUTH_FORM_BYTES) {
+      return oauthRouteError(request, 'Error: OAuth token form is too large.', 413);
+    }
+    const params = new URLSearchParams(body);
+    validateTokenForm(params);
     const fetchImpl = dependencies.fetchImpl || fetch;
     const metadata = await discoverWorkerAuthorizationMetadata(issuer, issuerHeader, fetchImpl);
     const tokenEndpoint = parsePublicHttpsUrl(metadata.token_endpoint, 'OAuth token endpoint');
@@ -442,12 +485,6 @@ export async function handleOAuthTokenRequest(
       return oauthRouteError(request, 'Error: OAuth issuer/token-endpoint binding mismatch.', 400);
     }
 
-    const body = await request.text();
-    if (new TextEncoder().encode(body).byteLength > MAX_OAUTH_FORM_BYTES) {
-      return oauthRouteError(request, 'Error: OAuth token form is too large.', 413);
-    }
-    const params = new URLSearchParams(body);
-    validateTokenForm(params);
     const targetHeaders = new Headers({
       Accept: 'application/json',
       'Content-Type': OAUTH_FORM_CONTENT_TYPE,
