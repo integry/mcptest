@@ -67,6 +67,50 @@ describe('proxy target credential forwarding', () => {
     expect(headers.get('cf-connecting-ip')).toBeNull();
   });
 
+  it('strips browser context while preserving MCP and user target headers', () => {
+    const headers = getTargetRequestHeaders({
+      Origin: 'https://mcptest.io',
+      Referer: 'https://mcptest.io/',
+      'Sec-Fetch-Site': 'cross-site',
+      'SEC-FETCH-MODE': 'cors',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-User': '?1',
+      'Sec-CH-UA': '"Chromium";v="140"',
+      'sec-ch-ua-platform': '"Linux"',
+      Priority: 'u=1, i',
+      Authorization: 'Bearer firebase-jwt',
+      'X-MCP-Authorization': 'Bearer target-token',
+      Accept: 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+      'MCP-Protocol-Version': '2025-11-25',
+      'MCP-Session-Id': 'session-1',
+      'Last-Event-ID': 'event-9',
+      'X-Tenant-API-Key': 'target-api-key',
+    });
+
+    for (const name of [
+      'origin',
+      'referer',
+      'sec-fetch-site',
+      'sec-fetch-mode',
+      'sec-fetch-dest',
+      'sec-fetch-user',
+      'sec-ch-ua',
+      'sec-ch-ua-platform',
+      'priority',
+      'x-mcp-authorization',
+    ]) {
+      expect(headers.get(name), name).toBeNull();
+    }
+    expect(headers.get('authorization')).toBe('Bearer target-token');
+    expect(headers.get('accept')).toBe('application/json, text/event-stream');
+    expect(headers.get('content-type')).toBe('application/json');
+    expect(headers.get('mcp-protocol-version')).toBe('2025-11-25');
+    expect(headers.get('mcp-session-id')).toBe('session-1');
+    expect(headers.get('last-event-id')).toBe('event-9');
+    expect(headers.get('x-tenant-api-key')).toBe('target-api-key');
+  });
+
   it('never forwards Firebase authorization when no target credential exists', () => {
     const headers = getTargetRequestHeaders({ Authorization: 'Bearer firebase-jwt' });
 
@@ -101,6 +145,123 @@ describe('proxy target credential forwarding', () => {
     ]);
     expect(requests[1].headers.get('authorization')).toBe('Bearer target-token');
     expect(requests[1].headers.get('x-api-key')).toBe('target-api-key');
+  });
+
+  it.each([
+    ['POST', 'application/json, text/event-stream'],
+    ['GET', 'text/event-stream'],
+  ])('sanitizes the final %s target hop without dropping MCP state', async (method, accept) => {
+    const requests: Request[] = [];
+    const response = await fetchTargetRequest(new Request('https://example.com/mcp', {
+      method,
+      headers: {
+        Origin: 'https://mcptest.io',
+        Referer: 'https://mcptest.io/',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-User': '?1',
+        'Sec-CH-UA-Mobile': '?0',
+        Priority: 'u=1',
+        Accept: accept,
+        'MCP-Protocol-Version': '2025-11-25',
+        'MCP-Session-Id': 'session-1',
+        'Last-Event-ID': 'event-9',
+        'X-Tenant-API-Key': 'target-api-key',
+      },
+      ...(method === 'POST' ? { body: '{}' } : {}),
+      redirect: 'manual',
+    }), async request => {
+      requests.push(request);
+      return new Response('connected');
+    });
+
+    expect(await response.text()).toBe('connected');
+    expect(requests).toHaveLength(1);
+    expect([...requests[0].headers.keys()]).not.toEqual(expect.arrayContaining([
+      'origin',
+      'referer',
+      'sec-fetch-site',
+      'sec-fetch-mode',
+      'sec-fetch-dest',
+      'sec-fetch-user',
+      'sec-ch-ua-mobile',
+      'priority',
+    ]));
+    expect(requests[0].headers.get('accept')).toBe(accept);
+    expect(requests[0].headers.get('mcp-protocol-version')).toBe('2025-11-25');
+    expect(requests[0].headers.get('mcp-session-id')).toBe('session-1');
+    expect(requests[0].headers.get('last-event-id')).toBe('event-9');
+    expect(requests[0].headers.get('x-tenant-api-key')).toBe('target-api-key');
+  });
+
+  it('keeps the sanitized header set across same-origin redirects', async () => {
+    const requests: Request[] = [];
+    await fetchTargetRequest(new Request('https://example.com/mcp', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://mcptest.io',
+        Referer: 'https://mcptest.io/',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-CH-UA-Platform': '"Linux"',
+        Priority: 'u=1',
+        Authorization: 'Bearer target-token',
+        'MCP-Session-Id': 'session-1',
+        'X-Tenant-API-Key': 'target-api-key',
+      },
+      body: '{}',
+      redirect: 'manual',
+    }), async request => {
+      requests.push(request);
+      return requests.length === 1
+        ? new Response(null, { status: 307, headers: { Location: '/mcp/' } })
+        : new Response('connected');
+    });
+
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.headers.get('origin')).toBeNull();
+      expect(request.headers.get('referer')).toBeNull();
+      expect(request.headers.get('sec-fetch-mode')).toBeNull();
+      expect(request.headers.get('sec-ch-ua-platform')).toBeNull();
+      expect(request.headers.get('priority')).toBeNull();
+      expect(request.headers.get('authorization')).toBe('Bearer target-token');
+      expect(request.headers.get('mcp-session-id')).toBe('session-1');
+      expect(request.headers.get('x-tenant-api-key')).toBe('target-api-key');
+    }
+  });
+
+  it('passes through a Cloudflare-like OAuth challenge once Origin is absent', async () => {
+    const response = await fetchTargetRequest(new Request('https://mcp.cloudflare.com/mcp', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://mcptest.io',
+        Accept: 'application/json, text/event-stream',
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+      redirect: 'manual',
+    }), async request => request.headers.has('origin')
+      ? new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Invalid Origin: mcptest.io' },
+          id: null,
+        }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+      : new Response(null, {
+          status: 401,
+          headers: {
+            'WWW-Authenticate': 'Bearer resource_metadata="https://mcp.cloudflare.com/.well-known/oauth-protected-resource/mcp"',
+          },
+        }));
+    const proxiedResponse = withCorsResponseHeaders(response, 'target');
+
+    expect(proxiedResponse.status).toBe(401);
+    expect(proxiedResponse.headers.get('www-authenticate')).toContain(
+      'https://mcp.cloudflare.com/.well-known/oauth-protected-resource/mcp'
+    );
+    expect(proxiedResponse.headers.get('access-control-expose-headers')?.toLowerCase())
+      .toContain('www-authenticate');
+    expect(proxiedResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
   });
 
   it('rejects cross-origin redirects before forwarding target credentials', async () => {

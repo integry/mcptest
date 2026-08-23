@@ -12,6 +12,7 @@ import {
   createNegotiatingMcpClient,
   getProtocolDetails,
 } from './mcpClient';
+import { redactReportString } from './reportArtifact';
 
 export interface TransportCandidate {
   url: string;
@@ -40,6 +41,11 @@ export class TransportConnectionError extends Error {
 
 export type ProxyAuthenticationSource = 'proxy' | 'target';
 
+export interface SafeTargetErrorDetail {
+  code?: number | string;
+  message: string;
+}
+
 export interface ObservedAuthenticationChallenge {
   status: 401 | 403;
   source: ProxyAuthenticationSource;
@@ -51,6 +57,7 @@ export interface ObservedAuthenticationChallenge {
   requestUrl?: string;
   startedAt?: string;
   durationMs?: number;
+  targetError?: SafeTargetErrorDetail;
 }
 
 export interface ObservedTransportRequest {
@@ -63,6 +70,8 @@ export interface ObservedTransportRequest {
   status?: number;
   /** Who produced a proxied HTTP response, when the proxy exposes provenance. */
   responseSource?: ProxyAuthenticationSource;
+  /** Bounded and credential-redacted target response detail. */
+  targetError?: SafeTargetErrorDetail;
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -78,7 +87,8 @@ export class ProxiedAuthenticationError extends Error {
     request?: ObservedTransportRequest,
     readonly responseHeaders?: Record<string, string>,
     resourceMetadataUrl?: string,
-    scope?: string
+    scope?: string,
+    readonly targetError?: SafeTargetErrorDetail
   ) {
     super(
       responseSource === 'target'
@@ -135,6 +145,7 @@ export const getObservedAuthenticationChallenge = (
       ...(error.requestUrl ? { requestUrl: error.requestUrl } : {}),
       ...(error.startedAt ? { startedAt: error.startedAt } : {}),
       ...(error.durationMs !== undefined ? { durationMs: error.durationMs } : {}),
+      ...(error.targetError ? { targetError: error.targetError } : {}),
     }, error);
   }
 
@@ -160,6 +171,164 @@ export const getObservedAuthenticationChallenge = (
 };
 
 const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+const MAX_TARGET_ERROR_BODY_BYTES = 8 * 1024;
+const MAX_TARGET_ERROR_MESSAGE_LENGTH = 320;
+const MAX_TARGET_ERROR_CODE_LENGTH = 64;
+const TARGET_ERROR_READ_TIMEOUT_MS = 250;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const boundDiagnosticValue = (
+  value: string,
+  limit: number,
+  knownCredentials: readonly string[] = []
+): string => {
+  const normalized = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+
+  // Use the same credential-redaction boundary as reports, downloads, and
+  // stored artifacts. Supplement it with conservative opaque/provider token
+  // shapes because target prose may omit a credential field name.
+  const withoutKnownCredentials = knownCredentials.reduce((redacted, credential) => (
+    credential ? redacted.split(credential).join('[REDACTED]') : redacted
+  ), normalized);
+  const redacted = redactReportString(withoutKnownCredentials)
+    .replace(/\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9_-]{8,}\b/gi, '[REDACTED]')
+    .replace(/\bgh[pousr]_[A-Za-z0-9_-]{8,}\b/gi, '[REDACTED]')
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{8,}\b/gi, '[REDACTED]')
+    .replace(/\bAKIA[A-Z0-9]{12,}\b/g, '[REDACTED]')
+    .replace(/\b[A-Za-z0-9_-]{48,}\b/g, '[REDACTED]');
+  return redacted.length > limit
+    ? `${redacted.slice(0, Math.max(0, limit - 1)).trimEnd()}…`
+    : redacted;
+};
+
+const readBoundedResponseText = async (response: Response): Promise<string | undefined> => {
+  const declaredLength = response.headers.get('content-length');
+  if (declaredLength && /^\d+$/.test(declaredLength)) {
+    if (Number(declaredLength) > MAX_TARGET_ERROR_BODY_BYTES) return undefined;
+  }
+
+  let body: ReadableStream<Uint8Array> | null;
+  try {
+    body = response.clone().body;
+  } catch {
+    return undefined;
+  }
+  if (!body) return undefined;
+  const reader = body.getReader();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    void reader.cancel().catch(() => {});
+  }, TARGET_ERROR_READ_TIMEOUT_MS);
+
+  try {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (timedOut) return undefined;
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_TARGET_ERROR_BODY_BYTES) {
+        void reader.cancel().catch(() => {});
+        return undefined;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+    reader.releaseLock();
+  }
+};
+
+const targetErrorFromJson = (
+  value: unknown,
+  knownCredentials: readonly string[]
+): SafeTargetErrorDetail | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.error) && typeof value.error.message === 'string') {
+    const rawCode = value.error.code;
+    const code = typeof rawCode === 'number' && Number.isFinite(rawCode)
+      ? rawCode
+      : typeof rawCode === 'string'
+        ? boundDiagnosticValue(rawCode, MAX_TARGET_ERROR_CODE_LENGTH, knownCredentials)
+        : undefined;
+    const message = boundDiagnosticValue(
+      value.error.message,
+      MAX_TARGET_ERROR_MESSAGE_LENGTH,
+      knownCredentials
+    );
+    return message ? { ...(code !== undefined && code !== '' ? { code } : {}), message } : undefined;
+  }
+
+  if (typeof value.error === 'string') {
+    const code = boundDiagnosticValue(value.error, MAX_TARGET_ERROR_CODE_LENGTH, knownCredentials);
+    const description = typeof value.error_description === 'string'
+      ? boundDiagnosticValue(
+          value.error_description,
+          MAX_TARGET_ERROR_MESSAGE_LENGTH,
+          knownCredentials
+        )
+      : '';
+    return description
+      ? { ...(code ? { code } : {}), message: description }
+      : code ? { message: code } : undefined;
+  }
+
+  if (typeof value.message === 'string') {
+    const message = boundDiagnosticValue(value.message, MAX_TARGET_ERROR_MESSAGE_LENGTH, knownCredentials);
+    return message ? { message } : undefined;
+  }
+  return undefined;
+};
+
+/**
+ * Reads only small JSON or plain-text error responses from a clone. The
+ * original response remains untouched for MCP parsing and OAuth discovery.
+ */
+export const inspectSafeTargetError = async (
+  response: Response,
+  knownCredentials: readonly string[] = []
+): Promise<SafeTargetErrorDetail | undefined> => {
+  if (response.status < 400) return undefined;
+  const contentType = response.headers.get('content-type')
+    ?.split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+  const isJson = contentType === 'application/json' || Boolean(contentType?.endsWith('+json'));
+  const isPlainText = contentType === 'text/plain';
+  if (!isJson && !isPlainText) return undefined;
+
+  const text = await readBoundedResponseText(response);
+  if (text === undefined) return undefined;
+  if (isJson) {
+    try {
+      return targetErrorFromJson(JSON.parse(text), knownCredentials);
+    } catch {
+      return undefined;
+    }
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed || /^\s*(?:<!doctype\s+html|<html|<head|<body|<script|<)/i.test(trimmed)) {
+    return undefined;
+  }
+  const message = boundDiagnosticValue(trimmed, MAX_TARGET_ERROR_MESSAGE_LENGTH, knownCredentials);
+  return message ? { message } : undefined;
+};
 
 const OAUTH_SENSITIVE_CANONICAL_KEYS = new Set([
   'authorization',
@@ -392,7 +561,8 @@ const observeAuthenticationResponses = (
   onChallenge: (challenge: ObservedAuthenticationChallenge) => void,
   observedRequests: ObservedTransportRequest[],
   candidate: TransportCandidate,
-  onRequest?: (request: ObservedTransportRequest) => void
+  onRequest?: (request: ObservedTransportRequest) => void,
+  knownCredentials: readonly string[] = []
 ): FetchLike => async (input, init) => {
   const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
   const startedAtMs = Date.now();
@@ -418,6 +588,13 @@ const observeAuthenticationResponses = (
     }
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
+    if (attemptedRequest.responseSource === 'target' && !response.ok) {
+      // Diagnostics are best-effort and must never replace the target's actual
+      // response with an inspection failure.
+      const targetError = await inspectSafeTargetError(response, knownCredentials)
+        .catch(() => undefined);
+      if (targetError) attemptedRequest.targetError = targetError;
+    }
   } catch (error) {
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = 'failed';
@@ -439,6 +616,7 @@ const observeAuthenticationResponses = (
       requestUrl: attemptedRequest.url,
       startedAt: attemptedRequest.startedAt,
       durationMs: attemptedRequest.durationMs,
+      ...(attemptedRequest.targetError ? { targetError: attemptedRequest.targetError } : {}),
     }, challengeParameters));
   }
   return response;
@@ -661,7 +839,11 @@ export async function attemptParallelConnections(
         onAuthenticationChallenge,
         observedRequests,
         candidate,
-        onRequest
+        onRequest,
+        [
+          ...(authToken ? [authToken] : []),
+          ...Array.from(headers.values()).filter(Boolean),
+        ]
       ),
     };
   };
@@ -702,7 +884,8 @@ export async function attemptParallelConnections(
           : undefined,
         challenge.responseHeaders,
         challenge.resourceMetadataUrl,
-        challenge.scope
+        challenge.scope,
+        challenge.targetError
       ));
     });
     const transport = candidate.transportType === 'legacy-sse'
@@ -736,7 +919,8 @@ export async function attemptParallelConnections(
             : undefined,
           authenticationChallenge.responseHeaders,
           authenticationChallenge.resourceMetadataUrl,
-          authenticationChallenge.scope
+          authenticationChallenge.scope,
+          authenticationChallenge.targetError
         );
       }
       throw error;

@@ -7,6 +7,7 @@ import {
   getObservedAuthenticationChallenge,
   getRequestHeadersForCandidate,
   getTransportCandidates,
+  inspectSafeTargetError,
   sanitizeAuthenticationChallenge,
 } from './transportDetection';
 
@@ -369,12 +370,21 @@ describe('transport candidate generation', () => {
   });
 
   it('preserves a target authentication challenge observed through the proxy', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
+    const responseBody = JSON.stringify({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: 'Invalid Origin: mcptest.io' },
+      id: null,
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(responseBody, {
       status: 403,
-      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-MCP-Proxy-Response-Source': 'target',
+      },
     })));
     connectionMocks.connect = async ({ endpoint, fetch }) => {
       const response = await fetch?.(endpoint);
+      expect(await response?.text()).toBe(responseBody);
       throw Object.assign(new Error('Connection rejected'), { status: response?.status });
     };
 
@@ -406,7 +416,59 @@ describe('transport candidate generation', () => {
     expect(findProxiedAuthenticationError(connectionError)).toMatchObject({
       status: 403,
       responseSource: 'target',
+      targetError: {
+        code: -32000,
+        message: 'Invalid Origin: mcptest.io',
+      },
     });
+  });
+
+  it('extracts only bounded redacted target errors without consuming the response', async () => {
+    const secret = 'sk_live_targetcredential123456';
+    const body = JSON.stringify({
+      error: {
+        code: -32001,
+        message: `Vendor value tenant-credential-value; Authorization: Bearer ${secret}; Cookie: session=private-cookie`,
+      },
+    });
+    const response = new Response(body, {
+      status: 403,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+
+    const detail = await inspectSafeTargetError(response, ['tenant-credential-value']);
+
+    expect(detail).toMatchObject({ code: -32001 });
+    expect(detail?.message).toContain('Vendor value [REDACTED]');
+    expect(detail?.message).toContain('[REDACTED]');
+    expect(JSON.stringify(detail)).not.toContain(secret);
+    expect(JSON.stringify(detail)).not.toContain('private-cookie');
+    expect(JSON.stringify(detail)).not.toContain('tenant-credential-value');
+    await expect(response.text()).resolves.toBe(body);
+  });
+
+  it('rejects oversized and HTML target bodies', async () => {
+    const oversized = 'x'.repeat(9 * 1024);
+    const oversizedResponse = new Response(oversized, {
+      status: 500,
+      headers: {
+        'Content-Type': 'text/plain',
+        'Content-Length': String(oversized.length),
+      },
+    });
+    const htmlResponse = new Response('<html><body>secret page</body></html>', {
+      status: 500,
+      headers: { 'Content-Type': 'text/html' },
+    });
+    const disguisedHtmlResponse = new Response('<script>token = "secret"</script>', {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+
+    await expect(inspectSafeTargetError(oversizedResponse)).resolves.toBeUndefined();
+    await expect(inspectSafeTargetError(htmlResponse)).resolves.toBeUndefined();
+    await expect(inspectSafeTargetError(disguisedHtmlResponse)).resolves.toBeUndefined();
+    await expect(oversizedResponse.text()).resolves.toBe(oversized);
   });
 
   it('preserves a direct authentication challenge from the HTTP response', async () => {

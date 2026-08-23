@@ -20,7 +20,10 @@ describe('connection attempt evidence', () => {
       'target',
       new Error('authorization required'),
       { method: 'POST', url: proxyCandidate },
-      { 'www-authenticate': 'Bearer [REDACTED]' }
+      { 'www-authenticate': 'Bearer [REDACTED]' },
+      undefined,
+      undefined,
+      { code: -32000, message: 'Invalid Origin: mcptest.io' }
     );
     const error = new TransportConnectionError([challenge], [{
       candidateUrl: proxyCandidate,
@@ -47,6 +50,7 @@ describe('connection attempt evidence', () => {
       browserUnreadable: false,
       failureKind: 'authentication',
       message: 'MCP target returned HTTP 401',
+      targetError: { code: -32000, message: 'Invalid Origin: mcptest.io' },
     }]);
   });
 
