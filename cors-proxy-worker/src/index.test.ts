@@ -529,6 +529,35 @@ describe('hosted OAuth token route', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['client_secret_post', true],
+    ['none', false],
+  ])('rejects dynamic %s authentication when metadata omits the Basic-only default', async (
+    _,
+    includeSecret
+  ) => {
+    const params = new URLSearchParams(formBody);
+    if (includeSecret) params.set('client_secret', 'dynamic-secret');
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: tokenEndpoint,
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(params.toString()),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([discoveryUrl]);
+  });
+
   it('relays Basic credentials at the registration length boundaries', async () => {
     const clientId = '\u0800'.repeat(2048);
     const clientSecret = '\u0800'.repeat(4096);
@@ -570,6 +599,49 @@ describe('hosted OAuth token route', () => {
     );
 
     expect(authorization).toHaveLength(73738);
+    expect(response.status).toBe(200);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      discoveryUrl,
+      tokenEndpoint,
+    ]);
+  });
+
+  it('relays post credentials at the registration length boundaries', async () => {
+    const clientId = '\u0800'.repeat(2048);
+    const clientSecret = '\u0800'.repeat(4096);
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      client_secret: clientSecret,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_post'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      expect(targetRequest.headers.get('authorization')).toBeNull();
+      expect(await targetRequest.text()).toBe(body);
+      return new Response(JSON.stringify({ access_token: 'boundary-access-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(body.length).toBeGreaterThan(32 * 1024);
     expect(response.status).toBe(200);
     expect(requests.map(targetRequest => targetRequest.url)).toEqual([
       discoveryUrl,
@@ -1200,6 +1272,35 @@ describe('hosted issuer-bound OAuth registration route', () => {
     expect(response.status).toBe(502);
     expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
   });
+
+  it.each(['client_secret_post', 'none'])(
+    'rejects registration requesting %s when metadata omits the Basic-only default',
+    async tokenEndpointAuthMethod => {
+      const requests: Request[] = [];
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(JSON.stringify({
+          ...registrationBody,
+          token_endpoint_auth_method: tokenEndpointAuthMethod,
+        })),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: async request => {
+            requests.push(request);
+            return new Response(JSON.stringify({
+              issuer,
+              token_endpoint: 'https://api.supabase.com/v1/oauth/token',
+              registration_endpoint: registrationEndpoint,
+            }), { headers: { 'Content-Type': 'application/json' } });
+          },
+          verifyToken: async () => 'user-1',
+        }
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+    }
+  );
 
   it('rejects an asserted endpoint mismatch before credential-bearing registration', async () => {
     const requests: Request[] = [];

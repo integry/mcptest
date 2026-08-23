@@ -82,7 +82,6 @@ const OAUTH_TOKEN_PATH = '/oauth/token';
 const OAUTH_REGISTER_PATH = '/oauth/register';
 const OAUTH_FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded';
 const OAUTH_JSON_CONTENT_TYPE = 'application/json';
-const MAX_OAUTH_FORM_BYTES = 32 * 1024;
 const MAX_OAUTH_REGISTRATION_BYTES = 16 * 1024;
 const MAX_OAUTH_RESPONSE_BYTES = 64 * 1024;
 const MAX_OAUTH_METADATA_BYTES = 64 * 1024;
@@ -90,8 +89,12 @@ const MAX_DYNAMIC_CLIENT_ID_LENGTH = 2048;
 const MAX_DYNAMIC_CLIENT_SECRET_LENGTH = 4096;
 // URLSearchParams can encode one UTF-16 code unit as three UTF-8 bytes, each
 // represented by a three-character percent escape. Keep every credential that
-// passes registration validation usable with client_secret_basic.
+// passes registration validation usable with either supported secret method.
 const MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT = 9;
+const MAX_OAUTH_FORM_BYTES = 32 * 1024
+  + (MAX_DYNAMIC_CLIENT_ID_LENGTH + MAX_DYNAMIC_CLIENT_SECRET_LENGTH)
+    * MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT
+  + 'client_id=&client_secret='.length;
 const MAX_DYNAMIC_CLIENT_BASIC_AUTHORIZATION_LENGTH = 'Basic '.length + 4 * Math.ceil((
   MAX_DYNAMIC_CLIENT_ID_LENGTH * MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT
   + 1
@@ -435,6 +438,10 @@ interface WorkerAuthorizationMetadata {
   token_endpoint_auth_methods_supported?: string[];
 }
 
+const effectiveTokenEndpointAuthMethods = (
+  metadata: WorkerAuthorizationMetadata
+): string[] => metadata.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
+
 const discoverWorkerAuthorizationMetadata = async (
   issuer: URL,
   expectedIssuer: string,
@@ -565,12 +572,12 @@ const applyOperatorClientAuthentication = (
 ): string => {
   const provider = operatorProviderForIssuer(issuer);
   const operatorClient = provider ? getOperatorOAuthClient(env, provider) : undefined;
-  const methods = metadata.token_endpoint_auth_methods_supported || [];
+  const methods = effectiveTokenEndpointAuthMethods(metadata);
   if (!operatorClient || params.get('client_id') !== operatorClient.clientId) {
     const browserSecret = params.get('client_secret');
     if (dynamicClientAuthorization) {
       if (
-        (methods.length > 0 && !methods.includes('client_secret_basic'))
+        !methods.includes('client_secret_basic')
         || !dynamicClientAuthorization.startsWith('Basic ')
         || dynamicClientAuthorization.length > MAX_DYNAMIC_CLIENT_BASIC_AUTHORIZATION_LENGTH
       ) {
@@ -593,11 +600,11 @@ const applyOperatorClientAuthentication = (
       params.delete('client_id');
       params.delete('client_secret');
     } else if (browserSecret) {
-      if (methods.length > 0 && !methods.includes('client_secret_post')) {
+      if (!methods.includes('client_secret_post')) {
         throw new Error('Dynamic OAuth client authentication method is unsupported');
       }
     }
-    if (methods.length > 0 && !methods.includes('none')) {
+    if (!methods.includes('none')) {
       if (!browserSecret && !dynamicClientAuthorization) {
         throw new Error('This authorization server requires an operator-configured confidential OAuth client');
       }
@@ -606,7 +613,7 @@ const applyOperatorClientAuthentication = (
   }
 
   params.delete('client_secret');
-  if (methods.length === 0 || methods.includes('client_secret_basic')) {
+  if (methods.includes('client_secret_basic')) {
     const basic = btoa(`${encodeFormComponent(operatorClient.clientId)}:${encodeFormComponent(operatorClient.clientSecret)}`);
     targetHeaders.set('Authorization', `Basic ${basic}`);
   } else if (methods.includes('client_secret_post')) {
@@ -915,8 +922,8 @@ const sanitizeRegistrationSuccess = (
   ) {
     throw new Error('OAuth registration response selected an unsupported token authentication method');
   }
-  const supportedMethods = metadata.token_endpoint_auth_methods_supported || [];
-  if (supportedMethods.length > 0 && !supportedMethods.includes(effectiveTokenAuthMethod)) {
+  const supportedMethods = effectiveTokenEndpointAuthMethods(metadata);
+  if (!supportedMethods.includes(effectiveTokenAuthMethod)) {
     throw new Error('OAuth registration response selected an unadvertised token authentication method');
   }
   if (effectiveTokenAuthMethod !== 'none' && !output.client_secret) {
@@ -1008,11 +1015,8 @@ export async function handleOAuthRegistrationRequest(
     const requestedTokenAuthMethod = typeof registrationBody.token_endpoint_auth_method === 'string'
       ? registrationBody.token_endpoint_auth_method
       : 'client_secret_basic';
-    const supportedTokenAuthMethods = metadata.token_endpoint_auth_methods_supported || [];
-    if (
-      supportedTokenAuthMethods.length > 0
-      && !supportedTokenAuthMethods.includes(requestedTokenAuthMethod)
-    ) {
+    const supportedTokenAuthMethods = effectiveTokenEndpointAuthMethods(metadata);
+    if (!supportedTokenAuthMethods.includes(requestedTokenAuthMethod)) {
       return oauthRouteError(
         request,
         'Error: OAuth registration token authentication method is not advertised.',
