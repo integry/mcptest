@@ -303,6 +303,7 @@ describe('hosted OAuth token route', () => {
     ['NAT64-mapped loopback IPv6', 'https://[64:ff9b::127.0.0.1]/'],
     ['unspecified IPv6', 'https://[::]/'],
     ['reserved documentation IPv6', 'https://[2001:db8::1]/'],
+    ['unallocated IPv6', 'https://[4000::1]/'],
     ['short IPv4 loopback', 'https://127.1/'],
     ['octal IPv4 loopback', 'https://0177.0.0.1/'],
     ['hexadecimal IPv4 loopback', 'https://0x7f000001/'],
@@ -327,6 +328,7 @@ describe('hosted OAuth token route', () => {
     ['IPv4-mapped link-local IPv6', 'https://[::ffff:169.254.169.254]/token'],
     ['unspecified IPv6', 'https://[::]/token'],
     ['reserved documentation IPv6', 'https://[2001:db8::1]/token'],
+    ['unallocated IPv6', 'https://[4000::1]/token'],
     ['short IPv4 loopback', 'https://127.1/token'],
     ['octal IPv4 loopback', 'https://0177.0.0.1/token'],
     ['hexadecimal IPv4 link-local', 'https://0xa9fea9fe/token'],
@@ -387,6 +389,44 @@ describe('hosted OAuth token route', () => {
       new URL(publicTokenEndpoint).toString(),
     ]);
   });
+
+  it.each([307, 308])(
+    'rejects an HTTP %s token redirect without forwarding the form to its destination',
+    async status => {
+      const redirectedEndpoint = 'https://tokens.example.net/redirected-token';
+      const requests: Request[] = [];
+      const fetchImpl = async (request: Request) => {
+        requests.push(request);
+        if (request.url === discoveryUrl) {
+          return new Response(JSON.stringify({
+            issuer,
+            token_endpoint: tokenEndpoint,
+            token_endpoint_auth_methods_supported: ['none'],
+          }), { headers: { 'Content-Type': 'application/json' } });
+        }
+        if (request.url === tokenEndpoint) {
+          expect(request.redirect).toBe('manual');
+          expect(await request.text()).toBe(formBody);
+          return new Response(null, {
+            status,
+            headers: { Location: redirectedEndpoint },
+          });
+        }
+        throw new Error(`Unexpected fetch to ${request.url}`);
+      };
+
+      const response = await handleOAuthTokenRequest(
+        tokenRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        { fetchImpl, verifyToken: async () => 'user-1' }
+      );
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(requests.map(request => request.url)).toEqual([discoveryUrl, tokenEndpoint]);
+      expect(requests.some(request => request.url === redirectedEndpoint)).toBe(false);
+    }
+  );
 
   it('keeps confidential operator secrets server-side', async () => {
     const slackIssuer = 'https://slack.com/';

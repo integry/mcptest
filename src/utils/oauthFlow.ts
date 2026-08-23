@@ -1352,6 +1352,9 @@ export const beginOAuthFlow = async (
     tracedFetch
   );
   try {
+    if (options.tokenProxy && !options.tokenProxy.authorizationToken) {
+      throw new OAuthProxyAuthenticationRequiredError();
+    }
     const result = await authenticate(provider, {
       serverUrl: normalizedServerUrl,
       fetchFn,

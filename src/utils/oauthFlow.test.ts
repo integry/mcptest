@@ -374,6 +374,32 @@ describe('BrowserOAuthProvider', () => {
 });
 
 describe('SDK OAuth registration order', () => {
+  it('requires hosted proxy authentication before a fresh authorization redirect', async () => {
+    const authenticate = vi.fn().mockResolvedValue('REDIRECT');
+    const redirect = vi.fn();
+    let caught: unknown;
+
+    try {
+      await beginOAuthFlow(SERVER_URL, {
+        authenticate,
+        redirect,
+        tokenProxy: { url: 'https://proxy.mcptest.test/' },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'proxy_authentication_required',
+      providerName: 'mcptest proxy',
+    });
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.outcome).toMatchObject({
+      status: 'proxy_authentication_required',
+    });
+  });
+
   it('refuses authorization before redirect when S256 is not advertised', async () => {
     const redirect = vi.fn();
     const fetchFn: FetchLike = async (input) => {

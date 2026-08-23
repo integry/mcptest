@@ -211,10 +211,12 @@ const isForbiddenIpv6 = (groups: number[]): boolean => {
     ]);
   }
 
+  // IPv6 global unicast space is currently allocated from 2000::/3. Default
+  // every other native IPv6 literal to forbidden instead of relying on an
+  // inevitably incomplete list of reserved and special-purpose ranges.
+  if (!ipv6IsInCidr(groups, [0x2000, 0, 0, 0, 0, 0, 0, 0], 3)) return true;
+
   return [
-    [[0, 0, 0, 0, 0, 0, 0, 0], 8], // Reserved, including unspecified and loopback.
-    [[0x64, 0xff9b, 1, 0, 0, 0, 0, 0], 48], // Local-use IPv4 translation.
-    [[0x100, 0, 0, 0, 0, 0, 0, 0], 64], // Discard-only.
     [[0x2001, 0, 0, 0, 0, 0, 0, 0], 32], // Teredo.
     [[0x2001, 2, 0, 0, 0, 0, 0, 0], 48], // Benchmarking.
     [[0x2001, 0x10, 0, 0, 0, 0, 0, 0], 28], // ORCHID.
@@ -222,11 +224,6 @@ const isForbiddenIpv6 = (groups: number[]): boolean => {
     [[0x2001, 0xdb8, 0, 0, 0, 0, 0, 0], 32], // Documentation.
     [[0x2002, 0, 0, 0, 0, 0, 0, 0], 16], // Deprecated 6to4.
     [[0x3fff, 0, 0, 0, 0, 0, 0, 0], 20], // Documentation.
-    [[0x5f00, 0, 0, 0, 0, 0, 0, 0], 16], // Segment-routing SIDs.
-    [[0xfc00, 0, 0, 0, 0, 0, 0, 0], 7], // Unique-local.
-    [[0xfe80, 0, 0, 0, 0, 0, 0, 0], 10], // Link-local.
-    [[0xfec0, 0, 0, 0, 0, 0, 0, 0], 10], // Deprecated site-local.
-    [[0xff00, 0, 0, 0, 0, 0, 0, 0], 8], // Multicast.
   ].some(([network, prefixLength]) => ipv6IsInCidr(
     groups,
     network as number[],
@@ -463,12 +460,16 @@ export async function handleOAuthTokenRequest(
       targetHeaders,
       body
     );
-    const targetResponse = await fetchTargetRequest(new Request(tokenEndpoint, {
+    const targetResponse = await fetchImpl(new Request(tokenEndpoint, {
       method: 'POST',
       headers: targetHeaders,
       body: targetBody,
       redirect: 'manual',
-    }), fetchImpl);
+    }));
+    if (targetResponse.status >= 300 && targetResponse.status < 400) {
+      await targetResponse.body?.cancel().catch(() => {});
+      throw new Error('OAuth token endpoint redirects are not allowed');
+    }
     const responseType = targetResponse.headers.get('Content-Type') || 'application/json';
     if (responseType.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
       await targetResponse.body?.cancel().catch(() => {});
