@@ -9,6 +9,7 @@ This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP 
 - **Security**: Validates target URLs and only allows HTTP/HTTPS protocols
 - **Preflight Handling**: Properly handles OPTIONS preflight requests
 - **Hosted OAuth Exchange**: Proactively exchanges authorization codes and refresh tokens through an issuer-bound, authenticated `/oauth/token` route for providers without browser CORS
+- **Hosted OAuth Registration**: Relays bounded public-client DCR through an authenticated, issuer-rediscovered `/oauth/register` route without becoming a generic JSON proxy
 
 ## Setup
 
@@ -70,6 +71,12 @@ validated issuer, checks that it exactly matches the browser's persisted endpoin
 private and unrelated targets, and returns a minimized no-store JSON response. Authorization codes,
 PKCE verifiers, refresh tokens, Firebase credentials, form bodies, and client secrets are never put
 in a URL or log.
+
+The OAuth registration route is likewise reserved for `https://mcptest.io`. It accepts only the
+hosted callback and an allow-listed JSON registration document, rediscovers the asserted issuer,
+requires the advertised registration endpoint to match exactly, rejects redirects and private or
+mixed DNS destinations, and exposes only bounded JSON client fields or OAuth error fields. Provider
+cookies and internal response headers are never forwarded.
 
 ## Development
 

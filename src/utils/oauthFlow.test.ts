@@ -1,4 +1,9 @@
-import { auth, type FetchLike, type OAuthClientProvider } from '@modelcontextprotocol/client';
+import {
+  auth,
+  type AuthOptions,
+  type FetchLike,
+  type OAuthClientProvider,
+} from '@modelcontextprotocol/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import clientMetadataDocument from '../../public/oauth/client-metadata.json';
 import {
@@ -2180,5 +2185,242 @@ describe('OAuth provider interoperability matrix', () => {
       expect.objectContaining({ type: 'cimd', outcome: 'succeeded' }),
       expect.objectContaining({ type: 'authorization_redirect', outcome: 'redirected' }),
     ]));
+  });
+});
+
+describe('hosted dynamic client registration relay', () => {
+  const supabaseServer = 'https://mcp.supabase.com/mcp';
+  const supabaseIssuer = 'https://api.supabase.com';
+  const supabaseRegistration = 'https://api.supabase.com/platform/oauth/apps/register';
+  const supabaseToken = 'https://api.supabase.com/v1/oauth/token';
+  const supabaseAuthorize = 'https://api.supabase.com/v1/oauth/authorize';
+
+  const supabaseDiscoveryFetch: FetchLike = async (input, init) => {
+    const url = String(input);
+    if (url === 'https://mcp.supabase.com/.well-known/oauth-protected-resource/mcp') {
+      return jsonResponse({
+        resource: supabaseServer,
+        authorization_servers: [supabaseIssuer],
+      });
+    }
+    if (url === 'https://api.supabase.com/.well-known/oauth-authorization-server') {
+      return jsonResponse({
+        issuer: supabaseIssuer,
+        authorization_endpoint: supabaseAuthorize,
+        token_endpoint: supabaseToken,
+        registration_endpoint: supabaseRegistration,
+        response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['client_secret_post'],
+      });
+    }
+    if (url === supabaseRegistration && init?.method === 'POST') {
+      throw new Error('Hosted DCR must not be sent directly from the browser.');
+    }
+    return new Response('Not found', { status: 404 });
+  };
+
+  it('covers Supabase discovery, DCR relay, redirect, callback, and token relay', async () => {
+    let authorizationUrl: URL | undefined;
+    const proxyFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/oauth/register')) {
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer firebase-session');
+        expect(new Headers(init?.headers).get('x-mcp-oauth-issuer')).toBe(supabaseIssuer);
+        expect(new Headers(init?.headers).get('x-mcp-oauth-registration-endpoint'))
+          .toBe(supabaseRegistration);
+        const submitted = JSON.parse(String(init?.body));
+        return jsonResponse({
+          ...submitted,
+          client_id: 'supabase-dynamic-client',
+          client_secret: 'supabase-session-secret',
+          token_endpoint_auth_method: 'client_secret_post',
+        }, {
+          status: 201,
+          headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+        });
+      }
+      expect(url).toBe('https://proxy.mcptest.test/oauth/token');
+      const form = new URLSearchParams(String(init?.body));
+      expect(Object.fromEntries(form)).toMatchObject({
+        grant_type: 'authorization_code',
+        code: 'supabase-code',
+        client_id: 'supabase-dynamic-client',
+        client_secret: 'supabase-session-secret',
+        resource: supabaseServer,
+      });
+      return jsonResponse({ access_token: 'supabase-access', token_type: 'Bearer' }, {
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    });
+    const hostedProxy = {
+      url: 'https://proxy.mcptest.test/',
+      authorizationToken: 'firebase-session',
+      fetchFn: proxyFetch,
+    };
+
+    await expect(beginOAuthFlow(supabaseServer, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn: supabaseDiscoveryFetch,
+      tokenProxy: hostedProxy,
+      redirect: url => { authorizationUrl = url; },
+    })).resolves.toBe('REDIRECT');
+
+    expect(authorizationUrl?.origin + authorizationUrl?.pathname).toBe(supabaseAuthorize);
+    expect(authorizationUrl?.searchParams.get('client_id')).toBe('supabase-dynamic-client');
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    const state = authorizationUrl!.searchParams.get('state');
+    await expect(completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=supabase-code&state=${state}`,
+      {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: supabaseDiscoveryFetch,
+        tokenProxy: hostedProxy,
+      }
+    )).resolves.toMatchObject({ serverUrl: supabaseServer });
+
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(loadOAuthAuthorization(supabaseServer)?.accessToken).toBe('supabase-access');
+    const trace = getStoredOAuthTrace(supabaseServer, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'dynamic_client_registration',
+        outcome: 'succeeded',
+        route: 'proxy',
+        provenance: 'authorization_server',
+      }),
+      expect.objectContaining({ type: 'authorization_redirect', outcome: 'redirected' }),
+      expect.objectContaining({ type: 'token_exchange', route: 'proxy' }),
+    ]));
+    expect(JSON.stringify(trace)).not.toContain('supabase-session-secret');
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('does not retry a readable registration rejection', async () => {
+    const proxyFetch = vi.fn(async () => jsonResponse({
+      error: 'invalid_client_metadata',
+      error_description: 'redirect URI rejected by policy',
+    }, {
+      status: 400,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+    }));
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(supabaseServer, {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: supabaseDiscoveryFetch,
+        tokenProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'firebase-session',
+          fetchFn: proxyFetch,
+        },
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(proxyFetch).toHaveBeenCalledOnce();
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      httpStatus: 400,
+    });
+    expect(getStoredOAuthTrace(supabaseServer, sessionStorage)?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'dynamic_client_registration',
+          outcome: 'failed',
+          route: 'proxy',
+          response: expect.objectContaining({
+            status: 400,
+            metadata: expect.objectContaining({
+              error: 'invalid_client_metadata',
+              error_description: 'redirect URI rejected by policy',
+            }),
+          }),
+        }),
+      ])
+    );
+  });
+
+  it('surfaces a direct browser CORS failure as dynamic registration CORS', async () => {
+    const directFetch: FetchLike = async (input, init) => {
+      if (String(input) === supabaseRegistration && init?.method === 'POST') {
+        throw new TypeError('Failed to fetch');
+      }
+      return supabaseDiscoveryFetch(input, init);
+    };
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(supabaseServer, {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: directFetch,
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      failedStage: 'dynamic client registration',
+      explanation: expect.stringMatching(/registration.*CORS/i),
+    });
+  });
+
+  it('preserves abort signals and de-duplicates concurrent hosted registration', async () => {
+    const controller = new AbortController();
+    const proxyFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBe(controller.signal);
+      await Promise.resolve();
+      return jsonResponse({
+        redirect_uris: ['https://mcptest.io/oauth/callback'],
+        client_id: 'one-client',
+      }, { headers: { 'X-MCP-Proxy-Response-Source': 'target' } });
+    });
+    const authenticate = vi.fn(async (
+      provider: OAuthClientProvider,
+      options: AuthOptions
+    ) => {
+      await provider.saveDiscoveryState?.({
+        authorizationServerUrl: supabaseIssuer,
+        authorizationServerMetadata: {
+          issuer: supabaseIssuer,
+          authorization_endpoint: supabaseAuthorize,
+          token_endpoint: supabaseToken,
+          registration_endpoint: supabaseRegistration,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+        },
+      });
+      const init: RequestInit = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['https://mcptest.io/oauth/callback'],
+          client_name: 'mcptest.io MCP Inspector',
+        }),
+        signal: controller.signal,
+      };
+      const responses = await Promise.all([
+        options.fetchFn!(supabaseRegistration, init),
+        options.fetchFn!(supabaseRegistration, init),
+      ]);
+      await Promise.all(responses.map(response => response.json()));
+      return 'REDIRECT' as const;
+    });
+
+    await expect(beginOAuthFlow(supabaseServer, {
+      authenticate,
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      tokenProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-session',
+        fetchFn: proxyFetch,
+      },
+      redirect: vi.fn(),
+    })).resolves.toBe('REDIRECT');
+
+    expect(proxyFetch).toHaveBeenCalledOnce();
   });
 });
