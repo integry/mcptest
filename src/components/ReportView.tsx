@@ -490,7 +490,7 @@ const ReportView: React.FC = () => {
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
       const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
-      const discoveryProxyToken = proxyUrl && currentUser
+      const proxyAuthorizationToken = (proxyUrl || tokenProxyUrl) && currentUser
         ? await currentUser.getIdToken()
         : undefined;
       const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
@@ -501,11 +501,11 @@ const ReportView: React.FC = () => {
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
         ...(challenge?.scope ? { scope: challenge.scope } : {}),
-        ...(proxyUrl && discoveryProxyToken
+        ...(proxyUrl && proxyAuthorizationToken
           ? {
               discoveryProxy: {
                 url: proxyUrl,
-                authorizationToken: discoveryProxyToken,
+                authorizationToken: proxyAuthorizationToken,
               },
             }
           : {}),
@@ -513,7 +513,7 @@ const ReportView: React.FC = () => {
           ? {
               tokenProxy: {
                 url: tokenProxyUrl,
-                authorizationToken: discoveryProxyToken,
+                authorizationToken: proxyAuthorizationToken,
               },
             }
           : {}),

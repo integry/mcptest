@@ -350,15 +350,13 @@ const latestFailureIsDiscovery = (trace: OAuthFlightRecorder): boolean => {
     );
 };
 
-const hasFailedDiscoveryEvent = (trace: OAuthFlightRecorder): boolean => (
-  trace.snapshot().events.some((event) => (
-    event.outcome === 'failed'
-    && (
-      event.type === 'protected_resource_metadata'
-      || event.type === 'authorization_server_metadata'
-    )
-  ))
-);
+const hasUnresolvedDiscoveryFailure = (trace: OAuthFlightRecorder): boolean => {
+  const latestDiscoveryEvent = [...trace.snapshot().events].reverse().find((event) => (
+    event.type === 'protected_resource_metadata'
+    || event.type === 'authorization_server_metadata'
+  ));
+  return latestDiscoveryEvent?.outcome === 'failed';
+};
 
 const latestFailedEvent = (trace: OAuthFlightRecorder) => (
   [...trace.snapshot().events].reverse().find((event) => event.outcome === 'failed')
@@ -694,6 +692,7 @@ const buildOAuthPrerequisite = (
   const failedEvent = latestFailedEvent(trace);
   if (
     policy?.id === 'intercom'
+    && hasUnresolvedDiscoveryFailure(trace)
     && hasIntercomHistoricalDiscoveryEvidence(trace)
   ) {
     return {
@@ -2231,7 +2230,7 @@ export const beginOAuthFlow = async (
       && error.message.includes('does not advertise PKCE S256 support')
       && !(
         getOAuthProviderPolicy(normalizedServerUrl)?.id === 'intercom'
-        && hasFailedDiscoveryEvent(trace)
+        && hasUnresolvedDiscoveryFailure(trace)
       )
     ) {
       trace.terminal('failed', error.message);
@@ -2369,7 +2368,7 @@ export const beginOAuthFlow = async (
       latestFailureIsDiscovery(trace)
       || (
         getOAuthProviderPolicy(normalizedServerUrl)?.id === 'intercom'
-        && hasFailedDiscoveryEvent(trace)
+        && hasUnresolvedDiscoveryFailure(trace)
       )
     ) {
       prerequisite = buildOAuthPrerequisite(

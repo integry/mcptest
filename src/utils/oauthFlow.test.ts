@@ -1953,6 +1953,69 @@ describe('OAuth provider interoperability matrix', () => {
       .not.toContain('both standard protected-resource metadata fallback URLs returned HTTP 404');
   });
 
+  it('reports a later PKCE failure after Intercom discovery recovers on fallback', async () => {
+    const target = 'https://mcp.intercom.com/mcp';
+    const issuer = 'https://auth.intercom.example';
+    const calls: string[] = [];
+    const pkceError = new Error(
+      'Incompatible authorization server: validated metadata does not advertise PKCE S256 support.'
+    );
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://mcp.intercom.com/.well-known/oauth-protected-resource/mcp') {
+        return new Response('Not found', { status: 404 });
+      }
+      if (url === 'https://mcp.intercom.com/.well-known/oauth-protected-resource') {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, { cimd: true }));
+      }
+      throw new Error(`Unexpected discovery request: ${url}`);
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        fetchFn,
+        redirect: vi.fn(),
+        authenticate: async () => { throw pkceError; },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(calls.slice(0, 2)).toEqual([
+      'https://mcp.intercom.com/.well-known/oauth-protected-resource/mcp',
+      'https://mcp.intercom.com/.well-known/oauth-protected-resource',
+    ]);
+    expect(caught).toBe(pkceError);
+    expect(getOAuthPrerequisite(caught)).toBeUndefined();
+    expect(getStoredOAuthTrace(target, sessionStorage)).toMatchObject({
+      outcome: {
+        status: 'failed',
+        explanation: pkceError.message,
+      },
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'protected_resource_metadata',
+          outcome: 'failed',
+          response: expect.objectContaining({ status: 404 }),
+        }),
+        expect.objectContaining({
+          type: 'protected_resource_metadata',
+          outcome: 'succeeded',
+          response: expect.objectContaining({ status: 200 }),
+        }),
+        expect.objectContaining({
+          type: 'authorization_server_metadata',
+          outcome: 'succeeded',
+        }),
+      ]),
+    });
+  });
+
   it.each([
     [
       'Docusign Developer',

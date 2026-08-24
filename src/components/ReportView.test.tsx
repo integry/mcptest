@@ -125,6 +125,7 @@ const authMocks = vi.hoisted(() => ({
 const oauthMocks = vi.hoisted(() => ({
   begin: vi.fn(),
   prepare: vi.fn(),
+  hostedTokenProxy: vi.fn(),
 }));
 const evaluationMocks = vi.hoisted(() => ({
   evaluate: vi.fn(),
@@ -154,6 +155,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
   return {
     ...actual,
     beginOAuthFlow: oauthMocks.begin,
+    getHostedOAuthTokenProxyUrl: oauthMocks.hostedTokenProxy,
     prepareManualOAuthClient: oauthMocks.prepare,
   };
 });
@@ -182,6 +184,7 @@ describe('ReportView OAuth discovery', () => {
     authMocks.getIdToken.mockReset().mockResolvedValue('firebase-session-token');
     oauthMocks.begin.mockReset().mockResolvedValue('REDIRECT');
     oauthMocks.prepare.mockReset().mockResolvedValue(undefined);
+    oauthMocks.hostedTokenProxy.mockReset().mockReturnValue(undefined);
     evaluationMocks.evaluate.mockReset().mockResolvedValue({
       serverUrl: 'https://api.githubcopilot.com/mcp/',
       authenticationUrl: 'https://api.githubcopilot.com/mcp/',
@@ -207,7 +210,61 @@ describe('ReportView OAuth discovery', () => {
     vi.restoreAllMocks();
   });
 
-  it('supplies the authenticated proxy to report OAuth discovery when fallback is configured', async () => {
+  it('uses the Report token proxy client ID in the GitHub authorization redirect', async () => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const issuer = 'https://github.com/login/oauth';
+    const operatorClientId = 'github-report-operator-client';
+    const flowOrder: string[] = [];
+    let authorizationUrl: URL | undefined;
+    oauthMocks.hostedTokenProxy.mockReturnValue('https://proxy.mcptest.test/');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (new URL(url).pathname === '/oauth/client') {
+        flowOrder.push('operator-client');
+        const headers = new Headers(init?.headers);
+        expect(init?.method).toBe('POST');
+        expect(headers.get('authorization')).toBe('Bearer firebase-session-token');
+        expect(headers.get('x-mcp-oauth-resource')).toBe(target);
+        expect(headers.get('x-mcp-oauth-issuer')).toBe(issuer);
+        return new Response(JSON.stringify({ client_id: operatorClientId }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-MCP-Proxy-Response-Source': 'proxy',
+          },
+        });
+      }
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return new Response(JSON.stringify({
+          resource: target,
+          authorization_servers: [issuer],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return new Response(JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new Error(`Unexpected OAuth request: ${url}`);
+    }));
+    const { beginOAuthFlow: actualBeginOAuthFlow } = await vi.importActual<
+      typeof import('../utils/oauthFlow')
+    >('../utils/oauthFlow');
+    oauthMocks.begin.mockImplementationOnce((
+      serverUrl: string,
+      options: Parameters<typeof actualBeginOAuthFlow>[1]
+    ) => actualBeginOAuthFlow(serverUrl, {
+      ...options,
+      redirect: (url) => {
+        flowOrder.push('authorization-redirect');
+        authorizationUrl = url;
+      },
+    }));
+
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
@@ -229,19 +286,21 @@ describe('ReportView OAuth discovery', () => {
     });
 
     expect(oauthMocks.begin).toHaveBeenCalledWith(
-      'https://api.githubcopilot.com/mcp/',
+      target,
       expect.objectContaining({
         discoveryProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'firebase-session-token',
+        },
+        tokenProxy: {
           url: 'https://proxy.mcptest.test/',
           authorizationToken: 'firebase-session-token',
         },
         deferAuthorizedTraceOutcome: true,
       })
     );
-    expect(oauthMocks.begin).toHaveBeenCalledWith(
-      'https://api.githubcopilot.com/mcp/',
-      expect.not.objectContaining({ tokenProxy: expect.anything() })
-    );
+    expect(flowOrder).toEqual(['operator-client', 'authorization-redirect']);
+    expect(authorizationUrl?.searchParams.get('client_id')).toBe(operatorClientId);
   });
 
   it('passes ephemeral challenge metadata and scope into report OAuth discovery', async () => {
