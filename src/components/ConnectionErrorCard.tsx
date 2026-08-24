@@ -106,38 +106,55 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
   }
 
   const directAttempts = attempts.filter(({ route }) => route === 'direct');
-  const terminalDirectBrowserUnreadable = directAttempts.find(({ browserUnreadable }) => browserUnreadable);
-  if (terminalDirectBrowserUnreadable) {
-    const knownOAuth = errorDetails.expectedAuthentication === 'oauth';
-    const knownReachableOAuth = knownOAuth && errorDetails.serverReachable === true;
-    const readableInitialize = directAttempts.find(({ failureKind, mcpMethod }) => (
-      failureKind === 'success' && mcpMethod === 'initialize'
+  let readableInitialize: ConnectionAttemptFact | undefined;
+  const terminalDirectBrowserUnreadable = directAttempts.find((attempt, attemptIndex) => {
+    if (!attempt.browserUnreadable) return false;
+    readableInitialize = directAttempts.find((candidate, candidateIndex) => (
+      candidateIndex < attemptIndex
+      && candidate.failureKind === 'success'
+      && candidate.mcpMethod === 'initialize'
+      && candidate.status !== undefined
+      && candidate.candidateUrl === attempt.candidateUrl
+      && candidate.transportType !== undefined
+      && candidate.transportType === attempt.transportType
     ));
-    const readableIntermediate = readableInitialize
-      || directAttempts.find(({ failureKind }) => failureKind === 'success');
+    return readableInitialize !== undefined;
+  });
+  const anyDirectBrowserUnreadable = directAttempts.find(({ browserUnreadable }) => browserUnreadable);
+  const directReadableHttp = directAttempts.find(({ status, authenticationSource }) => (
+    status !== undefined && status >= 400 && authenticationSource !== 'proxy'
+  ));
+  if (terminalDirectBrowserUnreadable && readableInitialize) {
     const protocolHeaderWasRequired = terminalDirectBrowserUnreadable.requestHeaders
       ?.some((header) => header.toLowerCase() === 'mcp-protocol-version');
     return {
       badge: 'Browser / CORS',
-      heading: readableIntermediate
-        ? 'Later MCP request blocked by browser access policy'
-        : knownReachableOAuth
-        ? 'Browser access blocked / OAuth server reachable'
-        : 'Browser access blocked',
-      summary: readableIntermediate
-        ? `The browser received a readable${readableInitialize ? ' initialize' : ' earlier MCP'} HTTP ${readableIntermediate.status} response, but a later required MCP request was browser-unreadable.${protocolHeaderWasRequired ? ' That request included MCP-Protocol-Version, which the server must allow in its CORS preflight response.' : ' A rejected preflight or CORS policy may be hiding that later response.'}`
-        : knownReachableOAuth
-        ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, so use the authenticated proxy or the terminal probe to observe its expected challenge.'
-        : knownOAuth
-          ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, but the browser evidence alone cannot establish current server reachability.'
-        : 'Every direct browser attempt ended without a readable HTTP response. Cross-origin policy or a rejected preflight may be hiding the target response; this evidence does not show that the server is down.',
+      heading: 'Later MCP request blocked by browser access policy',
+      summary: `The browser received a readable initialize HTTP ${readableInitialize.status} response, but a later required MCP request for the same candidate and transport was browser-unreadable.${protocolHeaderWasRequired ? ' That request included MCP-Protocol-Version, which the server must allow in its CORS preflight response.' : ' A rejected preflight or CORS policy may be hiding that later response.'}`,
       alertClass: 'alert-warning border-warning',
     };
   }
 
-  const directReadableHttp = directAttempts.find(({ status, authenticationSource }) => (
-    status !== undefined && status >= 400 && authenticationSource !== 'proxy'
-  ));
+  if (anyDirectBrowserUnreadable) {
+    const knownOAuth = errorDetails.expectedAuthentication === 'oauth';
+    const knownReachableOAuth = knownOAuth && errorDetails.serverReachable === true;
+    const hasReadableDirectResponse = directAttempts.some(({ status }) => status !== undefined);
+    return {
+      badge: 'Browser / CORS',
+      heading: knownReachableOAuth
+        ? 'Browser access blocked / OAuth server reachable'
+        : 'Browser access blocked',
+      summary: hasReadableDirectResponse
+        ? 'The direct-browser evidence is mixed: at least one response was readable and at least one was browser-unreadable, but the ordered evidence does not show a successful initialize followed by a blocked request for the same candidate and transport.'
+        : knownReachableOAuth
+          ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, so use the authenticated proxy or the terminal probe to observe its expected challenge.'
+          : knownOAuth
+            ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, but the browser evidence alone cannot establish current server reachability.'
+            : 'Every direct browser attempt ended without a readable HTTP response. Cross-origin policy or a rejected preflight may be hiding the target response; this evidence does not show that the server is down.',
+      alertClass: 'alert-warning border-warning',
+    };
+  }
+
   if (directReadableHttp) {
     return {
       badge: `HTTP ${directReadableHttp.status}`,
