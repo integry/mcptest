@@ -16,6 +16,7 @@ import {
 import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
+import { getTrustedAuthorizationGuidanceForEndpoint } from './authorizationGuidanceLookup';
 
 export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
 export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
@@ -320,6 +321,43 @@ const ReportSectionSchema = z.object({
   evidence: z.array(EvidenceSchema),
 }).strict();
 
+const AuthorizationSetupArtifactSchema = z.object({
+  version: z.literal(1),
+  catalogId: z.string().min(1),
+  status: z.enum([
+    'no-registration-needed',
+    'register-app-first',
+    'operator-setup-required',
+    'provider-approval-required',
+    'alternative-credential',
+    'unknown',
+  ]),
+  statusLabel: z.string().min(1),
+  summary: z.string().min(1),
+  responsibleParty: z.enum([
+    'automatic',
+    'user',
+    'mcptest-operator',
+    'provider-approval',
+  ]).optional(),
+  reviewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  steps: z.array(z.string().min(1).max(300)).max(12),
+  callbacks: z.array(z.string().min(1).max(500)).max(16),
+  settings: z.array(z.object({
+    label: z.string().min(1).max(80),
+    value: z.string().min(1).max(300),
+    required: z.boolean(),
+  }).strict()).max(12),
+  documentationUrl: z.string().url().optional(),
+  registrationUrl: z.string().url().optional(),
+  alternativeAuthType: z.enum(['bearer-token', 'api-token', 'api-key']).optional(),
+  alternativeHeaderName: z.string().min(1).max(128).optional(),
+  alternativeHeaderTemplate: z.string().min(1).max(256)
+    .regex(/^[\x20-\x7e]*<[A-Z][A-Z0-9_]{1,63}>[\x20-\x7e]*$/)
+    .optional(),
+  provenance: z.literal('current-catalog-guidance'),
+}).strict();
+
 const PublicReportObjectSchema = z.object({
   $schema: z.literal(REPORT_SCHEMA_URL),
   artifactType: z.literal('mcptest.report'),
@@ -377,6 +415,7 @@ const PublicReportObjectSchema = z.object({
   toolSurfaceAnalysis: ToolSurfaceArtifactSchema.optional(),
   capabilityInventory: CapabilityInventoryArtifactSchema.optional(),
   oauthTrace: OAuthTraceArtifactSchema.optional(),
+  authorizationSetup: AuthorizationSetupArtifactSchema.optional(),
   sections: z.array(ReportSectionSchema),
 }).strict();
 
@@ -989,6 +1028,16 @@ const isAuthorizationPrerequisiteSchemaField = (path: readonly string[]): boolea
     && path[0] === 'outcome'
     && path[1] === 'authorizationPrerequisite'
     && path[2] === 'state')
+);
+
+const isAuthorizationSetupSchemaField = (path: readonly string[]): boolean => (
+  path.length > 0 && path[0] === 'authorizationSetup'
+);
+
+const isAuthorizationSetupHeaderTemplateField = (path: readonly string[]): boolean => (
+  path.length === 2
+    && path[0] === 'authorizationSetup'
+    && path[1] === 'alternativeHeaderTemplate'
 );
 
 const isCapabilityInventoryAuthenticationField = (path: readonly string[]): boolean => (
@@ -1713,6 +1762,7 @@ const redactReportValueAtPath = (
   if (key
     && isSensitiveQueryKey(key)
     && !isAuthorizationPrerequisiteSchemaField(path)
+    && !isAuthorizationSetupSchemaField(path)
     && !isCapabilityInventoryAuthenticationField(path)
     && !isToolInputSchemaPropertyDeclaration(key, path)
     && !isJsonRpcErrorCode(value, key, path)) {
@@ -1746,7 +1796,12 @@ const redactReportValueAtPath = (
     inputSchemaSanitized = true;
   }
   if (value === undefined) return undefined;
-  if (typeof value === 'string') return redactReportString(value);
+  if (typeof value === 'string') {
+    // This field is generated only from catalog templates that validation has
+    // proved contain one named placeholder and no credential value. Preserve
+    // syntax such as `Token token=<PAGERDUTY_API_TOKEN>` verbatim.
+    return isAuthorizationSetupHeaderTemplateField(path) ? value : redactReportString(value);
+  }
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
   if (Array.isArray(value)) {
     return value.map((item, index) => redactReportValueAtPath(item, undefined, [
@@ -1962,6 +2017,7 @@ export const createPublicReport = (
   const capabilityInventory = report.capabilityInventory
     ? validateCapabilityInventory(report.capabilityInventory)
     : undefined;
+  const authorizationGuidance = getTrustedAuthorizationGuidanceForEndpoint(report.serverUrl);
 
   const artifact: PublicReport = {
     $schema: REPORT_SCHEMA_URL,
@@ -2031,6 +2087,43 @@ export const createPublicReport = (
     ...(capabilityInventory ? { capabilityInventory } : {}),
     ...(options.oauthTrace ? {
       oauthTrace: options.oauthTrace as unknown as NonNullable<PublicReport['oauthTrace']>,
+    } : {}),
+    ...(authorizationGuidance?.catalogId ? {
+      authorizationSetup: {
+        version: 1,
+        catalogId: authorizationGuidance.catalogId,
+        status: authorizationGuidance.status,
+        statusLabel: authorizationGuidance.statusLabel,
+        summary: authorizationGuidance.summary,
+        ...(authorizationGuidance.responsibleParty
+          ? { responsibleParty: authorizationGuidance.responsibleParty }
+          : {}),
+        ...(authorizationGuidance.reviewedAt
+          ? { reviewedAt: authorizationGuidance.reviewedAt }
+          : {}),
+        steps: authorizationGuidance.steps,
+        callbacks: authorizationGuidance.callbacks,
+        settings: authorizationGuidance.settings,
+        ...(authorizationGuidance.documentationUrl
+          ? { documentationUrl: authorizationGuidance.documentationUrl }
+          : {}),
+        ...(authorizationGuidance.registrationUrl
+          ? { registrationUrl: authorizationGuidance.registrationUrl }
+          : {}),
+        ...(authorizationGuidance.alternativeAuthType
+          && ['bearer-token', 'api-token', 'api-key'].includes(
+            authorizationGuidance.alternativeAuthType
+          )
+          ? { alternativeAuthType: authorizationGuidance.alternativeAuthType as 'bearer-token' | 'api-token' | 'api-key' }
+          : {}),
+        ...(authorizationGuidance.alternativeHeaderName
+          ? { alternativeHeaderName: authorizationGuidance.alternativeHeaderName }
+          : {}),
+        ...(authorizationGuidance.alternativeHeaderTemplate
+          ? { alternativeHeaderTemplate: authorizationGuidance.alternativeHeaderTemplate }
+          : {}),
+        provenance: 'current-catalog-guidance',
+      },
     } : {}),
     sections: Object.entries(report.sections).map(([id, section]) => {
       const status = sectionStatus(id, section, outcome, report.outcome === undefined);
@@ -2152,6 +2245,37 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       markdownInline(value.outcome.authorizationPrerequisite.message),
       ''
     );
+  }
+
+  if (value.authorizationSetup) {
+    const setup = value.authorizationSetup;
+    lines.push(
+      '## Authorization setup',
+      '',
+      `**${markdownInline(setup.statusLabel)}** — ${markdownInline(setup.summary)}`,
+      '',
+      `- Catalog entry: ${markdownInline(setup.catalogId)}`,
+      ...(setup.responsibleParty
+        ? [`- Responsible party: ${markdownInline(setup.responsibleParty)}`]
+        : []),
+      `- Provenance: Current catalog guidance${setup.reviewedAt ? `, reviewed ${setup.reviewedAt}` : ''}; not evidence observed during this report run.`,
+      ...(setup.callbacks.map(callback => `- Callback URI: ${markdownInline(callback)}`)),
+      ...(setup.settings.map(setting => `- ${markdownInline(setting.label)}: ${markdownInline(setting.value)}${setting.required ? ' (required)' : ' (optional)'}`)),
+      ...(setup.alternativeAuthType ? [`- Alternative credential: ${markdownInline(setup.alternativeAuthType)}`] : []),
+      ...(setup.alternativeHeaderName && setup.alternativeHeaderTemplate
+        ? [`- Safe header template: ${markdownInline(setup.alternativeHeaderName)}: ${markdownInline(setup.alternativeHeaderTemplate)}`]
+        : []),
+      ''
+    );
+    if (setup.steps.length > 0) {
+      lines.push(...setup.steps.map((step, index) => `${index + 1}. ${markdownInline(step)}`), '');
+    }
+    if (setup.registrationUrl) {
+      lines.push(`[Provider setup or application page](${setup.registrationUrl})`, '');
+    }
+    if (setup.documentationUrl) {
+      lines.push(`[Publisher documentation](${setup.documentationUrl})`, '');
+    }
   }
 
   lines.push('## Score', '');

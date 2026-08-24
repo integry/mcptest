@@ -148,7 +148,16 @@ const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community'])
 const OAUTH_REGISTRATION_MODES = new Set([
   'automatic',
   'pre-registered-required',
+  'operator-confidential',
+  'provider-approval',
   'unavailable-or-use-alternative',
+  'unknown',
+]);
+const OAUTH_RESPONSIBLE_PARTIES = new Set([
+  'automatic', 'user', 'mcptest-operator', 'provider-approval',
+]);
+const OAUTH_AVAILABILITY = new Set([
+  'ready', 'operator-configuration-missing', 'provider-approval-pending', 'unsupported',
 ]);
 const OAUTH_CLIENT_IDS = new Set(['claude-code', 'codex-cli', 'cursor', 'vs-code']);
 const CATALOG_AUTH_TYPES = new Set([
@@ -168,6 +177,25 @@ function validateOAuthCredentialRequirement(value, label, field) {
   if (value.environmentVariable !== undefined
       && !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.environmentVariable)) {
     throw new Error(`${label}: oauthRegistration.${field}.environmentVariable is invalid`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!['required', 'environmentVariable'].includes(key)) {
+      throw new Error(`${label}: oauthRegistration.${field} must never contain credential values`);
+    }
+  }
+}
+
+function isBoundedPlainText(value, maxLength = 300) {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxLength
+    && value === value.replace(/\s+/g, ' ').trim()
+    && !/[\u0000-\u001f\u007f-\u009f<>]/.test(value)
+    && !/(?:gh[pousr]_|github_pat_|sk_(?:live|test)_|xox[bpars]-|AKIA)[A-Za-z0-9_-]{12,}/.test(value)
+    && !/\b(?:client[_ -]?secret|access[_ -]?token|api[_ -]?key)\s*[:=]\s*[^\s]+/i.test(value);
+}
+
+function validateHttpsField(value, label, field) {
+  if (value !== undefined && !isHttpsUrl(value)) {
+    throw new Error(`${label}: oauthRegistration.${field} must be a valid HTTPS URL`);
   }
 }
 
@@ -222,13 +250,50 @@ function validateOAuthRegistration(seed, label) {
   validateOAuthCredentialRequirement(registration.clientId, label, 'clientId');
   validateOAuthCredentialRequirement(registration.clientSecret, label, 'clientSecret');
 
+  if (registration.responsibleParty !== undefined
+      && !OAUTH_RESPONSIBLE_PARTIES.has(registration.responsibleParty)) {
+    throw new Error(`${label}: oauthRegistration.responsibleParty is invalid`);
+  }
+  if (registration.availability !== undefined
+      && !OAUTH_AVAILABILITY.has(registration.availability)) {
+    throw new Error(`${label}: oauthRegistration.availability is invalid`);
+  }
+  if (registration.reviewedAt !== undefined
+      && !/^\d{4}-\d{2}-\d{2}$/.test(registration.reviewedAt)) {
+    throw new Error(`${label}: oauthRegistration.reviewedAt must be an ISO date`);
+  }
+  for (const field of ['hostedCallbackUrl', 'registrationUrl', 'approvalUrl']) {
+    validateHttpsField(registration[field], label, field);
+  }
+  if (registration.approvalUrlAbsentReason !== undefined
+      && !isBoundedPlainText(registration.approvalUrlAbsentReason)) {
+    throw new Error(`${label}: oauthRegistration.approvalUrlAbsentReason must be bounded plain text`);
+  }
+  if (registration.setupSteps !== undefined) {
+    if (!Array.isArray(registration.setupSteps) || registration.setupSteps.length > 12
+        || registration.setupSteps.some(step => !isBoundedPlainText(step))) {
+      throw new Error(`${label}: oauthRegistration.setupSteps must contain bounded plain text`);
+    }
+    if (registration.setupSteps.length > 0 && !registration.evidenceUrl) {
+      throw new Error(`${label}: OAuth setup instructions require publisher evidence`);
+    }
+  }
+  if (registration.settings !== undefined) {
+    if (!Array.isArray(registration.settings) || registration.settings.length > 12
+        || registration.settings.some(setting => !setting || typeof setting !== 'object'
+          || !isBoundedPlainText(setting.label, 80) || !isBoundedPlainText(setting.value)
+          || typeof setting.required !== 'boolean')) {
+      throw new Error(`${label}: oauthRegistration.settings must be public-safe non-secret settings`);
+    }
+  }
+
   const callback = registration.callback;
   if (!callback || typeof callback !== 'object' || Array.isArray(callback)
       || typeof callback.required !== 'boolean') {
     throw new Error(`${label}: oauthRegistration.callback.required must be boolean`);
   }
   const redirectEntries = Object.entries(callback.redirectUrls || {});
-  if (callback.required && redirectEntries.length === 0) {
+  if (callback.required && redirectEntries.length === 0 && !registration.hostedCallbackUrl) {
     throw new Error(`${label}: required OAuth callback metadata needs redirectUrls`);
   }
   for (const [clientId, urls] of redirectEntries) {
@@ -254,6 +319,37 @@ function validateOAuthRegistration(seed, label) {
       && (!registration.clientId.required || !registration.clientSecret.required
         || !registration.callback.required)) {
     throw new Error(`${label}: pre-registered OAuth requires client ID, secret, and callback metadata`);
+  }
+  if (registration.clientSecret.required && registration.browserPublicClientSupported === true) {
+    throw new Error(`${label}: a secret-required OAuth app cannot advertise a browser/public fallback`);
+  }
+  if (registration.mode === 'automatic' && (
+    registration.responsibleParty && registration.responsibleParty !== 'automatic'
+    || registration.clientId.required || registration.clientSecret.required
+    || registration.availability && registration.availability !== 'ready'
+  )) {
+    throw new Error(`${label}: automatic registration has contradictory requirements`);
+  }
+  if (registration.mode === 'operator-confidential' && (
+    registration.responsibleParty && registration.responsibleParty !== 'mcptest-operator'
+    || !registration.clientId.required || !registration.clientSecret.required
+    || !registration.callback.required || !registration.hostedCallbackUrl
+    || registration.browserPublicClientSupported === true
+  )) {
+    throw new Error(`${label}: operator-confidential registration requires an operator-owned confidential hosted app`);
+  }
+  if (registration.mode === 'provider-approval') {
+    if (registration.responsibleParty
+        && registration.responsibleParty !== 'provider-approval') {
+      throw new Error(`${label}: provider-approval mode requires provider approval responsibility`);
+    }
+    if (!registration.approvalUrl && !registration.approvalUrlAbsentReason) {
+      throw new Error(`${label}: provider-approval mode requires an approval URL or explicit absence note`);
+    }
+    if (registration.clientId.required || registration.clientSecret.required
+        || registration.browserPublicClientSupported === true) {
+      throw new Error(`${label}: provider-approval mode cannot offer client credential fallback`);
+    }
   }
   if (registration.mode === 'unavailable-or-use-alternative') {
     if (!CATALOG_AUTH_TYPES.has(registration.alternativeAuthType)

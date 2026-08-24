@@ -20,6 +20,8 @@ import {
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
+import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
+import AuthorizationSetup from './AuthorizationSetup';
 import CapabilitiesProvided from './CapabilitiesProvided';
 
 interface ReleaseReadinessReportProps {
@@ -154,6 +156,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
   onToggleItem,
 }) => {
   const facts = useMemo(() => createObservedServerFacts(report, oauthTrace), [report, oauthTrace]);
+  const authorizationGuidance = useMemo(
+    () => getAuthorizationGuidanceForEndpoint(report.serverUrl),
+    [report.serverUrl]
+  );
   const matrix = useMemo(() => createCompatibilityMatrix(report, oauthTrace), [report, oauthTrace]);
   const decision = useMemo(
     () => createReleaseDecision(report, matrix, report.toolSurfaceAnalysis, oauthTrace),
@@ -212,6 +218,8 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           </div>
         </div>
       </section>
+
+      <AuthorizationSetup guidance={authorizationGuidance} currentCatalogContext />
 
       <section className="release-section" aria-labelledby="release-blockers-title">
         <div className="release-section-heading">

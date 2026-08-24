@@ -372,6 +372,72 @@ const expandedPublicArtifact = (): Record<string, any> => ({
 });
 
 describe('versioned public report artifacts', () => {
+  it('adds only trusted current catalog authorization guidance to JSON and Markdown', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://mcp.asana.com/v2/mcp';
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.authorizationSetup).toMatchObject({
+      catalogId: 'asana',
+      status: 'operator-setup-required',
+      responsibleParty: 'mcptest-operator',
+      provenance: 'current-catalog-guidance',
+    });
+    expect(json).toContain('https://mcptest.io/oauth/callback');
+    expect(markdown).toContain('## Authorization setup');
+    expect(markdown).toContain('not evidence observed during this report run');
+    expect(markdown).toContain('Publisher documentation');
+    expect(markdown).toContain('user-created Asana app and secret work with documented supported clients');
+    expect(markdown).toContain('Retry remains unavailable until the mcptest operator configures a confidential binding server-side');
+    expect(markdown).toContain('Responsible party: mcptest-operator');
+    expect(json).not.toMatch(/ASANA_CLIENT_SECRET[^"\n]*:/);
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+
+    const arbitrary = createPublicReport(publicReport(), FIXED_OPTIONS);
+    expect(arbitrary.authorizationSetup).toBeUndefined();
+  });
+
+  it('reports Stripe as verified automatic registration with no provider app setup', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://mcp.stripe.com';
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.authorizationSetup).toMatchObject({
+      catalogId: 'stripe',
+      status: 'no-registration-needed',
+      responsibleParty: 'automatic',
+      documentationUrl: 'https://access.stripe.com/.well-known/oauth-authorization-server/mcp',
+    });
+    expect(markdown).toContain('No additional provider app setup is required');
+    expect(markdown).not.toContain('Registration requirements not verified');
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+  });
+
+  it('keeps PagerDuty alternative-token guidance public-safe and actionable', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://mcp.pagerduty.com/mcp';
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.authorizationSetup).toMatchObject({
+      catalogId: 'pagerduty',
+      alternativeAuthType: 'api-token',
+      alternativeHeaderName: 'Authorization',
+      alternativeHeaderTemplate: 'Token token=<PAGERDUTY_API_TOKEN>',
+    });
+    expect(markdown).toContain(
+      'Safe header template: Authorization: Token token=\\<PAGERDUTY\\_API\\_TOKEN\\>'
+    );
+    expect(json).not.toMatch(/Token token=(?!<PAGERDUTY_API_TOKEN>)/);
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors))
+      .toBe(true);
+  });
+
   it('persists the optional canonical inventory in JSON and semantic Markdown', () => {
     const report = publicReport();
     report.capabilityInventory = createCapabilityInventory({

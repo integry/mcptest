@@ -37,7 +37,10 @@ export interface CatalogEndpointDiagnosticEvidence {
 const normalizedEndpointKey = (value: string): string | undefined => {
   try {
     const url = new URL(value);
-    url.hash = '';
+    // Trusted catalog guidance is endpoint-bound. Fragments and embedded
+    // credentials are never part of an MCP endpoint and must not be silently
+    // discarded during a security-sensitive match.
+    if (url.hash || url.username || url.password) return undefined;
     return url.toString();
   } catch {
     return undefined;
@@ -147,6 +150,23 @@ export const getCatalogServers = (): CatalogServer[] => {
 
 export const getCatalogServerById = (serverId: string): CatalogServer | undefined => {
   return getCatalogServers().find((server) => server.id === serverId);
+};
+
+/**
+ * Resolve trusted catalog data only for a canonical, exact endpoint. Issuers,
+ * hostnames, parent paths, redirects, and decoded/rewritten targets are not
+ * evidence that an arbitrary endpoint belongs to a catalog provider.
+ */
+export const getCatalogServerByEndpoint = (endpoint: string): CatalogServer | undefined => {
+  const endpointKey = normalizedEndpointKey(endpoint);
+  if (!endpointKey) return undefined;
+
+  return getCatalogServers().find((server) => [
+    server.url,
+    server.browserUrl,
+    server.validatedUrl,
+    ...(server.alternativeEndpoints?.map(({ url }) => url) ?? []),
+  ].some((value) => value && normalizedEndpointKey(value) === endpointKey));
 };
 
 /**

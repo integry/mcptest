@@ -5,6 +5,8 @@ import {
   saveManualOAuthClient,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
+import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
+import AuthorizationSetup from './AuthorizationSetup';
 
 interface OAuthConfigProps {
   serverUrl: string;
@@ -28,8 +30,14 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const serviceDomain = new URL(serverUrl).host;
   const callbackUrl = getOAuthCallbackUrl();
+  const authorizationGuidance = getAuthorizationGuidanceForEndpoint(serverUrl);
   const isProxyAuthenticationPrerequisite = prerequisite?.kind === 'proxy_authentication_required';
+  const catalogAllowsBrowserClient = !authorizationGuidance.trustedCatalogMatch
+    || authorizationGuidance.status === 'unknown'
+    || authorizationGuidance.status === 'no-registration-needed'
+    || authorizationGuidance.browserClientFormAllowed;
   const canConfigureClient = !isProxyAuthenticationPrerequisite
+    && catalogAllowsBrowserClient
     && (prerequisite?.canConfigureClient ?? true);
   const title = prerequisite?.registrationValidationErrors?.length
     ? `${prerequisite.providerName} registration metadata needs correction`
@@ -43,8 +51,11 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
       ? 'mcptest proxy authentication required'
       : prerequisite?.kind === 'transient_discovery_failure'
         ? 'OAuth discovery is temporarily unavailable'
-    : prerequisite?.kind === 'discovery_blocked_invalid'
+      : prerequisite?.kind === 'discovery_blocked_invalid'
       ? 'OAuth discovery could not be completed'
+      : authorizationGuidance.status === 'operator-setup-required'
+        && prerequisite?.configurationMode !== 'operator-confidential'
+        ? `${prerequisite?.providerName || serviceDomain} hosted mcptest operator setup required`
       : prerequisite?.configurationMode === 'operator-confidential'
         ? `${prerequisite.providerName} host application required`
       : `Register an OAuth application for ${prerequisite?.providerName || serviceDomain}`;
@@ -94,6 +105,10 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
             ? 'mcptest.io opened this prerequisite only after the proxy returned its own authentication response. Target OAuth discovery has not started.'
             : 'mcptest.io connected without credentials first and only opened this panel after the MCP target returned an HTTP authentication challenge.'}
         </p>
+
+        {!isProxyAuthenticationPrerequisite && (
+          <AuthorizationSetup guidance={authorizationGuidance} currentCatalogContext compact />
+        )}
 
         {isProxyAuthenticationPrerequisite && onSignIn && (
           <div className="mb-4">

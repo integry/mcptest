@@ -6,6 +6,7 @@ import type {
   CatalogServer,
   CatalogTransport,
 } from '../types/catalog';
+import { createAuthorizationGuidance } from './authorizationGuidance.ts';
 
 export type ClientSetupId = 'claude-code' | 'codex-cli' | 'cursor' | 'vs-code';
 export type EndpointProvenance = 'canonical' | 'live-validated' | 'browser-verified';
@@ -263,10 +264,15 @@ const jsonConfig = (value: unknown): string => JSON.stringify(value, null, 2);
 
 const setupAuthType = (server: CatalogServer): CatalogAuthType => {
   const registration = server.oauthRegistration;
-  return registration?.mode === 'unavailable-or-use-alternative'
-    && registration.alternativeAuthType
+  return registration?.alternativeAuthType
+    && registration.availability !== 'ready'
     ? registration.alternativeAuthType
     : server.authType;
+};
+
+const supportsClientOAuthLogin = (server: CatalogServer): boolean => {
+  const mode = server.oauthRegistration?.mode;
+  return !mode || mode === 'automatic' || mode === 'pre-registered-required' || mode === 'unknown';
 };
 
 const authTypeLabel = (authType: CatalogAuthType): string => {
@@ -354,17 +360,8 @@ const redirectRegistrationNote = (clientLabel: string, redirects: string[]): str
 };
 
 const authSummary = (server: CatalogServer, selectedAuthType = setupAuthType(server)): string => {
-  if (server.authType === 'oauth'
-      && server.oauthRegistration?.mode === 'pre-registered-required') {
-    return 'OAuth pre-registration required: provide a registered client ID, client secret, and the exact callback URL for this client.';
-  }
-  if (server.authType === 'oauth'
-      && server.oauthRegistration?.mode === 'unavailable-or-use-alternative') {
-    return `${authTypeLabel(selectedAuthType)} setup is preferred because automatic OAuth client registration is unavailable.`;
-  }
-  if (server.authType === 'oauth') {
-    return 'OAuth: the client will request authorization after the server is added.';
-  }
+  const guidance = createAuthorizationGuidance(server);
+  if (server.authType === 'oauth') return `${guidance.statusLabel}: ${guidance.summary}`;
   if (server.authType === 'none') return 'No authentication is required by the catalog listing.';
   if (server.authType === 'bearer-token') return 'Bearer token authentication uses a named environment placeholder.';
   if (server.authType === 'api-token') return 'API token authentication uses the publisher-documented header syntax when available.';
@@ -396,17 +393,20 @@ const commonNotes = (
   selectedAuthType = setupAuthType(server)
 ): string[] => {
   const notes = [`Using ${endpoint.provenanceLabel.toLowerCase()}: ${endpoint.url}`];
-  if (server.authType === 'oauth' && server.oauthRegistration?.mode === 'pre-registered-required') {
-    notes.push(`Register the client before connecting; automatic Dynamic Client Registration is not available. Publisher evidence: ${server.oauthRegistration.evidenceUrl}`);
-  } else if (server.authType === 'oauth'
+  const guidance = createAuthorizationGuidance(server);
+  if (server.authType === 'oauth') {
+    notes.push(`${guidance.statusLabel}: ${guidance.summary}`);
+    for (const step of guidance.steps) notes.push(`Provider setup: ${step}`);
+    if (guidance.documentationUrl) {
+      notes.push(`Publisher evidence (reviewed ${guidance.reviewedAt || 'date not recorded'}): ${guidance.documentationUrl}`);
+    }
+  }
+  if (server.authType === 'oauth'
       && server.oauthRegistration?.mode === 'unavailable-or-use-alternative') {
-    notes.push(`Automatic OAuth client registration is unavailable. This setup uses the publisher-documented ${authTypeLabel(selectedAuthType)} alternative. Publisher evidence: ${server.oauthRegistration.evidenceUrl}`);
     const alternativeHeader = credentialHeader(server, selectedAuthType);
     if (alternativeHeader) {
       notes.push(`Use the exact publisher-documented ${alternativeHeader.name} header syntax: ${alternativeHeader.valueTemplate}.`);
     }
-  } else if (server.authType === 'oauth') {
-    notes.push('The client will request authorization in your browser; no OAuth secret belongs in this configuration.');
   } else if (server.authType === 'unknown') {
     notes.push('Confirm the authentication method in the publisher documentation before adding credentials.');
   }
@@ -492,8 +492,8 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
       'Claude Code', claudeRedirects.map(({ url }) => url)
     ));
     notes.push('The bare --client-secret option opens Claude Code\'s masked prompt; the secret is stored securely instead of appearing in the command or configuration file.');
-  } else if (!registration && server.authType === 'oauth'
-      && server.oauthRegistration?.mode !== 'unavailable-or-use-alternative') {
+  } else if (!registration && selectedAuthType === 'oauth'
+      && supportsClientOAuthLogin(server)) {
     notes.push('After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.');
   }
   appendHeaderNotes(notes, requirements, headerInputNote);
@@ -663,8 +663,7 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
   } else {
     copyText = `codex mcp add ${quoteShellArgument(key)} --url ${quoteShellArgument(endpoint.url)}`;
   }
-  if (server.authType === 'oauth'
-      && server.oauthRegistration?.mode !== 'unavailable-or-use-alternative') {
+  if (selectedAuthType === 'oauth' && supportsClientOAuthLogin(server)) {
     copyText += `\ncodex mcp login ${quoteShellArgument(key)}`;
   }
   const notes = commonNotes(server, endpoint, selectedAuthType);

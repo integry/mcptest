@@ -216,7 +216,24 @@ describe('generated page metadata', () => {
     expect(html).toContain('http://127.0.0.1:33418/');
     expect(html).toContain('https://vscode.dev/redirect');
     expect(html).toContain('natively prompts first for the client ID');
+    expect(html).toContain('Hosted mcptest operator setup required');
+    expect(html).toContain('user-created Asana app and secret work with documented supported clients');
+    expect(html).toContain('Retry remains unavailable until the mcptest operator configures a confidential binding server-side');
+    expect(html).toContain('creating the app alone does not enable hosted mcptest');
     expect(html).not.toContain('no OAuth secret belongs in this configuration');
+  });
+
+  it('renders verified automatic Stripe registration guidance in static HTML', () => {
+    const stripe = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ id }) => id === 'stripe');
+    expect(stripe).toBeDefined();
+
+    const html = renderServerHtml(indexHtml, stripe);
+    expect(html).toContain('No app registration needed');
+    expect(html).toContain('No additional provider app setup is required');
+    expect(html).toContain('https://access.stripe.com/.well-known/oauth-authorization-server/mcp');
+    expect(html).not.toContain('Registration requirements not verified');
   });
 
   it('renders missing callback evidence as unsupported for all four static setups', () => {

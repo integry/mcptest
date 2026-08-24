@@ -1,4 +1,5 @@
 import React from 'react';
+import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 
 interface ReportAuthorizationGateProps {
   serverUrl: string;
@@ -24,7 +25,11 @@ const ReportAuthorizationGate: React.FC<ReportAuthorizationGateProps> = ({
   isPreparingClient = false,
   onAuthorize,
   onConfigureClient,
-}) => (
+}) => {
+  const guidance = getAuthorizationGuidanceForEndpoint(serverUrl);
+  const canRetryHostedAuthorization = guidance.canAttemptHostedAuthorization;
+
+  return (
   <section className="report-auth-gate" aria-labelledby="report-auth-title">
     <div className="report-auth-heading">
       <div className="report-auth-icon" aria-hidden="true">
@@ -49,7 +54,15 @@ const ReportAuthorizationGate: React.FC<ReportAuthorizationGateProps> = ({
 
     {error && <div className="alert alert-danger mb-0" role="alert">{error}</div>}
 
-    <div className="report-auth-options" aria-label="OAuth authorization options">
+    {!canRetryHostedAuthorization && (
+      <div className="report-auth-note" role="note">
+        Authorization controls are disabled because the current catalog prerequisite is not
+        satisfied. Follow the Authorization setup section above, then return after the operator or
+        provider has made this exact catalog integration available.
+      </div>
+    )}
+
+    {canRetryHostedAuthorization && <div className="report-auth-options" aria-label="OAuth authorization options">
       <div className="report-auth-option">
         <div>
           <h4>Continue with OAuth</h4>
@@ -94,8 +107,9 @@ const ReportAuthorizationGate: React.FC<ReportAuthorizationGateProps> = ({
           )}
         </button>
       </div>
-    </div>
+    </div>}
   </section>
-);
+  );
+};
 
 export default ReportAuthorizationGate;

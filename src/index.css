@@ -43,6 +43,64 @@
   --accent-gradient: linear-gradient(120deg, #047857, #0f766e);
 }
 
+/* Shared provider authorization prerequisites used by reports, profiles, and OAuth panels. */
+.authorization-setup {
+  margin: 1rem 0;
+  padding: 1.25rem;
+  border: 1px solid var(--bs-border-color);
+  border-left: 4px solid var(--bs-secondary);
+  border-radius: 0.75rem;
+  background: var(--bs-body-bg);
+  overflow-wrap: anywhere;
+}
+
+.authorization-setup--no-registration-needed { border-left-color: var(--bs-success); }
+.authorization-setup--register-app-first,
+.authorization-setup--alternative-credential { border-left-color: var(--bs-warning); }
+.authorization-setup--operator-setup-required,
+.authorization-setup--provider-approval-required { border-left-color: var(--bs-danger); }
+
+.authorization-setup-heading,
+.authorization-callback,
+.authorization-setup-links {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.authorization-setup-kicker {
+  margin: 0 0 0.25rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.authorization-setup h3 { margin: 0 0 0.75rem; }
+.authorization-setup h4 { margin: 1rem 0 0.5rem; font-size: 1rem; }
+.authorization-setup-reviewed { color: var(--bs-secondary-color); font-size: 0.875rem; }
+.authorization-setup-freshness { padding: 0.75rem; border-radius: 0.5rem; background: var(--bs-tertiary-bg); }
+.authorization-setup-requirements,
+.authorization-setup-settings dl { display: grid; gap: 0.5rem; margin-bottom: 0; }
+.authorization-setup-requirements > div,
+.authorization-setup-settings dl > div { display: grid; grid-template-columns: minmax(8rem, 0.35fr) 1fr; gap: 0.75rem; }
+.authorization-setup-requirements dt,
+.authorization-setup-settings dt { font-weight: 600; }
+.authorization-setup-requirements dd,
+.authorization-setup-settings dd { margin: 0; }
+.authorization-callback { align-items: center; margin: 0.5rem 0; }
+.authorization-callback code { flex: 1 1 20rem; padding: 0.5rem; background: var(--bs-tertiary-bg); }
+.authorization-setup-links { justify-content: flex-start; margin-top: 1rem; }
+.authorization-setup--compact { padding: 1rem; }
+
+@media (max-width: 575.98px) {
+  .authorization-setup-requirements > div,
+  .authorization-setup-settings dl > div { grid-template-columns: 1fr; gap: 0.125rem; }
+  .authorization-callback .btn { width: 100%; }
+}
+
 /* Dark Theme CSS Variables */
 :root[data-theme='dark'] {
   --body-bg: #0f172a;

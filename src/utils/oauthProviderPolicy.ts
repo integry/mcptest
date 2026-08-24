@@ -2,6 +2,7 @@ export type KnownOAuthProviderId =
   | 'canva'
   | 'calendly'
   | 'figma'
+  | 'vercel'
   | 'slack'
   | 'github'
   | 'upwork'
@@ -71,6 +72,16 @@ const PROVIDER_POLICIES: readonly OAuthProviderPolicy[] = [
     registrationMode: 'provider-approved',
     clientEstablishmentStrategy: 'standards-advertised',
     approvedRegistrationEndpoint: 'https://api.figma.com/v1/oauth/mcp/register',
+  },
+  {
+    id: 'vercel',
+    name: 'Vercel',
+    targetUrls: ['https://mcp.vercel.com'],
+    issuerUrls: ['https://vercel.com'],
+    documentationUrl: 'https://vercel.com/docs/agent-resources/vercel-mcp',
+    registrationMode: 'provider-approved',
+    clientEstablishmentStrategy: 'standards-advertised',
+    approvedRegistrationEndpoint: 'https://api.vercel.com/login/oauth/register',
   },
   {
     id: 'slack',
