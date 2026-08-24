@@ -10,6 +10,7 @@ import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  shouldRetryMcpConnectionThroughProxy,
   type ObservedAuthenticationChallenge,
   type ObservedTransportRequest,
   type ProxyAuthenticationSource,
@@ -582,6 +583,9 @@ const connectForEvaluation = async (
       undefined,
       directStartedAt
     );
+    if (!shouldRetryMcpConnectionThroughProxy(directError)) {
+      throw new EvaluationConnectionError([directFailure]);
+    }
     const proxyUrl = getProxyUrl();
     if (!proxyUrl) throw new EvaluationConnectionError([directFailure]);
 

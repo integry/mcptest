@@ -1119,6 +1119,97 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
+  it('retries the exact candidate after readable initialize and a later browser-unreadable request', async () => {
+    const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const getIdToken = vi.fn().mockResolvedValue('firebase-session-token');
+    const terminalError = new TypeError('Failed to fetch');
+    const directError = new TransportConnectionError([terminalError], [{
+      candidateUrl: endpoint,
+      transportType: 'streamable-http',
+      error: terminalError,
+      observedRequests: [
+        {
+          method: 'POST',
+          mcpMethod: 'initialize',
+          url: endpoint,
+          status: 200,
+          outcome: 'succeeded',
+        },
+        {
+          method: 'POST',
+          mcpMethod: 'notifications/initialized',
+          url: endpoint,
+          requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+          outcome: 'failed',
+        },
+      ],
+    }]);
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    authMocks.currentUser = { getIdToken };
+    connectionMocks.attempt
+      .mockRejectedValueOnce(directError)
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'stateful',
+        protocolVersion: '2025-11-25',
+      });
+    const view = renderConnectionHook({ 'X-Target-Tenant': 'finance' }, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(
+        vi.fn(), vi.fn(), vi.fn(), endpoint, undefined, 'stateful', 'streamable-http'
+      );
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[1]).toEqual([
+      `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+      expect.any(AbortSignal),
+      'firebase-session-token',
+      { 'X-Target-Tenant': 'finance' },
+      true,
+      'stateful',
+      expect.any(Function),
+      'streamable-http',
+    ]);
+    expect(view.connection.connectionStatus).toBe('Connected');
+    view.unmount();
+  });
+
+  it('shows proxy login instead of HTTP 200 guidance for the same mid-handshake failure', async () => {
+    const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const terminalError = new TypeError('Failed to fetch');
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError(
+      [terminalError],
+      [{
+        candidateUrl: endpoint,
+        transportType: 'streamable-http',
+        error: terminalError,
+        observedRequests: [
+          { method: 'POST', mcpMethod: 'initialize', url: endpoint, status: 200, outcome: 'succeeded' },
+          { method: 'POST', mcpMethod: 'notifications/initialized', url: endpoint, outcome: 'failed' },
+        ],
+      }]
+    ));
+    const view = renderConnectionHook(undefined, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(view.connection.connectionStatus).toBe('Proxy authentication required');
+    expect(view.connection.oauthPrerequisite).toMatchObject({
+      kind: 'proxy_authentication_required',
+    });
+    expect(view.connection.connectionError).toBeNull();
+    view.unmount();
+  });
+
   it('does not replace an explicit API credential with OAuth discovery', async () => {
     const endpoint = 'https://api-key.example/mcp';
     connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([

@@ -37,7 +37,8 @@ const attemptResult = (attempt: ConnectionAttemptFact): string => {
         ? `${typeof attempt.targetError.code === 'number' ? 'JSON-RPC ' : ''}${attempt.targetError.code}: `
         : ''}${attempt.targetError.message}`
       : '';
-    return `HTTP ${attempt.status}${owner}${detail}`;
+    const intermediate = attempt.failureKind === 'success' ? ' — readable intermediate response' : '';
+    return `HTTP ${attempt.status}${owner}${intermediate}${detail}`;
   }
   switch (attempt.failureKind) {
     case 'browser-unreadable': return 'Browser response unreadable';
@@ -89,40 +90,77 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
     };
   }
 
-  const readableHttp = attempts.find(({ route, status, authenticationSource, responseSource }) => (
-    status !== undefined
+  const proxyReadableHttp = attempts.find(({ route, status, authenticationSource, responseSource }) => (
+    status !== undefined && status >= 400
     && authenticationSource !== 'proxy'
-    && (route === 'direct' || responseSource === 'target')
+    && route === 'proxy'
+    && responseSource === 'target'
   ));
-  if (readableHttp) {
-    const observer = readableHttp.route === 'proxy'
-      ? 'The authenticated proxy observed'
-      : 'The browser received';
+  if (proxyReadableHttp) {
     return {
-      badge: `HTTP ${readableHttp.status}`,
-      heading: `MCP endpoint returned HTTP ${readableHttp.status}`,
-      summary: `${observer} a readable response for the exact candidate endpoint. Diagnose the HTTP status and path rather than treating it as a CORS failure.`,
+      badge: `HTTP ${proxyReadableHttp.status}`,
+      heading: `MCP endpoint returned HTTP ${proxyReadableHttp.status}`,
+      summary: 'The authenticated proxy observed a readable response for the exact candidate endpoint. Diagnose the HTTP status and path rather than treating it as a CORS failure.',
       alertClass: 'alert-danger border-danger',
     };
   }
 
   const directAttempts = attempts.filter(({ route }) => route === 'direct');
-  const allDirectBrowserUnreadable = directAttempts.length > 0
-    && directAttempts.every(({ browserUnreadable }) => browserUnreadable);
-  if (allDirectBrowserUnreadable) {
+  let readableInitialize: ConnectionAttemptFact | undefined;
+  const terminalDirectBrowserUnreadable = directAttempts.find((attempt, attemptIndex) => {
+    if (!attempt.browserUnreadable) return false;
+    readableInitialize = directAttempts.find((candidate, candidateIndex) => (
+      candidateIndex < attemptIndex
+      && candidate.failureKind === 'success'
+      && candidate.mcpMethod === 'initialize'
+      && candidate.status !== undefined
+      && candidate.candidateUrl === attempt.candidateUrl
+      && candidate.transportType !== undefined
+      && candidate.transportType === attempt.transportType
+    ));
+    return readableInitialize !== undefined;
+  });
+  const anyDirectBrowserUnreadable = directAttempts.find(({ browserUnreadable }) => browserUnreadable);
+  const directReadableHttp = directAttempts.find(({ status, authenticationSource }) => (
+    status !== undefined && status >= 400 && authenticationSource !== 'proxy'
+  ));
+  if (terminalDirectBrowserUnreadable && readableInitialize) {
+    const protocolHeaderWasRequired = terminalDirectBrowserUnreadable.requestHeaders
+      ?.some((header) => header.toLowerCase() === 'mcp-protocol-version');
+    return {
+      badge: 'Browser / CORS',
+      heading: 'Later MCP request blocked by browser access policy',
+      summary: `The browser received a readable initialize HTTP ${readableInitialize.status} response, but a later required MCP request for the same candidate and transport was browser-unreadable.${protocolHeaderWasRequired ? ' That request included MCP-Protocol-Version, which the server must allow in its CORS preflight response.' : ' A rejected preflight or CORS policy may be hiding that later response.'}`,
+      alertClass: 'alert-warning border-warning',
+    };
+  }
+
+  if (anyDirectBrowserUnreadable) {
     const knownOAuth = errorDetails.expectedAuthentication === 'oauth';
     const knownReachableOAuth = knownOAuth && errorDetails.serverReachable === true;
+    const hasReadableDirectResponse = directAttempts.some(({ status }) => status !== undefined);
     return {
       badge: 'Browser / CORS',
       heading: knownReachableOAuth
         ? 'Browser access blocked / OAuth server reachable'
         : 'Browser access blocked',
-      summary: knownReachableOAuth
-        ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, so use the authenticated proxy or the terminal probe to observe its expected challenge.'
-        : knownOAuth
-          ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, but the browser evidence alone cannot establish current server reachability.'
-        : 'Every direct browser attempt ended without a readable HTTP response. Cross-origin policy or a rejected preflight may be hiding the target response; this evidence does not show that the server is down.',
+      summary: hasReadableDirectResponse
+        ? 'The direct-browser evidence is mixed: at least one response was readable and at least one was browser-unreadable, but the ordered evidence does not show a successful initialize followed by a blocked request for the same candidate and transport.'
+        : knownReachableOAuth
+          ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, so use the authenticated proxy or the terminal probe to observe its expected challenge.'
+          : knownOAuth
+            ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, but the browser evidence alone cannot establish current server reachability.'
+            : 'Every direct browser attempt ended without a readable HTTP response. Cross-origin policy or a rejected preflight may be hiding the target response; this evidence does not show that the server is down.',
       alertClass: 'alert-warning border-warning',
+    };
+  }
+
+  if (directReadableHttp) {
+    return {
+      badge: `HTTP ${directReadableHttp.status}`,
+      heading: `MCP endpoint returned HTTP ${directReadableHttp.status}`,
+      summary: 'The browser received a readable response for the exact candidate endpoint. Diagnose the HTTP status and path rather than treating it as a CORS failure.',
+      alertClass: 'alert-danger border-danger',
     };
   }
 
@@ -166,8 +204,9 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const showHttpProbe = transportEvidence !== 'legacy-sse';
   const showSseProbe = transportEvidence !== 'streamable-http';
   const exploratory = transportEvidence === 'unknown';
-  const browserBlocked = attempts.some(({ browserUnreadable }) => browserUnreadable)
-    && attempts.filter(({ route }) => route === 'direct').every(({ browserUnreadable }) => browserUnreadable);
+  const browserBlocked = attempts.some(({ route, browserUnreadable }) => (
+    route === 'direct' && browserUnreadable
+  ));
   const oauthExpected = errorDetails.expectedAuthentication === 'oauth'
     || attempts.some(({ authenticationSource, status }) => authenticationSource === 'target' && status === 401);
   const httpCurlCommand = generateHttpCurlCommand(errorDetails.serverUrl);
@@ -219,6 +258,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                       <th scope="col">Route</th>
                       <th scope="col">Candidate</th>
                       <th scope="col">Transport</th>
+                      <th scope="col">Request</th>
                       <th scope="col">Observed result</th>
                     </tr>
                   </thead>
@@ -228,6 +268,13 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                         <td>{attempt.route === 'proxy' ? 'Authenticated proxy' : 'Direct browser'}</td>
                         <td><code className="text-break">{attempt.candidateUrl}</code></td>
                         <td>{transportLabel(attempt.transportType)}</td>
+                        <td>
+                          {attempt.method || 'Unknown'}
+                          {attempt.mcpMethod && <><br /><code>{attempt.mcpMethod}</code></>}
+                          {attempt.requestHeaders?.some((header) => header.toLowerCase() === 'mcp-protocol-version') && (
+                            <><br /><small><code>MCP-Protocol-Version</code> header</small></>
+                          )}
+                        </td>
                         <td>{attemptResult(attempt)}</td>
                       </tr>
                     ))}
@@ -264,6 +311,11 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
 
           <div className="mb-3">
             <strong>Terminal diagnostics</strong>
+            {showHttpProbe && (
+              <p className="small mt-1 mb-2">
+                This initialize probe includes <code>MCP-Protocol-Version</code> so the required header is explicit. It does not reproduce the complete post-initialize lifecycle.
+              </p>
+            )}
             {oauthExpected && showHttpProbe && (
               <p className="small mt-1 mb-2">
                 Expected unauthenticated result: <strong>HTTP 401</strong> with a <code>WWW-Authenticate</code> Bearer challenge proves reachability and starts OAuth discovery. It is not an authenticated MCP session.
