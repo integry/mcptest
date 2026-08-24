@@ -30,7 +30,7 @@ export interface OAuthProviderPolicy {
   bearerTokenName?: string;
   /** Safe public template used to construct the target Authorization header. */
   authorizationHeaderTemplate?: string;
-  /** Exact endpoint whose otherwise opaque rejection is covered by provider policy. */
+  /** Exact endpoint that may activate provider-specific registration-response handling. */
   approvedRegistrationEndpoint?: string;
 }
 
@@ -60,6 +60,7 @@ const PROVIDER_POLICIES: readonly OAuthProviderPolicy[] = [
     // Static and manually pre-registered client IDs are not supported. This
     // policy activates only for the exact catalog target and discovered issuer.
     clientEstablishmentStrategy: 'dynamic-client-registration-only',
+    approvedRegistrationEndpoint: 'https://calendly.com/oauth/register',
   },
   {
     id: 'figma',

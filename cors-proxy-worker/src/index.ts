@@ -89,6 +89,11 @@ const MAX_OAUTH_RESPONSE_BYTES = 64 * 1024;
 const MAX_OAUTH_METADATA_BYTES = 64 * 1024;
 const MAX_DYNAMIC_CLIENT_ID_LENGTH = 2048;
 const MAX_DYNAMIC_CLIENT_SECRET_LENGTH = 4096;
+const CALENDLY_OAUTH_RESOURCE = 'https://mcp.calendly.com/';
+const CALENDLY_OAUTH_ISSUER = 'https://calendly.com/';
+const CALENDLY_OAUTH_REGISTRATION_ENDPOINT = 'https://calendly.com/oauth/register';
+const MAX_CALENDLY_REGISTRATION_FIELD_ERRORS = 5;
+const MAX_CALENDLY_REGISTRATION_FIELD_ERROR_LENGTH = 256;
 // URLSearchParams can encode one UTF-16 code unit as three UTF-8 bytes, each
 // represented by a three-character percent escape. Keep every credential that
 // passes registration validation usable with either supported secret method.
@@ -1052,16 +1057,35 @@ const validateRegistrationRequest = (value: unknown): RegistrationRequestBody =>
 };
 
 const normalizedRegistrationFieldErrors = (
-  value: Record<string, unknown>
+  value: Record<string, unknown>,
+  resource: string | null,
+  issuer: URL,
+  registrationEndpoint: URL
 ): Array<{ field: 'client_name'; message: string }> => {
   if (
-    typeof value.error !== 'string'
-    || value.error.toLowerCase() !== 'invalid_client_metadata'
+    value.error !== 'invalid_client_metadata'
+    || resource !== CALENDLY_OAUTH_RESOURCE
+    || issuer.toString() !== CALENDLY_OAUTH_ISSUER
+    || registrationEndpoint.toString() !== CALENDLY_OAUTH_REGISTRATION_ENDPOINT
   ) return [];
-  const evidence = JSON.stringify(value).slice(0, 16 * 1024);
+
+  const errors = value.errors;
+  if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return [];
+  const nameErrors = (errors as Record<string, unknown>).name;
   if (
-    !/client[_\s-]*name/i.test(evidence)
-    || !/(?:alpha[\s_-]*numeric|alphanumeric)/i.test(evidence)
+    !Array.isArray(nameErrors)
+    || nameErrors.length === 0
+    || nameErrors.length > MAX_CALENDLY_REGISTRATION_FIELD_ERRORS
+    || nameErrors.some(message => (
+      typeof message !== 'string'
+      || message.length === 0
+      || message.length > MAX_CALENDLY_REGISTRATION_FIELD_ERROR_LENGTH
+      || /[\u0000-\u001f\u007f]/.test(message)
+    ))
+  ) return [];
+  const evidence = nameErrors.join(' ');
+  if (
+    !/(?:alpha[\s_-]*numeric|alphanumeric)/i.test(evidence)
     || !/hyphens?/i.test(evidence)
     || !/spaces?/i.test(evidence)
   ) return [];
@@ -1071,7 +1095,12 @@ const normalizedRegistrationFieldErrors = (
   }];
 };
 
-const sanitizeRegistrationError = (value: unknown): Record<string, unknown> => {
+const sanitizeRegistrationError = (
+  value: unknown,
+  resource: string | null,
+  issuer: URL,
+  registrationEndpoint: URL
+): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { error: 'server_error', error_description: 'Registration endpoint returned an invalid JSON error.' };
   }
@@ -1084,7 +1113,12 @@ const sanitizeRegistrationError = (value: unknown): Record<string, unknown> => {
       && !/[\u0000-\u001f\u007f]/.test(input[key])
     ) result[key] = input[key];
   }
-  const registrationValidationErrors = normalizedRegistrationFieldErrors(input);
+  const registrationValidationErrors = normalizedRegistrationFieldErrors(
+    input,
+    resource,
+    issuer,
+    registrationEndpoint
+  );
   return result.error || result.message || result.detail
     ? {
         ...result,
@@ -1196,6 +1230,7 @@ export async function handleOAuthRegistrationRequest(
 
   try {
     const issuerHeader = request.headers.get('X-MCP-OAuth-Issuer');
+    const resourceHeader = request.headers.get('X-MCP-OAuth-Resource');
     const expectedEndpointHeader = request.headers.get('X-MCP-OAuth-Registration-Endpoint');
     if (!issuerHeader || !expectedEndpointHeader) {
       return oauthRouteError(request, 'Error: Validated OAuth registration binding is required.', 400);
@@ -1350,7 +1385,12 @@ export async function handleOAuthRegistrationRequest(
       let sanitized: Record<string, unknown> = opaqueRegistrationError();
       if (responseType === OAUTH_JSON_CONTENT_TYPE) {
         try {
-          sanitized = sanitizeRegistrationError(JSON.parse(rawResponse));
+          sanitized = sanitizeRegistrationError(
+            JSON.parse(rawResponse),
+            resourceHeader,
+            issuer,
+            registrationEndpoint
+          );
         } catch {
           // Keep the fixed opaque response; raw provider text is discarded.
         }

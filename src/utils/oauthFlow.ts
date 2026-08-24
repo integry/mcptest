@@ -476,24 +476,45 @@ const hasDirectTargetChallengeWithoutBearer = (
 
 const CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE =
   'Use only alphanumeric characters, hyphens, and spaces.';
+const MAX_CALENDLY_REGISTRATION_FIELD_ERRORS = 5;
+const MAX_CALENDLY_REGISTRATION_FIELD_ERROR_LENGTH = 256;
 
 const calendlyRegistrationValidationErrors = (
   value: unknown,
-  policy?: OAuthProviderPolicy
+  policy: OAuthProviderPolicy | undefined,
+  registrationEndpoint: string | undefined
 ): OAuthRegistrationValidationError[] => {
-  if (policy?.id !== 'calendly' || !value || typeof value !== 'object') return [];
-  const body = value as Record<string, unknown>;
-  if (typeof body.error !== 'string' || body.error.toLowerCase() !== 'invalid_client_metadata') {
-    return [];
-  }
-
-  // Calendly's observed response names the invalid field and its constraint.
-  // Normalize that evidence to a fixed local message instead of forwarding an
-  // arbitrary provider body or displaying provider-controlled prose.
-  const evidence = JSON.stringify(value).slice(0, 16 * 1024);
   if (
-    !/client[_\s-]*name/i.test(evidence)
-    || !/(?:alpha[\s_-]*numeric|alphanumeric)/i.test(evidence)
+    policy?.id !== 'calendly'
+    || !policy.approvedRegistrationEndpoint
+    || !exactUrlMatches(registrationEndpoint, policy.approvedRegistrationEndpoint)
+    || !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+  ) return [];
+  const body = value as Record<string, unknown>;
+  if (body.error !== 'invalid_client_metadata') return [];
+
+  // Calendly's live response puts field errors at the exact `errors.name`
+  // path. Inspect only that bounded array, and normalize its constraint to a
+  // fixed local message instead of forwarding provider-controlled prose.
+  const errors = body.errors;
+  if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return [];
+  const nameErrors = (errors as Record<string, unknown>).name;
+  if (
+    !Array.isArray(nameErrors)
+    || nameErrors.length === 0
+    || nameErrors.length > MAX_CALENDLY_REGISTRATION_FIELD_ERRORS
+    || nameErrors.some(message => (
+      typeof message !== 'string'
+      || message.length === 0
+      || message.length > MAX_CALENDLY_REGISTRATION_FIELD_ERROR_LENGTH
+      || /[\u0000-\u001f\u007f]/.test(message)
+    ))
+  ) return [];
+  const evidence = nameErrors.join(' ');
+  if (
+    !/(?:alpha[\s_-]*numeric|alphanumeric)/i.test(evidence)
     || !/hyphens?/i.test(evidence)
     || !/spaces?/i.test(evidence)
   ) return [];
@@ -501,9 +522,37 @@ const calendlyRegistrationValidationErrors = (
   return [{ field: 'client_name', message: CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE }];
 };
 
+const calendlyRelayValidationErrors = (
+  value: Record<string, unknown>,
+  policy: OAuthProviderPolicy | undefined,
+  registrationEndpoint: string | undefined
+): OAuthRegistrationValidationError[] => {
+  // The hosted relay has already discarded `errors.name`. Accept only its
+  // exact fixed local normalization so proxy-based flows retain the guidance.
+  if (
+    policy?.id !== 'calendly'
+    || !policy.approvedRegistrationEndpoint
+    || !exactUrlMatches(registrationEndpoint, policy.approvedRegistrationEndpoint)
+  ) return [];
+  const validationErrors = value.registrationValidationErrors;
+  if (!Array.isArray(validationErrors) || validationErrors.length !== 1) return [];
+  const validationError = validationErrors[0];
+  if (
+    !validationError
+    || typeof validationError !== 'object'
+    || Array.isArray(validationError)
+    || Object.keys(validationError).length !== 2
+    || (validationError as Record<string, unknown>).field !== 'client_name'
+    || (validationError as Record<string, unknown>).message
+      !== CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE
+  ) return [];
+  return [{ field: 'client_name', message: CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE }];
+};
+
 const registrationFailureDetails = (
   error: RegistrationRejectedError,
-  policy?: OAuthProviderPolicy
+  policy?: OAuthProviderPolicy,
+  registrationEndpoint?: string
 ): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(error.body) as Record<string, unknown>;
@@ -513,7 +562,14 @@ const registrationFailureDetails = (
       && String(value).length <= 2048
       && !/[\u0000-\u001f\u007f]/.test(String(value))
     )));
-    const registrationValidationErrors = calendlyRegistrationValidationErrors(parsed, policy);
+    const directRegistrationValidationErrors = calendlyRegistrationValidationErrors(
+      parsed,
+      policy,
+      registrationEndpoint
+    );
+    const registrationValidationErrors = directRegistrationValidationErrors.length
+      ? directRegistrationValidationErrors
+      : calendlyRelayValidationErrors(parsed, policy, registrationEndpoint);
     return {
       ...safeScalars,
       ...(registrationValidationErrors.length ? { registrationValidationErrors } : {}),
@@ -762,7 +818,11 @@ const buildOAuthPrerequisite = (
     };
   }
   if (error instanceof RegistrationRejectedError) {
-    const details = registrationFailureDetails(error, issuerBoundPolicy);
+    const details = registrationFailureDetails(
+      error,
+      issuerBoundPolicy,
+      metadata?.registration_endpoint
+    );
     const category = registrationFailureCategory(
       error,
       details,
@@ -1181,7 +1241,7 @@ const createOAuthRegistrationFetchForPendingContext = (
   }
   // The body is part of an in-memory de-duplication key only. It is never
   // persisted, traced, logged, placed in a URL, or exposed as an error.
-  const requestKey = `${issuer}\n${new URL(registrationEndpoint!).toString()}\n${body}`;
+  const requestKey = `${provider.serverUrl}\n${issuer}\n${new URL(registrationEndpoint!).toString()}\n${body}`;
   const callerSignal = init?.signal || request?.signal;
   if (callerSignal?.aborted) throw registrationAbortReason(callerSignal);
   const existing = pendingRegistrationRequests.get(requestKey);
@@ -1203,6 +1263,7 @@ const createOAuthRegistrationFetchForPendingContext = (
     authorization: `Bearer ${proxy.authorizationToken}`,
     'content-type': 'application/json',
     'x-mcp-oauth-issuer': issuer!,
+    'x-mcp-oauth-resource': provider.serverUrl,
     // Equality assertion only: the Worker rediscovers and selects the target.
     'x-mcp-oauth-registration-endpoint': new URL(registrationEndpoint!).toString(),
   });
@@ -2345,12 +2406,18 @@ export const beginOAuthFlow = async (
       const issuerBoundPolicy = discoveredIssuer
         ? getOAuthProviderPolicy(normalizedServerUrl, discoveredIssuer)
         : undefined;
-      const details = registrationFailureDetails(error, issuerBoundPolicy);
+      const registrationEndpoint = provider.discoveryState()
+        ?.authorizationServerMetadata?.registration_endpoint;
+      const details = registrationFailureDetails(
+        error,
+        issuerBoundPolicy,
+        registrationEndpoint
+      );
       const category = registrationFailureCategory(
         error,
         details,
         issuerBoundPolicy,
-        provider.discoveryState()?.authorizationServerMetadata?.registration_endpoint
+        registrationEndpoint
       );
       const validationErrors = validationErrorsFromDetails(details);
       const explanation = registrationFailureExplanation(

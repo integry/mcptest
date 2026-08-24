@@ -323,7 +323,7 @@ describe('BrowserOAuthProvider', () => {
         issuer,
         authorization_endpoint: 'https://calendly.com/oauth2/authorize',
         token_endpoint: 'https://calendly.com/oauth2/token',
-        registration_endpoint: 'https://calendly.com/oauth2/register',
+        registration_endpoint: 'https://calendly.com/oauth/register',
         response_types_supported: ['code'],
         code_challenge_methods_supported: ['S256'],
       },
@@ -1747,7 +1747,7 @@ describe('OAuth provider interoperability matrix', () => {
     const target = 'https://mcp.calendly.com/';
     const issuer = 'https://calendly.com/';
     const resourceMetadataUrl = 'https://mcp.calendly.com/.well-known/oauth-protected-resource';
-    const registrationEndpoint = 'https://calendly.com/oauth2/register';
+    const registrationEndpoint = 'https://calendly.com/oauth/register';
     let registration: Record<string, unknown> | undefined;
     let authorizationUrl: URL | undefined;
     const fetchFn: FetchLike = async (input) => {
@@ -1802,8 +1802,13 @@ describe('OAuth provider interoperability matrix', () => {
     const target = 'https://mcp.calendly.com/';
     const issuer = 'https://calendly.com/';
     const resourceMetadataUrl = 'https://mcp.calendly.com/.well-known/oauth-protected-resource';
-    const registrationEndpoint = 'https://calendly.com/oauth2/register';
-    const privateProviderValue = 'provider-body-must-not-be-forwarded';
+    const registrationEndpoint = 'https://calendly.com/oauth/register';
+    const observedCalendlyResponse = {
+      error: 'invalid_client_metadata',
+      errors: {
+        name: ['may only contain alphanumeric characters, hyphens, and spaces.'],
+      },
+    };
     const fetchFn: FetchLike = async (input) => {
       const url = String(input);
       if (url === resourceMetadataUrl) {
@@ -1817,14 +1822,17 @@ describe('OAuth provider interoperability matrix', () => {
       }
       throw new Error(`Unexpected direct request: ${url}`);
     };
-    const proxyFetch: FetchLike = async () => jsonResponse({
-      error: 'invalid_client_metadata',
-      error_description: 'client_name must contain only alphanumeric characters, hyphens, and spaces',
-      provider_private_context: privateProviderValue,
-    }, {
-      status: 400,
-      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
-    });
+    const proxyFetch: FetchLike = async (input, init) => {
+      expect(String(input)).toBe('https://proxy.mcptest.test/oauth/register');
+      const headers = new Headers(init?.headers);
+      expect(headers.get('x-mcp-oauth-resource')).toBe(target);
+      expect(headers.get('x-mcp-oauth-issuer')).toBe(issuer);
+      expect(headers.get('x-mcp-oauth-registration-endpoint')).toBe(registrationEndpoint);
+      return jsonResponse(observedCalendlyResponse, {
+        status: 400,
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    };
 
     let caught: unknown;
     try {
@@ -1858,7 +1866,7 @@ describe('OAuth provider interoperability matrix', () => {
     expect(isOAuthClientConfigurationRequired(caught)).toBe(false);
     const serializedTrace = JSON.stringify(getStoredOAuthTrace(target, sessionStorage));
     expect(serializedTrace).toContain('client_name');
-    expect(serializedTrace).not.toContain(privateProviderValue);
+    expect(serializedTrace).not.toContain(observedCalendlyResponse.errors.name[0]);
   });
 
   it('does not apply Calendly DCR-only failure handling to another issuer', async () => {
@@ -1877,7 +1885,9 @@ describe('OAuth provider interoperability matrix', () => {
       if (url === registrationEndpoint && init?.method === 'POST') {
         return jsonResponse({
           error: 'invalid_client_metadata',
-          error_description: 'client_name must contain alphanumeric characters, hyphens, and spaces',
+          errors: {
+            name: ['may only contain alphanumeric characters, hyphens, and spaces.'],
+          },
         }, { status: 400 });
       }
       return new Response('Not found', { status: 404 });

@@ -15,6 +15,7 @@ describe('Calendly OAuth provider policy', () => {
       targetUrls: [target],
       issuerUrls: [issuer],
       clientEstablishmentStrategy: 'dynamic-client-registration-only',
+      approvedRegistrationEndpoint: 'https://calendly.com/oauth/register',
     });
     expect(getOAuthClientEstablishmentStrategy(target, issuer))
       .toBe('dynamic-client-registration-only');
