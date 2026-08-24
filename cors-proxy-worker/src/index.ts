@@ -971,6 +971,10 @@ const isBoundedString = (value: unknown, maximumLength: number): value is string
   typeof value === 'string' && value.length > 0 && value.length <= maximumLength
 );
 
+const isValidRegistrationScope = (value: unknown): value is string => (
+  isBoundedString(value, 2048) && !/[\u0000-\u001f\u007f]/.test(value)
+);
+
 const validateExactStringArray = (
   value: unknown,
   allowed: readonly string[],
@@ -1037,10 +1041,7 @@ const validateRegistrationRequest = (value: unknown): RegistrationRequestBody =>
   }
   if (
     body.scope !== undefined
-    && (
-      !isBoundedString(body.scope, 2048)
-      || /[\u0000-\u001f\u007f]/.test(body.scope)
-    )
+    && !isValidRegistrationScope(body.scope)
   ) throw new Error('OAuth registration scope is invalid');
   if (
     body.contacts !== undefined
@@ -1145,7 +1146,10 @@ const sanitizeRegistrationSuccess = (
     throw new Error('OAuth registration response has an invalid client_id');
   }
   for (const [field, returnedValue] of Object.entries(input)) {
-    if (!REGISTRATION_REQUEST_KEYS.has(field)) continue;
+    if (
+      !REGISTRATION_REQUEST_KEYS.has(field)
+      || !Object.prototype.hasOwnProperty.call(requestBody, field)
+    ) continue;
     const requestedValue = requestBody[field];
     const matchesRequest = Array.isArray(requestedValue)
       ? Array.isArray(returnedValue)
@@ -1162,6 +1166,16 @@ const sanitizeRegistrationSuccess = (
     ...requestBody,
     client_id: input.client_id,
   };
+  // RFC 7591 permits an authorization server to return metadata it assigned
+  // or defaulted even when the client omitted that field. Retain only the
+  // provider-assigned field needed by the browser SDK; all other unrequested
+  // metadata remains outside this bounded response reconstruction.
+  if (input.scope !== undefined) {
+    if (!isValidRegistrationScope(input.scope)) {
+      throw new Error('OAuth registration response has an invalid scope');
+    }
+    output.scope = input.scope;
+  }
   if (input.client_secret !== undefined) {
     if (!isBoundedString(input.client_secret, MAX_DYNAMIC_CLIENT_SECRET_LENGTH)) {
       throw new Error('OAuth registration response has an invalid client_secret');
