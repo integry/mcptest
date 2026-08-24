@@ -57,7 +57,10 @@ export const getHostedOAuthTokenProxyUrl = (
 const OAUTH_SERVER_URL_KEY = 'oauth_server_url';
 const OAUTH_STORE_PREFIX = 'mcp_oauth_v2:';
 
-type OAuthStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export interface OAuthStorage extends Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
+  /** Explicitly declares that a custom adapter is cleared with the browser session. */
+  readonly sessionOnly?: true;
+}
 
 interface PersistedOAuthState {
   clients?: Record<string, PersistedOAuthClientInformation>;
@@ -221,6 +224,12 @@ const getSessionStorage = (): OAuthStorage => {
     throw new Error('OAuth requires browser session storage.');
   }
   return sessionStorage;
+};
+
+const isSessionOnlyOAuthStorage = (storage: OAuthStorage): boolean => {
+  if (typeof localStorage !== 'undefined' && storage === localStorage) return false;
+  if (typeof sessionStorage !== 'undefined' && storage === sessionStorage) return true;
+  return storage.sessionOnly === true;
 };
 
 const withProtocol = (value: string): string => (
@@ -1055,6 +1064,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   private readonly trace?: OAuthFlightRecorder;
   private readonly enforcePkceS256: boolean;
   private readonly hostedTokenRelayAvailable: boolean;
+  private readonly sessionOnlyStorage: boolean;
   private resourceMetadataUrlOverride?: string;
 
   constructor(
@@ -1063,6 +1073,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   ) {
     this.serverUrl = normalizeOAuthServerUrl(serverUrl);
     this.storage = options.storage || getSessionStorage();
+    this.sessionOnlyStorage = isSessionOnlyOAuthStorage(this.storage);
     this.storeKey = storageKeyForServer(this.serverUrl);
     this.redirectUrl = options.redirectUrl || getOAuthCallbackUrl();
     this.redirect = options.redirect || defaultRedirect;
@@ -1208,19 +1219,16 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     ) {
       throw new Error('Dynamic OAuth registration returned an invalid client_secret.');
     }
+    if (clientInformation.client_secret && !this.sessionOnlyStorage) {
+      this.trace?.registerSecret(clientInformation.client_secret);
+      throw new Error(
+        'Dynamically issued OAuth client secrets may only be kept in session-scoped storage.'
+      );
+    }
     if (clientInformation.client_secret && !this.hostedTokenRelayAvailable) {
       this.trace?.registerSecret(clientInformation.client_secret);
       throw new Error(
         'Dynamic registration issued a client secret, but no hosted token relay is available. An operator-confidential OAuth prerequisite is required.'
-      );
-    }
-    if (
-      clientInformation.client_secret
-      && typeof localStorage !== 'undefined'
-      && this.storage === localStorage
-    ) {
-      throw new Error(
-        'Dynamically issued OAuth client secrets may only be kept in session-scoped storage.'
       );
     }
     if ('redirect_uris' in clientInformation && clientInformation.redirect_uris) {
@@ -1536,7 +1544,19 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   private readState(): PersistedOAuthState {
-    return parseJson<PersistedOAuthState>(this.storage.getItem(this.storeKey)) || {};
+    const state = parseJson<PersistedOAuthState>(this.storage.getItem(this.storeKey)) || {};
+    if (this.sessionOnlyStorage || !state.clients) return state;
+
+    const safeClients = Object.fromEntries(Object.entries(state.clients).filter(
+      ([, clientInformation]) => clientInformation.client_secret === undefined
+    ));
+    if (Object.keys(safeClients).length === Object.keys(state.clients).length) return state;
+
+    const sanitizedState = { ...state };
+    if (Object.keys(safeClients).length > 0) sanitizedState.clients = safeClients;
+    else delete sanitizedState.clients;
+    this.writeState(sanitizedState);
+    return sanitizedState;
   }
 
   private writeState(state: PersistedOAuthState): void {

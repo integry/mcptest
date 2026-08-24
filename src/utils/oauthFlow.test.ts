@@ -81,6 +81,7 @@ const oauthFetch = ({
 
 beforeEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
 });
 
 describe('BrowserOAuthProvider', () => {
@@ -140,6 +141,62 @@ describe('BrowserOAuthProvider', () => {
       issuer: ISSUER_A,
     }, { issuer: ISSUER_A })).toThrow(/does not advertise/);
     expect(provider.clientInformation({ issuer: ISSUER_A })).toBeUndefined();
+  });
+
+  it('discards a dynamic client secret pre-seeded in localStorage', () => {
+    const storeKey = `mcp_oauth_v2:${encodeURIComponent(SERVER_URL)}`;
+    localStorage.setItem(storeKey, JSON.stringify({
+      clients: {
+        [ISSUER_A]: {
+          client_id: 'durable-client',
+          client_secret: 'durable-secret',
+          issuer: ISSUER_A,
+        },
+      },
+    }));
+
+    const provider = new BrowserOAuthProvider(SERVER_URL, {
+      storage: localStorage,
+      hostedTokenRelayAvailable: true,
+      redirect: vi.fn(),
+    });
+
+    expect(provider.clientInformation({ issuer: ISSUER_A })).toBeUndefined();
+    expect(localStorage.getItem(storeKey)).not.toContain('durable-secret');
+  });
+
+  it('rejects and discards dynamic client secrets in an unmarked custom storage', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => { values.delete(key); },
+    };
+    const storeKey = `mcp_oauth_v2:${encodeURIComponent(SERVER_URL)}`;
+    values.set(storeKey, JSON.stringify({
+      clients: {
+        [ISSUER_A]: {
+          client_id: 'custom-durable-client',
+          client_secret: 'custom-durable-secret',
+          issuer: ISSUER_A,
+        },
+      },
+    }));
+
+    const provider = new BrowserOAuthProvider(SERVER_URL, {
+      storage,
+      hostedTokenRelayAvailable: true,
+      redirect: vi.fn(),
+    });
+
+    expect(provider.clientInformation({ issuer: ISSUER_A })).toBeUndefined();
+    expect(values.get(storeKey)).not.toContain('custom-durable-secret');
+    expect(() => provider.saveClientInformation({
+      client_id: 'new-custom-durable-client',
+      client_secret: 'new-custom-durable-secret',
+      issuer: ISSUER_A,
+    }, { issuer: ISSUER_A })).toThrow(/session-scoped storage/);
+    expect(Array.from(values.values()).join('\n')).not.toContain('new-custom-durable-secret');
   });
 
   it('loads and clears tokens by exact resource and discovered issuer', () => {
