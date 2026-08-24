@@ -11,6 +11,8 @@ import CapabilitiesProvided from './CapabilitiesProvided';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import ClientSetup from './ClientSetup';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
+import { createAuthorizationGuidance } from '../utils/authorizationGuidance';
+import AuthorizationSetup from './AuthorizationSetup';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -88,6 +90,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       ? 'server-status-offline'
       : 'server-status-unknown';
   const preferredEndpoint = getPreferredCatalogEndpoint(server);
+  const authorizationGuidance = createAuthorizationGuidance(server);
 
   return (
     <article className="server-profile">
@@ -275,6 +278,8 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           </div>
         </aside>
       </div>
+
+      <AuthorizationSetup guidance={authorizationGuidance} />
 
       <ClientSetup server={server} />
 

@@ -3,6 +3,7 @@ import type { CatalogAuthType, CatalogServer } from '../types/catalog';
 import {
   filterCatalogServers,
   getCatalogEndpointDiagnosticEvidence,
+  getCatalogServerByEndpoint,
   getCatalogCategoryCounts,
   getCatalogServers,
   sortCatalogServers,
@@ -106,6 +107,16 @@ describe('catalog authentication metadata', () => {
     });
     expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/mcp/')).toBeUndefined();
     expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/custom')).toBeUndefined();
+  });
+
+  it.each([
+    'https://mcp.figma.com/mcp/',
+    'https://mcp.figma.com/mcp?issuer=https://api.figma.com',
+    'https://mcp.figma.com/mcp#trusted-looking-fragment',
+    'https://mcp.figma.com.evil.example/mcp',
+    'https://user:pass@mcp.figma.com/mcp',
+  ])('does not resolve trusted catalog data for %s', (endpoint) => {
+    expect(getCatalogServerByEndpoint(endpoint)).toBeUndefined();
   });
 
   it('searches and filters alternative authentication methods', () => {

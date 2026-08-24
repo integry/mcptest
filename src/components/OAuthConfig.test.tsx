@@ -37,6 +37,26 @@ const renderPanel = (prerequisite: OAuthPrerequisite): HTMLDivElement => {
 };
 
 describe('OAuth authorization prerequisite panel', () => {
+  it('never offers an Asana client-ID-only browser form when the catalog requires a secret', () => {
+    const view = renderPanel({
+      kind: 'pre_registered_client_required',
+      serverUrl: 'https://mcp.asana.com/v2/mcp',
+      providerName: 'Asana',
+      explanation: 'Asana requires a pre-registered MCP app.',
+      requiredScopes: [],
+      pkceS256: true,
+      publicClientSecretSupported: false,
+      canConfigureClient: true,
+    });
+
+    expect(view.textContent).toContain('Register an app first');
+    expect(view.textContent).toContain('MCP app');
+    expect(view.textContent).toContain('https://mcptest.io/oauth/callback');
+    expect(view.textContent).toContain('Specific test workspaces or any workspace');
+    expect(view.querySelector('#clientId')).toBeNull();
+    expect(view.querySelector('#clientSecret')).toBeNull();
+  });
+
   it('presents Figma approval as a calm prerequisite without arbitrary credentials', () => {
     const view = renderPanel({
       kind: 'provider_approval_required',

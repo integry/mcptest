@@ -6,6 +6,7 @@ const {
   generateClientSetups,
   getPreferredCatalogEndpoint,
 } = require('../src/utils/clientSetup.ts');
+const { createAuthorizationGuidance } = require('../src/utils/authorizationGuidance.ts');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -306,6 +307,42 @@ function renderClientSetups(server) {
   ].join('\n');
 }
 
+function renderAuthorizationSetup(server) {
+  const guidance = createAuthorizationGuidance(server);
+  return [
+    `  <section class="authorization-setup authorization-setup--${escapeHtml(guidance.status)}" aria-labelledby="authorization-setup-${escapeHtml(server.id)}-title">`,
+    '    <p class="authorization-setup-kicker">Authorization setup</p>',
+    `    <h2 id="authorization-setup-${escapeHtml(server.id)}-title">${escapeHtml(guidance.statusLabel)}</h2>`,
+    `    <p>${escapeHtml(guidance.summary)}</p>`,
+    ...(guidance.reviewedAt ? [`    <p>Publisher evidence reviewed <time datetime="${escapeHtml(guidance.reviewedAt)}">${escapeHtml(guidance.reviewedAt)}</time>.</p>`] : []),
+    ...(guidance.clientIdRequired || guidance.clientSecretRequired ? [
+      '    <dl class="authorization-setup-requirements">',
+      `      <div><dt>Client ID</dt><dd>${guidance.clientIdRequired ? 'Required' : 'Not required'}</dd></div>`,
+      `      <div><dt>Client secret</dt><dd>${guidance.clientSecretRequired ? 'Required — never enter it in a browser' : 'Not required'}</dd></div>`,
+      `      <div><dt>Browser/public client</dt><dd>${guidance.browserPublicClientSupported === true ? 'Supported' : guidance.browserPublicClientSupported === false ? 'Not supported' : 'Not verified'}</dd></div>`,
+      '    </dl>',
+    ] : []),
+    ...(guidance.settings.length ? [
+      '    <h3>Required non-secret settings</h3>',
+      `    <dl>${guidance.settings.map(({ label, value, required }) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}${required ? ' (required)' : ' (optional)'}</dd></div>`).join('')}</dl>`,
+    ] : []),
+    ...(guidance.callbacks.length ? [
+      '    <h3>Callback URIs</h3>',
+      `    <ul>${guidance.callbacks.map(callback => `<li><code>${escapeHtml(callback)}</code></li>`).join('')}</ul>`,
+    ] : []),
+    ...(guidance.steps.length ? [
+      '    <h3>Provider setup steps</h3>',
+      `    <ol>${guidance.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol>`,
+    ] : []),
+    ...(guidance.alternativeHeaderTemplate ? [
+      `    <p><strong>Safe header template:</strong> <code>${escapeHtml(guidance.alternativeHeaderTemplate)}</code>. Replace only the named placeholder in protected client configuration.</p>`,
+    ] : []),
+    ...(guidance.registrationUrl ? [`    <p><a href="${escapeHtml(guidance.registrationUrl)}">Open provider setup or application page</a></p>`] : []),
+    ...(guidance.documentationUrl ? [`    <p><a href="${escapeHtml(guidance.documentationUrl)}">Publisher documentation</a></p>`] : []),
+    '  </section>',
+  ].join('\n');
+}
+
 function renderServerFallback(server) {
   const homepageLink = server.homepageUrl
     ? `<a href="${escapeHtml(server.homepageUrl)}">Product documentation</a>`
@@ -371,6 +408,7 @@ function renderServerFallback(server) {
     ] : []),
     `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
+    renderAuthorizationSetup(server),
     renderClientSetups(server),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Latest validation evidence</h2>',
@@ -1007,6 +1045,7 @@ module.exports = {
   renderMarkdown,
   renderServerLogo,
   renderClientSetups,
+  renderAuthorizationSetup,
   serverPath,
   transportLabel,
   validateCapabilitySnapshots,

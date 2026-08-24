@@ -372,6 +372,50 @@ const expandedPublicArtifact = (): Record<string, any> => ({
 });
 
 describe('versioned public report artifacts', () => {
+  it('adds only trusted current catalog authorization guidance to JSON and Markdown', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://mcp.asana.com/v2/mcp';
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.authorizationSetup).toMatchObject({
+      catalogId: 'asana',
+      status: 'register-app-first',
+      provenance: 'current-catalog-guidance',
+    });
+    expect(json).toContain('https://mcptest.io/oauth/callback');
+    expect(markdown).toContain('## Authorization setup');
+    expect(markdown).toContain('not evidence observed during this report run');
+    expect(markdown).toContain('Publisher documentation');
+    expect(json).not.toMatch(/ASANA_CLIENT_SECRET[^"\n]*:/);
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+
+    const arbitrary = createPublicReport(publicReport(), FIXED_OPTIONS);
+    expect(arbitrary.authorizationSetup).toBeUndefined();
+  });
+
+  it('keeps PagerDuty alternative-token guidance public-safe and actionable', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://mcp.pagerduty.com/mcp';
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.authorizationSetup).toMatchObject({
+      catalogId: 'pagerduty',
+      alternativeAuthType: 'api-token',
+      alternativeHeaderName: 'Authorization',
+      alternativeHeaderTemplate: 'Token token=<PAGERDUTY_API_TOKEN>',
+    });
+    expect(markdown).toContain(
+      'Safe header template: Authorization: Token token=\\<PAGERDUTY\\_API\\_TOKEN\\>'
+    );
+    expect(json).not.toMatch(/Token token=(?!<PAGERDUTY_API_TOKEN>)/);
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors))
+      .toBe(true);
+  });
+
   it('persists the optional canonical inventory in JSON and semantic Markdown', () => {
     const report = publicReport();
     report.capabilityInventory = createCapabilityInventory({

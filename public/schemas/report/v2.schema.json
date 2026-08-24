@@ -39,6 +39,7 @@
     "toolSurfaceAnalysis": { "$ref": "#/$defs/toolSurfaceAnalysis" },
     "capabilityInventory": { "$ref": "#/$defs/capabilityInventory" },
     "oauthTrace": { "$ref": "#/$defs/oauthTrace" },
+    "authorizationSetup": { "$ref": "#/$defs/authorizationSetup" },
     "sections": {
       "type": "array",
       "items": { "$ref": "#/$defs/section" }
@@ -540,6 +541,41 @@
             } } } }
           ]
         }
+      }
+    },
+    "authorizationSetup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "catalogId", "status", "statusLabel", "summary", "steps", "callbacks", "settings", "provenance"],
+      "properties": {
+        "version": { "const": 1 },
+        "catalogId": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["no-registration-needed", "register-app-first", "operator-setup-required", "provider-approval-required", "alternative-credential", "unknown"] },
+        "statusLabel": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "reviewedAt": { "type": "string", "format": "date" },
+        "steps": { "type": "array", "maxItems": 12, "items": { "type": "string", "minLength": 1, "maxLength": 300 } },
+        "callbacks": { "type": "array", "maxItems": 16, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
+        "settings": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "value", "required"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "value": { "type": "string", "minLength": 1, "maxLength": 300 },
+              "required": { "type": "boolean" }
+            }
+          }
+        },
+        "documentationUrl": { "type": "string", "format": "uri" },
+        "registrationUrl": { "type": "string", "format": "uri" },
+        "alternativeAuthType": { "enum": ["bearer-token", "api-token", "api-key"] },
+        "alternativeHeaderName": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "alternativeHeaderTemplate": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[ -~]*<[A-Z][A-Z0-9_]{1,63}>[ -~]*$" },
+        "provenance": { "const": "current-catalog-guidance" }
       }
     },
     "oauthTrace": {

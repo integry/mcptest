@@ -31,6 +31,7 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import {
   createReportSnapshot,
   deleteAllReportSnapshots,
@@ -43,6 +44,16 @@ import {
 } from '../utils/reportHistory';
 
 type StaticAuthorizationScheme = 'bearer' | 'api-key';
+
+const catalogAlternativeScheme = (
+  authType: ReturnType<typeof getAuthorizationGuidanceForEndpoint>['alternativeAuthType']
+): StaticAuthorizationScheme | undefined => (
+  authType === 'api-key'
+    ? 'api-key'
+    : authType === 'api-token' || authType === 'bearer-token'
+      ? 'bearer'
+      : undefined
+);
 
 export const getAuthorizationGateOptions = (
   report: EvaluationReport,
@@ -588,9 +599,22 @@ const ReportView: React.FC = () => {
     : false;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required'
     && !reportRequiresProxyAuthentication;
-  const authorizationGateOptions = report
+  const observedAuthorizationGateOptions = report
     ? getAuthorizationGateOptions(report, oauthTrace)
     : { offersOAuth: false, staticSchemes: [], isUnknown: true };
+  const reportAuthorizationGuidance = report
+    ? getAuthorizationGuidanceForEndpoint(report.serverUrl)
+    : undefined;
+  const catalogStaticScheme = catalogAlternativeScheme(
+    reportAuthorizationGuidance?.alternativeAuthType
+  );
+  const authorizationGateOptions = {
+    ...observedAuthorizationGateOptions,
+    staticSchemes: catalogStaticScheme
+      ? [...new Set([...observedAuthorizationGateOptions.staticSchemes, catalogStaticScheme])]
+      : observedAuthorizationGateOptions.staticSchemes,
+    isUnknown: observedAuthorizationGateOptions.isUnknown && !catalogStaticScheme,
+  };
   const selectedStaticAuthorizationScheme = authorizationGateOptions.staticSchemes.includes(
     staticAuthorizationScheme
   )
@@ -611,9 +635,20 @@ const ReportView: React.FC = () => {
     }
     const targetUrl = report.authenticationUrl || report.serverUrl;
     setStaticCredentialError(null);
+    const catalogHeaderName = reportAuthorizationGuidance?.alternativeHeaderName;
+    const catalogHeaderTemplate = reportAuthorizationGuidance?.alternativeHeaderTemplate;
+    const catalogPlaceholder = catalogHeaderTemplate?.match(/<[A-Z][A-Z0-9_]{1,63}>/)?.[0];
+    const targetHeaders = catalogHeaderName && catalogHeaderTemplate && catalogPlaceholder
+      ? {
+          [catalogHeaderName]: catalogHeaderTemplate.replace(
+            catalogPlaceholder,
+            () => credential
+          ),
+        }
+      : getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader);
     await handleRunReport(
       targetUrl,
-      getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader),
+      targetHeaders,
       {
         priorChallenge: {
           outcome: 'challenged',

@@ -253,6 +253,59 @@ describe('catalog seed provenance validation', () => {
   });
 
   it.each([
+    [
+      'secret-required browser fallback',
+      {
+        mode: 'pre-registered-required', responsibleParty: 'user',
+        clientId: { required: true }, clientSecret: { required: true },
+        browserPublicClientSupported: true,
+        callback: { required: true, redirectUrls: { 'vs-code': ['https://vscode.dev/redirect'] } },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'cannot advertise a browser/public fallback',
+    ],
+    [
+      'approval without application evidence',
+      {
+        mode: 'provider-approval', responsibleParty: 'provider-approval',
+        clientId: { required: false }, clientSecret: { required: false },
+        browserPublicClientSupported: false,
+        callback: { required: false, redirectUrls: {} },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'requires an approval URL or explicit absence note',
+    ],
+    [
+      'operator app without hosted callback',
+      {
+        mode: 'operator-confidential', responsibleParty: 'mcptest-operator',
+        clientId: { required: true }, clientSecret: { required: true },
+        browserPublicClientSupported: false,
+        callback: { required: true, redirectUrls: { 'vs-code': ['https://vscode.dev/redirect'] } },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'requires an operator-owned confidential hosted app',
+    ],
+    [
+      'credential value in the typed secret object',
+      {
+        mode: 'pre-registered-required', responsibleParty: 'user',
+        clientId: { required: true }, clientSecret: { required: true, value: 'not-allowed' },
+        browserPublicClientSupported: false,
+        callback: { required: true, redirectUrls: { 'vs-code': ['https://vscode.dev/redirect'] } },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'must never contain credential values',
+    ],
+  ])('rejects contradictory OAuth guidance: %s', (_name, oauthRegistration, message) => {
+    expect(() => validateCatalogSeed({
+      id: 'unsafe-oauth-guidance', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration,
+    })).toThrow(message);
+  });
+
+  it.each([
     ['wrong host', 'http://127.0.0.1:8080/callback'],
     ['IPv6 host', 'http://[::1]:8080/callback'],
     ['alternate path', 'http://localhost:8080/oauth/callback'],

@@ -104,7 +104,32 @@ export interface CatalogAlternativeEndpoint {
 export type CatalogOAuthRegistrationMode =
   | 'automatic'
   | 'pre-registered-required'
-  | 'unavailable-or-use-alternative';
+  | 'operator-confidential'
+  | 'provider-approval'
+  | 'unavailable-or-use-alternative'
+  | 'unknown';
+
+/** Party that must complete the prerequisite before mcptest can authorize. */
+export type CatalogOAuthResponsibleParty =
+  | 'automatic'
+  | 'user'
+  | 'mcptest-operator'
+  | 'provider-approval';
+
+/** Whether the hosted mcptest integration can currently start authorization. */
+export type CatalogOAuthAvailability =
+  | 'ready'
+  | 'operator-configuration-missing'
+  | 'provider-approval-pending'
+  | 'unsupported';
+
+export interface CatalogOAuthPublicSetting {
+  /** Short publisher field name, such as App type or Distribution. */
+  label: string;
+  /** Required non-secret value or selection. */
+  value: string;
+  required: boolean;
+}
 
 /** MCP clients whose publisher-documented OAuth callbacks can be cataloged. */
 export type CatalogOAuthClientId = 'claude-code' | 'codex-cli' | 'cursor' | 'vs-code';
@@ -135,9 +160,28 @@ export interface CatalogOAuthMcpRemoteSetup {
 /** Publisher evidence that setup generators consume without parsing prose caveats. */
 export interface CatalogOAuthRegistrationEvidence {
   mode: CatalogOAuthRegistrationMode;
+  responsibleParty?: CatalogOAuthResponsibleParty;
   clientId: CatalogOAuthCredentialRequirement;
   clientSecret: CatalogOAuthCredentialRequirement;
   callback: CatalogOAuthCallbackRequirement;
+  /** Whether the publisher accepts a secretless browser/public OAuth client. */
+  browserPublicClientSupported?: boolean;
+  /** Exact callback for the hosted mcptest integration. */
+  hostedCallbackUrl?: string;
+  /** Provider console or application page used to register the app. */
+  registrationUrl?: string;
+  /** Provider application/waitlist page. */
+  approvalUrl?: string;
+  /** Explicit publisher-evidence note when no application URL is published. */
+  approvalUrlAbsentReason?: string;
+  /** Ordered, bounded, public-safe provider setup instructions. */
+  setupSteps?: string[];
+  /** Required public app fields and selections. Never credential values. */
+  settings?: CatalogOAuthPublicSetting[];
+  /** Current availability of this flow specifically for hosted mcptest. */
+  availability?: CatalogOAuthAvailability;
+  /** ISO date on which the publisher evidence was reviewed. */
+  reviewedAt?: string;
   /** Credential method preferred when automatic OAuth registration is unavailable. */
   alternativeAuthType?: CatalogAuthType;
   /** Publisher-documented compatibility bridge for clients without native static OAuth. */

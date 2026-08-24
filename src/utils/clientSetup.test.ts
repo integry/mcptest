@@ -198,6 +198,36 @@ describe('client setup transports and authentication', () => {
     expect(rendered).not.toContain('the client will request authorization');
   });
 
+  it('uses GitHub personal access tokens without suggesting unavailable hosted OAuth', () => {
+    const github = getCatalogServerById('github');
+    expect(github).toBeDefined();
+    const setups = generateClientSetups(github!);
+    const rendered = setups
+      .map((setup) => `${setup.copyText} ${setup.authSummary} ${setup.notes.join(' ')}`)
+      .join('\n');
+
+    expect(rendered).toContain('Bearer <GITHUB_PERSONAL_ACCESS_TOKEN>');
+    expect(rendered).toContain('mcptest operator setup required');
+    expect(rendered).not.toContain('codex mcp login');
+    expect(rendered).not.toContain('follow the browser flow to authenticate');
+  });
+
+  it.each(['figma', 'vercel'] as const)(
+    'does not suggest an OAuth login before %s provider approval',
+    (serverId) => {
+      const server = getCatalogServerById(serverId);
+      expect(server).toBeDefined();
+      const setups = generateClientSetups(server!);
+      const rendered = setups
+        .map((setup) => `${setup.copyText} ${setup.authSummary} ${setup.notes.join(' ')}`)
+        .join('\n');
+
+      expect(rendered).toContain('Provider approval required');
+      expect(rendered).not.toContain('codex mcp login');
+      expect(rendered).not.toContain('follow the browser flow to authenticate');
+    }
+  );
+
   it.each([
     ['claude-code', 0],
     ['codex-cli', 1],
