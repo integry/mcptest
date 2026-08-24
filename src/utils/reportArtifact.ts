@@ -252,6 +252,7 @@ const OAuthTraceArtifactSchema = z.object({
       'target_challenge',
       'protected_resource_metadata',
       'authorization_server_metadata',
+      'client_establishment',
       'cimd',
       'dynamic_client_registration',
       'pre_registered_client',

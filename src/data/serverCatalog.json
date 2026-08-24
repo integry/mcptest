@@ -95,7 +95,8 @@
     "logoRetrievedAt": "2026-08-17",
     "logoLicenseNote": "GitHub mark used for identification subject to the GitHub Logo Policy.",
     "homepageUrl": "https://github.com",
-    "sourceUrl": "https://github.com/github/github-mcp-server"
+    "sourceUrl": "https://github.com/github/github-mcp-server",
+    "caveats": ["Browser OAuth requires the mcptest operator's GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET Worker bindings. Production readiness must not be claimed until both are configured; a GitHub personal access token remains an alternative."]
   },
   {
     "id": "linear",
@@ -223,7 +224,8 @@
     "logoSourceKind": "official-brand",
     "logoRetrievedAt": "2026-08-17",
     "logoLicenseNote": "Official Slack media asset; trademark rights remain with Slack.",
-    "homepageUrl": "https://slack.com"
+    "homepageUrl": "https://slack.com",
+    "caveats": ["Browser OAuth requires the mcptest operator's SLACK_OAUTH_CLIENT_ID and SLACK_OAUTH_CLIENT_SECRET Worker bindings. Production readiness must not be claimed until both are configured."]
   },
   {
     "id": "cloudflare",
@@ -438,7 +440,7 @@
     "logoRetrievedAt": "2026-08-18",
     "logoLicenseNote": "Canva mark from Simple Icons version 15.16.0; trademark rights remain with Canva.",
     "homepageUrl": "https://www.canva.com",
-    "caveats": ["Canva prefers OAuth Client ID Metadata Documents. Dynamic Client Registration is documented only as a compatibility path."]
+    "caveats": ["Live mcptest audit on 2026-08-24 found Canva's advertised Client ID Metadata Document route rejects the hosted redirect, while issuer-bound Dynamic Client Registration at https://mcp.canva.com/register returns a usable public client. mcptest therefore selects DCR before authorization for this exact target and issuer."]
   },
   {
     "id": "gitlab",
@@ -533,7 +535,7 @@
     "logoRetrievedAt": "2026-08-18",
     "logoLicenseNote": "PagerDuty mark from Simple Icons; trademark rights remain with PagerDuty.",
     "homepageUrl": "https://www.pagerduty.com",
-    "caveats": ["PagerDuty does not advertise Dynamic Client Registration. EU accounts use the separately documented EU endpoint."]
+    "caveats": ["Authorization could not be started in the 2026-08-24 audit: protected-resource metadata names https://mcp.pagerduty.com/, while the retrieved authorization-server document declares https://app.pagerduty.com/global/oauth/anonymous and no Dynamic Client Registration endpoint. Strict issuer equality is preserved. Use the documented API-token option directly; EU accounts use the separate EU endpoint."]
   },
   {
     "id": "airtable",
@@ -593,7 +595,7 @@
     "logoLicenseNote": "Intercom mark from Simple Icons; trademark rights remain with Intercom.",
     "homepageUrl": "https://www.intercom.com",
     "sourceUrl": "https://github.com/intercom/intercom-mcp-server",
-    "caveats": ["Do not assume zero-configuration OAuth until automatic discovery succeeds in a real client; the current challenge can omit protected-resource metadata."]
+    "caveats": ["Authorization could not be started in the 2026-08-24 audit: Intercom returned HTTP 401 without resource_metadata and both standard protected-resource metadata fallbacks returned HTTP 404. This is provider-side discovery evidence. Use the documented Intercom access-token alternative directly."]
   },
   {
     "id": "docusign-developer",
@@ -612,7 +614,7 @@
     "logoRetrievedAt": "2026-08-18",
     "logoLicenseNote": "Docusign mark from Simple Icons version 12.4.0; trademark rights remain with Docusign.",
     "homepageUrl": "https://developers.docusign.com",
-    "caveats": ["This endpoint is explicitly for Docusign developer and sandbox accounts; no official production endpoint is currently documented."]
+    "caveats": ["Authorization could not be started in the 2026-08-24 audit: the MCP endpoint returned HTTP 403 without a Bearer challenge, protected-resource metadata names https://mcp-d.docusign.com, and its authorization-server document declares issuer https://account-d.docusign.com. Strict issuer equality is preserved. This endpoint is only for developer and sandbox accounts; no official production endpoint is currently documented."]
   },
   {
     "id": "calendly",
@@ -673,6 +675,6 @@
     "logoRetrievedAt": "2026-08-18",
     "logoLicenseNote": "Upwork mark from Simple Icons; trademark rights remain with Upwork.",
     "homepageUrl": "https://www.upwork.com",
-    "caveats": ["This is Upwork's newly launched official Streamable HTTP server, not the stale third-party api.upwork.com/mcp/sse listing.", "Consequential actions such as proposals, job posts, and offers follow a draft-and-confirm flow and require explicit user confirmation before submission.", "Do not claim zero-configuration OAuth until advertised Dynamic Client Registration succeeds in a real client flow."]
+    "caveats": ["This is Upwork's newly launched official Streamable HTTP server, not the stale third-party api.upwork.com/mcp/sse listing.", "Consequential actions such as proposals, job posts, and offers follow a draft-and-confirm flow and require explicit user confirmation before submission.", "Authorization could not be started in the 2026-08-24 audit: the advertised CIMD client was not found or disabled, and Dynamic Client Registration returned HTTP 400 invalid_redirect_uri for https://mcptest.io/oauth/callback. This is a provider callback/client-identity incompatibility for a remote web client, not a localhost installation prerequisite."]
   }
 ]

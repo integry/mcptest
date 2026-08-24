@@ -8,6 +8,7 @@ import proxyWorker, {
   fetchTargetRequest,
   getOperatorOAuthClient,
   getTargetRequestHeaders,
+  handleOAuthOperatorClientRequest,
   handleOAuthRegistrationRequest,
   handleOAuthTokenRequest,
   withCorsResponseHeaders,
@@ -369,6 +370,65 @@ describe('proxy target credential forwarding', () => {
 
     expect(response.status).toBe(400);
     expect(response.headers.get('vary')).toBe('Access-Control-Request-Headers');
+  });
+});
+
+describe('issuer-bound operator OAuth client route', () => {
+  const request = (
+    resource = 'https://api.githubcopilot.com/mcp/',
+    issuer = 'https://github.com/login/oauth'
+  ): Request => new Request('https://proxy.mcptest.test/oauth/client', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://mcptest.io',
+      Authorization: 'Bearer firebase-credential',
+      'X-MCP-OAuth-Resource': resource,
+      'X-MCP-OAuth-Issuer': issuer,
+    },
+  });
+
+  it('returns only the configured public client ID for an exact approved binding', async () => {
+    const clientSecret = 'must-stay-in-worker';
+    const response = await handleOAuthOperatorClientRequest(request(), {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+      GITHUB_OAUTH_CLIENT_SECRET: clientSecret,
+    }, { verifyToken: async () => 'user-1' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    const text = await response.text();
+    expect(text).not.toContain(clientSecret);
+    expect(JSON.parse(text)).toEqual({ client_id: 'github-operator-client' });
+  });
+
+  it('returns one safe prerequisite when operator credentials are incomplete', async () => {
+    const response = await handleOAuthOperatorClientRequest(request(), {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'id-without-secret',
+    }, { verifyToken: async () => 'user-1' });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    await expect(response.json()).resolves.toEqual({
+      error: 'operator_client_not_configured',
+      error_description: 'The operator OAuth client is not configured for this provider.',
+    });
+  });
+
+  it('rejects browser-selected issuer or resource mappings outside the exact policy', async () => {
+    for (const untrusted of [
+      request('https://attacker.example/mcp', 'https://github.com/login/oauth'),
+      request('https://api.githubcopilot.com/mcp/', 'https://attacker.github.com/login/oauth'),
+    ]) {
+      const response = await handleOAuthOperatorClientRequest(untrusted, {
+        FIREBASE_PROJECT_ID: 'test-project',
+        GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+        GITHUB_OAUTH_CLIENT_SECRET: 'github-operator-secret',
+      }, { verifyToken: async () => 'user-1' });
+      expect(response.status).toBe(400);
+      expect(await response.text()).not.toContain('github-operator-client');
+    }
   });
 });
 
@@ -1608,6 +1668,66 @@ describe('hosted issuer-bound OAuth registration route', () => {
       error_description: 'redirect URI is not accepted',
     });
   });
+
+  it.each([
+    ['Figma malformed JSON', 'Forbidden', 'application/json', 403],
+    ['provider HTML', '<html>internal request id and cookie</html>', 'text/html', 400],
+    ['provider server error', 'backend instance secret', 'text/plain', 503],
+  ])('preserves target status with a fixed safe body for %s', async (
+    _label,
+    body,
+    contentType,
+    status
+  ) => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(body, { status, headers: { 'Content-Type': contentType } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(status);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    const responseText = await response.text();
+    expect(responseText).not.toContain(body);
+    expect(JSON.parse(responseText)).toEqual({
+      error: 'invalid_response',
+      error_description: 'The provider rejected OAuth client registration with a non-JSON or malformed-JSON response.',
+    });
+  });
+
+  it.each([400, 503])(
+    'preserves target provenance for an oversized provider HTTP %s error',
+    async (status) => {
+      const unsafeBody = `provider-secret-${'x'.repeat(70 * 1024)}`;
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: async request => request.url === discoveryUrl
+            ? metadataResponse()
+            : new Response(unsafeBody, {
+                status,
+                headers: { 'Content-Type': 'application/json' },
+              }),
+          verifyToken: async () => 'user-1',
+        }
+      );
+
+      expect(response.status).toBe(status);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+      const responseText = await response.text();
+      expect(responseText).not.toContain('provider-secret');
+      expect(JSON.parse(responseText)).toEqual({
+        error: 'invalid_response',
+        error_description: 'The provider rejected OAuth client registration with a non-JSON or malformed-JSON response.',
+      });
+    }
+  );
 
   it('rejects missing and invalid Firebase authentication before discovery', async () => {
     const fetchImpl = vi.fn();

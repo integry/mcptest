@@ -291,8 +291,8 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-08-18T11:35:00.160Z",
-    "message": "Authentication challenge at https://mcp.canva.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "checkedAt": "2026-08-24T00:00:00.000Z",
+    "message": "OAuth authorization can start through provider-preferred DCR: the exact Canva issuer returned HTTP 201 for the hosted callback; advertised CIMD was rejected and is not selected",
     "validatedUrl": "https://mcp.canva.com/mcp",
     "authorizationServers": [
       "https://mcp.canva.com"
@@ -344,8 +344,9 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-08-18T11:35:03.060Z",
-    "message": "Authentication challenge at https://mcp.pagerduty.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "checkedAt": "2026-08-24T00:00:00.000Z",
+    "errorCode": "oauth_issuer_mismatch",
+    "message": "Authorization could not be started: protected-resource issuer https://mcp.pagerduty.com/ mismatches AS issuer https://app.pagerduty.com/global/oauth/anonymous; no registration endpoint; API-token alternative is available",
     "validatedUrl": "https://mcp.pagerduty.com/mcp",
     "authorizationServers": [
       "https://mcp.pagerduty.com/"
@@ -386,8 +387,9 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-08-18T11:35:02.738Z",
-    "message": "Authentication challenge at https://mcp.intercom.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "checkedAt": "2026-08-24T00:00:00.000Z",
+    "errorCode": "oauth_protected_resource_metadata_missing",
+    "message": "Authorization could not be started: HTTP 401 omitted resource_metadata and both standard protected-resource metadata fallbacks returned HTTP 404; bearer-token alternative is available",
     "validatedUrl": "https://mcp.intercom.com/mcp"
   },
   {
@@ -397,8 +399,9 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-08-18T11:35:05.048Z",
-    "message": "Authentication challenge at https://mcp-d.docusign.com/mcp returned HTTP 403; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "checkedAt": "2026-08-24T00:00:00.000Z",
+    "errorCode": "oauth_issuer_mismatch",
+    "message": "Authorization could not be started: MCP HTTP 403 omitted a Bearer challenge and protected-resource issuer https://mcp-d.docusign.com mismatches AS issuer https://account-d.docusign.com",
     "validatedUrl": "https://mcp-d.docusign.com/mcp",
     "authorizationServers": [
       "https://mcp-d.docusign.com"
@@ -439,8 +442,9 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-08-18T11:35:05.745Z",
-    "message": "Authentication challenge at https://mcp.upwork.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "checkedAt": "2026-08-24T00:00:00.000Z",
+    "errorCode": "oauth_callback_incompatible",
+    "message": "Authorization could not be started: CIMD client was not found or disabled and DCR returned target-owned HTTP 400 invalid_redirect_uri for https://mcptest.io/oauth/callback",
     "validatedUrl": "https://mcp.upwork.com/mcp",
     "authorizationServers": [
       "https://mcp.upwork.com"

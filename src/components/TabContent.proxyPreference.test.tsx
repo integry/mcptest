@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { ConnectionTab } from '../types';
 
 const connectionMocks = vi.hoisted(() => ({ attempt: vi.fn() }));
+const oauthMocks = vi.hoisted(() => ({ begin: vi.fn() }));
 
 vi.mock('../utils/transportDetection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/transportDetection')>();
@@ -34,8 +35,17 @@ vi.mock('../context/AuthContext', () => ({
 
 vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
 
+vi.mock('../utils/oauthFlow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/oauthFlow')>();
+  return { ...actual, beginOAuthFlow: oauthMocks.begin };
+});
+
 import TabContent from './TabContent';
-import { TransportConnectionError } from '../utils/transportDetection';
+import { OAuthPrerequisiteError, type OAuthPrerequisite } from '../utils/oauthFlow';
+import {
+  ProxiedAuthenticationError,
+  TransportConnectionError,
+} from '../utils/transportDetection';
 
 beforeAll(() => {
   (
@@ -335,4 +345,106 @@ describe('endpoint-scoped preferred transport hints', () => {
     });
     view.unmount();
   });
+});
+
+describe('Playground OAuth credential alternatives', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    oauthMocks.begin.mockReset();
+    connectionMocks.attempt.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    [
+      'PagerDuty',
+      'https://mcp.pagerduty.com/mcp',
+      'pd-token',
+      'Token token=pd-token',
+      'Token token=<TOKEN>',
+    ],
+    [
+      'GitHub',
+      'https://api.githubcopilot.com/mcp/',
+      'github-token',
+      'Bearer github-token',
+      undefined,
+    ],
+    [
+      'Intercom',
+      'https://mcp.intercom.com/mcp',
+      'intercom-token',
+      'Bearer intercom-token',
+      undefined,
+    ],
+  ] as const)(
+    'sends the exact %s Authorization header through Playground',
+    async (
+      providerName,
+      target,
+      token,
+      expectedAuthorization,
+      authorizationHeaderTemplate
+    ) => {
+      const prerequisite: OAuthPrerequisite = {
+        kind: 'discovery_blocked_invalid',
+        serverUrl: target,
+        providerName,
+        explanation: `${providerName} supports a direct credential alternative.`,
+        requiredScopes: [],
+        pkceS256: false,
+        publicClientSecretSupported: 'unknown',
+        canConfigureClient: false,
+        supportsBearerToken: true,
+        bearerTokenName: `${providerName} token`,
+        authorizationHeaderTemplate,
+      };
+      const challenge = new TransportConnectionError([
+        new ProxiedAuthenticationError(
+          401,
+          'target',
+          new Error('Authorization required'),
+          { method: 'POST', url: target },
+          { 'www-authenticate': 'Bearer' }
+        ),
+      ]);
+      connectionMocks.attempt.mockRejectedValue(challenge);
+      oauthMocks.begin.mockRejectedValueOnce(new OAuthPrerequisiteError(prerequisite));
+
+      const view = renderTab({
+        id: `${providerName.toLowerCase()}-credential`,
+        title: providerName,
+        serverUrl: target,
+        connectionStatus: 'Disconnected',
+        useProxy: false,
+      });
+      const connectButton = view.container.querySelector<HTMLButtonElement>('#connectBtn');
+      await act(async () => {
+        connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+
+      const bearerInput = view.container.querySelector<HTMLInputElement>(
+        '#oauth-prerequisite-bearer-token'
+      );
+      expect(bearerInput).not.toBeNull();
+      act(() => setInputValue(bearerInput!, token));
+
+      await act(async () => {
+        bearerInput?.closest('form')?.dispatchEvent(new Event('submit', {
+          bubbles: true,
+          cancelable: true,
+        }));
+      });
+
+      expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+      expect(connectionMocks.attempt.mock.calls[1][3]).toEqual({
+        Authorization: expectedAuthorization,
+      });
+      view.unmount();
+    }
+  );
 });

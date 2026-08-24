@@ -12,6 +12,7 @@ import {
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   prepareManualOAuthClient,
+  renderOAuthAuthorizationHeader,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
@@ -489,7 +490,7 @@ const ReportView: React.FC = () => {
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
       const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
-      const discoveryProxyToken = proxyUrl && currentUser
+      const proxyAuthorizationToken = (proxyUrl || tokenProxyUrl) && currentUser
         ? await currentUser.getIdToken()
         : undefined;
       const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
@@ -500,11 +501,11 @@ const ReportView: React.FC = () => {
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
         ...(challenge?.scope ? { scope: challenge.scope } : {}),
-        ...(proxyUrl && discoveryProxyToken
+        ...(proxyUrl && proxyAuthorizationToken
           ? {
               discoveryProxy: {
                 url: proxyUrl,
-                authorizationToken: discoveryProxyToken,
+                authorizationToken: proxyAuthorizationToken,
               },
             }
           : {}),
@@ -512,7 +513,7 @@ const ReportView: React.FC = () => {
           ? {
               tokenProxy: {
                 url: tokenProxyUrl,
-                authorizationToken: discoveryProxyToken,
+                authorizationToken: proxyAuthorizationToken,
               },
             }
           : {}),
@@ -984,7 +985,12 @@ const ReportView: React.FC = () => {
             // Do not invent direct-target provenance when this continuation has no route context.
             await handleRunReport(
               configuredServerUrl,
-              { Authorization: `Bearer ${token}` }
+              {
+                Authorization: renderOAuthAuthorizationHeader(
+                  oauthPrerequisite.authorizationHeaderTemplate,
+                  token
+                ),
+              }
             );
           } : undefined}
           onConfigured={async () => {

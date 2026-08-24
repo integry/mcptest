@@ -33,6 +33,10 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
     && (prerequisite?.canConfigureClient ?? true);
   const title = prerequisite?.kind === 'provider_approval_required'
     ? `${prerequisite.providerName} approval is required`
+    : prerequisite?.kind === 'provider_callback_incompatible'
+      ? `${prerequisite.providerName} callback is incompatible`
+      : prerequisite?.kind === 'operator_client_not_configured'
+        ? `${prerequisite.providerName} operator client is not configured`
     : prerequisite?.kind === 'proxy_authentication_required'
       ? 'mcptest proxy authentication required'
       : prerequisite?.kind === 'transient_discovery_failure'
@@ -111,6 +115,23 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           </p>
         )}
 
+        {prerequisite?.kind === 'provider_callback_incompatible' && (
+          <div className="alert alert-warning" role="note">
+            The provider rejected the hosted <code>https://mcptest.io/oauth/callback</code> at
+            the dynamic-registration stage. This is a provider callback/client-identity
+            incompatibility for mcptest&apos;s remote web client, not a localhost installation or
+            browser CORS prerequisite.
+          </div>
+        )}
+
+        {prerequisite?.kind === 'operator_client_not_configured' && (
+          <div className="alert alert-info" role="note">
+            The authenticated, issuer-bound Worker route is ready, but the provider&apos;s client ID
+            and client secret have not both been configured by the operator. The browser never
+            receives the secret.
+          </div>
+        )}
+
         {!isProxyAuthenticationPrerequisite
           && prerequisite?.configurationMode === 'operator-confidential' && (
           <div className="alert alert-info" role="note">
@@ -124,7 +145,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           <div className="oauth-bearer-option mb-4">
             <h6>Use a {prerequisite.bearerTokenName || 'bearer token'}</h6>
             <p className="mb-0">
-              This provider supports a bearer token on the MCP request. The token stays in memory
+              This provider supports a direct token credential on the MCP request. The token stays in memory
               for the request and is not added to the URL or OAuth client storage.
             </p>
             {onBearerToken ? (
@@ -154,8 +175,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
               </form>
             ) : (
               <p className="mt-2 mb-0">
-                Use the target <code>Authorization: Bearer …</code> credential option in Playground
-                or Report.
+                Use the target <code>Authorization: {(prerequisite.authorizationHeaderTemplate
+                  || 'Bearer <TOKEN>').replace('<TOKEN>', '…')}</code> credential option in
+                Playground or Report.
               </p>
             )}
           </div>
