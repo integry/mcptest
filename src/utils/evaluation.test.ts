@@ -196,6 +196,50 @@ describe('dual-era server evaluation', () => {
     expect(client.close).toHaveBeenCalledOnce();
   });
 
+  it('matches Playground fallback for initialize success followed by an unreadable request', async () => {
+    const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const terminalError = new TypeError('Failed to fetch');
+    const client = createClient();
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([terminalError], [{
+        candidateUrl: endpoint,
+        transportType: 'streamable-http',
+        error: terminalError,
+        observedRequests: [
+          { method: 'POST', mcpMethod: 'initialize', url: endpoint, status: 200, outcome: 'succeeded' },
+          {
+            method: 'POST',
+            mcpMethod: 'notifications/initialized',
+            url: endpoint,
+            requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+            outcome: 'failed',
+          },
+        ],
+      }]))
+      .mockResolvedValueOnce({
+        client,
+        url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'stateful',
+        protocolVersion: '2025-11-25',
+      });
+
+    const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn());
+
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(new URL(connectionMocks.attempt.mock.calls[1][0]).searchParams.get('target')).toBe(endpoint);
+    expect(report.outcome).toBe('scored');
+  });
+
+  it.each([400, 404, 500])('does not proxy a readable target HTTP %s failure', async (status) => {
+    const targetError = Object.assign(new Error(`Target returned HTTP ${status}`), { status });
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([targetError]));
+
+    await evaluateServer('https://readable.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+  });
+
   it('uses the same evaluator headlessly without inventing a browser CORS result', async () => {
     const client = createClient();
     connectionMocks.attempt.mockResolvedValueOnce({
@@ -447,13 +491,13 @@ describe('dual-era server evaluation', () => {
     const directRequest = {
       method: 'POST',
       url: endpoint,
-      status: 502,
       outcome: 'failed' as const,
       startedAt: '2026-08-11T18:20:00.000Z',
       durationMs: 31,
     };
     const proxyRequest = {
       ...directRequest,
+      status: 502,
       url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
       startedAt: '2026-08-11T18:20:01.000Z',
       durationMs: 44,
@@ -461,7 +505,7 @@ describe('dual-era server evaluation', () => {
     connectionMocks.attempt
       .mockImplementationOnce(async (...args: any[]) => {
         args[6]?.(directRequest);
-        throw new Error('Direct authenticated retry failed');
+        throw new TypeError('Failed to fetch');
       })
       .mockImplementationOnce(async (...args: any[]) => {
         args[6]?.(proxyRequest);

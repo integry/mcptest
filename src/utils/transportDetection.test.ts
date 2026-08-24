@@ -9,6 +9,7 @@ import {
   getTransportCandidates,
   inspectSafeTargetError,
   sanitizeAuthenticationChallenge,
+  shouldRetryMcpConnectionThroughProxy,
 } from './transportDetection';
 
 const connectionMocks = vi.hoisted(() => ({
@@ -593,5 +594,95 @@ describe('transport candidate generation', () => {
       requestUrl: 'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
     });
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
+  });
+
+  it('records JSON-RPC stage and header names without retaining header values', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 200 })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      await fetch?.(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'MCP-Protocol-Version': '2025-11-25',
+          Authorization: 'Bearer must-not-be-recorded',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+        }),
+      });
+    };
+
+    const connection = await attemptParallelConnections(
+      'https://example.com/mcp',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      'stateful',
+      undefined,
+      'streamable-http'
+    );
+
+    expect(connection.observedRequests[0]).toMatchObject({
+      method: 'POST',
+      mcpMethod: 'notifications/initialized',
+      status: 200,
+      outcome: 'succeeded',
+      requestHeaders: ['authorization', 'content-type', 'mcp-protocol-version'],
+    });
+    expect(JSON.stringify(connection.observedRequests)).not.toContain('must-not-be-recorded');
+  });
+});
+
+describe('authenticated proxy retry classification', () => {
+  const endpoint = 'https://gateway.example/yahoo-finance/mcp';
+
+  const handshakeFailure = (terminalError: unknown) => new TransportConnectionError(
+    [terminalError],
+    [{
+      candidateUrl: endpoint,
+      transportType: 'streamable-http',
+      error: terminalError,
+      observedRequests: [
+        {
+          method: 'POST',
+          mcpMethod: 'initialize',
+          url: endpoint,
+          status: 200,
+          outcome: 'succeeded',
+        },
+        {
+          method: 'POST',
+          mcpMethod: 'notifications/initialized',
+          url: endpoint,
+          requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+          outcome: 'failed',
+        },
+      ],
+    }]
+  );
+
+  it('retries when initialize was readable but the required next request was not', () => {
+    expect(shouldRetryMcpConnectionThroughProxy(
+      handshakeFailure(new TypeError('Failed to fetch'))
+    )).toBe(true);
+  });
+
+  it('retries a CORS failure when a sibling candidate timed out with an AbortError', () => {
+    const error = new TransportConnectionError([
+      handshakeFailure(new TypeError('Failed to fetch')),
+      new DOMException('The operation was aborted.', 'AbortError'),
+    ]);
+
+    expect(shouldRetryMcpConnectionThroughProxy(error)).toBe(true);
+  });
+
+  it.each([
+    Object.assign(new Error('Target returned HTTP 404'), { status: 404 }),
+    new ProxiedAuthenticationError(401, 'target', new Error('OAuth required')),
+    new Error('Connection aborted by user'),
+  ])('does not retry a readable target error, target challenge, or abort', (error) => {
+    expect(shouldRetryMcpConnectionThroughProxy(error)).toBe(false);
   });
 });

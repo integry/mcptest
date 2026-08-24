@@ -119,6 +119,59 @@ describe('evidence-based connection diagnostics', () => {
     expect(container.textContent).not.toContain('Browser access blocked');
   });
 
+  it('renders initialize HTTP 200 as evidence and the later request as the cause', () => {
+    const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const container = renderError({
+      serverUrl: endpoint,
+      expectedAuthentication: 'none',
+      attempts: [
+        {
+          route: 'direct',
+          candidateUrl: 'https://gateway.mcpservers.org/yahoo-finance/mcp/',
+          transportType: 'streamable-http',
+          method: 'POST',
+          status: 404,
+          responseSource: 'target',
+          browserUnreadable: false,
+          failureKind: 'http',
+          message: 'HTTP 404',
+        },
+        {
+          route: 'direct',
+          candidateUrl: endpoint,
+          transportType: 'streamable-http',
+          method: 'POST',
+          mcpMethod: 'initialize',
+          status: 200,
+          responseSource: 'target',
+          browserUnreadable: false,
+          failureKind: 'success',
+          message: 'Readable HTTP 200 response',
+        },
+        {
+          route: 'direct',
+          candidateUrl: endpoint,
+          transportType: 'streamable-http',
+          method: 'POST',
+          mcpMethod: 'notifications/initialized',
+          requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+          browserUnreadable: true,
+          failureKind: 'browser-unreadable',
+          message: 'Failed to fetch',
+        },
+      ],
+    });
+    const text = container.textContent || '';
+
+    expect(text).toContain('Later MCP request blocked by browser access policy');
+    expect(text).toContain('readable initialize HTTP 200 response');
+    expect(text).toContain('notifications/initialized');
+    expect(text).toContain('MCP-Protocol-Version');
+    expect(text).toContain('readable intermediate response');
+    expect(text).not.toContain('MCP endpoint returned HTTP 200');
+    expect(text).not.toContain('Verify that the publisher');
+  });
+
   it.each([404, 500])(
     'prefers a readable proxy-observed HTTP %s over opaque direct-browser attempts',
     (status) => {

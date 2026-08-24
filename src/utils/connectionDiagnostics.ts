@@ -11,6 +11,7 @@ import {
 export type ConnectionAttemptRoute = 'direct' | 'proxy';
 export type DiagnosticTransportEvidence = TransportType | 'both' | 'unknown';
 export type ConnectionFailureKind =
+  | 'success'
   | 'browser-unreadable'
   | 'http'
   | 'authentication'
@@ -25,6 +26,8 @@ export interface ConnectionAttemptFact {
   candidateUrl: string;
   transportType?: TransportType;
   method?: string;
+  mcpMethod?: string;
+  requestHeaders?: readonly string[];
   status?: number;
   authenticationSource?: 'proxy' | 'target';
   responseSource?: 'proxy' | 'target';
@@ -83,45 +86,72 @@ const classifyFailure = (
   return 'unknown';
 };
 
-const latestObservedRequest = (
-  observedRequests: readonly ObservedTransportRequest[] | undefined
-): ObservedTransportRequest | undefined => {
-  if (!observedRequests?.length) return undefined;
-  return [...observedRequests].reverse().find(({ status }) => status !== undefined)
-    || observedRequests[observedRequests.length - 1];
-};
-
-const factFromCandidateFailure = (
+const factsFromCandidateFailure = (
   failure: TransportCandidateFailure,
   route: ConnectionAttemptRoute,
   fallbackTransport?: TransportType
-): ConnectionAttemptFact => {
+): ConnectionAttemptFact[] => {
   const challenge = getObservedAuthenticationChallenge(failure.error);
-  const request = latestObservedRequest(failure.observedRequests);
-  const status = challenge?.status ?? request?.status
+  const observedRequests = failure.observedRequests || [];
+  if (observedRequests.length > 0) {
+    return observedRequests.map((request) => {
+      const status = request.status;
+      const isReadableSuccess = status !== undefined
+        && status >= 200
+        && status < 300
+        && request.outcome === 'succeeded';
+      const failureKind = isReadableSuccess
+        ? 'success'
+        : classifyFailure(failure.error, status);
+      const isChallengeRequest = status === challenge?.status;
+      const targetError = request.targetError
+        || (isChallengeRequest ? challenge?.targetError : undefined);
+      return {
+        route,
+        candidateUrl: targetCandidateUrl(request.url || failure.candidateUrl, route),
+        ...(failure.transportType || request.transportType || fallbackTransport
+          ? { transportType: failure.transportType || request.transportType || fallbackTransport }
+          : {}),
+        ...(request.method ? { method: request.method } : {}),
+        ...(request.mcpMethod ? { mcpMethod: request.mcpMethod } : {}),
+        ...(request.requestHeaders ? { requestHeaders: request.requestHeaders } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(isChallengeRequest && challenge?.source
+          ? { authenticationSource: challenge.source }
+          : {}),
+        ...(request.responseSource || (isChallengeRequest ? challenge?.source : undefined)
+          ? { responseSource: request.responseSource || challenge?.source }
+          : {}),
+        browserUnreadable: failureKind === 'browser-unreadable',
+        failureKind,
+        message: isReadableSuccess
+          ? `Readable HTTP ${status} response`
+          : errorMessage(failure.error),
+        ...(targetError ? { targetError } : {}),
+      };
+    });
+  }
+
+  const status = challenge?.status
     ?? (typeof (failure.error as { status?: unknown })?.status === 'number'
       ? (failure.error as { status: number }).status
       : undefined);
   const failureKind = classifyFailure(failure.error, status);
-  const targetError = challenge?.targetError || request?.targetError;
-
-  return {
+  return [{
     route,
     candidateUrl: targetCandidateUrl(failure.candidateUrl, route),
-    ...(failure.transportType || request?.transportType || fallbackTransport
-      ? { transportType: failure.transportType || request?.transportType || fallbackTransport }
+    ...(failure.transportType || fallbackTransport
+      ? { transportType: failure.transportType || fallbackTransport }
       : {}),
-    ...(challenge?.method || request?.method ? { method: challenge?.method || request?.method } : {}),
+    ...(challenge?.method ? { method: challenge.method } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(challenge?.source ? { authenticationSource: challenge.source } : {}),
-    ...(request?.responseSource || challenge?.source
-      ? { responseSource: request?.responseSource || challenge?.source }
-      : {}),
+    ...(challenge?.source ? { responseSource: challenge.source } : {}),
     browserUnreadable: failureKind === 'browser-unreadable',
     failureKind,
     message: errorMessage(failure.error),
-    ...(targetError ? { targetError } : {}),
-  };
+    ...(challenge?.targetError ? { targetError: challenge.targetError } : {}),
+  }];
 };
 
 const collectErrorFacts = (
@@ -142,7 +172,7 @@ const collectErrorFacts = (
     if (error.candidateFailures.length > 0) {
       for (const failure of error.candidateFailures) {
         representedErrors.add(failure.error);
-        facts.push(factFromCandidateFailure(failure, route, fallbackTransport));
+        facts.push(...factsFromCandidateFailure(failure, route, fallbackTransport));
       }
     }
     for (const nested of error.errors) {
@@ -197,6 +227,8 @@ export const collectConnectionAttemptFacts = (
       fact.candidateUrl,
       fact.transportType,
       fact.method,
+      fact.mcpMethod,
+      fact.requestHeaders?.join(','),
       fact.status,
       fact.authenticationSource,
       fact.responseSource,
@@ -248,11 +280,16 @@ const generateHttpCurlCommandWithHeaders = (
 };
 
 export const generateHttpCurlCommand = (serverUrl: string): string => (
-  generateHttpCurlCommandWithHeaders(serverUrl)
+  generateHttpCurlCommandWithHeaders(serverUrl, [
+    `MCP-Protocol-Version: ${LATEST_PROTOCOL_VERSION}`,
+  ])
 );
 
 export const generateBearerHttpCurlCommand = (serverUrl: string): string => (
-  generateHttpCurlCommandWithHeaders(serverUrl, ['Authorization: Bearer <ACCESS_TOKEN>'])
+  generateHttpCurlCommandWithHeaders(serverUrl, [
+    `MCP-Protocol-Version: ${LATEST_PROTOCOL_VERSION}`,
+    'Authorization: Bearer <ACCESS_TOKEN>',
+  ])
 );
 
 export const generateSseCurlCommand = (serverUrl: string): string => {

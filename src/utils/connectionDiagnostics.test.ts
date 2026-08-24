@@ -69,6 +69,48 @@ describe('connection attempt evidence', () => {
       'refused',
     ]);
   });
+
+  it('keeps a readable initialize before the terminal browser-unreadable request', () => {
+    const endpoint = 'https://gateway.example/yahoo-finance/mcp';
+    const terminalError = new TypeError('Failed to fetch');
+    const error = new TransportConnectionError([terminalError], [{
+      candidateUrl: endpoint,
+      transportType: 'streamable-http',
+      error: terminalError,
+      observedRequests: [
+        {
+          method: 'POST',
+          mcpMethod: 'initialize',
+          url: endpoint,
+          status: 200,
+          responseSource: 'target',
+          outcome: 'succeeded',
+        },
+        {
+          method: 'POST',
+          mcpMethod: 'notifications/initialized',
+          url: endpoint,
+          requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+          outcome: 'failed',
+        },
+      ],
+    }]);
+
+    expect(collectConnectionAttemptFacts([{ route: 'direct', error }], endpoint)).toEqual([
+      expect.objectContaining({
+        mcpMethod: 'initialize',
+        status: 200,
+        failureKind: 'success',
+        browserUnreadable: false,
+      }),
+      expect.objectContaining({
+        mcpMethod: 'notifications/initialized',
+        failureKind: 'browser-unreadable',
+        browserUnreadable: true,
+        requestHeaders: expect.arrayContaining(['mcp-protocol-version']),
+      }),
+    ]);
+  });
 });
 
 describe('safe exact terminal commands', () => {
@@ -78,6 +120,7 @@ describe('safe exact terminal commands', () => {
 
     expect(command).toContain(`--url '${endpoint}'`);
     expect(command).toContain(`\"protocolVersion\":\"${LATEST_PROTOCOL_VERSION}\"`);
+    expect(command).toContain(`'MCP-Protocol-Version: ${LATEST_PROTOCOL_VERSION}'`);
     expect(command).not.toContain('2024-11-05');
     expect(command).not.toContain('/mcp/');
   });

@@ -62,6 +62,8 @@ export interface ObservedAuthenticationChallenge {
 
 export interface ObservedTransportRequest {
   method: string;
+  /** JSON-RPC method when it can be read safely from the outgoing body. */
+  mcpMethod?: string;
   url: string;
   candidateUrl?: string;
   transportType?: TransportType;
@@ -72,6 +74,8 @@ export interface ObservedTransportRequest {
   responseSource?: ProxyAuthenticationSource;
   /** Bounded and credential-redacted target response detail. */
   targetError?: SafeTargetErrorDetail;
+  /** Header names only. Values are deliberately never retained. */
+  requestHeaders?: readonly string[];
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -169,6 +173,74 @@ export const getObservedAuthenticationChallenge = (
   if (causeChallenge?.source === 'target') return causeChallenge;
   return causeChallenge || proxyChallenge;
 };
+
+const browserUnreadableMessage = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return error instanceof TypeError
+    || /failed to fetch|load failed|networkerror when attempting to fetch|network request failed|\bcors\b/i.test(message);
+};
+
+const connectionWasAborted = (error: unknown, seen = new Set<object>()): boolean => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return false;
+  seen.add(error);
+  if ((error instanceof Error ? error.message : String(error)) === 'Connection aborted by user') {
+    return true;
+  }
+  const value = error as { errors?: readonly unknown[]; cause?: unknown };
+  return Boolean(
+    value.errors?.some((nested) => connectionWasAborted(nested, seen))
+    || connectionWasAborted(value.cause, seen)
+  );
+};
+
+const hasTerminalBrowserUnreadableRequest = (
+  error: unknown,
+  seen = new Set<object>()
+): boolean => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return false;
+  seen.add(error);
+  const value = error as {
+    candidateFailures?: readonly TransportCandidateFailure[];
+    errors?: readonly unknown[];
+    cause?: unknown;
+  };
+  const representedErrors = new Set<unknown>();
+
+  for (const failure of value.candidateFailures || []) {
+    representedErrors.add(failure.error);
+    const terminalRequest = failure.observedRequests?.[failure.observedRequests.length - 1];
+    if (terminalRequest) {
+      if (
+        terminalRequest.outcome === 'failed'
+        && terminalRequest.status === undefined
+        && browserUnreadableMessage(failure.error)
+      ) return true;
+      // Request evidence is authoritative for this candidate. In particular,
+      // do not reinterpret an earlier readable response as the terminal cause.
+      continue;
+    }
+    if (hasTerminalBrowserUnreadableRequest(failure.error, seen)) return true;
+  }
+
+  for (const nested of value.errors || []) {
+    if (!representedErrors.has(nested) && hasTerminalBrowserUnreadableRequest(nested, seen)) {
+      return true;
+    }
+  }
+  if (hasTerminalBrowserUnreadableRequest(value.cause, seen)) return true;
+  return !value.candidateFailures?.length && !value.errors?.length && browserUnreadableMessage(error);
+};
+
+/**
+ * True only when an MCP negotiation ended on a browser-unreadable required
+ * request. Readable target errors and target OAuth challenges stay on their
+ * original route and user cancellation never causes an authenticated retry.
+ */
+export const shouldRetryMcpConnectionThroughProxy = (error: unknown): boolean => (
+  !connectionWasAborted(error)
+  && getObservedAuthenticationChallenge(error)?.source !== 'target'
+  && hasTerminalBrowserUnreadableRequest(error)
+);
 
 const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
 const MAX_TARGET_ERROR_BODY_BYTES = 8 * 1024;
@@ -556,6 +628,17 @@ const authenticationChallengeParameters = (response: Response): {
   }
 };
 
+const jsonRpcMethodFromBody = (body: BodyInit | null | undefined): string | undefined => {
+  if (typeof body !== 'string') return undefined;
+  try {
+    const payload = JSON.parse(body) as { method?: unknown } | Array<{ method?: unknown }>;
+    const message = Array.isArray(payload) ? payload[0] : payload;
+    return typeof message?.method === 'string' ? message.method : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const observeAuthenticationResponses = (
   usesProxy: boolean,
   onChallenge: (challenge: ObservedAuthenticationChallenge) => void,
@@ -566,12 +649,25 @@ const observeAuthenticationResponses = (
 ): FetchLike => async (input, init) => {
   const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
   const startedAtMs = Date.now();
+  const outgoingHeaders = new Headers(init?.headers || request?.headers);
+  let mcpMethod = jsonRpcMethodFromBody(init?.body);
+  if (!mcpMethod && request && request.method.toUpperCase() === 'POST') {
+    try {
+      mcpMethod = jsonRpcMethodFromBody(await request.clone().text());
+    } catch {
+      // Request stage is best-effort evidence; never interfere with transport.
+    }
+  }
   const attemptedRequest: ObservedTransportRequest = {
     method: (init?.method || request?.method || 'GET').toUpperCase(),
+    ...(mcpMethod ? { mcpMethod } : {}),
     url: request?.url || String(input),
     candidateUrl: candidate.url,
     transportType: candidate.transportType,
     startedAt: new Date(startedAtMs).toISOString(),
+    ...(Array.from(outgoingHeaders.keys()).length > 0
+      ? { requestHeaders: Array.from(outgoingHeaders.keys()) }
+      : {}),
     outcome: 'started',
   };
   observedRequests.push(attemptedRequest);

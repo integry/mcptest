@@ -5,6 +5,7 @@ import { formatErrorForDisplay } from '../utils/errorHandling';
 import {
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  shouldRetryMcpConnectionThroughProxy,
   type ObservedTransportRequest,
 } from '../utils/transportDetection';
 import { logEvent } from '../utils/analytics';
@@ -33,32 +34,6 @@ import { getCatalogEndpointDiagnosticEvidence } from '../utils/catalogUtils';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
-
-const hasReadableHttpResponse = (error: unknown, seen = new Set<object>()): boolean => {
-  if (!error || typeof error !== 'object' || seen.has(error)) return false;
-  seen.add(error);
-
-  if (getObservedAuthenticationChallenge(error)) return true;
-  if (typeof (error as { status?: unknown }).status === 'number') return true;
-
-  const candidateFailures = (error as {
-    candidateFailures?: ReadonlyArray<{
-      observedRequests?: ReadonlyArray<{ status?: number }>;
-    }>;
-  }).candidateFailures;
-  if (candidateFailures?.some(({ observedRequests }) => (
-    observedRequests?.some(({ status }) => typeof status === 'number')
-  ))) return true;
-
-  const nestedErrors = (error as { errors?: readonly unknown[] }).errors;
-  return Array.isArray(nestedErrors)
-    && nestedErrors.some((nestedError) => hasReadableHttpResponse(nestedError, seen));
-};
-
-const endedWithoutReadableHttpResponse = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
-  return !/connection aborted by user/i.test(message) && !hasReadableHttpResponse(error);
-};
 
 const getConnectedServerUrl = (
   finalUrl: string,
@@ -597,12 +572,12 @@ export const useConnection = (
         return { result, usedProxy: false };
       } catch (error: any) {
         diagnosticFailures.push({ route: 'direct', error });
-        const directResponseWasUnreadable = endedWithoutReadableHttpResponse(error);
+        const directResponseWasUnreadable = shouldRetryMcpConnectionThroughProxy(error);
         const proxyConfigured = Boolean(import.meta.env.VITE_PROXY_URL);
 
-        // A browser failure with no readable response cannot establish whether
-        // the target is down or merely blocked by CORS. When proxy fallback is
-        // enabled, use the authenticated proxy as the observation path.
+        // A required MCP request may be browser-unreadable even after initialize
+        // succeeded. Use its terminal request evidence rather than suppressing
+        // fallback because some earlier response happened to be readable.
         if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && currentUser) {
           try {
             const result = await withConnectionTimeout(connectViaProxy());
