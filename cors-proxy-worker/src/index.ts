@@ -506,6 +506,7 @@ type PublicClientTokenInteropPolicy = {
   issuer: string;
   tokenEndpoint: string;
   clientId: string;
+  resource: string;
   redirectUri: string;
   requiresClientIdMetadataDocumentSupport: true;
 };
@@ -519,6 +520,7 @@ const PUBLIC_CLIENT_TOKEN_INTEROP_POLICIES: readonly PublicClientTokenInteropPol
   issuer: 'https://huggingface.co',
   tokenEndpoint: 'https://huggingface.co/oauth/token',
   clientId: HOSTED_OAUTH_CLIENT_METADATA_URL,
+  resource: 'https://huggingface.co/mcp?login',
   redirectUri: HOSTED_OAUTH_CALLBACK,
   requiresClientIdMetadataDocumentSupport: true,
 }] as const;
@@ -530,6 +532,7 @@ const publicClientTokenInteropPolicy = (
   policy => metadata.issuer === policy.issuer
     && metadata.token_endpoint === policy.tokenEndpoint
     && params.get('client_id') === policy.clientId
+    && params.get('resource') === policy.resource
     && (
       !policy.requiresClientIdMetadataDocumentSupport
       || metadata.client_id_metadata_document_supported === true

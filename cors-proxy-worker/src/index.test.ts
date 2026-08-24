@@ -498,12 +498,14 @@ describe('hosted OAuth token route', () => {
 
   type HuggingFaceInteropMutation = {
     clientId?: string;
+    resource?: string;
     redirectUri?: string;
     issuer?: string;
     tokenEndpoint?: string;
     metadata?: Record<string, unknown>;
     clientSecret?: string;
     basicSecret?: string;
+    grantType?: 'authorization_code' | 'refresh_token';
   };
 
   it('relays the exact verified Hugging Face CIMD public-client form unchanged', async () => {
@@ -657,6 +659,23 @@ describe('hosted OAuth token route', () => {
     HuggingFaceInteropMutation,
   ]> = [
     ['wrong client ID', { clientId: 'https://mcptest.io/oauth/wrong-client.json' }],
+    ['the resource query omitted', { resource: 'https://huggingface.co/mcp' }],
+    ['a different Hugging Face path and query', {
+      resource: 'https://huggingface.co/other-mcp?login=1',
+    }],
+    ['an external HTTPS resource', { resource: 'https://resource.example/mcp?login' }],
+    ['a refresh grant with the resource query omitted', {
+      resource: 'https://huggingface.co/mcp',
+      grantType: 'refresh_token',
+    }],
+    ['a refresh grant with a different Hugging Face path and query', {
+      resource: 'https://huggingface.co/other-mcp?login=1',
+      grantType: 'refresh_token',
+    }],
+    ['a refresh grant with an external HTTPS resource', {
+      resource: 'https://resource.example/mcp?login',
+      grantType: 'refresh_token',
+    }],
     ['wrong redirect URI', { redirectUri: 'https://mcptest.io/oauth/wrong-callback' }],
     ['issuer spelling', { issuer: 'https://huggingface.co/' }],
     ['wrong token endpoint', { tokenEndpoint: 'https://huggingface.co/oauth/token/' }],
@@ -673,7 +692,15 @@ describe('hosted OAuth token route', () => {
     ) => {
       const params = new URLSearchParams(huggingFaceForm);
       if (mutation.clientId) params.set('client_id', mutation.clientId);
+      if (mutation.resource) params.set('resource', mutation.resource);
       if (mutation.redirectUri) params.set('redirect_uri', mutation.redirectUri);
+      if (mutation.grantType === 'refresh_token') {
+        params.set('grant_type', 'refresh_token');
+        params.set('refresh_token', 'hf-rejected-refresh-token');
+        params.delete('code');
+        params.delete('code_verifier');
+        params.delete('redirect_uri');
+      }
       if (mutation.clientSecret !== undefined) {
         params.set('client_secret', mutation.clientSecret);
       }
@@ -719,6 +746,7 @@ describe('hosted OAuth token route', () => {
         for (const secret of [
           'hf-single-use-code',
           'hf-pkce-verifier',
+          'hf-rejected-refresh-token',
           'firebase-credential',
           'hf-browser-client-secret',
           'hf-basic-client-secret',
