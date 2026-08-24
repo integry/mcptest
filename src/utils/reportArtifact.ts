@@ -334,6 +334,12 @@ const AuthorizationSetupArtifactSchema = z.object({
   ]),
   statusLabel: z.string().min(1),
   summary: z.string().min(1),
+  responsibleParty: z.enum([
+    'automatic',
+    'user',
+    'mcptest-operator',
+    'provider-approval',
+  ]).optional(),
   reviewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   steps: z.array(z.string().min(1).max(300)).max(12),
   callbacks: z.array(z.string().min(1).max(500)).max(16),
@@ -2089,6 +2095,9 @@ export const createPublicReport = (
         status: authorizationGuidance.status,
         statusLabel: authorizationGuidance.statusLabel,
         summary: authorizationGuidance.summary,
+        ...(authorizationGuidance.responsibleParty
+          ? { responsibleParty: authorizationGuidance.responsibleParty }
+          : {}),
         ...(authorizationGuidance.reviewedAt
           ? { reviewedAt: authorizationGuidance.reviewedAt }
           : {}),
@@ -2246,6 +2255,9 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       `**${markdownInline(setup.statusLabel)}** — ${markdownInline(setup.summary)}`,
       '',
       `- Catalog entry: ${markdownInline(setup.catalogId)}`,
+      ...(setup.responsibleParty
+        ? [`- Responsible party: ${markdownInline(setup.responsibleParty)}`]
+        : []),
       `- Provenance: Current catalog guidance${setup.reviewedAt ? `, reviewed ${setup.reviewedAt}` : ''}; not evidence observed during this report run.`,
       ...(setup.callbacks.map(callback => `- Callback URI: ${markdownInline(callback)}`)),
       ...(setup.settings.map(setting => `- ${markdownInline(setting.label)}: ${markdownInline(setting.value)}${setting.required ? ' (required)' : ' (optional)'}`)),

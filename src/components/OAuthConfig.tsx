@@ -51,8 +51,11 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
       ? 'mcptest proxy authentication required'
       : prerequisite?.kind === 'transient_discovery_failure'
         ? 'OAuth discovery is temporarily unavailable'
-    : prerequisite?.kind === 'discovery_blocked_invalid'
+      : prerequisite?.kind === 'discovery_blocked_invalid'
       ? 'OAuth discovery could not be completed'
+      : authorizationGuidance.status === 'operator-setup-required'
+        && prerequisite?.configurationMode !== 'operator-confidential'
+        ? `${prerequisite?.providerName || serviceDomain} hosted mcptest operator setup required`
       : prerequisite?.configurationMode === 'operator-confidential'
         ? `${prerequisite.providerName} host application required`
       : `Register an OAuth application for ${prerequisite?.providerName || serviceDomain}`;

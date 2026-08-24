@@ -5,8 +5,23 @@ import { describe, expect, it, vi } from 'vitest';
 import ServerProfileView from './ServerProfileView';
 import { createCapabilityInventory } from '../utils/capabilityInventory';
 import type { CatalogServer } from '../types/catalog';
+import { getCatalogServerById } from '../utils/catalogUtils';
 
 describe('ServerProfileView capability inventory', () => {
+  it('distinguishes Asana desktop app setup from hosted mcptest operator setup', () => {
+    const asana = getCatalogServerById('asana');
+    expect(asana).toBeDefined();
+
+    const markup = renderToStaticMarkup(
+      <MemoryRouter><ServerProfileView server={asana!} onTestServer={vi.fn()} /></MemoryRouter>
+    );
+
+    expect(markup).toContain('Hosted mcptest operator setup required');
+    expect(markup).toContain('user-created Asana app and secret work with documented supported clients');
+    expect(markup).toContain('Retry remains unavailable until the mcptest operator configures a confidential binding server-side');
+    expect(markup).toContain('creating the app alone does not enable hosted mcptest');
+  });
+
   it('renders the catalog snapshot with semantic provider headings', () => {
     const server: CatalogServer = {
       id: 'example', name: 'Example', url: 'https://example.com/mcp', description: 'Example server',

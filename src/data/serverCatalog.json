@@ -269,7 +269,19 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
-    "oauthRegistration": { "mode": "unknown", "clientId": { "required": false }, "clientSecret": { "required": false }, "callback": { "required": false, "redirectUrls": {} }, "setupSteps": [], "settings": [], "reviewedAt": "2026-08-24", "evidenceUrl": "https://docs.stripe.com/mcp" },
+    "oauthRegistration": {
+      "mode": "automatic",
+      "responsibleParty": "automatic",
+      "clientId": { "required": false },
+      "clientSecret": { "required": false },
+      "browserPublicClientSupported": true,
+      "callback": { "required": false, "redirectUrls": {} },
+      "setupSteps": [],
+      "settings": [],
+      "availability": "ready",
+      "reviewedAt": "2026-08-24",
+      "evidenceUrl": "https://access.stripe.com/.well-known/oauth-authorization-server/mcp"
+    },
     "logoUrl": "/server-logos/stripe.svg",
     "logoSourceUrl": "https://images.stripeassets.com/fzn2n1nzq965/1hgcBNd12BfT9VLgbId7By/01d91920114b124fb4cf6d448f9f06eb/favicon.svg",
     "logoSourceKind": "official-brand",
@@ -531,7 +543,7 @@
     "authType": "oauth",
     "oauthRegistration": {
       "mode": "pre-registered-required",
-      "responsibleParty": "user",
+      "responsibleParty": "mcptest-operator",
       "clientId": { "required": true, "environmentVariable": "ASANA_CLIENT_ID" },
       "clientSecret": { "required": true, "environmentVariable": "ASANA_CLIENT_SECRET" },
       "browserPublicClientSupported": false,
@@ -556,7 +568,8 @@
         "Give the app a recognizable name and retain its client ID in protected configuration.",
         "Register the exact callback URI for the client that will perform authorization.",
         "Under Manage distribution, select specific workspaces and add each test workspace, or select any workspace.",
-        "Keep the client secret in a client secret store or operator-controlled service; never paste it into mcptest in a browser."
+        "Use the app and secret with a documented supported client that can protect the secret; creating the app alone does not enable hosted mcptest.",
+        "For hosted mcptest, its operator must configure the client ID and secret as a confidential server-side binding before Retry becomes available; never paste the secret into mcptest in a browser."
       ],
       "settings": [
         { "label": "App type", "value": "MCP app", "required": true },

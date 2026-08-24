@@ -381,18 +381,40 @@ describe('versioned public report artifacts', () => {
 
     expect(artifact.authorizationSetup).toMatchObject({
       catalogId: 'asana',
-      status: 'register-app-first',
+      status: 'operator-setup-required',
+      responsibleParty: 'mcptest-operator',
       provenance: 'current-catalog-guidance',
     });
     expect(json).toContain('https://mcptest.io/oauth/callback');
     expect(markdown).toContain('## Authorization setup');
     expect(markdown).toContain('not evidence observed during this report run');
     expect(markdown).toContain('Publisher documentation');
+    expect(markdown).toContain('user-created Asana app and secret work with documented supported clients');
+    expect(markdown).toContain('Retry remains unavailable until the mcptest operator configures a confidential binding server-side');
+    expect(markdown).toContain('Responsible party: mcptest-operator');
     expect(json).not.toMatch(/ASANA_CLIENT_SECRET[^"\n]*:/);
     expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
 
     const arbitrary = createPublicReport(publicReport(), FIXED_OPTIONS);
     expect(arbitrary.authorizationSetup).toBeUndefined();
+  });
+
+  it('reports Stripe as verified automatic registration with no provider app setup', () => {
+    const report = publicReport();
+    report.serverUrl = 'https://mcp.stripe.com';
+    const artifact = createPublicReport(report, FIXED_OPTIONS);
+    const json = serializePublicReportJson(artifact);
+    const markdown = serializePublicReportMarkdown(artifact);
+
+    expect(artifact.authorizationSetup).toMatchObject({
+      catalogId: 'stripe',
+      status: 'no-registration-needed',
+      responsibleParty: 'automatic',
+      documentationUrl: 'https://access.stripe.com/.well-known/oauth-authorization-server/mcp',
+    });
+    expect(markdown).toContain('No additional provider app setup is required');
+    expect(markdown).not.toContain('Registration requirements not verified');
+    expect(validatePublishedSchema(JSON.parse(json)), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
   });
 
   it('keeps PagerDuty alternative-token guidance public-safe and actionable', () => {

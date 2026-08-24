@@ -15,8 +15,12 @@ const AuthorizationSetup: React.FC<AuthorizationSetupProps> = ({
 }) => {
   const [copyStatus, setCopyStatus] = useState('');
   const copyCallback = async (callback: string) => {
+    if (!navigator.clipboard?.writeText) {
+      setCopyStatus('Clipboard access is unavailable; select and copy the callback URI manually.');
+      return;
+    }
     try {
-      await navigator.clipboard?.writeText(callback);
+      await navigator.clipboard.writeText(callback);
       setCopyStatus('Callback URI copied.');
     } catch {
       setCopyStatus('Clipboard access is unavailable; select and copy the callback URI manually.');

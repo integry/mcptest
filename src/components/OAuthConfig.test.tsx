@@ -49,7 +49,11 @@ describe('OAuth authorization prerequisite panel', () => {
       canConfigureClient: true,
     });
 
-    expect(view.textContent).toContain('Register an app first');
+    expect(view.querySelector('#oauth-config-title')?.textContent)
+      .toBe('Asana hosted mcptest operator setup required');
+    expect(view.textContent).toContain('Hosted mcptest operator setup required');
+    expect(view.textContent).toContain('user-created Asana app and secret work with documented supported clients');
+    expect(view.textContent).toContain('Retry remains unavailable until the mcptest operator configures a confidential binding server-side');
     expect(view.textContent).toContain('MCP app');
     expect(view.textContent).toContain('https://mcptest.io/oauth/callback');
     expect(view.textContent).toContain('Specific test workspaces or any workspace');

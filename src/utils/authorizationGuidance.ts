@@ -1,6 +1,7 @@
 import type {
   CatalogAuthType,
   CatalogOAuthRegistrationEvidence,
+  CatalogOAuthResponsibleParty,
   CatalogServer,
 } from '../types/catalog';
 
@@ -40,6 +41,7 @@ export interface AuthorizationGuidanceViewModel {
   browserPublicClientSupported: boolean | 'unknown';
   browserClientFormAllowed: boolean;
   canAttemptHostedAuthorization: boolean;
+  responsibleParty?: CatalogOAuthResponsibleParty;
   availability?: CatalogOAuthRegistrationEvidence['availability'];
 }
 
@@ -153,6 +155,7 @@ export const createAuthorizationGuidance = (
     alternativeAuthType: registration.alternativeAuthType,
     alternativeHeaderName: header?.name,
     alternativeHeaderTemplate: header?.valueTemplate,
+    responsibleParty: registration.responsibleParty,
     clientIdRequired: registration.clientId.required,
     clientSecretRequired: registration.clientSecret.required,
     browserPublicClientSupported: registration.browserPublicClientSupported ?? 'unknown' as const,
@@ -172,6 +175,15 @@ export const createAuthorizationGuidance = (
     };
   }
   if (registration.mode === 'pre-registered-required') {
+    if (registration.availability === 'operator-configuration-missing') {
+      return {
+        ...common,
+        status: 'operator-setup-required',
+        statusLabel: 'Hosted mcptest operator setup required',
+        summary: `A user-created ${server.name} app and secret work with documented supported clients that can protect the secret. Hosted mcptest cannot accept the secret in the browser or use that app automatically; Retry remains unavailable until the mcptest operator configures a confidential binding server-side.`,
+        canAttemptHostedAuthorization: false,
+      };
+    }
     return {
       ...common,
       status: 'register-app-first',

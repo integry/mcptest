@@ -5,7 +5,7 @@ import { getAuthorizationGuidanceForEndpoint } from './authorizationGuidanceLook
 
 describe('authorization guidance classifications', () => {
   it.each([
-    ['asana', 'register-app-first', true, true],
+    ['asana', 'operator-setup-required', true, true],
     ['figma', 'provider-approval-required', false, false],
     ['vercel', 'provider-approval-required', false, false],
     ['github', 'operator-setup-required', true, true],
@@ -14,6 +14,7 @@ describe('authorization guidance classifications', () => {
     ['linear', 'no-registration-needed', false, false],
     ['notion', 'no-registration-needed', false, false],
     ['atlassian', 'no-registration-needed', false, false],
+    ['stripe', 'no-registration-needed', false, false],
   ] as const)('classifies %s', (id, status, clientIdRequired, clientSecretRequired) => {
     const server = getCatalogServerById(id);
     expect(server).toBeDefined();
@@ -30,6 +31,34 @@ describe('authorization guidance classifications', () => {
     ]));
     expect(guidance.browserClientFormAllowed).toBe(false);
     expect(guidance.canAttemptHostedAuthorization).toBe(false);
+    expect(guidance).toMatchObject({
+      status: 'operator-setup-required',
+      responsibleParty: 'mcptest-operator',
+    });
+    expect(guidance.summary).toContain('user-created Asana app and secret work with documented supported clients');
+    expect(guidance.summary).toContain('Retry remains unavailable until the mcptest operator configures a confidential binding server-side');
+  });
+
+  it('classifies Stripe publisher metadata as automatic, public, secretless, and ready', () => {
+    const stripe = getCatalogServerById('stripe');
+    expect(stripe?.oauthRegistration).toMatchObject({
+      mode: 'automatic',
+      responsibleParty: 'automatic',
+      clientId: { required: false },
+      clientSecret: { required: false },
+      browserPublicClientSupported: true,
+      availability: 'ready',
+      evidenceUrl: 'https://access.stripe.com/.well-known/oauth-authorization-server/mcp',
+    });
+
+    const guidance = getAuthorizationGuidanceForEndpoint('https://mcp.stripe.com');
+    expect(guidance).toMatchObject({
+      status: 'no-registration-needed',
+      responsibleParty: 'automatic',
+      browserPublicClientSupported: true,
+      canAttemptHostedAuthorization: true,
+    });
+    expect(guidance.summary).toContain('No additional provider app setup is required');
   });
 
   it('presents the PagerDuty placeholder but no credential value', () => {

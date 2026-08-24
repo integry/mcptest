@@ -553,6 +553,7 @@
         "status": { "enum": ["no-registration-needed", "register-app-first", "operator-setup-required", "provider-approval-required", "alternative-credential", "unknown"] },
         "statusLabel": { "type": "string", "minLength": 1 },
         "summary": { "type": "string", "minLength": 1 },
+        "responsibleParty": { "enum": ["automatic", "user", "mcptest-operator", "provider-approval"] },
         "reviewedAt": { "type": "string", "format": "date" },
         "steps": { "type": "array", "maxItems": 12, "items": { "type": "string", "minLength": 1, "maxLength": 300 } },
         "callbacks": { "type": "array", "maxItems": 16, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
