@@ -272,7 +272,7 @@ const setupAuthType = (server: CatalogServer): CatalogAuthType => {
 
 const supportsClientOAuthLogin = (server: CatalogServer): boolean => {
   const mode = server.oauthRegistration?.mode;
-  return !mode || mode === 'automatic' || mode === 'pre-registered-required';
+  return !mode || mode === 'automatic' || mode === 'pre-registered-required' || mode === 'unknown';
 };
 
 const authTypeLabel = (authType: CatalogAuthType): string => {
