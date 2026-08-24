@@ -183,7 +183,7 @@ const browserUnreadableMessage = (error: unknown): boolean => {
 const connectionWasAborted = (error: unknown, seen = new Set<object>()): boolean => {
   if (!error || typeof error !== 'object' || seen.has(error)) return false;
   seen.add(error);
-  if (/abort(?:ed)?(?: by user)?/i.test(error instanceof Error ? error.message : String(error))) {
+  if ((error instanceof Error ? error.message : String(error)) === 'Connection aborted by user') {
     return true;
   }
   const value = error as { errors?: readonly unknown[]; cause?: unknown };

@@ -669,6 +669,15 @@ describe('authenticated proxy retry classification', () => {
     )).toBe(true);
   });
 
+  it('retries a CORS failure when a sibling candidate timed out with an AbortError', () => {
+    const error = new TransportConnectionError([
+      handshakeFailure(new TypeError('Failed to fetch')),
+      new DOMException('The operation was aborted.', 'AbortError'),
+    ]);
+
+    expect(shouldRetryMcpConnectionThroughProxy(error)).toBe(true);
+  });
+
   it.each([
     Object.assign(new Error('Target returned HTTP 404'), { status: 404 }),
     new ProxiedAuthenticationError(401, 'target', new Error('OAuth required')),
