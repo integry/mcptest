@@ -1,5 +1,6 @@
 export type KnownOAuthProviderId =
   | 'canva'
+  | 'calendly'
   | 'figma'
   | 'slack'
   | 'github'
@@ -11,6 +12,7 @@ export type KnownOAuthProviderId =
 export type OAuthClientEstablishmentStrategy =
   | 'standards-advertised'
   | 'dynamic-client-registration'
+  | 'dynamic-client-registration-only'
   | 'operator-confidential';
 
 export interface OAuthProviderPolicy {
@@ -28,7 +30,7 @@ export interface OAuthProviderPolicy {
   bearerTokenName?: string;
   /** Safe public template used to construct the target Authorization header. */
   authorizationHeaderTemplate?: string;
-  /** Exact endpoint whose otherwise opaque rejection is covered by provider policy. */
+  /** Exact endpoint that may activate provider-specific registration-response handling. */
   approvedRegistrationEndpoint?: string;
 }
 
@@ -46,6 +48,19 @@ const PROVIDER_POLICIES: readonly OAuthProviderPolicy[] = [
     // was rejected before authorization, while this issuer-bound DCR endpoint
     // returned a public client (HTTP 201, token_endpoint_auth_method=none).
     clientEstablishmentStrategy: 'dynamic-client-registration',
+  },
+  {
+    id: 'calendly',
+    name: 'Calendly',
+    targetUrls: ['https://mcp.calendly.com/'],
+    issuerUrls: ['https://calendly.com/'],
+    documentationUrl: 'https://developer.calendly.com/calendly-mcp-server',
+    registrationMode: 'browser-public',
+    // Calendly documents its MCP OAuth client establishment as DCR-only.
+    // Static and manually pre-registered client IDs are not supported. This
+    // policy activates only for the exact catalog target and discovered issuer.
+    clientEstablishmentStrategy: 'dynamic-client-registration-only',
+    approvedRegistrationEndpoint: 'https://calendly.com/oauth/register',
   },
   {
     id: 'figma',
@@ -180,3 +195,9 @@ export const providerForbidsDynamicRegistration = (
   serverUrl: string,
   issuer?: string
 ): boolean => getOAuthClientEstablishmentStrategy(serverUrl, issuer) === 'operator-confidential';
+
+export const providerRequiresDynamicRegistration = (
+  serverUrl: string,
+  issuer?: string
+): boolean => getOAuthClientEstablishmentStrategy(serverUrl, issuer)
+  === 'dynamic-client-registration-only';

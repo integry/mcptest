@@ -1195,7 +1195,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
     application_type: 'web',
-    client_name: 'mcptest.io MCP Inspector',
+    client_name: 'mcptest-io',
     client_uri: 'https://mcptest.io/',
     logo_uri: 'https://mcptest.io/logo.png',
     scope: 'openid offline_access',
@@ -1667,6 +1667,76 @@ describe('hosted issuer-bound OAuth registration route', () => {
       error: 'invalid_client_metadata',
       error_description: 'redirect URI is not accepted',
     });
+  });
+
+  it('normalizes the literal live Calendly errors.name response for the exact binding', async () => {
+    const calendlyResource = 'https://mcp.calendly.com/';
+    const calendlyIssuer = 'https://calendly.com/';
+    const calendlyDiscoveryUrl =
+      'https://calendly.com/.well-known/oauth-authorization-server';
+    const calendlyRegistrationEndpoint = 'https://calendly.com/oauth/register';
+    const request = registrationRequest(
+      JSON.stringify({ ...registrationBody, token_endpoint_auth_method: 'none' }),
+      calendlyRegistrationEndpoint
+    );
+    request.headers.set('X-MCP-OAuth-Resource', calendlyResource);
+    request.headers.set('X-MCP-OAuth-Issuer', calendlyIssuer);
+    const response = await handleOAuthRegistrationRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === calendlyDiscoveryUrl
+          ? new Response(JSON.stringify({
+              issuer: calendlyIssuer,
+              token_endpoint: 'https://calendly.com/oauth/token',
+              registration_endpoint: calendlyRegistrationEndpoint,
+              token_endpoint_auth_methods_supported: ['none'],
+            }), { headers: { 'Content-Type': 'application/json' } })
+          : new Response(JSON.stringify({
+              error: 'invalid_client_metadata',
+              errors: {
+                name: ['may only contain alphanumeric characters, hyphens, and spaces.'],
+              },
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_client_metadata',
+      registrationValidationErrors: [{
+        field: 'client_name',
+        message: 'Use only alphanumeric characters, hyphens, and spaces.',
+      }],
+    });
+  });
+
+  it('does not trust the Calendly errors.name shape for a generic provider binding', async () => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              error: 'invalid_client_metadata',
+              errors: {
+                name: ['may only contain alphanumeric characters, hyphens, and spaces.'],
+              },
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_client_metadata' });
   });
 
   it.each([
