@@ -1700,6 +1700,35 @@ describe('hosted issuer-bound OAuth registration route', () => {
     });
   });
 
+  it.each([400, 503])(
+    'preserves target provenance for an oversized provider HTTP %s error',
+    async (status) => {
+      const unsafeBody = `provider-secret-${'x'.repeat(70 * 1024)}`;
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: async request => request.url === discoveryUrl
+            ? metadataResponse()
+            : new Response(unsafeBody, {
+                status,
+                headers: { 'Content-Type': 'application/json' },
+              }),
+          verifyToken: async () => 'user-1',
+        }
+      );
+
+      expect(response.status).toBe(status);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+      const responseText = await response.text();
+      expect(responseText).not.toContain('provider-secret');
+      expect(JSON.parse(responseText)).toEqual({
+        error: 'invalid_response',
+        error_description: 'The provider rejected OAuth client registration with a non-JSON or malformed-JSON response.',
+      });
+    }
+  );
+
   it('rejects missing and invalid Firebase authentication before discovery', async () => {
     const fetchImpl = vi.fn();
     const missing = registrationRequest();

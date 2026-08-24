@@ -129,8 +129,16 @@ describe('safe exact terminal commands', () => {
     expect(shellQuote("publisher's endpoint")).toBe("'publisher'\\''s endpoint'");
   });
 
-  it('uses only a non-secret placeholder in the supported bearer variant', () => {
-    const command = generateBearerHttpCurlCommand('https://example.com/mcp');
-    expect(command).toContain("'Authorization: Bearer <ACCESS_TOKEN>'");
+  it.each([
+    ['GitHub', 'https://api.githubcopilot.com/mcp/', 'Bearer <ACCESS_TOKEN>'],
+    ['Intercom', 'https://mcp.intercom.com/mcp', 'Bearer <ACCESS_TOKEN>'],
+    ['PagerDuty', 'https://mcp.pagerduty.com/mcp', 'Token token=<TOKEN>'],
+  ])('uses the exact non-secret authorization placeholder for %s', (
+    _provider,
+    endpoint,
+    authorization
+  ) => {
+    const command = generateBearerHttpCurlCommand(endpoint);
+    expect(command).toContain(`'Authorization: ${authorization}'`);
   });
 });

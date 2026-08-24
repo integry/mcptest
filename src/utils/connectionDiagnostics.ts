@@ -1,5 +1,6 @@
 import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/client';
 import type { TransportType } from '../types';
+import { getOAuthProviderPolicy } from './oauthProviderPolicy';
 import {
   getObservedAuthenticationChallenge,
   TransportConnectionError,
@@ -288,7 +289,8 @@ export const generateHttpCurlCommand = (serverUrl: string): string => (
 export const generateBearerHttpCurlCommand = (serverUrl: string): string => (
   generateHttpCurlCommandWithHeaders(serverUrl, [
     `MCP-Protocol-Version: ${LATEST_PROTOCOL_VERSION}`,
-    'Authorization: Bearer <ACCESS_TOKEN>',
+    `Authorization: ${getOAuthProviderPolicy(serverUrl)?.authorizationHeaderTemplate
+      || 'Bearer <ACCESS_TOKEN>'}`,
   ])
 );
 

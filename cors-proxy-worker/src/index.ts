@@ -1277,11 +1277,28 @@ export async function handleOAuthRegistrationRequest(
       }
       const responseType = targetResponse.headers.get('Content-Type')
         ?.split(';', 1)[0].trim().toLowerCase();
-      const rawResponse = await decodeBoundedText(
-        targetResponse,
-        MAX_OAUTH_RESPONSE_BYTES,
-        'OAuth registration response is too large'
-      );
+      let rawResponse: string;
+      try {
+        rawResponse = await decodeBoundedText(
+          targetResponse,
+          MAX_OAUTH_RESPONSE_BYTES,
+          'OAuth registration response is too large'
+        );
+      } catch (error) {
+        if (targetResponse.ok) throw error;
+
+        // The provider status is already readable and target-owned. An
+        // oversized or otherwise undecodable error body must not replace that
+        // evidence with a proxy-owned validation failure.
+        await targetResponse.body?.cancel().catch(() => {});
+        return new Response(JSON.stringify(opaqueRegistrationError()), {
+          status: targetResponse.status,
+          headers: {
+            ...oauthCorsHeaders(request, 'target'),
+            'Content-Type': OAUTH_JSON_CONTENT_TYPE,
+          },
+        });
+      }
 
       if (targetResponse.ok) {
         if (responseType !== OAUTH_JSON_CONTENT_TYPE) {
