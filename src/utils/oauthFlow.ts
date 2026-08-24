@@ -1401,7 +1401,15 @@ const createOAuthTokenProxyFetch = (
   const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
     ? 'target'
     : 'proxy';
-  return markOAuthTraceResponseOrigin(response, { route: 'proxy', source });
+  const relayFailure = source === 'proxy'
+    && response.headers.get('x-mcp-oauth-relay-failure') === 'unsupported_client_authentication'
+    ? 'unsupported_client_authentication' as const
+    : undefined;
+  return markOAuthTraceResponseOrigin(response, {
+    route: 'proxy',
+    source,
+    ...(relayFailure ? { relayFailure } : {}),
+  });
 };
 
 const establishOperatorOAuthClient = async (

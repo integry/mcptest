@@ -56,6 +56,7 @@ export function getOperatorOAuthClient(
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_TARGET_REDIRECTS = 20;
 export const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+export const OAUTH_RELAY_FAILURE_HEADER = 'X-MCP-OAuth-Relay-Failure';
 const REQUIRED_CORS_REQUEST_HEADERS = [
   'Accept',
   'Authorization',
@@ -79,6 +80,7 @@ type ProxyResponseSource = 'proxy' | 'target';
 
 const HOSTED_ORIGIN = 'https://mcptest.io';
 const HOSTED_OAUTH_CALLBACK = `${HOSTED_ORIGIN}/oauth/callback`;
+const HOSTED_OAUTH_CLIENT_METADATA_URL = `${HOSTED_ORIGIN}/oauth/client-metadata.json`;
 const OAUTH_TOKEN_PATH = '/oauth/token';
 const OAUTH_REGISTER_PATH = '/oauth/register';
 const OAUTH_OPERATOR_CLIENT_PATH = '/oauth/client';
@@ -134,7 +136,10 @@ const oauthCorsHeaders = (
       'X-MCP-OAuth-Registration-Endpoint',
       'X-MCP-OAuth-Token-Endpoint',
     ].join(', '),
-    'Access-Control-Expose-Headers': PROXY_RESPONSE_SOURCE_HEADER,
+    'Access-Control-Expose-Headers': [
+      PROXY_RESPONSE_SOURCE_HEADER,
+      OAUTH_RELAY_FAILURE_HEADER,
+    ].join(', '),
     'Cache-Control': 'no-store',
     'Vary': 'Origin',
     [PROXY_RESPONSE_SOURCE_HEADER]: source,
@@ -489,11 +494,71 @@ interface WorkerAuthorizationMetadata {
   token_endpoint: string;
   registration_endpoint?: string;
   token_endpoint_auth_methods_supported?: string[];
+  client_id_metadata_document_supported?: boolean;
 }
 
 const effectiveTokenEndpointAuthMethods = (
   metadata: WorkerAuthorizationMetadata
 ): string[] => metadata.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
+
+type PublicClientTokenInteropPolicy = {
+  id: 'hugging-face-cimd';
+  issuer: string;
+  tokenEndpoint: string;
+  clientId: string;
+  redirectUri: string;
+  requiresClientIdMetadataDocumentSupport: true;
+};
+
+/**
+ * Provider interoperability exceptions must be exact, evidence-backed tuples.
+ * In particular, CIMD support alone never implies public token authentication.
+ */
+const PUBLIC_CLIENT_TOKEN_INTEROP_POLICIES: readonly PublicClientTokenInteropPolicy[] = [{
+  id: 'hugging-face-cimd',
+  issuer: 'https://huggingface.co',
+  tokenEndpoint: 'https://huggingface.co/oauth/token',
+  clientId: HOSTED_OAUTH_CLIENT_METADATA_URL,
+  redirectUri: HOSTED_OAUTH_CALLBACK,
+  requiresClientIdMetadataDocumentSupport: true,
+}] as const;
+
+const publicClientTokenInteropPolicy = (
+  metadata: WorkerAuthorizationMetadata,
+  params: URLSearchParams
+): PublicClientTokenInteropPolicy | undefined => PUBLIC_CLIENT_TOKEN_INTEROP_POLICIES.find(
+  policy => metadata.issuer === policy.issuer
+    && metadata.token_endpoint === policy.tokenEndpoint
+    && params.get('client_id') === policy.clientId
+    && (
+      !policy.requiresClientIdMetadataDocumentSupport
+      || metadata.client_id_metadata_document_supported === true
+    )
+    && (
+      (
+        params.get('grant_type') === 'refresh_token'
+        && (
+          !params.has('redirect_uri')
+          || params.get('redirect_uri') === policy.redirectUri
+        )
+      )
+      || params.get('redirect_uri') === policy.redirectUri
+    )
+);
+
+const usesReservedPublicClientIdentity = (
+  metadata: WorkerAuthorizationMetadata,
+  params: URLSearchParams
+): boolean => PUBLIC_CLIENT_TOKEN_INTEROP_POLICIES.some(
+  policy => metadata.issuer === policy.issuer && params.get('client_id') === policy.clientId
+);
+
+class UnsupportedOAuthClientAuthenticationError extends Error {
+  constructor() {
+    super('Unsupported OAuth client authentication');
+    this.name = 'UnsupportedOAuthClientAuthenticationError';
+  }
+}
 
 const discoverWorkerAuthorizationMetadata = async (
   issuer: URL,
@@ -637,8 +702,8 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
       throw new Error('OAuth redirect_uri must use HTTPS or localhost');
     }
     if (
-      params.get('client_id') === 'https://mcptest.io/oauth/client-metadata.json'
-      && redirect.toString() !== 'https://mcptest.io/oauth/callback'
+      params.get('client_id') === HOSTED_OAUTH_CLIENT_METADATA_URL
+      && redirectValue !== HOSTED_OAUTH_CALLBACK
     ) {
       throw new Error('OAuth redirect_uri does not match the published client metadata');
     }
@@ -669,15 +734,27 @@ const applyOperatorClientAuthentication = (
   const methods = effectiveTokenEndpointAuthMethods(metadata);
   if (!operatorClient || params.get('client_id') !== operatorClient.clientId) {
     const browserSecret = params.get('client_secret');
+    const interopPolicy = publicClientTokenInteropPolicy(metadata, params);
+    if (
+      usesReservedPublicClientIdentity(metadata, params)
+      && (browserSecret !== null || dynamicClientAuthorization)
+    ) {
+      throw new UnsupportedOAuthClientAuthenticationError();
+    }
     if (dynamicClientAuthorization) {
       if (
         !methods.includes('client_secret_basic')
         || !dynamicClientAuthorization.startsWith('Basic ')
         || dynamicClientAuthorization.length > MAX_DYNAMIC_CLIENT_BASIC_AUTHORIZATION_LENGTH
       ) {
-        throw new Error('Dynamic OAuth client authentication method is unsupported');
+        throw new UnsupportedOAuthClientAuthenticationError();
       }
-      const decoded = atob(dynamicClientAuthorization.slice('Basic '.length));
+      let decoded: string;
+      try {
+        decoded = atob(dynamicClientAuthorization.slice('Basic '.length));
+      } catch {
+        throw new UnsupportedOAuthClientAuthenticationError();
+      }
       const delimiter = decoded.indexOf(':');
       const decodedClientSecret = delimiter >= 0
         ? decodeFormComponent(decoded.slice(delimiter + 1))
@@ -688,19 +765,19 @@ const applyOperatorClientAuthentication = (
         || decodedClientSecret.length < 1
         || decodedClientSecret.length > MAX_DYNAMIC_CLIENT_SECRET_LENGTH
       ) {
-        throw new Error('Dynamic OAuth client authentication does not match client_id');
+        throw new UnsupportedOAuthClientAuthenticationError();
       }
       targetHeaders.set('Authorization', dynamicClientAuthorization);
       params.delete('client_id');
       params.delete('client_secret');
     } else if (browserSecret) {
       if (!methods.includes('client_secret_post')) {
-        throw new Error('Dynamic OAuth client authentication method is unsupported');
+        throw new UnsupportedOAuthClientAuthenticationError();
       }
     }
     if (!methods.includes('none')) {
-      if (!browserSecret && !dynamicClientAuthorization) {
-        throw new Error('This authorization server requires an operator-configured confidential OAuth client');
+      if (!browserSecret && !dynamicClientAuthorization && !interopPolicy) {
+        throw new UnsupportedOAuthClientAuthenticationError();
       }
     }
     return dynamicClientAuthorization ? params.toString() : originalBody;
@@ -713,7 +790,7 @@ const applyOperatorClientAuthentication = (
   } else if (methods.includes('client_secret_post')) {
     params.set('client_secret', operatorClient.clientSecret);
   } else {
-    throw new Error('Operator OAuth client authentication method is unsupported');
+    throw new UnsupportedOAuthClientAuthenticationError();
   }
   return params.toString();
 };
@@ -773,7 +850,7 @@ export async function handleOAuthTokenRequest(
       'X-MCP-OAuth-Client-Authorization'
     );
     if (dynamicClientAuthorization && params.has('client_secret')) {
-      throw new Error('OAuth token request contains multiple client authentication methods');
+      throw new UnsupportedOAuthClientAuthenticationError();
     }
     const fetchImpl = dependencies.fetchImpl || fetch;
     const metadata = await discoverWorkerAuthorizationMetadata(
@@ -835,7 +912,22 @@ export async function handleOAuthTokenRequest(
         'Content-Type': responseType,
       },
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof UnsupportedOAuthClientAuthenticationError) {
+      // Log only values from a closed set. Never serialize the exception or any
+      // request/provider body, which can contain every OAuth credential class.
+      console.error('[OAuth token relay failure]', {
+        stage: 'client_authentication',
+        failure: 'unsupported_client_authentication',
+      });
+      const response = oauthRouteError(
+        request,
+        'Error: OAuth token relay rejected unsupported client authentication before contacting the target token endpoint.',
+        502
+      );
+      response.headers.set(OAUTH_RELAY_FAILURE_HEADER, 'unsupported_client_authentication');
+      return response;
+    }
     return oauthRouteError(request, 'Error: Could not complete the bound OAuth token request.', 502);
   }
 }

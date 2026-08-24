@@ -4,6 +4,7 @@ import { URL as NodeURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import proxyWorker, {
   HostedOAuthBroker,
+  OAUTH_RELAY_FAILURE_HEADER,
   PROXY_RESPONSE_SOURCE_HEADER,
   fetchTargetRequest,
   getOperatorOAuthClient,
@@ -461,6 +462,273 @@ describe('hosted OAuth token route', () => {
         'X-MCP-OAuth-Token-Endpoint': tokenEndpointHeader,
       },
       body,
+    }
+  );
+
+  const huggingFaceIssuer = 'https://huggingface.co';
+  const huggingFaceDiscoveryUrl =
+    'https://huggingface.co/.well-known/oauth-authorization-server';
+  const huggingFaceTokenEndpoint = 'https://huggingface.co/oauth/token';
+  const huggingFaceResource = 'https://huggingface.co/mcp?login';
+  const huggingFaceForm = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: 'hf-single-use-code',
+    code_verifier: 'hf-pkce-verifier',
+    redirect_uri: 'https://mcptest.io/oauth/callback',
+    client_id: 'https://mcptest.io/oauth/client-metadata.json',
+    resource: huggingFaceResource,
+  }).toString();
+
+  const huggingFaceTokenRequest = (
+    body = huggingFaceForm,
+    tokenEndpointHeader = huggingFaceTokenEndpoint,
+    issuerHeader = huggingFaceIssuer
+  ): Request => tokenRequest(body, tokenEndpointHeader, issuerHeader);
+
+  const huggingFaceMetadata = (
+    overrides: Partial<Record<string, unknown>> = {}
+  ): Record<string, unknown> => ({
+    issuer: huggingFaceIssuer,
+    token_endpoint: huggingFaceTokenEndpoint,
+    client_id_metadata_document_supported: true,
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+    ...overrides,
+  });
+
+  type HuggingFaceInteropMutation = {
+    clientId?: string;
+    redirectUri?: string;
+    issuer?: string;
+    tokenEndpoint?: string;
+    metadata?: Record<string, unknown>;
+    clientSecret?: string;
+    basicSecret?: string;
+  };
+
+  it('relays the exact verified Hugging Face CIMD public-client form unchanged', async () => {
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === huggingFaceDiscoveryUrl) {
+        return new Response(JSON.stringify(huggingFaceMetadata()), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      expect(request.url).toBe(huggingFaceTokenEndpoint);
+      expect(request.headers.get('authorization')).toBeNull();
+      expect(await request.text()).toBe(huggingFaceForm);
+      return new Response(JSON.stringify({
+        access_token: 'hf-target-access-token',
+        refresh_token: 'hf-target-refresh-token',
+        token_type: 'Bearer',
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      huggingFaceTokenRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl,
+        resolveHostname: async () => ['203.0.114.10'],
+        verifyToken: async token => token === 'firebase-credential' ? 'user-1' : null,
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(requests.map(request => request.url)).toEqual([
+      huggingFaceDiscoveryUrl,
+      huggingFaceTokenEndpoint,
+    ]);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: 'hf-target-access-token',
+      refresh_token: 'hf-target-refresh-token',
+    });
+  });
+
+  it('relays an otherwise valid Hugging Face public-client refresh form unchanged', async () => {
+    const refreshForm = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: 'hf-rotating-refresh-token',
+      client_id: 'https://mcptest.io/oauth/client-metadata.json',
+      resource: huggingFaceResource,
+    }).toString();
+    const requests: Request[] = [];
+    const response = await handleOAuthTokenRequest(
+      huggingFaceTokenRequest(refreshForm),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => {
+          requests.push(request);
+          if (request.url === huggingFaceDiscoveryUrl) {
+            return new Response(JSON.stringify(huggingFaceMetadata()), {
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+          expect(request.headers.get('authorization')).toBeNull();
+          expect(await request.text()).toBe(refreshForm);
+          return new Response(JSON.stringify({
+            access_token: 'hf-refreshed-access-token',
+            token_type: 'Bearer',
+          }), { headers: { 'Content-Type': 'application/json' } });
+        },
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(requests.map(request => request.url)).toEqual([
+      huggingFaceDiscoveryUrl,
+      huggingFaceTokenEndpoint,
+    ]);
+  });
+
+  it('relays Hugging Face invalid_grant JSON as target evidence', async () => {
+    const requests: Request[] = [];
+    const response = await handleOAuthTokenRequest(
+      huggingFaceTokenRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => {
+          requests.push(request);
+          return request.url === huggingFaceDiscoveryUrl
+            ? new Response(JSON.stringify(huggingFaceMetadata()), {
+                headers: { 'Content-Type': 'application/json' },
+              })
+            : new Response(JSON.stringify({
+                error: 'invalid_grant',
+                error_description: 'The authorization grant is invalid.',
+              }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+              });
+        },
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(response.headers.get(OAUTH_RELAY_FAILURE_HEADER)).toBeNull();
+    expect(requests.map(request => request.url)).toEqual([
+      huggingFaceDiscoveryUrl,
+      huggingFaceTokenEndpoint,
+    ]);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      error_description: 'The authorization grant is invalid.',
+    });
+  });
+
+  it('keeps another issuer fail-closed when the same token metadata omits none', async () => {
+    const otherIssuer = 'https://auth.other-provider.example';
+    const otherDiscovery = `${otherIssuer}/.well-known/oauth-authorization-server`;
+    const requests: Request[] = [];
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const response = await handleOAuthTokenRequest(
+        huggingFaceTokenRequest(huggingFaceForm, huggingFaceTokenEndpoint, otherIssuer),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: async request => {
+            requests.push(request);
+            return new Response(JSON.stringify(huggingFaceMetadata({ issuer: otherIssuer })), {
+              headers: { 'Content-Type': 'application/json' },
+            });
+          },
+          verifyToken: async () => 'user-1',
+        }
+      );
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(response.headers.get(OAUTH_RELAY_FAILURE_HEADER))
+        .toBe('unsupported_client_authentication');
+      expect(requests.map(request => request.url)).toEqual([otherDiscovery]);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  const rejectedHuggingFaceInteropMutations: Array<[
+    string,
+    HuggingFaceInteropMutation,
+  ]> = [
+    ['wrong client ID', { clientId: 'https://mcptest.io/oauth/wrong-client.json' }],
+    ['wrong redirect URI', { redirectUri: 'https://mcptest.io/oauth/wrong-callback' }],
+    ['issuer spelling', { issuer: 'https://huggingface.co/' }],
+    ['wrong token endpoint', { tokenEndpoint: 'https://huggingface.co/oauth/token/' }],
+    ['missing CIMD support', { metadata: { client_id_metadata_document_supported: undefined } }],
+    ['a client secret', { clientSecret: 'hf-browser-client-secret' }],
+    ['an empty client secret parameter', { clientSecret: '' }],
+    ['a Basic header', { basicSecret: 'hf-basic-client-secret' }],
+  ];
+
+  it.each(rejectedHuggingFaceInteropMutations)(
+    'rejects Hugging Face public-client interop with %s before token fetch', async (
+      _label,
+      mutation
+    ) => {
+      const params = new URLSearchParams(huggingFaceForm);
+      if (mutation.clientId) params.set('client_id', mutation.clientId);
+      if (mutation.redirectUri) params.set('redirect_uri', mutation.redirectUri);
+      if (mutation.clientSecret !== undefined) {
+        params.set('client_secret', mutation.clientSecret);
+      }
+      const requestIssuer = mutation.issuer || huggingFaceIssuer;
+      const requestTokenEndpoint = mutation.tokenEndpoint || huggingFaceTokenEndpoint;
+      const request = huggingFaceTokenRequest(
+        params.toString(),
+        requestTokenEndpoint,
+        requestIssuer
+      );
+      if (mutation.basicSecret) {
+        request.headers.set(
+          'X-MCP-OAuth-Client-Authorization',
+          `Basic ${btoa(`${encodeURIComponent(params.get('client_id')!)}:${mutation.basicSecret}`)}`
+        );
+      }
+      const requests: Request[] = [];
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const response = await handleOAuthTokenRequest(
+          request,
+          { FIREBASE_PROJECT_ID: 'test-project' },
+          {
+            fetchImpl: async targetRequest => {
+              requests.push(targetRequest);
+              return new Response(JSON.stringify(huggingFaceMetadata({
+                issuer: requestIssuer,
+                token_endpoint: requestTokenEndpoint,
+                ...(mutation.metadata || {}),
+              })), { headers: { 'Content-Type': 'application/json' } });
+            },
+            verifyToken: async () => 'user-1',
+          }
+        );
+
+        expect(response.status).toBeGreaterThanOrEqual(400);
+        expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+        expect(requests.some(targetRequest => (
+          targetRequest.method === 'POST' && targetRequest.url === requestTokenEndpoint
+        ))).toBe(false);
+        const responseText = await response.text();
+        const serializedLog = JSON.stringify(errorLog.mock.calls);
+        for (const secret of [
+          'hf-single-use-code',
+          'hf-pkce-verifier',
+          'firebase-credential',
+          'hf-browser-client-secret',
+          'hf-basic-client-secret',
+        ]) {
+          expect(responseText).not.toContain(secret);
+          expect(serializedLog).not.toContain(secret);
+        }
+      } finally {
+        errorLog.mockRestore();
+      }
     }
   );
 
