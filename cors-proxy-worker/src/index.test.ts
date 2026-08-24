@@ -1128,7 +1128,7 @@ describe('hosted OAuth token route', () => {
 describe('hosted issuer-bound OAuth registration route', () => {
   const issuer = 'https://api.supabase.com';
   const discoveryUrl = 'https://api.supabase.com/.well-known/oauth-authorization-server';
-  const registrationEndpoint = 'https://registrations.example.net/platform/oauth/apps/register';
+  const registrationEndpoint = 'https://api.supabase.com/platform/oauth/apps/register';
   const registrationBody = {
     redirect_uris: ['https://mcptest.io/oauth/callback'],
     token_endpoint_auth_method: 'client_secret_post',
@@ -1171,6 +1171,76 @@ describe('hosted issuer-bound OAuth registration route', () => {
     );
   });
 
+  it('allows the exact hosted registration relay browser preflight', async () => {
+    const response = await proxyWorker.fetch(
+      new Request('https://proxy.mcptest.test/oauth/register', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://mcptest.io',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': [
+            'authorization',
+            'content-type',
+            'x-mcp-oauth-issuer',
+            'x-mcp-oauth-registration-endpoint',
+          ].join(', '),
+        },
+      }),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+    const allowedHeaders = response.headers.get('Access-Control-Allow-Headers')?.toLowerCase();
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://mcptest.io');
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+    expect(allowedHeaders).toContain('x-mcp-oauth-registration-endpoint');
+  });
+
+  it('uses only strict-public global fetches for the production-style Supabase relay', async () => {
+    const requests: Request[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const request = input instanceof Request ? input : new Request(input);
+      requests.push(request);
+      if (request.url === discoveryUrl) return metadataResponse();
+      if (request.url === registrationEndpoint) {
+        return new Response(JSON.stringify({
+          ...registrationBody,
+          id: 'provider-only-row-id',
+          client_id: 'supabase-production-client',
+          client_secret: 'supabase-production-secret',
+          client_secret_expires_at: 0,
+          token_endpoint_auth_method: 'client_secret_post',
+        }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new Error(`Unexpected outbound request to ${request.url}`);
+    });
+
+    try {
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        { verifyToken: async () => 'user-1' }
+      );
+
+      expect(response.status).toBe(201);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+      await expect(response.json()).resolves.toEqual({
+        ...registrationBody,
+        client_id: 'supabase-production-client',
+        client_secret: 'supabase-production-secret',
+        client_secret_expires_at: 0,
+        token_endpoint_auth_method: 'client_secret_post',
+      });
+      expect(requests.map(request => request.url)).toEqual([
+        discoveryUrl,
+        registrationEndpoint,
+      ]);
+      expect(requests.some(request => request.url.includes('cloudflare-dns.com'))).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('rediscovers and posts once to an exact cross-domain advertised endpoint', async () => {
     const requests: Request[] = [];
     const resolveHostname = vi.fn(async () => ['203.0.114.10']);
@@ -1183,8 +1253,10 @@ describe('hosted issuer-bound OAuth registration route', () => {
       expect(await request.json()).toEqual(registrationBody);
       return new Response(JSON.stringify({
         ...registrationBody,
+        id: 'provider-only-row-id',
         client_id: 'supabase-dynamic-client',
         client_secret: 'session-only-secret',
+        client_secret_expires_at: 0,
         token_endpoint_auth_method: 'client_secret_post',
         ignored_provider_field: 'not exposed',
       }), {
@@ -1215,11 +1287,84 @@ describe('hosted issuer-bound OAuth registration route', () => {
       ...registrationBody,
       client_id: 'supabase-dynamic-client',
       client_secret: 'session-only-secret',
+      client_secret_expires_at: 0,
       token_endpoint_auth_method: 'client_secret_post',
     });
     expect(requests.map(request => request.url)).toEqual([discoveryUrl, registrationEndpoint]);
     expect(resolveHostname).toHaveBeenCalledWith('api.supabase.com');
-    expect(resolveHostname).toHaveBeenCalledWith('registrations.example.net');
+    expect(resolveHostname).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    'authorization_metadata_discovery',
+    'destination_validation',
+    'dns_safety_validation',
+    'outbound_fetch',
+    'response_validation',
+  ] as const)('returns and logs a secret-safe %s failure', async stage => {
+    const secret = 'must-not-appear-in-registration-diagnostics';
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const privateRegistrationEndpoint = 'https://127.0.0.1/platform/oauth/apps/register';
+    const dependencies: Parameters<typeof handleOAuthRegistrationRequest>[2] = {
+      verifyToken: async () => 'user-1',
+      fetchImpl: async request => {
+        if (stage === 'authorization_metadata_discovery') {
+          throw new TypeError(`metadata transport contained ${secret}`);
+        }
+        if (request.url === discoveryUrl) {
+          return stage === 'destination_validation'
+            ? metadataResponse(privateRegistrationEndpoint)
+            : metadataResponse();
+        }
+        if (stage === 'outbound_fetch') {
+          throw new TypeError(`provider transport contained ${secret}`);
+        }
+        if (stage === 'response_validation') {
+          return new Response(`invalid provider payload ${secret}`, {
+            status: 201,
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        }
+        return new Response('unreachable');
+      },
+      ...(stage === 'dns_safety_validation'
+        ? { resolveHostname: async () => ['127.0.0.1'] }
+        : {}),
+    };
+
+    try {
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        dependencies
+      );
+      const responseText = await response.text();
+      const serializedLog = JSON.stringify(errorLog.mock.calls);
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(responseText.toLowerCase()).toContain(
+        stage === 'authorization_metadata_discovery'
+          ? 'issuer discovery'
+          : stage === 'destination_validation'
+            ? 'destination validation'
+            : stage === 'dns_safety_validation'
+              ? 'dns safety validation'
+              : stage === 'outbound_fetch'
+                ? 'could not reach'
+                : 'response validation'
+      );
+      expect(errorLog).toHaveBeenCalledWith(
+        '[OAuth registration relay failure]',
+        expect.objectContaining({ stage })
+      );
+      expect(responseText).not.toContain(secret);
+      expect(serializedLog).not.toContain(secret);
+      expect(serializedLog).not.toContain('firebase-credential');
+      expect(serializedLog).not.toContain('user-1');
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   it.each([
@@ -1323,6 +1468,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
 
   it('rejects private or mixed DNS answers before sending registration metadata', async () => {
     const requests: Request[] = [];
+    let resolutionCount = 0;
     const response = await handleOAuthRegistrationRequest(
       registrationRequest(),
       { FIREBASE_PROJECT_ID: 'test-project' },
@@ -1331,9 +1477,12 @@ describe('hosted issuer-bound OAuth registration route', () => {
           requests.push(request);
           return metadataResponse();
         },
-        resolveHostname: async hostname => hostname === 'api.supabase.com'
-          ? ['203.0.114.10']
-          : ['203.0.114.11', '127.0.0.1'],
+        resolveHostname: async () => {
+          resolutionCount += 1;
+          return resolutionCount === 1
+            ? ['203.0.114.10']
+            : ['203.0.114.11', '127.0.0.1'];
+        },
         verifyToken: async () => 'user-1',
       }
     );
@@ -1344,15 +1493,12 @@ describe('hosted issuer-bound OAuth registration route', () => {
 
   it('fails closed when outbound DNS rebinds privately after public validation', async () => {
     const deliveredRequests: Request[] = [];
-    const outboundAddresses = new Map([
-      ['api.supabase.com', '203.0.114.10'],
-      ['registrations.example.net', '127.0.0.1'],
-    ]);
+    let outboundConnectionCount = 0;
     const fetchImpl = async (request: Request): Promise<Response> => {
-      const address = outboundAddresses.get(new URL(request.url).hostname);
+      outboundConnectionCount += 1;
       // Models global_fetch_strictly_public rejecting the connection chosen by
       // the runtime resolver before any HTTP request reaches a private target.
-      if (address === '127.0.0.1') {
+      if (outboundConnectionCount === 2) {
         throw new TypeError('Network destination is not publicly routable');
       }
       deliveredRequests.push(request);
@@ -1374,7 +1520,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
 
     expect(response.status).toBe(502);
     expect(deliveredRequests.map(request => request.url)).toEqual([discoveryUrl]);
-    expect(outboundAddresses.get('registrations.example.net')).toBe('127.0.0.1');
+    expect(outboundConnectionCount).toBe(2);
   });
 
   it.each([

@@ -145,6 +145,64 @@ const oauthRouteError = (
   },
 });
 
+const OAUTH_REGISTRATION_FAILURES = {
+  authorization_metadata_discovery: {
+    logMessage: 'Authorization-server metadata discovery failed.',
+    responseMessage: 'Error: OAuth registration issuer discovery failed. Verify that the issuer publishes reachable OAuth metadata and retry.',
+  },
+  destination_validation: {
+    logMessage: 'The advertised registration destination failed validation.',
+    responseMessage: 'Error: OAuth registration destination validation failed. The advertised endpoint did not pass public HTTPS and issuer-binding checks.',
+  },
+  dns_safety_validation: {
+    logMessage: 'Optional destination DNS safety validation failed.',
+    responseMessage: 'Error: OAuth registration DNS safety validation failed. The issuer or advertised endpoint did not resolve exclusively to public addresses.',
+  },
+  outbound_fetch: {
+    logMessage: 'The outbound registration request failed before an HTTP response.',
+    responseMessage: 'Error: OAuth registration could not reach the provider registration endpoint. Retry the provider request.',
+  },
+  response_validation: {
+    logMessage: 'The registration endpoint returned an invalid response.',
+    responseMessage: 'Error: OAuth registration provider response validation failed. The provider returned an unsupported or malformed response.',
+  },
+} as const;
+
+type OAuthRegistrationFailureStage = keyof typeof OAUTH_REGISTRATION_FAILURES;
+
+class OAuthDnsSafetyValidationError extends Error {
+  constructor() {
+    super('OAuth destination DNS safety validation failed');
+    this.name = 'OAuthDnsSafetyValidationError';
+  }
+}
+
+const safeErrorClass = (error: unknown): string => {
+  if (error instanceof OAuthDnsSafetyValidationError) return 'DnsSafetyValidationError';
+  if (error instanceof RangeError) return 'RangeError';
+  if (error instanceof TypeError) return 'TypeError';
+  if (error instanceof SyntaxError) return 'SyntaxError';
+  if (error instanceof Error) return 'Error';
+  return 'UnknownError';
+};
+
+const oauthRegistrationFailure = (
+  request: Request,
+  stage: OAuthRegistrationFailureStage,
+  error: unknown
+): Response => {
+  const diagnostic = OAUTH_REGISTRATION_FAILURES[stage];
+  // Keep every logged field selected from a closed set. In particular, never
+  // serialize the caught exception: fetch implementations and providers may put
+  // endpoint details or credential-bearing response fragments in its message.
+  console.error('[OAuth registration relay failure]', {
+    stage,
+    errorClass: safeErrorClass(error),
+    message: diagnostic.logMessage,
+  });
+  return oauthRouteError(request, diagnostic.responseMessage, 502);
+};
+
 const parseIpv4 = (hostname: string): number[] | undefined => {
   const parts = hostname.split('.');
   if (parts.length !== 4 || parts.some(part => !/^\d+$/.test(part))) return undefined;
@@ -307,69 +365,42 @@ const isIpLiteral = (hostname: string): boolean => Boolean(
   || parseIpv6(hostname.replace(/^\[|\]$/g, ''))
 );
 
-interface DnsJsonAnswer {
-  type?: number;
-  data?: string;
-}
-
-interface DnsJsonResponse {
-  Status?: number;
-  Answer?: DnsJsonAnswer[];
-}
-
-const resolveHostnameWithDnsOverHttps = async (hostname: string): Promise<string[]> => {
-  const answers: string[] = [];
-  for (const type of ['A', 'AAAA']) {
-    const endpoint = new URL('https://cloudflare-dns.com/dns-query');
-    endpoint.searchParams.set('name', hostname);
-    endpoint.searchParams.set('type', type);
-    const response = await fetch(new Request(endpoint, {
-      headers: { Accept: 'application/dns-json' },
-      redirect: 'error',
-    }));
-    if (!response.ok) throw new Error('OAuth destination DNS resolution failed');
-    const result = await response.json() as DnsJsonResponse;
-    if (result.Status !== 0 && result.Status !== 3) {
-      throw new Error('OAuth destination DNS resolution failed');
-    }
-    for (const answer of result.Answer || []) {
-      if ((answer.type === 1 || answer.type === 28) && typeof answer.data === 'string') {
-        answers.push(answer.data);
-      }
-    }
-  }
-  return answers;
-};
-
 const assertPublicResolvedUrl = async (
   url: URL,
   dependencies: OAuthRouteDependencies
 ): Promise<void> => {
   if (isIpLiteral(url.hostname)) return;
-  // Unit tests inject a target fetch implementation. They opt into DNS behavior
-  // with the resolver seam so existing deterministic target fixtures never make
-  // unrelated network requests. Production always performs the resolution.
-  const resolver = dependencies.resolveHostname
-    || (dependencies.fetchImpl ? undefined : resolveHostnameWithDnsOverHttps);
+  // Production does not perform a second, application-level DNS lookup. A DoH
+  // answer cannot bind Cloudflare's later fetch connection to the same address,
+  // and the DoH request itself has proved unreliable inside the Worker runtime.
+  // `global_fetch_strictly_public` is therefore the authoritative DNS-rebinding
+  // and private-network control at connection time. The injected resolver keeps
+  // deterministic defense-in-depth coverage available to tests and local hosts.
+  const resolver = dependencies.resolveHostname;
   if (!resolver) return;
-  const addresses = await resolver(url.hostname);
+  let addresses: string[];
+  try {
+    addresses = await resolver(url.hostname);
+  } catch {
+    throw new OAuthDnsSafetyValidationError();
+  }
   if (
     addresses.length === 0
     || addresses.some(address => !isIpLiteral(address) || isForbiddenOAuthHostname(address))
   ) {
-    throw new Error('OAuth destination DNS resolved to a non-public address');
+    throw new OAuthDnsSafetyValidationError();
   }
   // Production global fetches are additionally forced through Cloudflare's
-  // public-Internet path by global_fetch_strictly_public in wrangler.toml.
-  // That connection-time enforcement remains authoritative if DNS changes
-  // after this defense-in-depth preflight.
+  // public-Internet path by the mandatory global_fetch_strictly_public flag in
+  // wrangler.toml. That connection-time enforcement remains authoritative if
+  // DNS changes after this optional defense-in-depth preflight.
 };
 
 const readBoundedBody = async (
   source: Request | Response,
   maximumBytes: number,
   oversizedMessage: string
-): Promise<Uint8Array> => {
+): Promise<Uint8Array<ArrayBuffer>> => {
   const declaredLength = Number(source.headers.get('Content-Length'));
   if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
     throw new RangeError(oversizedMessage);
@@ -1006,80 +1037,104 @@ export async function handleOAuthRegistrationRequest(
       return oauthRouteError(request, 'Error: OAuth registration body is invalid.', 400);
     }
     const fetchImpl = dependencies.fetchImpl || fetch;
-    const metadata = await discoverWorkerAuthorizationMetadata(
-      issuer,
-      issuerHeader,
-      fetchImpl,
-      dependencies
-    );
-    const requestedTokenAuthMethod = typeof registrationBody.token_endpoint_auth_method === 'string'
-      ? registrationBody.token_endpoint_auth_method
-      : 'client_secret_basic';
-    const supportedTokenAuthMethods = effectiveTokenEndpointAuthMethods(metadata);
-    if (!supportedTokenAuthMethods.includes(requestedTokenAuthMethod)) {
-      return oauthRouteError(
-        request,
-        'Error: OAuth registration token authentication method is not advertised.',
-        400
-      );
-    }
-    if (typeof metadata.registration_endpoint !== 'string') {
-      return oauthRouteError(request, 'Error: Authorization server does not advertise registration.', 400);
-    }
-    const registrationEndpoint = parsePublicHttpsUrl(
-      metadata.registration_endpoint,
-      'OAuth registration endpoint'
-    );
-    if (registrationEndpoint.toString() !== expectedEndpoint.toString()) {
-      return oauthRouteError(request, 'Error: OAuth issuer/registration-endpoint binding mismatch.', 400);
-    }
-    await assertPublicResolvedUrl(registrationEndpoint, dependencies);
-
-    const targetResponse = await fetchImpl(new Request(registrationEndpoint, {
-      method: 'POST',
-      headers: { Accept: OAUTH_JSON_CONTENT_TYPE, 'Content-Type': OAUTH_JSON_CONTENT_TYPE },
-      body: JSON.stringify(registrationBody),
-      redirect: 'manual',
-    }));
-    if (targetResponse.status >= 300 && targetResponse.status < 400) {
-      await targetResponse.body?.cancel().catch(() => {});
-      return oauthRouteError(request, 'Error: OAuth registration endpoint redirects are not allowed.', 502);
-    }
-    const responseType = targetResponse.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
-    if (responseType !== OAUTH_JSON_CONTENT_TYPE) {
-      await targetResponse.body?.cancel().catch(() => {});
-      return oauthRouteError(
-        request,
-        'Error: OAuth registration endpoint returned an unsupported content type.',
-        502
-      );
-    }
-    let providerJson: unknown;
+    let metadata: WorkerAuthorizationMetadata;
     try {
-      providerJson = await parseBoundedJson(
+      metadata = await discoverWorkerAuthorizationMetadata(
+        issuer,
+        issuerHeader,
+        fetchImpl,
+        dependencies
+      );
+    } catch (error) {
+      return oauthRegistrationFailure(
+        request,
+        error instanceof OAuthDnsSafetyValidationError
+          ? 'dns_safety_validation'
+          : 'authorization_metadata_discovery',
+        error
+      );
+    }
+
+    let registrationEndpoint: URL;
+    try {
+      const requestedTokenAuthMethod = typeof registrationBody.token_endpoint_auth_method === 'string'
+        ? registrationBody.token_endpoint_auth_method
+        : 'client_secret_basic';
+      const supportedTokenAuthMethods = effectiveTokenEndpointAuthMethods(metadata);
+      if (!supportedTokenAuthMethods.includes(requestedTokenAuthMethod)) {
+        return oauthRouteError(
+          request,
+          'Error: OAuth registration token authentication method is not advertised.',
+          400
+        );
+      }
+      if (typeof metadata.registration_endpoint !== 'string') {
+        return oauthRouteError(request, 'Error: Authorization server does not advertise registration.', 400);
+      }
+      registrationEndpoint = parsePublicHttpsUrl(
+        metadata.registration_endpoint,
+        'OAuth registration endpoint'
+      );
+      if (registrationEndpoint.toString() !== expectedEndpoint.toString()) {
+        return oauthRouteError(request, 'Error: OAuth issuer/registration-endpoint binding mismatch.', 400);
+      }
+      await assertPublicResolvedUrl(registrationEndpoint, dependencies);
+    } catch (error) {
+      return oauthRegistrationFailure(
+        request,
+        error instanceof OAuthDnsSafetyValidationError
+          ? 'dns_safety_validation'
+          : 'destination_validation',
+        error
+      );
+    }
+
+    let targetResponse: Response;
+    try {
+      targetResponse = await fetchImpl(new Request(registrationEndpoint, {
+        method: 'POST',
+        headers: { Accept: OAUTH_JSON_CONTENT_TYPE, 'Content-Type': OAUTH_JSON_CONTENT_TYPE },
+        body: JSON.stringify(registrationBody),
+        redirect: 'manual',
+      }));
+    } catch (error) {
+      return oauthRegistrationFailure(request, 'outbound_fetch', error);
+    }
+
+    try {
+      if (targetResponse.status >= 300 && targetResponse.status < 400) {
+        await targetResponse.body?.cancel().catch(() => {});
+        throw new Error('Registration endpoint redirect');
+      }
+      const responseType = targetResponse.headers.get('Content-Type')
+        ?.split(';', 1)[0].trim().toLowerCase();
+      if (responseType !== OAUTH_JSON_CONTENT_TYPE) {
+        await targetResponse.body?.cancel().catch(() => {});
+        throw new TypeError('Registration endpoint content type');
+      }
+      const providerJson = await parseBoundedJson(
         targetResponse,
         MAX_OAUTH_RESPONSE_BYTES,
         'OAuth registration response is too large'
       );
+      const sanitized = targetResponse.ok
+        ? sanitizeRegistrationSuccess(providerJson, registrationBody, metadata)
+        : sanitizeRegistrationError(providerJson);
+      return new Response(JSON.stringify(sanitized), {
+        status: targetResponse.status,
+        statusText: targetResponse.statusText,
+        headers: {
+          ...oauthCorsHeaders(request, 'target'),
+          'Content-Type': OAUTH_JSON_CONTENT_TYPE,
+        },
+      });
     } catch (error) {
-      if (error instanceof RangeError) {
-        return oauthRouteError(request, 'Error: OAuth registration response is too large.', 502);
-      }
-      return oauthRouteError(request, 'Error: OAuth registration endpoint returned invalid JSON.', 502);
+      return oauthRegistrationFailure(request, 'response_validation', error);
     }
-    const sanitized = targetResponse.ok
-      ? sanitizeRegistrationSuccess(providerJson, registrationBody, metadata)
-      : sanitizeRegistrationError(providerJson);
-    return new Response(JSON.stringify(sanitized), {
-      status: targetResponse.status,
-      statusText: targetResponse.statusText,
-      headers: {
-        ...oauthCorsHeaders(request, 'target'),
-        'Content-Type': OAUTH_JSON_CONTENT_TYPE,
-      },
-    });
-  } catch {
-    return oauthRouteError(request, 'Error: Could not complete the bound OAuth registration request.', 502);
+  } catch (error) {
+    // The outer boundary covers only request/issuer parsing not already mapped
+    // to a client error. Treat it as destination validation without exposing it.
+    return oauthRegistrationFailure(request, 'destination_validation', error);
   }
 }
 
