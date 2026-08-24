@@ -67,6 +67,8 @@ const REQUIRED_CORS_REQUEST_HEADERS = [
   'Mcp-Session-Id',
   'X-MCP-Authorization',
   'X-MCP-OAuth-Issuer',
+  'X-MCP-OAuth-Client-Authorization',
+  'X-MCP-OAuth-Registration-Endpoint',
   'X-MCP-OAuth-Token-Endpoint',
   'x-api-key',
 ];
@@ -75,13 +77,36 @@ const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 type ProxyResponseSource = 'proxy' | 'target';
 
 const HOSTED_ORIGIN = 'https://mcptest.io';
+const HOSTED_OAUTH_CALLBACK = `${HOSTED_ORIGIN}/oauth/callback`;
 const OAUTH_TOKEN_PATH = '/oauth/token';
+const OAUTH_REGISTER_PATH = '/oauth/register';
 const OAUTH_FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded';
-const MAX_OAUTH_FORM_BYTES = 32 * 1024;
+const OAUTH_JSON_CONTENT_TYPE = 'application/json';
+const MAX_OAUTH_REGISTRATION_BYTES = 16 * 1024;
+const MAX_OAUTH_RESPONSE_BYTES = 64 * 1024;
+const MAX_OAUTH_METADATA_BYTES = 64 * 1024;
+const MAX_DYNAMIC_CLIENT_ID_LENGTH = 2048;
+const MAX_DYNAMIC_CLIENT_SECRET_LENGTH = 4096;
+// URLSearchParams can encode one UTF-16 code unit as three UTF-8 bytes, each
+// represented by a three-character percent escape. Keep every credential that
+// passes registration validation usable with either supported secret method.
+const MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT = 9;
+const MAX_OAUTH_FORM_BYTES = 32 * 1024
+  + (MAX_DYNAMIC_CLIENT_ID_LENGTH + MAX_DYNAMIC_CLIENT_SECRET_LENGTH)
+    * MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT
+  + 'client_id=&client_secret='.length;
+const MAX_DYNAMIC_CLIENT_BASIC_AUTHORIZATION_LENGTH = 'Basic '.length + 4 * Math.ceil((
+  MAX_DYNAMIC_CLIENT_ID_LENGTH * MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT
+  + 1
+  + MAX_DYNAMIC_CLIENT_SECRET_LENGTH * MAX_FORM_ENCODED_CHARS_PER_CODE_UNIT
+) / 3);
 
-type TokenRouteDependencies = {
+type OAuthRouteDependencies = {
+  /** Test seam for the runtime's global, strictly-public fetch primitive. */
   fetchImpl?: (request: Request) => Promise<Response>;
   verifyToken?: (token: string, projectId: string) => Promise<string | null>;
+  /** Test seam; production also preflights DNS and rejects every non-public answer. */
+  resolveHostname?: (hostname: string) => Promise<string[]>;
 };
 
 const oauthCorsHeaders = (
@@ -96,7 +121,9 @@ const oauthCorsHeaders = (
       'Accept',
       'Authorization',
       'Content-Type',
+      'X-MCP-OAuth-Client-Authorization',
       'X-MCP-OAuth-Issuer',
+      'X-MCP-OAuth-Registration-Endpoint',
       'X-MCP-OAuth-Token-Endpoint',
     ].join(', '),
     'Access-Control-Expose-Headers': PROXY_RESPONSE_SOURCE_HEADER,
@@ -275,6 +302,118 @@ const parsePublicHttpsUrl = (value: string, label: string): URL => {
   return url;
 };
 
+const isIpLiteral = (hostname: string): boolean => Boolean(
+  parseIpv4(hostname.replace(/^\[|\]$/g, ''))
+  || parseIpv6(hostname.replace(/^\[|\]$/g, ''))
+);
+
+interface DnsJsonAnswer {
+  type?: number;
+  data?: string;
+}
+
+interface DnsJsonResponse {
+  Status?: number;
+  Answer?: DnsJsonAnswer[];
+}
+
+const resolveHostnameWithDnsOverHttps = async (hostname: string): Promise<string[]> => {
+  const answers: string[] = [];
+  for (const type of ['A', 'AAAA']) {
+    const endpoint = new URL('https://cloudflare-dns.com/dns-query');
+    endpoint.searchParams.set('name', hostname);
+    endpoint.searchParams.set('type', type);
+    const response = await fetch(new Request(endpoint, {
+      headers: { Accept: 'application/dns-json' },
+      redirect: 'error',
+    }));
+    if (!response.ok) throw new Error('OAuth destination DNS resolution failed');
+    const result = await response.json() as DnsJsonResponse;
+    if (result.Status !== 0 && result.Status !== 3) {
+      throw new Error('OAuth destination DNS resolution failed');
+    }
+    for (const answer of result.Answer || []) {
+      if ((answer.type === 1 || answer.type === 28) && typeof answer.data === 'string') {
+        answers.push(answer.data);
+      }
+    }
+  }
+  return answers;
+};
+
+const assertPublicResolvedUrl = async (
+  url: URL,
+  dependencies: OAuthRouteDependencies
+): Promise<void> => {
+  if (isIpLiteral(url.hostname)) return;
+  // Unit tests inject a target fetch implementation. They opt into DNS behavior
+  // with the resolver seam so existing deterministic target fixtures never make
+  // unrelated network requests. Production always performs the resolution.
+  const resolver = dependencies.resolveHostname
+    || (dependencies.fetchImpl ? undefined : resolveHostnameWithDnsOverHttps);
+  if (!resolver) return;
+  const addresses = await resolver(url.hostname);
+  if (
+    addresses.length === 0
+    || addresses.some(address => !isIpLiteral(address) || isForbiddenOAuthHostname(address))
+  ) {
+    throw new Error('OAuth destination DNS resolved to a non-public address');
+  }
+  // Production global fetches are additionally forced through Cloudflare's
+  // public-Internet path by global_fetch_strictly_public in wrangler.toml.
+  // That connection-time enforcement remains authoritative if DNS changes
+  // after this defense-in-depth preflight.
+};
+
+const readBoundedBody = async (
+  source: Request | Response,
+  maximumBytes: number,
+  oversizedMessage: string
+): Promise<Uint8Array> => {
+  const declaredLength = Number(source.headers.get('Content-Length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+    throw new RangeError(oversizedMessage);
+  }
+  if (!source.body) return new Uint8Array();
+
+  const reader = source.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > maximumBytes) {
+      await reader.cancel().catch(() => {});
+      throw new RangeError(oversizedMessage);
+    }
+    chunks.push(value);
+  }
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+};
+
+const decodeBoundedText = async (
+  source: Request | Response,
+  maximumBytes: number,
+  oversizedMessage: string
+): Promise<string> => new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(
+  await readBoundedBody(source, maximumBytes, oversizedMessage)
+);
+
+const parseBoundedJson = async <T,>(
+  response: Response,
+  maximumBytes: number,
+  oversizedMessage: string
+): Promise<T> => JSON.parse(
+  await decodeBoundedText(response, maximumBytes, oversizedMessage)
+) as T;
+
 const buildAuthorizationServerDiscoveryUrls = (issuer: URL): URL[] => {
   if (issuer.pathname === '/') {
     return [
@@ -295,15 +434,22 @@ const buildAuthorizationServerDiscoveryUrls = (issuer: URL): URL[] => {
 interface WorkerAuthorizationMetadata {
   issuer: string;
   token_endpoint: string;
+  registration_endpoint?: string;
   token_endpoint_auth_methods_supported?: string[];
 }
+
+const effectiveTokenEndpointAuthMethods = (
+  metadata: WorkerAuthorizationMetadata
+): string[] => metadata.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
 
 const discoverWorkerAuthorizationMetadata = async (
   issuer: URL,
   expectedIssuer: string,
-  fetchImpl: (request: Request) => Promise<Response>
+  fetchImpl: (request: Request) => Promise<Response>,
+  dependencies: OAuthRouteDependencies
 ): Promise<WorkerAuthorizationMetadata> => {
   for (const discoveryUrl of buildAuthorizationServerDiscoveryUrls(issuer)) {
+    await assertPublicResolvedUrl(discoveryUrl, dependencies);
     const response = await fetchTargetRequest(new Request(discoveryUrl, {
       method: 'GET',
       headers: { Accept: 'application/json' },
@@ -319,7 +465,11 @@ const discoverWorkerAuthorizationMetadata = async (
       await response.body?.cancel().catch(() => {});
       throw new Error('Authorization-server discovery returned an unsupported content type');
     }
-    const metadata = await response.json() as Partial<WorkerAuthorizationMetadata>;
+    const metadata = await parseBoundedJson<Partial<WorkerAuthorizationMetadata>>(
+      response,
+      MAX_OAUTH_METADATA_BYTES,
+      'Authorization-server metadata response is too large'
+    );
     if (metadata.issuer !== expectedIssuer || typeof metadata.token_endpoint !== 'string') {
       throw new Error('Authorization-server discovery issuer mismatch');
     }
@@ -341,6 +491,7 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
   const securitySensitiveParameters = [
     'grant_type',
     'client_id',
+    'client_secret',
     'resource',
     'code',
     'code_verifier',
@@ -349,9 +500,6 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
   ];
   if (securitySensitiveParameters.some(name => params.getAll(name).length > 1)) {
     throw new Error('OAuth token form contains duplicate security-sensitive parameters');
-  }
-  if (params.has('client_secret')) {
-    throw new Error('Browser-supplied OAuth client secrets are not accepted');
   }
   const grantType = params.get('grant_type');
   const commonRequired = ['client_id', 'resource'];
@@ -362,6 +510,12 @@ const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'ref
       : undefined;
   if (!grantRequired || [...commonRequired, ...grantRequired].some(name => !params.get(name))) {
     throw new Error('OAuth token form is missing required parameters or uses an unsupported grant');
+  }
+  if (
+    params.get('client_id')!.length > MAX_DYNAMIC_CLIENT_ID_LENGTH
+    || (params.get('client_secret')?.length || 0) > MAX_DYNAMIC_CLIENT_SECRET_LENGTH
+  ) {
+    throw new Error('OAuth client credentials are too large');
   }
   parsePublicHttpsUrl(params.get('resource')!, 'OAuth resource');
   if (grantType === 'authorization_code') {
@@ -403,25 +557,63 @@ const encodeFormComponent = (value: string): string => {
   return encoded.slice('value='.length);
 };
 
+const decodeFormComponent = (value: string): string => (
+  decodeURIComponent(value.replace(/\+/g, ' '))
+);
+
 const applyOperatorClientAuthentication = (
   env: Env,
   issuer: URL,
   metadata: WorkerAuthorizationMetadata,
   params: URLSearchParams,
   targetHeaders: Headers,
-  originalBody: string
+  originalBody: string,
+  dynamicClientAuthorization?: string | null
 ): string => {
   const provider = operatorProviderForIssuer(issuer);
   const operatorClient = provider ? getOperatorOAuthClient(env, provider) : undefined;
-  const methods = metadata.token_endpoint_auth_methods_supported || [];
+  const methods = effectiveTokenEndpointAuthMethods(metadata);
   if (!operatorClient || params.get('client_id') !== operatorClient.clientId) {
-    if (methods.length > 0 && !methods.includes('none')) {
-      throw new Error('This authorization server requires an operator-configured confidential OAuth client');
+    const browserSecret = params.get('client_secret');
+    if (dynamicClientAuthorization) {
+      if (
+        !methods.includes('client_secret_basic')
+        || !dynamicClientAuthorization.startsWith('Basic ')
+        || dynamicClientAuthorization.length > MAX_DYNAMIC_CLIENT_BASIC_AUTHORIZATION_LENGTH
+      ) {
+        throw new Error('Dynamic OAuth client authentication method is unsupported');
+      }
+      const decoded = atob(dynamicClientAuthorization.slice('Basic '.length));
+      const delimiter = decoded.indexOf(':');
+      const decodedClientSecret = delimiter >= 0
+        ? decodeFormComponent(decoded.slice(delimiter + 1))
+        : '';
+      if (
+        delimiter < 0
+        || decodeFormComponent(decoded.slice(0, delimiter)) !== params.get('client_id')
+        || decodedClientSecret.length < 1
+        || decodedClientSecret.length > MAX_DYNAMIC_CLIENT_SECRET_LENGTH
+      ) {
+        throw new Error('Dynamic OAuth client authentication does not match client_id');
+      }
+      targetHeaders.set('Authorization', dynamicClientAuthorization);
+      params.delete('client_id');
+      params.delete('client_secret');
+    } else if (browserSecret) {
+      if (!methods.includes('client_secret_post')) {
+        throw new Error('Dynamic OAuth client authentication method is unsupported');
+      }
     }
-    return originalBody;
+    if (!methods.includes('none')) {
+      if (!browserSecret && !dynamicClientAuthorization) {
+        throw new Error('This authorization server requires an operator-configured confidential OAuth client');
+      }
+    }
+    return dynamicClientAuthorization ? params.toString() : originalBody;
   }
 
-  if (methods.length === 0 || methods.includes('client_secret_basic')) {
+  params.delete('client_secret');
+  if (methods.includes('client_secret_basic')) {
     const basic = btoa(`${encodeFormComponent(operatorClient.clientId)}:${encodeFormComponent(operatorClient.clientSecret)}`);
     targetHeaders.set('Authorization', `Basic ${basic}`);
   } else if (methods.includes('client_secret_post')) {
@@ -435,7 +627,7 @@ const applyOperatorClientAuthentication = (
 export async function handleOAuthTokenRequest(
   request: Request,
   env: Env,
-  dependencies: TokenRouteDependencies = {}
+  dependencies: OAuthRouteDependencies = {}
 ): Promise<Response> {
   if (request.headers.get('Origin') !== HOSTED_ORIGIN) {
     return oauthRouteError(request, 'Error: OAuth token proxy origin is not allowed.', 403);
@@ -472,18 +664,41 @@ export async function handleOAuthTokenRequest(
     if (issuer.search) {
       return oauthRouteError(request, 'Error: OAuth issuer must not contain a query.', 400);
     }
-    const body = await request.text();
-    if (new TextEncoder().encode(body).byteLength > MAX_OAUTH_FORM_BYTES) {
-      return oauthRouteError(request, 'Error: OAuth token form is too large.', 413);
+    let body: string;
+    try {
+      body = await decodeBoundedText(request, MAX_OAUTH_FORM_BYTES, 'OAuth token form is too large');
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return oauthRouteError(request, 'Error: OAuth token form is too large.', 413);
+      }
+      throw error;
     }
     const params = new URLSearchParams(body);
     validateTokenForm(params);
+    const dynamicClientAuthorization = request.headers.get(
+      'X-MCP-OAuth-Client-Authorization'
+    );
+    if (dynamicClientAuthorization && params.has('client_secret')) {
+      throw new Error('OAuth token request contains multiple client authentication methods');
+    }
     const fetchImpl = dependencies.fetchImpl || fetch;
-    const metadata = await discoverWorkerAuthorizationMetadata(issuer, issuerHeader, fetchImpl);
+    const metadata = await discoverWorkerAuthorizationMetadata(
+      issuer,
+      issuerHeader,
+      fetchImpl,
+      dependencies
+    );
     const tokenEndpoint = parsePublicHttpsUrl(metadata.token_endpoint, 'OAuth token endpoint');
-    if (tokenEndpoint.toString() !== new URL(expectedEndpointHeader).toString()) {
+    let expectedEndpoint: URL;
+    try {
+      expectedEndpoint = parsePublicHttpsUrl(expectedEndpointHeader, 'Expected OAuth token endpoint');
+    } catch {
       return oauthRouteError(request, 'Error: OAuth issuer/token-endpoint binding mismatch.', 400);
     }
+    if (tokenEndpoint.toString() !== expectedEndpoint.toString()) {
+      return oauthRouteError(request, 'Error: OAuth issuer/token-endpoint binding mismatch.', 400);
+    }
+    await assertPublicResolvedUrl(tokenEndpoint, dependencies);
 
     const targetHeaders = new Headers({
       Accept: 'application/json',
@@ -495,7 +710,8 @@ export async function handleOAuthTokenRequest(
       metadata,
       params,
       targetHeaders,
-      body
+      body,
+      dynamicClientAuthorization
     );
     const targetResponse = await fetchImpl(new Request(tokenEndpoint, {
       method: 'POST',
@@ -512,7 +728,12 @@ export async function handleOAuthTokenRequest(
       await targetResponse.body?.cancel().catch(() => {});
       return oauthRouteError(request, 'Error: OAuth token endpoint returned an unsupported content type.', 502);
     }
-    return new Response(targetResponse.body, {
+    const responseBody = await readBoundedBody(
+      targetResponse,
+      MAX_OAUTH_RESPONSE_BYTES,
+      'OAuth token response is too large'
+    );
+    return new Response(responseBody, {
       status: targetResponse.status,
       statusText: targetResponse.statusText,
       headers: {
@@ -525,12 +746,353 @@ export async function handleOAuthTokenRequest(
   }
 }
 
+const REGISTRATION_REQUEST_KEYS = new Set([
+  'redirect_uris',
+  'token_endpoint_auth_method',
+  'grant_types',
+  'response_types',
+  'application_type',
+  'client_name',
+  'client_uri',
+  'logo_uri',
+  'scope',
+  'contacts',
+  'tos_uri',
+  'policy_uri',
+  'software_id',
+  'software_version',
+]);
+
+type RegistrationRequestBody = Record<string, unknown> & {
+  redirect_uris: string[];
+};
+
+const isBoundedString = (value: unknown, maximumLength: number): value is string => (
+  typeof value === 'string' && value.length > 0 && value.length <= maximumLength
+);
+
+const validateExactStringArray = (
+  value: unknown,
+  allowed: readonly string[],
+  maximumItems: number
+): value is string[] => Array.isArray(value)
+  && value.length > 0
+  && value.length <= maximumItems
+  && new Set(value).size === value.length
+  && value.every(item => typeof item === 'string' && allowed.includes(item));
+
+const validateRegistrationRequest = (value: unknown): RegistrationRequestBody => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('OAuth registration body must be a JSON object');
+  }
+  const body = value as Record<string, unknown>;
+  if (Object.keys(body).some(key => !REGISTRATION_REQUEST_KEYS.has(key))) {
+    throw new Error('OAuth registration body contains unsupported metadata');
+  }
+  if (
+    !Array.isArray(body.redirect_uris)
+    || body.redirect_uris.length !== 1
+    || body.redirect_uris[0] !== HOSTED_OAUTH_CALLBACK
+  ) {
+    throw new Error('OAuth registration redirect_uris must contain the hosted callback exactly');
+  }
+  if (
+    body.token_endpoint_auth_method !== undefined
+    && !['none', 'client_secret_basic', 'client_secret_post'].includes(
+      String(body.token_endpoint_auth_method)
+    )
+  ) {
+    throw new Error('OAuth registration requests an unsupported token authentication method');
+  }
+  if (
+    body.grant_types !== undefined
+    && !validateExactStringArray(
+      body.grant_types,
+      ['authorization_code', 'refresh_token'],
+      2
+    )
+  ) throw new Error('OAuth registration grant_types are unsupported');
+  if (
+    body.response_types !== undefined
+    && !validateExactStringArray(body.response_types, ['code'], 1)
+  ) throw new Error('OAuth registration response_types are unsupported');
+  if (body.application_type !== undefined && body.application_type !== 'web') {
+    throw new Error('OAuth registration application_type is unsupported');
+  }
+
+  for (const field of ['client_name', 'software_id', 'software_version'] as const) {
+    if (body[field] !== undefined && !isBoundedString(body[field], 256)) {
+      throw new Error(`OAuth registration ${field} is invalid`);
+    }
+  }
+  for (const field of ['client_uri', 'logo_uri', 'tos_uri', 'policy_uri'] as const) {
+    if (body[field] === undefined) continue;
+    if (!isBoundedString(body[field], 2048)) {
+      throw new Error(`OAuth registration ${field} is invalid`);
+    }
+    const url = parsePublicHttpsUrl(body[field], `OAuth registration ${field}`);
+    if (url.origin !== HOSTED_ORIGIN) {
+      throw new Error(`OAuth registration ${field} must be hosted by mcptest.io`);
+    }
+  }
+  if (
+    body.scope !== undefined
+    && (
+      !isBoundedString(body.scope, 2048)
+      || /[\u0000-\u001f\u007f]/.test(body.scope)
+    )
+  ) throw new Error('OAuth registration scope is invalid');
+  if (
+    body.contacts !== undefined
+    && (
+      !Array.isArray(body.contacts)
+      || body.contacts.length > 5
+      || body.contacts.some(contact => (
+        !isBoundedString(contact, 320)
+        || !/^[^\s@]+@[^\s@]+$/.test(contact)
+      ))
+    )
+  ) throw new Error('OAuth registration contacts are invalid');
+  return body as RegistrationRequestBody;
+};
+
+const sanitizeRegistrationError = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { error: 'server_error', error_description: 'Registration endpoint returned an invalid JSON error.' };
+  }
+  const input = value as Record<string, unknown>;
+  const result: Record<string, string> = {};
+  for (const key of ['error', 'error_description', 'message', 'detail']) {
+    if (typeof input[key] === 'string' && input[key].length <= 2048) result[key] = input[key];
+  }
+  return result.error || result.message || result.detail
+    ? result
+    : { error: 'server_error', error_description: 'Registration endpoint returned an invalid OAuth error.' };
+};
+
+const sanitizeRegistrationSuccess = (
+  value: unknown,
+  requestBody: RegistrationRequestBody,
+  metadata: WorkerAuthorizationMetadata
+): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('OAuth registration response must be a JSON object');
+  }
+  const input = value as Record<string, unknown>;
+  if (!isBoundedString(input.client_id, MAX_DYNAMIC_CLIENT_ID_LENGTH)) {
+    throw new Error('OAuth registration response has an invalid client_id');
+  }
+  for (const [field, returnedValue] of Object.entries(input)) {
+    if (!REGISTRATION_REQUEST_KEYS.has(field)) continue;
+    const requestedValue = requestBody[field];
+    const matchesRequest = Array.isArray(requestedValue)
+      ? Array.isArray(returnedValue)
+        && returnedValue.length === requestedValue.length
+        && [...returnedValue].sort().every((item, index) => (
+          item === [...requestedValue].sort()[index]
+        ))
+      : returnedValue === requestedValue;
+    if (!matchesRequest) {
+      throw new Error(`OAuth registration response conflicts with requested ${field}`);
+    }
+  }
+  const output: Record<string, unknown> = {
+    ...requestBody,
+    client_id: input.client_id,
+  };
+  if (input.client_secret !== undefined) {
+    if (!isBoundedString(input.client_secret, MAX_DYNAMIC_CLIENT_SECRET_LENGTH)) {
+      throw new Error('OAuth registration response has an invalid client_secret');
+    }
+    output.client_secret = input.client_secret;
+  }
+  for (const field of ['client_id_issued_at', 'client_secret_expires_at'] as const) {
+    if (input[field] === undefined) continue;
+    if (!Number.isSafeInteger(input[field]) || (input[field] as number) < 0) {
+      throw new Error(`OAuth registration response has an invalid ${field}`);
+    }
+    output[field] = input[field];
+  }
+  const effectiveTokenAuthMethod = input.token_endpoint_auth_method
+    ?? requestBody.token_endpoint_auth_method
+    ?? 'client_secret_basic';
+  if (
+    typeof effectiveTokenAuthMethod !== 'string'
+    || !['none', 'client_secret_basic', 'client_secret_post'].includes(effectiveTokenAuthMethod)
+  ) {
+    throw new Error('OAuth registration response selected an unsupported token authentication method');
+  }
+  const supportedMethods = effectiveTokenEndpointAuthMethods(metadata);
+  if (!supportedMethods.includes(effectiveTokenAuthMethod)) {
+    throw new Error('OAuth registration response selected an unadvertised token authentication method');
+  }
+  if (effectiveTokenAuthMethod !== 'none' && !output.client_secret) {
+    throw new Error('OAuth registration response requires a missing client_secret');
+  }
+  if (effectiveTokenAuthMethod === 'none' && output.client_secret) {
+    throw new Error('OAuth registration response returned a client_secret for a public client');
+  }
+  output.token_endpoint_auth_method = effectiveTokenAuthMethod;
+  return output;
+};
+
+export async function handleOAuthRegistrationRequest(
+  request: Request,
+  env: Env,
+  dependencies: OAuthRouteDependencies = {}
+): Promise<Response> {
+  if (request.headers.get('Origin') !== HOSTED_ORIGIN) {
+    return oauthRouteError(request, 'Error: OAuth registration proxy origin is not allowed.', 403);
+  }
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: oauthCorsHeaders(request) });
+  }
+  if (request.method !== 'POST') {
+    return oauthRouteError(request, 'Error: OAuth registration proxy requires POST.', 405);
+  }
+  const mediaType = request.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== OAUTH_JSON_CONTENT_TYPE) {
+    return oauthRouteError(request, 'Error: OAuth registration proxy requires JSON content.', 415);
+  }
+  const authorization = request.headers.get('Authorization');
+  const firebaseToken = authorization?.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : undefined;
+  if (!firebaseToken) {
+    return oauthRouteError(request, 'Error: Authentication required. Sign in to mcptest.', 401);
+  }
+  const verifyToken = dependencies.verifyToken || verifyFirebaseToken;
+  if (!await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID)) {
+    return oauthRouteError(request, 'Error: Invalid authentication token. Sign in again.', 401);
+  }
+
+  try {
+    const issuerHeader = request.headers.get('X-MCP-OAuth-Issuer');
+    const expectedEndpointHeader = request.headers.get('X-MCP-OAuth-Registration-Endpoint');
+    if (!issuerHeader || !expectedEndpointHeader) {
+      return oauthRouteError(request, 'Error: Validated OAuth registration binding is required.', 400);
+    }
+    const issuer = parsePublicHttpsUrl(issuerHeader, 'OAuth issuer');
+    if (issuer.search) {
+      return oauthRouteError(request, 'Error: OAuth issuer must not contain a query.', 400);
+    }
+    let expectedEndpoint: URL;
+    try {
+      expectedEndpoint = parsePublicHttpsUrl(
+        expectedEndpointHeader,
+        'Expected OAuth registration endpoint'
+      );
+    } catch {
+      return oauthRouteError(request, 'Error: OAuth issuer/registration-endpoint binding mismatch.', 400);
+    }
+
+    let rawBody: string;
+    try {
+      rawBody = await decodeBoundedText(
+        request,
+        MAX_OAUTH_REGISTRATION_BYTES,
+        'OAuth registration request is too large'
+      );
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return oauthRouteError(request, 'Error: OAuth registration request is too large.', 413);
+      }
+      return oauthRouteError(request, 'Error: OAuth registration body is invalid.', 400);
+    }
+    let registrationBody: RegistrationRequestBody;
+    try {
+      registrationBody = validateRegistrationRequest(JSON.parse(rawBody));
+    } catch {
+      return oauthRouteError(request, 'Error: OAuth registration body is invalid.', 400);
+    }
+    const fetchImpl = dependencies.fetchImpl || fetch;
+    const metadata = await discoverWorkerAuthorizationMetadata(
+      issuer,
+      issuerHeader,
+      fetchImpl,
+      dependencies
+    );
+    const requestedTokenAuthMethod = typeof registrationBody.token_endpoint_auth_method === 'string'
+      ? registrationBody.token_endpoint_auth_method
+      : 'client_secret_basic';
+    const supportedTokenAuthMethods = effectiveTokenEndpointAuthMethods(metadata);
+    if (!supportedTokenAuthMethods.includes(requestedTokenAuthMethod)) {
+      return oauthRouteError(
+        request,
+        'Error: OAuth registration token authentication method is not advertised.',
+        400
+      );
+    }
+    if (typeof metadata.registration_endpoint !== 'string') {
+      return oauthRouteError(request, 'Error: Authorization server does not advertise registration.', 400);
+    }
+    const registrationEndpoint = parsePublicHttpsUrl(
+      metadata.registration_endpoint,
+      'OAuth registration endpoint'
+    );
+    if (registrationEndpoint.toString() !== expectedEndpoint.toString()) {
+      return oauthRouteError(request, 'Error: OAuth issuer/registration-endpoint binding mismatch.', 400);
+    }
+    await assertPublicResolvedUrl(registrationEndpoint, dependencies);
+
+    const targetResponse = await fetchImpl(new Request(registrationEndpoint, {
+      method: 'POST',
+      headers: { Accept: OAUTH_JSON_CONTENT_TYPE, 'Content-Type': OAUTH_JSON_CONTENT_TYPE },
+      body: JSON.stringify(registrationBody),
+      redirect: 'manual',
+    }));
+    if (targetResponse.status >= 300 && targetResponse.status < 400) {
+      await targetResponse.body?.cancel().catch(() => {});
+      return oauthRouteError(request, 'Error: OAuth registration endpoint redirects are not allowed.', 502);
+    }
+    const responseType = targetResponse.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+    if (responseType !== OAUTH_JSON_CONTENT_TYPE) {
+      await targetResponse.body?.cancel().catch(() => {});
+      return oauthRouteError(
+        request,
+        'Error: OAuth registration endpoint returned an unsupported content type.',
+        502
+      );
+    }
+    let providerJson: unknown;
+    try {
+      providerJson = await parseBoundedJson(
+        targetResponse,
+        MAX_OAUTH_RESPONSE_BYTES,
+        'OAuth registration response is too large'
+      );
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return oauthRouteError(request, 'Error: OAuth registration response is too large.', 502);
+      }
+      return oauthRouteError(request, 'Error: OAuth registration endpoint returned invalid JSON.', 502);
+    }
+    const sanitized = targetResponse.ok
+      ? sanitizeRegistrationSuccess(providerJson, registrationBody, metadata)
+      : sanitizeRegistrationError(providerJson);
+    return new Response(JSON.stringify(sanitized), {
+      status: targetResponse.status,
+      statusText: targetResponse.statusText,
+      headers: {
+        ...oauthCorsHeaders(request, 'target'),
+        'Content-Type': OAUTH_JSON_CONTENT_TYPE,
+      },
+    });
+  } catch {
+    return oauthRouteError(request, 'Error: Could not complete the bound OAuth registration request.', 502);
+  }
+}
+
 export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   const headers = new Headers(requestHeaders);
   const targetAuthorization = headers.get('X-MCP-Authorization');
 
   headers.delete('Authorization');
   headers.delete('X-MCP-Authorization');
+  headers.delete('X-MCP-OAuth-Client-Authorization');
+  headers.delete('X-MCP-OAuth-Issuer');
+  headers.delete('X-MCP-OAuth-Registration-Endpoint');
+  headers.delete('X-MCP-OAuth-Token-Endpoint');
   if (targetAuthorization) {
     headers.set('Authorization', targetAuthorization);
   }
@@ -648,6 +1210,9 @@ let publicKeysCacheExpiry = 0;
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === OAUTH_REGISTER_PATH) {
+      return handleOAuthRegistrationRequest(request, env);
+    }
     if (url.pathname === OAUTH_TOKEN_PATH) {
       return handleOAuthTokenRequest(request, env);
     }

@@ -1076,8 +1076,8 @@ export const createOAuthTraceFetch = (
           : 'authorization_server',
       route: responseOrigin.route,
       explanation: response.ok
-        ? `${oauthRequestLabel(type)} received HTTP ${response.status} via ${responseOrigin.route} discovery; awaiting SDK parsing and validation.`
-        : `${explanationForRequest(type, false, response.status)} The response was ${responseOrigin.source}-owned and used ${responseOrigin.route} discovery.`,
+        ? `${oauthRequestLabel(type)} received HTTP ${response.status} via the ${responseOrigin.route} route; awaiting SDK parsing and validation.`
+        : `${explanationForRequest(type, false, response.status)} The response was ${responseOrigin.source}-owned and used the ${responseOrigin.route} route.`,
       request: {
         method: details.method,
         url: sanitizeOAuthTraceUrl(details.url),

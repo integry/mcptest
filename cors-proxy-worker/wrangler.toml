@@ -1,6 +1,7 @@
 name = "cors-proxy-worker"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["global_fetch_strictly_public"]
 
 [vars]
 FIREBASE_PROJECT_ID = "mcptest-a530d"
