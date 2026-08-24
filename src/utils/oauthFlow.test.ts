@@ -7,6 +7,10 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import clientMetadataDocument from '../../public/oauth/client-metadata.json';
 import {
+  handleOAuthRegistrationRequest,
+  handleOAuthTokenRequest,
+} from '../../cors-proxy-worker/src/index';
+import {
   BrowserOAuthProvider,
   OAUTH_CLIENT_METADATA_URL,
   OAuthCimdInteroperabilityError,
@@ -2308,37 +2312,66 @@ describe('hosted dynamic client registration relay', () => {
 
   it('covers Supabase discovery, DCR relay, redirect, callback, and token relay', async () => {
     let authorizationUrl: URL | undefined;
+    const workerTargetFetch = vi.fn(async (request: Request) => {
+      if (request.url === 'https://api.supabase.com/.well-known/oauth-authorization-server') {
+        return supabaseDiscoveryFetch(request.url, { method: 'GET', headers: request.headers });
+      }
+      if (request.url === supabaseRegistration) {
+        const submitted = await request.json() as Record<string, unknown>;
+        expect(submitted.token_endpoint_auth_method).toBe('client_secret_post');
+        return jsonResponse({
+          ...submitted,
+          id: 'provider-only-row-id',
+          client_id: 'supabase-dynamic-client',
+          client_secret: 'supabase-session-secret',
+          client_secret_expires_at: 0,
+          token_endpoint_auth_method: 'client_secret_post',
+        }, { status: 201 });
+      }
+      if (request.url === supabaseToken) {
+        const form = new URLSearchParams(await request.text());
+        expect(Object.fromEntries(form)).toMatchObject({
+          grant_type: 'authorization_code',
+          code: 'supabase-code',
+          client_id: 'supabase-dynamic-client',
+          client_secret: 'supabase-session-secret',
+          resource: supabaseServer,
+        });
+        return jsonResponse({ access_token: 'supabase-access', token_type: 'Bearer' });
+      }
+      throw new Error(`Unexpected Worker target request: ${request.method} ${request.url}`);
+    });
     const proxyFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      // The SDK and Worker test environments use distinct URLSearchParams
+      // realms; serialize the form exactly as browser fetch does at the seam.
+      const relayInit = init?.body instanceof URLSearchParams
+        ? { ...init, body: init.body.toString() }
+        : init;
+      const relayRequest = new Request(input, relayInit);
+      relayRequest.headers.set('Origin', 'https://mcptest.io');
+      const dependencies = {
+        fetchImpl: workerTargetFetch,
+        resolveHostname: async () => ['203.0.114.10'],
+        verifyToken: async (token: string) => token === 'firebase-session' ? 'user-1' : null,
+      };
       if (url.endsWith('/oauth/register')) {
         expect(new Headers(init?.headers).get('authorization')).toBe('Bearer firebase-session');
         expect(new Headers(init?.headers).get('x-mcp-oauth-issuer')).toBe(supabaseIssuer);
         expect(new Headers(init?.headers).get('x-mcp-oauth-registration-endpoint'))
           .toBe(supabaseRegistration);
-        const submitted = JSON.parse(String(init?.body));
-        expect(submitted.token_endpoint_auth_method).toBe('client_secret_post');
-        return jsonResponse({
-          ...submitted,
-          client_id: 'supabase-dynamic-client',
-          client_secret: 'supabase-session-secret',
-          token_endpoint_auth_method: 'client_secret_post',
-        }, {
-          status: 201,
-          headers: { 'X-MCP-Proxy-Response-Source': 'target' },
-        });
+        return handleOAuthRegistrationRequest(
+          relayRequest,
+          { FIREBASE_PROJECT_ID: 'test-project' },
+          dependencies
+        );
       }
       expect(url).toBe('https://proxy.mcptest.test/oauth/token');
-      const form = new URLSearchParams(String(init?.body));
-      expect(Object.fromEntries(form)).toMatchObject({
-        grant_type: 'authorization_code',
-        code: 'supabase-code',
-        client_id: 'supabase-dynamic-client',
-        client_secret: 'supabase-session-secret',
-        resource: supabaseServer,
-      });
-      return jsonResponse({ access_token: 'supabase-access', token_type: 'Bearer' }, {
-        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
-      });
+      return handleOAuthTokenRequest(
+        relayRequest,
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        dependencies
+      );
     });
     const hostedProxy = {
       url: 'https://proxy.mcptest.test/',
@@ -2367,6 +2400,12 @@ describe('hosted dynamic client registration relay', () => {
     )).resolves.toMatchObject({ serverUrl: supabaseServer });
 
     expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(workerTargetFetch.mock.calls.map(([request]) => request.url)).toEqual([
+      'https://api.supabase.com/.well-known/oauth-authorization-server',
+      supabaseRegistration,
+      'https://api.supabase.com/.well-known/oauth-authorization-server',
+      supabaseToken,
+    ]);
     expect(loadOAuthAuthorization(supabaseServer)?.accessToken).toBe('supabase-access');
     const trace = getStoredOAuthTrace(supabaseServer, sessionStorage);
     expect(trace?.events).toEqual(expect.arrayContaining([

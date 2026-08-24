@@ -75,8 +75,13 @@ in a URL or log.
 The OAuth registration route is likewise reserved for `https://mcptest.io`. It accepts only the
 hosted callback and an allow-listed JSON registration document, rediscovers the asserted issuer,
 requires the advertised registration endpoint to match exactly, rejects redirects and private or
-mixed DNS destinations, and exposes only bounded JSON client fields or OAuth error fields. Provider
-cookies and internal response headers are never forwarded.
+special-use address literals, and exposes only bounded JSON client fields or OAuth error fields.
+Production intentionally does not make a separate DNS-over-HTTPS request before outbound OAuth
+fetches: that lookup cannot pin the address used by a later fetch and proved unreliable within the
+Worker runtime. Instead, the required `global_fetch_strictly_public` compatibility flag rejects
+private or changing DNS destinations at connection time. Removing that flag is a security-sensitive
+configuration change and is guarded by the Worker test suite. Provider cookies and internal response
+headers are never forwarded.
 
 ## Development
 
