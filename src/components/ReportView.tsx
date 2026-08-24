@@ -12,6 +12,7 @@ import {
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   prepareManualOAuthClient,
+  renderOAuthAuthorizationHeader,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
@@ -985,9 +986,10 @@ const ReportView: React.FC = () => {
             await handleRunReport(
               configuredServerUrl,
               {
-                Authorization: (
-                  oauthPrerequisite.authorizationHeaderTemplate || 'Bearer <TOKEN>'
-                ).replace('<TOKEN>', token),
+                Authorization: renderOAuthAuthorizationHeader(
+                  oauthPrerequisite.authorizationHeaderTemplate,
+                  token
+                ),
               }
             );
           } : undefined}

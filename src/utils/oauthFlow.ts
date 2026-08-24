@@ -280,6 +280,13 @@ export const normalizeOAuthServerUrl = (value: string): string => (
   new URL(withProtocol(value)).toString()
 );
 
+export const renderOAuthAuthorizationHeader = (
+  template: string | undefined,
+  token: string
+): string => (
+  (template || 'Bearer <TOKEN>').replace('<TOKEN>', () => token)
+);
+
 const storageKeyForServer = (serverUrl: string): string => (
   `${OAUTH_STORE_PREFIX}${encodeURIComponent(normalizeOAuthServerUrl(serverUrl))}`
 );
@@ -410,6 +417,55 @@ const hasIntercomHistoricalDiscoveryEvidence = (trace: OAuthFlightRecorder): boo
     ))
   ));
 };
+
+const hasIssuerMismatchDiscoveryEvidence = (
+  trace: OAuthFlightRecorder,
+  expectedResource: string,
+  expectedIssuer: string,
+  registrationEndpointAdvertised?: boolean
+): boolean => {
+  const events = trace.snapshot().events;
+  const resourceEvidence = events.some((event) => {
+    const authorizationServers = event.response?.metadata?.authorizationServers;
+    return event.type === 'protected_resource_metadata'
+      && event.outcome === 'succeeded'
+      && event.response?.status === 200
+      && typeof event.response.metadata?.resource === 'string'
+      && exactUrlMatches(event.response.metadata.resource, expectedResource)
+      && Array.isArray(authorizationServers)
+      && authorizationServers.some((value) => (
+        typeof value === 'string' && exactUrlMatches(value, expectedResource)
+      ));
+  });
+  if (!resourceEvidence) return false;
+
+  return events.some((event) => (
+    event.type === 'authorization_server_metadata'
+    && event.outcome === 'failed'
+    && event.response?.status === 200
+    && typeof event.response.metadata?.issuer === 'string'
+    && exactUrlMatches(event.response.metadata.issuer, expectedIssuer)
+    && (
+      registrationEndpointAdvertised === undefined
+      || event.response.metadata.registrationEndpointAdvertised
+        === registrationEndpointAdvertised
+    )
+  ));
+};
+
+const hasDirectTargetChallengeWithoutBearer = (
+  trace: OAuthFlightRecorder,
+  status: 401 | 403
+): boolean => trace.snapshot().events.some((event) => {
+  if (
+    event.type !== 'target_challenge'
+    || event.outcome !== 'challenged'
+    || event.provenance !== 'direct_target'
+    || event.response?.status !== status
+  ) return false;
+  const authenticate = event.response.headers?.['www-authenticate'];
+  return !authenticate || !/(?:^|[\s,])Bearer(?:[\s,]|$)/i.test(authenticate);
+});
 
 const registrationFailureDetails = (error: RegistrationRejectedError): Record<string, unknown> => {
   try {
@@ -646,14 +702,30 @@ const buildOAuthPrerequisite = (
       explanation: 'Intercom authorization could not be started: the MCP target returned HTTP 401 without a resource_metadata link, and both standard protected-resource metadata fallback URLs returned HTTP 404. This is provider-side discovery evidence; use the documented Intercom access-token alternative while the metadata is unavailable.',
     };
   }
-  if (policy?.id === 'docusign-developer') {
+  if (
+    policy?.id === 'docusign-developer'
+    && hasDirectTargetChallengeWithoutBearer(trace, 403)
+    && hasIssuerMismatchDiscoveryEvidence(
+      trace,
+      'https://mcp-d.docusign.com',
+      'https://account-d.docusign.com'
+    )
+  ) {
     return {
       ...base,
       canConfigureClient: false,
       explanation: 'Docusign Developer authorization could not be started: the MCP endpoint returned HTTP 403 without a Bearer challenge, protected-resource metadata names https://mcp-d.docusign.com, and that authorization-server document declares issuer https://account-d.docusign.com. Strict issuer equality blocked the mismatching issuer.',
     };
   }
-  if (policy?.id === 'pagerduty') {
+  if (
+    policy?.id === 'pagerduty'
+    && hasIssuerMismatchDiscoveryEvidence(
+      trace,
+      'https://mcp.pagerduty.com/',
+      'https://app.pagerduty.com/global/oauth/anonymous',
+      false
+    )
+  ) {
     return {
       ...base,
       canConfigureClient: false,
@@ -711,6 +783,66 @@ const createProviderPolicyFetch = (
     }
   }
   return fetchFn(input, init);
+};
+
+const createKnownProviderDiscoveryEvidenceFetch = (
+  serverUrl: string,
+  trace: OAuthFlightRecorder,
+  fetchFn: FetchLike
+): FetchLike => async (input, init) => {
+  const policyId = getOAuthProviderPolicy(serverUrl)?.id;
+  if (policyId !== 'docusign-developer' && policyId !== 'pagerduty') {
+    return fetchFn(input, init);
+  }
+
+  const response = await fetchFn(input, init);
+  const { method, url } = requestMethodAndUrl(input, init);
+  if (method !== 'GET' || !response.ok) return response;
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await response.clone().json() as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return response;
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return response;
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return response;
+  }
+  if (
+    trace.isTrackedResourceMetadataUrl(parsedUrl)
+    || parsedUrl.pathname.includes('/oauth-protected-resource')
+  ) {
+    trace.enrichLast('protected_resource_metadata', {
+      response: {
+        metadata: {
+          ...(typeof body.resource === 'string' ? { resource: body.resource } : {}),
+          ...(Array.isArray(body.authorization_servers)
+            && body.authorization_servers.every((value) => typeof value === 'string')
+            ? { authorizationServers: body.authorization_servers }
+            : {}),
+        },
+      },
+    });
+  } else if (
+    parsedUrl.pathname.includes('/oauth-authorization-server')
+    || parsedUrl.pathname.includes('/openid-configuration')
+  ) {
+    trace.enrichLast('authorization_server_metadata', {
+      response: {
+        metadata: {
+          ...(typeof body.issuer === 'string' ? { issuer: body.issuer } : {}),
+          registrationEndpointAdvertised: typeof body.registration_endpoint === 'string',
+        },
+      },
+    });
+  }
+  return response;
 };
 
 const isSafeDiscoveryGet = (
@@ -2034,7 +2166,7 @@ export const beginOAuthFlow = async (
   const fetchFn = createCimdInteroperabilityFetch(
     normalizedServerUrl,
     provider,
-    tracedFetch
+    createKnownProviderDiscoveryEvidenceFetch(normalizedServerUrl, trace, tracedFetch)
   );
   try {
     if (options.tokenProxy && !options.tokenProxy.authorizationToken) {
@@ -2297,9 +2429,13 @@ export const prepareManualOAuthClient = async (
   }
   provider.setResourceMetadataUrlOverride(resourceMetadataUrl);
   if (resourceMetadataUrl) trace.trackResourceMetadataUrl(resourceMetadataUrl);
-  const discoveryFetch = createOAuthTraceFetch(
+  const discoveryFetch = createKnownProviderDiscoveryEvidenceFetch(
+    normalizedServerUrl,
     trace,
-    createCorsFallbackDiscoveryFetch(trace, fetchFn || fetch, discoveryProxy)
+    createOAuthTraceFetch(
+      trace,
+      createCorsFallbackDiscoveryFetch(trace, fetchFn || fetch, discoveryProxy)
+    )
   );
   try {
     const discovery = provider.discoveryState() || (discover

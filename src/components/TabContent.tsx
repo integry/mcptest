@@ -25,7 +25,10 @@ import { useAuth } from '../context/AuthContext';
 
 // Import Utils
 import { parseUriTemplateArgs } from '../utils/uriUtils';
-import { normalizeOAuthServerUrl } from '../utils/oauthFlow';
+import {
+  normalizeOAuthServerUrl,
+  renderOAuthAuthorizationHeader,
+} from '../utils/oauthFlow';
 
 // Constants for localStorage keys
 const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
@@ -983,7 +986,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
             setPrerequisiteBearerCredential({
               targetUrl: normalizeConnectionTarget(oauthConfigServerUrl),
-              authorization: `Bearer ${token}`,
+              authorization: renderOAuthAuthorizationHeader(
+                oauthPrerequisite.authorizationHeaderTemplate,
+                token
+              ),
               attemptId: ++nextBearerAttemptId.current,
             });
             clearOAuthConfigNeed();

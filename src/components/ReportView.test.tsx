@@ -398,14 +398,14 @@ describe('ReportView OAuth discovery', () => {
         HTMLInputElement.prototype,
         'value'
       )?.set;
-      valueSetter?.call(bearerInput, 'github-pat');
+      valueSetter?.call(bearerInput, 'github-$&-pat');
       bearerInput?.dispatchEvent(new Event('input', { bubbles: true }));
       bearerInput?.dispatchEvent(new Event('change', { bubbles: true }));
     });
     const retryButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Retry with bearer token')
     );
-    expect(bearerInput?.value).toBe('github-pat');
+    expect(bearerInput?.value).toBe('github-$&-pat');
     expect(retryButton?.disabled).toBe(false);
     await act(async () => {
       retryButton?.closest('form')?.dispatchEvent(new Event('submit', {
@@ -416,7 +416,7 @@ describe('ReportView OAuth discovery', () => {
 
     expect(evaluationMocks.evaluate).toHaveBeenCalledTimes(2);
     expect(evaluationMocks.evaluate.mock.calls[1][4]).toEqual({
-      Authorization: 'Bearer github-pat',
+      Authorization: 'Bearer github-$&-pat',
     });
     expect(evaluationMocks.evaluate.mock.calls[1][5]).toBeUndefined();
   });

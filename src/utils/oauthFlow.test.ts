@@ -1991,6 +1991,17 @@ describe('OAuth provider interoperability matrix', () => {
       }
       return new Response('Not found', { status: 404 });
     };
+    if (providerName === 'Docusign Developer') {
+      recordOAuthAuthenticationChallenge({
+        targetUrl: target,
+        status: 403,
+        source: 'target',
+        route: 'direct',
+        storage: sessionStorage,
+        method: 'POST',
+        requestUrl: target,
+      });
+    }
 
     let caught: unknown;
     try {
@@ -2012,7 +2023,87 @@ describe('OAuth provider interoperability matrix', () => {
       explanation: expect.stringContaining('Strict issuer equality'),
     });
     expect(calls.some(url => url.startsWith(`${mismatchingIssuer}/.well-known`))).toBe(false);
+    expect(getStoredOAuthTrace(target, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'protected_resource_metadata',
+        outcome: 'succeeded',
+        response: expect.objectContaining({
+          status: 200,
+          metadata: expect.objectContaining({
+            resource: new URL(advertisedIssuer).toString(),
+            authorizationServers: [new URL(advertisedIssuer).toString()],
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        type: 'authorization_server_metadata',
+        outcome: 'failed',
+        response: expect.objectContaining({
+          status: 200,
+          metadata: expect.objectContaining({
+            issuer: new URL(mismatchingIssuer).toString(),
+          }),
+        }),
+      }),
+    ]));
   });
+
+  it.each([
+    [
+      'Docusign Developer',
+      'https://mcp-d.docusign.com/mcp',
+      'https://mcp-d.docusign.com',
+      'https://account-d.docusign.com',
+      403,
+    ],
+    [
+      'PagerDuty',
+      'https://mcp.pagerduty.com/mcp',
+      'https://mcp.pagerduty.com/',
+      'https://app.pagerduty.com/global/oauth/anonymous',
+      undefined,
+    ],
+  ] as const)(
+    'does not claim %s fixed issuer-mismatch evidence for an unrelated issuer',
+    async (providerName, target, expectedResource, unobservedIssuer, targetStatus) => {
+      const resourceMetadataUrl = `${new URL(target).origin}/.well-known/oauth-protected-resource`;
+      if (targetStatus) {
+        recordOAuthAuthenticationChallenge({
+          targetUrl: target,
+          status: targetStatus,
+          source: 'target',
+          route: 'direct',
+          storage: sessionStorage,
+          method: 'POST',
+          requestUrl: target,
+        });
+      }
+
+      let caught: unknown;
+      try {
+        await beginOAuthFlow(target, {
+          resourceMetadataUrl,
+          fetchFn: async (input) => String(input) === resourceMetadataUrl
+            ? jsonResponse({
+                resource: expectedResource,
+                authorization_servers: [expectedResource],
+              })
+            : jsonResponse(authorizationMetadata('https://unrelated.example')),
+          redirect: vi.fn(),
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(getOAuthPrerequisite(caught)).toMatchObject({
+        kind: 'discovery_blocked_invalid',
+        providerName,
+        explanation: expect.stringContaining('OAuth discovery could not be completed'),
+      });
+      expect(getOAuthPrerequisite(caught)?.explanation).not.toContain('Strict issuer equality');
+      expect(getOAuthPrerequisite(caught)?.explanation).not.toContain(unobservedIssuer);
+    }
+  );
 
   it('classifies explicit Figma approval evidence ahead of an invalid-client-metadata code', async () => {
     const target = 'https://mcp.figma.com/mcp';
