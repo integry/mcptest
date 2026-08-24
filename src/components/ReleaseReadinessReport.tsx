@@ -47,6 +47,7 @@ const traceEventTitles: Record<OAuthTraceEventV1['type'], string> = {
   target_challenge: 'Server requested authorization',
   protected_resource_metadata: 'Protected resource discovered',
   authorization_server_metadata: 'Authorization server discovered',
+  client_establishment: 'OAuth client strategy selected',
   cimd: 'Client metadata document checked',
   dynamic_client_registration: 'OAuth client registered',
   pre_registered_client: 'Registered OAuth client selected',

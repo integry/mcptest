@@ -855,6 +855,7 @@ describe('connection URL finalization', () => {
       'target_challenge',
       'authorization_server_metadata',
       'protected_resource_metadata',
+      'client_establishment',
       'pkce',
       'authorization_redirect',
       'callback',

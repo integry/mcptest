@@ -111,6 +111,45 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('#clientSecret')).toBeNull();
   });
 
+  it('shows the missing operator binding as one actionable prerequisite', () => {
+    const view = renderPanel({
+      kind: 'operator_client_not_configured',
+      serverUrl: 'https://mcp.slack.com/mcp',
+      providerName: 'Slack',
+      explanation: 'Configure both required Worker secrets, then retry.',
+      requiredScopes: [],
+      pkceS256: true,
+      publicClientSecretSupported: false,
+      canConfigureClient: false,
+      configurationMode: 'operator-confidential',
+    });
+
+    expect(view.textContent).toContain('Slack operator client is not configured');
+    expect(view.textContent).toContain('client ID and client secret have not both been configured');
+    expect(view.textContent).toContain('browser never receives the secret');
+    expect(view.querySelector('#clientId')).toBeNull();
+  });
+
+  it('explains Upwork hosted callback incompatibility without localhost guidance', () => {
+    const view = renderPanel({
+      kind: 'provider_callback_incompatible',
+      serverUrl: 'https://mcp.upwork.com/mcp',
+      providerName: 'Upwork',
+      explanation: 'Upwork returned HTTP 400 invalid_redirect_uri.',
+      requiredScopes: [],
+      pkceS256: true,
+      publicClientSecretSupported: true,
+      canConfigureClient: false,
+      failedStage: 'dynamic client registration',
+      httpStatus: 400,
+    });
+
+    expect(view.textContent).toContain('Upwork callback is incompatible');
+    expect(view.textContent).toContain('provider callback/client-identity incompatibility');
+    expect(view.textContent).toContain('not a localhost installation');
+    expect(view.querySelector('#clientId')).toBeNull();
+  });
+
   it('suppresses target-provider remedies for proxy authentication', () => {
     const view = renderPanel({
       kind: 'proxy_authentication_required',

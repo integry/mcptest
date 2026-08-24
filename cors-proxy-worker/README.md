@@ -10,6 +10,7 @@ This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP 
 - **Preflight Handling**: Properly handles OPTIONS preflight requests
 - **Hosted OAuth Exchange**: Proactively exchanges authorization codes and refresh tokens through an issuer-bound, authenticated `/oauth/token` route for providers without browser CORS
 - **Hosted OAuth Registration**: Relays bounded public-client DCR through an authenticated, issuer-rediscovered `/oauth/register` route without becoming a generic JSON proxy
+- **Operator OAuth Client ID**: Returns only the public client ID through an authenticated, exact resource/issuer-bound `/oauth/client` route for approved GitHub and Slack host applications
 
 ## Setup
 
@@ -43,6 +44,12 @@ wrangler secret put GITHUB_OAUTH_CLIENT_SECRET
 wrangler secret put FIGMA_OAUTH_CLIENT_ID
 wrangler secret put FIGMA_OAUTH_CLIENT_SECRET
 ```
+
+GitHub and Slack browser authorization is **not production-ready until both secrets for that
+provider are present**. The `/oauth/client` route fails with one safe
+`operator_client_not_configured` prerequisite when either value is absent. It returns only
+`client_id`; it never returns the client secret, Firebase credential, request body, or user
+identity. Its resource and issuer inputs must match a closed exact Worker policy.
 
 The `/oauth/token` route resolves these values only after authenticating the mcptest user and
 rediscovering the issuer's token endpoint. It injects confidential client authentication into the

@@ -984,7 +984,11 @@ const ReportView: React.FC = () => {
             // Do not invent direct-target provenance when this continuation has no route context.
             await handleRunReport(
               configuredServerUrl,
-              { Authorization: `Bearer ${token}` }
+              {
+                Authorization: (
+                  oauthPrerequisite.authorizationHeaderTemplate || 'Bearer <TOKEN>'
+                ).replace('<TOKEN>', token),
+              }
             );
           } : undefined}
           onConfigured={async () => {

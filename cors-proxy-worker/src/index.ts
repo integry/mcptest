@@ -67,6 +67,7 @@ const REQUIRED_CORS_REQUEST_HEADERS = [
   'Mcp-Session-Id',
   'X-MCP-Authorization',
   'X-MCP-OAuth-Issuer',
+  'X-MCP-OAuth-Resource',
   'X-MCP-OAuth-Client-Authorization',
   'X-MCP-OAuth-Registration-Endpoint',
   'X-MCP-OAuth-Token-Endpoint',
@@ -80,6 +81,7 @@ const HOSTED_ORIGIN = 'https://mcptest.io';
 const HOSTED_OAUTH_CALLBACK = `${HOSTED_ORIGIN}/oauth/callback`;
 const OAUTH_TOKEN_PATH = '/oauth/token';
 const OAUTH_REGISTER_PATH = '/oauth/register';
+const OAUTH_OPERATOR_CLIENT_PATH = '/oauth/client';
 const OAUTH_FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded';
 const OAUTH_JSON_CONTENT_TYPE = 'application/json';
 const MAX_OAUTH_REGISTRATION_BYTES = 16 * 1024;
@@ -123,6 +125,7 @@ const oauthCorsHeaders = (
       'Content-Type',
       'X-MCP-OAuth-Client-Authorization',
       'X-MCP-OAuth-Issuer',
+      'X-MCP-OAuth-Resource',
       'X-MCP-OAuth-Registration-Endpoint',
       'X-MCP-OAuth-Token-Endpoint',
     ].join(', '),
@@ -142,6 +145,20 @@ const oauthRouteError = (
   headers: {
     ...oauthCorsHeaders(request, 'proxy'),
     'Content-Type': 'text/plain; charset=utf-8',
+  },
+});
+
+const oauthRouteJsonError = (
+  request: Request,
+  error: string,
+  description: string,
+  status: number,
+  source: ProxyResponseSource = 'proxy'
+): Response => new Response(JSON.stringify({ error, error_description: description }), {
+  status,
+  headers: {
+    ...oauthCorsHeaders(request, source),
+    'Content-Type': OAUTH_JSON_CONTENT_TYPE,
   },
 });
 
@@ -509,13 +526,54 @@ const discoverWorkerAuthorizationMetadata = async (
   throw new Error('Authorization-server metadata is unavailable');
 };
 
-const operatorProviderForIssuer = (issuer: URL): OperatorOAuthProvider | undefined => {
-  const approvedIssuers: Record<string, OperatorOAuthProvider> = {
-    'https://api.figma.com/': 'figma',
-    'https://mcp.slack.com/': 'slack',
-    'https://github.com/login/oauth': 'github',
-  };
-  return approvedIssuers[issuer.toString()];
+interface OperatorOAuthBinding {
+  provider: OperatorOAuthProvider;
+  resource: string;
+  issuer: string;
+  browserClientIdAvailable: boolean;
+}
+
+const OPERATOR_OAUTH_BINDINGS: readonly OperatorOAuthBinding[] = [
+  {
+    provider: 'figma',
+    resource: 'https://mcp.figma.com/mcp',
+    issuer: 'https://api.figma.com/',
+    browserClientIdAvailable: false,
+  },
+  {
+    provider: 'slack',
+    resource: 'https://mcp.slack.com/mcp',
+    issuer: 'https://mcp.slack.com/',
+    browserClientIdAvailable: true,
+  },
+  {
+    provider: 'slack',
+    resource: 'https://mcp.slack.com/mcp',
+    issuer: 'https://slack.com/',
+    browserClientIdAvailable: true,
+  },
+  {
+    provider: 'github',
+    resource: 'https://api.githubcopilot.com/mcp/',
+    issuer: 'https://github.com/login/oauth',
+    browserClientIdAvailable: true,
+  },
+] as const;
+
+const operatorBinding = (
+  resource: string,
+  issuer: URL
+): OperatorOAuthBinding | undefined => {
+  let normalizedResource: string;
+  try {
+    normalizedResource = new URL(resource).toString();
+  } catch {
+    return undefined;
+  }
+  return OPERATOR_OAUTH_BINDINGS.find((binding) => (
+    normalizedResource === new URL(binding.resource).toString()
+    && issuer.toString() === new URL(binding.issuer).toString()
+  ));
 };
 
 const validateTokenForm = (params: URLSearchParams): 'authorization_code' | 'refresh_token' => {
@@ -601,8 +659,8 @@ const applyOperatorClientAuthentication = (
   originalBody: string,
   dynamicClientAuthorization?: string | null
 ): string => {
-  const provider = operatorProviderForIssuer(issuer);
-  const operatorClient = provider ? getOperatorOAuthClient(env, provider) : undefined;
+  const binding = operatorBinding(params.get('resource') || '', issuer);
+  const operatorClient = binding ? getOperatorOAuthClient(env, binding.provider) : undefined;
   const methods = effectiveTokenEndpointAuthMethods(metadata);
   if (!operatorClient || params.get('client_id') !== operatorClient.clientId) {
     const browserSecret = params.get('client_secret');
@@ -777,6 +835,112 @@ export async function handleOAuthTokenRequest(
   }
 }
 
+/**
+ * Returns only the public client ID for an exact operator-approved
+ * resource/issuer pair. The Firebase credential and user identity are used
+ * solely for authentication and are never logged or serialized.
+ */
+export async function handleOAuthOperatorClientRequest(
+  request: Request,
+  env: Env,
+  dependencies: Pick<OAuthRouteDependencies, 'verifyToken'> = {}
+): Promise<Response> {
+  if (request.headers.get('Origin') !== HOSTED_ORIGIN) {
+    return oauthRouteJsonError(
+      request,
+      'access_denied',
+      'OAuth operator client origin is not allowed.',
+      403
+    );
+  }
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: oauthCorsHeaders(request) });
+  }
+  if (request.method !== 'POST') {
+    return oauthRouteJsonError(
+      request,
+      'invalid_request',
+      'OAuth operator client lookup requires POST.',
+      405
+    );
+  }
+  const authorization = request.headers.get('Authorization');
+  const firebaseToken = authorization?.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : undefined;
+  if (!firebaseToken) {
+    return oauthRouteJsonError(
+      request,
+      'authentication_required',
+      'Sign in to mcptest before requesting an operator OAuth client.',
+      401
+    );
+  }
+  const verifyToken = dependencies.verifyToken || verifyFirebaseToken;
+  if (!await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID)) {
+    return oauthRouteJsonError(
+      request,
+      'authentication_required',
+      'The mcptest login is invalid or expired.',
+      401
+    );
+  }
+
+  const resourceHeader = request.headers.get('X-MCP-OAuth-Resource');
+  const issuerHeader = request.headers.get('X-MCP-OAuth-Issuer');
+  if (!resourceHeader || !issuerHeader) {
+    return oauthRouteJsonError(
+      request,
+      'invalid_request',
+      'An exact OAuth resource and issuer binding is required.',
+      400
+    );
+  }
+
+  let issuer: URL;
+  try {
+    issuer = parsePublicHttpsUrl(issuerHeader, 'OAuth issuer');
+  } catch {
+    return oauthRouteJsonError(
+      request,
+      'invalid_request',
+      'The OAuth resource and issuer binding is not approved.',
+      400
+    );
+  }
+  const binding = operatorBinding(resourceHeader, issuer);
+  if (!binding?.browserClientIdAvailable) {
+    return oauthRouteJsonError(
+      request,
+      'invalid_target',
+      'The OAuth resource and issuer binding is not approved.',
+      400
+    );
+  }
+  const operatorClient = getOperatorOAuthClient(env, binding.provider);
+  if (
+    !operatorClient
+    || typeof operatorClient.clientId !== 'string'
+    || operatorClient.clientId.length < 1
+    || operatorClient.clientId.length > MAX_DYNAMIC_CLIENT_ID_LENGTH
+  ) {
+    return oauthRouteJsonError(
+      request,
+      'operator_client_not_configured',
+      'The operator OAuth client is not configured for this provider.',
+      503
+    );
+  }
+
+  return new Response(JSON.stringify({ client_id: operatorClient.clientId }), {
+    status: 200,
+    headers: {
+      ...oauthCorsHeaders(request, 'proxy'),
+      'Content-Type': OAUTH_JSON_CONTENT_TYPE,
+    },
+  });
+}
+
 const REGISTRATION_REQUEST_KEYS = new Set([
   'redirect_uris',
   'token_endpoint_auth_method',
@@ -900,6 +1064,11 @@ const sanitizeRegistrationError = (value: unknown): Record<string, string> => {
     ? result
     : { error: 'server_error', error_description: 'Registration endpoint returned an invalid OAuth error.' };
 };
+
+const opaqueRegistrationError = (): Record<string, string> => ({
+  error: 'invalid_response',
+  error_description: 'The provider rejected OAuth client registration with a non-JSON or malformed-JSON response.',
+});
 
 const sanitizeRegistrationSuccess = (
   value: unknown,
@@ -1108,21 +1277,41 @@ export async function handleOAuthRegistrationRequest(
       }
       const responseType = targetResponse.headers.get('Content-Type')
         ?.split(';', 1)[0].trim().toLowerCase();
-      if (responseType !== OAUTH_JSON_CONTENT_TYPE) {
-        await targetResponse.body?.cancel().catch(() => {});
-        throw new TypeError('Registration endpoint content type');
-      }
-      const providerJson = await parseBoundedJson(
+      const rawResponse = await decodeBoundedText(
         targetResponse,
         MAX_OAUTH_RESPONSE_BYTES,
         'OAuth registration response is too large'
       );
-      const sanitized = targetResponse.ok
-        ? sanitizeRegistrationSuccess(providerJson, registrationBody, metadata)
-        : sanitizeRegistrationError(providerJson);
+
+      if (targetResponse.ok) {
+        if (responseType !== OAUTH_JSON_CONTENT_TYPE) {
+          throw new TypeError('Registration endpoint content type');
+        }
+        const providerJson = JSON.parse(rawResponse) as unknown;
+        const sanitized = sanitizeRegistrationSuccess(providerJson, registrationBody, metadata);
+        return new Response(JSON.stringify(sanitized), {
+          status: targetResponse.status,
+          headers: {
+            ...oauthCorsHeaders(request, 'target'),
+            'Content-Type': OAUTH_JSON_CONTENT_TYPE,
+          },
+        });
+      }
+
+      // Provider errors retain their target-owned HTTP status and provenance,
+      // but never their raw body. In particular, Figma currently sends a bare
+      // `Forbidden` body with application/json. Any non-JSON or malformed JSON
+      // response is replaced with one fixed OAuth-shaped error.
+      let sanitized: Record<string, string> = opaqueRegistrationError();
+      if (responseType === OAUTH_JSON_CONTENT_TYPE) {
+        try {
+          sanitized = sanitizeRegistrationError(JSON.parse(rawResponse));
+        } catch {
+          // Keep the fixed opaque response; raw provider text is discarded.
+        }
+      }
       return new Response(JSON.stringify(sanitized), {
         status: targetResponse.status,
-        statusText: targetResponse.statusText,
         headers: {
           ...oauthCorsHeaders(request, 'target'),
           'Content-Type': OAUTH_JSON_CONTENT_TYPE,
@@ -1146,6 +1335,7 @@ export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
   headers.delete('X-MCP-Authorization');
   headers.delete('X-MCP-OAuth-Client-Authorization');
   headers.delete('X-MCP-OAuth-Issuer');
+  headers.delete('X-MCP-OAuth-Resource');
   headers.delete('X-MCP-OAuth-Registration-Endpoint');
   headers.delete('X-MCP-OAuth-Token-Endpoint');
   if (targetAuthorization) {
@@ -1270,6 +1460,9 @@ export default {
     }
     if (url.pathname === OAUTH_TOKEN_PATH) {
       return handleOAuthTokenRequest(request, env);
+    }
+    if (url.pathname === OAUTH_OPERATOR_CLIENT_PATH) {
+      return handleOAuthOperatorClientRequest(request, env);
     }
 
     // Handle CORS preflight requests

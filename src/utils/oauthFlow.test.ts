@@ -1643,6 +1643,320 @@ describe('OAuth provider interoperability matrix', () => {
       : {}),
   });
 
+  it('selects Canva DCR before redirect even when CIMD is advertised', async () => {
+    const target = 'https://mcp.canva.com/mcp';
+    const issuer = 'https://mcp.canva.com';
+    const registrationEndpoint = 'https://mcp.canva.com/register';
+    const directCalls: string[] = [];
+    const relayCalls: string[] = [];
+    let authorizationUrl: URL | undefined;
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      directCalls.push(url);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, {
+          cimd: true,
+          registrationEndpoint,
+          tokenEndpointAuthMethods: ['none'],
+        }));
+      }
+      throw new Error(`Unexpected direct request: ${url}`);
+    };
+    const proxyFetch: FetchLike = async (input, init) => {
+      const url = String(input);
+      relayCalls.push(url);
+      expect(new URL(url).pathname).toBe('/oauth/register');
+      expect(new Headers(init?.headers).get('x-mcp-oauth-issuer')).toBe(issuer);
+      const registration = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return jsonResponse({ ...registration, client_id: 'canva-public-client' }, {
+        status: 201,
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    };
+
+    await expect(beginOAuthFlow(target, {
+      fetchFn,
+      redirect: url => { authorizationUrl = url; },
+      tokenProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-token',
+        fetchFn: proxyFetch,
+      },
+    })).resolves.toBe('REDIRECT');
+
+    expect(authorizationUrl?.searchParams.get('client_id')).toBe('canva-public-client');
+    expect(authorizationUrl?.searchParams.get('client_id')).not.toBe(OAUTH_CLIENT_METADATA_URL);
+    expect(relayCalls).toEqual(['https://proxy.mcptest.test/oauth/register']);
+    expect(directCalls).not.toContain(registrationEndpoint);
+    expect(getStoredOAuthTrace(target, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'client_establishment',
+        response: expect.objectContaining({
+          metadata: expect.objectContaining({
+            strategy: 'dynamic-client-registration',
+            source: 'trusted-provider-policy',
+            issuerBinding: new URL(issuer).toString(),
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        type: 'dynamic_client_registration',
+        outcome: 'succeeded',
+        route: 'proxy',
+        response: expect.objectContaining({ status: 201 }),
+      }),
+    ]));
+  });
+
+  it.each([
+    [
+      'GitHub',
+      'https://api.githubcopilot.com/mcp/',
+      'https://github.com/login/oauth',
+      'github-operator-client',
+    ],
+    [
+      'Slack',
+      'https://mcp.slack.com/mcp',
+      'https://mcp.slack.com',
+      'slack-operator-client',
+    ],
+  ])('opens %s authorization with the issuer-bound operator client ID', async (
+    _providerName,
+    target,
+    issuer,
+    clientId
+  ) => {
+    let authorizationUrl: URL | undefined;
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, {
+          tokenEndpointAuthMethods: ['client_secret_basic'],
+        }));
+      }
+      throw new Error(`Unexpected discovery request: ${url}`);
+    };
+    const proxyFetch: FetchLike = async (input, init) => {
+      expect(new URL(String(input)).pathname).toBe('/oauth/client');
+      const headers = new Headers(init?.headers);
+      expect(headers.get('x-mcp-oauth-resource')).toBe(target);
+      expect(headers.get('x-mcp-oauth-issuer')).toBe(issuer);
+      return jsonResponse({ client_id: clientId }, {
+        headers: { 'X-MCP-Proxy-Response-Source': 'proxy' },
+      });
+    };
+
+    await expect(beginOAuthFlow(target, {
+      fetchFn,
+      redirect: url => { authorizationUrl = url; },
+      tokenProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-token',
+        fetchFn: proxyFetch,
+      },
+    })).resolves.toBe('REDIRECT');
+
+    expect(authorizationUrl?.searchParams.get('client_id')).toBe(clientId);
+    expect(sessionStorage.getItem(`oauth_client_${new URL(target).host}`)).toBeNull();
+    expect(getStoredOAuthTrace(target, sessionStorage)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'client_establishment',
+        outcome: 'succeeded',
+        route: 'proxy',
+        response: expect.objectContaining({
+          status: 200,
+          metadata: expect.objectContaining({
+            strategy: 'operator-confidential',
+            issuerBinding: new URL(issuer).toString(),
+          }),
+        }),
+      }),
+    ]));
+  });
+
+  it('shows one safe prerequisite when the GitHub operator binding is absent', async () => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const issuer = 'https://github.com/login/oauth';
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        fetchFn,
+        redirect: vi.fn(),
+        tokenProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'firebase-token',
+          fetchFn: async () => jsonResponse({
+            error: 'operator_client_not_configured',
+            error_description: 'The operator OAuth client is not configured for this provider.',
+          }, {
+            status: 503,
+            headers: { 'X-MCP-Proxy-Response-Source': 'proxy' },
+          }),
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'operator_client_not_configured',
+      providerName: 'GitHub',
+      canConfigureClient: false,
+      configurationMode: 'operator-confidential',
+      supportsBearerToken: true,
+    });
+    expect(getStoredOAuthTrace(target, sessionStorage)?.outcome?.status)
+      .toBe('operator_client_not_configured');
+  });
+
+  it('classifies Upwork invalid_redirect_uri as hosted callback incompatibility', async () => {
+    const target = 'https://mcp.upwork.com/mcp';
+    const issuer = 'https://mcp.upwork.com';
+    const registrationEndpoint = 'https://www.upwork.com/register';
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return jsonResponse({
+          error: 'invalid_redirect_uri',
+          error_description: 'https://mcptest.io/oauth/callback is not registered',
+        }, { status: 400 });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'provider_callback_incompatible',
+      providerName: 'Upwork',
+      failedStage: 'dynamic client registration',
+      httpStatus: 400,
+      canConfigureClient: false,
+      explanation: expect.stringContaining('installing localhost software is not required'),
+    });
+    expect(getStoredOAuthTrace(target, sessionStorage)?.outcome?.status)
+      .toBe('provider_callback_incompatible');
+  });
+
+  it('reports Intercom missing protected-resource metadata and its token alternative', async () => {
+    const target = 'https://mcp.intercom.com/mcp';
+    const calls: string[] = [];
+    const fetchFn: FetchLike = async (input) => {
+      calls.push(String(input));
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(calls).toEqual(expect.arrayContaining([
+      'https://mcp.intercom.com/.well-known/oauth-protected-resource/mcp',
+      'https://mcp.intercom.com/.well-known/oauth-protected-resource',
+    ]));
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      providerName: 'Intercom',
+      supportsBearerToken: true,
+      bearerTokenName: 'Intercom access token',
+      canConfigureClient: false,
+      explanation: expect.stringContaining('both standard protected-resource metadata fallback URLs returned HTTP 404'),
+    });
+  });
+
+  it.each([
+    [
+      'Docusign Developer',
+      'https://mcp-d.docusign.com/mcp',
+      'https://mcp-d.docusign.com',
+      'https://account-d.docusign.com',
+      false,
+    ],
+    [
+      'PagerDuty',
+      'https://mcp.pagerduty.com/mcp',
+      'https://mcp.pagerduty.com/',
+      'https://app.pagerduty.com/global/oauth/anonymous',
+      true,
+    ],
+  ])('preserves strict issuer equality for %s discovery evidence', async (
+    providerName,
+    target,
+    advertisedIssuer,
+    mismatchingIssuer,
+    supportsTokenAlternative
+  ) => {
+    const resourceMetadataUrl = `${new URL(target).origin}/.well-known/oauth-protected-resource`;
+    const calls: string[] = [];
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({
+          resource: advertisedIssuer,
+          authorization_servers: [advertisedIssuer],
+        });
+      }
+      if (url.includes('/.well-known/')) {
+        return jsonResponse(authorizationMetadata(mismatchingIssuer));
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        fetchFn,
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    const prerequisite = getOAuthPrerequisite(caught);
+    expect(prerequisite).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      providerName,
+      supportsBearerToken: supportsTokenAlternative || undefined,
+      canConfigureClient: false,
+      explanation: expect.stringContaining('Strict issuer equality'),
+    });
+    expect(calls.some(url => url.startsWith(`${mismatchingIssuer}/.well-known`))).toBe(false);
+  });
+
   it('classifies explicit Figma approval evidence ahead of an invalid-client-metadata code', async () => {
     const target = 'https://mcp.figma.com/mcp';
     const resourceMetadataUrl = 'https://mcp.figma.com/.well-known/oauth-protected-resource';
