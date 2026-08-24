@@ -1051,17 +1051,45 @@ const validateRegistrationRequest = (value: unknown): RegistrationRequestBody =>
   return body as RegistrationRequestBody;
 };
 
-const sanitizeRegistrationError = (value: unknown): Record<string, string> => {
+const normalizedRegistrationFieldErrors = (
+  value: Record<string, unknown>
+): Array<{ field: 'client_name'; message: string }> => {
+  if (
+    typeof value.error !== 'string'
+    || value.error.toLowerCase() !== 'invalid_client_metadata'
+  ) return [];
+  const evidence = JSON.stringify(value).slice(0, 16 * 1024);
+  if (
+    !/client[_\s-]*name/i.test(evidence)
+    || !/(?:alpha[\s_-]*numeric|alphanumeric)/i.test(evidence)
+    || !/hyphens?/i.test(evidence)
+    || !/spaces?/i.test(evidence)
+  ) return [];
+  return [{
+    field: 'client_name',
+    message: 'Use only alphanumeric characters, hyphens, and spaces.',
+  }];
+};
+
+const sanitizeRegistrationError = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { error: 'server_error', error_description: 'Registration endpoint returned an invalid JSON error.' };
   }
   const input = value as Record<string, unknown>;
   const result: Record<string, string> = {};
   for (const key of ['error', 'error_description', 'message', 'detail']) {
-    if (typeof input[key] === 'string' && input[key].length <= 2048) result[key] = input[key];
+    if (
+      typeof input[key] === 'string'
+      && input[key].length <= 2048
+      && !/[\u0000-\u001f\u007f]/.test(input[key])
+    ) result[key] = input[key];
   }
+  const registrationValidationErrors = normalizedRegistrationFieldErrors(input);
   return result.error || result.message || result.detail
-    ? result
+    ? {
+        ...result,
+        ...(registrationValidationErrors.length ? { registrationValidationErrors } : {}),
+      }
     : { error: 'server_error', error_description: 'Registration endpoint returned an invalid OAuth error.' };
 };
 
@@ -1319,7 +1347,7 @@ export async function handleOAuthRegistrationRequest(
       // but never their raw body. In particular, Figma currently sends a bare
       // `Forbidden` body with application/json. Any non-JSON or malformed JSON
       // response is replaced with one fixed OAuth-shaped error.
-      let sanitized: Record<string, string> = opaqueRegistrationError();
+      let sanitized: Record<string, unknown> = opaqueRegistrationError();
       if (responseType === OAUTH_JSON_CONTENT_TYPE) {
         try {
           sanitized = sanitizeRegistrationError(JSON.parse(rawResponse));

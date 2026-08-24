@@ -31,7 +31,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   const isProxyAuthenticationPrerequisite = prerequisite?.kind === 'proxy_authentication_required';
   const canConfigureClient = !isProxyAuthenticationPrerequisite
     && (prerequisite?.canConfigureClient ?? true);
-  const title = prerequisite?.kind === 'provider_approval_required'
+  const title = prerequisite?.registrationValidationErrors?.length
+    ? `${prerequisite.providerName} registration metadata needs correction`
+    : prerequisite?.kind === 'provider_approval_required'
     ? `${prerequisite.providerName} approval is required`
     : prerequisite?.kind === 'provider_callback_incompatible'
       ? `${prerequisite.providerName} callback is incompatible`
@@ -189,6 +191,17 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
             route, status, and sanitized response are available in the OAuth flight recorder.
           </p>
         )}
+
+        {prerequisite?.registrationValidationErrors?.length ? (
+          <div className="alert alert-warning" role="note">
+            <strong>Correctable registration fields:</strong>
+            <ul className="mb-0 mt-2">
+              {prerequisite.registrationValidationErrors.map(({ field, message }) => (
+                <li key={field}><code>{field}</code>: {message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {prerequisite && prerequisite.kind !== 'proxy_authentication_required' && (
           <div className="oauth-prerequisite-details mb-4">

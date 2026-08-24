@@ -1195,7 +1195,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
     application_type: 'web',
-    client_name: 'mcptest.io MCP Inspector',
+    client_name: 'mcptest-io',
     client_uri: 'https://mcptest.io/',
     logo_uri: 'https://mcptest.io/logo.png',
     scope: 'openid offline_access',
@@ -1666,6 +1666,36 @@ describe('hosted issuer-bound OAuth registration route', () => {
     await expect(errorResponse.json()).resolves.toEqual({
       error: 'invalid_client_metadata',
       error_description: 'redirect URI is not accepted',
+    });
+  });
+
+  it('normalizes safe registration field validation without forwarding provider context', async () => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              error: 'invalid_client_metadata',
+              error_description: 'client_name must contain alphanumeric characters, hyphens, and spaces',
+              provider_private_context: 'do-not-forward',
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_client_metadata',
+      error_description: 'client_name must contain alphanumeric characters, hyphens, and spaces',
+      registrationValidationErrors: [{
+        field: 'client_name',
+        message: 'Use only alphanumeric characters, hyphens, and spaces.',
+      }],
     });
   });
 

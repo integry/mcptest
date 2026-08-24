@@ -150,6 +150,31 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('#clientId')).toBeNull();
   });
 
+  it('shows safe Calendly field guidance without offering a static client ID', () => {
+    const view = renderPanel({
+      kind: 'discovery_blocked_invalid',
+      serverUrl: 'https://mcp.calendly.com/',
+      providerName: 'Calendly',
+      explanation: 'Calendly supports Dynamic Client Registration only.',
+      requiredScopes: [],
+      pkceS256: true,
+      publicClientSecretSupported: true,
+      canConfigureClient: false,
+      failedStage: 'dynamic client registration',
+      httpStatus: 400,
+      registrationValidationErrors: [{
+        field: 'client_name',
+        message: 'Use only alphanumeric characters, hyphens, and spaces.',
+      }],
+    });
+
+    expect(view.textContent).toContain('Calendly registration metadata needs correction');
+    expect(view.textContent).toContain('Correctable registration fields');
+    expect(view.textContent).toContain('client_name');
+    expect(view.textContent).toContain('alphanumeric characters, hyphens, and spaces');
+    expect(view.querySelector('#clientId')).toBeNull();
+  });
+
   it('suppresses target-provider remedies for proxy authentication', () => {
     const view = renderPanel({
       kind: 'proxy_authentication_required',

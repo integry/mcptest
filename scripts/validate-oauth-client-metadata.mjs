@@ -10,7 +10,7 @@ const metadata = JSON.parse(await readFile(
 
 assert.deepEqual(metadata, {
   client_id: documentUrl,
-  client_name: 'mcptest.io MCP Inspector',
+  client_name: 'mcptest-io',
   client_uri: 'https://mcptest.io/',
   logo_uri: 'https://mcptest.io/logo.png',
   redirect_uris: [callbackUrl],

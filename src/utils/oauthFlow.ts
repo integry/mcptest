@@ -28,6 +28,7 @@ import {
   getOAuthProviderPolicy,
   isPolicyRegistrationApprovalRejection,
   providerForbidsDynamicRegistration,
+  providerRequiresDynamicRegistration,
   type OAuthProviderPolicy,
 } from './oauthProviderPolicy';
 
@@ -49,6 +50,7 @@ export type {
 const PRODUCTION_ORIGIN = 'https://mcptest.io';
 export const OAUTH_CALLBACK_PATH = '/oauth/callback';
 export const OAUTH_CLIENT_METADATA_URL = `${PRODUCTION_ORIGIN}/oauth/client-metadata.json`;
+export const OAUTH_CLIENT_NAME = 'mcptest-io';
 
 export const getHostedOAuthTokenProxyUrl = (
   proxyUrl: string | undefined,
@@ -154,6 +156,13 @@ export interface OAuthPrerequisite {
   authorizationHeaderTemplate?: string;
   failedStage?: string;
   httpStatus?: number;
+  /** Bounded, normalized field errors; never an arbitrary provider response body. */
+  registrationValidationErrors?: OAuthRegistrationValidationError[];
+}
+
+export interface OAuthRegistrationValidationError {
+  field: 'client_name';
+  message: string;
 }
 
 export class OAuthPrerequisiteError extends Error {
@@ -465,16 +474,67 @@ const hasDirectTargetChallengeWithoutBearer = (
   return !authenticate || !/(?:^|[\s,])Bearer(?:[\s,]|$)/i.test(authenticate);
 });
 
-const registrationFailureDetails = (error: RegistrationRejectedError): Record<string, unknown> => {
+const CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE =
+  'Use only alphanumeric characters, hyphens, and spaces.';
+
+const calendlyRegistrationValidationErrors = (
+  value: unknown,
+  policy?: OAuthProviderPolicy
+): OAuthRegistrationValidationError[] => {
+  if (policy?.id !== 'calendly' || !value || typeof value !== 'object') return [];
+  const body = value as Record<string, unknown>;
+  if (typeof body.error !== 'string' || body.error.toLowerCase() !== 'invalid_client_metadata') {
+    return [];
+  }
+
+  // Calendly's observed response names the invalid field and its constraint.
+  // Normalize that evidence to a fixed local message instead of forwarding an
+  // arbitrary provider body or displaying provider-controlled prose.
+  const evidence = JSON.stringify(value).slice(0, 16 * 1024);
+  if (
+    !/client[_\s-]*name/i.test(evidence)
+    || !/(?:alpha[\s_-]*numeric|alphanumeric)/i.test(evidence)
+    || !/hyphens?/i.test(evidence)
+    || !/spaces?/i.test(evidence)
+  ) return [];
+
+  return [{ field: 'client_name', message: CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE }];
+};
+
+const registrationFailureDetails = (
+  error: RegistrationRejectedError,
+  policy?: OAuthProviderPolicy
+): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(error.body) as Record<string, unknown>;
-    return Object.fromEntries(Object.entries(parsed).filter(([key, value]) => (
+    const safeScalars = Object.fromEntries(Object.entries(parsed).filter(([key, value]) => (
       ['error', 'error_description', 'message', 'detail'].includes(key)
       && (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+      && String(value).length <= 2048
+      && !/[\u0000-\u001f\u007f]/.test(String(value))
     )));
+    const registrationValidationErrors = calendlyRegistrationValidationErrors(parsed, policy);
+    return {
+      ...safeScalars,
+      ...(registrationValidationErrors.length ? { registrationValidationErrors } : {}),
+    };
   } catch {
     return { responseFormat: 'non-json' };
   }
+};
+
+const validationErrorsFromDetails = (
+  details: Record<string, unknown>
+): OAuthRegistrationValidationError[] => {
+  const errors = details.registrationValidationErrors;
+  if (!Array.isArray(errors)) return [];
+  return errors.filter((value): value is OAuthRegistrationValidationError => (
+    Boolean(value)
+    && typeof value === 'object'
+    && (value as OAuthRegistrationValidationError).field === 'client_name'
+    && (value as OAuthRegistrationValidationError).message
+      === CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE
+  ));
 };
 
 type RegistrationFailureCategory =
@@ -537,8 +597,25 @@ const registrationFailureCategory = (
 const registrationFailureExplanation = (
   category: RegistrationFailureCategory,
   providerName: string,
-  status: number
+  status: number,
+  dcrOnly = false,
+  validationErrors: OAuthRegistrationValidationError[] = []
 ): string => {
+  if (dcrOnly) {
+    const validationGuidance = validationErrors.length
+      ? ` Correct ${validationErrors.map(({ field, message }) => `${field}: ${message}`).join(' ')}`
+      : '';
+    if (category === 'invalid_metadata') {
+      return `${providerName} supports Dynamic Client Registration only and rejected the submitted client metadata with HTTP ${status}.${validationGuidance} Retry automatic registration after correcting the metadata; manual or static client IDs are not supported.`;
+    }
+    if (category === 'rate_limited') {
+      return `${providerName} supports Dynamic Client Registration only and rate-limited registration with HTTP ${status}. Retry later; manual or static client IDs are not supported.`;
+    }
+    if (category === 'server_error') {
+      return `${providerName} supports Dynamic Client Registration only, and its registration endpoint failed with HTTP ${status}. Retry after the provider service recovers; manual or static client IDs are not supported.`;
+    }
+    return `${providerName} supports Dynamic Client Registration only and rejected registration with HTTP ${status}. Retry automatic registration; manual or static client IDs are not supported.`;
+  }
   if (category === 'approval_policy') {
     return `${providerName} advertises automatic client registration, but its HTTP ${status} response indicates that provider approval or allow-list access is required before mcptest.io can continue.`;
   }
@@ -573,6 +650,7 @@ const buildOAuthPrerequisite = (
   const issuer = issuerForDiscovery(discovery);
   const guidance = providerGuidance(serverUrl, issuer);
   const policy = guidance.policy;
+  const issuerBoundPolicy = issuer ? getOAuthProviderPolicy(serverUrl, issuer) : undefined;
   const resourceScopes = discovery?.resourceMetadata?.scopes_supported || [];
   const requiredScopes = Array.from(new Set([
     ...resourceScopes,
@@ -648,6 +726,13 @@ const buildOAuthPrerequisite = (
     };
   }
   if (kind === 'pre_registered_client_required') {
+    if (providerRequiresDynamicRegistration(serverUrl, issuer)) {
+      return {
+        ...base,
+        canConfigureClient: false,
+        explanation: `${guidance.name} supports Dynamic Client Registration only, but discovery did not yield a usable automatic registration path. Retry OAuth discovery and consult the provider documentation; manual or static client IDs are not supported.`,
+      };
+    }
     if (policy?.registrationMode === 'operator-confidential') {
       const credentialAlternative = policy.supportsBearerToken
         ? ` Alternatively, use a valid ${policy.bearerTokenName || 'bearer token'} as the target Authorization credential.`
@@ -677,16 +762,25 @@ const buildOAuthPrerequisite = (
     };
   }
   if (error instanceof RegistrationRejectedError) {
+    const details = registrationFailureDetails(error, issuerBoundPolicy);
     const category = registrationFailureCategory(
       error,
-      undefined,
-      policy,
+      details,
+      issuerBoundPolicy,
       metadata?.registration_endpoint
     );
+    const registrationValidationErrors = validationErrorsFromDetails(details);
     return {
       ...base,
-      canConfigureClient: true,
-      explanation: registrationFailureExplanation(category, guidance.name, error.status),
+      canConfigureClient: !providerRequiresDynamicRegistration(serverUrl, issuer),
+      ...(registrationValidationErrors.length ? { registrationValidationErrors } : {}),
+      explanation: registrationFailureExplanation(
+        category,
+        guidance.name,
+        error.status,
+        providerRequiresDynamicRegistration(serverUrl, issuer),
+        registrationValidationErrors
+      ),
     };
   }
   const failedEvent = latestFailedEvent(trace);
@@ -1530,7 +1624,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     }
     return {
       redirect_uris: [callbackUrl.toString()],
-      client_name: 'mcptest.io MCP Inspector',
+      client_name: OAUTH_CLIENT_NAME,
       client_uri: callbackUrl.origin,
       logo_uri: `${callbackUrl.origin}/logo.png`,
       grant_types: ['authorization_code', 'refresh_token'],
@@ -1561,7 +1655,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   ): StoredOAuthClientInformation | undefined {
     if (!ctx?.issuer) return undefined;
 
-    const manualClient = this.readManualClient(ctx.issuer);
+    const manualClient = providerRequiresDynamicRegistration(this.serverUrl, ctx.issuer)
+      ? undefined
+      : this.readManualClient(ctx.issuer);
     if (manualClient) {
       if (!this.trace?.hasEvent('pre_registered_client', 'succeeded')) {
         this.trace?.record({
@@ -1593,7 +1689,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     const discovery = this.discoveryState();
     const issuer = discovery?.authorizationServerMetadata?.issuer
       || discovery?.authorizationServerUrl;
-    return issuer ? this.readManualClient(issuer) : undefined;
+    return issuer && !providerRequiresDynamicRegistration(this.serverUrl, issuer)
+      ? this.readManualClient(issuer)
+      : undefined;
   }
 
   saveClientInformation(
@@ -1867,11 +1965,13 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     const metadata = discovery.authorizationServerMetadata;
     const discoveredIssuer = metadata?.issuer || discovery.authorizationServerUrl;
     const strategy = getOAuthClientEstablishmentStrategy(this.serverUrl, discoveredIssuer);
-    if (strategy === 'dynamic-client-registration') {
-      // The exact Canva target+issuer binding has current evidence that its
-      // advertised CIMD route is unusable. Disabling CIMD here makes the SDK
-      // select the independently advertised DCR endpoint before redirect; this
-      // is not a generic fallback after an authorization rejection.
+    if (
+      strategy === 'dynamic-client-registration'
+      || strategy === 'dynamic-client-registration-only'
+    ) {
+      // Exact provider policy may select DCR either as a verified compatibility
+      // route (Canva) or as the provider's only supported establishment path
+      // (Calendly). This is never a generic fallback after a rejection.
       this.clientMetadataUrl = undefined;
     }
     if (!this.trace?.hasEvent('client_establishment')) {
@@ -1882,6 +1982,8 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
         route: 'client',
         explanation: strategy === 'dynamic-client-registration'
           ? 'Trusted provider policy selected Dynamic Client Registration before authorization even though CIMD was advertised.'
+          : strategy === 'dynamic-client-registration-only'
+            ? 'Trusted provider policy requires Dynamic Client Registration and excludes static client configuration for this exact target and issuer.'
           : strategy === 'operator-confidential'
             ? 'Trusted provider policy selected an issuer-bound operator-confidential client before authorization.'
             : 'Standards-advertised client-establishment preference was selected.',
@@ -2238,15 +2340,29 @@ export const beginOAuthFlow = async (
     }
     let prerequisite: OAuthPrerequisite | undefined;
     if (error instanceof RegistrationRejectedError) {
-      const details = registrationFailureDetails(error);
-      const guidance = providerGuidance(normalizedServerUrl, issuerForDiscovery(provider.discoveryState()));
+      const discoveredIssuer = issuerForDiscovery(provider.discoveryState());
+      const guidance = providerGuidance(normalizedServerUrl, discoveredIssuer);
+      const issuerBoundPolicy = discoveredIssuer
+        ? getOAuthProviderPolicy(normalizedServerUrl, discoveredIssuer)
+        : undefined;
+      const details = registrationFailureDetails(error, issuerBoundPolicy);
       const category = registrationFailureCategory(
         error,
         details,
-        guidance.policy,
+        issuerBoundPolicy,
         provider.discoveryState()?.authorizationServerMetadata?.registration_endpoint
       );
-      const explanation = registrationFailureExplanation(category, guidance.name, error.status);
+      const validationErrors = validationErrorsFromDetails(details);
+      const explanation = registrationFailureExplanation(
+        category,
+        guidance.name,
+        error.status,
+        providerRequiresDynamicRegistration(
+          normalizedServerUrl,
+          discoveredIssuer
+        ),
+        validationErrors
+      );
       trace.enrichLast('dynamic_client_registration', {
         outcome: 'failed',
         explanation,
@@ -2455,6 +2571,17 @@ export const prepareManualOAuthClient = async (
       ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
     });
     const issuer = issuerForDiscovery(provider.discoveryState());
+    if (providerRequiresDynamicRegistration(normalizedServerUrl, issuer)) {
+      const prerequisite = buildOAuthPrerequisite(
+        'pre_registered_client_required',
+        normalizedServerUrl,
+        provider,
+        trace,
+        new Error('Provider requires dynamic client registration')
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+      throw new OAuthPrerequisiteError(prerequisite);
+    }
     if (providerForbidsDynamicRegistration(normalizedServerUrl, issuer)) {
       trace.record({
         type: 'pre_registered_client',
@@ -2637,6 +2764,11 @@ export const saveManualOAuthClient = (
     || discovery?.authorizationServerUrl;
   if (!issuer) {
     throw new Error('Authorization-server discovery is missing. Restart OAuth before configuring a client.');
+  }
+  if (providerRequiresDynamicRegistration(serverUrl, issuer)) {
+    throw new Error(
+      'This provider supports Dynamic Client Registration only; manual or static client IDs cannot be configured.'
+    );
   }
 
   provider.saveClientInformation({

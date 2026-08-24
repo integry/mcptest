@@ -12,6 +12,7 @@ import {
 } from '../../cors-proxy-worker/src/index';
 import {
   BrowserOAuthProvider,
+  OAUTH_CLIENT_NAME,
   OAUTH_CLIENT_METADATA_URL,
   OAuthCimdInteroperabilityError,
   OAuthProxyAuthenticationRequiredError,
@@ -312,6 +313,27 @@ describe('BrowserOAuthProvider', () => {
     expect(provider.clientInformation({ issuer: ISSUER_B })).toBeUndefined();
   });
 
+  it('rejects manual client configuration for the exact Calendly DCR-only binding', () => {
+    const target = 'https://mcp.calendly.com/';
+    const issuer = 'https://calendly.com/';
+    const provider = new BrowserOAuthProvider(target, { redirect: vi.fn() });
+    provider.saveDiscoveryState({
+      authorizationServerUrl: issuer,
+      authorizationServerMetadata: {
+        issuer,
+        authorization_endpoint: 'https://calendly.com/oauth2/authorize',
+        token_endpoint: 'https://calendly.com/oauth2/token',
+        registration_endpoint: 'https://calendly.com/oauth2/register',
+        response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
+      },
+    });
+
+    expect(() => saveManualOAuthClient(target, 'static-client'))
+      .toThrow(/Dynamic Client Registration only/);
+    expect(provider.manualClientInformation()).toBeUndefined();
+  });
+
   it('rejects confidential client secrets without writing them to browser storage', () => {
     const provider = new BrowserOAuthProvider(SERVER_URL, { redirect: vi.fn() });
     provider.saveDiscoveryState({
@@ -449,12 +471,22 @@ describe('BrowserOAuthProvider', () => {
     expect(production.clientMetadataUrl).toBe(OAUTH_CLIENT_METADATA_URL);
     expect(preview.clientMetadataUrl).toBeUndefined();
     expect(previewWithProductionIdentity.clientMetadataUrl).toBeUndefined();
+    expect(preview.clientMetadata).toMatchObject({
+      client_name: OAUTH_CLIENT_NAME,
+      redirect_uris: ['https://preview.mcptest.io/oauth/callback'],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+    });
     expect(production.clientMetadata).toEqual((({ client_id: _clientId, ...metadata }) => metadata)(
       clientMetadataDocument
     ));
     expect(clientMetadataDocument).toMatchObject({
       client_id: OAUTH_CLIENT_METADATA_URL,
+      client_name: OAUTH_CLIENT_NAME,
       redirect_uris: ['https://mcptest.io/oauth/callback'],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
       token_endpoint_auth_method: 'none',
     });
   });
@@ -1709,6 +1741,162 @@ describe('OAuth provider interoperability matrix', () => {
         response: expect.objectContaining({ status: 201 }),
       }),
     ]));
+  });
+
+  it('submits production-shaped Calendly DCR metadata and redirects with PKCE S256', async () => {
+    const target = 'https://mcp.calendly.com/';
+    const issuer = 'https://calendly.com/';
+    const resourceMetadataUrl = 'https://mcp.calendly.com/.well-known/oauth-protected-resource';
+    const registrationEndpoint = 'https://calendly.com/oauth2/register';
+    let registration: Record<string, unknown> | undefined;
+    let authorizationUrl: URL | undefined;
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === 'https://calendly.com/.well-known/oauth-authorization-server') {
+        return jsonResponse(authorizationMetadata(issuer, {
+          cimd: true,
+          registrationEndpoint,
+          tokenEndpointAuthMethods: ['none'],
+        }));
+      }
+      throw new Error(`Unexpected direct request: ${url}`);
+    };
+    const proxyFetch: FetchLike = async (_input, init) => {
+      registration = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return jsonResponse({ ...registration, client_id: 'calendly-public-client' }, {
+        status: 201,
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    };
+
+    await expect(beginOAuthFlow(target, {
+      resourceMetadataUrl,
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn,
+      redirect: url => { authorizationUrl = url; },
+      tokenProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-token',
+        fetchFn: proxyFetch,
+      },
+    })).resolves.toBe('REDIRECT');
+
+    expect(registration).toMatchObject({
+      client_name: OAUTH_CLIENT_NAME,
+      redirect_uris: ['https://mcptest.io/oauth/callback'],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+    });
+    expect(authorizationUrl?.searchParams.get('client_id')).toBe('calendly-public-client');
+    expect(authorizationUrl?.searchParams.get('redirect_uri'))
+      .toBe('https://mcptest.io/oauth/callback');
+    expect(authorizationUrl?.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(authorizationUrl?.searchParams.get('code_challenge')).toBeTruthy();
+  });
+
+  it('classifies Calendly client-name validation as correctable DCR-only metadata', async () => {
+    const target = 'https://mcp.calendly.com/';
+    const issuer = 'https://calendly.com/';
+    const resourceMetadataUrl = 'https://mcp.calendly.com/.well-known/oauth-protected-resource';
+    const registrationEndpoint = 'https://calendly.com/oauth2/register';
+    const privateProviderValue = 'provider-body-must-not-be-forwarded';
+    const fetchFn: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === 'https://calendly.com/.well-known/oauth-authorization-server') {
+        return jsonResponse(authorizationMetadata(issuer, {
+          registrationEndpoint,
+          tokenEndpointAuthMethods: ['none'],
+        }));
+      }
+      throw new Error(`Unexpected direct request: ${url}`);
+    };
+    const proxyFetch: FetchLike = async () => jsonResponse({
+      error: 'invalid_client_metadata',
+      error_description: 'client_name must contain only alphanumeric characters, hyphens, and spaces',
+      provider_private_context: privateProviderValue,
+    }, {
+      status: 400,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+    });
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn,
+        redirect: vi.fn(),
+        tokenProxy: {
+          url: 'https://proxy.mcptest.test/',
+          authorizationToken: 'firebase-token',
+          fetchFn: proxyFetch,
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      providerName: 'Calendly',
+      issuer,
+      canConfigureClient: false,
+      httpStatus: 400,
+      registrationValidationErrors: [{
+        field: 'client_name',
+        message: 'Use only alphanumeric characters, hyphens, and spaces.',
+      }],
+      explanation: expect.stringMatching(/Dynamic Client Registration only.*manual or static/i),
+    });
+    expect(isOAuthClientConfigurationRequired(caught)).toBe(false);
+    const serializedTrace = JSON.stringify(getStoredOAuthTrace(target, sessionStorage));
+    expect(serializedTrace).toContain('client_name');
+    expect(serializedTrace).not.toContain(privateProviderValue);
+  });
+
+  it('does not apply Calendly DCR-only failure handling to another issuer', async () => {
+    const target = 'https://mcp.calendly.com/';
+    const issuer = 'https://oauth.example/';
+    const resourceMetadataUrl = 'https://mcp.calendly.com/.well-known/oauth-protected-resource';
+    const registrationEndpoint = 'https://oauth.example/register';
+    const fetchFn: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      if (url === 'https://oauth.example/.well-known/oauth-authorization-server') {
+        return jsonResponse(authorizationMetadata(issuer, { registrationEndpoint }));
+      }
+      if (url === registrationEndpoint && init?.method === 'POST') {
+        return jsonResponse({
+          error: 'invalid_client_metadata',
+          error_description: 'client_name must contain alphanumeric characters, hyphens, and spaces',
+        }, { status: 400 });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { resourceMetadataUrl, fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      issuer,
+      canConfigureClient: true,
+    });
+    expect(getOAuthPrerequisite(caught)?.registrationValidationErrors).toBeUndefined();
+    expect(getOAuthPrerequisite(caught)?.explanation).not.toContain('Registration only');
   });
 
   it.each([
@@ -3222,7 +3410,7 @@ describe('hosted dynamic client registration relay', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           redirect_uris: ['https://mcptest.io/oauth/callback'],
-          client_name: 'mcptest.io MCP Inspector',
+          client_name: 'mcptest-io',
         }),
       });
       const registration = await response.json() as { client_id: string };
@@ -3304,7 +3492,7 @@ describe('hosted dynamic client registration relay', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           redirect_uris: ['https://mcptest.io/oauth/callback'],
-          client_name: 'mcptest.io MCP Inspector',
+          client_name: 'mcptest-io',
         }),
       };
       const activeRequest = options.fetchFn!(supabaseRegistration, {
@@ -3371,7 +3559,7 @@ describe('hosted dynamic client registration relay', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           redirect_uris: ['https://mcptest.io/oauth/callback'],
-          client_name: 'mcptest.io MCP Inspector',
+          client_name: 'mcptest-io',
         }),
       };
       const cancelledRequest = options.fetchFn!(supabaseRegistration, {
