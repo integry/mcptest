@@ -380,6 +380,37 @@ const latestFailureIsTransientDiscovery = (trace: OAuthFlightRecorder): boolean 
     || (typeof status === 'number' && status >= 500);
 };
 
+const INTERCOM_RESOURCE_METADATA_FALLBACK_URLS = [
+  'https://mcp.intercom.com/.well-known/oauth-protected-resource/mcp',
+  'https://mcp.intercom.com/.well-known/oauth-protected-resource',
+] as const;
+
+const hasIntercomHistoricalDiscoveryEvidence = (trace: OAuthFlightRecorder): boolean => {
+  const events = trace.snapshot().events;
+  const targetChallengeObserved = events.some((event) => {
+    if (
+      event.type !== 'target_challenge'
+      || event.outcome !== 'challenged'
+      || event.provenance !== 'direct_target'
+      || event.response?.status !== 401
+    ) return false;
+    const authenticate = event.response.headers?.['www-authenticate'];
+    return !authenticate || !/(?:^|[,\s])resource_metadata\s*=/i.test(authenticate);
+  });
+  if (!targetChallengeObserved) return false;
+
+  return INTERCOM_RESOURCE_METADATA_FALLBACK_URLS.every((fallbackUrl) => (
+    events.some((event) => (
+      event.type === 'protected_resource_metadata'
+      && event.outcome === 'failed'
+      && event.provenance === 'direct_target'
+      && event.request?.method === 'GET'
+      && event.request.url === fallbackUrl
+      && event.response?.status === 404
+    ))
+  ));
+};
+
 const registrationFailureDetails = (error: RegistrationRejectedError): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(error.body) as Record<string, unknown>;
@@ -605,7 +636,10 @@ const buildOAuthPrerequisite = (
     };
   }
   const failedEvent = latestFailedEvent(trace);
-  if (policy?.id === 'intercom') {
+  if (
+    policy?.id === 'intercom'
+    && hasIntercomHistoricalDiscoveryEvidence(trace)
+  ) {
     return {
       ...base,
       canConfigureClient: false,
@@ -1216,11 +1250,14 @@ const preflightKnownProviderDiscovery = async (
       ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
     });
     if (!discovery.resourceMetadata || !discovery.authorizationServerMetadata) {
-      throw new OAuthKnownProviderDiscoveryError('intercom');
+      throw new Error('Intercom OAuth discovery returned incomplete metadata.');
     }
   } catch (error) {
     if (error instanceof OAuthKnownProviderDiscoveryError) throw error;
-    throw new OAuthKnownProviderDiscoveryError('intercom');
+    if (hasIntercomHistoricalDiscoveryEvidence(trace)) {
+      throw new OAuthKnownProviderDiscoveryError('intercom');
+    }
+    throw error;
   }
 };
 
@@ -2060,6 +2097,10 @@ export const beginOAuthFlow = async (
     if (
       error instanceof Error
       && error.message.includes('does not advertise PKCE S256 support')
+      && !(
+        getOAuthProviderPolicy(normalizedServerUrl)?.id === 'intercom'
+        && hasFailedDiscoveryEvent(trace)
+      )
     ) {
       trace.terminal('failed', error.message);
       throw error;
@@ -2191,19 +2232,6 @@ export const beginOAuthFlow = async (
         ),
         explanation: error.message,
       };
-      trace.terminal(prerequisite.kind, prerequisite.explanation);
-    } else if (
-      getOAuthProviderPolicy(normalizedServerUrl)?.id === 'intercom'
-      && !provider.discoveryState()?.authorizationServerMetadata
-    ) {
-      prerequisite = buildOAuthPrerequisite(
-        'discovery_blocked_invalid',
-        normalizedServerUrl,
-        provider,
-        trace,
-        error,
-        options.scope
-      );
       trace.terminal(prerequisite.kind, prerequisite.explanation);
     } else if (
       latestFailureIsDiscovery(trace)

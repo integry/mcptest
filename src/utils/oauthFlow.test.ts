@@ -1874,6 +1874,16 @@ describe('OAuth provider interoperability matrix', () => {
       calls.push(String(input));
       return new Response('Not found', { status: 404 });
     };
+    recordOAuthAuthenticationChallenge({
+      targetUrl: target,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+      method: 'POST',
+      requestUrl: target,
+      responseHeaders: { 'www-authenticate': 'Bearer' },
+    });
 
     let caught: unknown;
     try {
@@ -1894,6 +1904,53 @@ describe('OAuth provider interoperability matrix', () => {
       canConfigureClient: false,
       explanation: expect.stringContaining('both standard protected-resource metadata fallback URLs returned HTTP 404'),
     });
+  });
+
+  it.each([500, 429])(
+    'classifies Intercom HTTP %s discovery failures without historical 404 claims',
+    async (status) => {
+      const target = 'https://mcp.intercom.com/mcp';
+      const fetchFn: FetchLike = async () => new Response('Unavailable', { status });
+
+      let caught: unknown;
+      try {
+        await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(getOAuthPrerequisite(caught)).toMatchObject({
+        kind: 'transient_discovery_failure',
+        providerName: 'Intercom',
+        explanation: expect.stringContaining('temporarily unavailable'),
+      });
+      expect(getOAuthPrerequisite(caught)?.explanation)
+        .not.toContain('both standard protected-resource metadata fallback URLs returned HTTP 404');
+      expect(getStoredOAuthTrace(target, sessionStorage)?.outcome?.status)
+        .toBe('transient_discovery_failure');
+    }
+  );
+
+  it('classifies an unreadable Intercom discovery failure as a browser response failure', async () => {
+    const target = 'https://mcp.intercom.com/mcp';
+    const fetchFn: FetchLike = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, { fetchFn, redirect: vi.fn() });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'discovery_blocked_invalid',
+      providerName: 'Intercom',
+      explanation: expect.stringContaining('browser did not receive a readable HTTP response'),
+    });
+    expect(getOAuthPrerequisite(caught)?.explanation)
+      .not.toContain('both standard protected-resource metadata fallback URLs returned HTTP 404');
   });
 
   it.each([
