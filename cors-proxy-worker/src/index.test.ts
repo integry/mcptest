@@ -1355,6 +1355,67 @@ describe('hosted issuer-bound OAuth registration route', () => {
     expect(resolveHostname).toHaveBeenCalledTimes(2);
   });
 
+  it('relays the literal Stripe response when Stripe assigns the omitted mcp scope', async () => {
+    const stripeIssuer = 'https://access.stripe.com/mcp';
+    const stripeDiscoveryUrl = 'https://access.stripe.com/.well-known/oauth-authorization-server/mcp';
+    const stripeRegistrationEndpoint = 'https://access.stripe.com/mcp/oauth2/register';
+    const stripeRequestBody = {
+      redirect_uris: ['https://mcptest.io/oauth/callback'],
+      client_name: 'mcptest-io',
+      client_uri: 'https://mcptest.io/',
+      logo_uri: 'https://mcptest.io/logo.png',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+      application_type: 'web',
+    };
+    const response = await handleOAuthRegistrationRequest(
+      new Request('https://proxy.mcptest.test/oauth/register', {
+        method: 'POST',
+        headers: {
+          Origin: 'https://mcptest.io',
+          Authorization: 'Bearer firebase-credential',
+          'Content-Type': 'application/json',
+          'X-MCP-OAuth-Issuer': stripeIssuer,
+          'X-MCP-OAuth-Resource': 'https://mcp.stripe.com/',
+          'X-MCP-OAuth-Registration-Endpoint': stripeRegistrationEndpoint,
+        },
+        body: JSON.stringify(stripeRequestBody),
+      }),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === stripeDiscoveryUrl
+          ? new Response(JSON.stringify({
+              issuer: stripeIssuer,
+              authorization_endpoint: 'https://access.stripe.com/mcp/oauth2/authorize',
+              token_endpoint: 'https://access.stripe.com/mcp/oauth2/token',
+              registration_endpoint: stripeRegistrationEndpoint,
+              response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
+              token_endpoint_auth_methods_supported: ['none'],
+              scopes_supported: ['mcp'],
+            }), { headers: { 'Content-Type': 'application/json' } })
+          : new Response(JSON.stringify({
+              ...stripeRequestBody,
+              client_id: 'stripe-issued-client',
+              client_id_issued_at: 1787563559,
+              scope: 'mcp',
+              provider_internal_id: 'discard-me',
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    await expect(response.json()).resolves.toEqual({
+      ...stripeRequestBody,
+      client_id: 'stripe-issued-client',
+      client_id_issued_at: 1787563559,
+      scope: 'mcp',
+    });
+  });
+
   it.each([
     'authorization_metadata_discovery',
     'destination_validation',
@@ -1432,6 +1493,7 @@ describe('hosted issuer-bound OAuth registration route', () => {
     ['grant_types', ['client_credentials']],
     ['response_types', ['token']],
     ['application_type', 'native'],
+    ['scope', 'mcp'],
   ])('rejects provider-returned %s that conflicts with the safe request', async (
     field,
     conflictingValue

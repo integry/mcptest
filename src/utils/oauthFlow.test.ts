@@ -3145,6 +3145,117 @@ describe('hosted dynamic client registration relay', () => {
     expect(localStorage.length).toBe(0);
   });
 
+  it('covers Stripe challenge discovery and provider-assigned scope through proxied DCR', async () => {
+    const stripeServer = 'https://mcp.stripe.com/';
+    const stripeResourceMetadata = 'https://mcp.stripe.com/.well-known/oauth-protected-resource';
+    const stripeIssuer = 'https://access.stripe.com/mcp';
+    const stripeMetadata = 'https://access.stripe.com/.well-known/oauth-authorization-server/mcp';
+    const stripeRegistration = 'https://access.stripe.com/mcp/oauth2/register';
+    const stripeAuthorize = 'https://access.stripe.com/mcp/oauth2/authorize';
+    const stripeToken = 'https://access.stripe.com/mcp/oauth2/token';
+    let authorizationUrl: URL | undefined;
+    let submittedRegistration: Record<string, unknown> | undefined;
+
+    recordOAuthAuthenticationChallenge({
+      targetUrl: stripeServer,
+      status: 401,
+      source: 'target',
+      route: 'direct',
+      storage: sessionStorage,
+      method: 'POST',
+      requestUrl: stripeServer,
+      responseHeaders: {
+        'www-authenticate': `Bearer resource_metadata=${stripeResourceMetadata}`,
+      },
+    });
+
+    const discoveryFetch: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url === stripeResourceMetadata) {
+        return jsonResponse({
+          resource: stripeServer,
+          authorization_servers: [stripeIssuer],
+        });
+      }
+      if (url === stripeMetadata) {
+        return jsonResponse({
+          issuer: stripeIssuer,
+          authorization_endpoint: stripeAuthorize,
+          token_endpoint: stripeToken,
+          registration_endpoint: stripeRegistration,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+          token_endpoint_auth_methods_supported: ['none'],
+          scopes_supported: ['mcp'],
+        });
+      }
+      if (url === stripeRegistration && init?.method === 'POST') {
+        throw new Error('Stripe DCR must use the authenticated hosted relay.');
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const workerTargetFetch = vi.fn(async (request: Request) => {
+      if (request.url === stripeMetadata) {
+        return discoveryFetch(request.url, { method: 'GET', headers: request.headers });
+      }
+      if (request.url === stripeRegistration) {
+        const submitted = await request.json() as Record<string, unknown>;
+        submittedRegistration = submitted;
+        return jsonResponse({
+          ...submitted,
+          client_id: 'stripe-issued-client',
+          client_id_issued_at: 1787563559,
+          scope: 'mcp',
+          provider_internal_id: 'discard-me',
+        }, { status: 201 });
+      }
+      throw new Error(`Unexpected Stripe Worker target request: ${request.method} ${request.url}`);
+    });
+    const proxyFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe('https://proxy.mcptest.test/oauth/register');
+      expect(new Headers(init?.headers).get('x-mcp-oauth-resource')).toBe(stripeServer);
+      const relayRequest = new Request(input, init);
+      relayRequest.headers.set('Origin', 'https://mcptest.io');
+      return handleOAuthRegistrationRequest(
+        relayRequest,
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: workerTargetFetch,
+          resolveHostname: async () => ['203.0.114.10'],
+          verifyToken: async token => token === 'firebase-session' ? 'user-1' : null,
+        }
+      );
+    });
+
+    await expect(beginOAuthFlow(stripeServer, {
+      resourceMetadataUrl: stripeResourceMetadata,
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn: discoveryFetch,
+      tokenProxy: {
+        url: 'https://proxy.mcptest.test/',
+        authorizationToken: 'firebase-session',
+        fetchFn: proxyFetch,
+      },
+      redirect: url => { authorizationUrl = url; },
+    })).resolves.toBe('REDIRECT');
+
+    expect(authorizationUrl?.origin + authorizationUrl?.pathname).toBe(stripeAuthorize);
+    expect(authorizationUrl?.searchParams.get('client_id')).toBe('stripe-issued-client');
+    expect(authorizationUrl?.searchParams.get('redirect_uri'))
+      .toBe('https://mcptest.io/oauth/callback');
+    expect(authorizationUrl?.searchParams.get('resource')).toBe(stripeServer);
+    expect(authorizationUrl?.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(authorizationUrl?.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const { client_id: _publishedClientId, ...productionRegistration } = clientMetadataDocument;
+    expect(submittedRegistration).toEqual(productionRegistration);
+    expect(submittedRegistration).not.toHaveProperty('scope');
+    expect(proxyFetch).toHaveBeenCalledOnce();
+    expect(workerTargetFetch.mock.calls.map(([request]) => request.url)).toEqual([
+      stripeMetadata,
+      stripeRegistration,
+    ]);
+  });
+
   it('preserves the client_secret_basic default end to end when AS metadata omits token auth methods', async () => {
     const target = 'https://mcp.omitted-auth.example/mcp';
     const issuer = 'https://auth.omitted-auth.example';
