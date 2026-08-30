@@ -3723,3 +3723,225 @@ describe('hosted dynamic client registration relay', () => {
     expect(proxyFetch).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('hosted Hugging Face CIMD token relay', () => {
+  const server = 'https://huggingface.co/mcp?login';
+  const issuer = 'https://huggingface.co';
+  const authorizationEndpoint = 'https://huggingface.co/oauth/authorize';
+  const tokenEndpoint = 'https://huggingface.co/oauth/token';
+  const discoveryUrl = 'https://huggingface.co/.well-known/oauth-authorization-server';
+  const metadata = {
+    issuer,
+    authorization_endpoint: authorizationEndpoint,
+    token_endpoint: tokenEndpoint,
+    response_types_supported: ['code'],
+    code_challenge_methods_supported: ['S256'],
+    client_id_metadata_document_supported: true,
+    token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+  };
+
+  const directFetch: FetchLike = async (input, init) => {
+    const url = String(input);
+    if (url.includes('/.well-known/oauth-protected-resource')) {
+      return jsonResponse({ resource: server, authorization_servers: [issuer] });
+    }
+    if (url === discoveryUrl) return jsonResponse(metadata);
+    if (url === tokenEndpoint && init?.method === 'POST') {
+      throw new Error('The Hugging Face token form must use the hosted relay.');
+    }
+    return new Response('Not found', { status: 404 });
+  };
+
+  it('covers the ?login resource, CIMD redirect, callback, and hosted public token relay', async () => {
+    let authorizationUrl: URL | undefined;
+    const workerTargetFetch = vi.fn(async (request: Request) => {
+      if (request.url === discoveryUrl) return jsonResponse(metadata);
+      if (request.url === tokenEndpoint) {
+        expect(request.headers.get('authorization')).toBeNull();
+        expect(Object.fromEntries(new URLSearchParams(await request.text())))
+          .toMatchObject({
+            grant_type: 'authorization_code',
+            code: 'hf-callback-code',
+            redirect_uri: 'https://mcptest.io/oauth/callback',
+            client_id: 'https://mcptest.io/oauth/client-metadata.json',
+            resource: server,
+          });
+        return jsonResponse({
+          access_token: 'hf-integration-access-token',
+          refresh_token: 'hf-integration-refresh-token',
+          token_type: 'Bearer',
+        });
+      }
+      throw new Error(`Unexpected Hugging Face Worker request: ${request.url}`);
+    });
+    const proxyFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe('https://proxy.mcptest.test/oauth/token');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer firebase-session');
+      const relayInit = init?.body instanceof URLSearchParams
+        ? { ...init, body: init.body.toString() }
+        : init;
+      const request = new Request(input, relayInit);
+      request.headers.set('Origin', 'https://mcptest.io');
+      return handleOAuthTokenRequest(
+        request,
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: workerTargetFetch,
+          resolveHostname: async () => ['203.0.114.10'],
+          verifyToken: async token => token === 'firebase-session' ? 'user-1' : null,
+        }
+      );
+    });
+    const hostedProxy = {
+      url: 'https://proxy.mcptest.test/',
+      authorizationToken: 'firebase-session',
+      fetchFn: proxyFetch,
+    };
+
+    await expect(beginOAuthFlow(server, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn: directFetch,
+      tokenProxy: hostedProxy,
+      redirect: url => { authorizationUrl = url; },
+    })).resolves.toBe('REDIRECT');
+
+    expect(authorizationUrl?.origin + authorizationUrl?.pathname).toBe(authorizationEndpoint);
+    expect(authorizationUrl?.searchParams.get('client_id'))
+      .toBe('https://mcptest.io/oauth/client-metadata.json');
+    expect(authorizationUrl?.searchParams.get('resource')).toBe(server);
+    const state = authorizationUrl!.searchParams.get('state');
+
+    await expect(completeOAuthFlow(
+      `https://mcptest.io/oauth/callback?code=hf-callback-code&state=${state}`,
+      {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: directFetch,
+        tokenProxy: hostedProxy,
+      }
+    )).resolves.toMatchObject({ serverUrl: server });
+
+    expect(proxyFetch).toHaveBeenCalledOnce();
+    expect(workerTargetFetch.mock.calls.map(([request]) => request.url)).toEqual([
+      discoveryUrl,
+      tokenEndpoint,
+    ]);
+    expect(loadOAuthAuthorization(server)?.accessToken).toBe('hf-integration-access-token');
+    const trace = getStoredOAuthTrace(server, sessionStorage);
+    expect(trace?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'cimd', outcome: 'succeeded' }),
+      expect.objectContaining({ type: 'authorization_redirect', outcome: 'redirected' }),
+      expect.objectContaining({
+        type: 'token_exchange',
+        outcome: 'succeeded',
+        route: 'proxy',
+        provenance: 'authorization_server',
+      }),
+    ]));
+    const serializedTrace = JSON.stringify(trace);
+    for (const secret of [
+      'hf-callback-code',
+      'firebase-session',
+      'hf-integration-access-token',
+      'hf-integration-refresh-token',
+    ]) expect(serializedTrace).not.toContain(secret);
+  });
+
+  it('records a secret-safe pre-target client-authentication rejection', async () => {
+    let authorizationUrl: URL | undefined;
+    const workerTargetFetch = vi.fn(async (request: Request) => {
+      if (request.url !== discoveryUrl) {
+        throw new Error('The rejected token form must not reach Hugging Face.');
+      }
+      return jsonResponse({
+        ...metadata,
+        client_id_metadata_document_supported: false,
+      });
+    });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const proxyFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const relayInit = init?.body instanceof URLSearchParams
+        ? { ...init, body: init.body.toString() }
+        : init;
+      const request = new Request(input, relayInit);
+      request.headers.set('Origin', 'https://mcptest.io');
+      return handleOAuthTokenRequest(
+        request,
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: workerTargetFetch,
+          verifyToken: async token => token === 'rejected-firebase-session' ? 'user-1' : null,
+        }
+      );
+    });
+    const hostedProxy = {
+      url: 'https://proxy.mcptest.test/',
+      authorizationToken: 'rejected-firebase-session',
+      fetchFn: proxyFetch,
+    };
+
+    try {
+      await expect(beginOAuthFlow(server, {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: directFetch,
+        tokenProxy: hostedProxy,
+        redirect: url => { authorizationUrl = url; },
+      })).resolves.toBe('REDIRECT');
+
+      const storedOAuthState = Array.from({ length: sessionStorage.length }, (_, index) => (
+        sessionStorage.getItem(sessionStorage.key(index) || '') || ''
+      )).find(value => value.includes('codeVerifier')) || '';
+      const verifier = /"codeVerifier":"([^"]+)"/.exec(storedOAuthState)?.[1];
+      expect(verifier).toBeTruthy();
+      const state = authorizationUrl!.searchParams.get('state');
+
+      let caught: unknown;
+      try {
+        await completeOAuthFlow(
+          `https://mcptest.io/oauth/callback?code=hf-rejected-code&state=${state}`,
+          {
+            redirectUrl: 'https://mcptest.io/oauth/callback',
+            fetchFn: directFetch,
+            tokenProxy: hostedProxy,
+          }
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeDefined();
+
+      expect(workerTargetFetch.mock.calls.map(([request]) => request.url)).toEqual([
+        discoveryUrl,
+      ]);
+      const trace = getStoredOAuthTrace(server, sessionStorage);
+      expect(trace?.events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'token_exchange',
+          outcome: 'failed',
+          provenance: 'authenticated_proxy',
+          route: 'proxy',
+          explanation: expect.stringContaining(
+            'before contacting the target token endpoint'
+          ),
+          response: expect.objectContaining({
+            status: 502,
+            metadata: {
+              relayFailure: 'unsupported_client_authentication',
+              targetContacted: false,
+            },
+          }),
+        }),
+      ]));
+      const diagnosticEvidence = JSON.stringify({
+        trace,
+        logs: errorLog.mock.calls,
+      }) + String(caught) + String((caught as { cause?: unknown })?.cause || '');
+      for (const secret of [
+        'hf-rejected-code',
+        verifier!,
+        'rejected-firebase-session',
+      ]) expect(diagnosticEvidence).not.toContain(secret);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+});
