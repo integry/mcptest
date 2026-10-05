@@ -778,7 +778,7 @@ describe('versioned public report artifacts', () => {
 
     expect(artifact.outcome).toEqual({
       status: 'authorization-required',
-      summary: 'A valid mcptest login is a prerequisite for proxy access; this run was not scored.',
+      summary: 'The mcptest proxy rejected an invalid or expired mcptest login; this run was not scored.',
       authorizationPrerequisite: {
         required: true,
         state: 'proxy-authentication-required',
@@ -788,7 +788,7 @@ describe('versioned public report artifacts', () => {
     expect(artifact.score).toBeNull();
     expect(validatePublishedSchema(artifact), JSON.stringify(validatePublishedSchema.errors))
       .toBe(true);
-    expect(markdown).toContain('valid mcptest login is a proxy prerequisite');
+    expect(markdown).toContain('rejected an invalid or expired mcptest login');
     expect(markdown).not.toContain('Authorize access to the MCP server');
   });
 

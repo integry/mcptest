@@ -184,10 +184,11 @@ export const beginSavedCardOAuthFlow = async ({
   startFlow?: typeof beginOAuthFlow;
 }) => {
   const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
-  const proxyAuthenticationRequired = Boolean(
+  const proxyApplicable = Boolean(
     (discoveryProxyApplicable && proxyUrl) || tokenProxyUrl
   );
-  const discoveryProxyToken = proxyAuthenticationRequired && currentUser
+  // Optional: a login only lifts the proxy's anonymous limits.
+  const discoveryProxyToken = proxyApplicable && currentUser
     ? await currentUser.getIdToken()
     : undefined;
 
@@ -197,7 +198,7 @@ export const beginSavedCardOAuthFlow = async ({
       ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
       : {}),
     ...(challenge?.scope ? { scope: challenge.scope } : {}),
-    ...(discoveryProxyApplicable && proxyUrl && discoveryProxyToken
+    ...(discoveryProxyApplicable && proxyUrl
       ? {
           discoveryProxy: {
             url: proxyUrl,
@@ -1472,7 +1473,7 @@ function App() {
         shouldUseProxy = connectionPlan.usesProxy;
 
         if (connectionPlan.usesProxy) {
-          console.log(`[Execute Card ${cardId}] Using authenticated proxy: ${proxyUrl}`);
+          console.log(`[Execute Card ${cardId}] Using ${proxyAuthToken ? 'signed-in' : 'anonymous'} proxy: ${proxyUrl}`);
         } else if (oauthToken) {
           console.log(`[Execute Card ${cardId}] Using OAuth target authentication`);
         }

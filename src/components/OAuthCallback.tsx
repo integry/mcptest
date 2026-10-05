@@ -73,6 +73,8 @@ const OAuthCallback: React.FC = () => {
         );
         const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
         const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+        // The hosted token relay works without a login; a login only lifts
+        // its anonymous limits. A login that cannot produce a token is stale.
         let proxyToken: string | undefined;
         if (tokenProxyUrl && currentUser) {
           try {

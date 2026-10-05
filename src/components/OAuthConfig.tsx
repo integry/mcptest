@@ -31,7 +31,10 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   const serviceDomain = new URL(serverUrl).host;
   const callbackUrl = getOAuthCallbackUrl();
   const authorizationGuidance = getAuthorizationGuidanceForEndpoint(serverUrl);
-  const isProxyAuthenticationPrerequisite = prerequisite?.kind === 'proxy_authentication_required';
+  const isProxyLimitPrerequisite = prerequisite?.kind === 'proxy_limit_reached';
+  // Both are mcptest proxy prerequisites, not target OAuth configuration.
+  const isProxyAuthenticationPrerequisite = prerequisite?.kind === 'proxy_authentication_required'
+    || isProxyLimitPrerequisite;
   const catalogAllowsBrowserClient = !authorizationGuidance.trustedCatalogMatch
     || authorizationGuidance.status === 'unknown'
     || authorizationGuidance.status === 'no-registration-needed'
@@ -49,6 +52,8 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
         ? `${prerequisite.providerName} operator client is not configured`
     : prerequisite?.kind === 'proxy_authentication_required'
       ? 'mcptest proxy authentication required'
+    : isProxyLimitPrerequisite
+      ? 'mcptest proxy limit reached'
       : prerequisite?.kind === 'transient_discovery_failure'
         ? 'OAuth discovery is temporarily unavailable'
       : prerequisite?.kind === 'discovery_blocked_invalid'
@@ -101,7 +106,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
         </div>
 
         <p>
-          {prerequisite?.kind === 'proxy_authentication_required'
+          {isProxyLimitPrerequisite
+            ? 'The mcptest CORS proxy returned its own HTTP 429 caller-limit response. The MCP server did not return this error; retry later or sign in to raise the limit.'
+            : prerequisite?.kind === 'proxy_authentication_required'
             ? 'mcptest.io opened this prerequisite only after the proxy returned its own authentication response. Target OAuth discovery has not started.'
             : 'mcptest.io connected without credentials first and only opened this panel after the MCP target returned an HTTP authentication challenge.'}
         </p>
@@ -117,7 +124,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
               className="btn btn-primary"
               onClick={() => void onSignIn()}
             >
-              Sign in with Google to use the proxy
+              {isProxyLimitPrerequisite ? 'Sign in with Google to lift the limit' : 'Sign in with Google'}
             </button>
           </div>
         )}

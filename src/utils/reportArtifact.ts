@@ -1964,7 +1964,7 @@ const outcomeSummary = (
   switch (outcome) {
     case 'authorization-required':
       return proxyAuthenticationRequired
-        ? 'A valid mcptest login is a prerequisite for proxy access; this run was not scored.'
+        ? 'The mcptest proxy rejected an invalid or expired mcptest login; this run was not scored.'
         : 'Authorization is a prerequisite; this run was not scored.';
     case 'partial':
       return 'The run was only partially evaluated and no overall grade was assigned.';
@@ -2239,7 +2239,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       === 'proxy-authentication-required';
     lines.push(
       proxyAuthenticationRequired
-        ? '> A valid mcptest login is a proxy prerequisite, not a target authorization failure. This run was not scored.'
+        ? '> The mcptest proxy rejected an invalid or expired mcptest login. This is not a target authorization failure. This run was not scored.'
         : '> Authorization is a prerequisite, not a failed 0% grade. This run was not scored.',
       '',
       markdownInline(value.outcome.authorizationPrerequisite.message),

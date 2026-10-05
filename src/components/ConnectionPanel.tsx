@@ -341,7 +341,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                   <span className="connection-example">For example, https://{placeholder}/ or http://localhost:3001</span>
                 </div>
                 {import.meta.env.VITE_PROXY_URL && setUseProxy && (
-                  <div className={`mt-3 proxy-setting ${!currentUser ? 'proxy-setting-locked' : ''}`}>
+                  <div className="mt-3 proxy-setting">
                     <div className="form-check">
                       <input
                         className="form-check-input"
@@ -349,22 +349,18 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                         id="proxyFallbackCheck"
                         checked={useProxy !== false}
                         onChange={(e) => setUseProxy(e.target.checked)}
-                        disabled={isConnecting || !currentUser}
-                        aria-describedby={!currentUser ? 'proxyFallbackHelp' : undefined}
+                        disabled={isConnecting}
+                        aria-describedby="proxyFallbackHelp"
                       />
                       <label className="form-check-label" htmlFor="proxyFallbackCheck">
                         Automatically use proxy for CORS errors
-                        {!currentUser && <span className="text-muted ms-1">(login required)</span>}
                       </label>
                     </div>
-                    {!currentUser && (
-                      <small id="proxyFallbackHelp" className="text-muted d-block mt-1">
-                        <i className="bi bi-lock-fill me-1" aria-hidden="true"></i>
-                        {useProxy !== false
-                          ? 'Sign in with Google before mcptest can use the enabled proxy fallback.'
-                          : 'Proxy fallback is off. Sign in with Google to change this preference.'}
-                      </small>
-                    )}
+                    <small id="proxyFallbackHelp" className="text-muted d-block mt-1">
+                      {currentUser
+                        ? 'Signed in: the proxy uses your higher per-account limits.'
+                        : 'No sign-in needed. Anonymous proxy use is rate limited; sign in with Google to lift the limit.'}
+                    </small>
                   </div>
                 )}
               </div>

@@ -1,5 +1,8 @@
-// CORS Proxy Worker with Authentication
-// This worker provides a CORS proxy for authenticated users only
+// CORS Proxy Worker with caller-based limits
+// This worker provides a CORS proxy that anyone can use without signing in.
+// It never judges the target; instead it governs the caller. Anonymous callers
+// are rate limited by client IP and have their streamed responses capped, while
+// a valid Firebase login lifts those limits to a generous per-user allowance.
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
@@ -10,6 +13,18 @@ export interface Env {
   SLACK_OAUTH_CLIENT_SECRET?: string;
   GITHUB_OAUTH_CLIENT_ID?: string;
   GITHUB_OAUTH_CLIENT_SECRET?: string;
+  /**
+   * Cloudflare Rate Limiting bindings (see wrangler.toml). Optional so local
+   * development and tests without the bindings still work; the Worker fails
+   * open with a log line when a binding is absent.
+   */
+  ANON_RATE_LIMITER?: RateLimiter;
+  USER_RATE_LIMITER?: RateLimiter;
+}
+
+/** Shape of Cloudflare's native Rate Limiting binding. */
+export interface RateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
 /**
@@ -57,6 +72,8 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_TARGET_REDIRECTS = 20;
 export const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
 export const OAUTH_RELAY_FAILURE_HEADER = 'X-MCP-OAuth-Relay-Failure';
+/** Marks a proxy-owned caller-limit 429; the value is the caller tier. */
+export const PROXY_LIMIT_HEADER = 'X-MCP-Proxy-Limit';
 const REQUIRED_CORS_REQUEST_HEADERS = [
   'Accept',
   'Authorization',
@@ -75,6 +92,167 @@ const REQUIRED_CORS_REQUEST_HEADERS = [
   'x-api-key',
 ];
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+/**
+ * Caller-based limits. These values are the proxy's spend cap on the ~$5/month
+ * Workers Paid plan, so the proxy can stay open without a login wall while
+ * remaining useless as a generic bulk tunnel:
+ *
+ * - Request rate (enforced by the Rate Limiting bindings in wrangler.toml, which
+ *   must stay in sync with these documented values) bounds request count and
+ *   CPU per caller. A full MCP handshake plus a few tool calls is ~10 requests,
+ *   so 60/min is ample for interactive anonymous testing.
+ * - Request rate alone does not bound bandwidth: one request can stream for
+ *   hours. Anonymous responses are therefore cut off after a byte budget and a
+ *   wall-clock lifetime, which bounds sustained bandwidth per request.
+ *
+ * Signing in lifts the limits: signed-in callers get a 10x request allowance
+ * keyed by Firebase uid and no response size or duration cap.
+ */
+export const RATE_LIMIT_PERIOD_SECONDS = 60;
+export const ANONYMOUS_REQUESTS_PER_PERIOD = 60;
+export const SIGNED_IN_REQUESTS_PER_PERIOD = 600;
+export const ANONYMOUS_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+export const ANONYMOUS_MAX_STREAM_DURATION_MS = 5 * 60 * 1000;
+
+export type CallerTier = 'anonymous' | 'signed-in';
+
+export interface ProxyCaller {
+  tier: CallerTier;
+  /** Rate-limit key: client IP for anonymous callers, Firebase uid when signed in. */
+  key: string;
+}
+
+export interface ResponseBodyLimits {
+  maxBytes?: number;
+  maxDurationMs?: number;
+}
+
+type CallerLimitKind = 'requests' | 'response_bytes';
+
+/**
+ * Identifies the caller from an optional Firebase bearer token. A missing token
+ * is the anonymous tier; a present but invalid token returns null so the route
+ * can answer 401 and the app can refresh the login instead of silently
+ * downgrading to anonymous limits.
+ */
+export async function identifyCaller(
+  request: Request,
+  env: Env,
+  verifyToken: (token: string, projectId: string) => Promise<string | null> = verifyFirebaseToken
+): Promise<ProxyCaller | null> {
+  const authorization = request.headers.get('Authorization');
+  const firebaseToken = authorization?.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : undefined;
+  if (!firebaseToken) {
+    return {
+      tier: 'anonymous',
+      key: `ip:${request.headers.get('CF-Connecting-IP') || 'unknown'}`,
+    };
+  }
+  const uid = await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID);
+  return uid ? { tier: 'signed-in', key: `uid:${uid}` } : null;
+}
+
+const missingRateLimiterWarnings = new Set<string>();
+
+/** Returns true when the caller is within its request-rate allowance. */
+export async function consumeCallerRateLimit(caller: ProxyCaller, env: Env): Promise<boolean> {
+  const bindingName = caller.tier === 'anonymous' ? 'ANON_RATE_LIMITER' : 'USER_RATE_LIMITER';
+  const limiter = env[bindingName];
+  if (!limiter) {
+    if (!missingRateLimiterWarnings.has(bindingName)) {
+      missingRateLimiterWarnings.add(bindingName);
+      console.warn(`[RateLimit] ${bindingName} binding is not configured; failing open.`);
+    }
+    return true;
+  }
+  try {
+    return (await limiter.limit({ key: caller.key })).success;
+  } catch (error) {
+    console.error(`[RateLimit] ${bindingName} failed; failing open.`, error);
+    return true;
+  }
+}
+
+/**
+ * Proxy-owned 429 that the app can tell apart from a target 429 through the
+ * `X-MCP-Proxy-Limit` header and the JSON marker body.
+ */
+export function callerLimitResponse(
+  caller: ProxyCaller,
+  corsHeaders: Record<string, string>,
+  limit: CallerLimitKind = 'requests'
+): Response {
+  const signInLiftsLimit = caller.tier === 'anonymous';
+  const message = limit === 'requests'
+    ? signInLiftsLimit
+      ? `Anonymous mcptest proxy limit reached (${ANONYMOUS_REQUESTS_PER_PERIOD} requests per ${RATE_LIMIT_PERIOD_SECONDS}s). Sign in to lift the limit.`
+      : `mcptest proxy limit reached (${SIGNED_IN_REQUESTS_PER_PERIOD} requests per ${RATE_LIMIT_PERIOD_SECONDS}s). Retry shortly.`
+    : `Anonymous mcptest proxy responses are limited to ${ANONYMOUS_MAX_RESPONSE_BYTES} bytes. Sign in to lift the limit.`;
+  return new Response(JSON.stringify({
+    error: 'rate_limited',
+    tier: caller.tier,
+    limit,
+    signInLiftsLimit,
+    message,
+  }), {
+    status: 429,
+    headers: {
+      ...corsHeaders,
+      ...(limit === 'requests' ? { 'Retry-After': String(RATE_LIMIT_PERIOD_SECONDS) } : {}),
+      'Cache-Control': 'no-store',
+      'Content-Type': 'application/json',
+      [PROXY_LIMIT_HEADER]: caller.tier,
+      [PROXY_RESPONSE_SOURCE_HEADER]: 'proxy',
+    },
+  });
+}
+
+/**
+ * Wraps a streamed body in a counting TransformStream that errors the stream
+ * once the byte budget or lifetime is exceeded. Erroring (rather than closing)
+ * makes the truncation visible to the client and cancels the upstream fetch.
+ */
+export function limitResponseBody(
+  body: ReadableStream<Uint8Array>,
+  { maxBytes, maxDurationMs }: ResponseBodyLimits
+): ReadableStream<Uint8Array> {
+  let transferredBytes = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stopTimer = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>({
+    start(controller) {
+      if (maxDurationMs === undefined) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        controller.error(new Error(
+          `Anonymous mcptest proxy stream lifetime of ${maxDurationMs}ms exceeded. Sign in to lift the limit.`
+        ));
+      }, maxDurationMs);
+    },
+    transform(chunk, controller) {
+      transferredBytes += chunk.byteLength;
+      if (maxBytes !== undefined && transferredBytes > maxBytes) {
+        stopTimer();
+        controller.error(new Error(
+          `Anonymous mcptest proxy response limit of ${maxBytes} bytes exceeded. Sign in to lift the limit.`
+        ));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+    flush() {
+      stopTimer();
+    },
+  });
+  body.pipeTo(writable).catch(() => {}).finally(stopTimer);
+  return readable;
+}
 
 type ProxyResponseSource = 'proxy' | 'target';
 
@@ -139,6 +317,8 @@ const oauthCorsHeaders = (
     'Access-Control-Expose-Headers': [
       PROXY_RESPONSE_SOURCE_HEADER,
       OAUTH_RELAY_FAILURE_HEADER,
+      PROXY_LIMIT_HEADER,
+      'Retry-After',
     ].join(', '),
     'Cache-Control': 'no-store',
     'Vary': 'Origin',
@@ -816,16 +996,14 @@ export async function handleOAuthTokenRequest(
   if (mediaType !== OAUTH_FORM_CONTENT_TYPE) {
     return oauthRouteError(request, 'Error: OAuth token proxy requires form-urlencoded content.', 415);
   }
-  const authorization = request.headers.get('Authorization');
-  const firebaseToken = authorization?.startsWith('Bearer ')
-    ? authorization.slice('Bearer '.length)
-    : undefined;
-  if (!firebaseToken) {
-    return oauthRouteError(request, 'Error: Authentication required. Sign in to mcptest.', 401);
-  }
-  const verifyToken = dependencies.verifyToken || verifyFirebaseToken;
-  if (!await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID)) {
+  // The Firebase login is optional: it only lifts the caller's limits. A
+  // present but invalid token still fails so the app can refresh it.
+  const caller = await identifyCaller(request, env, dependencies.verifyToken);
+  if (!caller) {
     return oauthRouteError(request, 'Error: Invalid authentication token. Sign in again.', 401);
+  }
+  if (!await consumeCallerRateLimit(caller, env)) {
+    return callerLimitResponse(caller, oauthCorsHeaders(request));
   }
 
   try {
@@ -937,8 +1115,8 @@ export async function handleOAuthTokenRequest(
 
 /**
  * Returns only the public client ID for an exact operator-approved
- * resource/issuer pair. The Firebase credential and user identity are used
- * solely for authentication and are never logged or serialized.
+ * resource/issuer pair. The optional Firebase credential and user identity are
+ * used solely to select the caller's limits and are never logged or serialized.
  */
 export async function handleOAuthOperatorClientRequest(
   request: Request,
@@ -964,26 +1142,17 @@ export async function handleOAuthOperatorClientRequest(
       405
     );
   }
-  const authorization = request.headers.get('Authorization');
-  const firebaseToken = authorization?.startsWith('Bearer ')
-    ? authorization.slice('Bearer '.length)
-    : undefined;
-  if (!firebaseToken) {
-    return oauthRouteJsonError(
-      request,
-      'authentication_required',
-      'Sign in to mcptest before requesting an operator OAuth client.',
-      401
-    );
-  }
-  const verifyToken = dependencies.verifyToken || verifyFirebaseToken;
-  if (!await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID)) {
+  const caller = await identifyCaller(request, env, dependencies.verifyToken);
+  if (!caller) {
     return oauthRouteJsonError(
       request,
       'authentication_required',
       'The mcptest login is invalid or expired.',
       401
     );
+  }
+  if (!await consumeCallerRateLimit(caller, env)) {
+    return callerLimitResponse(caller, oauthCorsHeaders(request));
   }
 
   const resourceHeader = request.headers.get('X-MCP-OAuth-Resource');
@@ -1325,16 +1494,14 @@ export async function handleOAuthRegistrationRequest(
   if (mediaType !== OAUTH_JSON_CONTENT_TYPE) {
     return oauthRouteError(request, 'Error: OAuth registration proxy requires JSON content.', 415);
   }
-  const authorization = request.headers.get('Authorization');
-  const firebaseToken = authorization?.startsWith('Bearer ')
-    ? authorization.slice('Bearer '.length)
-    : undefined;
-  if (!firebaseToken) {
-    return oauthRouteError(request, 'Error: Authentication required. Sign in to mcptest.', 401);
-  }
-  const verifyToken = dependencies.verifyToken || verifyFirebaseToken;
-  if (!await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID)) {
+  // The Firebase login is optional: it only lifts the caller's limits. A
+  // present but invalid token still fails so the app can refresh it.
+  const caller = await identifyCaller(request, env, dependencies.verifyToken);
+  if (!caller) {
     return oauthRouteError(request, 'Error: Invalid authentication token. Sign in again.', 401);
+  }
+  if (!await consumeCallerRateLimit(caller, env)) {
+    return callerLimitResponse(caller, oauthCorsHeaders(request));
   }
 
   try {
@@ -1646,6 +1813,126 @@ const FIREBASE_PUBLIC_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x
 let publicKeysCache: Record<string, string> | null = null;
 let publicKeysCacheExpiry = 0;
 
+type ProxyRouteDependencies = {
+  /** Test seam for the runtime's global, strictly-public fetch primitive. */
+  fetchImpl?: (request: Request) => Promise<Response>;
+  verifyToken?: (token: string, projectId: string) => Promise<string | null>;
+  /** Test seam; production always uses the anonymous spend-cap constants. */
+  anonymousResponseLimits?: ResponseBodyLimits;
+};
+
+/**
+ * Applies the anonymous bandwidth cap to a proxied target response. Returns a
+ * proxy-owned 429 when the declared length already exceeds the byte budget.
+ */
+function applyCallerResponseLimits(
+  response: Response,
+  caller: ProxyCaller,
+  limits: ResponseBodyLimits
+): Response {
+  if (caller.tier !== 'anonymous' || !response.body) return response;
+  const declaredLength = Number(response.headers.get('Content-Length'));
+  if (
+    limits.maxBytes !== undefined
+    && Number.isFinite(declaredLength)
+    && declaredLength > limits.maxBytes
+  ) {
+    void response.body.cancel().catch(() => {});
+    return callerLimitResponse(caller, getCorsHeaders(), 'response_bytes');
+  }
+  return new Response(limitResponseBody(response.body, limits), response);
+}
+
+export async function handleProxyRequest(
+  request: Request,
+  env: Env,
+  dependencies: ProxyRouteDependencies = {}
+): Promise<Response> {
+  // Handle CORS preflight requests
+  if (request.method === 'OPTIONS') {
+    return handleOptions(request);
+  }
+
+  const url = new URL(request.url);
+  // Extract the target URL from query string
+  const targetUrl = url.searchParams.get('target');
+
+  if (!targetUrl) {
+    return new Response('Error: Missing "target" query parameter.', {
+      status: 400,
+      headers: getCorsHeaders()
+    });
+  }
+
+  // Validate the target URL
+  let target: URL;
+  try {
+    target = new URL(targetUrl);
+  } catch (e) {
+    return new Response('Error: Invalid "target" URL provided.', {
+      status: 400,
+      headers: getCorsHeaders()
+    });
+  }
+
+  // Security: Only allow http and https protocols
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    return new Response('Error: Target URL must use http or https protocol.', {
+      status: 400,
+      headers: getCorsHeaders()
+    });
+  }
+
+  try {
+    // The Firebase login is read from the header only and is optional: no
+    // token is the anonymous tier, a valid token lifts the limits. Proxy
+    // credentials must never be placed in URLs, including for streaming
+    // transports.
+    const caller = await identifyCaller(request, env, dependencies.verifyToken);
+    if (!caller) {
+      return new Response('Error: Invalid authentication token. Please login again.', {
+        status: 401,
+        headers: getCorsHeaders()
+      });
+    }
+    if (!await consumeCallerRateLimit(caller, env)) {
+      return callerLimitResponse(caller, getCorsHeaders());
+    }
+
+    // Create a new request to the target URL
+    const headers = getTargetRequestHeaders(request.headers);
+
+    const newRequest = new Request(target.toString(), {
+      method: request.method,
+      headers: headers,
+      body: request.body,
+      redirect: 'manual',
+    });
+
+    // Make the actual request to the target server
+    const response = await fetchTargetRequest(newRequest, dependencies.fetchImpl);
+
+    return applyCallerResponseLimits(
+      withCorsResponseHeaders(response, 'target'),
+      caller,
+      dependencies.anonymousResponseLimits || {
+        maxBytes: ANONYMOUS_MAX_RESPONSE_BYTES,
+        maxDurationMs: ANONYMOUS_MAX_STREAM_DURATION_MS,
+      }
+    );
+
+  } catch (error) {
+    console.error('Proxy error:', error);
+    if (error instanceof Response) {
+      return withCorsResponseHeaders(error, 'proxy');
+    }
+    return new Response('Error: Could not complete the proxy request.', {
+      status: 502,
+      headers: getCorsHeaders()
+    });
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -1658,93 +1945,7 @@ export default {
     if (url.pathname === OAUTH_OPERATOR_CLIENT_PATH) {
       return handleOAuthOperatorClientRequest(request, env);
     }
-
-    // Handle CORS preflight requests
-    if (request.method === 'OPTIONS') {
-      return handleOptions(request);
-    }
-
-    // Extract the target URL from query string
-    const targetUrl = url.searchParams.get('target');
-
-    if (!targetUrl) {
-      return new Response('Error: Missing "target" query parameter.', { 
-        status: 400,
-        headers: getCorsHeaders()
-      });
-    }
-
-    // Validate the target URL
-    let target: URL;
-    try {
-      target = new URL(targetUrl);
-    } catch (e) {
-      return new Response('Error: Invalid "target" URL provided.', { 
-        status: 400,
-        headers: getCorsHeaders()
-      });
-    }
-
-    // Security: Only allow http and https protocols
-    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
-      return new Response('Error: Target URL must use http or https protocol.', { 
-        status: 400,
-        headers: getCorsHeaders()
-      });
-    }
-
-    // Verify authentication from the header only. Proxy credentials must never
-    // be placed in URLs, including for streaming transports.
-    let token: string | null = null;
-    
-    // First check Authorization header
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    }
-    
-    if (!token) {
-      return new Response('Error: Authentication required. Please login to use the proxy.', { 
-        status: 401,
-        headers: getCorsHeaders()
-      });
-    }
-    
-    try {
-      // Verify the Firebase JWT token
-      const uid = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID);
-      if (!uid) {
-        return new Response('Error: Invalid authentication token. Please login again.', { 
-          status: 401,
-          headers: getCorsHeaders()
-        });
-      }
-
-      // Create a new request to the target URL
-      const headers = getTargetRequestHeaders(request.headers);
-
-      const newRequest = new Request(target.toString(), {
-        method: request.method,
-        headers: headers,
-        body: request.body,
-        redirect: 'manual',
-      });
-
-      // Make the actual request to the target server
-      const response = await fetchTargetRequest(newRequest);
-
-      return withCorsResponseHeaders(response, 'target');
-
-    } catch (error) {
-      console.error('Proxy error:', error);
-      if (error instanceof Response) {
-        return withCorsResponseHeaders(error, 'proxy');
-      }
-      return new Response('Error: Could not complete the proxy request.', { 
-        status: 502,
-        headers: getCorsHeaders()
-      });
-    }
+    return handleProxyRequest(request, env);
   },
 };
 
@@ -1825,7 +2026,11 @@ function getCorsHeaders(
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': allowedHeaders,
-    'Access-Control-Expose-Headers': PROXY_RESPONSE_SOURCE_HEADER,
+    'Access-Control-Expose-Headers': [
+      PROXY_RESPONSE_SOURCE_HEADER,
+      PROXY_LIMIT_HEADER,
+      'Retry-After',
+    ].join(', '),
     [PROXY_RESPONSE_SOURCE_HEADER]: source,
   };
 }

@@ -63,6 +63,7 @@ const renderConnectionHook = (
   });
 
   return {
+    addLogEntry,
     get connection() {
       if (!connection) throw new Error('Connection hook was not rendered');
       return connection;
@@ -1062,26 +1063,76 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
-  it('shows the proxy-login prerequisite when fallback is enabled without a login', async () => {
+  it('falls back to the proxy without a login and attaches no proxy token', async () => {
     const endpoint = 'https://mcp.slack.com/mcp';
-    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
-    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
-      new TypeError('Failed to fetch'),
-    ]));
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
     const view = renderConnectionHook(undefined, true);
 
     await act(async () => {
       await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
     });
 
-    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[1][0]).toBe(
+      `${proxyUrl}?target=${encodeURIComponent(endpoint)}`
+    );
+    expect(connectionMocks.attempt.mock.calls[1][2]).toBeUndefined();
+    expect(connectionMocks.attempt.mock.calls[1][4]).toBe(true);
+    expect(view.connection.connectionStatus).toBe('Connected');
+    expect(view.connection.oauthPrerequisite).toBeNull();
+    expect(view.connection.connectionError).toBeNull();
+    view.unmount();
+  });
+
+  it('shows a sign-in-to-lift message when the anonymous proxy limit is hit', async () => {
+    const endpoint = 'https://mcp.slack.com/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const proxyRequestUrl = `${proxyUrl}?target=${encodeURIComponent(endpoint)}`;
+    const limitError = new Error('Streamable HTTP error: 429');
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockRejectedValueOnce(new TransportConnectionError([limitError], [{
+        candidateUrl: proxyRequestUrl,
+        transportType: 'streamable-http',
+        error: limitError,
+        observedRequests: [{
+          method: 'POST',
+          url: proxyRequestUrl,
+          status: 429,
+          responseSource: 'proxy',
+          proxyLimit: { tier: 'anonymous', retryAfterSeconds: 60 },
+          outcome: 'failed',
+        }],
+      }]));
+    const view = renderConnectionHook(undefined, true);
+    const addLogEntry = view.addLogEntry;
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
     expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(view.connection.connectionStatus).toBe('Proxy limit reached');
+    expect(view.connection.connectionError).toBeNull();
     expect(view.connection.needsOAuthConfig).toBe(true);
     expect(view.connection.oauthPrerequisite).toMatchObject({
-      kind: 'proxy_authentication_required',
+      kind: 'proxy_limit_reached',
+      explanation: expect.stringContaining('Sign in with Google to lift the limit'),
     });
-    expect(view.connection.connectionStatus).toBe('Proxy authentication required');
-    expect(view.connection.connectionError).toBeNull();
+    expect(addLogEntry).toHaveBeenCalledWith({
+      type: 'warning',
+      data: expect.stringContaining('Anonymous mcptest proxy limit reached'),
+    });
     view.unmount();
   });
 
@@ -1179,33 +1230,39 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
-  it('shows proxy login instead of HTTP 200 guidance for the same mid-handshake failure', async () => {
+  it('retries the same mid-handshake failure through the proxy without a login', async () => {
     const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
     const terminalError = new TypeError('Failed to fetch');
-    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
-    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError(
-      [terminalError],
-      [{
-        candidateUrl: endpoint,
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError(
+        [terminalError],
+        [{
+          candidateUrl: endpoint,
+          transportType: 'streamable-http',
+          error: terminalError,
+          observedRequests: [
+            { method: 'POST', mcpMethod: 'initialize', url: endpoint, status: 200, outcome: 'succeeded' },
+            { method: 'POST', mcpMethod: 'notifications/initialized', url: endpoint, outcome: 'failed' },
+          ],
+        }]
+      ))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
         transportType: 'streamable-http',
-        error: terminalError,
-        observedRequests: [
-          { method: 'POST', mcpMethod: 'initialize', url: endpoint, status: 200, outcome: 'succeeded' },
-          { method: 'POST', mcpMethod: 'notifications/initialized', url: endpoint, outcome: 'failed' },
-        ],
-      }]
-    ));
+        protocolEra: 'stateful',
+      });
     const view = renderConnectionHook(undefined, true);
 
     await act(async () => {
       await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
     });
 
-    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
-    expect(view.connection.connectionStatus).toBe('Proxy authentication required');
-    expect(view.connection.oauthPrerequisite).toMatchObject({
-      kind: 'proxy_authentication_required',
-    });
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(view.connection.connectionStatus).toBe('Connected');
+    expect(view.connection.oauthPrerequisite).toBeNull();
     expect(view.connection.connectionError).toBeNull();
     view.unmount();
   });

@@ -432,7 +432,7 @@ describe('release readiness integration', () => {
     const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
 
     expect(facts.authorization.requirement.value).toBe('unknown');
-    expect(facts.authorization.requirement.evidence[0].description).toContain('Proxy login');
+    expect(facts.authorization.requirement.evidence[0].description).toContain('invalid or expired login');
     expect(decision.status).toBe('unknown');
     expect(decision.answer).toContain('mcptest login');
     expect(decision.priorities[0].title).toBe('Sign in to mcptest');

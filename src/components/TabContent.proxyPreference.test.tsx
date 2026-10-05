@@ -136,16 +136,36 @@ describe('rendered anonymous proxy preference', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows the proxy-login prerequisite from a default proxy-enabled new tab', async () => {
+  it('uses the proxy without a login and offers sign-in when the anonymous limit is hit', async () => {
+    const proxyUrl = `https://proxy.mcptest.test/?target=${encodeURIComponent('https://mcp.slack.com/mcp')}`;
+    const limitError = new Error('Streamable HTTP error: 429');
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockRejectedValueOnce(new TransportConnectionError([limitError], [{
+        candidateUrl: proxyUrl,
+        transportType: 'streamable-http',
+        error: limitError,
+        observedRequests: [{
+          method: 'POST',
+          url: proxyUrl,
+          status: 429,
+          responseSource: 'proxy',
+          proxyLimit: { tier: 'anonymous', retryAfterSeconds: 60 },
+          outcome: 'failed',
+        }],
+      }]));
     const view = renderNewTab();
 
     await connectToSlack(view.container);
 
-    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[1][0]).toBe(proxyUrl);
+    expect(connectionMocks.attempt.mock.calls[1][2]).toBeUndefined();
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(true);
-    expect(view.container.textContent).toContain('mcptest proxy authentication required');
-    expect(view.container.textContent).toContain('Sign in with Google to use the proxy');
+    expect(view.container.textContent).toContain('mcptest proxy limit reached');
+    expect(view.container.textContent).toContain('Sign in with Google to lift the limit');
     expect(view.container.textContent).not.toContain('MCP Server Connection Failed');
+    expect(view.container.textContent).not.toContain('mcptest proxy authentication required');
 
     const connectionPanel = view.container.querySelector('.connection-console');
     const prerequisitePanel = view.container.querySelector('.oauth-prerequisite-panel');

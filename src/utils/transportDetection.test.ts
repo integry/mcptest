@@ -5,6 +5,7 @@ import {
   TransportConnectionError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  getProxyCallerLimit,
   getRequestHeadersForCandidate,
   getTransportCandidates,
   inspectSafeTargetError,
@@ -368,6 +369,69 @@ describe('transport candidate generation', () => {
       )
     );
     expect(containsTargetError(connectionError)).toBe(true);
+  });
+
+  it('records the anonymous proxy caller limit without treating it as a target error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      signInLiftsLimit: true,
+    }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Retry-After': '60',
+        'X-MCP-Proxy-Limit': 'anonymous',
+        'X-MCP-Proxy-Response-Source': 'proxy',
+      },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch?.(endpoint);
+      throw Object.assign(new Error('Streamable HTTP error'), { status: response?.status });
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(getProxyCallerLimit(connectionError)).toEqual({ tier: 'anonymous', retryAfterSeconds: 60 });
+    expect(getObservedAuthenticationChallenge(connectionError)).toBeUndefined();
+  });
+
+  it('ignores a target 429 that carries no proxy limit marker', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response('Too many', {
+      status: 429,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target', 'X-MCP-Proxy-Limit': 'anonymous' },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch?.(endpoint);
+      throw Object.assign(new Error('Streamable HTTP error'), { status: response?.status });
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(connectionError).toBeDefined();
+    expect(getProxyCallerLimit(connectionError)).toBeUndefined();
   });
 
   it('preserves a target authentication challenge observed through the proxy', async () => {
