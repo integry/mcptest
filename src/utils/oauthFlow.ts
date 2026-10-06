@@ -15,6 +15,7 @@ import {
 } from '@modelcontextprotocol/client';
 import publishedClientMetadata from '../../public/oauth/client-metadata.json';
 import {
+  decodeProxyLimitSignal,
   findProxyCallerLimitError,
   ProxyCallerLimitError,
   readProxyCallerLimit,
@@ -1098,7 +1099,7 @@ const createCorsFallbackDiscoveryFetch = (
     ? 'target'
     : 'proxy';
   throwOnProxyCallerLimit(response, source);
-  return markOAuthTraceResponseOrigin(response, { route: 'proxy', source });
+  return markOAuthTraceResponseOrigin(decodeProxyLimitSignal(response), { route: 'proxy', source });
 };
 
 const requestMethodAndUrl = (

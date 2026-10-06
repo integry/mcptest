@@ -74,6 +74,16 @@ export const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
 export const OAUTH_RELAY_FAILURE_HEADER = 'X-MCP-OAuth-Relay-Failure';
 /** Marks a proxy-owned caller-limit 429; the value is the caller tier. */
 export const PROXY_LIMIT_HEADER = 'X-MCP-Proxy-Limit';
+/**
+ * Present on anonymous proxied target responses. Its value is a per-response
+ * token; when the proxy cuts the body off at a caller limit it appends
+ * `PROXY_LIMIT_TRAILER_PREFIX + token + "\n" + JSON reason` and closes the
+ * stream, so the browser can tell a proxy limit from a dropped connection.
+ */
+/** On a proxy-owned caller-limit 429: which limit was hit. */
+export const PROXY_LIMIT_KIND_HEADER = 'X-MCP-Proxy-Limit-Kind';
+export const PROXY_LIMIT_SIGNAL_HEADER = 'X-MCP-Proxy-Limit-Signal';
+export const PROXY_LIMIT_TRAILER_PREFIX = '\u0000mcptest-proxy-limit:';
 const REQUIRED_CORS_REQUEST_HEADERS = [
   'Accept',
   'Authorization',
@@ -105,6 +115,8 @@ const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
  * - Request rate alone does not bound bandwidth: one request can stream for
  *   hours. Anonymous responses are therefore cut off after a byte budget and a
  *   wall-clock lifetime, which bounds sustained bandwidth per request.
+ *   Anonymous request bodies have their own byte budget so uploads are bounded
+ *   before they reach the target, not only the (possibly tiny) response.
  *
  * Signing in lifts the limits: signed-in callers get a 10x request allowance
  * keyed by Firebase uid and no response size or duration cap.
@@ -114,6 +126,7 @@ export const ANONYMOUS_REQUESTS_PER_PERIOD = 60;
 export const SIGNED_IN_REQUESTS_PER_PERIOD = 600;
 export const ANONYMOUS_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 export const ANONYMOUS_MAX_STREAM_DURATION_MS = 5 * 60 * 1000;
+export const ANONYMOUS_MAX_REQUEST_BYTES = 1024 * 1024;
 
 export type CallerTier = 'anonymous' | 'signed-in';
 
@@ -126,9 +139,11 @@ export interface ProxyCaller {
 export interface ResponseBodyLimits {
   maxBytes?: number;
   maxDurationMs?: number;
+  /** When set, a limit cut-off appends the signal trailer and closes cleanly. */
+  signalToken?: string;
 }
 
-type CallerLimitKind = 'requests' | 'response_bytes';
+type CallerLimitKind = 'requests' | 'request_bytes' | 'response_bytes' | 'stream_duration';
 
 /**
  * Identifies the caller from an optional Firebase bearer token. A missing token
@@ -190,7 +205,9 @@ export function callerLimitResponse(
     ? signInLiftsLimit
       ? `Anonymous mcptest proxy limit reached (${ANONYMOUS_REQUESTS_PER_PERIOD} requests per ${RATE_LIMIT_PERIOD_SECONDS}s). Sign in to lift the limit.`
       : `mcptest proxy limit reached (${SIGNED_IN_REQUESTS_PER_PERIOD} requests per ${RATE_LIMIT_PERIOD_SECONDS}s). Retry shortly.`
-    : `Anonymous mcptest proxy responses are limited to ${ANONYMOUS_MAX_RESPONSE_BYTES} bytes. Sign in to lift the limit.`;
+    : limit === 'request_bytes'
+      ? `Anonymous mcptest proxy request bodies are limited to ${ANONYMOUS_MAX_REQUEST_BYTES} bytes. Sign in to lift the limit.`
+      : `Anonymous mcptest proxy responses are limited to ${ANONYMOUS_MAX_RESPONSE_BYTES} bytes. Sign in to lift the limit.`;
   return new Response(JSON.stringify({
     error: 'rate_limited',
     tier: caller.tier,
@@ -205,19 +222,37 @@ export function callerLimitResponse(
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json',
       [PROXY_LIMIT_HEADER]: caller.tier,
+      [PROXY_LIMIT_KIND_HEADER]: limit,
       [PROXY_RESPONSE_SOURCE_HEADER]: 'proxy',
     },
   });
 }
 
+/** Bytes the proxy appends to a body it cut off at an anonymous caller limit. */
+export function proxyLimitTrailer(
+  signalToken: string,
+  limit: Extract<CallerLimitKind, 'response_bytes' | 'stream_duration'>,
+  message: string
+): Uint8Array {
+  return new TextEncoder().encode(`${PROXY_LIMIT_TRAILER_PREFIX}${signalToken}\n${JSON.stringify({
+    error: 'rate_limited',
+    tier: 'anonymous',
+    limit,
+    signInLiftsLimit: true,
+    message,
+  })}`);
+}
+
 /**
- * Wraps a streamed body in a counting TransformStream that errors the stream
- * once the byte budget or lifetime is exceeded. Erroring (rather than closing)
- * makes the truncation visible to the client and cancels the upstream fetch.
+ * Wraps a streamed body in a counting TransformStream that ends the stream
+ * once the byte budget or lifetime is exceeded, which also cancels the
+ * upstream fetch. With a signal token the cut-off is announced in-band through
+ * the limit trailer (an errored stream reaches the browser only as an
+ * anonymous network failure); without one the stream is errored.
  */
 export function limitResponseBody(
   body: ReadableStream<Uint8Array>,
-  { maxBytes, maxDurationMs }: ResponseBodyLimits
+  { maxBytes, maxDurationMs, signalToken }: ResponseBodyLimits
 ): ReadableStream<Uint8Array> {
   let transferredBytes = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -225,23 +260,39 @@ export function limitResponseBody(
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
+  const cutOff = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    limit: 'response_bytes' | 'stream_duration',
+    message: string
+  ) => {
+    stopTimer();
+    if (signalToken === undefined) {
+      controller.error(new Error(message));
+      return;
+    }
+    controller.enqueue(proxyLimitTrailer(signalToken, limit, message));
+    controller.terminate();
+  };
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>({
     start(controller) {
       if (maxDurationMs === undefined) return;
       timer = setTimeout(() => {
         timer = undefined;
-        controller.error(new Error(
+        cutOff(
+          controller,
+          'stream_duration',
           `Anonymous mcptest proxy stream lifetime of ${maxDurationMs}ms exceeded. Sign in to lift the limit.`
-        ));
+        );
       }, maxDurationMs);
     },
     transform(chunk, controller) {
       transferredBytes += chunk.byteLength;
       if (maxBytes !== undefined && transferredBytes > maxBytes) {
-        stopTimer();
-        controller.error(new Error(
+        cutOff(
+          controller,
+          'response_bytes',
           `Anonymous mcptest proxy response limit of ${maxBytes} bytes exceeded. Sign in to lift the limit.`
-        ));
+        );
         return;
       }
       controller.enqueue(chunk);
@@ -252,6 +303,37 @@ export function limitResponseBody(
   });
   body.pipeTo(writable).catch(() => {}).finally(stopTimer);
   return readable;
+}
+
+/** Thrown into an anonymous upload stream when it exceeds the request budget. */
+class RequestBodyLimitExceeded extends Error {}
+
+/**
+ * Counts an anonymous request body as it is forwarded and errors it before
+ * the chunk that would exceed the budget is sent, which aborts the upstream
+ * fetch. `exceeded()` lets the route answer with a marked proxy limit.
+ */
+export function limitRequestBody(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number
+): { body: ReadableStream<Uint8Array>; exceeded: () => boolean } {
+  let forwardedBytes = 0;
+  let exceeded = false;
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      forwardedBytes += chunk.byteLength;
+      if (forwardedBytes > maxBytes) {
+        exceeded = true;
+        controller.error(new RequestBodyLimitExceeded(
+          `Anonymous mcptest proxy request body limit of ${maxBytes} bytes exceeded.`
+        ));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  body.pipeTo(writable).catch(() => {});
+  return { body: readable, exceeded: () => exceeded };
 }
 
 type ProxyResponseSource = 'proxy' | 'target';
@@ -318,6 +400,7 @@ const oauthCorsHeaders = (
       PROXY_RESPONSE_SOURCE_HEADER,
       OAUTH_RELAY_FAILURE_HEADER,
       PROXY_LIMIT_HEADER,
+      PROXY_LIMIT_KIND_HEADER,
       'Retry-After',
     ].join(', '),
     'Cache-Control': 'no-store',
@@ -1819,6 +1902,8 @@ type ProxyRouteDependencies = {
   verifyToken?: (token: string, projectId: string) => Promise<string | null>;
   /** Test seam; production always uses the anonymous spend-cap constants. */
   anonymousResponseLimits?: ResponseBodyLimits;
+  /** Test seam; production always uses ANONYMOUS_MAX_REQUEST_BYTES. */
+  anonymousMaxRequestBytes?: number;
 };
 
 /**
@@ -1840,7 +1925,21 @@ function applyCallerResponseLimits(
     void response.body.cancel().catch(() => {});
     return callerLimitResponse(caller, getCorsHeaders(), 'response_bytes');
   }
-  return new Response(limitResponseBody(response.body, limits), response);
+  const signalToken = crypto.randomUUID();
+  const limited = new Response(
+    limitResponseBody(response.body, { ...limits, signalToken }),
+    response
+  );
+  // The trailer makes the body longer than any declared length.
+  limited.headers.delete('Content-Length');
+  limited.headers.set(PROXY_LIMIT_SIGNAL_HEADER, signalToken);
+  limited.headers.set(
+    'Access-Control-Expose-Headers',
+    [limited.headers.get('Access-Control-Expose-Headers'), PROXY_LIMIT_SIGNAL_HEADER]
+      .filter(Boolean)
+      .join(', ')
+  );
+  return limited;
 }
 
 export async function handleProxyRequest(
@@ -1895,22 +1994,55 @@ export async function handleProxyRequest(
         headers: getCorsHeaders()
       });
     }
+    const maxRequestBytes = caller.tier === 'anonymous'
+      ? dependencies.anonymousMaxRequestBytes ?? ANONYMOUS_MAX_REQUEST_BYTES
+      : undefined;
+    const declaredRequestLength = Number(request.headers.get('Content-Length'));
+    if (
+      maxRequestBytes !== undefined
+      && Number.isFinite(declaredRequestLength)
+      && declaredRequestLength > maxRequestBytes
+    ) {
+      void request.body?.cancel().catch(() => {});
+      return callerLimitResponse(caller, getCorsHeaders(), 'request_bytes');
+    }
     if (!await consumeCallerRateLimit(caller, env)) {
       return callerLimitResponse(caller, getCorsHeaders());
     }
 
     // Create a new request to the target URL
     const headers = getTargetRequestHeaders(request.headers);
+    // A declared length can understate a streamed body, so the budget is also
+    // enforced on the bytes actually forwarded.
+    const limitedRequestBody = request.body && maxRequestBytes !== undefined
+      ? limitRequestBody(request.body, maxRequestBytes)
+      : undefined;
+    if (limitedRequestBody) headers.delete('Content-Length');
 
     const newRequest = new Request(target.toString(), {
       method: request.method,
       headers: headers,
-      body: request.body,
+      body: limitedRequestBody?.body ?? request.body,
       redirect: 'manual',
-    });
+      ...(request.body ? { duplex: 'half' } : {}),
+    } as RequestInit);
 
     // Make the actual request to the target server
-    const response = await fetchTargetRequest(newRequest, dependencies.fetchImpl);
+    let response: Response;
+    try {
+      response = await fetchTargetRequest(newRequest, dependencies.fetchImpl);
+    } catch (error) {
+      if (limitedRequestBody?.exceeded()) {
+        return callerLimitResponse(caller, getCorsHeaders(), 'request_bytes');
+      }
+      throw error;
+    }
+    if (limitedRequestBody?.exceeded()) {
+      // The target answered before the upload finished; the excess was not
+      // forwarded, and the caller still learns why the body was cut off.
+      void response.body?.cancel().catch(() => {});
+      return callerLimitResponse(caller, getCorsHeaders(), 'request_bytes');
+    }
 
     return applyCallerResponseLimits(
       withCorsResponseHeaders(response, 'target'),
@@ -2029,6 +2161,7 @@ function getCorsHeaders(
     'Access-Control-Expose-Headers': [
       PROXY_RESPONSE_SOURCE_HEADER,
       PROXY_LIMIT_HEADER,
+      PROXY_LIMIT_KIND_HEADER,
       'Retry-After',
     ].join(', '),
     [PROXY_RESPONSE_SOURCE_HEADER]: source,

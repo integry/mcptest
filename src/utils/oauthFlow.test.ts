@@ -2900,6 +2900,49 @@ describe('OAuth provider interoperability matrix', () => {
     ]);
   });
 
+  it('surfaces a proxy limit that cut off a streamed discovery response as a caller limit', async () => {
+    const target = 'https://cutoff.example/mcp';
+    const resourceMetadataUrl = 'https://cutoff.example/.well-known/oauth-protected-resource';
+    const issuer = 'https://issuer.cutoff.example';
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      throw new TypeError('Failed to fetch');
+    };
+    const proxyFetch: FetchLike = async () => new Response(
+      '{"issuer":"https://issuer.cutoff.example","padding":"'
+        + '\u0000mcptest-proxy-limit:signal-token\n'
+        + '{"error":"rate_limited","tier":"anonymous","limit":"response_bytes","signInLiftsLimit":true}',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-MCP-Proxy-Response-Source': 'target',
+          'X-MCP-Proxy-Limit-Signal': 'signal-token',
+        },
+      }
+    );
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        fetchFn: directFetch,
+        discoveryProxy: { url: 'https://proxy.mcptest.test/', fetchFn: proxyFetch },
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'proxy_limit_reached',
+      providerName: 'mcptest proxy',
+      explanation: expect.stringContaining('Sign in with Google to lift the limit'),
+    });
+  });
+
   it('stops at a proxy-owned discovery response instead of treating it as provider metadata', async () => {
     const target = 'https://noncors.example/mcp';
     const resourceMetadataUrl = 'https://noncors.example/.well-known/oauth-protected-resource';

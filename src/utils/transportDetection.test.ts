@@ -407,6 +407,45 @@ describe('transport candidate generation', () => {
     expect(getObservedAuthenticationChallenge(connectionError)).toBeUndefined();
   });
 
+  it('records a proxy limit that cut off a streamed target response without a declared length', async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"jsonrpc":"2.0","id":1,"result":{"padding":"'));
+        controller.enqueue(encoder.encode(
+          '\u0000mcptest-proxy-limit:signal-token\n{"error":"rate_limited","tier":"anonymous","limit":"response_bytes","signInLiftsLimit":true}'
+        ));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-MCP-Proxy-Response-Source': 'target',
+        'X-MCP-Proxy-Limit-Signal': 'signal-token',
+      },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch!(endpoint);
+      await response.json();
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(getProxyCallerLimit(connectionError)).toEqual({ tier: 'anonymous', kind: 'response_bytes' });
+  });
+
   it('ignores a target 429 that carries no proxy limit marker', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response('Too many', {
       status: 429,

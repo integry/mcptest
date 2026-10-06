@@ -66,21 +66,33 @@ The proxy never validates, allowlists, or handshake-gates the target: people leg
 broken and non-compliant MCP servers. Instead it limits the caller. The limits double as the
 spend cap for the ~$5/month Workers Paid plan.
 
-| Tier | Key | Requests | Response size | Stream lifetime |
-| --- | --- | --- | --- | --- |
-| Anonymous | `CF-Connecting-IP` | 60 / 60 s (`ANON_RATE_LIMITER`) | 5 MB per response | 5 minutes |
-| Signed in | Firebase uid | 600 / 60 s (`USER_RATE_LIMITER`) | unlimited | unlimited |
+| Tier | Key | Requests | Request body size | Response size | Stream lifetime |
+| --- | --- | --- | --- | --- | --- |
+| Anonymous | `CF-Connecting-IP` | 60 / 60 s (`ANON_RATE_LIMITER`) | 1 MB per request | 5 MB per response | 5 minutes |
+| Signed in | Firebase uid | 600 / 60 s (`USER_RATE_LIMITER`) | unlimited | unlimited | unlimited |
 
 Request rates are configured in `wrangler.toml` (`[[ratelimits]]`); the size and lifetime caps
-are the `ANONYMOUS_MAX_RESPONSE_BYTES` and `ANONYMOUS_MAX_STREAM_DURATION_MS` constants in
+are the `ANONYMOUS_MAX_REQUEST_BYTES`, `ANONYMOUS_MAX_RESPONSE_BYTES` and
+`ANONYMOUS_MAX_STREAM_DURATION_MS` constants in
 `src/index.ts`. When a binding is missing (local dev, tests) the Worker fails open and logs once.
 
 When a request limit is hit, the proxy answers `429` with `Retry-After`,
-`X-MCP-Proxy-Response-Source: proxy`, `X-MCP-Proxy-Limit: anonymous|signed-in`, CORS headers, and
-a JSON body such as `{ "error": "rate_limited", "tier": "anonymous", "signInLiftsLimit": true }`
-so the app can tell "sign in to lift the limit" apart from a target `429`. Anonymous responses
-that exceed the size or lifetime cap mid-stream are terminated with a stream error; a declared
-`Content-Length` above the cap is answered with the same marked `429` up front.
+`X-MCP-Proxy-Response-Source: proxy`, `X-MCP-Proxy-Limit: anonymous|signed-in`,
+`X-MCP-Proxy-Limit-Kind`, CORS headers, and a JSON body such as
+`{ "error": "rate_limited", "tier": "anonymous", "signInLiftsLimit": true }` so the app can tell
+"sign in to lift the limit" apart from a target `429`.
+
+Anonymous request bodies are counted as they are forwarded: a declared `Content-Length` above the
+cap is refused before anything reaches the target, and a streamed body is cut off before the
+first byte over the cap, aborting the upstream request and answering with the marked `429`
+(`X-MCP-Proxy-Limit-Kind: request_bytes`).
+
+A declared response `Content-Length` above the cap is answered with the same marked `429` up front.
+Anonymous responses that pass the size or lifetime cap mid-stream carry an
+`X-MCP-Proxy-Limit-Signal: <token>` header; at the cut-off the proxy appends
+`\0mcptest-proxy-limit:<token>\n` followed by the JSON reason (`"limit": "response_bytes"` or
+`"stream_duration"`) and closes the stream. The app strips the trailer and reports a proxy caller
+limit rather than an MCP server failure.
 
 ## Usage
 

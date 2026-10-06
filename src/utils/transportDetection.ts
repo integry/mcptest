@@ -14,6 +14,7 @@ import {
 } from './mcpClient';
 import { redactReportString } from './reportArtifact';
 import {
+  decodeProxyLimitSignal,
   ProxyCallerLimitError,
   readProxyCallerLimit,
   type ProxyCallerLimit,
@@ -719,6 +720,12 @@ const observeAuthenticationResponses = (
       if (source === 'target' || source === 'proxy') attemptedRequest.responseSource = source;
       const proxyLimit = source === 'proxy' ? readProxyCallerLimit(response) : undefined;
       if (proxyLimit) attemptedRequest.proxyLimit = proxyLimit;
+      // A target response the proxy later cuts off at a caller limit is still
+      // a proxy limit, not a target failure.
+      response = decodeProxyLimitSignal(response, (limit) => {
+        attemptedRequest.proxyLimit = limit;
+        attemptedRequest.outcome = 'failed';
+      });
     }
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';

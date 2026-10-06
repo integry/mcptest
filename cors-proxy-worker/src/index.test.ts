@@ -6,7 +6,11 @@ import proxyWorker, {
   ANONYMOUS_MAX_RESPONSE_BYTES,
   HostedOAuthBroker,
   OAUTH_RELAY_FAILURE_HEADER,
+  limitResponseBody,
   PROXY_LIMIT_HEADER,
+  PROXY_LIMIT_KIND_HEADER,
+  PROXY_LIMIT_SIGNAL_HEADER,
+  PROXY_LIMIT_TRAILER_PREFIX,
   PROXY_RESPONSE_SOURCE_HEADER,
   type RateLimiter,
   fetchTargetRequest,
@@ -2422,7 +2426,21 @@ describe('caller-based proxy limits', () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.arrayBuffer()).rejects.toThrow(/response limit of \d+ bytes exceeded/);
+    expect(response.headers.get('content-length')).toBeNull();
+    const signalToken = response.headers.get(PROXY_LIMIT_SIGNAL_HEADER);
+    expect(signalToken).toBeTruthy();
+    expect(response.headers.get('access-control-expose-headers')?.split(', '))
+      .toContain(PROXY_LIMIT_SIGNAL_HEADER);
+    const body = new Uint8Array(await response.arrayBuffer());
+    const marker = new TextEncoder().encode(`${PROXY_LIMIT_TRAILER_PREFIX}${signalToken}\n`);
+    const markerAt = body.length - findTrailerLength(body, marker);
+    expect(markerAt).toBeLessThanOrEqual(ANONYMOUS_MAX_RESPONSE_BYTES);
+    expect(JSON.parse(new TextDecoder().decode(body.subarray(markerAt + marker.length)))).toMatchObject({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      limit: 'response_bytes',
+      signInLiftsLimit: true,
+    });
     await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
     expect(sent).toBeLessThanOrEqual(ANONYMOUS_MAX_RESPONSE_BYTES + 3 * chunk.byteLength);
   });
@@ -2457,9 +2475,105 @@ describe('caller-based proxy limits', () => {
       }
     );
     const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    const signalToken = response.headers.get(PROXY_LIMIT_SIGNAL_HEADER);
 
-    await expect(reader.read()).resolves.toMatchObject({ done: false });
-    await expect(reader.read()).rejects.toThrow(/stream lifetime of 20ms exceeded/);
+    // Incremental SSE delivery is preserved before the cut-off.
+    await expect(reader.read().then(({ value }) => decoder.decode(value))).resolves.toBe('event: ping\n\n');
+    const trailer = await reader.read();
+    expect(decoder.decode(trailer.value)).toMatch(
+      new RegExp(`^${PROXY_LIMIT_TRAILER_PREFIX}${signalToken}\n.*"limit":"stream_duration"`)
+    );
+    await expect(reader.read()).resolves.toMatchObject({ done: true });
+  });
+
+  it('errors the stream without a signal token when called directly', async () => {
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(32));
+      },
+    });
+    const reader = limitResponseBody(upstream, { maxBytes: 16 }).getReader();
+    await expect(reader.read()).rejects.toThrow(/response limit of 16 bytes exceeded/);
+  });
+
+  const uploadRequest = (body: BodyInit, headers: Record<string, string> = {}): Request => new Request(
+    `https://proxy.mcptest.test/?target=${encodeURIComponent(target)}`,
+    { method: 'POST', body, headers, duplex: 'half' } as RequestInit
+  );
+
+  it('rejects an anonymous upload whose declared length exceeds the request budget', async () => {
+    const anonLimiter = rateLimiter();
+    const fetchImpl = vi.fn();
+    const response = await handleProxyRequest(
+      uploadRequest('x'.repeat(32), { 'Content-Length': '32' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter },
+      { fetchImpl, anonymousMaxRequestBytes: 16 }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(response.headers.get(PROXY_LIMIT_KIND_HEADER)).toBe('request_bytes');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'request_bytes', signInLiftsLimit: true });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('stops forwarding an anonymous streamed upload at the request budget', async () => {
+    const chunk = new Uint8Array(8);
+    let pulled = 0;
+    const upload = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    let forwarded = 0;
+    const fetchImpl = vi.fn(async (request: Request) => {
+      expect(request.headers.get('content-length')).toBeNull();
+      const reader = request.body!.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        forwarded += value.byteLength;
+      }
+      return new Response('ok');
+    });
+    const response = await handleProxyRequest(
+      uploadRequest(upload),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, anonymousMaxRequestBytes: 20 }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'request_bytes' });
+    expect(forwarded).toBeLessThanOrEqual(20);
+    expect(pulled).toBeLessThan(10);
+  });
+
+  it('forwards an anonymous upload within the request budget', async () => {
+    const fetchImpl = vi.fn(async (request: Request) => new Response(await request.text()));
+    const response = await handleProxyRequest(
+      uploadRequest('{"jsonrpc":"2.0"}'),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, anonymousMaxRequestBytes: 64 }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('{"jsonrpc":"2.0"}');
+  });
+
+  it('does not apply the upload budget to signed-in callers', async () => {
+    const fetchImpl = vi.fn(async (request: Request) => new Response(String((await request.arrayBuffer()).byteLength)));
+    const response = await handleProxyRequest(
+      uploadRequest('x'.repeat(64), { Authorization: 'Bearer firebase-credential', 'Content-Length': '64' }),
+      { FIREBASE_PROJECT_ID: 'test-project', USER_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, verifyToken: async () => 'user-1', anonymousMaxRequestBytes: 16 }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('64');
   });
 
   it('keeps rejecting non-http targets for anonymous callers before any limiter call', async () => {
@@ -2491,3 +2605,10 @@ describe('caller-based proxy limits', () => {
     expect(workerConfiguration).toMatch(/name = "USER_RATE_LIMITER"[\s\S]*?simple = \{ limit = 600, period = 60 \}/);
   });
 });
+
+function findTrailerLength(body: Uint8Array, marker: Uint8Array): number {
+  for (let index = body.length - marker.length; index >= 0; index -= 1) {
+    if (marker.every((byte, offset) => body[index + offset] === byte)) return body.length - index;
+  }
+  throw new Error('limit trailer not found');
+}
