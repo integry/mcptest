@@ -83,6 +83,7 @@ export type OAuthTraceTerminalStatus =
   | 'provider_callback_incompatible'
   | 'operator_client_not_configured'
   | 'proxy_authentication_required'
+  | 'proxy_limit_reached'
   | 'transient_discovery_failure'
   | 'discovery_blocked_invalid'
   /** @deprecated retained for traces written before provider outcome classification. */

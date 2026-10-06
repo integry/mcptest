@@ -57,7 +57,7 @@ const authEvidenceNote = (server: CatalogServer) => {
 
 const browserAccessLabel = (server: CatalogServer) => {
   if (server.browserAccess === 'direct') return 'Direct browser connection verified';
-  if (server.browserAccess === 'proxy-required') return 'Authenticated proxy required';
+  if (server.browserAccess === 'proxy-required') return 'CORS proxy required';
   return 'Browser access not yet measured';
 };
 

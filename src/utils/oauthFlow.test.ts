@@ -502,30 +502,17 @@ describe('BrowserOAuthProvider', () => {
 });
 
 describe('SDK OAuth registration order', () => {
-  it('requires hosted proxy authentication before a fresh authorization redirect', async () => {
+  it('starts authorization through the hosted proxy without an mcptest login', async () => {
     const authenticate = vi.fn().mockResolvedValue('REDIRECT');
     const redirect = vi.fn();
-    let caught: unknown;
 
-    try {
-      await beginOAuthFlow(SERVER_URL, {
-        authenticate,
-        redirect,
-        tokenProxy: { url: 'https://proxy.mcptest.test/' },
-      });
-    } catch (error) {
-      caught = error;
-    }
+    await expect(beginOAuthFlow(SERVER_URL, {
+      authenticate,
+      redirect,
+      tokenProxy: { url: 'https://proxy.mcptest.test/' },
+    })).resolves.toBe('REDIRECT');
 
-    expect(getOAuthPrerequisite(caught)).toMatchObject({
-      kind: 'proxy_authentication_required',
-      providerName: 'mcptest proxy',
-    });
-    expect(authenticate).not.toHaveBeenCalled();
-    expect(redirect).not.toHaveBeenCalled();
-    expect(getStoredOAuthTrace(SERVER_URL, sessionStorage)?.outcome).toMatchObject({
-      status: 'proxy_authentication_required',
-    });
+    expect(authenticate).toHaveBeenCalledOnce();
   });
 
   it('refuses authorization before redirect when S256 is not advertised', async () => {
@@ -2913,6 +2900,49 @@ describe('OAuth provider interoperability matrix', () => {
     ]);
   });
 
+  it('surfaces a proxy limit that cut off a streamed discovery response as a caller limit', async () => {
+    const target = 'https://cutoff.example/mcp';
+    const resourceMetadataUrl = 'https://cutoff.example/.well-known/oauth-protected-resource';
+    const issuer = 'https://issuer.cutoff.example';
+    const directFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url === resourceMetadataUrl) {
+        return jsonResponse({ resource: target, authorization_servers: [issuer] });
+      }
+      throw new TypeError('Failed to fetch');
+    };
+    const proxyFetch: FetchLike = async () => new Response(
+      '{"issuer":"https://issuer.cutoff.example","padding":"'
+        + '\u0000mcptest-proxy-limit:signal-token\n'
+        + '{"error":"rate_limited","tier":"anonymous","limit":"response_bytes","signInLiftsLimit":true}',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-MCP-Proxy-Response-Source': 'target',
+          'X-MCP-Proxy-Limit-Signal': 'signal-token',
+        },
+      }
+    );
+
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(target, {
+        resourceMetadataUrl,
+        fetchFn: directFetch,
+        discoveryProxy: { url: 'https://proxy.mcptest.test/', fetchFn: proxyFetch },
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'proxy_limit_reached',
+      providerName: 'mcptest proxy',
+      explanation: expect.stringContaining('Sign in with Google to lift the limit'),
+    });
+  });
+
   it('stops at a proxy-owned discovery response instead of treating it as provider metadata', async () => {
     const target = 'https://noncors.example/mcp';
     const resourceMetadataUrl = 'https://noncors.example/.well-known/oauth-protected-resource';
@@ -3425,6 +3455,64 @@ describe('hosted dynamic client registration relay', () => {
         }),
       ])
     );
+  });
+
+  it('relays anonymous dynamic registration without an Authorization header', async () => {
+    const proxyFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).has('authorization')).toBe(false);
+      return jsonResponse({
+        redirect_uris: ['https://mcptest.io/oauth/callback'],
+        client_id: 'anonymous-relay-client',
+        client_secret: 'anonymous-relay-secret',
+        token_endpoint_auth_method: 'client_secret_post',
+      }, {
+        status: 201,
+        headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+    });
+
+    await expect(beginOAuthFlow(supabaseServer, {
+      redirectUrl: 'https://mcptest.io/oauth/callback',
+      fetchFn: supabaseDiscoveryFetch,
+      tokenProxy: { url: 'https://proxy.mcptest.test/', fetchFn: proxyFetch },
+      redirect: vi.fn(),
+    })).resolves.toBe('REDIRECT');
+    expect(proxyFetch).toHaveBeenCalledOnce();
+  });
+
+  it('surfaces the anonymous proxy limit as a sign-in-to-lift prerequisite', async () => {
+    const proxyFetch = vi.fn(async () => jsonResponse({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      signInLiftsLimit: true,
+    }, {
+      status: 429,
+      headers: {
+        'Retry-After': '60',
+        'X-MCP-Proxy-Limit': 'anonymous',
+        'X-MCP-Proxy-Response-Source': 'proxy',
+      },
+    }));
+    let caught: unknown;
+    try {
+      await beginOAuthFlow(supabaseServer, {
+        redirectUrl: 'https://mcptest.io/oauth/callback',
+        fetchFn: supabaseDiscoveryFetch,
+        tokenProxy: { url: 'https://proxy.mcptest.test/', fetchFn: proxyFetch },
+        redirect: vi.fn(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(getOAuthPrerequisite(caught)).toMatchObject({
+      kind: 'proxy_limit_reached',
+      providerName: 'mcptest proxy',
+      explanation: expect.stringContaining('Sign in with Google to lift the limit'),
+    });
+    expect(getStoredOAuthTrace(supabaseServer, sessionStorage)?.outcome).toMatchObject({
+      status: 'proxy_limit_reached',
+    });
   });
 
   it('never exposes a stored dynamic client secret after the hosted relay becomes unavailable', async () => {

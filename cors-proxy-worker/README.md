@@ -1,16 +1,19 @@
 # MCP Test CORS Proxy Worker
 
-This Cloudflare Worker provides a CORS proxy for authenticated users of the MCP Test application.
+This Cloudflare Worker provides a CORS proxy for the MCP Test application. Anyone can use it
+without signing in; caller-based limits keep it from becoming a generic bulk tunnel, and signing
+in with Firebase lifts those limits.
 
 ## Features
 
-- **Authentication Required**: Only users logged in with Firebase authentication can use the proxy
+- **Anonymous by Default**: No login is needed. Callers are governed, targets are never judged
+- **Caller-Based Limits**: Cloudflare Rate Limiting bindings cap anonymous callers per IP and signed-in callers per Firebase uid; anonymous responses are also capped in size and stream lifetime (see [Caller limits](#caller-limits))
 - **CORS Headers**: Automatically adds appropriate CORS headers to all responses
 - **Security**: Validates target URLs and only allows HTTP/HTTPS protocols
 - **Preflight Handling**: Properly handles OPTIONS preflight requests
-- **Hosted OAuth Exchange**: Proactively exchanges authorization codes and refresh tokens through an issuer-bound, authenticated `/oauth/token` route for providers without browser CORS
-- **Hosted OAuth Registration**: Relays bounded public-client DCR through an authenticated, issuer-rediscovered `/oauth/register` route without becoming a generic JSON proxy
-- **Operator OAuth Client ID**: Returns only the public client ID through an authenticated, exact resource/issuer-bound `/oauth/client` route for approved GitHub and Slack host applications
+- **Hosted OAuth Exchange**: Proactively exchanges authorization codes and refresh tokens through an issuer-bound, caller-limited `/oauth/token` route for providers without browser CORS
+- **Hosted OAuth Registration**: Relays bounded public-client DCR through a caller-limited, issuer-rediscovered `/oauth/register` route without becoming a generic JSON proxy
+- **Operator OAuth Client ID**: Returns only the public client ID through a caller-limited, exact resource/issuer-bound `/oauth/client` route for approved GitHub and Slack host applications
 
 ## Setup
 
@@ -51,28 +54,64 @@ provider are present**. The `/oauth/client` route fails with one safe
 `client_id`; it never returns the client secret, Firebase credential, request body, or user
 identity. Its resource and issuer inputs must match a closed exact Worker policy.
 
-The `/oauth/token` route resolves these values only after authenticating the mcptest user and
+The `/oauth/token` route resolves these values only after checking the caller's limits and
 rediscovering the issuer's token endpoint. It injects confidential client authentication into the
 upstream request inside the Worker and never serializes the secret into responses, URLs, reports,
 logs, or browser storage. Without configured values, the UI reports the operator prerequisite and
 keeps the supported bearer-token alternative available where the provider offers one.
 
+## Caller limits
+
+The proxy never validates, allowlists, or handshake-gates the target: people legitimately test
+broken and non-compliant MCP servers. Instead it limits the caller. The limits double as the
+spend cap for the ~$5/month Workers Paid plan.
+
+| Tier | Key | Requests | Request body size | Response size | Stream lifetime |
+| --- | --- | --- | --- | --- | --- |
+| Anonymous | `CF-Connecting-IP` | 60 / 60 s (`ANON_RATE_LIMITER`) | 1 MB per request | 5 MB per response | 5 minutes |
+| Signed in | Firebase uid | 600 / 60 s (`USER_RATE_LIMITER`) | unlimited | unlimited | unlimited |
+
+Request rates are configured in `wrangler.toml` (`[[ratelimits]]`); the size and lifetime caps
+are the `ANONYMOUS_MAX_REQUEST_BYTES`, `ANONYMOUS_MAX_RESPONSE_BYTES` and
+`ANONYMOUS_MAX_STREAM_DURATION_MS` constants in
+`src/index.ts`. When a binding is missing (local dev, tests) the Worker fails open and logs once.
+
+When a request limit is hit, the proxy answers `429` with `Retry-After`,
+`X-MCP-Proxy-Response-Source: proxy`, `X-MCP-Proxy-Limit: anonymous|signed-in`,
+`X-MCP-Proxy-Limit-Kind`, CORS headers, and a JSON body such as
+`{ "error": "rate_limited", "tier": "anonymous", "signInLiftsLimit": true }` so the app can tell
+"sign in to lift the limit" apart from a target `429`.
+
+Anonymous request bodies are counted as they are forwarded: a declared `Content-Length` above the
+cap is refused before anything reaches the target, and a streamed body is cut off before the
+first byte over the cap, aborting the upstream request and answering with the marked `429`
+(`X-MCP-Proxy-Limit-Kind: request_bytes`).
+
+A declared response `Content-Length` above the cap is answered with the same marked `429` up front.
+Anonymous responses that pass the size or lifetime cap mid-stream carry an
+`X-MCP-Proxy-Limit-Signal: <token>` header; at the cut-off the proxy appends
+`\0mcptest-proxy-limit:<token>\n` followed by the JSON reason (`"limit": "response_bytes"` or
+`"stream_duration"`) and closes the stream. The app strips the trailer and reports a proxy caller
+limit rather than an MCP server failure.
+
 ## Usage
 
 The proxy expects:
 - A `target` query parameter with the URL to proxy
-- An `Authorization` header with a valid Firebase JWT token
+- Optionally, an `Authorization` header with a valid Firebase JWT token. Without it the request
+  uses the anonymous tier; a present but invalid token is rejected with `401` so the app can
+  refresh it
 - Optional target credentials in ordinary headers. If the target itself needs
   `Authorization`, send it as `X-MCP-Authorization`; the worker remaps it only
-  after authenticating the caller and never forwards the Firebase token.
+  after identifying the caller and never forwards the Firebase token.
 
 Example:
 ```
 GET https://mcptest-cors-proxy.workers.dev/?target=https://api.example.com/data
-Authorization: Bearer <firebase-jwt-token>
+Authorization: Bearer <firebase-jwt-token>   # optional; lifts the anonymous limits
 ```
 
-The OAuth token route is reserved for `https://mcptest.io`. It accepts only authenticated
+The OAuth token route is reserved for `https://mcptest.io`. It accepts only caller-limited
 form-urlencoded `POST` requests, derives the upstream endpoint from OAuth/OIDC discovery for the
 validated issuer, checks that it exactly matches the browser's persisted endpoint binding, blocks
 private and unrelated targets, and returns a minimized no-store JSON response. Authorization codes,

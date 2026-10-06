@@ -78,7 +78,7 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace }) => {
-  const { loginWithGoogle } = useAuth();
+  const { currentUser, loginWithGoogle } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
@@ -981,6 +981,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           serverUrl={oauthConfigServerUrl}
           prerequisite={oauthPrerequisite || undefined}
           onSignIn={oauthPrerequisite?.kind === 'proxy_authentication_required'
+            || (oauthPrerequisite?.kind === 'proxy_limit_reached' && !currentUser)
             ? loginWithGoogle
             : undefined}
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {

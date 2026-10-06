@@ -326,7 +326,7 @@ export const createObservedServerFacts = (
         outcome === 'authorization-required' && !proxyAuthenticationRequired
           ? 'The target returned an authentication challenge before evaluation could continue.'
           : proxyAuthenticationRequired
-            ? 'Proxy login was required before target authorization requirements could be observed.'
+            ? 'The mcptest proxy rejected an invalid or expired login before target authorization requirements could be observed.'
           : hasTargetChallenge
             ? 'A direct target authentication challenge was observed and the authenticated retry was evaluated.'
             : unauthenticatedTargetRequestSucceeded && oauthApplies
@@ -459,7 +459,7 @@ export const createReleaseDecision = (
     return {
       status: 'unknown',
       answer: 'Not yet — mcptest login is required',
-      summary: 'The authenticated proxy needs a valid mcptest login before target evidence can be collected. This run was not scored.',
+      summary: 'The mcptest proxy rejected an invalid or expired mcptest login before target evidence could be collected. This run was not scored.',
       priorities: [{
         id: 'evaluation.proxy-authentication',
         severity: 'high',

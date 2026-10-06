@@ -13,6 +13,12 @@ import {
   getProtocolDetails,
 } from './mcpClient';
 import { redactReportString } from './reportArtifact';
+import {
+  decodeProxyLimitSignal,
+  ProxyCallerLimitError,
+  readProxyCallerLimit,
+  type ProxyCallerLimit,
+} from './proxyLimit';
 
 export interface TransportCandidate {
   url: string;
@@ -72,6 +78,8 @@ export interface ObservedTransportRequest {
   status?: number;
   /** Who produced a proxied HTTP response, when the proxy exposes provenance. */
   responseSource?: ProxyAuthenticationSource;
+  /** Set when the mcptest proxy itself rejected the caller for exceeding its limit. */
+  proxyLimit?: ProxyCallerLimit;
   /** Bounded and credential-redacted target response detail. */
   targetError?: SafeTargetErrorDetail;
   /** Header names only. Values are deliberately never retained. */
@@ -229,6 +237,35 @@ const hasTerminalBrowserUnreadableRequest = (
   }
   if (hasTerminalBrowserUnreadableRequest(value.cause, seen)) return true;
   return !value.candidateFailures?.length && !value.errors?.length && browserUnreadableMessage(error);
+};
+
+/**
+ * Returns the mcptest proxy caller limit observed on any request of a failed
+ * connection attempt. Such a 429 belongs to the proxy, never to the target.
+ */
+export const getProxyCallerLimit = (
+  error: unknown,
+  seen = new Set<object>()
+): ProxyCallerLimit | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+  if (error instanceof ProxyCallerLimitError) return error.limit;
+  const value = error as {
+    candidateFailures?: readonly TransportCandidateFailure[];
+    errors?: readonly unknown[];
+    cause?: unknown;
+  };
+  for (const failure of value.candidateFailures || []) {
+    const limited = failure.observedRequests?.find((request) => request.proxyLimit);
+    if (limited?.proxyLimit) return limited.proxyLimit;
+    const nested = getProxyCallerLimit(failure.error, seen);
+    if (nested) return nested;
+  }
+  for (const nested of value.errors || []) {
+    const limit = getProxyCallerLimit(nested, seen);
+    if (limit) return limit;
+  }
+  return getProxyCallerLimit(value.cause, seen);
 };
 
 /**
@@ -681,6 +718,14 @@ const observeAuthenticationResponses = (
     } else {
       const source = response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)?.toLowerCase();
       if (source === 'target' || source === 'proxy') attemptedRequest.responseSource = source;
+      const proxyLimit = source === 'proxy' ? readProxyCallerLimit(response) : undefined;
+      if (proxyLimit) attemptedRequest.proxyLimit = proxyLimit;
+      // A target response the proxy later cuts off at a caller limit is still
+      // a proxy limit, not a target failure.
+      response = decodeProxyLimitSignal(response, (limit) => {
+        attemptedRequest.proxyLimit = limit;
+        attemptedRequest.outcome = 'failed';
+      });
     }
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';

@@ -5,6 +5,7 @@ import { formatErrorForDisplay } from '../utils/errorHandling';
 import {
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  getProxyCallerLimit,
   shouldRetryMcpConnectionThroughProxy,
   type ObservedTransportRequest,
 } from '../utils/transportDetection';
@@ -15,6 +16,7 @@ import {
   getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   getProxyAuthenticationPrerequisite,
+  getProxyLimitPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   type OAuthPrerequisite,
@@ -444,7 +446,6 @@ export const useConnection = (
       : undefined;
     let oauthTrace = pendingOAuthRetry ? storedRetryTrace : undefined;
     let oauthRetryPending = Boolean(pendingOAuthRetry);
-    let proxyLoginPrerequisiteRequired = false;
     const diagnosticFailures: ConnectionFailureEvidence[] = [];
     let connectionAttemptStartedAt = Date.now();
     const reloadLatestOAuthTrace = (): OAuthFlightRecorder | undefined => {
@@ -577,8 +578,9 @@ export const useConnection = (
 
         // A required MCP request may be browser-unreadable even after initialize
         // succeeded. Use its terminal request evidence rather than suppressing
-        // fallback because some earlier response happened to be readable.
-        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && currentUser) {
+        // fallback because some earlier response happened to be readable. The
+        // proxy works without a login; signing in only lifts its limits.
+        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured) {
           try {
             const result = await withConnectionTimeout(connectViaProxy());
             return { result, usedProxy: true };
@@ -586,10 +588,6 @@ export const useConnection = (
             diagnosticFailures.push({ route: 'proxy', error: proxyError });
             throw proxyError;
           }
-        }
-
-        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && !currentUser) {
-          proxyLoginPrerequisiteRequired = true;
         }
         throw error;
       }
@@ -630,13 +628,16 @@ export const useConnection = (
             && !suppressOAuthDiscovery
             && !hasExplicitTargetCredential;
 
-          if (proxyLoginPrerequisiteRequired && !suppressOAuthDiscovery) {
-            const prerequisite = getProxyAuthenticationPrerequisite(targetUrl);
+          // The proxy's own caller limit is never a target/server error.
+          const proxyLimit = getProxyCallerLimit(error);
+          if (proxyLimit && !suppressOAuthDiscovery) {
+            const prerequisite = getProxyLimitPrerequisite(targetUrl, proxyLimit);
+            oauthTrace?.terminal('proxy_limit_reached', prerequisite.explanation);
             setConnectionError(null);
             setOAuthPrerequisite(prerequisite);
             setNeedsOAuthConfig(true);
             setOAuthConfigServerUrl(targetUrl);
-            setConnectionStatus('Proxy authentication required');
+            setConnectionStatus('Proxy limit reached');
             setIsConnecting(false);
             setConnectionStartTime(null);
             abortControllerRef.current = null;
@@ -702,10 +703,11 @@ export const useConnection = (
           try {
             const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
             const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
-            const proxyAuthenticationRequired = Boolean(
+            const proxyApplicable = Boolean(
               (shouldUseProxy && proxyUrl) || tokenProxyUrl
             );
-            const discoveryProxyToken = proxyAuthenticationRequired && currentUser
+            // Optional: a login only lifts the proxy's anonymous limits.
+            const discoveryProxyToken = proxyApplicable && currentUser
               ? await currentUser.getIdToken()
               : undefined;
             const result = await beginOAuthFlow(targetUrl, {
@@ -714,7 +716,7 @@ export const useConnection = (
                 ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
                 : {}),
               ...(challenge.scope ? { scope: challenge.scope } : {}),
-              ...(shouldUseProxy && proxyUrl && discoveryProxyToken
+              ...(shouldUseProxy && proxyUrl
                 ? {
                     discoveryProxy: {
                       url: proxyUrl,

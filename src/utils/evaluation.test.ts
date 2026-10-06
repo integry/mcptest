@@ -116,6 +116,17 @@ describe('dual-era server evaluation', () => {
     expect(headers.get('content-type')).toBe('application/json');
   });
 
+  it('sends no proxy login header for an anonymous report run', () => {
+    const headers = getEvaluationProxyHeaders(
+      { 'Content-Type': 'application/json' },
+      undefined,
+      'oauth-access-token'
+    );
+
+    expect(headers.get('authorization')).toBeNull();
+    expect(headers.get('x-mcp-authorization')).toBe('Bearer oauth-access-token');
+  });
+
   it('tries a direct fetch before falling back to the proxy', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

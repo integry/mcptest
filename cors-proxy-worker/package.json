@@ -1,7 +1,7 @@
 {
   "name": "mcptest-cors-proxy",
   "version": "1.0.0",
-  "description": "CORS proxy worker for MCP Test with authentication",
+  "description": "CORS proxy worker for MCP Test with caller-based rate limits",
   "main": "src/index.ts",
   "scripts": {
     "test": "vitest run src/index.test.ts",

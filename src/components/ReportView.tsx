@@ -148,7 +148,7 @@ export const getOAuthTraceForEvaluation = (
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   
   // Parse the server URL from the pathname since we're not using React Router's Route params
   const urlParam = location.pathname.startsWith('/report/') 
@@ -191,6 +191,7 @@ const ReportView: React.FC = () => {
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [reportRunnerReady, setReportRunnerReady] = useState(false);
   const isRunningRef = useRef(false);
   const hasProcessedOAuthReturn = useRef(false);
   const oauthChallengeRef = useRef<{
@@ -230,13 +231,14 @@ const ReportView: React.FC = () => {
         setServerUrl(decodedUrl);
       }
 
-      // Automatically run the report if the user is logged in and we haven't run it yet for this session
-      if (currentUser && !hasInitialized && handleRunReportRef.current) {
+      // Automatically run the report once the login state is known. Signing in
+      // is optional; it only lifts the proxy's anonymous limits.
+      if (!authLoading && !hasInitialized && handleRunReportRef.current) {
         handleRunReportRef.current(decodedUrl);
         setHasInitialized(true);
       }
     }
-  }, [urlParam, currentUser, hasInitialized, serverUrl]);
+  }, [urlParam, authLoading, hasInitialized, serverUrl, reportRunnerReady]);
   
   // Separate effect to handle OAuth returns
   useEffect(() => {
@@ -281,7 +283,7 @@ const ReportView: React.FC = () => {
           console.log('[ReportView] Setting serverUrl after OAuth return:', decodedUrl);
           setServerUrl(decodedUrl);
           
-          if (currentUser && !isRunning && !isRunningRef.current) {
+          if (!isRunning && !isRunningRef.current) {
             console.log('[ReportView] Starting delayed report run after OAuth');
             // Use a longer delay to ensure handleRunReportRef is set
             setTimeout(() => {
@@ -300,8 +302,7 @@ const ReportView: React.FC = () => {
               }
             }, 500);
           } else {
-            console.log('[ReportView] Cannot run report:', { 
-              hasUser: !!currentUser, 
+            console.log('[ReportView] Cannot run report:', {
               isRunning,
               isRunningRef: isRunningRef.current
             });
@@ -311,7 +312,7 @@ const ReportView: React.FC = () => {
         console.error('Failed to parse OAuth return data:', e);
       }
     }
-  }, [location.state, urlParam, currentUser, isRunning]);
+  }, [location.state, urlParam, isRunning]);
 
   useEffect(() => {
     let storage: Storage;
@@ -371,10 +372,6 @@ const ReportView: React.FC = () => {
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext
   ) => {
-    if (!currentUser) {
-      alert('Please login to run a report.');
-      return;
-    }
     if (isRunning || isRunningRef.current) {
       console.log('[ReportView] Report already running, skipping');
       return;
@@ -402,8 +399,8 @@ const ReportView: React.FC = () => {
     // Get the exact resource's issuer-bound OAuth access token if available.
     const oauthAccessToken = loadOAuthAuthorization(urlToTest)?.accessToken;
     
-    // Get Firebase auth token
-    const token = await currentUser.getIdToken();
+    // Optional Firebase login: it only lifts the proxy's anonymous limits.
+    const token = currentUser ? await currentUser.getIdToken() : undefined;
     
     // Progress callback
     const onProgress = (message: string) => {
@@ -449,7 +446,7 @@ const ReportView: React.FC = () => {
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
         if (isProxyAuthenticationRequired(reportData)) {
           setProgress(prev => [...prev,
-            'A valid mcptest login is required before the proxy can observe the target; this run was not scored.'
+            'The mcptest proxy rejected an invalid or expired mcptest login before it could observe the target; this run was not scored.'
           ]);
           return;
         }
@@ -487,6 +484,7 @@ const ReportView: React.FC = () => {
   // Assign handleRunReport to ref after it's defined
   useEffect(() => {
     handleRunReportRef.current = handleRunReport;
+    setReportRunnerReady(true);
   }, [handleRunReport]);
 
   const startOAuth = useCallback(async (authenticationUrl: string) => {
@@ -512,7 +510,7 @@ const ReportView: React.FC = () => {
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
         ...(challenge?.scope ? { scope: challenge.scope } : {}),
-        ...(proxyUrl && proxyAuthorizationToken
+        ...(proxyUrl
           ? {
               discoveryProxy: {
                 url: proxyUrl,
@@ -568,7 +566,7 @@ const ReportView: React.FC = () => {
         ...(challenge?.resourceMetadataUrl
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
-        ...(proxyUrl && discoveryProxyToken
+        ...(proxyUrl
           ? {
               discoveryProxy: {
                 url: proxyUrl,
@@ -790,17 +788,17 @@ const ReportView: React.FC = () => {
                   </div>
                   <div>
                     <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-                      <h3 id="report-proxy-auth-title" className="mb-0">mcptest login required</h3>
+                      <h3 id="report-proxy-auth-title" className="mb-0">mcptest login expired</h3>
                       <span className="badge text-bg-warning">Not scored</span>
                     </div>
                     <p className="mb-0">
-                      The authenticated proxy requested a valid mcptest login before it could return
-                      target evidence. This is not target OAuth and is not an MCP server failure.
+                      The mcptest proxy rejected an invalid or expired mcptest login before it could
+                      return target evidence. This is not target OAuth and is not an MCP server failure.
                     </p>
                   </div>
                 </div>
                 <div className="report-auth-note">
-                  Sign in again and retry the report. Target OAuth will only be offered if the MCP
+                  Sign in again (or sign out to use the proxy anonymously) and retry the report. Target OAuth will only be offered if the MCP
                   target subsequently returns its own authentication challenge.
                 </div>
               </section>

@@ -3466,15 +3466,6 @@ span.health-indicator.health-indicator-gray {
   background: color-mix(in srgb, var(--card-bg-secondary) 62%, transparent);
 }
 
-.proxy-setting-locked {
-  opacity: 0.72;
-}
-
-.proxy-setting-locked .form-check-input {
-  cursor: not-allowed;
-  filter: grayscale(1);
-}
-
 .connection-advanced {
   border-top: 1px solid var(--border-color);
 }

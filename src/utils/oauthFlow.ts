@@ -15,6 +15,13 @@ import {
 } from '@modelcontextprotocol/client';
 import publishedClientMetadata from '../../public/oauth/client-metadata.json';
 import {
+  decodeProxyLimitSignal,
+  findProxyCallerLimitError,
+  ProxyCallerLimitError,
+  readProxyCallerLimit,
+  type ProxyCallerLimit,
+} from './proxyLimit';
+import {
   OAuthFlightRecorder,
   createOAuthFlightRecorder,
   createOAuthTraceFetch,
@@ -109,21 +116,23 @@ export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
   scope?: string;
   /** Exact RFC 9728 location observed in the target's WWW-Authenticate challenge. */
   resourceMetadataUrl?: string | URL;
-  /** Authenticated proxy used only after a browser CORS failure on safe discovery GETs. */
+  /** mcptest proxy used only after a browser CORS failure on safe discovery GETs. */
   discoveryProxy?: OAuthDiscoveryProxyOptions;
-  /** Authenticated proxy used proactively for token exchange and refresh POSTs. */
+  /** mcptest proxy used proactively for token exchange and refresh POSTs. */
   tokenProxy?: OAuthTokenProxyOptions;
   deferAuthorizedTraceOutcome?: boolean;
 }
 
 export interface OAuthDiscoveryProxyOptions {
   url: string;
-  authorizationToken: string;
+  /** Optional mcptest login; it only lifts the proxy's anonymous limits. */
+  authorizationToken?: string;
   fetchFn?: FetchLike;
 }
 
 export interface OAuthTokenProxyOptions {
   url: string;
+  /** Optional mcptest login; it only lifts the proxy's anonymous limits. */
   authorizationToken?: string;
   fetchFn?: FetchLike;
 }
@@ -134,6 +143,7 @@ export type OAuthPrerequisiteKind =
   | 'provider_callback_incompatible'
   | 'operator_client_not_configured'
   | 'proxy_authentication_required'
+  | 'proxy_limit_reached'
   | 'transient_discovery_failure'
   | 'discovery_blocked_invalid';
 
@@ -185,7 +195,7 @@ export interface PrepareManualOAuthClientOptions extends BrowserOAuthProviderOpt
   fetchFn?: FetchLike;
   /** Exact RFC 9728 location observed in the target's WWW-Authenticate challenge. */
   resourceMetadataUrl?: string | URL;
-  /** Authenticated proxy used only after a browser CORS failure on safe discovery GETs. */
+  /** mcptest proxy used only after a browser CORS failure on safe discovery GETs. */
   discoveryProxy?: OAuthDiscoveryProxyOptions;
 }
 
@@ -220,10 +230,17 @@ export class OAuthCimdInteroperabilityError extends Error {
 
 export class OAuthProxyAuthenticationRequiredError extends Error {
   constructor() {
-    super('Hosted OAuth registration and token exchange require a valid mcptest login. Sign in and start authentication again. This is a mcptest proxy prerequisite, not an MCP server failure.');
+    super('The mcptest proxy rejected the mcptest login as invalid or expired. Sign in again and start authentication again. This is a mcptest proxy prerequisite, not an MCP server failure.');
     this.name = 'OAuthProxyAuthenticationRequiredError';
   }
 }
+
+const throwOnProxyCallerLimit = (response: Response, source: 'proxy' | 'target'): void => {
+  const limit = source === 'proxy' ? readProxyCallerLimit(response) : undefined;
+  if (limit) {
+    throw markOAuthTraceErrorOrigin(new ProxyCallerLimitError(limit), { route: 'proxy', source: 'proxy' });
+  }
+};
 
 export class OAuthOperatorClientNotConfiguredError extends Error {
   constructor(readonly providerName: string) {
@@ -725,7 +742,7 @@ const buildOAuthPrerequisite = (
       kind,
       serverUrl,
       providerName: 'mcptest proxy',
-      explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry discovery.',
+      explanation: 'The mcptest proxy rejected the mcptest login as invalid or expired. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry discovery.',
       requiredScopes: [],
       pkceS256: false,
       publicClientSecretSupported: 'unknown',
@@ -900,8 +917,8 @@ const buildOAuthPrerequisite = (
       ...base,
       canConfigureClient: false,
       explanation: failedEvent.route === 'direct'
-        ? `The browser did not receive a readable HTTP response during ${failedStage}. Browser access or CORS may be blocking discovery; this does not establish a provider outage. Sign in and retry with the authenticated proxy fallback where available, then inspect the exact request in the OAuth flight recorder if it still fails.`
-        : `${directDiscoveryAlsoFailed ? `Direct browser ${failedStage} did not receive a readable response, which may indicate a browser access or CORS limitation, and the authenticated proxy fallback also failed before receiving HTTP. ` : `The authenticated proxy did not receive an HTTP response during ${failedStage}. `}This does not establish a provider outage. Verify proxy authentication and connectivity, then inspect both routes in the OAuth flight recorder.`,
+        ? `The browser did not receive a readable HTTP response during ${failedStage}. Browser access or CORS may be blocking discovery; this does not establish a provider outage. Retry with the mcptest proxy fallback enabled where available, then inspect the exact request in the OAuth flight recorder if it still fails.`
+        : `${directDiscoveryAlsoFailed ? `Direct browser ${failedStage} did not receive a readable response, which may indicate a browser access or CORS limitation, and the mcptest proxy fallback also failed before receiving HTTP. ` : `The mcptest proxy did not receive an HTTP response during ${failedStage}. `}This does not establish a provider outage. Verify proxy connectivity, then inspect both routes in the OAuth flight recorder.`,
     };
   }
   return {
@@ -1046,7 +1063,7 @@ const createCorsFallbackDiscoveryFetch = (
         ? 'direct_target'
         : 'authorization_server',
       route: 'direct',
-      explanation: 'Direct browser discovery did not receive a readable response; retrying this metadata GET through the authenticated proxy.',
+      explanation: 'Direct browser discovery did not receive a readable response; retrying this metadata GET through the mcptest proxy.',
       request: { method: 'GET', url: sanitizeOAuthTraceUrl(exactUrl) },
       timing: {
         startedAt: new Date(directStartedAtMs).toISOString(),
@@ -1061,12 +1078,12 @@ const createCorsFallbackDiscoveryFetch = (
   proxyRequestUrl.searchParams.set('target', exactTargetUrl);
   const headers = new Headers(init?.headers || request?.headers);
   // Discovery is deliberately credential-free toward the target. The only
-  // authorization value is consumed by the authenticated mcptest proxy.
+  // authorization value is the optional mcptest login consumed by the proxy.
   headers.delete('authorization');
   headers.delete('proxy-authorization');
   headers.delete('x-mcp-authorization');
   headers.delete('cookie');
-  headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
+  if (proxy.authorizationToken) headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
   let response: Response;
   try {
     response = await (proxy.fetchFn || fetch)(proxyRequestUrl, {
@@ -1081,7 +1098,8 @@ const createCorsFallbackDiscoveryFetch = (
   const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
     ? 'target'
     : 'proxy';
-  return markOAuthTraceResponseOrigin(response, { route: 'proxy', source });
+  throwOnProxyCallerLimit(response, source);
+  return markOAuthTraceResponseOrigin(decodeProxyLimitSignal(response), { route: 'proxy', source });
 };
 
 const requestMethodAndUrl = (
@@ -1226,7 +1244,6 @@ const createOAuthRegistrationFetchForPendingContext = (
       throw error;
     }
   }
-  if (!proxy.authorizationToken) throw new OAuthProxyAuthenticationRequiredError();
 
   let body = await oauthJsonRequestBody(request, init);
   try {
@@ -1260,7 +1277,7 @@ const createOAuthRegistrationFetchForPendingContext = (
   relay.hash = '';
   const headers = new Headers({
     accept: 'application/json',
-    authorization: `Bearer ${proxy.authorizationToken}`,
+    ...(proxy.authorizationToken ? { authorization: `Bearer ${proxy.authorizationToken}` } : {}),
     'content-type': 'application/json',
     'x-mcp-oauth-issuer': issuer!,
     'x-mcp-oauth-resource': provider.serverUrl,
@@ -1284,6 +1301,7 @@ const createOAuthRegistrationFetchForPendingContext = (
       if (response.status === 401 && source === 'proxy') {
         throw new OAuthProxyAuthenticationRequiredError();
       }
+      throwOnProxyCallerLimit(response, source);
       return markOAuthTraceResponseOrigin(response, { route: 'proxy', source });
     } catch (error) {
       const relayError = error instanceof TypeError
@@ -1347,7 +1365,6 @@ const createOAuthTokenProxyFetch = (
     && requestHeaders.get('content-type')?.split(';', 1)[0].trim().toLowerCase()
       === 'application/x-www-form-urlencoded';
   if (!isFormPost || !proxy) return directFetch(input, init);
-  if (!proxy.authorizationToken) throw new OAuthProxyAuthenticationRequiredError();
   if (
     !issuer
     || !metadata?.issuer
@@ -1365,7 +1382,7 @@ const createOAuthTokenProxyFetch = (
   const headers = new Headers();
   headers.set('accept', 'application/json');
   headers.set('content-type', 'application/x-www-form-urlencoded');
-  headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
+  if (proxy.authorizationToken) headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
   headers.set('x-mcp-oauth-issuer', issuer);
   // This value is an equality assertion only. The Worker independently selects
   // the target from issuer discovery and never uses this header as a fetch URL.
@@ -1401,6 +1418,7 @@ const createOAuthTokenProxyFetch = (
   const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
     ? 'target'
     : 'proxy';
+  throwOnProxyCallerLimit(response, source);
   const relayFailure = source === 'proxy'
     && response.headers.get('x-mcp-oauth-relay-failure') === 'unsupported_client_authentication'
     ? 'unsupported_client_authentication' as const
@@ -1422,7 +1440,6 @@ const establishOperatorOAuthClient = async (
 ): Promise<void> => {
   const targetPolicy = getOAuthProviderPolicy(serverUrl);
   if (targetPolicy?.clientEstablishmentStrategy !== 'operator-confidential' || !proxy) return;
-  if (!proxy.authorizationToken) throw new OAuthProxyAuthenticationRequiredError();
 
   const discovery = provider.discoveryState() || await discoverOAuthServerInfo(serverUrl, {
     fetchFn: createOAuthTraceFetch(trace, discoveryFetch),
@@ -1452,7 +1469,7 @@ const establishOperatorOAuthClient = async (
       method: 'POST',
       headers: {
         accept: 'application/json',
-        authorization: `Bearer ${proxy.authorizationToken}`,
+        ...(proxy.authorizationToken ? { authorization: `Bearer ${proxy.authorizationToken}` } : {}),
         'x-mcp-oauth-issuer': issuer,
         'x-mcp-oauth-resource': serverUrl,
       },
@@ -1484,6 +1501,7 @@ const establishOperatorOAuthClient = async (
     },
   });
   if (source !== 'proxy') throw new OAuthOperatorClientLookupError(response.status);
+  throwOnProxyCallerLimit(response, source);
   if (response.status === 401 || response.status === 403) {
     throw new OAuthProxyAuthenticationRequiredError();
   }
@@ -2301,7 +2319,7 @@ export const beginOAuthFlow = async (
     ...options,
     trace,
     enforcePkceS256: true,
-    hostedTokenRelayAvailable: Boolean(options.tokenProxy?.authorizationToken),
+    hostedTokenRelayAvailable: Boolean(options.tokenProxy),
   });
   provider.invalidateCredentials('verifier');
   const resourceMetadataUrl = options.resourceMetadataUrl
@@ -2339,9 +2357,6 @@ export const beginOAuthFlow = async (
     createKnownProviderDiscoveryEvidenceFetch(normalizedServerUrl, trace, tracedFetch)
   );
   try {
-    if (options.tokenProxy && !options.tokenProxy.authorizationToken) {
-      throw new OAuthProxyAuthenticationRequiredError();
-    }
     if (
       getOAuthProviderPolicy(normalizedServerUrl)?.clientEstablishmentStrategy
         === 'operator-confidential'
@@ -2408,7 +2423,11 @@ export const beginOAuthFlow = async (
       throw error;
     }
     let prerequisite: OAuthPrerequisite | undefined;
-    if (error instanceof RegistrationRejectedError) {
+    const proxyLimitError = findProxyCallerLimitError(error);
+    if (proxyLimitError) {
+      prerequisite = getProxyLimitPrerequisite(normalizedServerUrl, proxyLimitError.limit);
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+    } else if (error instanceof RegistrationRejectedError) {
       const discoveredIssuer = issuerForDiscovery(provider.discoveryState());
       const guidance = providerGuidance(normalizedServerUrl, discoveredIssuer);
       const issuerBoundPolicy = discoveredIssuer
@@ -2729,7 +2748,7 @@ export const completeOAuthFlow = async (
   const provider = new BrowserOAuthProvider(serverUrl, {
     ...options,
     trace,
-    hostedTokenRelayAvailable: Boolean(options.tokenProxy?.authorizationToken),
+    hostedTokenRelayAvailable: Boolean(options.tokenProxy),
   });
   try {
     provider.assertState(callbackState);
@@ -2875,11 +2894,26 @@ export const getOAuthPrerequisite = (error: unknown): OAuthPrerequisite | undefi
   error instanceof OAuthPrerequisiteError ? error.prerequisite : undefined
 );
 
+/** The proxy's own caller limit; signing in lifts the anonymous limit. */
+export const getProxyLimitPrerequisite = (
+  serverUrl: string,
+  limit: ProxyCallerLimit
+): OAuthPrerequisite => ({
+  kind: 'proxy_limit_reached',
+  serverUrl: normalizeOAuthServerUrl(serverUrl),
+  providerName: 'mcptest proxy',
+  explanation: new ProxyCallerLimitError(limit).message,
+  requiredScopes: [],
+  pkceS256: false,
+  publicClientSecretSupported: 'unknown',
+  canConfigureClient: false,
+});
+
 export const getProxyAuthenticationPrerequisite = (serverUrl: string): OAuthPrerequisite => ({
   kind: 'proxy_authentication_required',
   serverUrl: normalizeOAuthServerUrl(serverUrl),
   providerName: 'mcptest proxy',
-  explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry.',
+  explanation: 'The mcptest proxy rejected the mcptest login as invalid or expired. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry.',
   requiredScopes: [],
   pkceS256: false,
   publicClientSecretSupported: 'unknown',

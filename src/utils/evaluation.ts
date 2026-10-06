@@ -10,6 +10,7 @@ import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  getProxyCallerLimit,
   shouldRetryMcpConnectionThroughProxy,
   type ObservedAuthenticationChallenge,
   type ObservedTransportRequest,
@@ -22,6 +23,7 @@ import {
   type PendingAuthenticatedMcpRetry,
 } from './oauthTrace';
 import type { TransportType } from '../types';
+import { proxyCallerLimitMessage } from './proxyLimit';
 import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
 import type {
@@ -252,11 +254,12 @@ export const getEvaluationPercentage = (report: EvaluationReport): number => {
 
 export function getEvaluationProxyHeaders(
   requestHeaders: HeadersInit | undefined,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   oauthToken?: string | null
 ): Headers {
   const headers = new Headers(requestHeaders);
-  headers.set('Authorization', `Bearer ${firebaseToken}`);
+  // The mcptest login is optional; without it the proxy applies anonymous limits.
+  if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
 
   if (oauthToken) {
     headers.set('X-MCP-Authorization', `Bearer ${oauthToken}`);
@@ -267,12 +270,13 @@ export function getEvaluationProxyHeaders(
 
 /**
  * Fetches the target directly first so evaluation does not silently measure the
- * proxy. When direct browser access fails, the configured proxy is authenticated
- * with Firebase and the MCP credential is kept on the isolated target channel.
+ * proxy. When direct browser access fails, the configured proxy is used (with the
+ * optional Firebase login that lifts its anonymous limits) and the MCP credential
+ * is kept on the isolated target channel.
  */
 export async function fetchForEvaluation(
   url: string,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   options: RequestInit = {},
   oauthToken?: string | null,
   usesProxy = false
@@ -546,7 +550,7 @@ const makeRouteFailure = (
 class EvaluationConnectionError extends Error {
   constructor(readonly failures: readonly EvaluationRouteFailure[]) {
     super(failures.map((failure) => (
-      `${failure.route === 'direct' ? 'Direct target' : 'Authenticated proxy'}: ${failure.message}`
+      `${failure.route === 'direct' ? 'Direct target' : 'mcptest proxy'}: ${failure.message}`
     )).join('; '));
     this.name = 'EvaluationConnectionError';
   }
@@ -554,7 +558,7 @@ class EvaluationConnectionError extends Error {
 
 const connectForEvaluation = async (
   serverUrl: string,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   oauthToken: string | null,
   targetHeaders: HeadersInit | undefined,
   onProgress: (message: string) => void,
@@ -591,7 +595,7 @@ const connectForEvaluation = async (
 
     const proxyStartedAt = Date.now();
     try {
-      onProgress('Direct negotiation failed; retrying through the authenticated CORS proxy...');
+      onProgress('Direct negotiation failed; retrying through the mcptest CORS proxy...');
       const proxyConnectionUrl = new URL(proxyUrl);
       proxyConnectionUrl.searchParams.set('target', serverUrl);
       const proxiedTargetHeaders = new Headers(targetHeaders);
@@ -607,9 +611,13 @@ const connectForEvaluation = async (
       );
       return { ...proxied, usedProxy: true, directError: directFailure.message };
     } catch (proxyError) {
+      const proxyFailure = makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt);
+      // The proxy's own caller limit is not a target failure; say how to lift it.
+      const proxyLimit = getProxyCallerLimit(proxyError);
+      if (proxyLimit) onProgress(proxyCallerLimitMessage(proxyLimit));
       throw new EvaluationConnectionError([
         directFailure,
-        makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt),
+        proxyLimit ? { ...proxyFailure, message: proxyCallerLimitMessage(proxyLimit) } : proxyFailure,
       ]);
     }
   }
@@ -942,7 +950,7 @@ type AuthorizationServerMetadata = NonNullable<
   Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
 >;
 
-const metadataFetchForEvaluation = (firebaseToken: string): FetchLike => (
+const metadataFetchForEvaluation = (firebaseToken: string | undefined): FetchLike => (
   input,
   init
 ) => {
@@ -956,7 +964,7 @@ const metadataFetchForEvaluation = (firebaseToken: string): FetchLike => (
 
 const evaluateSecurityPosture = async (
   connection: ConnectedEvaluation,
-  firebaseToken: string
+  firebaseToken: string | undefined
 ): Promise<EvaluationSection | undefined> => {
   const endpoint = getEvaluationTargetUrl(connection.url, connection.usedProxy);
   const metadataFetch = metadataFetchForEvaluation(firebaseToken);
@@ -1101,7 +1109,7 @@ const evaluateBrowserAccessibility = (
 
   if (connection.usedProxy) {
     section.details.push({
-      text: '✗ Direct browser negotiation failed; the authenticated proxy was required',
+      text: '✗ Direct browser negotiation failed; the mcptest proxy was required',
       context: connection.directError
         || 'The direct route did not complete MCP negotiation in this browser.',
       metadata: { endpoint: endpointUrl, requiredHeaders },
@@ -1200,7 +1208,7 @@ const evaluationAuthorizationEvidence = (
 
 export async function evaluateServer(
   inputUrl: string,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   onProgress: (message: string) => void,
   oauthAccessToken?: string | null,
   targetHeaders?: HeadersInit,
@@ -1311,7 +1319,7 @@ export async function evaluateServer(
       };
       report.sections.auth = {
         name: 'Proxy Authentication Required',
-        description: 'A valid mcptest login is required to use the authenticated proxy',
+        description: 'The mcptest proxy rejected an invalid or expired mcptest login',
         score: 0,
         maxScore: 0,
         status: 'skipped',

@@ -83,9 +83,9 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
   ));
   if (proxyAuthentication) {
     return {
-      badge: 'Proxy login',
+      badge: 'Proxy login expired',
       heading: 'mcptest proxy authentication required',
-      summary: 'The proxy requested an mcptest login before it could inspect the target. This is not a target OAuth response.',
+      summary: 'The proxy rejected an invalid or expired mcptest login before it could inspect the target. Sign in again, or sign out to use the proxy anonymously. This is not a target OAuth response.',
       alertClass: 'alert-warning border-warning',
     };
   }
@@ -100,7 +100,7 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
     return {
       badge: `HTTP ${proxyReadableHttp.status}`,
       heading: `MCP endpoint returned HTTP ${proxyReadableHttp.status}`,
-      summary: 'The authenticated proxy observed a readable response for the exact candidate endpoint. Diagnose the HTTP status and path rather than treating it as a CORS failure.',
+      summary: 'The mcptest proxy observed a readable response for the exact candidate endpoint. Diagnose the HTTP status and path rather than treating it as a CORS failure.',
       alertClass: 'alert-danger border-danger',
     };
   }
@@ -147,7 +147,7 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
       summary: hasReadableDirectResponse
         ? 'The direct-browser evidence is mixed: at least one response was readable and at least one was browser-unreadable, but the ordered evidence does not show a successful initialize followed by a blocked request for the same candidate and transport.'
         : knownReachableOAuth
-          ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, so use the authenticated proxy or the terminal probe to observe its expected challenge.'
+          ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, so use the mcptest proxy or the terminal probe to observe its expected challenge.'
           : knownOAuth
             ? 'The browser could not inspect the cross-origin response. This endpoint is cataloged as OAuth-protected, but the browser evidence alone cannot establish current server reachability.'
             : 'Every direct browser attempt ended without a readable HTTP response. Cross-origin policy or a rejected preflight may be hiding the target response; this evidence does not show that the server is down.',
@@ -265,7 +265,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                   <tbody>
                     {attempts.map((attempt, index) => (
                       <tr key={`${attempt.route}-${attempt.candidateUrl}-${attempt.transportType}-${index}`}>
-                        <td>{attempt.route === 'proxy' ? 'Authenticated proxy' : 'Direct browser'}</td>
+                        <td>{attempt.route === 'proxy' ? 'mcptest proxy' : 'Direct browser'}</td>
                         <td><code className="text-break">{attempt.candidateUrl}</code></td>
                         <td>{transportLabel(attempt.transportType)}</td>
                         <td>
@@ -291,7 +291,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                 <li>Enable <q>Automatically use proxy for CORS errors</q>, then retry so mcptest can inspect the target response.</li>
               )}
               {browserBlocked && useProxy && showProxyOption && (
-                <li>Proxy fallback is enabled. Sign in to mcptest if the proxy login prerequisite is shown.</li>
+                <li>Proxy fallback is enabled and works without signing in. Sign in to mcptest if the proxy limit or an expired login is reported.</li>
               )}
               {browserBlocked && !showProxyOption && (
                 <li>Use the exact terminal probe below or configure a trusted backend proxy to inspect the response outside the browser.</li>

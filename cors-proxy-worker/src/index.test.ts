@@ -3,17 +3,30 @@ import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import proxyWorker, {
+  ANONYMOUS_MAX_RESPONSE_BYTES,
   HostedOAuthBroker,
   OAUTH_RELAY_FAILURE_HEADER,
+  limitResponseBody,
+  PROXY_LIMIT_HEADER,
+  PROXY_LIMIT_KIND_HEADER,
+  PROXY_LIMIT_SIGNAL_HEADER,
+  PROXY_LIMIT_TRAILER_PREFIX,
   PROXY_RESPONSE_SOURCE_HEADER,
+  type RateLimiter,
   fetchTargetRequest,
   getOperatorOAuthClient,
   getTargetRequestHeaders,
   handleOAuthOperatorClientRequest,
   handleOAuthRegistrationRequest,
   handleOAuthTokenRequest,
+  handleProxyRequest,
   withCorsResponseHeaders,
 } from './index';
+
+const rateLimiter = (success = true) => {
+  const limit = vi.fn(async (_options: { key: string }) => ({ success }));
+  return { limit } satisfies RateLimiter;
+};
 
 interface CorsRequest {
   getResponseHeader(name: string): string | null;
@@ -401,6 +414,32 @@ describe('issuer-bound operator OAuth client route', () => {
     const text = await response.text();
     expect(text).not.toContain(clientSecret);
     expect(JSON.parse(text)).toEqual({ client_id: 'github-operator-client' });
+  });
+
+  it('returns the public client ID to anonymous callers under the anonymous limiter', async () => {
+    const anonymous = request();
+    anonymous.headers.delete('Authorization');
+    const anonLimiter = rateLimiter();
+    const response = await handleOAuthOperatorClientRequest(anonymous, {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+      GITHUB_OAUTH_CLIENT_SECRET: 'github-operator-secret',
+      ANON_RATE_LIMITER: anonLimiter,
+    });
+
+    expect(response.status).toBe(200);
+    expect(anonLimiter.limit).toHaveBeenCalledWith({ key: 'ip:unknown' });
+    await expect(response.json()).resolves.toEqual({ client_id: 'github-operator-client' });
+  });
+
+  it('still rejects an invalid operator client login with 401', async () => {
+    const response = await handleOAuthOperatorClientRequest(request(), {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+      GITHUB_OAUTH_CLIENT_SECRET: 'github-operator-secret',
+    }, { verifyToken: async () => null });
+
+    expect(response.status).toBe(401);
   });
 
   it('returns one safe prerequisite when operator credentials are incomplete', async () => {
@@ -1457,12 +1496,50 @@ describe('hosted OAuth token route', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('rejects signed-out and cross-origin callers without discovery', async () => {
+  it('relays anonymous callers under the anonymous limiter', async () => {
+    const anonymous = huggingFaceTokenRequest();
+    anonymous.headers.delete('Authorization');
+    anonymous.headers.set('CF-Connecting-IP', '198.51.100.7');
+    const anonLimiter = rateLimiter();
+    const userLimiter = rateLimiter();
+    const verifyToken = vi.fn(async () => 'user-1');
+    const response = await handleOAuthTokenRequest(
+      anonymous,
+      {
+        FIREBASE_PROJECT_ID: 'test-project',
+        ANON_RATE_LIMITER: anonLimiter,
+        USER_RATE_LIMITER: userLimiter,
+      },
+      {
+        fetchImpl: async request => request.url === huggingFaceDiscoveryUrl
+          ? new Response(JSON.stringify(huggingFaceMetadata()), {
+              headers: { 'Content-Type': 'application/json' },
+            })
+          : new Response(JSON.stringify({ access_token: 'anonymous-token', token_type: 'Bearer' }), {
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        resolveHostname: async () => ['203.0.114.10'],
+        verifyToken,
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(verifyToken).not.toHaveBeenCalled();
+    expect(anonLimiter.limit).toHaveBeenCalledWith({ key: 'ip:198.51.100.7' });
+    expect(userLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('rejects over-limit, invalid-token and cross-origin callers without discovery', async () => {
     const fetchImpl = vi.fn();
-    const signedOut = tokenRequest();
-    signedOut.headers.delete('Authorization');
-    const signedOutResponse = await handleOAuthTokenRequest(
-      signedOut,
+    const anonymous = tokenRequest();
+    anonymous.headers.delete('Authorization');
+    const limitedResponse = await handleOAuthTokenRequest(
+      anonymous,
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter(false) },
+      { fetchImpl, verifyToken: async () => null }
+    );
+    const invalidResponse = await handleOAuthTokenRequest(
+      tokenRequest(),
       { FIREBASE_PROJECT_ID: 'test-project' },
       { fetchImpl, verifyToken: async () => null }
     );
@@ -1473,10 +1550,29 @@ describe('hosted OAuth token route', () => {
       { FIREBASE_PROJECT_ID: 'test-project' },
       { fetchImpl, verifyToken: async () => 'user-1' }
     );
+    const crossOriginAnonymous = tokenRequest();
+    crossOriginAnonymous.headers.delete('Authorization');
+    crossOriginAnonymous.headers.set('Origin', 'https://attacker.example');
+    const crossOriginAnonymousResponse = await handleOAuthTokenRequest(
+      crossOriginAnonymous,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
 
-    expect(signedOutResponse.status).toBe(401);
+    expect(limitedResponse.status).toBe(429);
+    expect(limitedResponse.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(limitedResponse.headers.get('access-control-allow-origin')).toBe('https://mcptest.io');
+    expect(limitedResponse.headers.get('access-control-expose-headers')).toContain(PROXY_LIMIT_HEADER);
+    await expect(limitedResponse.json()).resolves.toMatchObject({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      signInLiftsLimit: true,
+    });
+    expect(invalidResponse.status).toBe(401);
     expect(crossOriginResponse.status).toBe(403);
     expect(crossOriginResponse.headers.get('access-control-allow-origin')).toBeNull();
+    expect(crossOriginAnonymousResponse.status).toBe(403);
+    expect(crossOriginAnonymousResponse.headers.get('access-control-allow-origin')).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
@@ -2157,13 +2253,13 @@ describe('hosted issuer-bound OAuth registration route', () => {
     }
   );
 
-  it('rejects missing and invalid Firebase authentication before discovery', async () => {
+  it('limits anonymous callers and rejects invalid Firebase authentication before discovery', async () => {
     const fetchImpl = vi.fn();
-    const missing = registrationRequest();
-    missing.headers.delete('Authorization');
-    const missingResponse = await handleOAuthRegistrationRequest(
-      missing,
-      { FIREBASE_PROJECT_ID: 'test-project' },
+    const anonymous = registrationRequest();
+    anonymous.headers.delete('Authorization');
+    const limitedResponse = await handleOAuthRegistrationRequest(
+      anonymous,
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter(false) },
       { fetchImpl, verifyToken: async () => null }
     );
     const invalidResponse = await handleOAuthRegistrationRequest(
@@ -2171,9 +2267,348 @@ describe('hosted issuer-bound OAuth registration route', () => {
       { FIREBASE_PROJECT_ID: 'test-project' },
       { fetchImpl, verifyToken: async () => null }
     );
+    const crossOrigin = registrationRequest();
+    crossOrigin.headers.delete('Authorization');
+    crossOrigin.headers.set('Origin', 'https://attacker.example');
+    const crossOriginResponse = await handleOAuthRegistrationRequest(
+      crossOrigin,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl }
+    );
 
-    expect(missingResponse.status).toBe(401);
+    expect(limitedResponse.status).toBe(429);
+    expect(limitedResponse.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(limitedResponse.headers.get('retry-after')).toBe('60');
     expect(invalidResponse.status).toBe(401);
+    expect(crossOriginResponse.status).toBe(403);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+describe('caller-based proxy limits', () => {
+  const target = 'https://mcp.example.com/mcp';
+  const proxyRequest = (headers: Record<string, string> = {}): Request => new Request(
+    `https://proxy.mcptest.test/?target=${encodeURIComponent(target)}`,
+    { headers: { Accept: 'application/json, text/event-stream', ...headers } }
+  );
+
+  it('proxies anonymous callers without a login, keyed by client IP', async () => {
+    const anonLimiter = rateLimiter();
+    const userLimiter = rateLimiter();
+    const fetchImpl = vi.fn(async (request: Request) => {
+      expect(request.url).toBe(target);
+      expect(request.headers.get('authorization')).toBeNull();
+      expect(request.headers.get('cf-connecting-ip')).toBeNull();
+      return new Response('{"jsonrpc":"2.0","id":1,"result":{}}', {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    const verifyToken = vi.fn(async () => 'user-1');
+
+    const response = await handleProxyRequest(
+      proxyRequest({ 'CF-Connecting-IP': '198.51.100.7' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter, USER_RATE_LIMITER: userLimiter },
+      { fetchImpl, verifyToken }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    await expect(response.text()).resolves.toBe('{"jsonrpc":"2.0","id":1,"result":{}}');
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(verifyToken).not.toHaveBeenCalled();
+    expect(anonLimiter.limit).toHaveBeenCalledWith({ key: 'ip:198.51.100.7' });
+    expect(userLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('returns a marked proxy 429 when an anonymous caller is over the limit', async () => {
+    const fetchImpl = vi.fn();
+    const response = await handleProxyRequest(
+      proxyRequest({ 'CF-Connecting-IP': '198.51.100.7' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter(false) },
+      { fetchImpl }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('60');
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-expose-headers')?.split(', ')).toEqual(
+      expect.arrayContaining([PROXY_RESPONSE_SOURCE_HEADER, PROXY_LIMIT_HEADER, 'Retry-After'])
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      limit: 'requests',
+      signInLiftsLimit: true,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('keys signed-in callers by uid on the user limiter without a body cap', async () => {
+    const anonLimiter = rateLimiter(false);
+    const userLimiter = rateLimiter();
+    const largeBody = new Uint8Array(64);
+    const response = await handleProxyRequest(
+      proxyRequest({ Authorization: 'Bearer firebase-credential' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter, USER_RATE_LIMITER: userLimiter },
+      {
+        fetchImpl: async request => {
+          expect(request.headers.get('authorization')).toBeNull();
+          return new Response(largeBody);
+        },
+        verifyToken: async token => token === 'firebase-credential' ? 'user-1' : null,
+        anonymousResponseLimits: { maxBytes: 16 },
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.arrayBuffer()).byteLength).toBe(64);
+    expect(userLimiter.limit).toHaveBeenCalledWith({ key: 'uid:user-1' });
+    expect(anonLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('reports a signed-in over-limit 429 without offering sign-in as the remedy', async () => {
+    const response = await handleProxyRequest(
+      proxyRequest({ Authorization: 'Bearer firebase-credential' }),
+      { FIREBASE_PROJECT_ID: 'test-project', USER_RATE_LIMITER: rateLimiter(false) },
+      { fetchImpl: vi.fn(), verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('signed-in');
+    await expect(response.json()).resolves.toMatchObject({ tier: 'signed-in', signInLiftsLimit: false });
+  });
+
+  it('rejects a present but invalid login instead of downgrading to anonymous', async () => {
+    const anonLimiter = rateLimiter();
+    const fetchImpl = vi.fn();
+    const response = await handleProxyRequest(
+      proxyRequest({ Authorization: 'Bearer expired-credential' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter },
+      { fetchImpl, verifyToken: async () => null }
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(anonLimiter.limit).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('fails open when the rate-limit bindings are not configured', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl: async () => new Response('ok') }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('ok');
+    warn.mockRestore();
+  });
+
+  it('cuts off an anonymous streamed body that exceeds the byte cap', async () => {
+    const cancel = vi.fn();
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    const upstream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+      cancel,
+    });
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl: async () => new Response(upstream, { headers: { 'Content-Type': 'text/event-stream' } }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-length')).toBeNull();
+    const signalToken = response.headers.get(PROXY_LIMIT_SIGNAL_HEADER);
+    expect(signalToken).toBeTruthy();
+    expect(response.headers.get('access-control-expose-headers')?.split(', '))
+      .toContain(PROXY_LIMIT_SIGNAL_HEADER);
+    const body = new Uint8Array(await response.arrayBuffer());
+    const marker = new TextEncoder().encode(`${PROXY_LIMIT_TRAILER_PREFIX}${signalToken}\n`);
+    const markerAt = body.length - findTrailerLength(body, marker);
+    expect(markerAt).toBeLessThanOrEqual(ANONYMOUS_MAX_RESPONSE_BYTES);
+    expect(JSON.parse(new TextDecoder().decode(body.subarray(markerAt + marker.length)))).toMatchObject({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      limit: 'response_bytes',
+      signInLiftsLimit: true,
+    });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
+    expect(sent).toBeLessThanOrEqual(ANONYMOUS_MAX_RESPONSE_BYTES + 3 * chunk.byteLength);
+  });
+
+  it('rejects an anonymous response whose declared length exceeds the byte cap', async () => {
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async () => new Response('x'.repeat(32), { headers: { 'Content-Length': '32' } }),
+        anonymousResponseLimits: { maxBytes: 16 },
+      }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'response_bytes', signInLiftsLimit: true });
+  });
+
+  it('ends an anonymous long-lived stream after the lifetime cap', async () => {
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: ping\n\n'));
+      },
+    });
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async () => new Response(upstream, { headers: { 'Content-Type': 'text/event-stream' } }),
+        anonymousResponseLimits: { maxDurationMs: 20 },
+      }
+    );
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    const signalToken = response.headers.get(PROXY_LIMIT_SIGNAL_HEADER);
+
+    // Incremental SSE delivery is preserved before the cut-off.
+    await expect(reader.read().then(({ value }) => decoder.decode(value))).resolves.toBe('event: ping\n\n');
+    const trailer = await reader.read();
+    expect(decoder.decode(trailer.value)).toMatch(
+      new RegExp(`^${PROXY_LIMIT_TRAILER_PREFIX}${signalToken}\n.*"limit":"stream_duration"`)
+    );
+    await expect(reader.read()).resolves.toMatchObject({ done: true });
+  });
+
+  it('errors the stream without a signal token when called directly', async () => {
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(32));
+      },
+    });
+    const reader = limitResponseBody(upstream, { maxBytes: 16 }).getReader();
+    await expect(reader.read()).rejects.toThrow(/response limit of 16 bytes exceeded/);
+  });
+
+  const uploadRequest = (body: BodyInit, headers: Record<string, string> = {}): Request => new Request(
+    `https://proxy.mcptest.test/?target=${encodeURIComponent(target)}`,
+    { method: 'POST', body, headers, duplex: 'half' } as RequestInit
+  );
+
+  it('rejects an anonymous upload whose declared length exceeds the request budget', async () => {
+    const anonLimiter = rateLimiter();
+    const fetchImpl = vi.fn();
+    const response = await handleProxyRequest(
+      uploadRequest('x'.repeat(32), { 'Content-Length': '32' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter },
+      { fetchImpl, anonymousMaxRequestBytes: 16 }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(response.headers.get(PROXY_LIMIT_KIND_HEADER)).toBe('request_bytes');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'request_bytes', signInLiftsLimit: true });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('stops forwarding an anonymous streamed upload at the request budget', async () => {
+    const chunk = new Uint8Array(8);
+    let pulled = 0;
+    const upload = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    let forwarded = 0;
+    const fetchImpl = vi.fn(async (request: Request) => {
+      expect(request.headers.get('content-length')).toBeNull();
+      const reader = request.body!.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        forwarded += value.byteLength;
+      }
+      return new Response('ok');
+    });
+    const response = await handleProxyRequest(
+      uploadRequest(upload),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, anonymousMaxRequestBytes: 20 }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'request_bytes' });
+    expect(forwarded).toBeLessThanOrEqual(20);
+    expect(pulled).toBeLessThan(10);
+  });
+
+  it('forwards an anonymous upload within the request budget', async () => {
+    const fetchImpl = vi.fn(async (request: Request) => new Response(await request.text()));
+    const response = await handleProxyRequest(
+      uploadRequest('{"jsonrpc":"2.0"}'),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, anonymousMaxRequestBytes: 64 }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('{"jsonrpc":"2.0"}');
+  });
+
+  it('does not apply the upload budget to signed-in callers', async () => {
+    const fetchImpl = vi.fn(async (request: Request) => new Response(String((await request.arrayBuffer()).byteLength)));
+    const response = await handleProxyRequest(
+      uploadRequest('x'.repeat(64), { Authorization: 'Bearer firebase-credential', 'Content-Length': '64' }),
+      { FIREBASE_PROJECT_ID: 'test-project', USER_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, verifyToken: async () => 'user-1', anonymousMaxRequestBytes: 16 }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('64');
+  });
+
+  it('keeps rejecting non-http targets for anonymous callers before any limiter call', async () => {
+    const anonLimiter = rateLimiter();
+    const response = await handleProxyRequest(
+      new Request(`https://proxy.mcptest.test/?target=${encodeURIComponent('file:///etc/passwd')}`),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter },
+      { fetchImpl: vi.fn() }
+    );
+
+    expect(response.status).toBe(400);
+    expect(anonLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('routes anonymous traffic through the default export', async () => {
+    const response = await proxyWorker.fetch(
+      new Request(`https://proxy.mcptest.test/?target=${encodeURIComponent('ftp://example.com/')}`),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toContain('http or https');
+  });
+
+  it('declares both Cloudflare rate-limit bindings with a 60 second period', () => {
+    const workerConfiguration = readFileSync(new NodeURL('../wrangler.toml', import.meta.url), 'utf8');
+
+    expect(workerConfiguration).toMatch(/name = "ANON_RATE_LIMITER"[\s\S]*?simple = \{ limit = 60, period = 60 \}/);
+    expect(workerConfiguration).toMatch(/name = "USER_RATE_LIMITER"[\s\S]*?simple = \{ limit = 600, period = 60 \}/);
+  });
+});
+
+function findTrailerLength(body: Uint8Array, marker: Uint8Array): number {
+  for (let index = body.length - marker.length; index >= 0; index -= 1) {
+    if (marker.every((byte, offset) => body[index + offset] === byte)) return body.length - index;
+  }
+  throw new Error('limit trailer not found');
+}

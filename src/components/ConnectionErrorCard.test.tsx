@@ -195,7 +195,7 @@ describe('evidence-based connection diagnostics', () => {
       });
 
       expect(container.textContent).toContain(`MCP endpoint returned HTTP ${status}`);
-      expect(container.textContent).toContain('The authenticated proxy observed a readable response');
+      expect(container.textContent).toContain('The mcptest proxy observed a readable response');
       expect(container.textContent).not.toContain('Browser access blocked');
       expect(container.textContent).not.toContain('The browser received a readable response');
     }
@@ -226,7 +226,7 @@ describe('evidence-based connection diagnostics', () => {
     });
     const text = container.textContent || '';
 
-    expect(text).toContain('Authenticated proxy');
+    expect(text).toContain('mcptest proxy');
     expect(text).toContain('https://mcp.cloudflare.com/mcp');
     expect(text).toContain('HTTP 403 from target');
     expect(text).toContain('JSON-RPC -32000: Invalid Origin: mcptest.io');
