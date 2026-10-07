@@ -2,6 +2,7 @@ import {
   auth,
   discoverOAuthServerInfo,
   RegistrationRejectedError,
+  validateAuthorizationResponseIssuer,
   type AuthOptions,
   type AuthResult,
   type FetchLike,
@@ -12,6 +13,14 @@ import {
   type StoredOAuthClientInformation,
   type StoredOAuthTokens,
 } from '@modelcontextprotocol/client';
+import publishedClientMetadata from '../../public/oauth/client-metadata.json';
+import {
+  decodeProxyLimitSignal,
+  findProxyCallerLimitError,
+  ProxyCallerLimitError,
+  readProxyCallerLimit,
+  type ProxyCallerLimit,
+} from './proxyLimit';
 import {
   OAuthFlightRecorder,
   createOAuthFlightRecorder,
@@ -22,9 +31,11 @@ import {
   sanitizeOAuthTraceUrl,
 } from './oauthTrace';
 import {
+  getOAuthClientEstablishmentStrategy,
   getOAuthProviderPolicy,
   isPolicyRegistrationApprovalRejection,
   providerForbidsDynamicRegistration,
+  providerRequiresDynamicRegistration,
   type OAuthProviderPolicy,
 } from './oauthProviderPolicy';
 
@@ -46,11 +57,20 @@ export type {
 const PRODUCTION_ORIGIN = 'https://mcptest.io';
 export const OAUTH_CALLBACK_PATH = '/oauth/callback';
 export const OAUTH_CLIENT_METADATA_URL = `${PRODUCTION_ORIGIN}/oauth/client-metadata.json`;
+export const OAUTH_CLIENT_NAME = 'mcptest-io';
+
+export const getHostedOAuthTokenProxyUrl = (
+  proxyUrl: string | undefined,
+  origin = window.location.origin
+): string | undefined => origin === PRODUCTION_ORIGIN ? proxyUrl : undefined;
 
 const OAUTH_SERVER_URL_KEY = 'oauth_server_url';
 const OAUTH_STORE_PREFIX = 'mcp_oauth_v2:';
 
-type OAuthStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export interface OAuthStorage extends Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
+  /** Explicitly declares that a custom adapter is cleared with the browser session. */
+  readonly sessionOnly?: true;
+}
 
 interface PersistedOAuthState {
   clients?: Record<string, PersistedOAuthClientInformation>;
@@ -83,6 +103,10 @@ export interface BrowserOAuthProviderOptions {
   clientMetadataUrl?: string;
   redirect?: (authorizationUrl: URL) => void | Promise<void>;
   trace?: OAuthFlightRecorder;
+  /** Enforce the MCP requirement before a new browser authorization redirect. */
+  enforcePkceS256?: boolean;
+  /** Internal capability: a dynamically issued secret can only be used via the hosted relay. */
+  hostedTokenRelayAvailable?: boolean;
 }
 
 export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
@@ -92,21 +116,34 @@ export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
   scope?: string;
   /** Exact RFC 9728 location observed in the target's WWW-Authenticate challenge. */
   resourceMetadataUrl?: string | URL;
-  /** Authenticated proxy used only after a browser CORS failure on safe discovery GETs. */
+  /** mcptest proxy used only after a browser CORS failure on safe discovery GETs. */
   discoveryProxy?: OAuthDiscoveryProxyOptions;
+  /** mcptest proxy used proactively for token exchange and refresh POSTs. */
+  tokenProxy?: OAuthTokenProxyOptions;
   deferAuthorizedTraceOutcome?: boolean;
 }
 
 export interface OAuthDiscoveryProxyOptions {
   url: string;
-  authorizationToken: string;
+  /** Optional mcptest login; it only lifts the proxy's anonymous limits. */
+  authorizationToken?: string;
+  fetchFn?: FetchLike;
+}
+
+export interface OAuthTokenProxyOptions {
+  url: string;
+  /** Optional mcptest login; it only lifts the proxy's anonymous limits. */
+  authorizationToken?: string;
   fetchFn?: FetchLike;
 }
 
 export type OAuthPrerequisiteKind =
   | 'pre_registered_client_required'
   | 'provider_approval_required'
+  | 'provider_callback_incompatible'
+  | 'operator_client_not_configured'
   | 'proxy_authentication_required'
+  | 'proxy_limit_reached'
   | 'transient_discovery_failure'
   | 'discovery_blocked_invalid';
 
@@ -126,8 +163,16 @@ export interface OAuthPrerequisite {
   configurationMode?: 'browser-public' | 'operator-confidential' | 'provider-approved';
   supportsBearerToken?: boolean;
   bearerTokenName?: string;
+  authorizationHeaderTemplate?: string;
   failedStage?: string;
   httpStatus?: number;
+  /** Bounded, normalized field errors; never an arbitrary provider response body. */
+  registrationValidationErrors?: OAuthRegistrationValidationError[];
+}
+
+export interface OAuthRegistrationValidationError {
+  field: 'client_name';
+  message: string;
 }
 
 export class OAuthPrerequisiteError extends Error {
@@ -150,7 +195,7 @@ export interface PrepareManualOAuthClientOptions extends BrowserOAuthProviderOpt
   fetchFn?: FetchLike;
   /** Exact RFC 9728 location observed in the target's WWW-Authenticate challenge. */
   resourceMetadataUrl?: string | URL;
-  /** Authenticated proxy used only after a browser CORS failure on safe discovery GETs. */
+  /** mcptest proxy used only after a browser CORS failure on safe discovery GETs. */
   discoveryProxy?: OAuthDiscoveryProxyOptions;
 }
 
@@ -174,11 +219,83 @@ export class OAuthAuthorizationResponseError extends Error {
   }
 }
 
+export class OAuthCimdInteroperabilityError extends Error {
+  constructor(readonly providerName: string, readonly errorCode?: string) {
+    super(
+      `${providerName} advertised Client ID Metadata Document support but rejected the advertised HTTPS URL client ID. This is an authorization-server advertised-capability interoperability failure; mcptest did not retry with Dynamic Client Registration.`
+    );
+    this.name = 'OAuthCimdInteroperabilityError';
+  }
+}
+
+export class OAuthProxyAuthenticationRequiredError extends Error {
+  constructor() {
+    super('The mcptest proxy rejected the mcptest login as invalid or expired. Sign in again and start authentication again. This is a mcptest proxy prerequisite, not an MCP server failure.');
+    this.name = 'OAuthProxyAuthenticationRequiredError';
+  }
+}
+
+const throwOnProxyCallerLimit = (response: Response, source: 'proxy' | 'target'): void => {
+  const limit = source === 'proxy' ? readProxyCallerLimit(response) : undefined;
+  if (limit) {
+    throw markOAuthTraceErrorOrigin(new ProxyCallerLimitError(limit), { route: 'proxy', source: 'proxy' });
+  }
+};
+
+export class OAuthOperatorClientNotConfiguredError extends Error {
+  constructor(readonly providerName: string) {
+    super(`${providerName} OAuth cannot start because its operator client is not configured.`);
+    this.name = 'OAuthOperatorClientNotConfiguredError';
+  }
+}
+
+export class OAuthTrustedIssuerBindingError extends Error {
+  constructor() {
+    super('The discovered authorization-server issuer does not match the exact trusted provider binding.');
+    this.name = 'OAuthTrustedIssuerBindingError';
+  }
+}
+
+export class OAuthOperatorClientLookupError extends Error {
+  constructor(readonly status: number) {
+    super(`The issuer-bound operator client lookup failed with HTTP ${status}.`);
+    this.name = 'OAuthOperatorClientLookupError';
+  }
+}
+
+export class OAuthKnownProviderDiscoveryError extends Error {
+  constructor(readonly providerId: 'intercom') {
+    super('Known provider discovery prerequisites were not satisfied.');
+    this.name = 'OAuthKnownProviderDiscoveryError';
+  }
+}
+
+export class OAuthRegistrationCorsError extends Error {
+  constructor() {
+    super('Dynamic client registration did not receive a readable browser response. The registration endpoint may be blocking browser CORS; sign in and retry through the authenticated mcptest OAuth relay.');
+    this.name = 'OAuthRegistrationCorsError';
+  }
+}
+
 const getSessionStorage = (): OAuthStorage => {
   if (typeof sessionStorage === 'undefined') {
     throw new Error('OAuth requires browser session storage.');
   }
   return sessionStorage;
+};
+
+const isSessionOnlyOAuthStorage = (storage: OAuthStorage): boolean => {
+  try {
+    if (typeof localStorage !== 'undefined' && storage === localStorage) return false;
+  } catch {
+    // Privacy modes may expose the property but throw when it is acquired.
+  }
+  try {
+    if (typeof sessionStorage !== 'undefined' && storage === sessionStorage) return true;
+  } catch {
+    // A custom adapter can still explicitly declare session-only behavior.
+  }
+  return storage.sessionOnly === true;
 };
 
 const withProtocol = (value: string): string => (
@@ -187,6 +304,13 @@ const withProtocol = (value: string): string => (
 
 export const normalizeOAuthServerUrl = (value: string): string => (
   new URL(withProtocol(value)).toString()
+);
+
+export const renderOAuthAuthorizationHeader = (
+  template: string | undefined,
+  token: string
+): string => (
+  (template || 'Bearer <TOKEN>').replace('<TOKEN>', () => token)
 );
 
 const storageKeyForServer = (serverUrl: string): string => (
@@ -202,13 +326,24 @@ const issuerForDiscovery = (discovery?: OAuthDiscoveryState): string | undefined
   || discovery?.authorizationServerUrl
 );
 
+const assertPkceS256Discovery = (discovery?: OAuthDiscoveryState): void => {
+  if (!discovery?.authorizationServerMetadata?.code_challenge_methods_supported?.includes('S256')) {
+    throw new Error(
+      'Incompatible authorization server: validated metadata does not advertise PKCE S256 support.'
+    );
+  }
+};
+
 const providerGuidance = (serverUrl: string, issuer?: string): {
   name: string;
   documentationUrl?: string;
   registrationUrl?: string;
   policy?: OAuthProviderPolicy;
 } => {
-  const policy = getOAuthProviderPolicy(serverUrl, issuer);
+  // A target-only policy may explain a discovery defect, but privileged client
+  // establishment separately requires the exact target+issuer match.
+  const policy = getOAuthProviderPolicy(serverUrl, issuer)
+    || getOAuthProviderPolicy(serverUrl);
   if (policy) {
     return {
       name: policy.name,
@@ -241,6 +376,14 @@ const latestFailureIsDiscovery = (trace: OAuthFlightRecorder): boolean => {
     );
 };
 
+const hasUnresolvedDiscoveryFailure = (trace: OAuthFlightRecorder): boolean => {
+  const latestDiscoveryEvent = [...trace.snapshot().events].reverse().find((event) => (
+    event.type === 'protected_resource_metadata'
+    || event.type === 'authorization_server_metadata'
+  ));
+  return latestDiscoveryEvent?.outcome === 'failed';
+};
+
 const latestFailedEvent = (trace: OAuthFlightRecorder) => (
   [...trace.snapshot().events].reverse().find((event) => event.outcome === 'failed')
 );
@@ -268,20 +411,208 @@ const latestFailureIsTransientDiscovery = (trace: OAuthFlightRecorder): boolean 
     || (typeof status === 'number' && status >= 500);
 };
 
-const registrationFailureDetails = (error: RegistrationRejectedError): Record<string, unknown> => {
+const INTERCOM_RESOURCE_METADATA_FALLBACK_URLS = [
+  'https://mcp.intercom.com/.well-known/oauth-protected-resource/mcp',
+  'https://mcp.intercom.com/.well-known/oauth-protected-resource',
+] as const;
+
+const hasIntercomHistoricalDiscoveryEvidence = (trace: OAuthFlightRecorder): boolean => {
+  const events = trace.snapshot().events;
+  const targetChallengeObserved = events.some((event) => {
+    if (
+      event.type !== 'target_challenge'
+      || event.outcome !== 'challenged'
+      || event.provenance !== 'direct_target'
+      || event.response?.status !== 401
+    ) return false;
+    const authenticate = event.response.headers?.['www-authenticate'];
+    return !authenticate || !/(?:^|[,\s])resource_metadata\s*=/i.test(authenticate);
+  });
+  if (!targetChallengeObserved) return false;
+
+  return INTERCOM_RESOURCE_METADATA_FALLBACK_URLS.every((fallbackUrl) => (
+    events.some((event) => (
+      event.type === 'protected_resource_metadata'
+      && event.outcome === 'failed'
+      && event.provenance === 'direct_target'
+      && event.request?.method === 'GET'
+      && event.request.url === fallbackUrl
+      && event.response?.status === 404
+    ))
+  ));
+};
+
+const hasIssuerMismatchDiscoveryEvidence = (
+  trace: OAuthFlightRecorder,
+  expectedResource: string,
+  expectedIssuer: string,
+  registrationEndpointAdvertised?: boolean
+): boolean => {
+  const events = trace.snapshot().events;
+  const resourceEvidence = events.some((event) => {
+    const authorizationServers = event.response?.metadata?.authorizationServers;
+    return event.type === 'protected_resource_metadata'
+      && event.outcome === 'succeeded'
+      && event.response?.status === 200
+      && typeof event.response.metadata?.resource === 'string'
+      && exactUrlMatches(event.response.metadata.resource, expectedResource)
+      && Array.isArray(authorizationServers)
+      && authorizationServers.some((value) => (
+        typeof value === 'string' && exactUrlMatches(value, expectedResource)
+      ));
+  });
+  if (!resourceEvidence) return false;
+
+  return events.some((event) => (
+    event.type === 'authorization_server_metadata'
+    && event.outcome === 'failed'
+    && event.response?.status === 200
+    && typeof event.response.metadata?.issuer === 'string'
+    && exactUrlMatches(event.response.metadata.issuer, expectedIssuer)
+    && (
+      registrationEndpointAdvertised === undefined
+      || event.response.metadata.registrationEndpointAdvertised
+        === registrationEndpointAdvertised
+    )
+  ));
+};
+
+const hasDirectTargetChallengeWithoutBearer = (
+  trace: OAuthFlightRecorder,
+  status: 401 | 403
+): boolean => trace.snapshot().events.some((event) => {
+  if (
+    event.type !== 'target_challenge'
+    || event.outcome !== 'challenged'
+    || event.provenance !== 'direct_target'
+    || event.response?.status !== status
+  ) return false;
+  const authenticate = event.response.headers?.['www-authenticate'];
+  return !authenticate || !/(?:^|[\s,])Bearer(?:[\s,]|$)/i.test(authenticate);
+});
+
+const CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE =
+  'Use only alphanumeric characters, hyphens, and spaces.';
+const MAX_CALENDLY_REGISTRATION_FIELD_ERRORS = 5;
+const MAX_CALENDLY_REGISTRATION_FIELD_ERROR_LENGTH = 256;
+
+const calendlyRegistrationValidationErrors = (
+  value: unknown,
+  policy: OAuthProviderPolicy | undefined,
+  registrationEndpoint: string | undefined
+): OAuthRegistrationValidationError[] => {
+  if (
+    policy?.id !== 'calendly'
+    || !policy.approvedRegistrationEndpoint
+    || !exactUrlMatches(registrationEndpoint, policy.approvedRegistrationEndpoint)
+    || !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+  ) return [];
+  const body = value as Record<string, unknown>;
+  if (body.error !== 'invalid_client_metadata') return [];
+
+  // Calendly's live response puts field errors at the exact `errors.name`
+  // path. Inspect only that bounded array, and normalize its constraint to a
+  // fixed local message instead of forwarding provider-controlled prose.
+  const errors = body.errors;
+  if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return [];
+  const nameErrors = (errors as Record<string, unknown>).name;
+  if (
+    !Array.isArray(nameErrors)
+    || nameErrors.length === 0
+    || nameErrors.length > MAX_CALENDLY_REGISTRATION_FIELD_ERRORS
+    || nameErrors.some(message => (
+      typeof message !== 'string'
+      || message.length === 0
+      || message.length > MAX_CALENDLY_REGISTRATION_FIELD_ERROR_LENGTH
+      || /[\u0000-\u001f\u007f]/.test(message)
+    ))
+  ) return [];
+  const evidence = nameErrors.join(' ');
+  if (
+    !/(?:alpha[\s_-]*numeric|alphanumeric)/i.test(evidence)
+    || !/hyphens?/i.test(evidence)
+    || !/spaces?/i.test(evidence)
+  ) return [];
+
+  return [{ field: 'client_name', message: CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE }];
+};
+
+const calendlyRelayValidationErrors = (
+  value: Record<string, unknown>,
+  policy: OAuthProviderPolicy | undefined,
+  registrationEndpoint: string | undefined
+): OAuthRegistrationValidationError[] => {
+  // The hosted relay has already discarded `errors.name`. Accept only its
+  // exact fixed local normalization so proxy-based flows retain the guidance.
+  if (
+    policy?.id !== 'calendly'
+    || !policy.approvedRegistrationEndpoint
+    || !exactUrlMatches(registrationEndpoint, policy.approvedRegistrationEndpoint)
+  ) return [];
+  const validationErrors = value.registrationValidationErrors;
+  if (!Array.isArray(validationErrors) || validationErrors.length !== 1) return [];
+  const validationError = validationErrors[0];
+  if (
+    !validationError
+    || typeof validationError !== 'object'
+    || Array.isArray(validationError)
+    || Object.keys(validationError).length !== 2
+    || (validationError as Record<string, unknown>).field !== 'client_name'
+    || (validationError as Record<string, unknown>).message
+      !== CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE
+  ) return [];
+  return [{ field: 'client_name', message: CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE }];
+};
+
+const registrationFailureDetails = (
+  error: RegistrationRejectedError,
+  policy?: OAuthProviderPolicy,
+  registrationEndpoint?: string
+): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(error.body) as Record<string, unknown>;
-    return Object.fromEntries(Object.entries(parsed).filter(([key, value]) => (
+    const safeScalars = Object.fromEntries(Object.entries(parsed).filter(([key, value]) => (
       ['error', 'error_description', 'message', 'detail'].includes(key)
       && (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+      && String(value).length <= 2048
+      && !/[\u0000-\u001f\u007f]/.test(String(value))
     )));
+    const directRegistrationValidationErrors = calendlyRegistrationValidationErrors(
+      parsed,
+      policy,
+      registrationEndpoint
+    );
+    const registrationValidationErrors = directRegistrationValidationErrors.length
+      ? directRegistrationValidationErrors
+      : calendlyRelayValidationErrors(parsed, policy, registrationEndpoint);
+    return {
+      ...safeScalars,
+      ...(registrationValidationErrors.length ? { registrationValidationErrors } : {}),
+    };
   } catch {
     return { responseFormat: 'non-json' };
   }
 };
 
+const validationErrorsFromDetails = (
+  details: Record<string, unknown>
+): OAuthRegistrationValidationError[] => {
+  const errors = details.registrationValidationErrors;
+  if (!Array.isArray(errors)) return [];
+  return errors.filter((value): value is OAuthRegistrationValidationError => (
+    Boolean(value)
+    && typeof value === 'object'
+    && (value as OAuthRegistrationValidationError).field === 'client_name'
+    && (value as OAuthRegistrationValidationError).message
+      === CALENDLY_CLIENT_NAME_VALIDATION_MESSAGE
+  ));
+};
+
 type RegistrationFailureCategory =
   | 'approval_policy'
+  | 'callback_incompatible'
   | 'rate_limited'
   | 'server_error'
   | 'invalid_metadata'
@@ -300,6 +631,9 @@ const registrationFailureCategory = (
   const errorCode = typeof details.error === 'string'
     ? details.error.toLowerCase()
     : '';
+  if (policy?.id === 'upwork' && errorCode === 'invalid_redirect_uri') {
+    return 'callback_incompatible';
+  }
   const responseText = ['error_description', 'message', 'detail']
     .map((field) => details[field])
     .filter((value): value is string => typeof value === 'string')
@@ -322,7 +656,7 @@ const registrationFailureCategory = (
     return 'invalid_metadata';
   }
 
-  if (details.responseFormat === 'non-json') {
+  if (details.responseFormat === 'non-json' || errorCode === 'invalid_response') {
     return isPolicyRegistrationApprovalRejection(
       policy,
       registrationEndpoint,
@@ -336,10 +670,30 @@ const registrationFailureCategory = (
 const registrationFailureExplanation = (
   category: RegistrationFailureCategory,
   providerName: string,
-  status: number
+  status: number,
+  dcrOnly = false,
+  validationErrors: OAuthRegistrationValidationError[] = []
 ): string => {
+  if (dcrOnly) {
+    const validationGuidance = validationErrors.length
+      ? ` Correct ${validationErrors.map(({ field, message }) => `${field}: ${message}`).join(' ')}`
+      : '';
+    if (category === 'invalid_metadata') {
+      return `${providerName} supports Dynamic Client Registration only and rejected the submitted client metadata with HTTP ${status}.${validationGuidance} Retry automatic registration after correcting the metadata; manual or static client IDs are not supported.`;
+    }
+    if (category === 'rate_limited') {
+      return `${providerName} supports Dynamic Client Registration only and rate-limited registration with HTTP ${status}. Retry later; manual or static client IDs are not supported.`;
+    }
+    if (category === 'server_error') {
+      return `${providerName} supports Dynamic Client Registration only, and its registration endpoint failed with HTTP ${status}. Retry after the provider service recovers; manual or static client IDs are not supported.`;
+    }
+    return `${providerName} supports Dynamic Client Registration only and rejected registration with HTTP ${status}. Retry automatic registration; manual or static client IDs are not supported.`;
+  }
   if (category === 'approval_policy') {
     return `${providerName} advertises automatic client registration, but its HTTP ${status} response indicates that provider approval or allow-list access is required before mcptest.io can continue.`;
+  }
+  if (category === 'callback_incompatible') {
+    return `${providerName} rejected mcptest.io's hosted callback with HTTP ${status} invalid_redirect_uri. The provider's advertised client-establishment routes are incompatible with this remote web client; installing localhost software is not required for mcptest.`;
   }
   if (category === 'rate_limited') {
     return `${providerName} rate-limited dynamic client registration with HTTP ${status}. Retry automatic registration later or configure an existing OAuth client.`;
@@ -369,6 +723,7 @@ const buildOAuthPrerequisite = (
   const issuer = issuerForDiscovery(discovery);
   const guidance = providerGuidance(serverUrl, issuer);
   const policy = guidance.policy;
+  const issuerBoundPolicy = issuer ? getOAuthProviderPolicy(serverUrl, issuer) : undefined;
   const resourceScopes = discovery?.resourceMetadata?.scopes_supported || [];
   const requiredScopes = Array.from(new Set([
     ...resourceScopes,
@@ -387,7 +742,7 @@ const buildOAuthPrerequisite = (
       kind,
       serverUrl,
       providerName: 'mcptest proxy',
-      explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry discovery.',
+      explanation: 'The mcptest proxy rejected the mcptest login as invalid or expired. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry discovery.',
       requiredScopes: [],
       pkceS256: false,
       publicClientSecretSupported: 'unknown',
@@ -409,11 +764,10 @@ const buildOAuthPrerequisite = (
     pkceS256: Boolean(metadata?.code_challenge_methods_supported?.includes('S256')),
     publicClientSecretSupported,
     ...(policy ? {
-      configurationMode: policy.registrationMode === 'operator-confidential'
-        ? 'operator-confidential' as const
-        : 'provider-approved' as const,
+      configurationMode: policy.registrationMode,
       supportsBearerToken: policy.supportsBearerToken,
       bearerTokenName: policy.bearerTokenName,
+      authorizationHeaderTemplate: policy.authorizationHeaderTemplate,
     } : { configurationMode: 'browser-public' as const }),
     failedStage,
     ...(error instanceof RegistrationRejectedError ? { httpStatus: error.status } : {}),
@@ -428,7 +782,30 @@ const buildOAuthPrerequisite = (
         : `${guidance.name} advertises automatic client registration, but rejected this client. Provider approval or allow-list access is required before mcptest.io can continue.`,
     };
   }
+  if (kind === 'operator_client_not_configured') {
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: `${guidance.name} authorization could not be started because the mcptest Worker has no complete operator OAuth client binding. Configure both required Worker secrets, then retry; no client secret belongs in the browser.`,
+    };
+  }
+  if (kind === 'provider_callback_incompatible') {
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: error instanceof RegistrationRejectedError
+        ? registrationFailureExplanation('callback_incompatible', guidance.name, error.status)
+        : `${guidance.name}'s advertised OAuth client routes do not accept the hosted mcptest.io callback, so authorization could not be started.`,
+    };
+  }
   if (kind === 'pre_registered_client_required') {
+    if (providerRequiresDynamicRegistration(serverUrl, issuer)) {
+      return {
+        ...base,
+        canConfigureClient: false,
+        explanation: `${guidance.name} supports Dynamic Client Registration only, but discovery did not yield a usable automatic registration path. Retry OAuth discovery and consult the provider documentation; manual or static client IDs are not supported.`,
+      };
+    }
     if (policy?.registrationMode === 'operator-confidential') {
       const credentialAlternative = policy.supportsBearerToken
         ? ` Alternatively, use a valid ${policy.bearerTokenName || 'bearer token'} as the target Authorization credential.`
@@ -458,19 +835,73 @@ const buildOAuthPrerequisite = (
     };
   }
   if (error instanceof RegistrationRejectedError) {
-    const category = registrationFailureCategory(
+    const details = registrationFailureDetails(
       error,
-      undefined,
-      policy,
+      issuerBoundPolicy,
       metadata?.registration_endpoint
     );
+    const category = registrationFailureCategory(
+      error,
+      details,
+      issuerBoundPolicy,
+      metadata?.registration_endpoint
+    );
+    const registrationValidationErrors = validationErrorsFromDetails(details);
     return {
       ...base,
-      canConfigureClient: true,
-      explanation: registrationFailureExplanation(category, guidance.name, error.status),
+      canConfigureClient: !providerRequiresDynamicRegistration(serverUrl, issuer),
+      ...(registrationValidationErrors.length ? { registrationValidationErrors } : {}),
+      explanation: registrationFailureExplanation(
+        category,
+        guidance.name,
+        error.status,
+        providerRequiresDynamicRegistration(serverUrl, issuer),
+        registrationValidationErrors
+      ),
     };
   }
   const failedEvent = latestFailedEvent(trace);
+  if (
+    policy?.id === 'intercom'
+    && hasUnresolvedDiscoveryFailure(trace)
+    && hasIntercomHistoricalDiscoveryEvidence(trace)
+  ) {
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: 'Intercom authorization could not be started: the MCP target returned HTTP 401 without a resource_metadata link, and both standard protected-resource metadata fallback URLs returned HTTP 404. This is provider-side discovery evidence; use the documented Intercom access-token alternative while the metadata is unavailable.',
+    };
+  }
+  if (
+    policy?.id === 'docusign-developer'
+    && hasDirectTargetChallengeWithoutBearer(trace, 403)
+    && hasIssuerMismatchDiscoveryEvidence(
+      trace,
+      'https://mcp-d.docusign.com',
+      'https://account-d.docusign.com'
+    )
+  ) {
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: 'Docusign Developer authorization could not be started: the MCP endpoint returned HTTP 403 without a Bearer challenge, protected-resource metadata names https://mcp-d.docusign.com, and that authorization-server document declares issuer https://account-d.docusign.com. Strict issuer equality blocked the mismatching issuer.',
+    };
+  }
+  if (
+    policy?.id === 'pagerduty'
+    && hasIssuerMismatchDiscoveryEvidence(
+      trace,
+      'https://mcp.pagerduty.com/',
+      'https://app.pagerduty.com/global/oauth/anonymous',
+      false
+    )
+  ) {
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: 'PagerDuty authorization could not be started: protected-resource metadata names https://mcp.pagerduty.com/, while the retrieved authorization-server document declares https://app.pagerduty.com/global/oauth/anonymous and advertises no registration endpoint. Strict issuer equality blocked the mismatch; use the documented PagerDuty API-token alternative.',
+    };
+  }
   if (
     failedEvent
     && latestFailureIsDiscovery(trace)
@@ -486,8 +917,8 @@ const buildOAuthPrerequisite = (
       ...base,
       canConfigureClient: false,
       explanation: failedEvent.route === 'direct'
-        ? `The browser did not receive a readable HTTP response during ${failedStage}. Browser access or CORS may be blocking discovery; this does not establish a provider outage. Sign in and retry with the authenticated proxy fallback where available, then inspect the exact request in the OAuth flight recorder if it still fails.`
-        : `${directDiscoveryAlsoFailed ? `Direct browser ${failedStage} did not receive a readable response, which may indicate a browser access or CORS limitation, and the authenticated proxy fallback also failed before receiving HTTP. ` : `The authenticated proxy did not receive an HTTP response during ${failedStage}. `}This does not establish a provider outage. Verify proxy authentication and connectivity, then inspect both routes in the OAuth flight recorder.`,
+        ? `The browser did not receive a readable HTTP response during ${failedStage}. Browser access or CORS may be blocking discovery; this does not establish a provider outage. Retry with the mcptest proxy fallback enabled where available, then inspect the exact request in the OAuth flight recorder if it still fails.`
+        : `${directDiscoveryAlsoFailed ? `Direct browser ${failedStage} did not receive a readable response, which may indicate a browser access or CORS limitation, and the mcptest proxy fallback also failed before receiving HTTP. ` : `The mcptest proxy did not receive an HTTP response during ${failedStage}. `}This does not establish a provider outage. Verify proxy connectivity, then inspect both routes in the OAuth flight recorder.`,
     };
   }
   return {
@@ -522,6 +953,66 @@ const createProviderPolicyFetch = (
     }
   }
   return fetchFn(input, init);
+};
+
+const createKnownProviderDiscoveryEvidenceFetch = (
+  serverUrl: string,
+  trace: OAuthFlightRecorder,
+  fetchFn: FetchLike
+): FetchLike => async (input, init) => {
+  const policyId = getOAuthProviderPolicy(serverUrl)?.id;
+  if (policyId !== 'docusign-developer' && policyId !== 'pagerduty') {
+    return fetchFn(input, init);
+  }
+
+  const response = await fetchFn(input, init);
+  const { method, url } = requestMethodAndUrl(input, init);
+  if (method !== 'GET' || !response.ok) return response;
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await response.clone().json() as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return response;
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return response;
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return response;
+  }
+  if (
+    trace.isTrackedResourceMetadataUrl(parsedUrl)
+    || parsedUrl.pathname.includes('/oauth-protected-resource')
+  ) {
+    trace.enrichLast('protected_resource_metadata', {
+      response: {
+        metadata: {
+          ...(typeof body.resource === 'string' ? { resource: body.resource } : {}),
+          ...(Array.isArray(body.authorization_servers)
+            && body.authorization_servers.every((value) => typeof value === 'string')
+            ? { authorizationServers: body.authorization_servers }
+            : {}),
+        },
+      },
+    });
+  } else if (
+    parsedUrl.pathname.includes('/oauth-authorization-server')
+    || parsedUrl.pathname.includes('/openid-configuration')
+  ) {
+    trace.enrichLast('authorization_server_metadata', {
+      response: {
+        metadata: {
+          ...(typeof body.issuer === 'string' ? { issuer: body.issuer } : {}),
+          registrationEndpointAdvertised: typeof body.registration_endpoint === 'string',
+        },
+      },
+    });
+  }
+  return response;
 };
 
 const isSafeDiscoveryGet = (
@@ -572,7 +1063,7 @@ const createCorsFallbackDiscoveryFetch = (
         ? 'direct_target'
         : 'authorization_server',
       route: 'direct',
-      explanation: 'Direct browser discovery did not receive a readable response; retrying this metadata GET through the authenticated proxy.',
+      explanation: 'Direct browser discovery did not receive a readable response; retrying this metadata GET through the mcptest proxy.',
       request: { method: 'GET', url: sanitizeOAuthTraceUrl(exactUrl) },
       timing: {
         startedAt: new Date(directStartedAtMs).toISOString(),
@@ -587,12 +1078,12 @@ const createCorsFallbackDiscoveryFetch = (
   proxyRequestUrl.searchParams.set('target', exactTargetUrl);
   const headers = new Headers(init?.headers || request?.headers);
   // Discovery is deliberately credential-free toward the target. The only
-  // authorization value is consumed by the authenticated mcptest proxy.
+  // authorization value is the optional mcptest login consumed by the proxy.
   headers.delete('authorization');
   headers.delete('proxy-authorization');
   headers.delete('x-mcp-authorization');
   headers.delete('cookie');
-  headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
+  if (proxy.authorizationToken) headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
   let response: Response;
   try {
     response = await (proxy.fetchFn || fetch)(proxyRequestUrl, {
@@ -607,7 +1098,518 @@ const createCorsFallbackDiscoveryFetch = (
   const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
     ? 'target'
     : 'proxy';
-  return markOAuthTraceResponseOrigin(response, { route: 'proxy', source });
+  throwOnProxyCallerLimit(response, source);
+  return markOAuthTraceResponseOrigin(decodeProxyLimitSignal(response), { route: 'proxy', source });
+};
+
+const requestMethodAndUrl = (
+  input: Parameters<FetchLike>[0],
+  init?: Parameters<FetchLike>[1]
+): { method: string; request?: Request; url: string } => {
+  const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
+  return {
+    method: (init?.method || request?.method || 'GET').toUpperCase(),
+    request,
+    url: request?.url || String(input),
+  };
+};
+
+const exactUrlMatches = (left: string, right: string): boolean => {
+  try {
+    return new URL(left).toString() === new URL(right).toString();
+  } catch {
+    return false;
+  }
+};
+
+const oauthRequestBody = async (
+  request: Request | undefined,
+  init?: RequestInit
+): Promise<string> => {
+  if (init?.body instanceof URLSearchParams) return init.body.toString();
+  if (typeof init?.body === 'string') return init.body;
+  if (init?.body !== undefined && init.body !== null) {
+    throw new Error('Hosted OAuth token exchange supports form-urlencoded request bodies only.');
+  }
+  if (request) return request.clone().text();
+  throw new Error('Hosted OAuth token exchange is missing its form body.');
+};
+
+const oauthJsonRequestBody = async (
+  request: Request | undefined,
+  init?: RequestInit
+): Promise<string> => {
+  if (typeof init?.body === 'string') return init.body;
+  if (init?.body !== undefined && init.body !== null) {
+    throw new Error('Hosted dynamic client registration supports JSON request bodies only.');
+  }
+  if (request) return request.clone().text();
+  throw new Error('Hosted dynamic client registration is missing its JSON body.');
+};
+
+interface PendingRegistrationRequest {
+  controller: AbortController;
+  promise: Promise<Response>;
+  activeCallers: number;
+  settled: boolean;
+}
+
+const registrationAbortReason = (signal: AbortSignal): unknown => (
+  signal.reason ?? new DOMException('This operation was aborted', 'AbortError')
+);
+
+const awaitRegistrationRequest = (
+  pendingRequests: Map<string, PendingRegistrationRequest>,
+  pending: PendingRegistrationRequest,
+  requestKey: string,
+  signal?: AbortSignal | null
+): Promise<Response> => {
+  if (signal?.aborted) return Promise.reject(registrationAbortReason(signal));
+
+  pending.activeCallers += 1;
+  return new Promise<Response>((resolve, reject) => {
+    let waiting = true;
+    const finishWaiting = (): boolean => {
+      if (!waiting) return false;
+      waiting = false;
+      signal?.removeEventListener('abort', abort);
+      pending.activeCallers -= 1;
+      if (pending.activeCallers === 0 && !pending.settled) {
+        // Make an orphaned relay non-joinable before aborting it. Some fetch
+        // implementations do not reject promptly (or at all) after abort.
+        if (pendingRequests.get(requestKey) === pending) {
+          pendingRequests.delete(requestKey);
+        }
+        pending.controller.abort(signal?.reason);
+      }
+      return true;
+    };
+    const abort = (): void => {
+      if (finishWaiting()) reject(registrationAbortReason(signal!));
+    };
+
+    signal?.addEventListener('abort', abort, { once: true });
+    pending.promise.then(
+      response => {
+        if (finishWaiting()) resolve(response);
+      },
+      error => {
+        if (finishWaiting()) reject(error);
+      }
+    );
+  });
+};
+
+const cloneRegistrationResponse = (response: Response): Response => {
+  const clone = response.clone();
+  return markOAuthTraceResponseOrigin(clone, {
+    route: 'proxy',
+    source: response.headers.get('x-mcp-proxy-response-source') === 'target'
+      ? 'target'
+      : 'proxy',
+  });
+};
+
+const createOAuthRegistrationFetchForPendingContext = (
+  provider: BrowserOAuthProvider,
+  proxy: OAuthTokenProxyOptions | undefined,
+  directFetch: FetchLike,
+  pendingRegistrationRequests: Map<string, PendingRegistrationRequest>
+): FetchLike => async (input, init) => {
+  const { method, request, url } = requestMethodAndUrl(input, init);
+  const requestHeaders = new Headers(init?.headers || request?.headers);
+  const isJsonPost = method === 'POST'
+    && requestHeaders.get('content-type')?.split(';', 1)[0].trim().toLowerCase()
+      === 'application/json';
+  if (!isJsonPost) return directFetch(input, init);
+
+  const discovery = provider.discoveryState();
+  const metadata = discovery?.authorizationServerMetadata;
+  const issuer = metadata?.issuer;
+  const registrationEndpoint = metadata?.registration_endpoint;
+  const isBoundRegistrationRequest = Boolean(
+    issuer
+    && discovery?.authorizationServerUrl
+    && exactUrlMatches(discovery.authorizationServerUrl, issuer)
+    && registrationEndpoint
+    && exactUrlMatches(url, registrationEndpoint)
+  );
+  if (!isBoundRegistrationRequest) return directFetch(input, init);
+
+  if (!proxy) {
+    try {
+      return await directFetch(input, init);
+    } catch (error) {
+      if (error instanceof TypeError) throw new OAuthRegistrationCorsError();
+      throw error;
+    }
+  }
+
+  let body = await oauthJsonRequestBody(request, init);
+  try {
+    const registrationMetadata = JSON.parse(body) as Record<string, unknown>;
+    if (registrationMetadata && typeof registrationMetadata === 'object') {
+      registrationMetadata.token_endpoint_auth_method =
+        provider.clientMetadata.token_endpoint_auth_method;
+      body = JSON.stringify(registrationMetadata);
+    }
+  } catch {
+    // Preserve malformed input so the Worker remains the single validation boundary.
+  }
+  // The body is part of an in-memory de-duplication key only. It is never
+  // persisted, traced, logged, placed in a URL, or exposed as an error.
+  const requestKey = `${provider.serverUrl}\n${issuer}\n${new URL(registrationEndpoint!).toString()}\n${body}`;
+  const callerSignal = init?.signal || request?.signal;
+  if (callerSignal?.aborted) throw registrationAbortReason(callerSignal);
+  const existing = pendingRegistrationRequests.get(requestKey);
+  if (existing) {
+    return cloneRegistrationResponse(await awaitRegistrationRequest(
+      pendingRegistrationRequests,
+      existing,
+      requestKey,
+      callerSignal
+    ));
+  }
+
+  const relay = new URL(proxy.url);
+  relay.pathname = '/oauth/register';
+  relay.search = '';
+  relay.hash = '';
+  const headers = new Headers({
+    accept: 'application/json',
+    ...(proxy.authorizationToken ? { authorization: `Bearer ${proxy.authorizationToken}` } : {}),
+    'content-type': 'application/json',
+    'x-mcp-oauth-issuer': issuer!,
+    'x-mcp-oauth-resource': provider.serverUrl,
+    // Equality assertion only: the Worker rediscovers and selects the target.
+    'x-mcp-oauth-registration-endpoint': new URL(registrationEndpoint!).toString(),
+  });
+  const controller = new AbortController();
+  const relayRequest = (async (): Promise<Response> => {
+    try {
+      const response = await (proxy.fetchFn || fetch)(relay, {
+        method: 'POST',
+        headers,
+        body,
+        signal: controller.signal,
+        credentials: 'omit',
+        redirect: 'error',
+      });
+      const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
+        ? 'target'
+        : 'proxy';
+      if (response.status === 401 && source === 'proxy') {
+        throw new OAuthProxyAuthenticationRequiredError();
+      }
+      throwOnProxyCallerLimit(response, source);
+      return markOAuthTraceResponseOrigin(response, { route: 'proxy', source });
+    } catch (error) {
+      const relayError = error instanceof TypeError
+        ? new Error('The authenticated dynamic client registration relay did not receive an HTTP response. Verify mcptest proxy connectivity and retry.')
+        : error;
+      throw markOAuthTraceErrorOrigin(relayError, { route: 'proxy', source: 'proxy' });
+    }
+  })();
+  const pending: PendingRegistrationRequest = {
+    controller,
+    promise: relayRequest,
+    activeCallers: 0,
+    settled: false,
+  };
+  pendingRegistrationRequests.set(requestKey, pending);
+  void relayRequest.then(
+    () => {
+      pending.settled = true;
+      if (pendingRegistrationRequests.get(requestKey) === pending) {
+        pendingRegistrationRequests.delete(requestKey);
+      }
+    },
+    () => {
+      pending.settled = true;
+      if (pendingRegistrationRequests.get(requestKey) === pending) {
+        pendingRegistrationRequests.delete(requestKey);
+      }
+    }
+  );
+  return cloneRegistrationResponse(await awaitRegistrationRequest(
+    pendingRegistrationRequests,
+    pending,
+    requestKey,
+    callerSignal
+  ));
+};
+
+const createOAuthRegistrationFetch = (
+  provider: BrowserOAuthProvider,
+  proxy: OAuthTokenProxyOptions | undefined,
+  directFetch: FetchLike
+): FetchLike => createOAuthRegistrationFetchForPendingContext(
+  provider,
+  proxy,
+  directFetch,
+  new Map()
+);
+
+const createOAuthTokenProxyFetch = (
+  provider: BrowserOAuthProvider,
+  proxy: OAuthTokenProxyOptions | undefined,
+  directFetch: FetchLike
+): FetchLike => async (input, init) => {
+  const { method, request, url } = requestMethodAndUrl(input, init);
+  const discovery = provider.discoveryState();
+  const metadata = discovery?.authorizationServerMetadata;
+  const issuer = issuerForDiscovery(discovery);
+  const tokenEndpoint = metadata?.token_endpoint;
+  const requestHeaders = new Headers(init?.headers || request?.headers);
+  const isFormPost = method === 'POST'
+    && requestHeaders.get('content-type')?.split(';', 1)[0].trim().toLowerCase()
+      === 'application/x-www-form-urlencoded';
+  if (!isFormPost || !proxy) return directFetch(input, init);
+  if (
+    !issuer
+    || !metadata?.issuer
+    || metadata.issuer !== issuer
+    || !tokenEndpoint
+    || !exactUrlMatches(url, tokenEndpoint)
+  ) {
+    throw new Error('Hosted OAuth token exchange requires validated issuer-bound authorization-server discovery state.');
+  }
+
+  const endpoint = new URL(proxy.url);
+  endpoint.pathname = '/oauth/token';
+  endpoint.search = '';
+  endpoint.hash = '';
+  const headers = new Headers();
+  headers.set('accept', 'application/json');
+  headers.set('content-type', 'application/x-www-form-urlencoded');
+  if (proxy.authorizationToken) headers.set('authorization', `Bearer ${proxy.authorizationToken}`);
+  headers.set('x-mcp-oauth-issuer', issuer);
+  // This value is an equality assertion only. The Worker independently selects
+  // the target from issuer discovery and never uses this header as a fetch URL.
+  headers.set('x-mcp-oauth-token-endpoint', new URL(tokenEndpoint).toString());
+
+  const body = new URLSearchParams(await oauthRequestBody(request, init));
+  const clientAuthorization = requestHeaders.get('authorization');
+  if (clientAuthorization) {
+    if (!clientAuthorization.startsWith('Basic ')) {
+      throw new Error('Hosted OAuth token exchange received an unsupported client authorization method.');
+    }
+    const clientInformation = provider.clientInformation({ issuer });
+    if (!clientInformation?.client_secret) {
+      throw new Error('Hosted OAuth token exchange cannot validate client authentication without session-scoped dynamic client information.');
+    }
+    body.set('client_id', clientInformation.client_id);
+    headers.set('x-mcp-oauth-client-authorization', clientAuthorization);
+  }
+
+  let response: Response;
+  try {
+    response = await (proxy.fetchFn || fetch)(endpoint, {
+      method: 'POST',
+      headers,
+      body,
+      signal: init?.signal || request?.signal,
+      credentials: 'omit',
+      redirect: 'error',
+    });
+  } catch (error) {
+    throw markOAuthTraceErrorOrigin(error, { route: 'proxy', source: 'proxy' });
+  }
+  const source = response.headers.get('x-mcp-proxy-response-source') === 'target'
+    ? 'target'
+    : 'proxy';
+  throwOnProxyCallerLimit(response, source);
+  const relayFailure = source === 'proxy'
+    && response.headers.get('x-mcp-oauth-relay-failure') === 'unsupported_client_authentication'
+    ? 'unsupported_client_authentication' as const
+    : undefined;
+  return markOAuthTraceResponseOrigin(response, {
+    route: 'proxy',
+    source,
+    ...(relayFailure ? { relayFailure } : {}),
+  });
+};
+
+const establishOperatorOAuthClient = async (
+  serverUrl: string,
+  provider: BrowserOAuthProvider,
+  trace: OAuthFlightRecorder,
+  discoveryFetch: FetchLike,
+  proxy: OAuthTokenProxyOptions | undefined,
+  resourceMetadataUrl?: string
+): Promise<void> => {
+  const targetPolicy = getOAuthProviderPolicy(serverUrl);
+  if (targetPolicy?.clientEstablishmentStrategy !== 'operator-confidential' || !proxy) return;
+
+  const discovery = provider.discoveryState() || await discoverOAuthServerInfo(serverUrl, {
+    fetchFn: createOAuthTraceFetch(trace, discoveryFetch),
+    ...(resourceMetadataUrl ? { resourceMetadataUrl: new URL(resourceMetadataUrl) } : {}),
+  });
+  provider.saveDiscoveryState({
+    ...discovery,
+    ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
+  });
+  const issuer = issuerForDiscovery(provider.discoveryState());
+  const trustedPolicy = issuer ? getOAuthProviderPolicy(serverUrl, issuer) : undefined;
+  if (
+    !issuer
+    || trustedPolicy?.id !== targetPolicy.id
+    || trustedPolicy.clientEstablishmentStrategy !== 'operator-confidential'
+  ) {
+    throw new OAuthTrustedIssuerBindingError();
+  }
+
+  const endpoint = new URL(proxy.url);
+  endpoint.pathname = '/oauth/client';
+  endpoint.search = '';
+  endpoint.hash = '';
+  let response: Response;
+  try {
+    response = await (proxy.fetchFn || fetch)(endpoint, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        ...(proxy.authorizationToken ? { authorization: `Bearer ${proxy.authorizationToken}` } : {}),
+        'x-mcp-oauth-issuer': issuer,
+        'x-mcp-oauth-resource': serverUrl,
+      },
+      credentials: 'omit',
+      redirect: 'error',
+    });
+  } catch (error) {
+    throw markOAuthTraceErrorOrigin(error, { route: 'proxy', source: 'proxy' });
+  }
+  const source = response.headers.get('x-mcp-proxy-response-source') === 'proxy'
+    ? 'proxy'
+    : 'target';
+  trace.record({
+    type: 'client_establishment',
+    outcome: response.ok ? 'succeeded' : 'failed',
+    provenance: 'authenticated_proxy',
+    route: 'proxy',
+    explanation: response.ok
+      ? 'The authenticated Worker returned the public client ID for the exact trusted resource and issuer binding.'
+      : 'The authenticated Worker could not provide an operator client for the exact trusted resource and issuer binding.',
+    request: { method: 'POST', url: sanitizeOAuthTraceUrl(endpoint) },
+    response: {
+      status: response.status,
+      metadata: {
+        strategy: 'operator-confidential',
+        source,
+        issuerBinding: issuer,
+      },
+    },
+  });
+  if (source !== 'proxy') throw new OAuthOperatorClientLookupError(response.status);
+  throwOnProxyCallerLimit(response, source);
+  if (response.status === 401 || response.status === 403) {
+    throw new OAuthProxyAuthenticationRequiredError();
+  }
+  let responseBody: unknown;
+  try {
+    const responseText = await response.text();
+    if (responseText.length > 16 * 1024) {
+      throw new Error('Operator client response is too large');
+    }
+    responseBody = JSON.parse(responseText) as unknown;
+  } catch {
+    throw new OAuthOperatorClientLookupError(response.status);
+  }
+  if (
+    response.status === 503
+    && responseBody
+    && typeof responseBody === 'object'
+    && (responseBody as Record<string, unknown>).error === 'operator_client_not_configured'
+  ) {
+    throw new OAuthOperatorClientNotConfiguredError(trustedPolicy.name);
+  }
+  if (!response.ok || !responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) {
+    throw new OAuthOperatorClientLookupError(response.status);
+  }
+  const keys = Object.keys(responseBody as Record<string, unknown>);
+  const clientId = (responseBody as Record<string, unknown>).client_id;
+  if (
+    keys.length !== 1
+    || keys[0] !== 'client_id'
+    || typeof clientId !== 'string'
+    || clientId.length < 1
+    || clientId.length > 2048
+  ) {
+    throw new OAuthOperatorClientLookupError(response.status);
+  }
+  provider.saveClientInformation({
+    client_id: clientId,
+    issuer,
+    registeredManually: true,
+  }, { issuer });
+};
+
+const preflightKnownProviderDiscovery = async (
+  serverUrl: string,
+  provider: BrowserOAuthProvider,
+  trace: OAuthFlightRecorder,
+  discoveryFetch: FetchLike,
+  resourceMetadataUrl?: string
+): Promise<void> => {
+  if (getOAuthProviderPolicy(serverUrl)?.id !== 'intercom') return;
+  try {
+    const discovery = provider.discoveryState() || await discoverOAuthServerInfo(serverUrl, {
+      fetchFn: createOAuthTraceFetch(trace, discoveryFetch),
+      ...(resourceMetadataUrl ? { resourceMetadataUrl: new URL(resourceMetadataUrl) } : {}),
+    });
+    provider.saveDiscoveryState({
+      ...discovery,
+      ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
+    });
+    if (!discovery.resourceMetadata || !discovery.authorizationServerMetadata) {
+      throw new Error('Intercom OAuth discovery returned incomplete metadata.');
+    }
+  } catch (error) {
+    if (error instanceof OAuthKnownProviderDiscoveryError) throw error;
+    if (hasIntercomHistoricalDiscoveryEvidence(trace)) {
+      throw new OAuthKnownProviderDiscoveryError('intercom');
+    }
+    throw error;
+  }
+};
+
+const isCimdClientRejection = async (response: Response): Promise<string | undefined> => {
+  if (response.ok) return undefined;
+  try {
+    const body = await response.clone().json() as { error?: unknown };
+    const error = typeof body.error === 'string' ? body.error.toLowerCase() : undefined;
+    return error && ['invalid_client', 'unauthorized_client'].includes(error)
+      ? error
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const createCimdInteroperabilityFetch = (
+  serverUrl: string,
+  provider: BrowserOAuthProvider,
+  fetchFn: FetchLike
+): FetchLike => async (input, init) => {
+  const response = await fetchFn(input, init);
+  const { method, url } = requestMethodAndUrl(input, init);
+  const discovery = provider.discoveryState();
+  const issuer = issuerForDiscovery(discovery);
+  if (
+    method === 'POST'
+    && discovery?.authorizationServerMetadata?.token_endpoint
+    && exactUrlMatches(url, discovery.authorizationServerMetadata.token_endpoint)
+    && provider.usesClientMetadataDocument(issuer)
+  ) {
+    const rejection = await isCimdClientRejection(response);
+    if (rejection) {
+      throw new OAuthCimdInteroperabilityError(
+        providerGuidance(serverUrl, issuer).name,
+        rejection
+      );
+    }
+  }
+  return response;
 };
 
 const parseJson = <T,>(value: string | null): T | undefined => {
@@ -641,12 +1643,15 @@ const defaultRedirect = (authorizationUrl: URL): void => {
 
 export class BrowserOAuthProvider implements OAuthClientProvider {
   readonly redirectUrl: string;
-  readonly clientMetadataUrl?: string;
+  clientMetadataUrl?: string;
 
   private readonly storage: OAuthStorage;
   private readonly storeKey: string;
   private readonly redirect: (authorizationUrl: URL) => void | Promise<void>;
   private readonly trace?: OAuthFlightRecorder;
+  private readonly enforcePkceS256: boolean;
+  private readonly hostedTokenRelayAvailable: boolean;
+  private readonly sessionOnlyStorage: boolean;
   private resourceMetadataUrlOverride?: string;
 
   constructor(
@@ -655,26 +1660,14 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   ) {
     this.serverUrl = normalizeOAuthServerUrl(serverUrl);
     this.storage = options.storage || getSessionStorage();
+    this.sessionOnlyStorage = isSessionOnlyOAuthStorage(this.storage);
     this.storeKey = storageKeyForServer(this.serverUrl);
     this.redirectUrl = options.redirectUrl || getOAuthCallbackUrl();
     this.redirect = options.redirect || defaultRedirect;
     this.trace = options.trace;
-    let persistedState = this.readState();
-    const clientsWithSecrets = Object.entries(persistedState.clients || {}).filter(
-      ([, client]) => Boolean(client.client_secret)
-    );
-    if (clientsWithSecrets.length > 0) {
-      persistedState = {
-        ...persistedState,
-        clients: Object.fromEntries(Object.entries(persistedState.clients || {}).map(
-          ([issuer, client]) => {
-            const { client_secret: _discardedSecret, ...publicClient } = client;
-            return [issuer, publicClient];
-          }
-        )),
-      };
-      this.writeState(persistedState);
-    }
+    this.enforcePkceS256 = options.enforcePkceS256 === true;
+    this.hostedTokenRelayAvailable = options.hostedTokenRelayAvailable === true;
+    const persistedState = this.readState();
     // Older releases accepted confidential client secrets in a host-only key.
     // Remove that unsafe legacy record during migration rather than loading it.
     const legacyClientKey = `oauth_client_${legacyHostForServer(this.serverUrl)}`;
@@ -686,21 +1679,44 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     }
 
     const productionCallback = `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`;
-    this.clientMetadataUrl = options.clientMetadataUrl ?? (
-      this.redirectUrl === productionCallback ? OAUTH_CLIENT_METADATA_URL : undefined
-    );
+    const configuredMetadataUrl = options.clientMetadataUrl;
+    this.clientMetadataUrl = configuredMetadataUrl === OAUTH_CLIENT_METADATA_URL
+      && !publishedClientMetadata.redirect_uris.includes(this.redirectUrl)
+      ? undefined
+      : configuredMetadataUrl ?? (
+          this.redirectUrl === productionCallback
+            ? OAUTH_CLIENT_METADATA_URL
+            : undefined
+        );
   }
 
   get clientMetadata(): OAuthClientMetadata {
     const callbackUrl = new URL(this.redirectUrl);
+    const supportedTokenAuthMethods = this.discoveryState()
+      ?.authorizationServerMetadata?.token_endpoint_auth_methods_supported;
+    // RFC 8414 defaults omitted metadata to client_secret_basic. Only select
+    // that confidential default when the authenticated hosted relay can use it.
+    const tokenEndpointAuthMethod = this.hostedTokenRelayAvailable
+      ? supportedTokenAuthMethods === undefined
+        ? 'client_secret_basic'
+        : supportedTokenAuthMethods.includes('client_secret_post')
+          ? 'client_secret_post'
+          : supportedTokenAuthMethods.includes('client_secret_basic')
+            ? 'client_secret_basic'
+            : 'none'
+      : 'none';
+    if (callbackUrl.toString() === `${PRODUCTION_ORIGIN}${OAUTH_CALLBACK_PATH}`) {
+      const { client_id: _clientId, ...metadata } = publishedClientMetadata;
+      return { ...metadata, token_endpoint_auth_method: tokenEndpointAuthMethod } as OAuthClientMetadata;
+    }
     return {
       redirect_uris: [callbackUrl.toString()],
-      client_name: 'mcptest.io MCP Inspector',
+      client_name: OAUTH_CLIENT_NAME,
       client_uri: callbackUrl.origin,
       logo_uri: `${callbackUrl.origin}/logo.png`,
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
-      token_endpoint_auth_method: 'none',
+      token_endpoint_auth_method: tokenEndpointAuthMethod,
       application_type: 'web',
     };
   }
@@ -726,7 +1742,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   ): StoredOAuthClientInformation | undefined {
     if (!ctx?.issuer) return undefined;
 
-    const manualClient = this.readManualClient(ctx.issuer);
+    const manualClient = providerRequiresDynamicRegistration(this.serverUrl, ctx.issuer)
+      ? undefined
+      : this.readManualClient(ctx.issuer);
     if (manualClient) {
       if (!this.trace?.hasEvent('pre_registered_client', 'succeeded')) {
         this.trace?.record({
@@ -747,15 +1765,20 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     const storedClient = this.readState().clients?.[ctx.issuer];
     if (storedClient?.registeredManually) return undefined;
     if (!storedClient) return undefined;
-    const { client_secret: _discardedSecret, ...publicClient } = storedClient;
-    return publicClient;
+    this.trace?.registerSecret(storedClient.client_secret);
+    if (storedClient.client_secret && !this.hostedTokenRelayAvailable) {
+      throw new OAuthProxyAuthenticationRequiredError();
+    }
+    return storedClient;
   }
 
   manualClientInformation(): ManualOAuthClient | undefined {
     const discovery = this.discoveryState();
     const issuer = discovery?.authorizationServerMetadata?.issuer
       || discovery?.authorizationServerUrl;
-    return issuer ? this.readManualClient(issuer) : undefined;
+    return issuer && !providerRequiresDynamicRegistration(this.serverUrl, issuer)
+      ? this.readManualClient(issuer)
+      : undefined;
   }
 
   saveClientInformation(
@@ -764,25 +1787,130 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   ): void {
     const issuer = ctx?.issuer || clientInformation.issuer;
     if (!issuer) throw new Error('Cannot store OAuth client information without an issuer.');
-    if (clientInformation.client_secret) {
+    if (ctx?.issuer && clientInformation.issuer && clientInformation.issuer !== ctx.issuer) {
+      throw new Error('Dynamic OAuth client information issuer mismatch.');
+    }
+    if (
+      typeof clientInformation.client_id !== 'string'
+      || clientInformation.client_id.length === 0
+      || clientInformation.client_id.length > 2048
+    ) {
+      throw new Error('Dynamic OAuth registration returned an invalid client_id.');
+    }
+    if (JSON.stringify(clientInformation).length > 16 * 1024) {
+      throw new Error('Dynamic OAuth registration returned oversized client information.');
+    }
+    if (
+      clientInformation.client_secret !== undefined
+      && (
+        typeof clientInformation.client_secret !== 'string'
+        || clientInformation.client_secret.length === 0
+        || clientInformation.client_secret.length > 4096
+      )
+    ) {
+      throw new Error('Dynamic OAuth registration returned an invalid client_secret.');
+    }
+    if (clientInformation.client_secret && !this.sessionOnlyStorage) {
       this.trace?.registerSecret(clientInformation.client_secret);
       throw new Error(
-        'A confidential OAuth client secret cannot be used or persisted by the browser flow. Configure this client in the operator OAuth service.'
+        'Dynamically issued OAuth client secrets may only be kept in session-scoped storage.'
       );
     }
+    if (clientInformation.client_secret && !this.hostedTokenRelayAvailable) {
+      this.trace?.registerSecret(clientInformation.client_secret);
+      throw new Error(
+        'Dynamic registration issued a client secret, but no hosted token relay is available. An operator-confidential OAuth prerequisite is required.'
+      );
+    }
+    if ('redirect_uris' in clientInformation && clientInformation.redirect_uris) {
+      if (
+        clientInformation.redirect_uris.length !== 1
+        || clientInformation.redirect_uris[0] !== this.redirectUrl
+      ) {
+        throw new Error('Dynamic OAuth registration returned mismatched redirect_uris.');
+      }
+    }
+    if (
+      'token_endpoint_auth_method' in clientInformation
+      && clientInformation.token_endpoint_auth_method
+      && !['none', 'client_secret_basic', 'client_secret_post'].includes(
+        clientInformation.token_endpoint_auth_method
+      )
+    ) {
+      throw new Error(
+        'Dynamic OAuth registration requires an unsupported operator-confidential token authentication method.'
+      );
+    }
+    if ('grant_types' in clientInformation && clientInformation.grant_types) {
+      if (
+        clientInformation.grant_types.length > 2
+        || clientInformation.grant_types.some(grant => ![
+          'authorization_code',
+          'refresh_token',
+        ].includes(grant))
+      ) throw new Error('Dynamic OAuth registration returned unsupported grant_types.');
+    }
+    if (
+      'response_types' in clientInformation
+      && clientInformation.response_types
+      && (
+        clientInformation.response_types.length !== 1
+        || clientInformation.response_types[0] !== 'code'
+      )
+    ) throw new Error('Dynamic OAuth registration returned unsupported response_types.');
+    if (
+      'application_type' in clientInformation
+      && clientInformation.application_type
+      && clientInformation.application_type !== 'web'
+    ) throw new Error('Dynamic OAuth registration returned an unsupported application_type.');
+    const isDynamicRegistration = !clientInformation.registeredManually
+      && clientInformation.client_id !== this.clientMetadataUrl
+      && 'redirect_uris' in clientInformation;
+    if (isDynamicRegistration) {
+      const supportedMethods = this.discoveryState()
+        ?.authorizationServerMetadata?.token_endpoint_auth_methods_supported || [];
+      const effectiveTokenAuthMethod = clientInformation.token_endpoint_auth_method
+        || this.clientMetadata.token_endpoint_auth_method
+        || 'client_secret_basic';
+      if (
+        supportedMethods.length > 0
+        && !supportedMethods.includes(effectiveTokenAuthMethod)
+      ) {
+        throw new Error(
+          'Dynamic registration selected a token authentication method that the authorization server does not advertise.'
+        );
+      }
+      if (
+        effectiveTokenAuthMethod !== 'none'
+        && !clientInformation.client_secret
+      ) {
+        throw new Error(
+          'Dynamic registration did not issue the credential required by its selected token authentication method.'
+        );
+      }
+      if (effectiveTokenAuthMethod === 'none' && clientInformation.client_secret) {
+        throw new Error(
+          'Dynamic registration returned a client secret for a public-client token authentication method.'
+        );
+      }
+    }
+    this.trace?.registerSecret(clientInformation.client_secret);
 
     const state = this.readState();
     this.writeState({
       ...state,
       clients: { ...state.clients, [issuer]: clientInformation },
     });
-    if (!clientInformation.registeredManually) {
+    if (
+      !clientInformation.registeredManually
+      && clientInformation.client_id !== this.clientMetadataUrl
+    ) {
       const response = {
         metadata: { issuer, clientIdAssigned: Boolean(clientInformation.client_id) },
       };
       if (!this.trace?.enrichLast('dynamic_client_registration', {
         outcome: 'succeeded',
-        explanation: 'Dynamic client registration succeeded and the client information was stored.',
+        explanation: 'Dynamic client registration succeeded and validated client information was kept for this browser session.',
         response,
       })) {
         this.trace?.record({
@@ -790,7 +1918,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
           outcome: 'succeeded',
           provenance: 'authorization_server',
           route: 'direct',
-          explanation: 'Dynamic client registration succeeded and the client information was stored.',
+          explanation: 'Dynamic client registration succeeded and validated client information was kept for this browser session.',
           response,
         });
       }
@@ -838,6 +1966,9 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   redirectToAuthorization(authorizationUrl: URL): void | Promise<void> {
+    if (this.enforcePkceS256) {
+      assertPkceS256Discovery(this.discoveryState());
+    }
     const selectedClientId = authorizationUrl.searchParams.get('client_id');
     if (this.clientMetadataUrl && selectedClientId === this.clientMetadataUrl) {
       this.trace?.record({
@@ -881,6 +2012,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   saveDiscoveryState(discovery: OAuthDiscoveryState): void {
+    if (this.enforcePkceS256) assertPkceS256Discovery(discovery);
     this.resourceMetadataUrlOverride = discovery.resourceMetadataUrl
       || this.resourceMetadataUrlOverride;
     this.trace?.trackResourceMetadataUrl(discovery.resourceMetadataUrl);
@@ -918,6 +2050,41 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     }
 
     const metadata = discovery.authorizationServerMetadata;
+    const discoveredIssuer = metadata?.issuer || discovery.authorizationServerUrl;
+    const strategy = getOAuthClientEstablishmentStrategy(this.serverUrl, discoveredIssuer);
+    if (
+      strategy === 'dynamic-client-registration'
+      || strategy === 'dynamic-client-registration-only'
+    ) {
+      // Exact provider policy may select DCR either as a verified compatibility
+      // route (Canva) or as the provider's only supported establishment path
+      // (Calendly). This is never a generic fallback after a rejection.
+      this.clientMetadataUrl = undefined;
+    }
+    if (!this.trace?.hasEvent('client_establishment')) {
+      this.trace?.record({
+        type: 'client_establishment',
+        outcome: 'succeeded',
+        provenance: 'oauth_client',
+        route: 'client',
+        explanation: strategy === 'dynamic-client-registration'
+          ? 'Trusted provider policy selected Dynamic Client Registration before authorization even though CIMD was advertised.'
+          : strategy === 'dynamic-client-registration-only'
+            ? 'Trusted provider policy requires Dynamic Client Registration and excludes static client configuration for this exact target and issuer.'
+          : strategy === 'operator-confidential'
+            ? 'Trusted provider policy selected an issuer-bound operator-confidential client before authorization.'
+            : 'Standards-advertised client-establishment preference was selected.',
+        response: {
+          metadata: {
+            strategy,
+            source: strategy === 'standards-advertised'
+              ? 'authorization-server-metadata'
+              : 'trusted-provider-policy',
+            issuerBinding: discoveredIssuer,
+          },
+        },
+      });
+    }
     const serverResponse = {
       metadata: {
         issuer: metadata?.issuer || discovery.authorizationServerUrl,
@@ -958,6 +2125,18 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     };
   }
 
+  validatePersistedDiscoveryState(): void {
+    const discovery = this.readState().discovery;
+    if (this.enforcePkceS256 && discovery) assertPkceS256Discovery(discovery);
+  }
+
+  usesClientMetadataDocument(issuer?: string): boolean {
+    if (!issuer || !this.clientMetadataUrl) return false;
+    const discovery = this.discoveryState();
+    return discovery?.authorizationServerMetadata?.client_id_metadata_document_supported === true
+      && this.clientInformation({ issuer })?.client_id === this.clientMetadataUrl;
+  }
+
   setResourceMetadataUrlOverride(resourceMetadataUrl?: string): void {
     this.resourceMetadataUrlOverride = resourceMetadataUrl;
   }
@@ -991,7 +2170,19 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   private readState(): PersistedOAuthState {
-    return parseJson<PersistedOAuthState>(this.storage.getItem(this.storeKey)) || {};
+    const state = parseJson<PersistedOAuthState>(this.storage.getItem(this.storeKey)) || {};
+    if (this.sessionOnlyStorage || !state.clients) return state;
+
+    const safeClients = Object.fromEntries(Object.entries(state.clients).filter(
+      ([, clientInformation]) => clientInformation.client_secret === undefined
+    ));
+    if (Object.keys(safeClients).length === Object.keys(state.clients).length) return state;
+
+    const sanitizedState = { ...state };
+    if (Object.keys(safeClients).length > 0) sanitizedState.clients = safeClients;
+    else delete sanitizedState.clients;
+    this.writeState(sanitizedState);
+    return sanitizedState;
   }
 
   private writeState(state: PersistedOAuthState): void {
@@ -1124,7 +2315,12 @@ export const beginOAuthFlow = async (
   if (carriesChallengeDrivenRetry) {
     trace.setAuthenticatedMcpRetryState('awaiting_callback');
   }
-  const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...options, trace });
+  const provider = new BrowserOAuthProvider(normalizedServerUrl, {
+    ...options,
+    trace,
+    enforcePkceS256: true,
+    hostedTokenRelayAvailable: Boolean(options.tokenProxy),
+  });
   provider.invalidateCredentials('verifier');
   const resourceMetadataUrl = options.resourceMetadataUrl
     ? new URL(options.resourceMetadataUrl).toString()
@@ -1143,11 +2339,48 @@ export const beginOAuthFlow = async (
     options.fetchFn || fetch,
     options.discoveryProxy
   );
-  const fetchFn = createOAuthTraceFetch(
+  const tracedFetch = createOAuthTraceFetch(
     trace,
-    createProviderPolicyFetch(normalizedServerUrl, provider, discoveryFetch)
+    createProviderPolicyFetch(
+      normalizedServerUrl,
+      provider,
+      createOAuthTokenProxyFetch(
+        provider,
+        options.tokenProxy,
+        createOAuthRegistrationFetch(provider, options.tokenProxy, discoveryFetch)
+      )
+    )
+  );
+  const fetchFn = createCimdInteroperabilityFetch(
+    normalizedServerUrl,
+    provider,
+    createKnownProviderDiscoveryEvidenceFetch(normalizedServerUrl, trace, tracedFetch)
   );
   try {
+    if (
+      getOAuthProviderPolicy(normalizedServerUrl)?.clientEstablishmentStrategy
+        === 'operator-confidential'
+      && options.tokenProxy
+      && !isSessionOnlyOAuthStorage(storage)
+    ) {
+      throw new Error('Operator OAuth client IDs may only be stored for the current browser session.');
+    }
+    await preflightKnownProviderDiscovery(
+      normalizedServerUrl,
+      provider,
+      trace,
+      discoveryFetch,
+      resourceMetadataUrl
+    );
+    await establishOperatorOAuthClient(
+      normalizedServerUrl,
+      provider,
+      trace,
+      discoveryFetch,
+      options.tokenProxy,
+      resourceMetadataUrl
+    );
+    provider.validatePersistedDiscoveryState();
     const result = await authenticate(provider, {
       serverUrl: normalizedServerUrl,
       fetchFn,
@@ -1178,17 +2411,52 @@ export const beginOAuthFlow = async (
     return result;
   } catch (error) {
     trace.settleLatestProvisionalOAuthResponse('failed');
+    if (
+      error instanceof Error
+      && error.message.includes('does not advertise PKCE S256 support')
+      && !(
+        getOAuthProviderPolicy(normalizedServerUrl)?.id === 'intercom'
+        && hasUnresolvedDiscoveryFailure(trace)
+      )
+    ) {
+      trace.terminal('failed', error.message);
+      throw error;
+    }
     let prerequisite: OAuthPrerequisite | undefined;
-    if (error instanceof RegistrationRejectedError) {
-      const details = registrationFailureDetails(error);
-      const guidance = providerGuidance(normalizedServerUrl, issuerForDiscovery(provider.discoveryState()));
+    const proxyLimitError = findProxyCallerLimitError(error);
+    if (proxyLimitError) {
+      prerequisite = getProxyLimitPrerequisite(normalizedServerUrl, proxyLimitError.limit);
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+    } else if (error instanceof RegistrationRejectedError) {
+      const discoveredIssuer = issuerForDiscovery(provider.discoveryState());
+      const guidance = providerGuidance(normalizedServerUrl, discoveredIssuer);
+      const issuerBoundPolicy = discoveredIssuer
+        ? getOAuthProviderPolicy(normalizedServerUrl, discoveredIssuer)
+        : undefined;
+      const registrationEndpoint = provider.discoveryState()
+        ?.authorizationServerMetadata?.registration_endpoint;
+      const details = registrationFailureDetails(
+        error,
+        issuerBoundPolicy,
+        registrationEndpoint
+      );
       const category = registrationFailureCategory(
         error,
         details,
-        guidance.policy,
-        provider.discoveryState()?.authorizationServerMetadata?.registration_endpoint
+        issuerBoundPolicy,
+        registrationEndpoint
       );
-      const explanation = registrationFailureExplanation(category, guidance.name, error.status);
+      const validationErrors = validationErrorsFromDetails(details);
+      const explanation = registrationFailureExplanation(
+        category,
+        guidance.name,
+        error.status,
+        providerRequiresDynamicRegistration(
+          normalizedServerUrl,
+          discoveredIssuer
+        ),
+        validationErrors
+      );
       trace.enrichLast('dynamic_client_registration', {
         outcome: 'failed',
         explanation,
@@ -1200,6 +2468,8 @@ export const beginOAuthFlow = async (
       prerequisite = buildOAuthPrerequisite(
         category === 'approval_policy'
           ? 'provider_approval_required'
+          : category === 'callback_incompatible'
+            ? 'provider_callback_incompatible'
           : 'discovery_blocked_invalid',
         normalizedServerUrl,
         provider,
@@ -1207,6 +2477,59 @@ export const beginOAuthFlow = async (
         error,
         options.scope
       );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+    } else if (error instanceof OAuthKnownProviderDiscoveryError) {
+      prerequisite = buildOAuthPrerequisite(
+        'discovery_blocked_invalid',
+        normalizedServerUrl,
+        provider,
+        trace,
+        error,
+        options.scope
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+    } else if (error instanceof OAuthOperatorClientNotConfiguredError) {
+      prerequisite = buildOAuthPrerequisite(
+        'operator_client_not_configured',
+        normalizedServerUrl,
+        provider,
+        trace,
+        error,
+        options.scope
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+    } else if (error instanceof OAuthTrustedIssuerBindingError) {
+      prerequisite = buildOAuthPrerequisite(
+        'discovery_blocked_invalid',
+        normalizedServerUrl,
+        provider,
+        trace,
+        error,
+        options.scope
+      );
+      prerequisite = {
+        ...prerequisite,
+        canConfigureClient: false,
+        explanation: error.message,
+      };
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+    } else if (error instanceof OAuthOperatorClientLookupError) {
+      prerequisite = buildOAuthPrerequisite(
+        error.status === 429 || error.status >= 500
+          ? 'transient_discovery_failure'
+          : 'discovery_blocked_invalid',
+        normalizedServerUrl,
+        provider,
+        trace,
+        error,
+        options.scope
+      );
+      prerequisite = {
+        ...prerequisite,
+        canConfigureClient: false,
+        httpStatus: error.status,
+        explanation: `The issuer-bound operator client lookup failed safely with proxy-owned HTTP ${error.status}; authorization was not started.`,
+      };
       trace.terminal(prerequisite.kind, prerequisite.explanation);
     } else if (isPreRegisteredClientRequired(error)) {
       trace.record({
@@ -1225,7 +2548,10 @@ export const beginOAuthFlow = async (
         options.scope
       );
       trace.terminal('pre_registered_client_required', prerequisite.explanation);
-    } else if (latestFailureIsProxyAuthentication(trace)) {
+    } else if (
+      error instanceof OAuthProxyAuthenticationRequiredError
+      || latestFailureIsProxyAuthentication(trace)
+    ) {
       prerequisite = buildOAuthPrerequisite(
         'proxy_authentication_required',
         normalizedServerUrl,
@@ -1235,7 +2561,26 @@ export const beginOAuthFlow = async (
         options.scope
       );
       trace.terminal('proxy_authentication_required', prerequisite.explanation);
-    } else if (latestFailureIsDiscovery(trace)) {
+    } else if (error instanceof OAuthRegistrationCorsError) {
+      prerequisite = {
+        ...buildOAuthPrerequisite(
+          'discovery_blocked_invalid',
+          normalizedServerUrl,
+          provider,
+          trace,
+          error,
+          options.scope
+        ),
+        explanation: error.message,
+      };
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+    } else if (
+      latestFailureIsDiscovery(trace)
+      || (
+        getOAuthProviderPolicy(normalizedServerUrl)?.id === 'intercom'
+        && hasUnresolvedDiscoveryFailure(trace)
+      )
+    ) {
       prerequisite = buildOAuthPrerequisite(
         latestFailureIsTransientDiscovery(trace)
           ? 'transient_discovery_failure'
@@ -1254,7 +2599,10 @@ export const beginOAuthFlow = async (
       );
       throw error;
     }
-    throw new OAuthPrerequisiteError(prerequisite, { cause: error });
+    const safeCause = error instanceof RegistrationRejectedError
+      ? new Error(prerequisite.explanation)
+      : error;
+    throw new OAuthPrerequisiteError(prerequisite, { cause: safeCause });
   }
 };
 
@@ -1274,7 +2622,11 @@ export const prepareManualOAuthClient = async (
     discoveryProxy,
     ...providerOptions
   } = options;
-  const provider = new BrowserOAuthProvider(normalizedServerUrl, { ...providerOptions, storage, trace });
+  const provider = new BrowserOAuthProvider(normalizedServerUrl, {
+    ...providerOptions,
+    storage,
+    trace,
+  });
   const resourceMetadataUrl = resourceMetadataUrlOption
     ? new URL(resourceMetadataUrlOption).toString()
     : undefined;
@@ -1286,9 +2638,13 @@ export const prepareManualOAuthClient = async (
   }
   provider.setResourceMetadataUrlOverride(resourceMetadataUrl);
   if (resourceMetadataUrl) trace.trackResourceMetadataUrl(resourceMetadataUrl);
-  const discoveryFetch = createOAuthTraceFetch(
+  const discoveryFetch = createKnownProviderDiscoveryEvidenceFetch(
+    normalizedServerUrl,
     trace,
-    createCorsFallbackDiscoveryFetch(trace, fetchFn || fetch, discoveryProxy)
+    createOAuthTraceFetch(
+      trace,
+      createCorsFallbackDiscoveryFetch(trace, fetchFn || fetch, discoveryProxy)
+    )
   );
   try {
     const discovery = provider.discoveryState() || (discover
@@ -1309,6 +2665,17 @@ export const prepareManualOAuthClient = async (
       ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
     });
     const issuer = issuerForDiscovery(provider.discoveryState());
+    if (providerRequiresDynamicRegistration(normalizedServerUrl, issuer)) {
+      const prerequisite = buildOAuthPrerequisite(
+        'pre_registered_client_required',
+        normalizedServerUrl,
+        provider,
+        trace,
+        new Error('Provider requires dynamic client registration')
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+      throw new OAuthPrerequisiteError(prerequisite);
+    }
     if (providerForbidsDynamicRegistration(normalizedServerUrl, issuer)) {
       trace.record({
         type: 'pre_registered_client',
@@ -1378,12 +2745,40 @@ export const completeOAuthFlow = async (
     request: { method: 'GET', url: sanitizeOAuthTraceUrl(callback) },
   });
 
-  const provider = new BrowserOAuthProvider(serverUrl, { ...options, trace });
+  const provider = new BrowserOAuthProvider(serverUrl, {
+    ...options,
+    trace,
+    hostedTokenRelayAvailable: Boolean(options.tokenProxy),
+  });
   try {
     provider.assertState(callbackState);
 
+    const discovery = provider.discoveryState();
+    const metadata = discovery?.authorizationServerMetadata;
+    const recordedIssuer = issuerForDiscovery(discovery);
+    if (!metadata?.issuer || !recordedIssuer || metadata.issuer !== recordedIssuer) {
+      throw new Error(
+        'Validated issuer-bound authorization-server discovery state is missing. Start authentication again.'
+      );
+    }
+    const issuer = callback.searchParams.get('iss') || undefined;
+    validateAuthorizationResponseIssuer({
+      iss: issuer,
+      expectedIssuer: metadata.issuer,
+      issParameterSupported: metadata.authorization_response_iss_parameter_supported === true,
+    });
+
     const responseError = callback.searchParams.get('error');
     if (responseError) {
+      if (
+        ['invalid_client', 'unauthorized_client'].includes(responseError.toLowerCase())
+        && provider.usesClientMetadataDocument(recordedIssuer)
+      ) {
+        throw new OAuthCimdInteroperabilityError(
+          providerGuidance(serverUrl, recordedIssuer).name,
+          responseError
+        );
+      }
       throw new OAuthAuthorizationResponseError(
         responseError,
         callback.searchParams.get('error_description')
@@ -1392,12 +2787,20 @@ export const completeOAuthFlow = async (
 
     if (!authorizationCode) throw new Error('OAuth callback did not include an authorization code.');
 
-    const issuer = callback.searchParams.get('iss') || undefined;
     const authenticate = options.authenticate || auth;
+    const tokenFetch = createOAuthTokenProxyFetch(
+      provider,
+      options.tokenProxy,
+      options.fetchFn || fetch
+    );
     const result = await authenticate(provider, {
       serverUrl,
       authorizationCode,
-      fetchFn: createOAuthTraceFetch(trace, options.fetchFn || fetch),
+      fetchFn: createCimdInteroperabilityFetch(
+        serverUrl,
+        provider,
+        createOAuthTraceFetch(trace, tokenFetch)
+      ),
       ...(issuer ? { iss: issuer } : {}),
     });
     if (result !== 'AUTHORIZED') throw new Error('OAuth callback did not complete authorization.');
@@ -1456,6 +2859,11 @@ export const saveManualOAuthClient = (
   if (!issuer) {
     throw new Error('Authorization-server discovery is missing. Restart OAuth before configuring a client.');
   }
+  if (providerRequiresDynamicRegistration(serverUrl, issuer)) {
+    throw new Error(
+      'This provider supports Dynamic Client Registration only; manual or static client IDs cannot be configured.'
+    );
+  }
 
   provider.saveClientInformation({
     client_id: clientId,
@@ -1486,11 +2894,26 @@ export const getOAuthPrerequisite = (error: unknown): OAuthPrerequisite | undefi
   error instanceof OAuthPrerequisiteError ? error.prerequisite : undefined
 );
 
+/** The proxy's own caller limit; signing in lifts the anonymous limit. */
+export const getProxyLimitPrerequisite = (
+  serverUrl: string,
+  limit: ProxyCallerLimit
+): OAuthPrerequisite => ({
+  kind: 'proxy_limit_reached',
+  serverUrl: normalizeOAuthServerUrl(serverUrl),
+  providerName: 'mcptest proxy',
+  explanation: new ProxyCallerLimitError(limit).message,
+  requiredScopes: [],
+  pkceS256: false,
+  publicClientSecretSupported: 'unknown',
+  canConfigureClient: false,
+});
+
 export const getProxyAuthenticationPrerequisite = (serverUrl: string): OAuthPrerequisite => ({
   kind: 'proxy_authentication_required',
   serverUrl: normalizeOAuthServerUrl(serverUrl),
   providerName: 'mcptest proxy',
-  explanation: 'The authenticated mcptest proxy requires a valid mcptest login. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry.',
+  explanation: 'The mcptest proxy rejected the mcptest login as invalid or expired. This is proxy access, not target OAuth and not an MCP server failure. Sign in again, then retry.',
   requiredScopes: [],
   pkceS256: false,
   publicClientSecretSupported: 'unknown',

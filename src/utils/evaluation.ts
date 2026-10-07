@@ -10,6 +10,8 @@ import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  getProxyCallerLimit,
+  shouldRetryMcpConnectionThroughProxy,
   type ObservedAuthenticationChallenge,
   type ObservedTransportRequest,
   type ProxyAuthenticationSource,
@@ -21,8 +23,16 @@ import {
   type PendingAuthenticatedMcpRetry,
 } from './oauthTrace';
 import type { TransportType } from '../types';
+import { proxyCallerLimitMessage } from './proxyLimit';
 import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
 import { analyzeToolSurface } from './toolSurfaceAnalysis';
+import type {
+  CapabilityInventoryCategory,
+  CapabilityInventoryStatus,
+  CapabilityInventoryV1,
+} from '../types/capabilityInventory';
+import { createCapabilityInventory } from './capabilityInventory';
+import { requestCapabilityDiscoveryPage } from './mcpClient';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
@@ -141,6 +151,8 @@ export interface EvaluationReport {
   sections: Record<string, EvaluationSection>;
   /** Deterministic analysis of definitions returned by tools/list. */
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
+  /** Bounded, public-safe definitions returned by MCP discovery methods. */
+  capabilityInventory?: CapabilityInventoryV1;
 }
 
 export interface EvaluationAuthorizationContext {
@@ -242,11 +254,12 @@ export const getEvaluationPercentage = (report: EvaluationReport): number => {
 
 export function getEvaluationProxyHeaders(
   requestHeaders: HeadersInit | undefined,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   oauthToken?: string | null
 ): Headers {
   const headers = new Headers(requestHeaders);
-  headers.set('Authorization', `Bearer ${firebaseToken}`);
+  // The mcptest login is optional; without it the proxy applies anonymous limits.
+  if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
 
   if (oauthToken) {
     headers.set('X-MCP-Authorization', `Bearer ${oauthToken}`);
@@ -257,12 +270,13 @@ export function getEvaluationProxyHeaders(
 
 /**
  * Fetches the target directly first so evaluation does not silently measure the
- * proxy. When direct browser access fails, the configured proxy is authenticated
- * with Firebase and the MCP credential is kept on the isolated target channel.
+ * proxy. When direct browser access fails, the configured proxy is used (with the
+ * optional Firebase login that lifts its anonymous limits) and the MCP credential
+ * is kept on the isolated target channel.
  */
 export async function fetchForEvaluation(
   url: string,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   options: RequestInit = {},
   oauthToken?: string | null,
   usesProxy = false
@@ -575,7 +589,7 @@ const makeRouteFailure = (
 class EvaluationConnectionError extends Error {
   constructor(readonly failures: readonly EvaluationRouteFailure[]) {
     super(failures.map((failure) => (
-      `${failure.route === 'direct' ? 'Direct target' : 'Authenticated proxy'}: ${failure.message}`
+      `${failure.route === 'direct' ? 'Direct target' : 'mcptest proxy'}: ${failure.message}`
     )).join('; '));
     this.name = 'EvaluationConnectionError';
   }
@@ -583,7 +597,7 @@ class EvaluationConnectionError extends Error {
 
 const connectForEvaluation = async (
   serverUrl: string,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   oauthToken: string | null,
   targetHeaders: HeadersInit | undefined,
   onProgress: (message: string) => void,
@@ -612,12 +626,15 @@ const connectForEvaluation = async (
       undefined,
       directStartedAt
     );
+    if (!shouldRetryMcpConnectionThroughProxy(directError)) {
+      throw new EvaluationConnectionError([directFailure]);
+    }
     const proxyUrl = getProxyUrl();
     if (!proxyUrl) throw new EvaluationConnectionError([directFailure]);
 
     const proxyStartedAt = Date.now();
     try {
-      onProgress('Direct negotiation failed; retrying through the authenticated CORS proxy...');
+      onProgress('Direct negotiation failed; retrying through the mcptest CORS proxy...');
       const proxyConnectionUrl = new URL(proxyUrl);
       proxyConnectionUrl.searchParams.set('target', serverUrl);
       const proxiedTargetHeaders = new Headers(targetHeaders);
@@ -633,9 +650,13 @@ const connectForEvaluation = async (
       );
       return { ...proxied, usedProxy: true, directError: directFailure.message };
     } catch (proxyError) {
+      const proxyFailure = makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt);
+      // The proxy's own caller limit is not a target failure; say how to lift it.
+      const proxyLimit = getProxyCallerLimit(proxyError);
+      if (proxyLimit) onProgress(proxyCallerLimitMessage(proxyLimit));
       throw new EvaluationConnectionError([
         directFailure,
-        makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt),
+        proxyLimit ? { ...proxyFailure, message: proxyCallerLimitMessage(proxyLimit) } : proxyFailure,
       ]);
     }
   }
@@ -650,6 +671,7 @@ interface CapabilityEvaluation {
   section: EvaluationSection;
   targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
+  capabilityInventory: CapabilityInventoryV1;
 }
 
 const DISCOVERY_PAGE_LIMIT = 64;
@@ -662,7 +684,7 @@ class IncompleteDiscoveryPaginationError extends Error {
   ) {
     super(nextCursor
       ? `Discovery pagination stopped before cursor ${nextCursor}: ${errorMessage(cause)}`
-      : `Discovery returned a malformed first page: ${errorMessage(cause)}`);
+      : `Discovery pagination was incomplete: ${errorMessage(cause)}`);
     this.name = 'IncompleteDiscoveryPaginationError';
   }
 }
@@ -678,7 +700,7 @@ const isDiscoveryPaginationFailure = (error: unknown, seen = new Set<object>()):
 
 const aggregateDiscoveryPages = async (
   firstPage: unknown,
-  itemKey: 'tools' | 'resources' | 'prompts',
+  itemKey: 'tools' | 'resources' | 'resourceTemplates' | 'prompts',
   fetchPage: (cursor: string) => Promise<unknown>
 ): Promise<Record<string, unknown>> => {
   if (!firstPage || typeof firstPage !== 'object' || Array.isArray(firstPage)) {
@@ -699,9 +721,15 @@ const aggregateDiscoveryPages = async (
   }
 
   const items = [...initialItems];
-  let nextCursor = typeof initial.nextCursor === 'string' && initial.nextCursor
-    ? initial.nextCursor
-    : undefined;
+  if (Object.prototype.hasOwnProperty.call(initial, 'nextCursor')
+      && (typeof initial.nextCursor !== 'string' || initial.nextCursor.length === 0)) {
+    throw new IncompleteDiscoveryPaginationError(
+      { ...initial, [itemKey]: items },
+      undefined,
+      new Error(`The ${itemKey} discovery page returned a malformed nextCursor.`)
+    );
+  }
+  let nextCursor = initial.nextCursor as string | undefined;
   const seenCursors = new Set<string>();
   let pageCount = 1;
 
@@ -737,10 +765,16 @@ const aggregateDiscoveryPages = async (
       );
     }
     items.push(...(page as Record<string, unknown>)[itemKey] as unknown[]);
-    nextCursor = typeof (page as Record<string, unknown>).nextCursor === 'string'
-      && (page as Record<string, unknown>).nextCursor
-      ? (page as Record<string, unknown>).nextCursor as string
-      : undefined;
+    const pageRecord = page as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(pageRecord, 'nextCursor')
+        && (typeof pageRecord.nextCursor !== 'string' || pageRecord.nextCursor.length === 0)) {
+      throw new IncompleteDiscoveryPaginationError(
+        { ...initial, [itemKey]: items },
+        undefined,
+        new Error(`The ${itemKey} discovery page returned a malformed nextCursor.`)
+      );
+    }
+    nextCursor = pageRecord.nextCursor as string | undefined;
     pageCount += 1;
   }
 
@@ -749,21 +783,29 @@ const aggregateDiscoveryPages = async (
 };
 
 const evaluateCapabilities = async (
-  connection: ConnectedEvaluation
+  connection: ConnectedEvaluation,
+  authentication: 'authenticated' | 'unauthenticated'
 ): Promise<CapabilityEvaluation> => {
   const section: EvaluationSection = {
     name: 'MCP Capabilities',
-    description: 'Exercises standardized tools, resources, and prompts discovery methods',
+    description: 'Exercises standardized tools, resources, resource templates, and prompts discovery methods',
     score: 0,
     maxScore: 10,
     details: [],
   };
   const targetAuthenticationFailures: CapabilityEvaluation['targetAuthenticationFailures'] = [];
-  const discovered: { tools?: unknown; resources?: unknown; prompts?: unknown } = {};
+  const discovered: Partial<Record<CapabilityInventoryCategory, unknown>> = {};
+  const discoveryStatuses: Record<CapabilityInventoryCategory, CapabilityInventoryStatus> = {
+    tools: 'unavailable',
+    resources: 'unavailable',
+    resourceTemplates: 'unavailable',
+    prompts: 'unavailable',
+  };
+  const paginationComplete: Partial<Record<CapabilityInventoryCategory, boolean>> = {};
   const incompleteDiscovery = new Set<'tools' | 'resources' | 'prompts'>();
   let canAnalyzeToolSurface = false;
   const checks: Array<{
-    name: string;
+    name: CapabilityInventoryCategory;
     method: string;
     points: number;
     run: () => Promise<unknown>;
@@ -774,24 +816,38 @@ const evaluateCapabilities = async (
       name: 'tools',
       method: 'tools/list',
       points: 4,
-      run: () => connection.client.listTools(),
-      runPage: (cursor) => connection.client.listTools({ cursor }),
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'tools/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(connection.client, 'tools/list', cursor),
       count: (result) => Array.isArray(result?.tools) ? result.tools.length : 0,
+    },
+    {
+      name: 'resourceTemplates',
+      method: 'resources/templates/list',
+      points: 0,
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'resources/templates/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(
+        connection.client, 'resources/templates/list', cursor
+      ),
+      count: (result) => Array.isArray(result?.resourceTemplates)
+        ? result.resourceTemplates.length
+        : 0,
     },
     {
       name: 'resources',
       method: 'resources/list',
       points: 3,
-      run: () => connection.client.listResources(),
-      runPage: (cursor) => connection.client.listResources({ cursor }),
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'resources/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(
+        connection.client, 'resources/list', cursor
+      ),
       count: (result) => Array.isArray(result?.resources) ? result.resources.length : 0,
     },
     {
       name: 'prompts',
       method: 'prompts/list',
       points: 3,
-      run: () => connection.client.listPrompts(),
-      runPage: (cursor) => connection.client.listPrompts({ cursor }),
+      run: () => requestCapabilityDiscoveryPage(connection.client, 'prompts/list'),
+      runPage: (cursor) => requestCapabilityDiscoveryPage(connection.client, 'prompts/list', cursor),
       count: (result) => Array.isArray(result?.prompts) ? result.prompts.length : 0,
     },
   ];
@@ -804,14 +860,14 @@ const evaluateCapabilities = async (
       const firstPage = await check.run();
       const result = await aggregateDiscoveryPages(
         firstPage,
-        check.name as 'tools' | 'resources' | 'prompts',
+        check.name,
         check.runPage
       );
       const durationMs = Date.now() - startedAt;
       const itemCount = check.count(result);
-      if (check.name === 'tools') discovered.tools = (result as { tools?: unknown })?.tools;
-      if (check.name === 'resources') discovered.resources = (result as { resources?: unknown })?.resources;
-      if (check.name === 'prompts') discovered.prompts = (result as { prompts?: unknown })?.prompts;
+      discovered[check.name] = result[check.name];
+      discoveryStatuses[check.name] = 'complete';
+      paginationComplete[check.name] = true;
       section.score += check.points;
       if (check.name === 'tools') canAnalyzeToolSurface = true;
       section.details.push({
@@ -829,6 +885,8 @@ const evaluateCapabilities = async (
         startedAt
       );
       if (
+        check.name !== 'resourceTemplates'
+        &&
         (failure.httpStatus === 401 || failure.httpStatus === 403)
         && failure.authenticationSource === 'target'
       ) {
@@ -836,12 +894,12 @@ const evaluateCapabilities = async (
       }
       if (error instanceof IncompleteDiscoveryPaginationError) {
         const itemCount = check.count(error.result);
-        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
-        if (check.name === 'tools') discovered.tools = error.result.tools;
-        if (check.name === 'resources') discovered.resources = error.result.resources;
-        if (check.name === 'prompts') discovered.prompts = error.result.prompts;
+        if (check.name !== 'resourceTemplates') incompleteDiscovery.add(check.name);
+        discovered[check.name] = error.result[check.name];
+        discoveryStatuses[check.name] = 'partial';
+        paginationComplete[check.name] = false;
         if (check.name === 'tools') canAnalyzeToolSurface = true;
-        section.status = 'partial';
+        if (check.name !== 'resourceTemplates') section.status = 'partial';
         section.details.push({
           text: `⚠ ${check.method} pagination was incomplete (${itemCount} ${check.name} retained)`,
           context: failure.message,
@@ -860,9 +918,11 @@ const evaluateCapabilities = async (
         continue;
       }
       if (isDiscoveryPaginationFailure(error)) {
-        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
+        if (check.name !== 'resourceTemplates') incompleteDiscovery.add(check.name);
+        discoveryStatuses[check.name] = 'partial';
+        paginationComplete[check.name] = false;
         if (check.name === 'tools') canAnalyzeToolSurface = true;
-        section.status = 'partial';
+        if (check.name !== 'resourceTemplates') section.status = 'partial';
         section.details.push({
           text: `⚠ ${check.method} pagination did not complete`,
           context: failure.message,
@@ -875,9 +935,13 @@ const evaluateCapabilities = async (
         continue;
       }
       const methodNotFound = isMethodNotFound(error);
+      discoveryStatuses[check.name] = methodNotFound ? 'unsupported' : 'unavailable';
+      paginationComplete[check.name] = methodNotFound;
       if (!methodNotFound) {
-        incompleteDiscovery.add(check.name as 'tools' | 'resources' | 'prompts');
-        section.status = 'partial';
+        if (check.name !== 'resourceTemplates') {
+          incompleteDiscovery.add(check.name);
+          section.status = 'partial';
+        }
       }
       if (check.name === 'tools') {
         canAnalyzeToolSurface = methodNotFound;
@@ -902,6 +966,14 @@ const evaluateCapabilities = async (
   return {
     section,
     targetAuthenticationFailures,
+    capabilityInventory: createCapabilityInventory({
+      testedEndpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
+      route: connection.usedProxy ? 'authenticated-proxy' : 'direct',
+      authentication,
+      discovered,
+      statuses: discoveryStatuses,
+      paginationComplete,
+    }),
     ...(canAnalyzeToolSurface ? {
       toolSurfaceAnalysis: analyzeToolSurface({
         ...discovered,
@@ -917,7 +989,7 @@ type AuthorizationServerMetadata = NonNullable<
   Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
 >;
 
-const metadataFetchForEvaluation = (firebaseToken: string): FetchLike => (
+const metadataFetchForEvaluation = (firebaseToken: string | undefined): FetchLike => (
   input,
   init
 ) => {
@@ -931,7 +1003,7 @@ const metadataFetchForEvaluation = (firebaseToken: string): FetchLike => (
 
 const evaluateSecurityPosture = async (
   connection: ConnectedEvaluation,
-  firebaseToken: string
+  firebaseToken: string | undefined
 ): Promise<EvaluationSection | undefined> => {
   const endpoint = getEvaluationTargetUrl(connection.url, connection.usedProxy);
   const metadataFetch = metadataFetchForEvaluation(firebaseToken);
@@ -1076,7 +1148,7 @@ const evaluateBrowserAccessibility = (
 
   if (connection.usedProxy) {
     section.details.push({
-      text: '✗ Direct browser negotiation failed; the authenticated proxy was required',
+      text: '✗ Direct browser negotiation failed; the mcptest proxy was required',
       context: connection.directError
         || 'The direct route did not complete MCP negotiation in this browser.',
       metadata: { endpoint: endpointUrl, requiredHeaders },
@@ -1175,7 +1247,7 @@ const evaluationAuthorizationEvidence = (
 
 export async function evaluateServer(
   inputUrl: string,
-  firebaseToken: string,
+  firebaseToken: string | undefined,
   onProgress: (message: string) => void,
   oauthAccessToken?: string | null,
   targetHeaders?: HeadersInit,
@@ -1286,7 +1358,7 @@ export async function evaluateServer(
       };
       report.sections.auth = {
         name: 'Proxy Authentication Required',
-        description: 'A valid mcptest login is required to use the authenticated proxy',
+        description: 'The mcptest proxy rejected an invalid or expired mcptest login',
         score: 0,
         maxScore: 0,
         status: 'skipped',
@@ -1391,8 +1463,13 @@ export async function evaluateServer(
     };
     onProgress(`Negotiated ${connection.protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''}.`);
 
-    onProgress('Exercising tools, resources, and prompts discovery...');
-    const capabilityEvaluation = await evaluateCapabilities(connection);
+    onProgress('Exercising tools, resources, resource templates, and prompts discovery...');
+    const capabilityEvaluation = await evaluateCapabilities(
+      connection,
+      oauthToken || hasExplicitTargetCredential(targetHeaders)
+        ? 'authenticated'
+        : 'unauthenticated'
+    );
     report.sections.capabilities = capabilityEvaluation.section;
     if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
       report.outcome = 'authorization-required';
@@ -1442,6 +1519,7 @@ export async function evaluateServer(
     if (capabilityEvaluation.toolSurfaceAnalysis) {
       report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
     }
+    report.capabilityInventory = capabilityEvaluation.capabilityInventory;
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';
     }

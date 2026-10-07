@@ -8,6 +8,12 @@ import type {
 
 export const SITE_URL = 'https://mcptest.io';
 
+export const getCatalogServerImageUrl = (logoUrl?: string): string => {
+  return logoUrl?.startsWith('/server-logos/')
+    ? `${SITE_URL}${logoUrl}`
+    : `${SITE_URL}/logo.png`;
+};
+
 export const getCatalogServerPath = (serverId: string): string => {
   return `/servers/${encodeURIComponent(serverId)}/`;
 };
@@ -52,6 +58,8 @@ export const formatCatalogAuth = (authType: CatalogAuthType): string => {
       return 'OAuth 2.1';
     case 'bearer-token':
       return 'Bearer token';
+    case 'api-token':
+      return 'API token';
     case 'api-key':
       return 'API key';
     default:
@@ -74,6 +82,25 @@ export const formatProtocolEra = (era: CatalogProtocolEra, version?: string): st
   }
 };
 
+export const formatCatalogTimestamp = (value: string): string => {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return value;
+  }
+
+  const date = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(timestamp);
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(timestamp);
+
+  return `${date} at ${time}`;
+};
+
 const truncateDescription = (value: string, maxLength = 158): string => {
   if (value.length <= maxLength) {
     return value;
@@ -82,22 +109,25 @@ const truncateDescription = (value: string, maxLength = 158): string => {
   return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 };
 
+export const getCatalogServerMetaDescription = (server: CatalogServer): string => {
+  return truncateDescription(
+    server.seoDescription
+      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
+  );
+};
+
 export const getCatalogServerSeo = (server: CatalogServer) => {
   const transport = formatCatalogTransport(getEffectiveCatalogTransport(server));
   const auth = formatCatalogAuth(server.authType);
   const protocol = formatProtocolEra(server.protocolEra, server.protocolVersion);
   const canonicalUrl = `${SITE_URL}${getCatalogServerPath(server.id)}`;
-  const description = truncateDescription(
-    `${server.name} MCP server connection report: ${transport}, ${protocol}, ${auth}, endpoint details, and live-test status.`
-  );
+  const description = getCatalogServerMetaDescription(server);
 
   return {
     title: `${server.name} MCP Server Report | mcptest.io`,
     description,
     canonicalUrl,
-    imageUrl: server.logoUrl?.startsWith('http')
-      ? server.logoUrl
-      : `${SITE_URL}${server.logoUrl || '/logo.png'}`,
+    imageUrl: getCatalogServerImageUrl(server.logoUrl),
     structuredData: {
       '@context': 'https://schema.org',
       '@type': 'WebAPI',
@@ -119,6 +149,11 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
           name: 'Authentication',
           value: formatCatalogAuth(server.authType),
         },
+        ...(server.alternativeAuthTypes ?? []).map((authType) => ({
+          '@type': 'PropertyValue' as const,
+          name: 'Alternative authentication',
+          value: formatCatalogAuth(authType),
+        })),
         {
           '@type': 'PropertyValue',
           name: 'MCP protocol lifecycle',

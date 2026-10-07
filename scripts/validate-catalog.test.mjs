@@ -1,13 +1,61 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, it } from 'vitest';
+import catalogSeeds from '../src/data/serverCatalog.json';
+import { validateCapabilityInventory } from '../src/utils/capabilityInventory';
 import validator from './validate-catalog.js';
 
 const {
   detectedAuthType,
+  discoverPublicInventory,
   endpointVariants,
+  mergeCapabilitySnapshots,
+  paginateDiscovery,
   probeSseEndpoint,
   probeStreamableEndpoint,
+  validateCatalogSeed,
   validateSeed,
+  writeResults,
 } = validator;
+
+async function connectedClient(listHandler) {
+  const client = new Client(
+    { name: 'catalog-pagination-test', version: '1.0.0' },
+    { versionNegotiation: { mode: 'legacy' } }
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  serverTransport.onmessage = async (message) => {
+    if (!('method' in message) || !('id' in message)) return;
+    if (message.method === 'initialize') {
+      await serverTransport.send({
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          protocolVersion: '2025-06-18',
+          capabilities: { tools: {}, resources: {}, prompts: {} },
+          serverInfo: { name: 'pagination-test-server', version: '1.0.0' },
+        },
+      });
+      return;
+    }
+    try {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id, result: await listHandler(message.method, message.params),
+      });
+    } catch (error) {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id,
+        error: { code: -32603, message: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  };
+  await serverTransport.start();
+  await client.connect(clientTransport);
+  return client;
+}
 
 function jsonRpcResponse(body, result, options = {}) {
   return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), {
@@ -50,6 +98,19 @@ describe('catalog endpoint variants', () => {
     });
   });
 
+  it('does not invent child paths for an exact-only origin endpoint', () => {
+    const variants = endpointVariants({
+      url: 'https://mcp.example.com/',
+      transport: 'streamable-http',
+      exactEndpointOnly: true,
+    });
+
+    expect(variants).toEqual([
+      { url: 'https://mcp.example.com/', transport: 'streamable-http' },
+    ]);
+    expect(variants.some(({ url }) => url.endsWith('/mcp'))).toBe(false);
+  });
+
   it('tests the exact URL with both transports when the declared transport and path differ', () => {
     const variants = endpointVariants({
       url: 'https://example.com/mcp',
@@ -67,16 +128,305 @@ describe('catalog endpoint variants', () => {
   });
 });
 
+describe('catalog seed provenance validation', () => {
+  it('accepts HTTPS publisher evidence and exact MCP Registry records', () => {
+    expect(validateCatalogSeed({
+      id: 'publisher',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+    })).toMatchObject({ id: 'publisher' });
+
+    const registryUrl = 'https://registry.modelcontextprotocol.io/v0.1/servers/example';
+    expect(validateCatalogSeed({
+      id: 'registry',
+      registryUrl,
+      listingSource: { kind: 'mcp-registry', url: registryUrl },
+    })).toMatchObject({ id: 'registry' });
+  });
+
+  it.each([
+    [{ id: 'missing' }, 'listingSource is required'],
+    [
+      { id: 'kind', listingSource: { kind: 'verified' } },
+      'listingSource.kind must be publisher, mcp-registry, or community',
+    ],
+    [
+      { id: 'http', listingSource: { kind: 'community', url: 'http://example.com' } },
+      'listingSource.url must be a valid HTTPS URL',
+    ],
+    [
+      {
+        id: 'mismatch',
+        registryUrl: 'https://registry.modelcontextprotocol.io/v0.1/servers/a',
+        listingSource: {
+          kind: 'mcp-registry',
+          url: 'https://registry.modelcontextprotocol.io/v0.1/servers/b',
+        },
+      },
+      'MCP Registry provenance must reuse registryUrl',
+    ],
+  ])('rejects invalid provenance: %s', (seed, message) => {
+    expect(() => validateCatalogSeed(seed)).toThrow(message);
+  });
+
+  it('accepts complete header value templates with one named placeholder', () => {
+    const requiredHeaders = [
+      { name: 'Authorization', valueTemplate: 'ApiKey <SERVICE_KEY>', required: true, secret: true },
+      { name: 'X-Service-Key', valueTemplate: 'key=<SERVICE_KEY>; version=2', secret: true },
+      { name: 'X-Account-Region', valueTemplate: '<ACCOUNT_REGION>' },
+      { name: 'X-Legacy', description: 'Prose-only metadata stays valid catalog data' },
+    ];
+    expect(validateCatalogSeed({
+      id: 'header-server',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders,
+    }).requiredHeaders).toEqual(requiredHeaders);
+  });
+
+  it.each([
+    ['a CRLF injection', 'ApiKey <SERVICE_KEY>\r\nX-Injected: 1'],
+    ['a control character', 'ApiKey <SERVICE_KEY>\u0007'],
+    ['two placeholders', 'ApiKey <SERVICE_KEY> <SERVICE_SECRET>'],
+    ['no placeholder', 'ApiKey static-value'],
+    ['an unnamed placeholder', 'ApiKey <>'],
+    ['a lowercase placeholder', 'ApiKey <service_key>'],
+    ['an unbalanced bracket', 'ApiKey <SERVICE_KEY> >'],
+    ['surrounding whitespace', ' ApiKey <SERVICE_KEY> '],
+    ['a non-string value', 42],
+  ])('rejects a header value template with %s', (_case, valueTemplate) => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-header',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: [{ name: 'Authorization', valueTemplate, required: true, secret: true }],
+    })).toThrow('must be the complete header value with exactly one <NAMED_PLACEHOLDER>');
+  });
+
+  it('rejects malformed required header entries', () => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-header-name',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: [{ name: 'Bad Header', valueTemplate: '<SERVICE_KEY>' }],
+    })).toThrow('requiredHeaders entries need a valid HTTP header name');
+
+    expect(() => validateCatalogSeed({
+      id: 'bad-header-shape',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      requiredHeaders: { name: 'Authorization' },
+    })).toThrow('requiredHeaders must be an array');
+  });
+
+  it('validates typed OAuth registration evidence and its alternative auth link', () => {
+    const registration = {
+      mode: 'pre-registered-required',
+      clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
+      clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
+      callback: {
+        required: true,
+        redirectUrls: { 'vs-code': ['http://127.0.0.1:33418/'] },
+      },
+      evidenceUrl: 'https://example.com/oauth-registration',
+    };
+    expect(validateCatalogSeed({
+      id: 'oauth-server', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      oauthRegistration: registration,
+    }).oauthRegistration).toEqual(registration);
+
+    expect(() => validateCatalogSeed({
+      id: 'bad-callback', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      oauthRegistration: {
+        ...registration,
+        callback: { required: true, redirectUrls: { cursor: ['not-a-url'] } },
+      },
+    })).toThrow('OAuth callback URLs must be absolute and credential-free');
+
+    expect(() => validateCatalogSeed({
+      id: 'missing-alternative', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: registration.evidenceUrl },
+      alternativeAuthTypes: ['api-token'],
+      oauthRegistration: {
+        ...registration,
+        mode: 'unavailable-or-use-alternative',
+        alternativeAuthType: 'api-key',
+      },
+    })).toThrow('requires a cataloged alternativeAuthType');
+  });
+
+  it.each([
+    [
+      'secret-required browser fallback',
+      {
+        mode: 'pre-registered-required', responsibleParty: 'user',
+        clientId: { required: true }, clientSecret: { required: true },
+        browserPublicClientSupported: true,
+        callback: { required: true, redirectUrls: { 'vs-code': ['https://vscode.dev/redirect'] } },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'cannot advertise a browser/public fallback',
+    ],
+    [
+      'approval without application evidence',
+      {
+        mode: 'provider-approval', responsibleParty: 'provider-approval',
+        clientId: { required: false }, clientSecret: { required: false },
+        browserPublicClientSupported: false,
+        callback: { required: false, redirectUrls: {} },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'requires an approval URL or explicit absence note',
+    ],
+    [
+      'operator app without hosted callback',
+      {
+        mode: 'operator-confidential', responsibleParty: 'mcptest-operator',
+        clientId: { required: true }, clientSecret: { required: true },
+        browserPublicClientSupported: false,
+        callback: { required: true, redirectUrls: { 'vs-code': ['https://vscode.dev/redirect'] } },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'requires an operator-owned confidential hosted app',
+    ],
+    [
+      'credential value in the typed secret object',
+      {
+        mode: 'pre-registered-required', responsibleParty: 'user',
+        clientId: { required: true }, clientSecret: { required: true, value: 'not-allowed' },
+        browserPublicClientSupported: false,
+        callback: { required: true, redirectUrls: { 'vs-code': ['https://vscode.dev/redirect'] } },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+      'must never contain credential values',
+    ],
+  ])('rejects contradictory OAuth guidance: %s', (_name, oauthRegistration, message) => {
+    expect(() => validateCatalogSeed({
+      id: 'unsafe-oauth-guidance', requiresOAuth: true, authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration,
+    })).toThrow(message);
+  });
+
+  it.each([
+    ['wrong host', 'http://127.0.0.1:8080/callback'],
+    ['IPv6 host', 'http://[::1]:8080/callback'],
+    ['alternate path', 'http://localhost:8080/oauth/callback'],
+    ['query string', 'http://localhost:8080/callback?source=test'],
+    ['fragment', 'http://localhost:8080/callback#test'],
+    ['credentials', 'http://user:pass@localhost:8080/callback'],
+    ['implicit port', 'http://localhost/callback'],
+    ['default port', 'http://localhost:80/callback'],
+  ])('rejects Claude Code callback evidence with a %s', (_case, callbackUrl) => {
+    expect(() => validateCatalogSeed({
+      id: 'bad-claude-callback',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: {
+          required: true,
+          redirectUrls: { 'claude-code': [callbackUrl] },
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow(/Claude Code callback URLs must match|absolute and credential-free/);
+  });
+
+  it.each([
+    ['wrong host', 'http://127.0.0.1:3334/oauth/callback'],
+    ['IPv6 host', 'http://[::1]:3334/oauth/callback'],
+    ['wrong path', 'http://localhost:3334/wrong-path'],
+    ['query string', 'http://localhost:3334/oauth/callback?source=test'],
+    ['fragment', 'http://localhost:3334/oauth/callback#test'],
+    ['credentials', 'http://user:pass@localhost:3334/oauth/callback'],
+    ['implicit port', 'http://localhost/oauth/callback'],
+    ['default port', 'http://localhost:80/oauth/callback'],
+  ])('rejects matching Codex redirect and bridge callbacks with a %s', (_case, callbackUrl) => {
+    const callbackPort = callbackUrl.includes(':80/') ? 80 : 3334;
+    expect(() => validateCatalogSeed({
+      id: 'bad-codex-callback',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: {
+          required: true,
+          redirectUrls: { 'codex-cli': [callbackUrl] },
+        },
+        codexMcpRemote: {
+          resourceUrl: 'https://example.com',
+          callbackUrl,
+          callbackPort,
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow(/Codex mcp-remote callback URLs must match|absolute and credential-free/);
+  });
+
+  it('keeps the Codex callback port consistent with the exact callback URL', () => {
+    const callbackUrl = 'http://localhost:3334/oauth/callback';
+    expect(() => validateCatalogSeed({
+      id: 'bad-codex-port',
+      requiresOAuth: true,
+      authType: 'oauth',
+      listingSource: { kind: 'publisher', url: 'https://example.com/oauth' },
+      oauthRegistration: {
+        mode: 'pre-registered-required',
+        clientId: { required: true },
+        clientSecret: { required: true },
+        callback: { required: true, redirectUrls: { 'codex-cli': [callbackUrl] } },
+        codexMcpRemote: {
+          resourceUrl: 'https://example.com',
+          callbackUrl,
+          callbackPort: 4444,
+        },
+        evidenceUrl: 'https://example.com/oauth',
+      },
+    })).toThrow('callbackPort must match callbackUrl');
+  });
+
+  it('accepts the production Asana and PagerDuty OAuth registration evidence', () => {
+    for (const serverId of ['asana', 'pagerduty']) {
+      const seed = catalogSeeds.find(({ id }) => id === serverId);
+      expect(seed).toBeDefined();
+      expect(validateCatalogSeed(seed).oauthRegistration).toBeDefined();
+    }
+    const pagerduty = catalogSeeds.find(({ id }) => id === 'pagerduty');
+    expect(pagerduty.oauthRegistration).toMatchObject({
+      clientId: { required: false },
+      clientSecret: { required: false },
+      callback: { required: false, redirectUrls: {} },
+      alternativeAuthType: 'api-token',
+    });
+  });
+});
+
 describe('catalog protocol validation', () => {
+  it('retains a successful capability snapshot through later auth and network failures', () => {
+    const snapshot = { version: 1, observedAt: '2026-08-17T22:00:00.000Z' };
+    const previous = { secure: snapshot };
+    const retained = mergeCapabilitySnapshots(previous, [
+      { serverId: 'secure', status: 'online', errorCode: 'authentication_required' },
+      { serverId: 'offline', status: 'offline', errorCode: 'network_error' },
+    ]);
+
+    expect(retained.secure).toBe(snapshot);
+    expect(retained.secure.observedAt).toBe('2026-08-17T22:00:00.000Z');
+  });
+
   it('negotiates a stateless 2026 Streamable HTTP server', async () => {
     const requests = [];
     const fetch = async (_input, init = {}) => {
       const body = JSON.parse(String(init.body));
       requests.push({ body, headers: new Headers(init.headers) });
-      return jsonRpcResponse(body, {
-        supportedVersions: ['2026-07-28'],
-        capabilities: { tools: {} },
-      });
+      const result = body.method === 'server/discover'
+        ? { supportedVersions: ['2026-07-28'], capabilities: { tools: {} } }
+        : { [body.method === 'resources/templates/list' ? 'resourceTemplates' : body.method.split('/')[0]]: [] };
+      return jsonRpcResponse(body, result);
     };
 
     const result = await probeStreamableEndpoint(
@@ -89,7 +439,9 @@ describe('catalog protocol validation', () => {
       protocolEra: 'stateless',
       protocolVersion: '2026-07-28',
     });
-    expect(requests.map(({ body }) => body.method)).toEqual(['server/discover']);
+    expect(requests.map(({ body }) => body.method)).toEqual([
+      'server/discover', 'tools/list', 'resources/list', 'resources/templates/list', 'prompts/list',
+    ]);
     expect(requests[0].headers.get('mcp-method')).toBe('server/discover');
     expect(requests[0].headers.get('mcp-protocol-version')).toBe('2026-07-28');
   });
@@ -106,11 +458,14 @@ describe('catalog protocol validation', () => {
       }
       if (!('id' in body)) return new Response(null, { status: 202 });
 
-      return jsonRpcResponse(body, {
+      const result = body.method === 'initialize' ? {
         protocolVersion: '2025-06-18',
         capabilities: { tools: {} },
         serverInfo: { name: 'stateful-test-server', version: '1.0.0' },
-      }, {
+      } : {
+        [body.method === 'resources/templates/list' ? 'resourceTemplates' : body.method.split('/')[0]]: [],
+      };
+      return jsonRpcResponse(body, result, {
         headers: body.method === 'initialize'
           ? { 'Mcp-Session-Id': 'catalog-session' }
           : {},
@@ -131,6 +486,10 @@ describe('catalog protocol validation', () => {
       'server/discover',
       'initialize',
       'notifications/initialized',
+      'tools/list',
+      'resources/list',
+      'resources/templates/list',
+      'prompts/list',
     ]);
   });
 
@@ -188,6 +547,7 @@ describe('catalog protocol validation', () => {
         url: 'https://example.com',
         transport: 'streamable-http',
         authType: 'none',
+        listingSource: { kind: 'community' },
       },
       { fetchImpl: fetch, timeoutMs: 1_000 }
     );
@@ -238,6 +598,13 @@ describe('catalog protocol validation', () => {
             serverInfo: { name: 'legacy-test-server', version: '1.0.0' },
           },
         })}\n\n`));
+      } else if ('id' in body) {
+        const itemKey = body.method === 'resources/templates/list'
+          ? 'resourceTemplates'
+          : body.method.split('/')[0];
+        streamController.enqueue(encoder.encode(`event: message\ndata: ${JSON.stringify({
+          jsonrpc: '2.0', id: body.id, result: { [itemKey]: [] },
+        })}\n\n`));
       }
       return new Response(null, { status: 202 });
     };
@@ -253,7 +620,10 @@ describe('catalog protocol validation', () => {
       protocolEra: 'legacy',
       protocolVersion: '2025-06-18',
     });
-    expect(methods).toEqual(['initialize', 'notifications/initialized']);
+    expect(methods).toEqual([
+      'initialize', 'notifications/initialized', 'tools/list', 'resources/list',
+      'resources/templates/list', 'prompts/list',
+    ]);
   });
 
   it('does not record a MIME-only event stream as legacy MCP', async () => {
@@ -313,5 +683,280 @@ describe('catalog protocol validation', () => {
       [{ alive: true, authChallenge: false }],
       { oauthMetadata: true }
     )).toBe('none');
+  });
+});
+
+describe('catalog capability pagination and persistence', () => {
+  it('runs the actual catalog package command through its TypeScript-aware entry point', () => {
+    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const output = execFileSync(
+      npm,
+      ['run', 'validate-catalog', '--', '--check-runtime'],
+      { cwd: path.join(import.meta.dirname, '..'), encoding: 'utf8' }
+    );
+
+    expect(output).toContain('Catalog validator runtime is ready.');
+  });
+
+  it('uses actual Client transport behavior for multi-page success', async () => {
+    const requests = [];
+    const client = await connectedClient((method, params) => {
+      requests.push({ method, params });
+      if (method !== 'tools/list') throw new Error(`Unexpected method ${method}`);
+      return params?.cursor === 'tools-2'
+        ? { tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }] }
+        : {
+          tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+          nextCursor: 'tools-2',
+        };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'complete', paginationComplete: true });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+      expect(requests).toEqual([
+        { method: 'tools/list', params: undefined },
+        { method: 'tools/list', params: { cursor: 'tools-2' } },
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('treats an absent cursor from the actual Client as complete', async () => {
+    const client = await connectedClient(() => ({
+      tools: [{ name: 'only_tool', inputSchema: { type: 'object' } }],
+    }));
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'complete', paginationComplete: true });
+      expect(result.values.map(({ name }) => name)).toEqual(['only_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it.each([
+    ['null', null],
+    ['empty string', ''],
+    ['number', 42],
+    ['array', ['tools-2']],
+    ['object', { cursor: 'tools-2' }],
+  ])('retains an actual Client first page with a malformed %s cursor', async (_label, nextCursor) => {
+    const client = await connectedClient(() => ({
+      tools: [{ name: 'retained_tool', inputSchema: { type: 'object' } }],
+      nextCursor,
+    }));
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['retained_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it.each([
+    ['null', null],
+    ['empty string', ''],
+    ['number', 42],
+    ['array', ['tools-3']],
+    ['object', { cursor: 'tools-3' }],
+  ])('retains actual Client pages through a later malformed %s cursor', async (_label, nextCursor) => {
+    const client = await connectedClient((_method, params) => params?.cursor
+      ? {
+        tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+        nextCursor,
+      }
+      : {
+        tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('retains actual Client pages and marks a repeated cursor partial', async () => {
+    const client = await connectedClient((_method, params) => params?.cursor
+      ? {
+        tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      }
+      : {
+        tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['first_tool', 'second_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('retains page one with partial status when actual Client page two fails', async () => {
+    const client = await connectedClient((_method, params) => {
+      if (params?.cursor) throw new Error('page two unavailable');
+      return {
+        tools: [{ name: 'retained_tool', inputSchema: { type: 'object' } }],
+        nextCursor: 'tools-2',
+      };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toMatchObject({ status: 'partial', paginationComplete: false });
+      expect(result.values.map(({ name }) => name)).toEqual(['retained_tool']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('marks a page-two method-not-found partial after an empty successful first page', async () => {
+    const client = await connectedClient((_method, params) => {
+      if (params?.cursor) throw new Error('Method not found');
+      return { tools: [], nextCursor: 'tools-2' };
+    });
+    try {
+      const result = await paginateDiscovery(client, 'tools', 'tools/list', 1_000);
+      expect(result).toEqual({ status: 'partial', values: [], paginationComplete: false });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('writes only canonical sanitized inventories and preserves the last snapshot on rejection', async () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted catalog secret';
+    const rawPages = {
+      'tools/list': {
+        tools: [{
+          name: 'safe_tool',
+          description: `client_secret="${quotedSecret}" id_token=beta private_key=gamma passwd=delta ${githubToken}`,
+          inputSchema: { type: 'object' },
+          unknownToolField: 'discard me',
+        }, { name: githubToken }],
+      },
+      'resources/list': {
+        resources: [
+          { name: '<script>alert(1)</script>', mimeType: 'text/html' },
+          { name: stripeKey },
+          { name: 'Safe resource', mimeType: 'definitely not a MIME type', unknown: true },
+        ],
+      },
+      'resources/templates/list': {
+        resourceTemplates: [
+          { name: '<img src=x onerror=alert(1)>', mimeType: 'text/plain' },
+          { name: 'Safe template', mimeType: 'application/json', uriTemplate: 'secret://tenant/{id}' },
+        ],
+      },
+      'prompts/list': { prompts: [{ name: 'safe_prompt', unknownPromptField: true }] },
+    };
+    const inventory = await discoverPublicInventory(
+      { request: async ({ method }) => rawPages[method] },
+      `https://example.com/mcp?access_token=secret&sig=${stripeKey}`,
+      1_000
+    );
+
+    expect(inventory).toBeDefined();
+    expect(inventory.provenance.testedEndpoint).toBe('https://example.com/mcp');
+    expect(inventory.tools.items[0].description).toBe(
+      'client_secret=[REDACTED] id_token=[REDACTED] private_key=[REDACTED] passwd=[REDACTED] [REDACTED]'
+    );
+    expect(inventory.resources.items).toEqual([
+      { name: '[REDACTED]' },
+      { name: 'Safe resource' },
+    ]);
+    expect(inventory.resourceTemplates.items).toEqual([
+      { name: 'Safe template', mimeType: 'application/json' },
+    ]);
+    expect(JSON.stringify(inventory)).not.toMatch(/<script|onerror|unknownToolField|unknownPromptField|tenant/);
+    expect(validateCapabilityInventory(inventory)).toEqual(inventory);
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-'));
+    const capabilities = path.join(directory, 'catalogCapabilities.json');
+    const validation = path.join(directory, 'catalogValidation.json');
+    fs.writeFileSync(capabilities, '{}\n');
+    try {
+      await writeResults(
+        [{ serverId: 'safe', status: 'online', capabilityInventory: inventory }],
+        { capabilities, validation }
+      );
+      const written = JSON.parse(fs.readFileSync(capabilities, 'utf8'));
+      expect(validateCapabilityInventory(written.safe)).toEqual(written.safe);
+      const persisted = JSON.stringify(written);
+      for (const secret of [githubToken, stripeKey, quotedSecret]) {
+        expect(persisted).not.toContain(secret);
+      }
+
+      const lastSuccessfulSnapshot = fs.readFileSync(capabilities, 'utf8');
+      await expect(writeResults(
+        [{
+          serverId: 'unsafe', status: 'online',
+          capabilityInventory: { ...inventory, unknownInventoryField: true },
+        }],
+        { capabilities, validation }
+      )).rejects.toThrow('unsafe or non-canonical');
+      expect(fs.readFileSync(capabilities, 'utf8')).toBe(lastSuccessfulSnapshot);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('drops capability snapshots for servers absent from the current validation batch', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-prune-'));
+    const capabilities = path.join(directory, 'catalogCapabilities.json');
+    const validation = path.join(directory, 'catalogValidation.json');
+    const inventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://removed.example/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+      resources: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+      resourceTemplates: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+      prompts: { status: 'complete', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+    };
+    fs.writeFileSync(capabilities, `${JSON.stringify({ removed: inventory }, null, 2)}\n`);
+    try {
+      await writeResults(
+        [{ serverId: 'remaining', status: 'online' }],
+        { capabilities, validation }
+      );
+      expect(JSON.parse(fs.readFileSync(capabilities, 'utf8'))).toEqual({});
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('deterministically trims a successful aggregate inventory instead of dropping it', async () => {
+    const description = 'x'.repeat(600);
+    const items = (prefix) => Array.from({ length: 100 }, (_, index) => ({
+      name: `${prefix}_${String(index).padStart(3, '0')}`,
+      description,
+    }));
+    const pages = {
+      'tools/list': { tools: items('tool') },
+      'resources/list': { resources: items('resource') },
+      'resources/templates/list': { resourceTemplates: items('template') },
+      'prompts/list': { prompts: items('prompt') },
+    };
+    const client = { request: async ({ method }) => pages[method] };
+
+    const first = await discoverPublicInventory(client, 'https://example.com/mcp', 1_000);
+    const second = await discoverPublicInventory(client, 'https://example.com/mcp', 1_000);
+
+    expect(first).toBeDefined();
+    expect(new TextEncoder().encode(JSON.stringify(first)).length).toBeLessThanOrEqual(96_000);
+    expect(first.tools.observedCount).toBe(100);
+    expect(first.tools.retainedCount + first.tools.omittedCount).toBe(100);
+    expect(Object.values(first).filter((value) => value?.status === 'partial').length).toBeGreaterThan(0);
+    expect({ ...second, observedAt: first.observedAt }).toEqual(first);
   });
 });

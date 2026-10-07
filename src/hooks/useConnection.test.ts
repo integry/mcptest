@@ -63,6 +63,7 @@ const renderConnectionHook = (
   });
 
   return {
+    addLogEntry,
     get connection() {
       if (!connection) throw new Error('Connection hook was not rendered');
       return connection;
@@ -160,6 +161,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${issuer}authorize`,
               token_endpoint: `${issuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           provider.saveTokens(
@@ -176,6 +178,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${otherIssuer}authorize`,
               token_endpoint: `${otherIssuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           otherProvider.saveTokens(
@@ -323,6 +326,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${issuer}authorize`,
               token_endpoint: `${issuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           provider.saveTokens(
@@ -386,6 +390,7 @@ describe('connection URL finalization', () => {
           authorization_endpoint: `${issuer}authorize`,
           token_endpoint: `${issuer}token`,
           response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
         },
       });
       provider.saveTokens(
@@ -461,6 +466,7 @@ describe('connection URL finalization', () => {
         authorization_endpoint: `${issuer}authorize`,
         token_endpoint: `${issuer}token`,
         response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
       },
     });
     provider.saveTokens(
@@ -506,6 +512,7 @@ describe('connection URL finalization', () => {
         authorization_endpoint: `${issuer}authorize`,
         token_endpoint: `${issuer}token`,
         response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
       },
     });
     provider.saveTokens(
@@ -588,6 +595,7 @@ describe('connection URL finalization', () => {
           authorization_endpoint: `${issuer}authorize`,
           token_endpoint: `${issuer}token`,
           response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
         },
       });
       provider.saveTokens(
@@ -652,6 +660,7 @@ describe('connection URL finalization', () => {
           authorization_endpoint: `${issuer}authorize`,
           token_endpoint: `${issuer}token`,
           response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
         },
       });
       provider.saveTokens(
@@ -737,6 +746,7 @@ describe('connection URL finalization', () => {
               authorization_endpoint: `${issuer}authorize`,
               token_endpoint: `${issuer}token`,
               response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
             },
           });
           callbackState = provider.state();
@@ -846,6 +856,7 @@ describe('connection URL finalization', () => {
       'target_challenge',
       'authorization_server_metadata',
       'protected_resource_metadata',
+      'client_establishment',
       'pkce',
       'authorization_redirect',
       'callback',
@@ -962,7 +973,7 @@ describe('connection URL finalization', () => {
     view.unmount();
   });
 
-  it('does not acquire or supply a discovery proxy when proxy fallback is disabled', async () => {
+  it('keeps discovery and token exchange direct outside the production origin', async () => {
     const endpoint = 'https://direct-discovery.example/mcp';
     const getIdToken = vi.fn().mockResolvedValue('proxy-session-token');
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
@@ -984,6 +995,9 @@ describe('connection URL finalization', () => {
     expect(getIdToken).not.toHaveBeenCalled();
     expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
       discoveryProxy: expect.anything(),
+    }));
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.not.objectContaining({
+      tokenProxy: expect.anything(),
     }));
     view.unmount();
   });
@@ -1036,30 +1050,89 @@ describe('connection URL finalization', () => {
     expect(oauthMocks.begin).not.toHaveBeenCalled();
     expect(view.connection.needsOAuthConfig).toBe(false);
     expect(view.connection.oauthPrerequisite).toBeNull();
-    expect(view.connection.connectionError).not.toBeNull();
+    expect(view.connection.connectionError).toMatchObject({
+      transportEvidence: 'streamable-http',
+      expectedAuthentication: 'oauth',
+      attempts: [expect.objectContaining({
+        route: 'direct',
+        candidateUrl: endpoint,
+        failureKind: 'browser-unreadable',
+        browserUnreadable: true,
+      })],
+    });
     view.unmount();
   });
 
-  it('shows the proxy-login prerequisite when fallback is enabled without a login', async () => {
+  it('falls back to the proxy without a login and attaches no proxy token', async () => {
     const endpoint = 'https://mcp.slack.com/mcp';
-    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
-    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([
-      new TypeError('Failed to fetch'),
-    ]));
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'modern',
+      });
     const view = renderConnectionHook(undefined, true);
 
     await act(async () => {
       await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
     });
 
-    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[1][0]).toBe(
+      `${proxyUrl}?target=${encodeURIComponent(endpoint)}`
+    );
+    expect(connectionMocks.attempt.mock.calls[1][2]).toBeUndefined();
+    expect(connectionMocks.attempt.mock.calls[1][4]).toBe(true);
+    expect(view.connection.connectionStatus).toBe('Connected');
+    expect(view.connection.oauthPrerequisite).toBeNull();
+    expect(view.connection.connectionError).toBeNull();
+    view.unmount();
+  });
+
+  it('shows a sign-in-to-lift message when the anonymous proxy limit is hit', async () => {
+    const endpoint = 'https://mcp.slack.com/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const proxyRequestUrl = `${proxyUrl}?target=${encodeURIComponent(endpoint)}`;
+    const limitError = new Error('Streamable HTTP error: 429');
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockRejectedValueOnce(new TransportConnectionError([limitError], [{
+        candidateUrl: proxyRequestUrl,
+        transportType: 'streamable-http',
+        error: limitError,
+        observedRequests: [{
+          method: 'POST',
+          url: proxyRequestUrl,
+          status: 429,
+          responseSource: 'proxy',
+          proxyLimit: { tier: 'anonymous', retryAfterSeconds: 60 },
+          outcome: 'failed',
+        }],
+      }]));
+    const view = renderConnectionHook(undefined, true);
+    const addLogEntry = view.addLogEntry;
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
     expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(view.connection.connectionStatus).toBe('Proxy limit reached');
+    expect(view.connection.connectionError).toBeNull();
     expect(view.connection.needsOAuthConfig).toBe(true);
     expect(view.connection.oauthPrerequisite).toMatchObject({
-      kind: 'proxy_authentication_required',
+      kind: 'proxy_limit_reached',
+      explanation: expect.stringContaining('Sign in with Google to lift the limit'),
     });
-    expect(view.connection.connectionStatus).toBe('Proxy authentication required');
-    expect(view.connection.connectionError).toBeNull();
+    expect(addLogEntry).toHaveBeenCalledWith({
+      type: 'warning',
+      data: expect.stringContaining('Anonymous mcptest proxy limit reached'),
+    });
     view.unmount();
   });
 
@@ -1093,6 +1166,103 @@ describe('connection URL finalization', () => {
     ]));
     expect(getIdToken).toHaveBeenCalledOnce();
     expect(view.connection.connectionStatus).toBe('Connected');
+    expect(view.connection.connectionError).toBeNull();
+    view.unmount();
+  });
+
+  it('retries the exact candidate after readable initialize and a later browser-unreadable request', async () => {
+    const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const getIdToken = vi.fn().mockResolvedValue('firebase-session-token');
+    const terminalError = new TypeError('Failed to fetch');
+    const directError = new TransportConnectionError([terminalError], [{
+      candidateUrl: endpoint,
+      transportType: 'streamable-http',
+      error: terminalError,
+      observedRequests: [
+        {
+          method: 'POST',
+          mcpMethod: 'initialize',
+          url: endpoint,
+          status: 200,
+          outcome: 'succeeded',
+        },
+        {
+          method: 'POST',
+          mcpMethod: 'notifications/initialized',
+          url: endpoint,
+          requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+          outcome: 'failed',
+        },
+      ],
+    }]);
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    authMocks.currentUser = { getIdToken };
+    connectionMocks.attempt
+      .mockRejectedValueOnce(directError)
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'stateful',
+        protocolVersion: '2025-11-25',
+      });
+    const view = renderConnectionHook({ 'X-Target-Tenant': 'finance' }, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(
+        vi.fn(), vi.fn(), vi.fn(), endpoint, undefined, 'stateful', 'streamable-http'
+      );
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[1]).toEqual([
+      `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+      expect.any(AbortSignal),
+      'firebase-session-token',
+      { 'X-Target-Tenant': 'finance' },
+      true,
+      'stateful',
+      expect.any(Function),
+      'streamable-http',
+    ]);
+    expect(view.connection.connectionStatus).toBe('Connected');
+    view.unmount();
+  });
+
+  it('retries the same mid-handshake failure through the proxy without a login', async () => {
+    const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const terminalError = new TypeError('Failed to fetch');
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError(
+        [terminalError],
+        [{
+          candidateUrl: endpoint,
+          transportType: 'streamable-http',
+          error: terminalError,
+          observedRequests: [
+            { method: 'POST', mcpMethod: 'initialize', url: endpoint, status: 200, outcome: 'succeeded' },
+            { method: 'POST', mcpMethod: 'notifications/initialized', url: endpoint, outcome: 'failed' },
+          ],
+        }]
+      ))
+      .mockResolvedValueOnce({
+        client: { close: vi.fn().mockResolvedValue(undefined) },
+        url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'stateful',
+      });
+    const view = renderConnectionHook(undefined, true);
+
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(view.connection.connectionStatus).toBe('Connected');
+    expect(view.connection.oauthPrerequisite).toBeNull();
     expect(view.connection.connectionError).toBeNull();
     view.unmount();
   });

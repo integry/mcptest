@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 
 const connectionMocks = vi.hoisted(() => ({ attempt: vi.fn() }));
 
@@ -30,12 +31,64 @@ import {
   recordOAuthAuthenticationChallenge,
 } from './oauthTrace';
 
-const createClient = () => ({
-  listTools: vi.fn().mockResolvedValue({ tools: [] }),
-  listResources: vi.fn().mockResolvedValue({ resources: [] }),
-  listPrompts: vi.fn().mockResolvedValue({ prompts: [] }),
-  close: vi.fn().mockResolvedValue(undefined),
-});
+const createClient = () => {
+  const client = {
+    listTools: vi.fn().mockResolvedValue({ tools: [] }),
+    listResources: vi.fn().mockResolvedValue({ resources: [] }),
+    listResourceTemplates: vi.fn().mockResolvedValue({ resourceTemplates: [] }),
+    listPrompts: vi.fn().mockResolvedValue({ prompts: [] }),
+    request: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  client.request.mockImplementation(({ method, params }) => {
+    const listMethod = {
+      'tools/list': client.listTools,
+      'resources/list': client.listResources,
+      'resources/templates/list': client.listResourceTemplates,
+      'prompts/list': client.listPrompts,
+    }[method];
+    if (!listMethod) throw new Error(`Unexpected mocked request method: ${method}`);
+    return listMethod(params);
+  });
+  return client;
+};
+
+const connectedSdkClient = async (
+  listHandler: (method: string, params?: Record<string, unknown>) => Record<string, unknown>
+): Promise<Client> => {
+  const client = new Client(
+    { name: 'evaluation-pagination-test', version: '1.0.0' },
+    { versionNegotiation: { mode: 'legacy' } }
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  serverTransport.onmessage = async (message) => {
+    if (!('method' in message) || !('id' in message)) return;
+    if (message.method === 'initialize') {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id,
+        result: {
+          protocolVersion: '2025-06-18',
+          capabilities: { tools: {}, resources: {}, prompts: {} },
+          serverInfo: { name: 'evaluation-test-server', version: '1.0.0' },
+        },
+      });
+      return;
+    }
+    try {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id, result: await listHandler(message.method, message.params),
+      });
+    } catch (error) {
+      await serverTransport.send({
+        jsonrpc: '2.0', id: message.id,
+        error: { code: -32603, message: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  };
+  await serverTransport.start();
+  await client.connect(clientTransport);
+  return client;
+};
 
 describe('dual-era server evaluation', () => {
   beforeEach(() => {
@@ -61,6 +114,17 @@ describe('dual-era server evaluation', () => {
     expect(headers.get('x-mcp-authorization')).toBe('Bearer oauth-access-token');
     expect(headers.get('x-oauth-token')).toBeNull();
     expect(headers.get('content-type')).toBe('application/json');
+  });
+
+  it('sends no proxy login header for an anonymous report run', () => {
+    const headers = getEvaluationProxyHeaders(
+      { 'Content-Type': 'application/json' },
+      undefined,
+      'oauth-access-token'
+    );
+
+    expect(headers.get('authorization')).toBeNull();
+    expect(headers.get('x-mcp-authorization')).toBe('Bearer oauth-access-token');
   });
 
   it('tries a direct fetch before falling back to the proxy', async () => {
@@ -172,6 +236,50 @@ describe('dual-era server evaluation', () => {
     expect(report.sections.security).toBeUndefined();
     expect(getEvaluationMaxScore(report)).toBe(70);
     expect(client.close).toHaveBeenCalledOnce();
+  });
+
+  it('matches Playground fallback for initialize success followed by an unreadable request', async () => {
+    const endpoint = 'https://gateway.mcpservers.org/yahoo-finance/mcp';
+    const terminalError = new TypeError('Failed to fetch');
+    const client = createClient();
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([terminalError], [{
+        candidateUrl: endpoint,
+        transportType: 'streamable-http',
+        error: terminalError,
+        observedRequests: [
+          { method: 'POST', mcpMethod: 'initialize', url: endpoint, status: 200, outcome: 'succeeded' },
+          {
+            method: 'POST',
+            mcpMethod: 'notifications/initialized',
+            url: endpoint,
+            requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+            outcome: 'failed',
+          },
+        ],
+      }]))
+      .mockResolvedValueOnce({
+        client,
+        url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
+        transportType: 'streamable-http',
+        protocolEra: 'stateful',
+        protocolVersion: '2025-11-25',
+      });
+
+    const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn());
+
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(new URL(connectionMocks.attempt.mock.calls[1][0]).searchParams.get('target')).toBe(endpoint);
+    expect(report.outcome).toBe('scored');
+  });
+
+  it.each([400, 404, 500])('does not proxy a readable target HTTP %s failure', async (status) => {
+    const targetError = Object.assign(new Error(`Target returned HTTP ${status}`), { status });
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([targetError]));
+
+    await evaluateServer('https://readable.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
   });
 
   it('uses the same evaluator headlessly without inventing a browser CORS result', async () => {
@@ -425,13 +533,13 @@ describe('dual-era server evaluation', () => {
     const directRequest = {
       method: 'POST',
       url: endpoint,
-      status: 502,
       outcome: 'failed' as const,
       startedAt: '2026-08-11T18:20:00.000Z',
       durationMs: 31,
     };
     const proxyRequest = {
       ...directRequest,
+      status: 502,
       url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
       startedAt: '2026-08-11T18:20:01.000Z',
       durationMs: 44,
@@ -439,7 +547,7 @@ describe('dual-era server evaluation', () => {
     connectionMocks.attempt
       .mockImplementationOnce(async (...args: any[]) => {
         args[6]?.(directRequest);
-        throw new Error('Direct authenticated retry failed');
+        throw new TypeError('Failed to fetch');
       })
       .mockImplementationOnce(async (...args: any[]) => {
         args[6]?.(proxyRequest);
@@ -899,6 +1007,114 @@ describe('dual-era server evaluation', () => {
     expect(Object.keys(report.sections)).toEqual(['auth']);
   });
 
+  it.each([
+    ['multi-page success', 'complete', 2, false],
+    ['repeated cursor', 'partial', 2, false],
+    ['page-two failure', 'partial', 1, true],
+  ] as const)(
+    'preserves SDK wire pages for %s',
+    async (scenario, expectedStatus, retainedCount, failPageTwo) => {
+      const observedToolParams: Array<Record<string, unknown> | undefined> = [];
+      const client = await connectedSdkClient((method, params) => {
+        if (method === 'tools/list') {
+          observedToolParams.push(params);
+          if (params?.cursor && failPageTwo) throw new Error('page two unavailable');
+          if (params?.cursor) return {
+            tools: [{ name: 'second_tool', inputSchema: { type: 'object' } }],
+            ...(scenario === 'repeated cursor' ? { nextCursor: 'tools-2' } : {}),
+          };
+          return {
+            tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+            nextCursor: 'tools-2',
+          };
+        }
+        if (method === 'resources/list') return { resources: [] };
+        if (method === 'resources/templates/list') return { resourceTemplates: [] };
+        if (method === 'prompts/list') return { prompts: [] };
+        throw new Error(`Unexpected method ${method}`);
+      });
+      connectionMocks.attempt.mockResolvedValueOnce({
+        client,
+        url: 'https://mcp.example/mcp',
+        transportType: 'streamable-http',
+        protocolEra: 'legacy',
+      });
+
+      const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+      expect(report.capabilityInventory.tools).toMatchObject({
+        status: expectedStatus,
+        retainedCount,
+        paginationComplete: expectedStatus === 'complete',
+      });
+      expect(observedToolParams).toEqual([
+        undefined,
+        { cursor: 'tools-2' },
+      ]);
+      expect(report.outcome).toBe(expectedStatus === 'complete' ? 'scored' : 'partial');
+    }
+  );
+
+  it.each([
+    ['first', 'null', null, 1],
+    ['first', 'empty string', '', 1],
+    ['first', 'number', 42, 1],
+    ['first', 'array', ['tools-3'], 1],
+    ['first', 'object', { cursor: 'tools-3' }, 1],
+    ['later', 'null', null, 2],
+    ['later', 'empty string', '', 2],
+    ['later', 'number', 42, 2],
+    ['later', 'array', ['tools-3'], 2],
+    ['later', 'object', { cursor: 'tools-3' }, 2],
+  ] as const)(
+    'marks an actual SDK %s page with a malformed %s cursor partial',
+    async (pagePosition, _label, malformedCursor, retainedCount) => {
+      const client = await connectedSdkClient((method, params) => {
+        if (method === 'tools/list') {
+          if (pagePosition === 'later' && !params?.cursor) {
+            return {
+              tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }],
+              nextCursor: 'tools-2',
+            };
+          }
+          return {
+            tools: [{
+              name: pagePosition === 'later' ? 'second_tool' : 'first_tool',
+              inputSchema: { type: 'object' },
+            }],
+            nextCursor: malformedCursor,
+          };
+        }
+        if (method === 'resources/list') return { resources: [] };
+        if (method === 'resources/templates/list') return { resourceTemplates: [] };
+        if (method === 'prompts/list') return { prompts: [] };
+        throw new Error(`Unexpected method ${method}`);
+      });
+      connectionMocks.attempt.mockResolvedValueOnce({
+        client,
+        url: 'https://mcp.example/mcp',
+        transportType: 'streamable-http',
+        protocolEra: 'legacy',
+      });
+
+      const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+      expect(report.outcome).toBe('partial');
+      expect(report.capabilityInventory.tools).toMatchObject({
+        status: 'partial',
+        retainedCount,
+        paginationComplete: false,
+      });
+      expect(report.capabilityInventory.tools.items.map(({ name }) => name)).toEqual(
+        retainedCount === 1 ? ['first_tool'] : ['first_tool', 'second_tool']
+      );
+      expect(report.sections.capabilities.details).toContainEqual(expect.objectContaining({
+        metadata: expect.objectContaining({ method: 'tools/list', paginationComplete: false }),
+      }));
+      await client.close();
+    }
+  );
+
   it('aggregates every discovery page before tool-surface analysis', async () => {
     const client = createClient();
     client.listTools
@@ -912,6 +1128,14 @@ describe('dual-era server evaluation', () => {
     client.listResources
       .mockResolvedValueOnce({ resources: [{ uri: 'test://one', name: 'one' }], nextCursor: 'resources-2' })
       .mockResolvedValueOnce({ resources: [{ uri: 'test://two', name: 'two' }] });
+    client.listResourceTemplates
+      .mockResolvedValueOnce({
+        resourceTemplates: [{ uriTemplate: 'test://one/{id}', name: 'template-one' }],
+        nextCursor: 'templates-2',
+      })
+      .mockResolvedValueOnce({
+        resourceTemplates: [{ uriTemplate: 'test://two/{id}', name: 'template-two' }],
+      });
     client.listPrompts
       .mockResolvedValueOnce({ prompts: [{ name: 'one' }], nextCursor: 'prompts-2' })
       .mockResolvedValueOnce({ prompts: [{ name: 'two' }] });
@@ -932,7 +1156,34 @@ describe('dual-era server evaluation', () => {
     });
     expect(client.listTools).toHaveBeenNthCalledWith(2, { cursor: 'tools-2' });
     expect(client.listResources).toHaveBeenNthCalledWith(2, { cursor: 'resources-2' });
+    expect(client.listResourceTemplates).toHaveBeenNthCalledWith(2, { cursor: 'templates-2' });
     expect(client.listPrompts).toHaveBeenNthCalledWith(2, { cursor: 'prompts-2' });
+    expect(report.capabilityInventory).toMatchObject({
+      tools: { status: 'complete', retainedCount: 2, paginationComplete: true },
+      resources: { status: 'complete', retainedCount: 2, paginationComplete: true },
+      resourceTemplates: { status: 'complete', retainedCount: 2, paginationComplete: true },
+      prompts: { status: 'complete', retainedCount: 2, paginationComplete: true },
+    });
+    expect(report.sections.capabilities.score).toBe(10);
+  });
+
+  it('records unavailable resource-template discovery without changing the score or outcome', async () => {
+    const client = createClient();
+    client.listResourceTemplates.mockRejectedValueOnce(new Error('template service unavailable'));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client,
+      url: 'https://mcp.example/mcp',
+      transportType: 'streamable-http',
+      protocolEra: 'modern',
+    });
+
+    const report = await evaluateServer('https://mcp.example/mcp', 'firebase-jwt', vi.fn());
+
+    expect(report.outcome).toBe('scored');
+    expect(report.sections.capabilities).toMatchObject({ score: 10, maxScore: 10 });
+    expect(report.capabilityInventory?.resourceTemplates).toMatchObject({
+      status: 'unavailable', paginationComplete: false, retainedCount: 0,
+    });
   });
 
   it.each([

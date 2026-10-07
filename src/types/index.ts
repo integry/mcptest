@@ -71,6 +71,9 @@ export interface ConnectionTab {
   title: string;
   serverUrl: string;
   connectionStatus: 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
+  /** Endpoint-scoped input hint. Cleared when serverUrl changes. */
+  preferredTransportHint?: TransportType;
+  /** Transport negotiated by the latest connection attempt. */
   transportType?: TransportType | null;
   useProxy?: boolean; // Whether to use proxy for this connection
   autoConnect?: boolean; // Whether this tab should connect automatically once initialized

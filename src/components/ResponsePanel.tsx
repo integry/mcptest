@@ -79,12 +79,12 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     if (spaces.length === 1) {
       return (
         <button
-          className="btn btn-sm btn-outline-primary flex-shrink-0"
+          className="btn btn-sm btn-ghost flex-shrink-0"
           style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
           title={`Add to dashboard: ${spaces[0].name}`}
           onClick={() => handleAddToSpace(spaces[0].id)}
         >
-          <i className="bi bi-plus-square"></i> Add to dashboard
+          <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
         </button>
       );
     }
@@ -92,7 +92,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
     return (
       <div className="dropdown d-inline-block flex-shrink-0">
         <button
-          className="btn btn-sm btn-outline-primary dropdown-toggle"
+          className="btn btn-sm btn-ghost dropdown-toggle"
           style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
           type="button"
           id={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`}
@@ -100,7 +100,7 @@ const ResponsePanel: React.FC<ResponsePanelProps> = ({
           aria-expanded="false"
           title="Add to Dashboard..."
         >
-           <i className="bi bi-plus-square me-1"></i>Add to dashboard
+           <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
         </button>
         <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-${logEntry.timestamp}-${logEntry.id ?? 'fallback'}`}>
           {spaces.map(space => (

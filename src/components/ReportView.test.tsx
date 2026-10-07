@@ -125,6 +125,7 @@ const authMocks = vi.hoisted(() => ({
 const oauthMocks = vi.hoisted(() => ({
   begin: vi.fn(),
   prepare: vi.fn(),
+  hostedTokenProxy: vi.fn(),
 }));
 const evaluationMocks = vi.hoisted(() => ({
   evaluate: vi.fn(),
@@ -154,6 +155,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
   return {
     ...actual,
     beginOAuthFlow: oauthMocks.begin,
+    getHostedOAuthTokenProxyUrl: oauthMocks.hostedTokenProxy,
     prepareManualOAuthClient: oauthMocks.prepare,
   };
 });
@@ -182,6 +184,7 @@ describe('ReportView OAuth discovery', () => {
     authMocks.getIdToken.mockReset().mockResolvedValue('firebase-session-token');
     oauthMocks.begin.mockReset().mockResolvedValue('REDIRECT');
     oauthMocks.prepare.mockReset().mockResolvedValue(undefined);
+    oauthMocks.hostedTokenProxy.mockReset().mockReturnValue(undefined);
     evaluationMocks.evaluate.mockReset().mockResolvedValue({
       serverUrl: 'https://api.githubcopilot.com/mcp/',
       authenticationUrl: 'https://api.githubcopilot.com/mcp/',
@@ -207,7 +210,61 @@ describe('ReportView OAuth discovery', () => {
     vi.restoreAllMocks();
   });
 
-  it('supplies the authenticated proxy to report OAuth discovery when fallback is configured', async () => {
+  it('does not offer a futile browser OAuth action for GitHub operator setup', async () => {
+    const target = 'https://api.githubcopilot.com/mcp/';
+    const issuer = 'https://github.com/login/oauth';
+    const operatorClientId = 'github-report-operator-client';
+    const flowOrder: string[] = [];
+    let authorizationUrl: URL | undefined;
+    oauthMocks.hostedTokenProxy.mockReturnValue('https://proxy.mcptest.test/');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (new URL(url).pathname === '/oauth/client') {
+        flowOrder.push('operator-client');
+        const headers = new Headers(init?.headers);
+        expect(init?.method).toBe('POST');
+        expect(headers.get('authorization')).toBe('Bearer firebase-session-token');
+        expect(headers.get('x-mcp-oauth-resource')).toBe(target);
+        expect(headers.get('x-mcp-oauth-issuer')).toBe(issuer);
+        return new Response(JSON.stringify({ client_id: operatorClientId }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-MCP-Proxy-Response-Source': 'proxy',
+          },
+        });
+      }
+      if (url.includes('/.well-known/oauth-protected-resource')) {
+        return new Response(JSON.stringify({
+          resource: target,
+          authorization_servers: [issuer],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/.well-known/oauth-authorization-server')) {
+        return new Response(JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new Error(`Unexpected OAuth request: ${url}`);
+    }));
+    const { beginOAuthFlow: actualBeginOAuthFlow } = await vi.importActual<
+      typeof import('../utils/oauthFlow')
+    >('../utils/oauthFlow');
+    oauthMocks.begin.mockImplementationOnce((
+      serverUrl: string,
+      options: Parameters<typeof actualBeginOAuthFlow>[1]
+    ) => actualBeginOAuthFlow(serverUrl, {
+      ...options,
+      redirect: (url) => {
+        flowOrder.push('authorization-redirect');
+        authorizationUrl = url;
+      },
+    }));
+
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
@@ -224,23 +281,15 @@ describe('ReportView OAuth discovery', () => {
     const authorizeButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Authorize and run report')
     );
-    await act(async () => {
-      authorizeButton?.click();
-    });
-
-    expect(oauthMocks.begin).toHaveBeenCalledWith(
-      'https://api.githubcopilot.com/mcp/',
-      expect.objectContaining({
-        discoveryProxy: {
-          url: 'https://proxy.mcptest.test/',
-          authorizationToken: 'firebase-session-token',
-        },
-        deferAuthorizedTraceOutcome: true,
-      })
-    );
+    expect(authorizeButton).toBeUndefined();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(flowOrder).toEqual([]);
+    expect(authorizationUrl).toBeUndefined();
+    expect(container.textContent).toContain('mcptest operator setup required');
+    expect(container.querySelector('#report-static-credential')).not.toBeNull();
   });
 
-  it('passes ephemeral challenge metadata and scope into report OAuth discovery', async () => {
+  it('does not expose ephemeral challenge metadata when GitHub OAuth cannot be attempted', async () => {
     const metadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/?token=challenge-secret';
     evaluationMocks.evaluate.mockImplementationOnce(async () => {
       const report = {
@@ -279,24 +328,16 @@ describe('ReportView OAuth discovery', () => {
     const authorizeButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Authorize and run report')
     );
-    await act(async () => {
-      authorizeButton?.click();
-    });
-
-    expect(oauthMocks.begin).toHaveBeenCalledWith(
-      'https://api.githubcopilot.com/mcp/',
-      expect.objectContaining({
-        resourceMetadataUrl: metadataUrl,
-        scope: 'repo read:user',
-      })
-    );
+    expect(authorizeButton).toBeUndefined();
+    expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('mcptest operator setup required');
     expect(Array.from({ length: sessionStorage.length }, (_, index) => {
       const key = sessionStorage.key(index) || '';
       return `${key}:${sessionStorage.getItem(key) || ''}`;
     }).join('\n')).not.toContain('challenge-secret');
   });
 
-  it('uses challenge metadata and authenticated proxy fallback before showing GitHub prerequisites', async () => {
+  it('uses the catalog GitHub token route without running futile OAuth discovery', async () => {
     const target = 'https://api.githubcopilot.com/mcp/';
     const metadataUrl = 'https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/';
     const issuer = 'https://github.com/login/oauth';
@@ -373,19 +414,16 @@ describe('ReportView OAuth discovery', () => {
     const configureButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Enter client credentials')
     );
-    await act(async () => {
-      configureButton?.click();
-    });
-
-    expect(directCalls).toContain(metadataUrl);
-    expect(directCalls).toContain(authorizationMetadataUrl);
-    expect(proxyTargets).toEqual([authorizationMetadataUrl]);
+    expect(configureButton).toBeUndefined();
+    expect(directCalls).toEqual([]);
+    expect(proxyTargets).toEqual([]);
+    expect(oauthMocks.prepare).not.toHaveBeenCalled();
     expect(oauthMocks.begin).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('GitHub host application required');
-    expect(container.textContent).toContain('Use a GitHub personal access token');
+    expect(container.textContent).toContain('mcptest operator setup required');
+    expect(container.textContent).toContain('Bearer <GITHUB_PERSONAL_ACCESS_TOKEN>');
     expect(container.querySelector('#clientId')).toBeNull();
     const bearerInput = container.querySelector<HTMLInputElement>(
-      '#oauth-prerequisite-bearer-token'
+      '#report-static-credential'
     );
     expect(bearerInput).not.toBeNull();
 
@@ -394,14 +432,14 @@ describe('ReportView OAuth discovery', () => {
         HTMLInputElement.prototype,
         'value'
       )?.set;
-      valueSetter?.call(bearerInput, 'github-pat');
+      valueSetter?.call(bearerInput, 'github-$&-pat');
       bearerInput?.dispatchEvent(new Event('input', { bubbles: true }));
       bearerInput?.dispatchEvent(new Event('change', { bubbles: true }));
     });
     const retryButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Retry with bearer token')
+      (button) => button.textContent?.includes('Retry report with credential')
     );
-    expect(bearerInput?.value).toBe('github-pat');
+    expect(bearerInput?.value).toBe('github-$&-pat');
     expect(retryButton?.disabled).toBe(false);
     await act(async () => {
       retryButton?.closest('form')?.dispatchEvent(new Event('submit', {
@@ -412,12 +450,17 @@ describe('ReportView OAuth discovery', () => {
 
     expect(evaluationMocks.evaluate).toHaveBeenCalledTimes(2);
     expect(evaluationMocks.evaluate.mock.calls[1][4]).toEqual({
-      Authorization: 'Bearer github-pat',
+      Authorization: 'Bearer github-$&-pat',
     });
-    expect(evaluationMocks.evaluate.mock.calls[1][5]).toBeUndefined();
+    expect(evaluationMocks.evaluate.mock.calls[1][5]).toEqual({
+      priorChallenge: {
+        outcome: 'challenged',
+        provenance: 'direct_target',
+      },
+    });
   });
 
-  it('does not launch automatic registration or redirect from the registered-client action', async () => {
+  it('shows provider approval instead of a Figma client credential action', async () => {
     const target = 'https://mcp.figma.com/mcp';
     const resourceMetadataUrl = 'https://mcp.figma.com/.well-known/oauth-protected-resource';
     const issuer = 'https://api.figma.com';
@@ -482,21 +525,17 @@ describe('ReportView OAuth discovery', () => {
     const configureButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Enter client credentials')
     );
-    await act(async () => {
-      configureButton?.click();
-    });
-
-    expect(oauthMocks.prepare).toHaveBeenCalledWith(target, expect.objectContaining({
-      resourceMetadataUrl,
-      discoveryProxy: {
-        url: 'https://proxy.mcptest.test/',
-        authorizationToken: 'firebase-session-token',
-      },
-    }));
+    expect(configureButton).toBeUndefined();
+    expect(oauthMocks.prepare).not.toHaveBeenCalled();
     expect(oauthMocks.begin).not.toHaveBeenCalled();
     expect(calls).not.toContainEqual({ method: 'POST', url: registrationEndpoint });
-    expect(container.textContent).toContain('Configure an existing client');
-    expect(container.querySelector('#clientId')).not.toBeNull();
+    expect(calls).toEqual([]);
+    expect(container.textContent).toContain('Provider approval required');
+    expect(container.textContent).toContain('Open provider application or waitlist');
+    expect(container.querySelector('#clientId')).toBeNull();
+    expect(Array.from(container.querySelectorAll('button')).some(
+      (button) => button.textContent?.includes('Authorize and run report')
+    )).toBe(false);
   });
 
   it('renders proxy login without target-authorization actions or guidance', async () => {

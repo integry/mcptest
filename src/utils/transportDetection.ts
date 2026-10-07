@@ -7,12 +7,18 @@ import {
 import { TransportType } from '../types';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
-import { isAuthoritativeStreamableHttpOnlyProvider } from './oauthProviderPolicy';
 import {
   createLegacyMcpClient,
   createNegotiatingMcpClient,
   getProtocolDetails,
 } from './mcpClient';
+import { redactReportString } from './reportArtifact';
+import {
+  decodeProxyLimitSignal,
+  ProxyCallerLimitError,
+  readProxyCallerLimit,
+  type ProxyCallerLimit,
+} from './proxyLimit';
 
 export interface TransportCandidate {
   url: string;
@@ -21,6 +27,7 @@ export interface TransportCandidate {
 
 export interface TransportCandidateFailure {
   candidateUrl: string;
+  transportType?: TransportType;
   error: unknown;
   observedRequests?: readonly ObservedTransportRequest[];
 }
@@ -40,6 +47,11 @@ export class TransportConnectionError extends Error {
 
 export type ProxyAuthenticationSource = 'proxy' | 'target';
 
+export interface SafeTargetErrorDetail {
+  code?: number | string;
+  message: string;
+}
+
 export interface ObservedAuthenticationChallenge {
   status: 401 | 403;
   source: ProxyAuthenticationSource;
@@ -51,20 +63,29 @@ export interface ObservedAuthenticationChallenge {
   requestUrl?: string;
   startedAt?: string;
   durationMs?: number;
+  targetError?: SafeTargetErrorDetail;
 }
 
 export interface ObservedTransportRequest {
   method: string;
+  /** JSON-RPC method when it can be read safely from the outgoing body. */
+  mcpMethod?: string;
   url: string;
   candidateUrl?: string;
   transportType?: TransportType;
   startedAt?: string;
   durationMs?: number;
   status?: number;
-  /** Distinguishes a proxy-generated response from one forwarded by the MCP target. */
+  /** Who produced a proxied HTTP response, when the proxy exposes provenance. */
   responseSource?: ProxyAuthenticationSource;
   /** Unmodified standard retry guidance; contains no request credentials. */
   retryAfter?: string;
+  /** Set when the mcptest proxy itself rejected the caller for exceeding its limit. */
+  proxyLimit?: ProxyCallerLimit;
+  /** Bounded and credential-redacted target response detail. */
+  targetError?: SafeTargetErrorDetail;
+  /** Header names only. Values are deliberately never retained. */
+  requestHeaders?: readonly string[];
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -80,7 +101,8 @@ export class ProxiedAuthenticationError extends Error {
     request?: ObservedTransportRequest,
     readonly responseHeaders?: Record<string, string>,
     resourceMetadataUrl?: string,
-    scope?: string
+    scope?: string,
+    readonly targetError?: SafeTargetErrorDetail
   ) {
     super(
       responseSource === 'target'
@@ -137,6 +159,7 @@ export const getObservedAuthenticationChallenge = (
       ...(error.requestUrl ? { requestUrl: error.requestUrl } : {}),
       ...(error.startedAt ? { startedAt: error.startedAt } : {}),
       ...(error.durationMs !== undefined ? { durationMs: error.durationMs } : {}),
+      ...(error.targetError ? { targetError: error.targetError } : {}),
     }, error);
   }
 
@@ -161,7 +184,262 @@ export const getObservedAuthenticationChallenge = (
   return causeChallenge || proxyChallenge;
 };
 
+const browserUnreadableMessage = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return error instanceof TypeError
+    || /failed to fetch|load failed|networkerror when attempting to fetch|network request failed|\bcors\b/i.test(message);
+};
+
+const connectionWasAborted = (error: unknown, seen = new Set<object>()): boolean => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return false;
+  seen.add(error);
+  if ((error instanceof Error ? error.message : String(error)) === 'Connection aborted by user') {
+    return true;
+  }
+  const value = error as { errors?: readonly unknown[]; cause?: unknown };
+  return Boolean(
+    value.errors?.some((nested) => connectionWasAborted(nested, seen))
+    || connectionWasAborted(value.cause, seen)
+  );
+};
+
+const hasTerminalBrowserUnreadableRequest = (
+  error: unknown,
+  seen = new Set<object>()
+): boolean => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return false;
+  seen.add(error);
+  const value = error as {
+    candidateFailures?: readonly TransportCandidateFailure[];
+    errors?: readonly unknown[];
+    cause?: unknown;
+  };
+  const representedErrors = new Set<unknown>();
+
+  for (const failure of value.candidateFailures || []) {
+    representedErrors.add(failure.error);
+    const terminalRequest = failure.observedRequests?.[failure.observedRequests.length - 1];
+    if (terminalRequest) {
+      if (
+        terminalRequest.outcome === 'failed'
+        && terminalRequest.status === undefined
+        && browserUnreadableMessage(failure.error)
+      ) return true;
+      // Request evidence is authoritative for this candidate. In particular,
+      // do not reinterpret an earlier readable response as the terminal cause.
+      continue;
+    }
+    if (hasTerminalBrowserUnreadableRequest(failure.error, seen)) return true;
+  }
+
+  for (const nested of value.errors || []) {
+    if (!representedErrors.has(nested) && hasTerminalBrowserUnreadableRequest(nested, seen)) {
+      return true;
+    }
+  }
+  if (hasTerminalBrowserUnreadableRequest(value.cause, seen)) return true;
+  return !value.candidateFailures?.length && !value.errors?.length && browserUnreadableMessage(error);
+};
+
+/**
+ * Returns the mcptest proxy caller limit observed on any request of a failed
+ * connection attempt. Such a 429 belongs to the proxy, never to the target.
+ */
+export const getProxyCallerLimit = (
+  error: unknown,
+  seen = new Set<object>()
+): ProxyCallerLimit | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+  if (error instanceof ProxyCallerLimitError) return error.limit;
+  const value = error as {
+    candidateFailures?: readonly TransportCandidateFailure[];
+    errors?: readonly unknown[];
+    cause?: unknown;
+  };
+  for (const failure of value.candidateFailures || []) {
+    const limited = failure.observedRequests?.find((request) => request.proxyLimit);
+    if (limited?.proxyLimit) return limited.proxyLimit;
+    const nested = getProxyCallerLimit(failure.error, seen);
+    if (nested) return nested;
+  }
+  for (const nested of value.errors || []) {
+    const limit = getProxyCallerLimit(nested, seen);
+    if (limit) return limit;
+  }
+  return getProxyCallerLimit(value.cause, seen);
+};
+
+/**
+ * True only when an MCP negotiation ended on a browser-unreadable required
+ * request. Readable target errors and target OAuth challenges stay on their
+ * original route and user cancellation never causes an authenticated retry.
+ */
+export const shouldRetryMcpConnectionThroughProxy = (error: unknown): boolean => (
+  !connectionWasAborted(error)
+  && getObservedAuthenticationChallenge(error)?.source !== 'target'
+  && hasTerminalBrowserUnreadableRequest(error)
+);
+
 const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
+const MAX_TARGET_ERROR_BODY_BYTES = 8 * 1024;
+const MAX_TARGET_ERROR_MESSAGE_LENGTH = 320;
+const MAX_TARGET_ERROR_CODE_LENGTH = 64;
+const TARGET_ERROR_READ_TIMEOUT_MS = 250;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const boundDiagnosticValue = (
+  value: string,
+  limit: number,
+  knownCredentials: readonly string[] = []
+): string => {
+  const normalized = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+
+  // Use the same credential-redaction boundary as reports, downloads, and
+  // stored artifacts. Supplement it with conservative opaque/provider token
+  // shapes because target prose may omit a credential field name.
+  const withoutKnownCredentials = knownCredentials.reduce((redacted, credential) => (
+    credential ? redacted.split(credential).join('[REDACTED]') : redacted
+  ), normalized);
+  const redacted = redactReportString(withoutKnownCredentials)
+    .replace(/\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9_-]{8,}\b/gi, '[REDACTED]')
+    .replace(/\bgh[pousr]_[A-Za-z0-9_-]{8,}\b/gi, '[REDACTED]')
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{8,}\b/gi, '[REDACTED]')
+    .replace(/\bAKIA[A-Z0-9]{12,}\b/g, '[REDACTED]')
+    .replace(/\b[A-Za-z0-9_-]{48,}\b/g, '[REDACTED]');
+  return redacted.length > limit
+    ? `${redacted.slice(0, Math.max(0, limit - 1)).trimEnd()}…`
+    : redacted;
+};
+
+const readBoundedResponseText = async (response: Response): Promise<string | undefined> => {
+  const declaredLength = response.headers.get('content-length');
+  if (declaredLength && /^\d+$/.test(declaredLength)) {
+    if (Number(declaredLength) > MAX_TARGET_ERROR_BODY_BYTES) return undefined;
+  }
+
+  let body: ReadableStream<Uint8Array> | null;
+  try {
+    body = response.clone().body;
+  } catch {
+    return undefined;
+  }
+  if (!body) return undefined;
+  const reader = body.getReader();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    void reader.cancel().catch(() => {});
+  }, TARGET_ERROR_READ_TIMEOUT_MS);
+
+  try {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (timedOut) return undefined;
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_TARGET_ERROR_BODY_BYTES) {
+        void reader.cancel().catch(() => {});
+        return undefined;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+    reader.releaseLock();
+  }
+};
+
+const targetErrorFromJson = (
+  value: unknown,
+  knownCredentials: readonly string[]
+): SafeTargetErrorDetail | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.error) && typeof value.error.message === 'string') {
+    const rawCode = value.error.code;
+    const code = typeof rawCode === 'number' && Number.isFinite(rawCode)
+      ? rawCode
+      : typeof rawCode === 'string'
+        ? boundDiagnosticValue(rawCode, MAX_TARGET_ERROR_CODE_LENGTH, knownCredentials)
+        : undefined;
+    const message = boundDiagnosticValue(
+      value.error.message,
+      MAX_TARGET_ERROR_MESSAGE_LENGTH,
+      knownCredentials
+    );
+    return message ? { ...(code !== undefined && code !== '' ? { code } : {}), message } : undefined;
+  }
+
+  if (typeof value.error === 'string') {
+    const code = boundDiagnosticValue(value.error, MAX_TARGET_ERROR_CODE_LENGTH, knownCredentials);
+    const description = typeof value.error_description === 'string'
+      ? boundDiagnosticValue(
+          value.error_description,
+          MAX_TARGET_ERROR_MESSAGE_LENGTH,
+          knownCredentials
+        )
+      : '';
+    return description
+      ? { ...(code ? { code } : {}), message: description }
+      : code ? { message: code } : undefined;
+  }
+
+  if (typeof value.message === 'string') {
+    const message = boundDiagnosticValue(value.message, MAX_TARGET_ERROR_MESSAGE_LENGTH, knownCredentials);
+    return message ? { message } : undefined;
+  }
+  return undefined;
+};
+
+/**
+ * Reads only small JSON or plain-text error responses from a clone. The
+ * original response remains untouched for MCP parsing and OAuth discovery.
+ */
+export const inspectSafeTargetError = async (
+  response: Response,
+  knownCredentials: readonly string[] = []
+): Promise<SafeTargetErrorDetail | undefined> => {
+  if (response.status < 400) return undefined;
+  const contentType = response.headers.get('content-type')
+    ?.split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+  const isJson = contentType === 'application/json' || Boolean(contentType?.endsWith('+json'));
+  const isPlainText = contentType === 'text/plain';
+  if (!isJson && !isPlainText) return undefined;
+
+  const text = await readBoundedResponseText(response);
+  if (text === undefined) return undefined;
+  if (isJson) {
+    try {
+      return targetErrorFromJson(JSON.parse(text), knownCredentials);
+    } catch {
+      return undefined;
+    }
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed || /^\s*(?:<!doctype\s+html|<html|<head|<body|<script|<)/i.test(trimmed)) {
+    return undefined;
+  }
+  const message = boundDiagnosticValue(trimmed, MAX_TARGET_ERROR_MESSAGE_LENGTH, knownCredentials);
+  return message ? { message } : undefined;
+};
 
 const OAUTH_SENSITIVE_CANONICAL_KEYS = new Set([
   'authorization',
@@ -389,21 +667,46 @@ const authenticationChallengeParameters = (response: Response): {
   }
 };
 
+const jsonRpcMethodFromBody = (body: BodyInit | null | undefined): string | undefined => {
+  if (typeof body !== 'string') return undefined;
+  try {
+    const payload = JSON.parse(body) as { method?: unknown } | Array<{ method?: unknown }>;
+    const message = Array.isArray(payload) ? payload[0] : payload;
+    return typeof message?.method === 'string' ? message.method : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const observeAuthenticationResponses = (
   usesProxy: boolean,
   onChallenge: (challenge: ObservedAuthenticationChallenge) => void,
   observedRequests: ObservedTransportRequest[],
   candidate: TransportCandidate,
-  onRequest?: (request: ObservedTransportRequest) => void
+  onRequest?: (request: ObservedTransportRequest) => void,
+  knownCredentials: readonly string[] = []
 ): FetchLike => async (input, init) => {
   const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
   const startedAtMs = Date.now();
+  const outgoingHeaders = new Headers(init?.headers || request?.headers);
+  let mcpMethod = jsonRpcMethodFromBody(init?.body);
+  if (!mcpMethod && request && request.method.toUpperCase() === 'POST') {
+    try {
+      mcpMethod = jsonRpcMethodFromBody(await request.clone().text());
+    } catch {
+      // Request stage is best-effort evidence; never interfere with transport.
+    }
+  }
   const attemptedRequest: ObservedTransportRequest = {
     method: (init?.method || request?.method || 'GET').toUpperCase(),
+    ...(mcpMethod ? { mcpMethod } : {}),
     url: request?.url || String(input),
     candidateUrl: candidate.url,
     transportType: candidate.transportType,
     startedAt: new Date(startedAtMs).toISOString(),
+    ...(Array.from(outgoingHeaders.keys()).length > 0
+      ? { requestHeaders: Array.from(outgoingHeaders.keys()) }
+      : {}),
     outcome: 'started',
   };
   observedRequests.push(attemptedRequest);
@@ -412,15 +715,31 @@ const observeAuthenticationResponses = (
   try {
     response = await fetch(input, init);
     attemptedRequest.status = response.status;
-    attemptedRequest.responseSource = !usesProxy
-      ? 'target'
-      : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
-        ? 'target'
-        : 'proxy';
+    if (!usesProxy) {
+      attemptedRequest.responseSource = 'target';
+    } else {
+      const source = response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)?.toLowerCase();
+      if (source === 'target' || source === 'proxy') attemptedRequest.responseSource = source;
+      const proxyLimit = source === 'proxy' ? readProxyCallerLimit(response) : undefined;
+      if (proxyLimit) attemptedRequest.proxyLimit = proxyLimit;
+      // A target response the proxy later cuts off at a caller limit is still
+      // a proxy limit, not a target failure.
+      response = decodeProxyLimitSignal(response, (limit) => {
+        attemptedRequest.proxyLimit = limit;
+        attemptedRequest.outcome = 'failed';
+      });
+    }
     const retryAfter = response.headers.get('Retry-After');
     if (retryAfter) attemptedRequest.retryAfter = retryAfter;
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
+    if (attemptedRequest.responseSource === 'target' && !response.ok) {
+      // Diagnostics are best-effort and must never replace the target's actual
+      // response with an inspection failure.
+      const targetError = await inspectSafeTargetError(response, knownCredentials)
+        .catch(() => undefined);
+      if (targetError) attemptedRequest.targetError = targetError;
+    }
   } catch (error) {
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = 'failed';
@@ -442,6 +761,7 @@ const observeAuthenticationResponses = (
       requestUrl: attemptedRequest.url,
       startedAt: attemptedRequest.startedAt,
       durationMs: attemptedRequest.durationMs,
+      ...(attemptedRequest.targetError ? { targetError: attemptedRequest.targetError } : {}),
     }, challengeParameters));
   }
   return response;
@@ -469,7 +789,10 @@ const siblingEndpoint = (value: URL, fromSegment: string, toSegment: string): UR
   return sibling;
 };
 
-const directCandidates = (endpoint: URL): TransportCandidate[] => {
+const directCandidates = (
+  endpoint: URL,
+  preferredTransport?: TransportType
+): TransportCandidate[] => {
   const candidates: TransportCandidate[] = [];
   const seen = new Set<string>();
   const add = (url: URL, transportType: TransportType) => {
@@ -481,24 +804,30 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
       candidates.push(candidate);
     }
   };
+  const addExact = (url: URL, transportType: TransportType) => {
+    const candidate = { url: url.toString(), transportType };
+    const key = `${candidate.transportType}:${candidate.url}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(candidate);
+  };
   const normalizedPath = endpoint.pathname.replace(/\/+$/, '');
 
-  const streamableHttpOnly = isAuthoritativeStreamableHttpOnlyProvider(endpoint.toString());
+  // A catalog-selected endpoint is authoritative transport evidence. Keep its
+  // exact path and do not invent a sibling transport endpoint.
+  if (preferredTransport) {
+    addExact(endpoint, preferredTransport);
+    return candidates;
+  }
 
   if (normalizedPath.endsWith('/sse')) {
     const httpSibling = siblingEndpoint(endpoint, 'sse', 'mcp');
-    if (streamableHttpOnly) {
-      if (httpSibling) add(httpSibling, 'streamable-http');
-    } else {
-      add(endpoint, 'legacy-sse');
-      if (httpSibling) add(httpSibling, 'streamable-http');
-    }
+    add(endpoint, 'legacy-sse');
+    if (httpSibling) add(httpSibling, 'streamable-http');
   } else if (normalizedPath.endsWith('/mcp')) {
     add(endpoint, 'streamable-http');
-    if (!streamableHttpOnly) {
-      const sseSibling = siblingEndpoint(endpoint, 'mcp', 'sse');
-      if (sseSibling) add(sseSibling, 'legacy-sse');
-    }
+    const sseSibling = siblingEndpoint(endpoint, 'mcp', 'sse');
+    if (sseSibling) add(sseSibling, 'legacy-sse');
   } else if (!normalizedPath) {
     // Some publishers serve MCP directly at the origin, while others use the
     // conventional /mcp or /sse paths. Preserve both possibilities.
@@ -506,17 +835,15 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
     const httpEndpoint = new URL(endpoint);
     httpEndpoint.pathname = '/mcp';
     add(httpEndpoint, 'streamable-http');
-    if (!streamableHttpOnly) {
-      add(endpoint, 'legacy-sse');
-      const sseEndpoint = new URL(endpoint);
-      sseEndpoint.pathname = '/sse';
-      add(sseEndpoint, 'legacy-sse');
-    }
+    add(endpoint, 'legacy-sse');
+    const sseEndpoint = new URL(endpoint);
+    sseEndpoint.pathname = '/sse';
+    add(sseEndpoint, 'legacy-sse');
   } else {
     // A non-standard path is an endpoint, not a base URL. Never append a
     // transport path to it; try both transports at the exact location.
     add(endpoint, 'streamable-http');
-    if (!streamableHttpOnly) add(endpoint, 'legacy-sse');
+    add(endpoint, 'legacy-sse');
   }
 
   return candidates;
@@ -529,10 +856,11 @@ const directCandidates = (endpoint: URL): TransportCandidate[] => {
  */
 export const getTransportCandidates = (
   serverUrl: string,
-  usesProxy = false
+  usesProxy = false,
+  preferredTransport?: TransportType
 ): TransportCandidate[] => {
   const outerUrl = new URL(serverUrl);
-  if (!usesProxy) return directCandidates(outerUrl);
+  if (!usesProxy) return directCandidates(outerUrl, preferredTransport);
 
   const targetValue = outerUrl.searchParams.get('target');
   if (!targetValue) {
@@ -540,7 +868,7 @@ export const getTransportCandidates = (
   }
 
   const targetUrl = new URL(targetValue);
-  return directCandidates(targetUrl).map((candidate) => {
+  return directCandidates(targetUrl, preferredTransport).map((candidate) => {
     const proxyUrl = new URL(outerUrl);
     proxyUrl.searchParams.set('target', candidate.url);
     return { ...candidate, url: proxyUrl.toString() };
@@ -575,6 +903,7 @@ const firstSuccessful = <T,>(
   attempts: Array<{
     promise: Promise<T>;
     candidateUrl: string;
+    transportType: TransportType;
     observedRequests: readonly ObservedTransportRequest[];
   }>,
   candidateFailures: TransportCandidateFailure[]
@@ -583,10 +912,10 @@ const firstSuccessful = <T,>(
     const errors: unknown[] = [];
     let remaining = attempts.length;
 
-    for (const { promise, candidateUrl, observedRequests } of attempts) {
+    for (const { promise, candidateUrl, transportType, observedRequests } of attempts) {
       promise.then(resolve).catch((error) => {
         errors.push(error);
-        candidateFailures.push({ candidateUrl, error, observedRequests });
+        candidateFailures.push({ candidateUrl, transportType, error, observedRequests });
         remaining -= 1;
         if (remaining === 0) {
           reject(new TransportConnectionError(errors, [...candidateFailures]));
@@ -635,9 +964,10 @@ export async function attemptParallelConnections(
   requestHeaders?: HeadersInit,
   usesProxy = false,
   protocolEraHint?: 'stateless' | 'stateful' | 'legacy',
-  onRequest?: (request: ObservedTransportRequest) => void
+  onRequest?: (request: ObservedTransportRequest) => void,
+  preferredTransport?: TransportType
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
-  const candidates = getTransportCandidates(serverUrl, usesProxy);
+  const candidates = getTransportCandidates(serverUrl, usesProxy, preferredTransport);
   const clients: Client[] = [];
   const transportOptionsFor = (
     candidate: TransportCandidate,
@@ -654,7 +984,11 @@ export async function attemptParallelConnections(
         onAuthenticationChallenge,
         observedRequests,
         candidate,
-        onRequest
+        onRequest,
+        [
+          ...(authToken ? [authToken] : []),
+          ...Array.from(headers.values()).filter(Boolean),
+        ]
       ),
     };
   };
@@ -695,7 +1029,8 @@ export async function attemptParallelConnections(
           : undefined,
         challenge.responseHeaders,
         challenge.resourceMetadataUrl,
-        challenge.scope
+        challenge.scope,
+        challenge.targetError
       ));
     });
     const transport = candidate.transportType === 'legacy-sse'
@@ -729,7 +1064,8 @@ export async function attemptParallelConnections(
             : undefined,
           authenticationChallenge.responseHeaders,
           authenticationChallenge.resourceMetadataUrl,
-          authenticationChallenge.scope
+          authenticationChallenge.scope,
+          authenticationChallenge.targetError
         );
       }
       throw error;
@@ -785,7 +1121,12 @@ export async function attemptParallelConnections(
             candidateGroup.map((candidate) => {
               const observedRequests: ObservedTransportRequest[] = [];
               const promise = attemptConnection(candidate, observedRequests);
-              return { promise, candidateUrl: candidate.url, observedRequests };
+              return {
+                promise,
+                candidateUrl: candidate.url,
+                transportType: candidate.transportType,
+                observedRequests,
+              };
             }),
             candidateFailures
           ),

@@ -112,15 +112,12 @@ export const getSavedCardConnectionPlan = ({
     };
   }
 
-  if (!proxyAuthToken) {
-    throw new Error('Sign in is required to execute a saved card through the CORS proxy.');
-  }
-
   const connectionUrl = new URL(proxyUrl as string);
   connectionUrl.searchParams.set('target', targetUrl);
 
   return {
     connectionUrl: connectionUrl.toString(),
+    // Optional: the proxy works anonymously; a login only lifts its limits.
     authToken: proxyAuthToken,
     targetHeaders: oauthToken
       ? { Authorization: `Bearer ${oauthToken}` }

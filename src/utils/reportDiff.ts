@@ -685,6 +685,7 @@ const metadataByOAuthStep = (report: PublicReport): Map<string, unknown[]> => {
     if (![
       'protected_resource_metadata',
       'authorization_server_metadata',
+      'client_establishment',
       'cimd',
       'dynamic_client_registration',
       'pkce',

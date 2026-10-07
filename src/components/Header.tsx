@@ -33,7 +33,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
         <Link to="/" className="app-brand-copy" aria-label="mcptest.io home">
           <h1 className="app-brand-title">mcptest.io</h1>
           <p className="app-brand-subtitle d-none d-md-block">
-            Remote protocol workbench
+            Remote MCP Inspector
           </p>
         </Link>
       </div>

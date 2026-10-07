@@ -2,6 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+  generateClientSetups,
+  getPreferredCatalogEndpoint,
+} = require('../src/utils/clientSetup.ts');
+const { createAuthorizationGuidance } = require('../src/utils/authorizationGuidance.ts');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -9,6 +14,15 @@ const distRoot = path.join(projectRoot, 'dist');
 const indexPath = path.join(distRoot, 'index.html');
 const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
 const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.json');
+const capabilitiesPath = path.join(projectRoot, 'src', 'data', 'catalogCapabilities.json');
+const pageMetadataPath = path.join(projectRoot, 'src', 'data', 'pageMetadata.json');
+const learnArticlesPath = path.join(projectRoot, 'src', 'data', 'learnArticles.json');
+const STANDALONE_CREDENTIAL = /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}|sk-(?:proj-)?[A-Za-z0-9_-]{20,255}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox(?:b|p|a|r|s)-[A-Za-z0-9-]{20,255}|npm_[A-Za-z0-9]{20,255}|glpat-[A-Za-z0-9_-]{20,255}|hf_[A-Za-z0-9]{20,255})(?![A-Za-z0-9])/g;
+
+function containsStandaloneCredential(value) {
+  STANDALONE_CREDENTIAL.lastIndex = 0;
+  return STANDALONE_CREDENTIAL.test(value);
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -20,6 +34,13 @@ function escapeHtml(value) {
 
 function escapeXml(value) {
   return escapeHtml(value).replace(/'/g, '&apos;');
+}
+
+function safeJsonForHtml(value) {
+  return JSON.stringify(value)
+    .replace(/&/g, '\\u0026')
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e');
 }
 
 function serverPath(serverId) {
@@ -45,6 +66,7 @@ function isValidationTransport(transport) {
 function authenticationLabel(authType) {
   if (authType === 'oauth') return 'OAuth 2.1';
   if (authType === 'bearer-token') return 'Bearer token';
+  if (authType === 'api-token') return 'API token';
   if (authType === 'api-key') return 'API key';
   if (authType === 'none') return 'No authentication';
   return 'Not yet verified';
@@ -58,7 +80,7 @@ function protocolLabel(era, version) {
   return 'Not yet negotiated';
 }
 
-function mergeCatalogServers(seeds, validationResults) {
+function mergeCatalogServers(seeds, validationResults, capabilitySnapshots = {}) {
   const validationByServerId = new Map(
     validationResults.map((result) => [result.serverId, result])
   );
@@ -66,7 +88,9 @@ function mergeCatalogServers(seeds, validationResults) {
   return seeds.map((seed) => {
     const validation = validationByServerId.get(seed.id);
     const declaredAuthType = seed.authType || (seed.requiresOAuth ? 'oauth' : 'none');
-    const authType = declaredAuthType === 'api-key' || declaredAuthType === 'bearer-token'
+    const authType = declaredAuthType === 'api-key'
+      || declaredAuthType === 'api-token'
+      || declaredAuthType === 'bearer-token'
       ? declaredAuthType
       : validation?.authType || declaredAuthType;
 
@@ -86,8 +110,99 @@ function mergeCatalogServers(seeds, validationResults) {
       authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
+      capabilityInventory: capabilitySnapshots[seed.id],
     };
   });
+}
+
+function inventoryStatusText(section) {
+  const counts = `${section.retainedCount} retained of ${section.observedCount} observed`;
+  const omitted = section.omittedCount ? `; ${section.omittedCount} omitted` : '';
+  if (section.status === 'complete') return `Complete discovery: ${counts}${omitted}.`;
+  if (section.status === 'partial' && !section.paginationComplete) {
+    return `Partial discovery: ${counts}${omitted}. More capabilities may exist.`;
+  }
+  if (section.status === 'partial' && section.omittedCount > 0) {
+    return `Discovery completed; bounded inventory: ${counts}${omitted}.`;
+  }
+  if (section.status === 'partial') {
+    return `Discovery completed; sanitized inventory: ${counts}. Capability details were sanitized for public display.`;
+  }
+  if (section.status === 'unsupported') return 'This discovery method is unsupported.';
+  return 'Discovery was unavailable. This does not mean the server provides no capabilities.';
+}
+
+function renderArguments(argumentsList) {
+  if (!argumentsList?.length) return '';
+  return `<ul class="capability-argument-list">${argumentsList.map(argument => [
+    `<li><code class="technical-string technical-string-inline">${escapeHtml(argument.name)}</code>`,
+    argument.type ? ` · ${escapeHtml(argument.type)}` : '',
+    ` · ${argument.required ? 'required' : 'optional'}`,
+    argument.description ? `<p>${escapeHtml(argument.description)}</p>` : '',
+    '</li>',
+  ].join('')).join('')}</ul>`;
+}
+
+function formatDisplayTimestamp(value) {
+  if (!value) return value;
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) return value;
+
+  const date = new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  }).format(timestamp);
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: '2-digit',
+  }).format(timestamp);
+  return `${date} at ${time}`;
+}
+
+function renderCapabilityInventory(server) {
+  const inventory = server.capabilityInventory;
+  if (!inventory) return '';
+  const groups = [
+    ['Tools', inventory.tools, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+      renderArguments(item.input),
+    ].join('')],
+    ['Resources', inventory.resources, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.title ? `<span class="capability-inventory-title">${escapeHtml(item.title)}</span>` : '',
+      item.mimeType ? `<span class="capability-inventory-mime">${escapeHtml(item.mimeType)}</span>` : '',
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+    ].join('')],
+    ['Resource templates', inventory.resourceTemplates, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.title ? `<span class="capability-inventory-title">${escapeHtml(item.title)}</span>` : '',
+      item.mimeType ? `<span class="capability-inventory-mime">${escapeHtml(item.mimeType)}</span>` : '',
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+    ].join('')],
+    ['Prompts', inventory.prompts, item => [
+      `<strong>${escapeHtml(item.name)}</strong>`,
+      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
+      renderArguments(item.arguments),
+    ].join('')],
+  ];
+  return [
+    '  <section class="card server-profile-section capability-inventory"><div class="card-body">',
+    '    <h2>Capabilities provided</h2>',
+    `    <p>Observed <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(formatDisplayTimestamp(inventory.observedAt))}</time> at <code class="technical-string technical-string-url technical-string-inline">${escapeHtml(inventory.provenance.testedEndpoint)}</code> via ${escapeHtml(inventory.provenance.route)}; ${escapeHtml(inventory.authentication)} discovery.</p>`,
+    '    <div class="capability-inventory-grid">',
+    ...groups.map(([label, section, renderItem]) => [
+      '      <section class="capability-inventory-group">',
+      `        <h3>${escapeHtml(label)} provided by ${escapeHtml(server.name)}</h3>`,
+      `        <p class="capability-inventory-status capability-inventory-status-${escapeHtml(section.status)}">${escapeHtml(inventoryStatusText(section))}</p>`,
+      ...(section.items.length ? [
+        '        <ul class="capability-inventory-list">',
+        ...section.items.map(item => `          <li>${renderItem(item)}</li>`),
+        '        </ul>',
+      ] : []),
+      '      </section>',
+    ].join('\n')),
+    '    </div>',
+    '  </div></section>',
+  ].join('\n');
 }
 
 function validationStatusLabel(server) {
@@ -115,12 +230,9 @@ function detectedAuthenticationLabel(server) {
 }
 
 function playgroundPath(server) {
-  const endpoint = server.browserUrl || server.validatedUrl || server.url;
-  const transport = server.transport === 'unknown'
-    ? server.declaredTransport
-    : server.transport;
-  const transportMethod = /\/sse\/?$/.test(endpoint) || transport === 'legacy-sse' ? 'sse' : 'mcp';
-  return `/server/${endpoint}/${transportMethod}`;
+  const endpoint = getPreferredCatalogEndpoint(server);
+  const transportMethod = endpoint.transport === 'legacy-sse' ? 'sse' : 'mcp';
+  return `/server/${endpoint.url}/${transportMethod}`;
 }
 
 function truncate(value, maxLength = 158) {
@@ -154,6 +266,83 @@ function setNamedMeta(html, name, content) {
   );
 }
 
+function serverInitials(name) {
+  const words = String(name).match(/[\p{L}\p{N}]+/gu) || [];
+  const initials = words.length > 1
+    ? `${words[0][0]}${words[1][0]}`
+    : words[0]?.slice(0, 2) || '?';
+  return initials.toLocaleUpperCase();
+}
+
+function isLocalServerLogo(logoUrl) {
+  return typeof logoUrl === 'string' && logoUrl.startsWith('/server-logos/');
+}
+
+function renderServerLogo(server) {
+  if (isLocalServerLogo(server.logoUrl)) {
+    return `<span class="catalog-server-logo server-profile-logo" aria-hidden="true"><img src="${escapeHtml(server.logoUrl)}" alt="" /></span>`;
+  }
+
+  return `<span class="catalog-server-logo catalog-server-logo--fallback server-profile-logo" role="img" aria-label="${escapeHtml(server.name)} logo"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(serverInitials(server.name))}</span></span>`;
+}
+
+function renderClientSetups(server) {
+  const setups = generateClientSetups(server);
+  return [
+    '  <section class="card server-profile-section client-setup seo-client-setup"><div class="card-body">',
+    '    <h2>Connect this server to your client</h2>',
+    ...setups.map(setup => [
+      `    <section class="client-setup-panel" data-client="${escapeHtml(setup.id)}">`,
+      `      <h3>${escapeHtml(setup.heading)}</h3>`,
+      `      <p>${escapeHtml(setup.location)}</p>`,
+      setup.supported
+        ? `      <pre aria-label="${escapeHtml(setup.label)} configuration"><code class="language-${escapeHtml(setup.format)}">${escapeHtml(setup.copyText)}</code></pre>`
+        : `      <div class="alert alert-warning client-setup-unsupported" role="status"><strong>Setup unavailable</strong><p>${escapeHtml(setup.copyText)}</p></div>`,
+      `      <p>${escapeHtml(setup.authSummary)}</p>`,
+      `      <ul>${setup.notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`,
+      `      <p><a href="${escapeHtml(setup.documentationUrl)}">${escapeHtml(setup.documentationLabel)}</a></p>`,
+      '    </section>',
+    ].join('\n')),
+    '  </div></section>',
+  ].join('\n');
+}
+
+function renderAuthorizationSetup(server) {
+  const guidance = createAuthorizationGuidance(server);
+  return [
+    `  <section class="authorization-setup authorization-setup--${escapeHtml(guidance.status)}" aria-labelledby="authorization-setup-${escapeHtml(server.id)}-title">`,
+    '    <p class="authorization-setup-kicker">Authorization setup</p>',
+    `    <h2 id="authorization-setup-${escapeHtml(server.id)}-title">${escapeHtml(guidance.statusLabel)}</h2>`,
+    `    <p>${escapeHtml(guidance.summary)}</p>`,
+    ...(guidance.reviewedAt ? [`    <p>Publisher evidence reviewed <time datetime="${escapeHtml(guidance.reviewedAt)}">${escapeHtml(guidance.reviewedAt)}</time>.</p>`] : []),
+    ...(guidance.clientIdRequired || guidance.clientSecretRequired ? [
+      '    <dl class="authorization-setup-requirements">',
+      `      <div><dt>Client ID</dt><dd>${guidance.clientIdRequired ? 'Required' : 'Not required'}</dd></div>`,
+      `      <div><dt>Client secret</dt><dd>${guidance.clientSecretRequired ? 'Required — never enter it in a browser' : 'Not required'}</dd></div>`,
+      `      <div><dt>Browser/public client</dt><dd>${guidance.browserPublicClientSupported === true ? 'Supported' : guidance.browserPublicClientSupported === false ? 'Not supported' : 'Not verified'}</dd></div>`,
+      '    </dl>',
+    ] : []),
+    ...(guidance.settings.length ? [
+      '    <h3>Required non-secret settings</h3>',
+      `    <dl>${guidance.settings.map(({ label, value, required }) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}${required ? ' (required)' : ' (optional)'}</dd></div>`).join('')}</dl>`,
+    ] : []),
+    ...(guidance.callbacks.length ? [
+      '    <h3>Callback URIs</h3>',
+      `    <ul>${guidance.callbacks.map(callback => `<li><code>${escapeHtml(callback)}</code></li>`).join('')}</ul>`,
+    ] : []),
+    ...(guidance.steps.length ? [
+      '    <h3>Provider setup steps</h3>',
+      `    <ol>${guidance.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol>`,
+    ] : []),
+    ...(guidance.alternativeHeaderTemplate ? [
+      `    <p><strong>Safe header template:</strong> <code>${escapeHtml(guidance.alternativeHeaderTemplate)}</code>. Replace only the named placeholder in protected client configuration.</p>`,
+    ] : []),
+    ...(guidance.registrationUrl ? [`    <p><a href="${escapeHtml(guidance.registrationUrl)}">Open provider setup or application page</a></p>`] : []),
+    ...(guidance.documentationUrl ? [`    <p><a href="${escapeHtml(guidance.documentationUrl)}">Publisher documentation</a></p>`] : []),
+    '  </section>',
+  ].join('\n');
+}
+
 function renderServerFallback(server) {
   const homepageLink = server.homepageUrl
     ? `<a href="${escapeHtml(server.homepageUrl)}">Product documentation</a>`
@@ -164,55 +353,72 @@ function renderServerFallback(server) {
   const registryLink = server.registryUrl
     ? `<a href="${escapeHtml(server.registryUrl)}">Official MCP Registry record</a>`
     : '';
-  const references = [homepageLink, sourceLink, registryLink].filter(Boolean).join(' · ');
+  const listingLink = server.listingSource?.url && server.listingSource.url !== server.homepageUrl
+    ? `<a href="${escapeHtml(server.listingSource.url)}">Official listing documentation</a>`
+    : '';
+  const references = [homepageLink, sourceLink, listingLink, registryLink].filter(Boolean).join(' · ');
   const requiredHeaders = (server.requiredHeaders || []).map((header) => (
-    `      <div><dt>Required header</dt><dd><code>${escapeHtml(header.name)}</code>${header.description ? ` — ${escapeHtml(header.description)}` : ''}</dd></div>`
+    `      <div><dt>Required header</dt><dd><code class="technical-string technical-string-inline">${escapeHtml(header.name)}</code>${header.description ? ` — ${escapeHtml(header.description)}` : ''}</dd></div>`
+  ));
+  const alternativeAuthTypes = (server.alternativeAuthTypes || []).map((authType) => (
+    `      <div><dt>Alternative authentication</dt><dd>${escapeHtml(authenticationLabel(authType))}</dd></div>`
+  ));
+  const alternativeEndpoints = (server.alternativeEndpoints || []).map((endpoint) => (
+    `      <div><dt>Alternative endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(endpoint.url)}</code> — ${escapeHtml(endpoint.description)}${endpoint.authType ? ` (${escapeHtml(authenticationLabel(endpoint.authType))})` : ''}</dd></div>`
   ));
   const authorizationServers = (server.authorizationServers || []).map((issuer) => (
-    `      <div><dt>Authorization server</dt><dd><code>${escapeHtml(issuer)}</code></dd></div>`
+    `      <div><dt>Authorization server</dt><dd><code class="technical-string technical-string-url">${escapeHtml(issuer)}</code></dd></div>`
   ));
 
   return [
     `<article class="server-profile seo-server-fallback" data-server-id="${escapeHtml(server.id)}">`,
-    '  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><a href="/catalog">Server Catalog</a></nav>',
+    `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server Catalog</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
     '  <header class="server-profile-hero">',
-    '    <div class="server-profile-identity"><div>',
-    '      <div class="server-profile-eyebrow">MCP server report</div>',
+    `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
     `      <h1>${escapeHtml(server.name)}</h1>`,
     `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
     '  </header>',
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Connection specification</h2>',
-    '    <dl class="server-spec-list">',
-    `      <div><dt>Remote endpoint</dt><dd><code>${escapeHtml(server.url)}</code></dd></div>`,
+    '    <dl class="server-spec-list server-connection-specs">',
+    `      <div><dt>Remote endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(server.url)}</code></dd></div>`,
     ...(server.validatedUrl && server.validatedUrl !== server.url
-      ? [`      <div><dt>Live-validated endpoint</dt><dd><code>${escapeHtml(server.validatedUrl)}</code></dd></div>`]
+      ? [`      <div><dt>Live-validated endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(server.validatedUrl)}</code></dd></div>`]
       : []),
     ...(server.browserUrl && server.browserUrl !== server.validatedUrl
-      ? [`      <div><dt>Browser-verified endpoint</dt><dd><code>${escapeHtml(server.browserUrl)}</code></dd></div>`]
+      ? [`      <div><dt>Browser-verified endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(server.browserUrl)}</code></dd></div>`]
       : []),
     `      <div><dt>Browser access</dt><dd>${escapeHtml(server.browserAccess === 'direct' ? 'Direct browser connection verified' : server.browserAccess === 'proxy-required' ? 'Authenticated proxy required' : 'Not yet measured')}</dd></div>`,
     `      <div><dt>Declared MCP transport</dt><dd>${escapeHtml(transportLabel(server.declaredTransport))}</dd></div>`,
     `      <div><dt>Live-validated MCP transport</dt><dd>${escapeHtml(transportLabel(server.transport))} — ${escapeHtml(validationTransportNote(server))}</dd></div>`,
     `      <div><dt>Declared authentication</dt><dd>${escapeHtml(authenticationLabel(server.declaredAuthType))}</dd></div>`,
     `      <div><dt>Detected authentication</dt><dd>${escapeHtml(detectedAuthenticationLabel(server))}</dd></div>`,
+    ...alternativeAuthTypes,
+    ...alternativeEndpoints,
     `      <div><dt>Protocol lifecycle</dt><dd>${escapeHtml(protocolLabel(server.protocolEra, server.protocolVersion))}</dd></div>`,
     ...requiredHeaders,
     ...authorizationServers,
     `      <div><dt>Category</dt><dd>${escapeHtml(server.category)}</dd></div>`,
     '    </dl>',
     `    <p>${references}</p>`,
+    ...(server.caveats?.length ? [
+      '    <h3>Provider guidance</h3>',
+      `    <ul>${server.caveats.map(caveat => `<li>${escapeHtml(caveat)}</li>`).join('')}</ul>`,
+    ] : []),
     `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
+    renderAuthorizationSetup(server),
+    renderClientSetups(server),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Latest validation evidence</h2>',
     '    <dl class="server-spec-list">',
     `      <div><dt>Validation status</dt><dd>${escapeHtml(validationStatusLabel(server))}</dd></div>`,
-    `      <div><dt>Validation checked at</dt><dd>${escapeHtml(server.checkedAt || 'Not yet validated')}</dd></div>`,
+    `      <div><dt>Validation checked at</dt><dd>${escapeHtml(server.checkedAt ? formatDisplayTimestamp(server.checkedAt) : 'Not yet validated')}</dd></div>`,
     `      <div><dt>Validation detail</dt><dd>${escapeHtml(validationDetail(server))}</dd></div>`,
     '    </dl>',
     '  </div></section>',
+    renderCapabilityInventory(server),
     '</article>',
   ].join('\n');
 }
@@ -231,10 +437,11 @@ function renderServerHtml(indexHtml, server) {
   const canonicalUrl = `${SITE_URL}${serverPath(server.id)}`;
   const title = `${server.name} MCP Server Report | mcptest.io`;
   const description = truncate(
-    `${server.name} MCP server connection report: ${transportLabel(server.declaredTransport)}, ${protocolLabel(server.protocolEra, server.protocolVersion)}, ${authenticationLabel(server.authType)}, endpoint details, and live-test status.`
+    server.seoDescription
+      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
   );
-  const imageUrl = server.logoUrl
-    ? (server.logoUrl.startsWith('http') ? server.logoUrl : `${SITE_URL}${server.logoUrl}`)
+  const imageUrl = isLocalServerLogo(server.logoUrl)
+    ? `${SITE_URL}${server.logoUrl}`
     : `${SITE_URL}/logo.png`;
   const structuredData = {
     '@context': 'https://schema.org',
@@ -251,10 +458,22 @@ function renderServerHtml(indexHtml, server) {
       { '@type': 'PropertyValue', name: 'Live-validated MCP transport', value: transportLabel(server.transport) },
       { '@type': 'PropertyValue', name: 'Declared authentication', value: authenticationLabel(server.declaredAuthType) },
       { '@type': 'PropertyValue', name: 'Detected authentication', value: detectedAuthenticationLabel(server) },
+      ...(server.alternativeAuthTypes || []).map(authType => ({
+        '@type': 'PropertyValue', name: 'Alternative authentication', value: authenticationLabel(authType),
+      })),
+      ...(server.alternativeEndpoints || []).map(endpoint => ({
+        '@type': 'PropertyValue', name: 'Alternative endpoint', value: endpoint.url,
+      })),
       { '@type': 'PropertyValue', name: 'MCP protocol lifecycle', value: protocolLabel(server.protocolEra, server.protocolVersion) },
       { '@type': 'PropertyValue', name: 'Validation status', value: validationStatusLabel(server) },
       { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },
       { '@type': 'PropertyValue', name: 'Validation detail', value: validationDetail(server) },
+      ...(server.capabilityInventory ? [
+        { '@type': 'PropertyValue', name: 'Tools observed', value: server.capabilityInventory.tools.observedCount },
+        { '@type': 'PropertyValue', name: 'Resources observed', value: server.capabilityInventory.resources.observedCount },
+        { '@type': 'PropertyValue', name: 'Resource templates observed', value: server.capabilityInventory.resourceTemplates.observedCount },
+        { '@type': 'PropertyValue', name: 'Prompts observed', value: server.capabilityInventory.prompts.observedCount },
+      ] : []),
     ],
   };
 
@@ -263,6 +482,7 @@ function renderServerHtml(indexHtml, server) {
   html = setNamedMeta(html, 'twitter:card', 'summary');
   html = setNamedMeta(html, 'twitter:title', title);
   html = setNamedMeta(html, 'twitter:description', description);
+  html = setNamedMeta(html, 'twitter:image', imageUrl);
   html = setPropertyMeta(html, 'og:title', title);
   html = setPropertyMeta(html, 'og:description', description);
   html = setPropertyMeta(html, 'og:url', canonicalUrl);
@@ -274,7 +494,7 @@ function renderServerHtml(indexHtml, server) {
     `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`
   );
 
-  const safeJson = JSON.stringify(structuredData).replace(/<\//g, '<\\/');
+  const safeJson = safeJsonForHtml(structuredData);
   html = html.replace(
     '</head>',
     `    <script id="server-structured-data" type="application/ld+json">${safeJson}</script>\n  </head>`
@@ -285,6 +505,232 @@ function renderServerHtml(indexHtml, server) {
   );
 
   return html;
+}
+
+function renderStaticPageHtml(indexHtml, pathname, metadata, options = {}) {
+  const canonicalUrl = `${SITE_URL}${pathname}`;
+  const imageUrl = `${SITE_URL}/logo.png`;
+  let html = indexHtml.replace(
+    /<title>[^<]*<\/title>/i,
+    `<title>${escapeHtml(metadata.title)}</title>`
+  );
+  html = setNamedMeta(html, 'description', metadata.description);
+  html = setNamedMeta(html, 'twitter:card', 'summary');
+  html = setNamedMeta(html, 'twitter:title', metadata.title);
+  html = setNamedMeta(html, 'twitter:description', metadata.description);
+  html = setNamedMeta(html, 'twitter:image', imageUrl);
+  html = setPropertyMeta(html, 'og:title', metadata.title);
+  html = setPropertyMeta(html, 'og:description', metadata.description);
+  html = setPropertyMeta(html, 'og:url', canonicalUrl);
+  html = setPropertyMeta(html, 'og:image', imageUrl);
+  html = setPropertyMeta(html, 'og:type', options.type || 'website');
+  html = replaceOrInsertHead(
+    html,
+    /<link\s+[^>]*rel=["']canonical["'][^>]*>/i,
+    `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`
+  );
+  if (options.structuredData) {
+    const safeJson = safeJsonForHtml(options.structuredData);
+    html = html.replace(
+      '</head>',
+      `    <script id="server-structured-data" type="application/ld+json">${safeJson}</script>\n  </head>`
+    );
+  }
+  if (options.fallbackHtml) {
+    html = html.replace(
+      '<div id="root"></div>',
+      `<div id="root">\n${options.fallbackHtml}\n    </div>`
+    );
+  }
+  return html;
+}
+
+function renderInlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => (
+      `<a href="${escapeHtml(href)}">${label}</a>`
+    ))
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function isTableSeparator(line) {
+  const cells = line.trim().replace(/^\||\|$/g, '').split('|');
+  return cells.length > 1 && cells.every(cell => /^\s*:?-{3,}:?\s*$/.test(cell));
+}
+
+function renderMarkdown(markdown) {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const html = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    if (line.startsWith('```')) {
+      const language = line.slice(3).trim();
+      const code = [];
+      index += 1;
+      while (index < lines.length && !lines[index].startsWith('```')) {
+        code.push(lines[index]);
+        index += 1;
+      }
+      index += 1;
+      html.push(`<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    const heading = line.match(/^(#{2,6})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      index += 1;
+      continue;
+    }
+
+    if (
+      line.includes('|') &&
+      index + 1 < lines.length &&
+      isTableSeparator(lines[index + 1])
+    ) {
+      const headerCells = line.trim().replace(/^\||\|$/g, '').split('|');
+      const rows = [];
+      index += 2;
+      while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
+        rows.push(lines[index].trim().replace(/^\||\|$/g, '').split('|'));
+        index += 1;
+      }
+      html.push([
+        '<table><thead><tr>',
+        ...headerCells.map(cell => `<th>${renderInlineMarkdown(cell.trim())}</th>`),
+        '</tr></thead><tbody>',
+        ...rows.map(cells => `<tr>${cells.map(cell => `<td>${renderInlineMarkdown(cell.trim())}</td>`).join('')}</tr>`),
+        '</tbody></table>',
+      ].join(''));
+      continue;
+    }
+
+    const listMatch = line.match(/^\s*(?:([-*])|(\d+)\.)\s+(.+)$/);
+    if (listMatch) {
+      const ordered = Boolean(listMatch[2]);
+      const tag = ordered ? 'ol' : 'ul';
+      const items = [];
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*(?:([-*])|(\d+)\.)\s+(.+)$/);
+        if (!item || Boolean(item[2]) !== ordered) break;
+        items.push(item[3]);
+        index += 1;
+      }
+      html.push(`<${tag}>${items.map(item => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</${tag}>`);
+      continue;
+    }
+
+    const paragraph = [line.trim()];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index].trim() &&
+      !lines[index].startsWith('```') &&
+      !/^(#{2,6})\s+/.test(lines[index]) &&
+      !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[index]) &&
+      !(lines[index].includes('|') && index + 1 < lines.length && isTableSeparator(lines[index + 1]))
+    ) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+    html.push(`<p>${renderInlineMarkdown(paragraph.join(' '))}</p>`);
+  }
+
+  return html.join('\n');
+}
+
+function getRelatedLearnArticles(article, articles) {
+  const bySlug = new Map(articles.map(item => [item.slug, item]));
+  return article.relatedSlugs.map(slug => bySlug.get(slug)).filter(Boolean);
+}
+
+function renderLearnIndexFallback(learnData) {
+  return [
+    '<main class="learn-page learn-index seo-learn-fallback">',
+    '  <header class="learn-hero">',
+    '    <p class="learn-kicker">Guides</p>',
+    `    <h1>${escapeHtml(learnData.index.title)}</h1>`,
+    `    <p>${escapeHtml(learnData.index.summary)}</p>`,
+    '  </header>',
+    '  <div class="learn-grid">',
+    ...learnData.articles.map(article => [
+      '    <article class="learn-card">',
+      `      <p>${escapeHtml(article.category)} · ${article.readingTimeMinutes} min read</p>`,
+      `      <h2><a href="/learn/${escapeHtml(article.slug)}">${escapeHtml(article.title)}</a></h2>`,
+      `      <p>${escapeHtml(article.summary)}</p>`,
+      `      <p>Reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
+      '    </article>',
+    ].join('\n')),
+    '  </div>',
+    '</main>',
+  ].join('\n');
+}
+
+function renderLearnArticleFallback(article, articles) {
+  const related = getRelatedLearnArticles(article, articles);
+  return [
+    `<article class="learn-page learn-article seo-learn-fallback" data-article-slug="${escapeHtml(article.slug)}">`,
+    `  <nav class="learn-breadcrumb" aria-label="Breadcrumb"><a href="/learn">Learn</a><span>/</span><span aria-current="page">${escapeHtml(article.title)}</span></nav>`,
+    '  <header class="learn-article-header">',
+    `    <p class="learn-kicker">${escapeHtml(article.category)}</p>`,
+    `    <h1>${escapeHtml(article.title)}</h1>`,
+    `    <p>${escapeHtml(article.summary)}</p>`,
+    `    <p>${article.readingTimeMinutes} min read · Last reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
+    '  </header>',
+    `  <div class="learn-markdown">${renderMarkdown(article.content)}</div>`,
+    '  <footer class="learn-article-footer">',
+    '    <section><h2>Sources</h2><ul>',
+    ...article.sourceLinks.map(source => `      <li><a href="${escapeHtml(source.url)}">${escapeHtml(source.title)}</a></li>`),
+    '    </ul></section>',
+    '    <section><h2>Related guides</h2><ul>',
+    ...related.map(item => `      <li><a href="/learn/${escapeHtml(item.slug)}">${escapeHtml(item.title)}</a></li>`),
+    '    </ul></section>',
+    '  </footer>',
+    '</article>',
+  ].join('\n');
+}
+
+function getLearnArticleStructuredData(article) {
+  const canonicalUrl = `${SITE_URL}/learn/${article.slug}`;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    description: article.summary,
+    mainEntityOfPage: canonicalUrl,
+    url: canonicalUrl,
+    dateModified: article.lastReviewed,
+    articleSection: article.category,
+    author: { '@type': 'Organization', name: 'mcptest.io', url: SITE_URL },
+    publisher: {
+      '@type': 'Organization',
+      name: 'mcptest.io',
+      url: SITE_URL,
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` },
+    },
+    citation: article.sourceLinks.map(({ url }) => url),
+    isPartOf: { '@type': 'CollectionPage', name: 'Learn MCP', url: `${SITE_URL}/learn` },
+  };
+}
+
+function renderLearnArticleHtml(indexHtml, article, articles) {
+  return renderStaticPageHtml(indexHtml, `/learn/${article.slug}`, {
+    title: `${article.title} | mcptest.io`,
+    description: article.summary,
+  }, {
+    type: 'article',
+    structuredData: getLearnArticleStructuredData(article),
+    fallbackHtml: renderLearnArticleFallback(article, articles),
+  });
 }
 
 function writeServerPages(indexHtml, servers) {
@@ -299,7 +745,45 @@ function writeServerPages(indexHtml, servers) {
   }
 }
 
-function writeSitemap(servers) {
+function writeStaticPages(indexHtml, docsMetadata) {
+  for (const [slug, metadata] of Object.entries(docsMetadata)) {
+    const pathname = `/docs/${slug}`;
+    const outputDirectory = path.join(distRoot, 'docs', slug);
+    fs.mkdirSync(outputDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDirectory, 'index.html'),
+      renderStaticPageHtml(indexHtml, pathname, metadata),
+      'utf8'
+    );
+  }
+}
+
+function writeLearnPages(indexHtml, learnData) {
+  const learnDirectory = path.join(distRoot, 'learn');
+  fs.mkdirSync(learnDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(learnDirectory, 'index.html'),
+    renderStaticPageHtml(indexHtml, '/learn', {
+      title: `${learnData.index.title} | mcptest.io`,
+      description: learnData.index.description,
+    }, {
+      fallbackHtml: renderLearnIndexFallback(learnData),
+    }),
+    'utf8'
+  );
+
+  for (const article of learnData.articles) {
+    const outputDirectory = path.join(learnDirectory, article.slug);
+    fs.mkdirSync(outputDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDirectory, 'index.html'),
+      renderLearnArticleHtml(indexHtml, article, learnData.articles),
+      'utf8'
+    );
+  }
+}
+
+function writeSitemap(servers, learnData) {
   const staticPaths = [
     '/',
     '/catalog',
@@ -308,13 +792,21 @@ function writeSitemap(servers) {
     '/docs/remote-vs-local',
     '/docs/testing-guide',
     '/docs/troubleshooting',
+    '/learn',
   ];
-  const paths = [...staticPaths, ...servers.map((server) => serverPath(server.id))];
   const lastModified = new Date().toISOString().slice(0, 10);
-  const entries = paths.map((pathname) => [
+  const paths = [
+    ...staticPaths.map(pathname => ({ pathname, lastModified })),
+    ...learnData.articles.map(article => ({
+      pathname: `/learn/${article.slug}`,
+      lastModified: article.lastReviewed,
+    })),
+    ...servers.map(server => ({ pathname: serverPath(server.id), lastModified })),
+  ];
+  const entries = paths.map(({ pathname, lastModified: entryLastModified }) => [
     '  <url>',
     `    <loc>${escapeXml(`${SITE_URL}${pathname === '/' ? '' : pathname}`)}</loc>`,
-    `    <lastmod>${lastModified}</lastmod>`,
+    `    <lastmod>${entryLastModified}</lastmod>`,
     '  </url>',
   ].join('\n'));
   const sitemap = [
@@ -349,6 +841,174 @@ function validateInputs(servers) {
   }
 }
 
+function assertExactKeys(value, allowed, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) throw new Error(`${label} contains unsafe field ${key}.`);
+  }
+}
+
+function assertSafeInventoryString(value, maxLength, label, optional = false) {
+  if (value === undefined && optional) return;
+  if (typeof value !== 'string' || !value || value.length > maxLength
+      || /[\u0000-\u001f\u007f-\u009f]/.test(value)
+      || value !== value.replace(/\s+/g, ' ').trim()) {
+    throw new Error(`${label} is not a canonical public-safe string.`);
+  }
+  const sanitized = value
+    .replace(/\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*(?:\[REDACTED\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/gi, '$1=[REDACTED]')
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+    .replace(STANDALONE_CREDENTIAL, '[REDACTED]')
+    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g, '[REDACTED URI]');
+  if (sanitized !== value) throw new Error(`${label} contains unsanitized data.`);
+}
+
+function validateCapabilitySnapshots(snapshots, seeds) {
+  assertExactKeys(snapshots, Object.keys(snapshots), 'Catalog capability snapshots');
+  const seedsById = new Map(seeds.map(seed => [seed.id, seed]));
+  const identifier = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,127})$/;
+  const statuses = new Set(['complete', 'partial', 'unsupported', 'unavailable']);
+  const validateArgument = (argument, label) => {
+    assertExactKeys(argument, ['name', 'type', 'description', 'required'], label);
+    assertSafeInventoryString(argument.name, 128, `${label} name`);
+    if (!identifier.test(argument.name)) throw new Error(`${label} has an invalid name.`);
+    assertSafeInventoryString(argument.type, 64, `${label} type`, true);
+    if (argument.type && !argument.type.split(' | ').every(type => (
+      ['array', 'boolean', 'integer', 'null', 'number', 'object', 'string'].includes(type)
+    ))) throw new Error(`${label} type is invalid.`);
+    assertSafeInventoryString(argument.description, 600, `${label} description`, true);
+    if (typeof argument.required !== 'boolean') throw new Error(`${label} required flag is invalid.`);
+  };
+  for (const [serverId, inventory] of Object.entries(snapshots)) {
+    if (!seedsById.has(serverId)) throw new Error(`Capability snapshot references unknown server id: ${serverId}`);
+    assertExactKeys(inventory, ['version', 'observedAt', 'provenance', 'authentication', 'tools', 'resources', 'resourceTemplates', 'prompts'], `${serverId} inventory`);
+    if (inventory.version !== 1 || Number.isNaN(Date.parse(inventory.observedAt))) {
+      throw new Error(`${serverId} inventory version or timestamp is invalid.`);
+    }
+    assertExactKeys(inventory.provenance, ['testedEndpoint', 'route'], `${serverId} provenance`);
+    const endpoint = new URL(inventory.provenance.testedEndpoint);
+    const seedOrigin = new URL(seedsById.get(serverId).url).origin;
+    const endpointContainsCredential = [endpoint.pathname, ...endpoint.searchParams.values()]
+      .some(containsStandaloneCredential);
+    if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.origin !== seedOrigin
+        || endpoint.username || endpoint.password || endpoint.hash
+        || endpointContainsCredential
+        || [...endpoint.searchParams.keys()].some(key => (
+          /(?:auth|code|cookie|credential|key|password|secret|session|signature|token)/i.test(key)
+          || /^(?:sig|x-amz-credential)$/i.test(key)
+        ))) {
+      throw new Error(`${serverId} inventory endpoint does not match its catalog origin.`);
+    }
+    if (!['direct', 'authenticated-proxy'].includes(inventory.provenance.route)
+        || !['authenticated', 'unauthenticated'].includes(inventory.authentication)) {
+      throw new Error(`${serverId} inventory provenance is invalid.`);
+    }
+    for (const category of ['tools', 'resources', 'resourceTemplates', 'prompts']) {
+      const section = inventory[category];
+      assertExactKeys(section, ['status', 'observedCount', 'retainedCount', 'omittedCount', 'paginationComplete', 'items'], `${serverId} ${category}`);
+      if (!statuses.has(section.status) || !Array.isArray(section.items) || section.items.length > 100
+          || ![section.observedCount, section.retainedCount, section.omittedCount].every(Number.isInteger)
+          || section.retainedCount !== section.items.length
+          || section.observedCount !== section.retainedCount + section.omittedCount
+          || typeof section.paginationComplete !== 'boolean') {
+        throw new Error(`${serverId} ${category} metadata is invalid.`);
+      }
+      for (const [index, item] of section.items.entries()) {
+        const label = `${serverId} ${category}[${index}]`;
+        const itemKeys = category === 'tools'
+          ? ['name', 'description', 'input']
+          : category === 'prompts'
+            ? ['name', 'description', 'arguments']
+            : ['name', 'title', 'description', 'mimeType'];
+        assertExactKeys(item, itemKeys, label);
+        assertSafeInventoryString(item.name, 128, `${label} name`);
+        if (/[<>]/.test(item.name) || /\b[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(item.name)) {
+          throw new Error(`${label} has an unsafe name.`);
+        }
+        if ((category === 'tools' || category === 'prompts') && !identifier.test(item.name)) {
+          throw new Error(`${label} has an invalid name.`);
+        }
+        assertSafeInventoryString(item.title, 200, `${label} title`, true);
+        assertSafeInventoryString(item.description, 600, `${label} description`, true);
+        assertSafeInventoryString(item.mimeType, 128, `${label} MIME type`, true);
+        if (item.mimeType && !/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*charset=[A-Za-z0-9._-]+)?$/i.test(item.mimeType)) {
+          throw new Error(`${label} MIME type is invalid.`);
+        }
+        const argumentsList = category === 'tools' ? item.input : item.arguments;
+        if (argumentsList !== undefined) {
+          if (!Array.isArray(argumentsList) || argumentsList.length > 32) {
+            throw new Error(`${label} arguments are invalid.`);
+          }
+          argumentsList.forEach((argument, argumentIndex) => (
+            validateArgument(argument, `${label} argument[${argumentIndex}]`)
+          ));
+          const argumentNames = argumentsList.map(argument => argument.name.toLowerCase());
+          if (new Set(argumentNames).size !== argumentNames.length
+              || argumentsList.some((argument, argumentIndex) => argumentIndex > 0
+                && argumentsList[argumentIndex - 1].name.localeCompare(argument.name, 'en-US') > 0)) {
+            throw new Error(`${label} arguments are not deterministically ordered and unique.`);
+          }
+        }
+      }
+      const itemNames = section.items.map(item => item.name.toLowerCase());
+      if (new Set(itemNames).size !== itemNames.length
+          || section.items.some((item, index) => index > 0
+            && section.items[index - 1].name.localeCompare(item.name, 'en-US') > 0)) {
+        throw new Error(`${serverId} ${category} items are not deterministically ordered and unique.`);
+      }
+      if (Buffer.byteLength(JSON.stringify(section), 'utf8') > 32_000) {
+        throw new Error(`${serverId} ${category} exceeds the section byte limit.`);
+      }
+    }
+    if (Buffer.byteLength(JSON.stringify(inventory), 'utf8') > 96_000) {
+      throw new Error(`${serverId} inventory exceeds the aggregate byte limit.`);
+    }
+  }
+}
+
+function validateLearnArticles(learnData) {
+  if (!learnData.index?.title || !learnData.index?.description || !learnData.index?.summary) {
+    throw new Error('Learn SEO generation requires complete index metadata.');
+  }
+  const slugs = new Set();
+  for (const article of learnData.articles || []) {
+    const required = [
+      article.title,
+      article.summary,
+      article.slug,
+      article.category,
+      article.readingTimeMinutes,
+      article.lastReviewed,
+      article.content,
+      article.relatedSlugs,
+      article.sourceLinks,
+    ];
+    if (required.some(value => value === undefined || value === null || value === '')) {
+      throw new Error(`Learn SEO generation requires complete article metadata: ${JSON.stringify(article)}`);
+    }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug) || slugs.has(article.slug)) {
+      throw new Error(`Learn article slug must be unique and safe: ${article.slug}`);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(article.lastReviewed)) {
+      throw new Error(`Learn article last-reviewed date is invalid: ${article.slug}`);
+    }
+    if (!Array.isArray(article.sourceLinks) || article.sourceLinks.length === 0) {
+      throw new Error(`Learn article requires source links: ${article.slug}`);
+    }
+    slugs.add(article.slug);
+  }
+  for (const article of learnData.articles) {
+    for (const relatedSlug of article.relatedSlugs) {
+      if (!slugs.has(relatedSlug)) {
+        throw new Error(`Learn article ${article.slug} references unknown article ${relatedSlug}.`);
+      }
+    }
+  }
+}
+
 function main() {
   if (!fs.existsSync(indexPath)) {
     throw new Error('dist/index.html is missing; run Vite before generating SEO pages.');
@@ -356,18 +1016,37 @@ function main() {
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
   const validationResults = JSON.parse(fs.readFileSync(validationPath, 'utf8'));
+  const capabilitySnapshots = JSON.parse(fs.readFileSync(capabilitiesPath, 'utf8'));
+  const pageMetadata = JSON.parse(fs.readFileSync(pageMetadataPath, 'utf8'));
+  const learnData = JSON.parse(fs.readFileSync(learnArticlesPath, 'utf8'));
   validateInputs(seeds);
-  const servers = mergeCatalogServers(seeds, validationResults);
+  validateCapabilitySnapshots(capabilitySnapshots, seeds);
+  validateLearnArticles(learnData);
+  const servers = mergeCatalogServers(seeds, validationResults, capabilitySnapshots);
   const indexHtml = fs.readFileSync(indexPath, 'utf8');
 
   writeServerPages(indexHtml, servers);
-  writeSitemap(servers);
+  writeStaticPages(indexHtml, pageMetadata.docs);
+  writeLearnPages(indexHtml, learnData);
+  writeSitemap(servers, learnData);
 
-  console.log(`Generated ${servers.length} server profile documents, sitemap.xml, and robots.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${learnData.articles.length} Learn articles, sitemap.xml, and robots.txt.`);
 }
 
-if (require.main === module) {
+if (require.main === module || process.argv[1] === __filename) {
   main();
 }
 
-module.exports = { mergeCatalogServers, renderServerHtml, serverPath, transportLabel };
+module.exports = {
+  mergeCatalogServers,
+  renderServerHtml,
+  renderStaticPageHtml,
+  renderLearnArticleHtml,
+  renderMarkdown,
+  renderServerLogo,
+  renderClientSetups,
+  renderAuthorizationSetup,
+  serverPath,
+  transportLabel,
+  validateCapabilitySnapshots,
+};

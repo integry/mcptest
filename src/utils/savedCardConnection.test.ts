@@ -46,12 +46,17 @@ describe('saved dashboard card connections', () => {
     expect(plan.usesProxy).toBe(true);
   });
 
-  it('requires authentication only when the saved card selects the proxy', () => {
-    expect(() => getSavedCardConnectionPlan({
+  it('uses the proxy anonymously when a saved card selects it without a login', () => {
+    expect(getSavedCardConnectionPlan({
       serverUrl: 'https://mcp.example/mcp',
       useProxy: true,
       proxyUrl: 'https://proxy.mcptest.test/',
-    })).toThrow('Sign in is required');
+    })).toEqual({
+      connectionUrl: 'https://proxy.mcptest.test/?target=https%3A%2F%2Fmcp.example%2Fmcp',
+      authToken: undefined,
+      targetHeaders: undefined,
+      usesProxy: true,
+    });
   });
 
   it('expands a parameterized saved resource card into a resources/read URI', () => {

@@ -4,9 +4,10 @@ import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
+import { RESOURCE_NAV_ITEMS } from '../content/resourceNavigation';
 
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog' | 'server-profile';
+  activeView: 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -347,7 +348,7 @@ const SideNav: React.FC<SideNavProps> = ({
       {/* Create New Dashboard */}
       <div className="mt-2 ms-3">
         {showCreateInput ? (
-          <div className="input-group input-group-sm">
+          <div className="inline-edit-group">
             <input
               type="text"
               className="form-control form-control-sm"
@@ -357,10 +358,10 @@ const SideNav: React.FC<SideNavProps> = ({
               onKeyDown={handleInputKeyDown}
               autoFocus
             />
-            <button className="btn btn-outline-success btn-sm" type="button" onClick={handleCreateConfirm} title="Create">
+            <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create">
               <i className="bi bi-check-lg"></i>
             </button>
-            <button className="btn btn-outline-secondary btn-sm" type="button" onClick={handleCreateCancel} title="Cancel">
+            <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel">
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
@@ -404,52 +405,24 @@ const SideNav: React.FC<SideNavProps> = ({
         </div>
       )}
 
-      {/* Documentation Section */}
-      <div className="mt-4">
-        <h6 className="sidenav-section-label mb-1">Documentation</h6>
-        <ul className="nav flex-column ms-3">
-          <li className="nav-item">
-            <NavLink
-              to="/docs/what-is-mcp"
-              end
-              className="nav-link docs-nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-info-circle me-2"></i> What is MCP?
-            </NavLink>
-          </li>
-          <li className="nav-item">
-            <NavLink
-              to="/docs/remote-vs-local"
-              end
-              className="nav-link docs-nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-cloud-arrow-up me-2"></i> Remote vs Local
-            </NavLink>
-          </li>
-          <li className="nav-item">
-            <NavLink
-              to="/docs/testing-guide"
-              end
-              className="nav-link docs-nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-check-circle me-2"></i> Testing Guide
-            </NavLink>
-          </li>
-          <li className="nav-item">
-            <NavLink
-              to="/docs/troubleshooting"
-              end
-              className="nav-link docs-nav-link py-1"
-              onClick={() => document.body.classList.remove('menu-open')}
-            >
-              <i className="bi bi-wrench me-2"></i> Troubleshooting
-            </NavLink>
-          </li>
+      {/* Resources Section */}
+      <section className="sidenav-content-section mt-4" aria-labelledby="resources-nav-heading">
+        <h2 id="resources-nav-heading" className="sidenav-section-label mb-1">Resources</h2>
+        <ul className="nav flex-column sidenav-content-list">
+          {RESOURCE_NAV_ITEMS.map(item => (
+            <li className="nav-item" key={item.path}>
+              <NavLink
+                to={item.path}
+                end={!item.matchDescendants}
+                className="nav-link docs-nav-link py-1"
+                onClick={() => document.body.classList.remove('menu-open')}
+              >
+                <i className={`bi ${item.icon} me-2`} aria-hidden="true"></i> {item.label}
+              </NavLink>
+            </li>
+          ))}
         </ul>
-      </div>
+      </section>
 
       {/* Footer Content */}
       <div className="mt-auto pt-3 border-top small">
