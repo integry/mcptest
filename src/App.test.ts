@@ -3,6 +3,7 @@ import {
   attachSavedCardOAuthChallenge,
   beginSavedCardOAuthFlow,
   classifySavedCardAuthenticationFailure,
+  getLearnPageViewTitle,
   resumeSavedCardAuthenticatedMcpRetry,
 } from './App';
 import {
@@ -17,6 +18,12 @@ import {
   getStoredOAuthTrace,
   recordOAuthAuthenticationChallenge,
 } from './utils/oauthTrace';
+
+describe('Learn page view titles', () => {
+  it('identifies the trailing-slash Learn route as the index', () => {
+    expect(getLearnPageViewTitle('/learn/')).toBe('Learn MCP');
+  });
+});
 
 describe('saved card authentication failures', () => {
   beforeEach(() => {
@@ -101,6 +108,9 @@ describe('saved card authentication failures', () => {
         url: 'https://proxy.mcptest.test/',
         authorizationToken: 'firebase-session-token',
       },
+    }));
+    expect(startFlow).toHaveBeenCalledWith(target, expect.not.objectContaining({
+      tokenProxy: expect.anything(),
     }));
     expect(directCalls).toContain(resourceMetadataUrl);
     expect(directCalls).toContain(authorizationMetadataUrl);

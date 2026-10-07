@@ -3,9 +3,16 @@ import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
 import {
   formatCatalogAuth,
+  formatCatalogTimestamp,
   formatCatalogTransport,
   formatProtocolEra,
 } from '../utils/catalogSeo';
+import CapabilitiesProvided from './CapabilitiesProvided';
+import { CatalogServerLogo } from './CatalogServerLogo';
+import ClientSetup from './ClientSetup';
+import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
+import { createAuthorizationGuidance } from '../utils/authorizationGuidance';
+import AuthorizationSetup from './AuthorizationSetup';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -18,7 +25,7 @@ const formatCheckedAt = (checkedAt?: string) => {
   }
 
   const parsed = new Date(checkedAt);
-  return Number.isNaN(parsed.getTime()) ? checkedAt : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime()) ? checkedAt : formatCatalogTimestamp(checkedAt);
 };
 
 const statusLabel = (server: CatalogServer) => {
@@ -50,8 +57,13 @@ const authEvidenceNote = (server: CatalogServer) => {
 
 const browserAccessLabel = (server: CatalogServer) => {
   if (server.browserAccess === 'direct') return 'Direct browser connection verified';
-  if (server.browserAccess === 'proxy-required') return 'Authenticated proxy required';
+  if (server.browserAccess === 'proxy-required') return 'CORS proxy required';
   return 'Browser access not yet measured';
+};
+
+const alternativeAuthLabel = (server: CatalogServer) => {
+  const alternatives = server.alternativeAuthTypes?.map(formatCatalogAuth) ?? [];
+  return alternatives.length ? `Also supports ${alternatives.join(' and ')}` : authEvidenceNote(server);
 };
 
 const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer }) => {
@@ -77,26 +89,30 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
     : server.status === 'offline'
       ? 'server-status-offline'
       : 'server-status-unknown';
+  const preferredEndpoint = getPreferredCatalogEndpoint(server);
+  const authorizationGuidance = createAuthorizationGuidance(server);
 
   return (
     <article className="server-profile">
       <nav aria-label="Breadcrumb" className="server-profile-breadcrumb">
         <ol className="breadcrumb mb-0">
-          <li className="breadcrumb-item"><Link to="/catalog">Server Catalog</Link></li>
-          <li className="breadcrumb-item active" aria-current="page">{server.name}</li>
+          <li className="breadcrumb-item server-profile-breadcrumb-parent">
+            <Link to="/catalog">Server Catalog</Link>
+          </li>
+          <li className="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">
+            {server.name}
+          </li>
         </ol>
       </nav>
 
       <header className="server-profile-hero">
         <div className="server-profile-glow" aria-hidden="true"></div>
         <div className="server-profile-identity">
-          <div className="server-profile-logo" aria-hidden={!server.logoUrl}>
-            {server.logoUrl ? (
-              <img src={server.logoUrl} alt={`${server.name} logo`} />
-            ) : (
-              <i className="bi bi-cpu"></i>
-            )}
-          </div>
+          <CatalogServerLogo
+            name={server.name}
+            logoUrl={server.logoUrl}
+            className="server-profile-logo"
+          />
           <div>
             <h1>{server.name}</h1>
             <p>{server.description}</p>
@@ -104,12 +120,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
 
         <div className="server-profile-actions">
-          <button className="btn btn-primary" type="button" onClick={() => onTestServer(server)}>
+          <button className="btn btn-primary server-profile-action" type="button" onClick={() => onTestServer(server)}>
             <i className="bi bi-play-fill me-1" aria-hidden="true"></i>
             Test in Playground
           </button>
           {server.homepageUrl && (
-            <a className="btn btn-outline-secondary" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
+            <a className="btn btn-outline-secondary server-profile-action" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
               Product site <i className="bi bi-box-arrow-up-right ms-1" aria-hidden="true"></i>
             </a>
           )}
@@ -135,7 +151,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         <div className="server-signal-card">
           <span className="server-signal-label">Authentication</span>
           <strong>{formatCatalogAuth(server.authType)}</strong>
-          <small>{authEvidenceNote(server)}</small>
+          <small>{alternativeAuthLabel(server)}</small>
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Protocol lifecycle</span>
@@ -164,21 +180,21 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               </div>
             </div>
 
-            <dl className="server-spec-list">
+            <dl className="server-spec-list server-connection-specs">
               <div>
                 <dt>Remote endpoint</dt>
-                <dd><code>{server.url}</code></dd>
+                <dd><code className="technical-string technical-string-url">{server.url}</code></dd>
               </div>
               {server.validatedUrl && server.validatedUrl !== server.url && (
                 <div>
                   <dt>Live-validated endpoint</dt>
-                  <dd><code>{server.validatedUrl}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{server.validatedUrl}</code></dd>
                 </div>
               )}
               {server.browserUrl && server.browserUrl !== server.validatedUrl && (
                 <div>
                   <dt>Browser-verified endpoint</dt>
-                  <dd><code>{server.browserUrl}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{server.browserUrl}</code></dd>
                 </div>
               )}
               <div>
@@ -193,6 +209,22 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
                 <dt>Credential flow</dt>
                 <dd>{formatCatalogAuth(server.authType)}</dd>
               </div>
+              {server.alternativeAuthTypes?.map((authType) => (
+                <div key={authType}>
+                  <dt>Alternative credential</dt>
+                  <dd>{formatCatalogAuth(authType)}</dd>
+                </div>
+              ))}
+              {server.alternativeEndpoints?.map((endpoint) => (
+                <div key={endpoint.url}>
+                  <dt>Alternative endpoint</dt>
+                  <dd>
+                    <code className="technical-string technical-string-url">{endpoint.url}</code>
+                    {' — '}{endpoint.description}
+                    {endpoint.authType ? ` (${formatCatalogAuth(endpoint.authType)})` : ''}
+                  </dd>
+                </div>
+              ))}
               <div>
                 <dt>Protocol lifecycle</dt>
                 <dd>{formatProtocolEra(server.protocolEra, server.protocolVersion)}</dd>
@@ -206,12 +238,14 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             <div className="server-endpoint-box">
               <div>
                 <span>Endpoint</span>
-                <code>{server.browserUrl || server.validatedUrl || server.url}</code>
+                <code className="technical-string technical-string-url">
+                  {preferredEndpoint.url}
+                </code>
               </div>
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
-                onClick={() => navigator.clipboard?.writeText(server.browserUrl || server.validatedUrl || server.url)}
+                className="btn btn-sm btn-ghost server-endpoint-copy"
+                onClick={() => navigator.clipboard?.writeText(preferredEndpoint.url)}
                 aria-label={`Copy ${server.name} MCP endpoint`}
               >
                 <i className="bi bi-copy" aria-hidden="true"></i>
@@ -245,6 +279,23 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </aside>
       </div>
 
+      <AuthorizationSetup guidance={authorizationGuidance} />
+
+      <ClientSetup server={server} />
+
+      {server.capabilityInventory && (
+        <section className="card server-profile-section" aria-labelledby="server-capabilities-title">
+          <div className="card-body">
+            <CapabilitiesProvided
+              inventory={server.capabilityInventory}
+              serverName={server.name}
+              titleId="server-capabilities-title"
+              titleLevel={2}
+            />
+          </div>
+        </section>
+      )}
+
       <section className="card server-profile-section">
         <div className="card-body">
           <div className="server-section-heading">
@@ -259,6 +310,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <div className="d-flex flex-wrap gap-3">
             {server.homepageUrl && <a href={server.homepageUrl} target="_blank" rel="noopener noreferrer">Product documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.sourceUrl && <a href={server.sourceUrl} target="_blank" rel="noopener noreferrer">Source repository <i className="bi bi-arrow-up-right"></i></a>}
+            {server.listingSource.url && server.listingSource.url !== server.homepageUrl && <a href={server.listingSource.url} target="_blank" rel="noopener noreferrer">Official listing documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.registryUrl && <a href={server.registryUrl} target="_blank" rel="noopener noreferrer">Official MCP Registry record <i className="bi bi-arrow-up-right"></i></a>}
             <Link to="/docs/testing-guide">MCP testing guide <i className="bi bi-arrow-right"></i></Link>
           </div>
@@ -267,16 +319,27 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
               {server.requiredHeaders?.map((header) => (
                 <div key={header.name}>
                   <dt>Required header</dt>
-                  <dd><code>{header.name}</code>{header.description ? ` — ${header.description}` : ''}</dd>
+                  <dd>
+                    <code className="technical-string technical-string-inline">{header.name}</code>
+                    {header.description ? ` — ${header.description}` : ''}
+                  </dd>
                 </div>
               ))}
               {server.authorizationServers?.map((issuer) => (
                 <div key={issuer}>
                   <dt>Authorization server</dt>
-                  <dd><code>{issuer}</code></dd>
+                  <dd><code className="technical-string technical-string-url">{issuer}</code></dd>
                 </div>
               ))}
             </dl>
+          ) : null}
+          {server.caveats?.length ? (
+            <div className="mt-4">
+              <h3 className="h6">Provider guidance</h3>
+              <ul className="mb-0">
+                {server.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
+              </ul>
+            </div>
           ) : null}
         </div>
       </section>

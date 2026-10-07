@@ -16,14 +16,15 @@ import CatalogView from './components/CatalogView';
 import ServerProfileView from './components/ServerProfileView';
 import ToolSelectionEvalsView from './components/ToolSelectionEvalsView';
 import Tabs from './components/Tabs'; // New
-// Documentation components
-import WhatIsMcp from './components/docs/WhatIsMcp';
-import RemoteVsLocal from './components/docs/RemoteVsLocal';
-import TestingGuide from './components/docs/TestingGuide';
-import Troubleshooting from './components/docs/Troubleshooting';
-import PrivacyPolicy from './components/docs/PrivacyPolicy';
-import TermsOfService from './components/docs/TermsOfService';
-import Contact from './components/docs/Contact';
+import LearnArticlePage from './components/learn/LearnArticlePage';
+import LearnIndex from './components/learn/LearnIndex';
+import LearnNotFound from './components/learn/LearnNotFound';
+import { getDocumentationPage } from './content/docsRegistry';
+import {
+  getLearnArticle,
+  getLearnArticleSlugFromPath,
+  isLearnIndexPath,
+} from './content/learnRegistry';
 // OAuth callback component
 import OAuthCallback from './components/OAuthCallback';
 import OAuthConfig from './components/OAuthConfig';
@@ -46,6 +47,7 @@ import { generateSpaceSlug, findSpaceBySlug, getSpaceUrl, extractSlugFromPath, p
 import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
+import { getPreferredCatalogEndpoint } from './utils/clientSetup';
 import {
   TransportConnectionError,
   attemptParallelConnections,
@@ -60,6 +62,7 @@ import {
 import {
   beginOAuthFlow,
   clearOAuthTokens,
+  getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
@@ -70,6 +73,7 @@ import {
   resumePendingAuthenticatedMcpRetry,
   type PendingAuthenticatedMcpRetry,
 } from './utils/oauthTrace';
+import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -180,7 +184,12 @@ export const beginSavedCardOAuthFlow = async ({
   discoveryProxyApplicable: boolean;
   startFlow?: typeof beginOAuthFlow;
 }) => {
-  const discoveryProxyToken = discoveryProxyApplicable && proxyUrl && currentUser
+  const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+  const proxyApplicable = Boolean(
+    (discoveryProxyApplicable && proxyUrl) || tokenProxyUrl
+  );
+  // Optional: a login only lifts the proxy's anonymous limits.
+  const discoveryProxyToken = proxyApplicable && currentUser
     ? await currentUser.getIdToken()
     : undefined;
 
@@ -190,7 +199,7 @@ export const beginSavedCardOAuthFlow = async ({
       ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
       : {}),
     ...(challenge?.scope ? { scope: challenge.scope } : {}),
-    ...(discoveryProxyApplicable && proxyUrl && discoveryProxyToken
+    ...(discoveryProxyApplicable && proxyUrl
       ? {
           discoveryProxy: {
             url: proxyUrl,
@@ -198,8 +207,22 @@ export const beginSavedCardOAuthFlow = async ({
           },
         }
       : {}),
+    ...(tokenProxyUrl
+      ? {
+          tokenProxy: {
+            url: tokenProxyUrl,
+            authorizationToken: discoveryProxyToken,
+          },
+        }
+      : {}),
     deferAuthorizedTraceOutcome: true,
   });
+};
+
+export const getLearnPageViewTitle = (path: string) => {
+  const article = getLearnArticle(getLearnArticleSlugFromPath(path));
+  if (article) return `Learn: ${article.title}`;
+  return isLearnIndexPath(path) ? 'Learn MCP' : 'Guide Not Found';
 };
 
 // Helper function to get the initial theme
@@ -220,10 +243,13 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'report' | 'catalog' | 'server-profile' | 'evals' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'evals' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
+  }
+  if (path === '/learn' || path.startsWith('/learn/')) {
+    return 'learn';
   }
   if (path.startsWith('/space/')) {
     return 'dashboards';
@@ -303,6 +329,7 @@ function App() {
   const [needsOAuthConfig, setNeedsOAuthConfig] = useState(false);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
   const [oauthPrerequisite, setOAuthPrerequisite] = useState<OAuthPrerequisite | null>(null);
+  const handledOAuthSuccessRef = useRef(false);
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -344,6 +371,10 @@ function App() {
       const docPage = path.replace('/docs/', '');
       console.log('[ActiveView] Detected docs view');
       return { activeView: 'docs' as const, activeDocPage: docPage };
+    }
+
+    if (path === '/learn' || path.startsWith('/learn/')) {
+      return { activeView: 'learn' as const, activeDocPage: null };
     }
 
     // Check for report routes
@@ -459,6 +490,12 @@ function App() {
       return;
     }
 
+    if (path === '/learn' || path.startsWith('/learn/')) {
+      pageTitle = getLearnPageViewTitle(path);
+      logPageView(path, pageTitle);
+      return;
+    }
+
     const catalogServerId = getCatalogServerIdFromPath(path);
     if (catalogServerId) {
       const catalogServer = getCatalogServerById(catalogServerId);
@@ -532,6 +569,11 @@ function App() {
   // Server URL and result share handlers
   const handleServerUrlConnection = (serverUrl: string, transportMethod?: string) => {
     logEvent('server_url_connection', { serverUrl, transportMethod });
+    const preferredTransport = transportMethod === 'mcp'
+      ? 'streamable-http'
+      : transportMethod === 'sse'
+        ? 'legacy-sse'
+        : undefined;
     
     // Find or create a tab for this server
     let targetTab = tabs.find(tab => tab.serverUrl === serverUrl);
@@ -543,6 +585,7 @@ function App() {
         title: `Server: ${serverUrl}`,
         serverUrl: serverUrl,
         connectionStatus: 'Disconnected',
+        preferredTransportHint: preferredTransport,
         useProxy: true,
       };
       setTabs(prev => [...prev, targetTab!]);
@@ -552,9 +595,10 @@ function App() {
     setActiveTabId(targetTab.id);
     
     // Update the tab's server URL and trigger connection
-    handleUpdateTab(targetTab.id, { 
+    handleUpdateTab(targetTab.id, {
       serverUrl: serverUrl,
-      title: `Server: ${serverUrl}`
+      title: `Server: ${serverUrl}`,
+      ...(preferredTransport ? { preferredTransportHint: preferredTransport } : {}),
     });
   };
 
@@ -627,11 +671,13 @@ function App() {
       protocol_era: server.protocolEra,
     });
 
+    const preferredEndpoint = getPreferredCatalogEndpoint(server);
     const newTab: ConnectionTab = {
       id: uuidv4(),
       title: server.name,
-      serverUrl: server.browserUrl || server.validatedUrl || server.url,
+      serverUrl: preferredEndpoint.url,
       connectionStatus: 'Disconnected',
+      preferredTransportHint: preferredEndpoint.transport,
       useProxy: server.browserAccess !== 'direct',
       autoConnect: server.authType === 'none' || server.authType === 'oauth',
       catalogAuthType: server.authType,
@@ -681,37 +727,61 @@ function App() {
 
   // Handle OAuth callback state
   useEffect(() => {
-    const state = location.state as any;
-    
-    // Prevent processing the same OAuth success multiple times
-    if (state?.oauthSuccess) {
-      const processedKey = 'oauth_success_processed';
-      const alreadyProcessed = sessionStorage.getItem(processedKey) === 'true';
-      
-      if (alreadyProcessed) {
-        // Already processed this OAuth success, clear the state and return
-        navigate(location.pathname, { replace: true });
-        return;
+    const getSessionItem = (key: string) => {
+      try {
+        return sessionStorage.getItem(key);
+      } catch {
+        return null;
       }
-      
-      // Mark as processed immediately
-      sessionStorage.setItem(processedKey, 'true');
-      
-      // Clear the flag after a short delay to allow for future OAuth flows
-      setTimeout(() => {
-        sessionStorage.removeItem(processedKey);
-      }, 5000);
+    };
+    const setSessionItem = (key: string, value: string) => {
+      try {
+        sessionStorage.setItem(key, value);
+      } catch {
+        // The OAuth endpoint also travels in navigation state.
+      }
+    };
+    const removeSessionItem = (key: string) => {
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        // Treat unavailable session storage as already consumed.
+      }
+    };
+    const state = location.state as {
+      oauthSuccess?: boolean;
+      oauthError?: string;
+      authorizedServerUrl?: string;
+      fromOAuthReturn?: boolean;
+      targetSpaceId?: string;
+    } | null;
+    
+    if (state?.oauthSuccess) {
+      if (handledOAuthSuccessRef.current) return;
+      handledOAuthSuccessRef.current = true;
+    } else {
+      handledOAuthSuccessRef.current = false;
     }
+
+    // Capture both handoff channels before legacy callback cleanup runs. The
+    // location-state endpoint recovers the intent when storage is unavailable
+    // or another callback consumer got there first.
+    const reconnectServerUrl = state?.oauthSuccess
+      ? consumeOAuthReconnectRequest() || state.authorizedServerUrl
+      : undefined;
+    const initiatingOAuthTabId = state?.oauthSuccess
+      ? getSessionItem('oauth_tab_id') || undefined
+      : undefined;
     
     // Check for OAuth callback logs in sessionStorage
-    const oauthLogsJson = sessionStorage.getItem('oauth_callback_logs');
+    const oauthLogsJson = getSessionItem('oauth_callback_logs');
     if (oauthLogsJson) {
       try {
         const oauthLogs = JSON.parse(oauthLogsJson);
         if (oauthLogs && oauthLogs.length > 0) {
           // Get the OAuth server URL and tab ID from sessionStorage
-          const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
-          const oauthTabId = sessionStorage.getItem('oauth_tab_id');
+          const oauthServerUrl = getSessionItem('oauth_server_url');
+          const oauthTabId = getSessionItem('oauth_tab_id');
           
           // Find the specific tab that initiated OAuth
           let oauthTab = null;
@@ -745,8 +815,8 @@ function App() {
           }
           
           // Clear the logs from sessionStorage
-          sessionStorage.removeItem('oauth_callback_logs');
-          sessionStorage.removeItem('oauth_tab_id');
+          removeSessionItem('oauth_callback_logs');
+          removeSessionItem('oauth_tab_id');
         }
       } catch (e) {
         console.error('Failed to parse OAuth callback logs:', e);
@@ -767,87 +837,85 @@ function App() {
       navigate(location.pathname, { replace: true });
       
       // Mark OAuth completion time to prevent health checks from interfering
-      sessionStorage.setItem('oauth_completed_time', Date.now().toString());
+      setSessionItem('oauth_completed_time', Date.now().toString());
       
       // Clear OAuth authentication state on tabs
       setTabs(prevTabs => prevTabs.map(tab => ({ ...tab, isAuthFlowActive: false })));
       
-      // Restore tabs that were stored before OAuth redirect
-      const storedTabsJson = sessionStorage.getItem('oauth_tabs_before_redirect');
+      // Restore tabs that were stored before OAuth redirect.
+      const storedTabsJson = getSessionItem('oauth_tabs_before_redirect');
+      let restoredTabs: ConnectionTab[] | undefined;
       if (storedTabsJson) {
         try {
-          const storedTabs = JSON.parse(storedTabsJson);
-          console.log('[OAuth] Restoring tabs from before OAuth redirect:', storedTabs);
-          setTabs(storedTabs);
-          localStorage.setItem(TABS_KEY, storedTabsJson);
-          sessionStorage.removeItem('oauth_tabs_before_redirect');
+          const parsedTabs = JSON.parse(storedTabsJson);
+          if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+            restoredTabs = parsedTabs;
+            console.log('[OAuth] Restoring tabs from before OAuth redirect:', restoredTabs);
+            localStorage.setItem(TABS_KEY, storedTabsJson);
+          }
+          removeSessionItem('oauth_tabs_before_redirect');
         } catch (e) {
           console.error('[OAuth] Failed to restore tabs:', e);
         }
       }
-      
-      // Get the OAuth server URL and tab ID from sessionStorage
-      const oauthServerUrl = sessionStorage.getItem('oauth_server_url');
-      const oauthTabId = sessionStorage.getItem('oauth_tab_id');
-      
-      // Find the specific tab that initiated OAuth
-      let oauthTab = null;
-      if (oauthTabId) {
-        oauthTab = tabs.find(tab => tab.id === oauthTabId);
-      }
-      // Fallback to finding by isAuthFlowActive if tab ID not found
-      if (!oauthTab) {
-        oauthTab = tabs.find(tab => tab.isAuthFlowActive);
-      }
-      
-      if (oauthTab) {
-        console.log('[OAuth] Found OAuth tab, updating and reconnecting...');
-        
-        // Update the OAuth tab first
-        if (oauthServerUrl && oauthTab.serverUrl !== oauthServerUrl) {
-          console.log('[OAuth] Updating tab with OAuth server URL:', oauthServerUrl);
-        }
-        
-        // Update the tab to use the correct OAuth server URL, clear auth flow state and trigger reconnection
-        handleUpdateTab(oauthTab.id, { 
-          serverUrl: oauthServerUrl || oauthTab.serverUrl,
-          isAuthFlowActive: false,
-          shouldReconnect: true 
+
+      // Dashboard and report callbacks retain their dedicated retry behavior.
+      // A playground callback instead selects exactly one tab and sends its
+      // existing connection component a one-shot reconnect signal.
+      if (reconnectServerUrl && !state.fromOAuthReturn) {
+        const sourceTabs = restoredTabs || tabs;
+        const reconnectTab = sourceTabs.find(tab => tab.id === initiatingOAuthTabId)
+          || sourceTabs.find(tab => tab.isAuthFlowActive)
+          || sourceTabs.find(tab => tab.serverUrl === reconnectServerUrl)
+          || sourceTabs.find(tab => tab.id === activeTabId)
+          || sourceTabs[0];
+        const reconnectTabId = reconnectTab?.id || uuidv4();
+
+        console.log('[OAuth] Selecting authorized server and reconnecting:', reconnectServerUrl);
+        setTabs(previousTabs => {
+          const tabsToUpdate = restoredTabs || previousTabs;
+          const hasReconnectTab = tabsToUpdate.some(tab => tab.id === reconnectTabId);
+          const availableTabs = hasReconnectTab
+            ? tabsToUpdate
+            : [...tabsToUpdate, {
+                id: reconnectTabId,
+                title: reconnectServerUrl,
+                serverUrl: reconnectServerUrl,
+                connectionStatus: 'Disconnected' as const,
+                useProxy: true,
+              }];
+
+          return availableTabs.map(tab => tab.id === reconnectTabId
+            ? {
+                ...tab,
+                title: reconnectServerUrl,
+                serverUrl: reconnectServerUrl,
+                connectionStatus: 'Disconnected' as const,
+                isAuthFlowActive: false,
+                shouldReconnect: true,
+                ...(tab.serverUrl !== reconnectServerUrl
+                  ? {
+                      preferredTransportHint: undefined,
+                      catalogProtocolEra: undefined,
+                    }
+                  : {}),
+              }
+            : {
+                ...tab,
+                isAuthFlowActive: false,
+                shouldReconnect: false,
+              });
         });
-        
-        // Make sure this tab is selected
-        setActiveTabId(oauthTab.id);
+        setActiveTabId(reconnectTabId);
+      } else if (restoredTabs) {
+        setTabs(restoredTabs.map(tab => ({ ...tab, isAuthFlowActive: false })));
       }
-      
-      // Reconnect all tabs that have the same OAuth server (they might have been disconnected during OAuth)
-      if (oauthServerUrl) {
-        const serverHost = new URL(oauthServerUrl).host;
-        const tabsToReconnect = tabs.filter(tab => {
-          if (!tab.serverUrl || tab.id === oauthTabId) return false;
-          try {
-            const tabHost = new URL(tab.serverUrl).host;
-            // Reconnect any tab that's using the same OAuth server
-            return tabHost === serverHost;
-          } catch {
-            return false;
-          }
-        });
-        
-        console.log(`[OAuth] Found ${tabsToReconnect.length} other tabs to reconnect for server ${serverHost}`);
-        
-        // Trigger reconnection for all tabs using the same server
-        tabsToReconnect.forEach(tab => {
-          console.log(`[OAuth] Triggering reconnection for tab ${tab.id} (${tab.title})`);
-          handleUpdateTab(tab.id, { shouldReconnect: true });
-        });
-        
-        // Clean up after using
-        sessionStorage.removeItem('oauth_server_url');
-        sessionStorage.removeItem('oauth_tab_id');
-      }
+
+      removeSessionItem('oauth_server_url');
+      removeSessionItem('oauth_tab_id');
       
       // Handle card refresh after OAuth completion
-      const cardsToRefreshJson = sessionStorage.getItem('oauth_cards_to_refresh');
+      const cardsToRefreshJson = getSessionItem('oauth_cards_to_refresh');
       if (cardsToRefreshJson) {
         try {
           const cardsToRefresh = JSON.parse(cardsToRefreshJson);
@@ -877,7 +945,7 @@ function App() {
           });
           
           // Clear the refresh queue
-          sessionStorage.removeItem('oauth_cards_to_refresh');
+          removeSessionItem('oauth_cards_to_refresh');
           
           // Show success message
           setNotification({ 
@@ -888,12 +956,12 @@ function App() {
           
         } catch (error) {
           console.error('[OAuth Card Refresh] Failed to parse cards to refresh:', error);
-          sessionStorage.removeItem('oauth_cards_to_refresh');
+          removeSessionItem('oauth_cards_to_refresh');
         }
       }
       
       // Restore the view state if we came from a dashboard
-      const returnViewJson = sessionStorage.getItem('oauth_return_view');
+      const returnViewJson = getSessionItem('oauth_return_view');
       if (returnViewJson) {
         try {
           const returnView = JSON.parse(returnViewJson);
@@ -908,7 +976,7 @@ function App() {
               // We're already on the correct path from OAuthCallback navigation
               console.log('[OAuth] Already on correct dashboard path, just setting state');
               setSelectedSpaceId(returnView.selectedSpaceId);
-              sessionStorage.removeItem('oauth_return_view');
+              removeSessionItem('oauth_return_view');
               return;
             }
             
@@ -937,12 +1005,12 @@ function App() {
                 }, 100);
                 
                 // Clear the stored view state
-                sessionStorage.removeItem('oauth_return_view');
+                removeSessionItem('oauth_return_view');
               } else {
                 console.log('[OAuth] Target space not found:', returnView.selectedSpaceId);
                 console.log('[OAuth] Available spaces:', spaces.map(s => ({ id: s.id, name: s.name })));
                 // Clear invalid view state
-                sessionStorage.removeItem('oauth_return_view');
+                removeSessionItem('oauth_return_view');
               }
             }
             return; // Skip the default navigation below
@@ -954,12 +1022,12 @@ function App() {
             console.log('[OAuth] Navigated back to playground tab:', returnView.activeTabId);
             
             // Clear the stored view state
-            sessionStorage.removeItem('oauth_return_view');
+            removeSessionItem('oauth_return_view');
             return; // Skip the default navigation below
           }
         } catch (error) {
           console.error('[OAuth] Failed to restore view state:', error);
-          sessionStorage.removeItem('oauth_return_view');
+          removeSessionItem('oauth_return_view');
         }
       }
     } else if (state?.oauthError) {
@@ -1413,7 +1481,7 @@ function App() {
         shouldUseProxy = connectionPlan.usesProxy;
 
         if (connectionPlan.usesProxy) {
-          console.log(`[Execute Card ${cardId}] Using authenticated proxy: ${proxyUrl}`);
+          console.log(`[Execute Card ${cardId}] Using ${proxyAuthToken ? 'signed-in' : 'anonymous'} proxy: ${proxyUrl}`);
         } else if (oauthToken) {
           console.log(`[Execute Card ${cardId}] Using OAuth target authentication`);
         }
@@ -1723,6 +1791,10 @@ function App() {
   const selectedCatalogServer = selectedCatalogServerId
     ? getCatalogServerById(selectedCatalogServerId)
     : undefined;
+  const selectedDocumentationPage = getDocumentationPage(activeDocPage);
+  const DocumentationComponent = selectedDocumentationPage?.component;
+  const selectedLearnSlug = getLearnArticleSlugFromPath(location.pathname);
+  const selectedLearnArticle = getLearnArticle(selectedLearnSlug);
 
   // Check if we're on the OAuth callback page
   if (location.pathname === '/oauth/callback') {
@@ -1832,31 +1904,21 @@ function App() {
           
           {/* Documentation View */}
           <div className={`view-panel ${activeView === 'docs' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            <div className={activeDocPage === 'what-is-mcp' ? '' : 'd-none'}>
-              <WhatIsMcp />
-            </div>
-            <div className={activeDocPage === 'remote-vs-local' ? '' : 'd-none'}>
-              <RemoteVsLocal />
-            </div>
-            <div className={activeDocPage === 'testing-guide' ? '' : 'd-none'}>
-              <TestingGuide />
-            </div>
-            <div className={activeDocPage === 'troubleshooting' ? '' : 'd-none'}>
-              <Troubleshooting />
-            </div>
-            <div className={activeDocPage === 'privacy-policy' ? '' : 'd-none'}>
-              <PrivacyPolicy />
-            </div>
-            <div className={activeDocPage === 'terms-of-service' ? '' : 'd-none'}>
-              <TermsOfService />
-            </div>
-            <div className={activeDocPage === 'contact' ? '' : 'd-none'}>
-              <Contact />
-            </div>
-            {activeDocPage && !['what-is-mcp', 'remote-vs-local', 'testing-guide', 'troubleshooting', 'privacy-policy', 'terms-of-service', 'contact'].includes(activeDocPage) && (
+            {DocumentationComponent ? <DocumentationComponent /> : (
               <div className="alert alert-warning">
                 Documentation page not found. Please select a page from the navigation.
               </div>
+            )}
+          </div>
+
+          {/* Learn View */}
+          <div className={`view-panel ${activeView === 'learn' ? '' : 'd-none'}`} style={{ minHeight: '100%' }}>
+            {isLearnIndexPath(location.pathname) ? (
+              <LearnIndex />
+            ) : selectedLearnArticle ? (
+              <LearnArticlePage article={selectedLearnArticle} />
+            ) : (
+              <LearnNotFound />
             )}
           </div>
 
@@ -1882,7 +1944,7 @@ function App() {
           {/* Playground View */}
           <div className={`view-panel ${activeView === 'playground' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             <div className="h-100 d-flex flex-column">
-              <div style={{ marginTop: '0', marginBottom: '0' }}>
+              <div className="playground-tabs-wrapper">
                 <Tabs
                   tabs={tabs}
                   activeTabId={activeTabId}

@@ -5,9 +5,12 @@ import {
   TransportConnectionError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  getProxyCallerLimit,
   getRequestHeadersForCandidate,
   getTransportCandidates,
+  inspectSafeTargetError,
   sanitizeAuthenticationChallenge,
+  shouldRetryMcpConnectionThroughProxy,
 } from './transportDetection';
 
 const connectionMocks = vi.hoisted(() => ({
@@ -65,10 +68,23 @@ afterEach(() => {
 });
 
 describe('transport candidate generation', () => {
-  it('uses only Streamable HTTP candidates for Slack MCP', () => {
-    expect(getTransportCandidates('https://mcp.slack.com/mcp')).toEqual([
+  it('tries definitive endpoint transport evidence before a contradictory path suffix', () => {
+    expect(getTransportCandidates(
+      'https://example.com/sse',
+      false,
+      'streamable-http'
+    )).toEqual([
+      { url: 'https://example.com/sse', transportType: 'streamable-http' },
+    ]);
+  });
+
+  it('uses only the catalog-selected Streamable HTTP transport', () => {
+    expect(getTransportCandidates(
+      'https://mcp.slack.com/mcp',
+      false,
+      'streamable-http'
+    )).toEqual([
       { url: 'https://mcp.slack.com/mcp', transportType: 'streamable-http' },
-      { url: 'https://mcp.slack.com/mcp/', transportType: 'streamable-http' },
     ]);
   });
   it('strictly redacts challenge parameters and credential variants in metadata URLs', () => {
@@ -355,13 +371,124 @@ describe('transport candidate generation', () => {
     expect(containsTargetError(connectionError)).toBe(true);
   });
 
-  it('preserves a target authentication challenge observed through the proxy', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Forbidden', {
-      status: 403,
-      headers: { 'X-MCP-Proxy-Response-Source': 'target' },
+  it('records the anonymous proxy caller limit without treating it as a target error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      signInLiftsLimit: true,
+    }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Retry-After': '60',
+        'X-MCP-Proxy-Limit': 'anonymous',
+        'X-MCP-Proxy-Response-Source': 'proxy',
+      },
     })));
     connectionMocks.connect = async ({ endpoint, fetch }) => {
       const response = await fetch?.(endpoint);
+      throw Object.assign(new Error('Streamable HTTP error'), { status: response?.status });
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(getProxyCallerLimit(connectionError)).toEqual({ tier: 'anonymous', retryAfterSeconds: 60 });
+    expect(getObservedAuthenticationChallenge(connectionError)).toBeUndefined();
+  });
+
+  it('records a proxy limit that cut off a streamed target response without a declared length', async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"jsonrpc":"2.0","id":1,"result":{"padding":"'));
+        controller.enqueue(encoder.encode(
+          '\u0000mcptest-proxy-limit:signal-token\n{"error":"rate_limited","tier":"anonymous","limit":"response_bytes","signInLiftsLimit":true}'
+        ));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-MCP-Proxy-Response-Source': 'target',
+        'X-MCP-Proxy-Limit-Signal': 'signal-token',
+      },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch!(endpoint);
+      await response.json();
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(getProxyCallerLimit(connectionError)).toEqual({ tier: 'anonymous', kind: 'response_bytes' });
+  });
+
+  it('ignores a target 429 that carries no proxy limit marker', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response('Too many', {
+      status: 429,
+      headers: { 'X-MCP-Proxy-Response-Source': 'target', 'X-MCP-Proxy-Limit': 'anonymous' },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch?.(endpoint);
+      throw Object.assign(new Error('Streamable HTTP error'), { status: response?.status });
+    };
+
+    let connectionError: unknown;
+    try {
+      await attemptParallelConnections(
+        'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fmcp',
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+    } catch (error) {
+      connectionError = error;
+    }
+
+    expect(connectionError).toBeDefined();
+    expect(getProxyCallerLimit(connectionError)).toBeUndefined();
+  });
+
+  it('preserves a target authentication challenge observed through the proxy', async () => {
+    const responseBody = JSON.stringify({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: 'Invalid Origin: mcptest.io' },
+      id: null,
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(responseBody, {
+      status: 403,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-MCP-Proxy-Response-Source': 'target',
+      },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      const response = await fetch?.(endpoint);
+      expect(await response?.text()).toBe(responseBody);
       throw Object.assign(new Error('Connection rejected'), { status: response?.status });
     };
 
@@ -393,7 +520,59 @@ describe('transport candidate generation', () => {
     expect(findProxiedAuthenticationError(connectionError)).toMatchObject({
       status: 403,
       responseSource: 'target',
+      targetError: {
+        code: -32000,
+        message: 'Invalid Origin: mcptest.io',
+      },
     });
+  });
+
+  it('extracts only bounded redacted target errors without consuming the response', async () => {
+    const secret = 'sk_live_targetcredential123456';
+    const body = JSON.stringify({
+      error: {
+        code: -32001,
+        message: `Vendor value tenant-credential-value; Authorization: Bearer ${secret}; Cookie: session=private-cookie`,
+      },
+    });
+    const response = new Response(body, {
+      status: 403,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+
+    const detail = await inspectSafeTargetError(response, ['tenant-credential-value']);
+
+    expect(detail).toMatchObject({ code: -32001 });
+    expect(detail?.message).toContain('Vendor value [REDACTED]');
+    expect(detail?.message).toContain('[REDACTED]');
+    expect(JSON.stringify(detail)).not.toContain(secret);
+    expect(JSON.stringify(detail)).not.toContain('private-cookie');
+    expect(JSON.stringify(detail)).not.toContain('tenant-credential-value');
+    await expect(response.text()).resolves.toBe(body);
+  });
+
+  it('rejects oversized and HTML target bodies', async () => {
+    const oversized = 'x'.repeat(9 * 1024);
+    const oversizedResponse = new Response(oversized, {
+      status: 500,
+      headers: {
+        'Content-Type': 'text/plain',
+        'Content-Length': String(oversized.length),
+      },
+    });
+    const htmlResponse = new Response('<html><body>secret page</body></html>', {
+      status: 500,
+      headers: { 'Content-Type': 'text/html' },
+    });
+    const disguisedHtmlResponse = new Response('<script>token = "secret"</script>', {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+
+    await expect(inspectSafeTargetError(oversizedResponse)).resolves.toBeUndefined();
+    await expect(inspectSafeTargetError(htmlResponse)).resolves.toBeUndefined();
+    await expect(inspectSafeTargetError(disguisedHtmlResponse)).resolves.toBeUndefined();
+    await expect(oversizedResponse.text()).resolves.toBe(oversized);
   });
 
   it('preserves a direct authentication challenge from the HTTP response', async () => {
@@ -518,5 +697,95 @@ describe('transport candidate generation', () => {
       requestUrl: 'https://proxy.mcptest.io/?target=https%3A%2F%2Fexample.com%2Fcustom',
     });
     expect(connection.takeAuthenticationChallenge()).toBeUndefined();
+  });
+
+  it('records JSON-RPC stage and header names without retaining header values', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 200 })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      await fetch?.(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'MCP-Protocol-Version': '2025-11-25',
+          Authorization: 'Bearer must-not-be-recorded',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+        }),
+      });
+    };
+
+    const connection = await attemptParallelConnections(
+      'https://example.com/mcp',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      'stateful',
+      undefined,
+      'streamable-http'
+    );
+
+    expect(connection.observedRequests[0]).toMatchObject({
+      method: 'POST',
+      mcpMethod: 'notifications/initialized',
+      status: 200,
+      outcome: 'succeeded',
+      requestHeaders: ['authorization', 'content-type', 'mcp-protocol-version'],
+    });
+    expect(JSON.stringify(connection.observedRequests)).not.toContain('must-not-be-recorded');
+  });
+});
+
+describe('authenticated proxy retry classification', () => {
+  const endpoint = 'https://gateway.example/yahoo-finance/mcp';
+
+  const handshakeFailure = (terminalError: unknown) => new TransportConnectionError(
+    [terminalError],
+    [{
+      candidateUrl: endpoint,
+      transportType: 'streamable-http',
+      error: terminalError,
+      observedRequests: [
+        {
+          method: 'POST',
+          mcpMethod: 'initialize',
+          url: endpoint,
+          status: 200,
+          outcome: 'succeeded',
+        },
+        {
+          method: 'POST',
+          mcpMethod: 'notifications/initialized',
+          url: endpoint,
+          requestHeaders: ['content-type', 'mcp-protocol-version', 'mcp-session-id'],
+          outcome: 'failed',
+        },
+      ],
+    }]
+  );
+
+  it('retries when initialize was readable but the required next request was not', () => {
+    expect(shouldRetryMcpConnectionThroughProxy(
+      handshakeFailure(new TypeError('Failed to fetch'))
+    )).toBe(true);
+  });
+
+  it('retries a CORS failure when a sibling candidate timed out with an AbortError', () => {
+    const error = new TransportConnectionError([
+      handshakeFailure(new TypeError('Failed to fetch')),
+      new DOMException('The operation was aborted.', 'AbortError'),
+    ]);
+
+    expect(shouldRetryMcpConnectionThroughProxy(error)).toBe(true);
+  });
+
+  it.each([
+    Object.assign(new Error('Target returned HTTP 404'), { status: 404 }),
+    new ProxiedAuthenticationError(401, 'target', new Error('OAuth required')),
+    new Error('Connection aborted by user'),
+  ])('does not retry a readable target error, target challenge, or abort', (error) => {
+    expect(shouldRetryMcpConnectionThroughProxy(error)).toBe(false);
   });
 });

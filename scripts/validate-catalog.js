@@ -9,13 +9,111 @@ const {
   discoverOAuthProtectedResourceMetadata,
   extractWWWAuthenticateParams,
 } = require('@modelcontextprotocol/client');
+const { z } = require('zod');
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const CONCURRENCY = 4;
 const CLIENT_NAME = 'mcptest-catalog-validator';
+const rawDiscoveryPageSchema = z.unknown();
 
 const catalogPath = path.join(__dirname, '..', 'src', 'data', 'serverCatalog.json');
 const outputPath = path.join(__dirname, '..', 'src', 'data', 'catalogValidation.json');
+const capabilitiesPath = path.join(__dirname, '..', 'src', 'data', 'catalogCapabilities.json');
+
+let canonicalInventoryPromise;
+function canonicalInventory() {
+  canonicalInventoryPromise ||= import('../src/utils/capabilityInventory.ts');
+  return canonicalInventoryPromise;
+}
+
+function requestDiscoveryPage(client, method, cursor) {
+  return client.request({
+    method,
+    ...(cursor === undefined ? {} : { params: { cursor } }),
+  }, rawDiscoveryPageSchema);
+}
+
+async function paginateDiscovery(client, category, method, timeoutMs) {
+  let values = [];
+  let cursor;
+  let successfulPages = 0;
+  const seen = new Set();
+  try {
+    for (let pageNumber = 0; pageNumber < 64; pageNumber += 1) {
+      const page = await withDiscoveryTimeout(
+        () => requestDiscoveryPage(client, method, cursor), timeoutMs
+      );
+      if (!page || !Array.isArray(page[category])) throw new Error('Malformed discovery page');
+      successfulPages += 1;
+      values.push(...page[category]);
+      if (!Object.prototype.hasOwnProperty.call(page, 'nextCursor')) {
+        return { status: 'complete', values, paginationComplete: true };
+      }
+      if (typeof page.nextCursor !== 'string' || page.nextCursor.length === 0) {
+        throw new Error('Malformed discovery cursor');
+      }
+      cursor = page.nextCursor;
+      if (seen.has(cursor)) throw new Error('Repeated discovery cursor');
+      seen.add(cursor);
+    }
+    throw new Error('Discovery page limit reached');
+  } catch (error) {
+    if (successfulPages === 0 && error
+        && (error.code === -32601 || /method not found/i.test(error.message || ''))) {
+      return { status: 'unsupported', values: [], paginationComplete: true };
+    }
+    return {
+      status: successfulPages > 0 ? 'partial' : 'unavailable',
+      values,
+      paginationComplete: false,
+    };
+  }
+}
+
+function withDiscoveryTimeout(run, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(Object.assign(
+      new Error(`Capability discovery timed out after ${timeoutMs}ms`),
+      { code: 'REQUEST_TIMEOUT' }
+    )), timeoutMs);
+    Promise.resolve().then(run).then(
+      value => { clearTimeout(timeout); resolve(value); },
+      error => { clearTimeout(timeout); reject(error); }
+    );
+  });
+}
+
+async function discoverPublicInventory(client, endpoint, timeoutMs) {
+  const calls = {
+    tools: 'tools/list',
+    resources: 'resources/list',
+    resourceTemplates: 'resources/templates/list',
+    prompts: 'prompts/list',
+  };
+  const discovered = {};
+  for (const [category, method] of Object.entries(calls)) {
+    discovered[category] = await paginateDiscovery(client, category, method, timeoutMs);
+  }
+  // Never replace a durable snapshot when any method or page failed.
+  if (Object.values(discovered).some(({ status }) => status === 'partial' || status === 'unavailable')) return undefined;
+  const { createCapabilityInventory, validateCapabilityInventory } = await canonicalInventory();
+  const inventory = createCapabilityInventory({
+    observedAt: new Date(),
+    testedEndpoint: endpoint,
+    route: 'direct',
+    authentication: 'unauthenticated',
+    discovered: Object.fromEntries(Object.entries(discovered).map(
+      ([category, discovery]) => [category, discovery.values]
+    )),
+    statuses: Object.fromEntries(Object.entries(discovered).map(
+      ([category, discovery]) => [category, discovery.status]
+    )),
+    paginationComplete: Object.fromEntries(Object.entries(discovered).map(
+      ([category, discovery]) => [category, discovery.paginationComplete]
+    )),
+  });
+  return validateCapabilityInventory(inventory);
+}
 
 function requireRuntime() {
   if (typeof fetch !== 'function' || typeof AbortController !== 'function') {
@@ -33,6 +131,293 @@ function toUrl(value) {
   } catch {
     return null;
   }
+}
+
+function exactPortCallback(value, pathname) {
+  const url = typeof value === 'string' ? toUrl(value) : null;
+  const port = url && Number(url.port);
+  if (!url || !url.port || !Number.isInteger(port) || port < 1 || port > 65535
+      || url.protocol !== 'http:' || url.hostname !== 'localhost'
+      || url.pathname !== pathname || url.search || url.hash
+      || url.username || url.password
+      || value !== `http://localhost:${port}${pathname}`) return null;
+  return { port };
+}
+
+const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community']);
+const OAUTH_REGISTRATION_MODES = new Set([
+  'automatic',
+  'pre-registered-required',
+  'operator-confidential',
+  'provider-approval',
+  'unavailable-or-use-alternative',
+  'unknown',
+]);
+const OAUTH_RESPONSIBLE_PARTIES = new Set([
+  'automatic', 'user', 'mcptest-operator', 'provider-approval',
+]);
+const OAUTH_AVAILABILITY = new Set([
+  'ready', 'operator-configuration-missing', 'provider-approval-pending', 'unsupported',
+]);
+const OAUTH_CLIENT_IDS = new Set(['claude-code', 'codex-cli', 'cursor', 'vs-code']);
+const CATALOG_AUTH_TYPES = new Set([
+  'none', 'oauth', 'bearer-token', 'api-token', 'api-key', 'unknown',
+]);
+
+function isHttpsUrl(value) {
+  const url = typeof value === 'string' ? toUrl(value) : null;
+  return Boolean(url && url.protocol === 'https:');
+}
+
+function validateOAuthCredentialRequirement(value, label, field) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+      || typeof value.required !== 'boolean') {
+    throw new Error(`${label}: oauthRegistration.${field}.required must be boolean`);
+  }
+  if (value.environmentVariable !== undefined
+      && !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.environmentVariable)) {
+    throw new Error(`${label}: oauthRegistration.${field}.environmentVariable is invalid`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!['required', 'environmentVariable'].includes(key)) {
+      throw new Error(`${label}: oauthRegistration.${field} must never contain credential values`);
+    }
+  }
+}
+
+function isBoundedPlainText(value, maxLength = 300) {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxLength
+    && value === value.replace(/\s+/g, ' ').trim()
+    && !/[\u0000-\u001f\u007f-\u009f<>]/.test(value)
+    && !/(?:gh[pousr]_|github_pat_|sk_(?:live|test)_|xox[bpars]-|AKIA)[A-Za-z0-9_-]{12,}/.test(value)
+    && !/\b(?:client[_ -]?secret|access[_ -]?token|api[_ -]?key)\s*[:=]\s*[^\s]+/i.test(value);
+}
+
+function validateHttpsField(value, label, field) {
+  if (value !== undefined && !isHttpsUrl(value)) {
+    throw new Error(`${label}: oauthRegistration.${field} must be a valid HTTPS URL`);
+  }
+}
+
+const HEADER_FIELD_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/**
+ * A header value template must be the complete, publisher-documented value with
+ * exactly one named credential placeholder. Reject control characters, CRLF,
+ * surrounding whitespace, and ambiguous or malformed templates so generation
+ * never emits a partial credential.
+ */
+function isHeaderValueTemplate(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256) return false;
+  if (!/^[\x20-\x7e]+$/.test(value) || value !== value.trim()) return false;
+  const placeholders = value.match(/<[^<>]*>/g) || [];
+  if (placeholders.length !== 1 || !/^<[A-Z][A-Z0-9_]{1,63}>$/.test(placeholders[0])) return false;
+  return !/[<>]/.test(value.replace(placeholders[0], ''));
+}
+
+function validateRequiredHeaders(seed, label) {
+  const headers = seed.requiredHeaders;
+  if (headers === undefined) return;
+  if (!Array.isArray(headers)) {
+    throw new Error(`${label}: requiredHeaders must be an array`);
+  }
+  for (const header of headers) {
+    if (!header || typeof header !== 'object' || Array.isArray(header)
+        || !HEADER_FIELD_NAME.test(header.name || '')) {
+      throw new Error(`${label}: requiredHeaders entries need a valid HTTP header name`);
+    }
+    if (header.valueTemplate !== undefined && !isHeaderValueTemplate(header.valueTemplate)) {
+      throw new Error(`${label}: requiredHeaders.valueTemplate for ${header.name} must be the complete header value with exactly one <NAMED_PLACEHOLDER>`);
+    }
+  }
+}
+
+function validateOAuthRegistration(seed, label) {
+  const registration = seed.oauthRegistration;
+  if (registration === undefined) return;
+  if (!registration || typeof registration !== 'object' || Array.isArray(registration)) {
+    throw new Error(`${label}: oauthRegistration must be an object`);
+  }
+  if (!seed.requiresOAuth && seed.authType !== 'oauth') {
+    throw new Error(`${label}: oauthRegistration requires OAuth authentication`);
+  }
+  if (!OAUTH_REGISTRATION_MODES.has(registration.mode)) {
+    throw new Error(`${label}: oauthRegistration.mode is invalid`);
+  }
+  if (!isHttpsUrl(registration.evidenceUrl)) {
+    throw new Error(`${label}: oauthRegistration.evidenceUrl must be a valid HTTPS URL`);
+  }
+  validateOAuthCredentialRequirement(registration.clientId, label, 'clientId');
+  validateOAuthCredentialRequirement(registration.clientSecret, label, 'clientSecret');
+
+  if (registration.responsibleParty !== undefined
+      && !OAUTH_RESPONSIBLE_PARTIES.has(registration.responsibleParty)) {
+    throw new Error(`${label}: oauthRegistration.responsibleParty is invalid`);
+  }
+  if (registration.availability !== undefined
+      && !OAUTH_AVAILABILITY.has(registration.availability)) {
+    throw new Error(`${label}: oauthRegistration.availability is invalid`);
+  }
+  if (registration.reviewedAt !== undefined
+      && !/^\d{4}-\d{2}-\d{2}$/.test(registration.reviewedAt)) {
+    throw new Error(`${label}: oauthRegistration.reviewedAt must be an ISO date`);
+  }
+  for (const field of ['hostedCallbackUrl', 'registrationUrl', 'approvalUrl']) {
+    validateHttpsField(registration[field], label, field);
+  }
+  if (registration.approvalUrlAbsentReason !== undefined
+      && !isBoundedPlainText(registration.approvalUrlAbsentReason)) {
+    throw new Error(`${label}: oauthRegistration.approvalUrlAbsentReason must be bounded plain text`);
+  }
+  if (registration.setupSteps !== undefined) {
+    if (!Array.isArray(registration.setupSteps) || registration.setupSteps.length > 12
+        || registration.setupSteps.some(step => !isBoundedPlainText(step))) {
+      throw new Error(`${label}: oauthRegistration.setupSteps must contain bounded plain text`);
+    }
+    if (registration.setupSteps.length > 0 && !registration.evidenceUrl) {
+      throw new Error(`${label}: OAuth setup instructions require publisher evidence`);
+    }
+  }
+  if (registration.settings !== undefined) {
+    if (!Array.isArray(registration.settings) || registration.settings.length > 12
+        || registration.settings.some(setting => !setting || typeof setting !== 'object'
+          || !isBoundedPlainText(setting.label, 80) || !isBoundedPlainText(setting.value)
+          || typeof setting.required !== 'boolean')) {
+      throw new Error(`${label}: oauthRegistration.settings must be public-safe non-secret settings`);
+    }
+  }
+
+  const callback = registration.callback;
+  if (!callback || typeof callback !== 'object' || Array.isArray(callback)
+      || typeof callback.required !== 'boolean') {
+    throw new Error(`${label}: oauthRegistration.callback.required must be boolean`);
+  }
+  const redirectEntries = Object.entries(callback.redirectUrls || {});
+  if (callback.required && redirectEntries.length === 0 && !registration.hostedCallbackUrl) {
+    throw new Error(`${label}: required OAuth callback metadata needs redirectUrls`);
+  }
+  for (const [clientId, urls] of redirectEntries) {
+    if (!OAUTH_CLIENT_IDS.has(clientId) || !Array.isArray(urls) || urls.length === 0) {
+      throw new Error(`${label}: oauthRegistration.callback.redirectUrls is invalid`);
+    }
+    for (const value of urls) {
+      const url = typeof value === 'string' ? toUrl(value) : null;
+      if (!url || url.username || url.password
+          || !['http:', 'https:', 'cursor:'].includes(url.protocol)) {
+        throw new Error(`${label}: OAuth callback URLs must be absolute and credential-free`);
+      }
+      if (clientId === 'claude-code' && !exactPortCallback(value, '/callback')) {
+        throw new Error(`${label}: Claude Code callback URLs must match http://localhost:<explicit-port>/callback`);
+      }
+      if (clientId === 'codex-cli' && !exactPortCallback(value, '/oauth/callback')) {
+        throw new Error(`${label}: Codex mcp-remote callback URLs must match http://localhost:<explicit-port>/oauth/callback`);
+      }
+    }
+  }
+
+  if (registration.mode === 'pre-registered-required'
+      && (!registration.clientId.required || !registration.clientSecret.required
+        || !registration.callback.required)) {
+    throw new Error(`${label}: pre-registered OAuth requires client ID, secret, and callback metadata`);
+  }
+  if (registration.clientSecret.required && registration.browserPublicClientSupported === true) {
+    throw new Error(`${label}: a secret-required OAuth app cannot advertise a browser/public fallback`);
+  }
+  if (registration.mode === 'automatic' && (
+    registration.responsibleParty && registration.responsibleParty !== 'automatic'
+    || registration.clientId.required || registration.clientSecret.required
+    || registration.availability && registration.availability !== 'ready'
+  )) {
+    throw new Error(`${label}: automatic registration has contradictory requirements`);
+  }
+  if (registration.mode === 'operator-confidential' && (
+    registration.responsibleParty && registration.responsibleParty !== 'mcptest-operator'
+    || !registration.clientId.required || !registration.clientSecret.required
+    || !registration.callback.required || !registration.hostedCallbackUrl
+    || registration.browserPublicClientSupported === true
+  )) {
+    throw new Error(`${label}: operator-confidential registration requires an operator-owned confidential hosted app`);
+  }
+  if (registration.mode === 'provider-approval') {
+    if (registration.responsibleParty
+        && registration.responsibleParty !== 'provider-approval') {
+      throw new Error(`${label}: provider-approval mode requires provider approval responsibility`);
+    }
+    if (!registration.approvalUrl && !registration.approvalUrlAbsentReason) {
+      throw new Error(`${label}: provider-approval mode requires an approval URL or explicit absence note`);
+    }
+    if (registration.clientId.required || registration.clientSecret.required
+        || registration.browserPublicClientSupported === true) {
+      throw new Error(`${label}: provider-approval mode cannot offer client credential fallback`);
+    }
+  }
+  if (registration.mode === 'unavailable-or-use-alternative') {
+    if (!CATALOG_AUTH_TYPES.has(registration.alternativeAuthType)
+        || registration.alternativeAuthType === 'oauth'
+        || !seed.alternativeAuthTypes?.includes(registration.alternativeAuthType)) {
+      throw new Error(`${label}: unavailable OAuth registration requires a cataloged alternativeAuthType`);
+    }
+  }
+
+  if (registration.codexMcpRemote !== undefined) {
+    const remote = registration.codexMcpRemote;
+    const callbackUrl = remote && exactPortCallback(remote.callbackUrl, '/oauth/callback');
+    if (!remote || typeof remote !== 'object' || Array.isArray(remote)
+        || !isHttpsUrl(remote.resourceUrl)
+        || !callbackUrl
+        || !Number.isInteger(remote.callbackPort)
+        || remote.callbackPort < 1 || remote.callbackPort > 65535) {
+      throw new Error(`${label}: oauthRegistration.codexMcpRemote is invalid`);
+    }
+    if (remote.callbackPort !== callbackUrl.port) {
+      throw new Error(`${label}: codexMcpRemote.callbackPort must match callbackUrl`);
+    }
+    const codexCallbacks = callback.redirectUrls?.['codex-cli'] || [];
+    if (!codexCallbacks.includes(remote.callbackUrl)) {
+      throw new Error(`${label}: codexMcpRemote.callbackUrl must exactly match a Codex redirect URL`);
+    }
+  }
+}
+
+function validateCatalogSeed(seed, index = 0) {
+  const label = seed && typeof seed.id === 'string' ? seed.id : `entry ${index + 1}`;
+  const listingSource = seed && seed.listingSource;
+
+  if (!listingSource || typeof listingSource !== 'object' || Array.isArray(listingSource)) {
+    throw new Error(`${label}: listingSource is required`);
+  }
+
+  if (!LISTING_SOURCE_KINDS.has(listingSource.kind)) {
+    throw new Error(`${label}: listingSource.kind must be publisher, mcp-registry, or community`);
+  }
+
+  if (listingSource.url !== undefined && !isHttpsUrl(listingSource.url)) {
+    throw new Error(`${label}: listingSource.url must be a valid HTTPS URL`);
+  }
+
+  if (listingSource.kind === 'mcp-registry') {
+    if (!isHttpsUrl(seed.registryUrl)) {
+      throw new Error(`${label}: MCP Registry provenance requires a valid HTTPS registryUrl`);
+    }
+
+    if (listingSource.url !== seed.registryUrl) {
+      throw new Error(`${label}: MCP Registry provenance must reuse registryUrl`);
+    }
+  }
+
+  validateRequiredHeaders(seed, label);
+  validateOAuthRegistration(seed, label);
+
+  return seed;
+}
+
+function validateCatalogSeeds(seeds) {
+  if (!Array.isArray(seeds)) {
+    throw new Error('Catalog seed data must be an array');
+  }
+
+  seeds.forEach(validateCatalogSeed);
+  return seeds;
 }
 
 function slashVariants(value) {
@@ -78,6 +463,8 @@ function endpointVariants(seed) {
   };
 
   add(seedUrl.toString(), seed.transport);
+
+  if (seed.exactEndpointOnly) return candidates;
 
   const normalizedPath = seedUrl.pathname.replace(/\/+$/, '');
   if (!normalizedPath) {
@@ -171,6 +558,7 @@ async function probeStreamableEndpoint(
     await client.connect(transport, { timeout: timeoutMs });
     const era = client.getProtocolEra();
     const protocolVersion = client.getNegotiatedProtocolVersion();
+    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
 
     return {
       ...endpoint,
@@ -179,6 +567,7 @@ async function probeStreamableEndpoint(
       authChallenge: false,
       protocolEra: era === 'modern' ? 'stateless' : 'stateful',
       protocolVersion,
+      capabilityInventory,
       statusCode: responses.find(({ status }) => status >= 200 && status < 300)?.status,
       message: `Negotiated ${era === 'modern' ? 'stateless' : 'stateful'} MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
@@ -261,6 +650,7 @@ async function probeSseEndpoint(
     ]);
 
     const protocolVersion = client.getNegotiatedProtocolVersion();
+    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
     return {
       ...endpoint,
       reachable: true,
@@ -268,6 +658,7 @@ async function probeSseEndpoint(
       authChallenge: false,
       protocolEra: 'legacy',
       protocolVersion,
+      capabilityInventory,
       statusCode: responses.find(({ status }) => status >= 200 && status < 300)?.status,
       message: `Negotiated legacy MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
@@ -370,7 +761,9 @@ function declaredAuthType(seed) {
 
 function detectedAuthType(seed, probes, authorizationEvidence) {
   const declared = declaredAuthType(seed);
-  if (declared === 'api-key' || declared === 'bearer-token') return declared;
+  if (declared === 'api-key' || declared === 'api-token' || declared === 'bearer-token') {
+    return declared;
+  }
   if (probes.some((probe) => probe.alive && !probe.authChallenge)) return declared;
   if (authorizationEvidence.oauthMetadata) return 'oauth';
   if (probes.some((probe) => probe.authChallenge)) {
@@ -417,6 +810,7 @@ async function validateSeed(
   seed,
   { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
 ) {
+  validateCatalogSeed(seed);
   const probes = [];
   const validatedTransports = new Set();
 
@@ -463,6 +857,9 @@ async function validateSeed(
     result.authorizationServers = authorizationEvidence.authorizationServers;
   }
   if (errorCode) result.errorCode = errorCode;
+  if (successfulProbe?.capabilityInventory) {
+    result.capabilityInventory = successfulProbe.capabilityInventory;
+  }
 
   return result;
 }
@@ -503,14 +900,55 @@ async function mapWithConcurrency(values, concurrency, worker) {
   return results;
 }
 
-function writeResults(results) {
-  fs.writeFileSync(outputPath, `${JSON.stringify(results, null, 2)}\n`, 'utf-8');
+function mergeCapabilitySnapshots(previous, results) {
+  const updated = { ...previous };
+  for (const result of results) {
+    if (result.capabilityInventory) updated[result.serverId] = result.capabilityInventory;
+  }
+  return Object.fromEntries(
+    Object.entries(updated).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+async function validateCapabilitySnapshots(snapshots) {
+  const { validateCapabilityInventory } = await canonicalInventory();
+  return Object.fromEntries(Object.entries(snapshots).map(([serverId, inventory]) => [
+    serverId,
+    validateCapabilityInventory(inventory),
+  ]));
+}
+
+async function writeResults(
+  results,
+  paths = { validation: outputPath, capabilities: capabilitiesPath }
+) {
+  const validationResults = results.map(({ capabilityInventory, ...result }) => result);
+  const activeServerIds = new Set(results.map(({ serverId }) => serverId));
+  const previous = fs.existsSync(paths.capabilities)
+    ? JSON.parse(fs.readFileSync(paths.capabilities, 'utf8'))
+    : {};
+  // Validate the complete merged file before either durable output is replaced.
+  const capabilities = await validateCapabilitySnapshots(
+    Object.fromEntries(Object.entries(mergeCapabilitySnapshots(previous, results)).filter(
+      ([serverId]) => activeServerIds.has(serverId)
+    ))
+  );
+  const validationJson = `${JSON.stringify(validationResults, null, 2)}\n`;
+  const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;
+  fs.writeFileSync(paths.validation, validationJson, 'utf-8');
+  fs.writeFileSync(paths.capabilities, capabilitiesJson, 'utf8');
 }
 
 async function main() {
   if (!requireRuntime()) return;
+  if (process.argv.includes('--check-runtime')) {
+    await canonicalInventory();
+    console.log('Catalog validator runtime is ready.');
+    return;
+  }
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
+  validateCatalogSeeds(seeds);
   console.log(`Validating ${seeds.length} catalog servers with concurrency ${CONCURRENCY}...`);
 
   const results = await mapWithConcurrency(seeds, CONCURRENCY, async (seed) => {
@@ -521,7 +959,7 @@ async function main() {
     return result;
   });
 
-  writeResults(results);
+  await writeResults(results);
   console.log(`Catalog validation results written to ${path.relative(process.cwd(), outputPath)}`);
 }
 
@@ -535,9 +973,18 @@ if (require.main === module) {
 module.exports = {
   declaredAuthType,
   detectedAuthType,
+  discoverPublicInventory,
   discoverAuthorizationEvidence,
   endpointVariants,
+  mergeCapabilitySnapshots,
+  paginateDiscovery,
   probeSseEndpoint,
   probeStreamableEndpoint,
+  requestDiscoveryPage,
+  main,
+  validateCapabilitySnapshots,
+  validateCatalogSeed,
+  validateCatalogSeeds,
   validateSeed,
+  writeResults,
 };

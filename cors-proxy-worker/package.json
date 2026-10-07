@@ -1,9 +1,10 @@
 {
   "name": "mcptest-cors-proxy",
   "version": "1.0.0",
-  "description": "CORS proxy worker for MCP Test with authentication",
+  "description": "CORS proxy worker for MCP Test with caller-based rate limits",
   "main": "src/index.ts",
   "scripts": {
+    "test": "vitest run src/index.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && WRANGLER_WRITE_LOGS=false wrangler deploy --dry-run --outdir dist",
     "dev": "wrangler dev",

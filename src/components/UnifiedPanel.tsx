@@ -150,7 +150,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         <div>
           <h5 className="mb-0">Capabilities</h5>
         </div>
-        <div className="d-flex gap-1">
+        <div className="d-flex gap-2 align-items-center">
           {onOpenTestPlan && (
             <button
               className="btn btn-sm btn-outline-primary test-plan-button"
@@ -163,7 +163,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
             </button>
           )}
           <button
-            className="btn btn-sm btn-outline-secondary refresh-button"
+            className="btn btn-sm btn-ghost refresh-button"
             onClick={onRefreshLists}
             disabled={!isConnected || isConnecting}
             title="Refresh Tools, Resources, and Prompts"

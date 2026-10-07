@@ -5,14 +5,18 @@ import { formatErrorForDisplay } from '../utils/errorHandling';
 import {
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
+  getProxyCallerLimit,
+  shouldRetryMcpConnectionThroughProxy,
   type ObservedTransportRequest,
 } from '../utils/transportDetection';
 import { logEvent } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import {
   beginOAuthFlow,
+  getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   getProxyAuthenticationPrerequisite,
+  getProxyLimitPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   type OAuthPrerequisite,
@@ -23,35 +27,15 @@ import {
   resumeOAuthFlightRecorder,
   resumePendingAuthenticatedMcpRetry,
 } from '../utils/oauthTrace';
+import {
+  collectConnectionAttemptFacts,
+  type ConnectionErrorDetails,
+  type ConnectionFailureEvidence,
+} from '../utils/connectionDiagnostics';
+import { getCatalogEndpointDiagnosticEvidence } from '../utils/catalogUtils';
 
 const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
-
-const hasReadableHttpResponse = (error: unknown, seen = new Set<object>()): boolean => {
-  if (!error || typeof error !== 'object' || seen.has(error)) return false;
-  seen.add(error);
-
-  if (getObservedAuthenticationChallenge(error)) return true;
-  if (typeof (error as { status?: unknown }).status === 'number') return true;
-
-  const candidateFailures = (error as {
-    candidateFailures?: ReadonlyArray<{
-      observedRequests?: ReadonlyArray<{ status?: number }>;
-    }>;
-  }).candidateFailures;
-  if (candidateFailures?.some(({ observedRequests }) => (
-    observedRequests?.some(({ status }) => typeof status === 'number')
-  ))) return true;
-
-  const nestedErrors = (error as { errors?: readonly unknown[] }).errors;
-  return Array.isArray(nestedErrors)
-    && nestedErrors.some((nestedError) => hasReadableHttpResponse(nestedError, seen));
-};
-
-const endedWithoutReadableHttpResponse = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
-  return !/connection aborted by user/i.test(message) && !hasReadableHttpResponse(error);
-};
 
 const getConnectedServerUrl = (
   finalUrl: string,
@@ -130,7 +114,7 @@ export const useConnection = (
   const [protocolVersion, setProtocolVersion] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
-  const [connectionError, setConnectionError] = useState<{ error: string; serverUrl: string; timestamp: Date; details?: string } | null>(null);
+  const [connectionError, setConnectionError] = useState<ConnectionErrorDetails | null>(null);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
@@ -365,10 +349,32 @@ export const useConnection = (
     setResponses: React.Dispatch<React.SetStateAction<LogEntry[]>>,
     urlToConnect?: string, // Optional URL parameter
     forceUseProxy?: boolean, // Optional proxy override
-    protocolEraHint?: 'stateless' | 'stateful' | 'legacy'
+    protocolEraHint?: 'stateless' | 'stateful' | 'legacy',
+    preferredTransport?: TransportType
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    const catalogEndpointEvidence = getCatalogEndpointDiagnosticEvidence(targetUrl);
+    const effectivePreferredTransport = preferredTransport
+      || (catalogEndpointEvidence?.transport === 'streamable-http'
+        || catalogEndpointEvidence?.transport === 'legacy-sse'
+        ? catalogEndpointEvidence.transport
+        : undefined);
+    const diagnosticTransportEvidence = preferredTransport
+      || catalogEndpointEvidence?.transport
+      || effectivePreferredTransport
+      || 'unknown';
+    const expectedAuthentication: ConnectionErrorDetails['expectedAuthentication'] =
+      catalogEndpointEvidence?.authType === 'oauth'
+        ? 'oauth'
+        : catalogEndpointEvidence?.authType === 'bearer-token'
+          ? 'bearer-token'
+          : catalogEndpointEvidence?.authType === 'api-key'
+            || catalogEndpointEvidence?.authType === 'api-token'
+            ? 'api-key'
+            : catalogEndpointEvidence?.authType === 'none'
+              ? 'none'
+              : 'unknown';
     // Proxy fallback is the default preference. Authentication availability
     // controls whether it can execute, not whether the preference is enabled.
     // Only a persisted or per-attempt explicit false opts out.
@@ -440,7 +446,7 @@ export const useConnection = (
       : undefined;
     let oauthTrace = pendingOAuthRetry ? storedRetryTrace : undefined;
     let oauthRetryPending = Boolean(pendingOAuthRetry);
-    let proxyLoginPrerequisiteRequired = false;
+    const diagnosticFailures: ConnectionFailureEvidence[] = [];
     let connectionAttemptStartedAt = Date.now();
     const reloadLatestOAuthTrace = (): OAuthFlightRecorder | undefined => {
       const storedTrace = resumeOAuthFlightRecorder(targetUrl, sessionStorage);
@@ -515,7 +521,8 @@ export const useConnection = (
         requestHeaders,
         false,
         protocolEraHint,
-        observeOAuthRetryRequest('direct')
+        observeOAuthRetryRequest('direct'),
+        ...(effectivePreferredTransport ? [effectivePreferredTransport] : [])
       );
     };
 
@@ -553,7 +560,8 @@ export const useConnection = (
         targetHeaders,
         true,
         protocolEraHint,
-        observeOAuthRetryRequest('proxy')
+        observeOAuthRetryRequest('proxy'),
+        ...(effectivePreferredTransport ? [effectivePreferredTransport] : [])
       );
     };
 
@@ -564,19 +572,22 @@ export const useConnection = (
         const result = await withConnectionTimeout(connectDirectly());
         return { result, usedProxy: false };
       } catch (error: any) {
-        const directResponseWasUnreadable = endedWithoutReadableHttpResponse(error);
+        diagnosticFailures.push({ route: 'direct', error });
+        const directResponseWasUnreadable = shouldRetryMcpConnectionThroughProxy(error);
         const proxyConfigured = Boolean(import.meta.env.VITE_PROXY_URL);
 
-        // A browser failure with no readable response cannot establish whether
-        // the target is down or merely blocked by CORS. When proxy fallback is
-        // enabled, use the authenticated proxy as the observation path.
-        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && currentUser) {
-          const result = await withConnectionTimeout(connectViaProxy());
-          return { result, usedProxy: true };
-        }
-
-        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured && !currentUser) {
-          proxyLoginPrerequisiteRequired = true;
+        // A required MCP request may be browser-unreadable even after initialize
+        // succeeded. Use its terminal request evidence rather than suppressing
+        // fallback because some earlier response happened to be readable. The
+        // proxy works without a login; signing in only lifts its limits.
+        if (directResponseWasUnreadable && shouldUseProxy && proxyConfigured) {
+          try {
+            const result = await withConnectionTimeout(connectViaProxy());
+            return { result, usedProxy: true };
+          } catch (proxyError) {
+            diagnosticFailures.push({ route: 'proxy', error: proxyError });
+            throw proxyError;
+          }
         }
         throw error;
       }
@@ -617,13 +628,16 @@ export const useConnection = (
             && !suppressOAuthDiscovery
             && !hasExplicitTargetCredential;
 
-          if (proxyLoginPrerequisiteRequired && !suppressOAuthDiscovery) {
-            const prerequisite = getProxyAuthenticationPrerequisite(targetUrl);
+          // The proxy's own caller limit is never a target/server error.
+          const proxyLimit = getProxyCallerLimit(error);
+          if (proxyLimit && !suppressOAuthDiscovery) {
+            const prerequisite = getProxyLimitPrerequisite(targetUrl, proxyLimit);
+            oauthTrace?.terminal('proxy_limit_reached', prerequisite.explanation);
             setConnectionError(null);
             setOAuthPrerequisite(prerequisite);
             setNeedsOAuthConfig(true);
             setOAuthConfigServerUrl(targetUrl);
-            setConnectionStatus('Proxy authentication required');
+            setConnectionStatus('Proxy limit reached');
             setIsConnecting(false);
             setConnectionStartTime(null);
             abortControllerRef.current = null;
@@ -688,7 +702,12 @@ export const useConnection = (
 
           try {
             const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
-            const discoveryProxyToken = shouldUseProxy && proxyUrl && currentUser
+            const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+            const proxyApplicable = Boolean(
+              (shouldUseProxy && proxyUrl) || tokenProxyUrl
+            );
+            // Optional: a login only lifts the proxy's anonymous limits.
+            const discoveryProxyToken = proxyApplicable && currentUser
               ? await currentUser.getIdToken()
               : undefined;
             const result = await beginOAuthFlow(targetUrl, {
@@ -697,10 +716,18 @@ export const useConnection = (
                 ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
                 : {}),
               ...(challenge.scope ? { scope: challenge.scope } : {}),
-              ...(shouldUseProxy && proxyUrl && discoveryProxyToken
+              ...(shouldUseProxy && proxyUrl
                 ? {
                     discoveryProxy: {
                       url: proxyUrl,
+                      authorizationToken: discoveryProxyToken,
+                    },
+                  }
+                : {}),
+              ...(tokenProxyUrl
+                ? {
+                    tokenProxy: {
+                      url: tokenProxyUrl,
                       authorizationToken: discoveryProxyToken,
                     },
                   }
@@ -790,7 +817,16 @@ export const useConnection = (
             setConnectionError({
               error: `OAuth authorization failed: ${message}`,
               serverUrl: targetUrl,
-              timestamp: new Date()
+              timestamp: new Date(),
+              attempts: collectConnectionAttemptFacts(
+                diagnosticFailures,
+                targetUrl,
+                effectivePreferredTransport
+              ),
+              transportEvidence: diagnosticTransportEvidence,
+              expectedAuthentication: 'oauth',
+              supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
+              serverReachable: catalogEndpointEvidence?.serverReachable,
             });
             addLogEntry({ type: 'error', data: `OAuth authorization failed: ${message}` });
             return;
@@ -859,7 +895,18 @@ export const useConnection = (
                 error: errorDetails,
                 serverUrl: targetUrl,
                 timestamp: new Date(),
-                details: error.stack || error.toString()
+                details: error.stack || error.toString(),
+                attempts: collectConnectionAttemptFacts(
+                  diagnosticFailures.length > 0
+                    ? diagnosticFailures
+                    : [{ route: connectionRoute, error }],
+                  targetUrl,
+                  effectivePreferredTransport
+                ),
+                transportEvidence: diagnosticTransportEvidence,
+                expectedAuthentication,
+                supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
+                serverReachable: catalogEndpointEvidence?.serverReachable,
             });
             addLogEntry({ type: 'error', data: `Connection failed: ${errorDetails}` });
         }

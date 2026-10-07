@@ -5,6 +5,8 @@ import {
   saveManualOAuthClient,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
+import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
+import AuthorizationSetup from './AuthorizationSetup';
 
 interface OAuthConfigProps {
   serverUrl: string;
@@ -12,6 +14,7 @@ interface OAuthConfigProps {
   onCancel: () => void;
   prerequisite?: OAuthPrerequisite;
   onBearerToken?: (token: string) => void | Promise<void>;
+  onSignIn?: () => void | Promise<void>;
 }
 
 const OAuthConfig: React.FC<OAuthConfigProps> = ({
@@ -20,23 +23,44 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   onCancel,
   prerequisite,
   onBearerToken,
+  onSignIn,
 }) => {
   const [clientId, setClientId] = useState('');
   const [bearerToken, setBearerToken] = useState('');
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const serviceDomain = new URL(serverUrl).host;
   const callbackUrl = getOAuthCallbackUrl();
-  const isProxyAuthenticationPrerequisite = prerequisite?.kind === 'proxy_authentication_required';
+  const authorizationGuidance = getAuthorizationGuidanceForEndpoint(serverUrl);
+  const isProxyLimitPrerequisite = prerequisite?.kind === 'proxy_limit_reached';
+  // Both are mcptest proxy prerequisites, not target OAuth configuration.
+  const isProxyAuthenticationPrerequisite = prerequisite?.kind === 'proxy_authentication_required'
+    || isProxyLimitPrerequisite;
+  const catalogAllowsBrowserClient = !authorizationGuidance.trustedCatalogMatch
+    || authorizationGuidance.status === 'unknown'
+    || authorizationGuidance.status === 'no-registration-needed'
+    || authorizationGuidance.browserClientFormAllowed;
   const canConfigureClient = !isProxyAuthenticationPrerequisite
+    && catalogAllowsBrowserClient
     && (prerequisite?.canConfigureClient ?? true);
-  const title = prerequisite?.kind === 'provider_approval_required'
+  const title = prerequisite?.registrationValidationErrors?.length
+    ? `${prerequisite.providerName} registration metadata needs correction`
+    : prerequisite?.kind === 'provider_approval_required'
     ? `${prerequisite.providerName} approval is required`
+    : prerequisite?.kind === 'provider_callback_incompatible'
+      ? `${prerequisite.providerName} callback is incompatible`
+      : prerequisite?.kind === 'operator_client_not_configured'
+        ? `${prerequisite.providerName} operator client is not configured`
     : prerequisite?.kind === 'proxy_authentication_required'
       ? 'mcptest proxy authentication required'
+    : isProxyLimitPrerequisite
+      ? 'mcptest proxy limit reached'
       : prerequisite?.kind === 'transient_discovery_failure'
         ? 'OAuth discovery is temporarily unavailable'
-    : prerequisite?.kind === 'discovery_blocked_invalid'
+      : prerequisite?.kind === 'discovery_blocked_invalid'
       ? 'OAuth discovery could not be completed'
+      : authorizationGuidance.status === 'operator-setup-required'
+        && prerequisite?.configurationMode !== 'operator-confidential'
+        ? `${prerequisite?.providerName || serviceDomain} hosted mcptest operator setup required`
       : prerequisite?.configurationMode === 'operator-confidential'
         ? `${prerequisite.providerName} host application required`
       : `Register an OAuth application for ${prerequisite?.providerName || serviceDomain}`;
@@ -82,10 +106,28 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
         </div>
 
         <p>
-          {prerequisite?.kind === 'proxy_authentication_required'
+          {isProxyLimitPrerequisite
+            ? 'The mcptest CORS proxy returned its own HTTP 429 caller-limit response. The MCP server did not return this error; retry later or sign in to raise the limit.'
+            : prerequisite?.kind === 'proxy_authentication_required'
             ? 'mcptest.io opened this prerequisite only after the proxy returned its own authentication response. Target OAuth discovery has not started.'
             : 'mcptest.io connected without credentials first and only opened this panel after the MCP target returned an HTTP authentication challenge.'}
         </p>
+
+        {!isProxyAuthenticationPrerequisite && (
+          <AuthorizationSetup guidance={authorizationGuidance} currentCatalogContext compact />
+        )}
+
+        {isProxyAuthenticationPrerequisite && onSignIn && (
+          <div className="mb-4">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void onSignIn()}
+            >
+              {isProxyLimitPrerequisite ? 'Sign in with Google to lift the limit' : 'Sign in with Google'}
+            </button>
+          </div>
+        )}
 
         {prerequisite?.kind === 'provider_approval_required' && (
           <p>
@@ -95,6 +137,23 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
             catalog approval. An approved client configuration must be explicitly provisioned by the
             mcptest operator before it can be used here.
           </p>
+        )}
+
+        {prerequisite?.kind === 'provider_callback_incompatible' && (
+          <div className="alert alert-warning" role="note">
+            The provider rejected the hosted <code>https://mcptest.io/oauth/callback</code> at
+            the dynamic-registration stage. This is a provider callback/client-identity
+            incompatibility for mcptest&apos;s remote web client, not a localhost installation or
+            browser CORS prerequisite.
+          </div>
+        )}
+
+        {prerequisite?.kind === 'operator_client_not_configured' && (
+          <div className="alert alert-info" role="note">
+            The authenticated, issuer-bound Worker route is ready, but the provider&apos;s client ID
+            and client secret have not both been configured by the operator. The browser never
+            receives the secret.
+          </div>
         )}
 
         {!isProxyAuthenticationPrerequisite
@@ -110,7 +169,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           <div className="oauth-bearer-option mb-4">
             <h6>Use a {prerequisite.bearerTokenName || 'bearer token'}</h6>
             <p className="mb-0">
-              This provider supports a bearer token on the MCP request. The token stays in memory
+              This provider supports a direct token credential on the MCP request. The token stays in memory
               for the request and is not added to the URL or OAuth client storage.
             </p>
             {onBearerToken ? (
@@ -140,8 +199,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
               </form>
             ) : (
               <p className="mt-2 mb-0">
-                Use the target <code>Authorization: Bearer …</code> credential option in Playground
-                or Report.
+                Use the target <code>Authorization: {(prerequisite.authorizationHeaderTemplate
+                  || 'Bearer <TOKEN>').replace('<TOKEN>', '…')}</code> credential option in
+                Playground or Report.
               </p>
             )}
           </div>
@@ -153,6 +213,17 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
             route, status, and sanitized response are available in the OAuth flight recorder.
           </p>
         )}
+
+        {prerequisite?.registrationValidationErrors?.length ? (
+          <div className="alert alert-warning" role="note">
+            <strong>Correctable registration fields:</strong>
+            <ul className="mb-0 mt-2">
+              {prerequisite.registrationValidationErrors.map(({ field, message }) => (
+                <li key={field}><code>{field}</code>: {message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {prerequisite && prerequisite.kind !== 'proxy_authentication_required' && (
           <div className="oauth-prerequisite-details mb-4">

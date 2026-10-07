@@ -46,14 +46,16 @@ describe('ConnectionPanel landing-page states', () => {
     vi.unstubAllEnvs();
   });
 
-  it('preserves the enabled proxy preference while signed out', () => {
+  it('keeps the proxy preference usable while signed out', () => {
     const panel = renderPanel(true);
     const proxyToggle = panel.querySelector<HTMLInputElement>('#proxyFallbackCheck');
 
     expect(proxyToggle?.checked).toBe(true);
-    expect(proxyToggle?.disabled).toBe(true);
+    expect(proxyToggle?.disabled).toBe(false);
     expect(proxyToggle?.getAttribute('aria-describedby')).toBe('proxyFallbackHelp');
-    expect(panel.textContent).toContain('Sign in with Google before mcptest can use the enabled proxy fallback.');
+    expect(panel.textContent).toContain('No sign-in needed.');
+    expect(panel.textContent).toContain('sign in with Google to lift the limit');
+    expect(panel.textContent).not.toContain('login required');
   });
 
   it('preserves an explicit proxy opt-out while signed out', () => {
@@ -61,18 +63,17 @@ describe('ConnectionPanel landing-page states', () => {
     const proxyToggle = panel.querySelector<HTMLInputElement>('#proxyFallbackCheck');
 
     expect(proxyToggle?.checked).toBe(false);
-    expect(proxyToggle?.disabled).toBe(true);
-    expect(panel.textContent).toContain('Proxy fallback is off. Sign in with Google to change this preference.');
+    expect(proxyToggle?.disabled).toBe(false);
   });
 
-  it('restores the chosen proxy preference when its login prerequisite is met', () => {
+  it('describes the higher signed-in proxy limits', () => {
     authState.currentUser = { uid: 'user-1' };
     const panel = renderPanel(true);
     const proxyToggle = panel.querySelector<HTMLInputElement>('#proxyFallbackCheck');
 
     expect(proxyToggle?.checked).toBe(true);
     expect(proxyToggle?.disabled).toBe(false);
-    expect(panel.querySelector('#proxyFallbackHelp')).toBeNull();
+    expect(panel.querySelector('#proxyFallbackHelp')?.textContent).toContain('higher per-account limits');
   });
 
   it('places connection state beside the panel heading and renders negotiation as prose', () => {

@@ -2,6 +2,8 @@ import { z } from 'zod';
 import packageJson from '../../package.json';
 import type { CompatibilityMatrixV1 } from '../compatibility';
 import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
+import type { CapabilityInventoryV1 } from '../types/capabilityInventory';
+import { validateCapabilityInventory } from './capabilityInventory';
 import {
   getEvaluationMaxScore,
   hasLegacyIncompleteEvaluationEvidence,
@@ -14,6 +16,7 @@ import {
 import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
+import { getTrustedAuthorizationGuidanceForEndpoint } from './authorizationGuidanceLookup';
 
 export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
 export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
@@ -159,6 +162,85 @@ const ToolSurfaceArtifactSchema = z.object({
   interpretation: z.string(),
 }).passthrough();
 
+const CapabilityInventoryArgumentSchema = z.object({
+  name: z.string().min(1).max(128),
+  type: z.string().min(1).optional(),
+  description: z.string().min(1).max(600).optional(),
+  required: z.boolean(),
+}).strict();
+
+const CapabilityInventorySectionBaseSchema = z.object({
+  status: z.enum(['complete', 'partial', 'unsupported', 'unavailable']),
+  observedCount: z.number().int().nonnegative(),
+  retainedCount: z.number().int().nonnegative(),
+  omittedCount: z.number().int().nonnegative(),
+  paginationComplete: z.boolean(),
+});
+
+const CapabilityInventoryResourceSchema = z.object({
+  name: z.string().min(1).max(128),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().min(1).max(600).optional(),
+  mimeType: z.string().min(1).max(128).optional(),
+}).strict();
+
+const CapabilityInventoryArtifactSchema: z.ZodType<CapabilityInventoryV1> = z.object({
+  version: z.literal(1),
+  observedAt: z.string().datetime({ offset: true }),
+  provenance: z.object({
+    testedEndpoint: z.string().url(),
+    route: z.enum(['direct', 'authenticated-proxy']),
+  }).strict(),
+  authentication: z.enum(['authenticated', 'unauthenticated']),
+  tools: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(z.object({
+      name: z.string().min(1).max(128),
+      description: z.string().min(1).max(600).optional(),
+      input: z.array(CapabilityInventoryArgumentSchema).optional(),
+    }).strict()),
+  }).strict(),
+  resources: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(CapabilityInventoryResourceSchema),
+  }).strict(),
+  resourceTemplates: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(CapabilityInventoryResourceSchema),
+  }).strict(),
+  prompts: CapabilityInventorySectionBaseSchema.extend({
+    items: z.array(z.object({
+      name: z.string().min(1).max(128),
+      description: z.string().min(1).max(600).optional(),
+      arguments: z.array(CapabilityInventoryArgumentSchema).optional(),
+    }).strict()),
+  }).strict(),
+}).strict().superRefine((inventory, context) => {
+  for (const name of ['tools', 'resources', 'resourceTemplates', 'prompts'] as const) {
+    const section = inventory[name];
+    if (section.retainedCount !== section.items.length
+        || section.observedCount !== section.retainedCount + section.omittedCount) {
+      context.addIssue({
+        code: 'custom',
+        path: [name],
+        message: 'Capability inventory counts must match retained items and omissions.',
+      });
+    }
+    if ((section.status === 'complete' || section.status === 'unsupported')
+        && !section.paginationComplete) {
+      context.addIssue({
+        code: 'custom',
+        path: [name, 'paginationComplete'],
+        message: 'Complete and unsupported discovery must have complete pagination.',
+      });
+    }
+    if (section.status === 'unavailable' && section.paginationComplete) {
+      context.addIssue({
+        code: 'custom',
+        path: [name, 'paginationComplete'],
+        message: 'Unavailable discovery cannot have complete pagination.',
+      });
+    }
+  }
+});
+
 const OAuthTraceArtifactSchema = z.object({
   version: z.number().int().positive(),
   traceId: z.string().min(1),
@@ -171,6 +253,7 @@ const OAuthTraceArtifactSchema = z.object({
       'target_challenge',
       'protected_resource_metadata',
       'authorization_server_metadata',
+      'client_establishment',
       'cimd',
       'dynamic_client_registration',
       'pre_registered_client',
@@ -238,6 +321,43 @@ const ReportSectionSchema = z.object({
   evidence: z.array(EvidenceSchema),
 }).strict();
 
+const AuthorizationSetupArtifactSchema = z.object({
+  version: z.literal(1),
+  catalogId: z.string().min(1),
+  status: z.enum([
+    'no-registration-needed',
+    'register-app-first',
+    'operator-setup-required',
+    'provider-approval-required',
+    'alternative-credential',
+    'unknown',
+  ]),
+  statusLabel: z.string().min(1),
+  summary: z.string().min(1),
+  responsibleParty: z.enum([
+    'automatic',
+    'user',
+    'mcptest-operator',
+    'provider-approval',
+  ]).optional(),
+  reviewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  steps: z.array(z.string().min(1).max(300)).max(12),
+  callbacks: z.array(z.string().min(1).max(500)).max(16),
+  settings: z.array(z.object({
+    label: z.string().min(1).max(80),
+    value: z.string().min(1).max(300),
+    required: z.boolean(),
+  }).strict()).max(12),
+  documentationUrl: z.string().url().optional(),
+  registrationUrl: z.string().url().optional(),
+  alternativeAuthType: z.enum(['bearer-token', 'api-token', 'api-key']).optional(),
+  alternativeHeaderName: z.string().min(1).max(128).optional(),
+  alternativeHeaderTemplate: z.string().min(1).max(256)
+    .regex(/^[\x20-\x7e]*<[A-Z][A-Z0-9_]{1,63}>[\x20-\x7e]*$/)
+    .optional(),
+  provenance: z.literal('current-catalog-guidance'),
+}).strict();
+
 const PublicReportObjectSchema = z.object({
   $schema: z.literal(REPORT_SCHEMA_URL),
   artifactType: z.literal('mcptest.report'),
@@ -293,11 +413,24 @@ const PublicReportObjectSchema = z.object({
   releaseDecision: ReleaseDecisionSchema.optional(),
   compatibility: CompatibilityArtifactSchema.optional(),
   toolSurfaceAnalysis: ToolSurfaceArtifactSchema.optional(),
+  capabilityInventory: CapabilityInventoryArtifactSchema.optional(),
   oauthTrace: OAuthTraceArtifactSchema.optional(),
+  authorizationSetup: AuthorizationSetupArtifactSchema.optional(),
   sections: z.array(ReportSectionSchema),
 }).strict();
 
 export const PublicReportSchema = PublicReportObjectSchema.superRefine((report, context) => {
+  if (report.capabilityInventory) {
+    try {
+      validateCapabilityInventory(report.capabilityInventory);
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        path: ['capabilityInventory'],
+        message: error instanceof Error ? error.message : 'Capability inventory is not public-safe.',
+      });
+    }
+  }
   const isScored = report.outcome.status === 'scored';
   if (isScored && report.score === null) {
     context.addIssue({
@@ -895,6 +1028,20 @@ const isAuthorizationPrerequisiteSchemaField = (path: readonly string[]): boolea
     && path[0] === 'outcome'
     && path[1] === 'authorizationPrerequisite'
     && path[2] === 'state')
+);
+
+const isAuthorizationSetupSchemaField = (path: readonly string[]): boolean => (
+  path.length > 0 && path[0] === 'authorizationSetup'
+);
+
+const isAuthorizationSetupHeaderTemplateField = (path: readonly string[]): boolean => (
+  path.length === 2
+    && path[0] === 'authorizationSetup'
+    && path[1] === 'alternativeHeaderTemplate'
+);
+
+const isCapabilityInventoryAuthenticationField = (path: readonly string[]): boolean => (
+  path.length === 2 && path[0] === 'capabilityInventory' && path[1] === 'authentication'
 );
 
 const isJsonRpcErrorCode = (
@@ -1615,6 +1762,8 @@ const redactReportValueAtPath = (
   if (key
     && isSensitiveQueryKey(key)
     && !isAuthorizationPrerequisiteSchemaField(path)
+    && !isAuthorizationSetupSchemaField(path)
+    && !isCapabilityInventoryAuthenticationField(path)
     && !isToolInputSchemaPropertyDeclaration(key, path)
     && !isJsonRpcErrorCode(value, key, path)) {
     return REDACTED_VALUE;
@@ -1647,7 +1796,12 @@ const redactReportValueAtPath = (
     inputSchemaSanitized = true;
   }
   if (value === undefined) return undefined;
-  if (typeof value === 'string') return redactReportString(value);
+  if (typeof value === 'string') {
+    // This field is generated only from catalog templates that validation has
+    // proved contain one named placeholder and no credential value. Preserve
+    // syntax such as `Token token=<PAGERDUTY_API_TOKEN>` verbatim.
+    return isAuthorizationSetupHeaderTemplateField(path) ? value : redactReportString(value);
+  }
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
   if (Array.isArray(value)) {
     return value.map((item, index) => redactReportValueAtPath(item, undefined, [
@@ -1810,7 +1964,7 @@ const outcomeSummary = (
   switch (outcome) {
     case 'authorization-required':
       return proxyAuthenticationRequired
-        ? 'A valid mcptest login is a prerequisite for proxy access; this run was not scored.'
+        ? 'The mcptest proxy rejected an invalid or expired mcptest login; this run was not scored.'
         : 'Authorization is a prerequisite; this run was not scored.';
     case 'partial':
       return 'The run was only partially evaluated and no overall grade was assigned.';
@@ -1860,6 +2014,10 @@ export const createPublicReport = (
     VERSION_INFO.commitHash && VERSION_INFO.commitHash !== 'unknown' ? VERSION_INFO.commitHash : undefined
   );
   const toolSurfaceAnalysis = options.toolSurfaceAnalysis ?? report.toolSurfaceAnalysis;
+  const capabilityInventory = report.capabilityInventory
+    ? validateCapabilityInventory(report.capabilityInventory)
+    : undefined;
+  const authorizationGuidance = getTrustedAuthorizationGuidanceForEndpoint(report.serverUrl);
 
   const artifact: PublicReport = {
     $schema: REPORT_SCHEMA_URL,
@@ -1926,8 +2084,46 @@ export const createPublicReport = (
     ...(toolSurfaceAnalysis ? {
       toolSurfaceAnalysis: toolSurfaceAnalysis as unknown as NonNullable<PublicReport['toolSurfaceAnalysis']>,
     } : {}),
+    ...(capabilityInventory ? { capabilityInventory } : {}),
     ...(options.oauthTrace ? {
       oauthTrace: options.oauthTrace as unknown as NonNullable<PublicReport['oauthTrace']>,
+    } : {}),
+    ...(authorizationGuidance?.catalogId ? {
+      authorizationSetup: {
+        version: 1,
+        catalogId: authorizationGuidance.catalogId,
+        status: authorizationGuidance.status,
+        statusLabel: authorizationGuidance.statusLabel,
+        summary: authorizationGuidance.summary,
+        ...(authorizationGuidance.responsibleParty
+          ? { responsibleParty: authorizationGuidance.responsibleParty }
+          : {}),
+        ...(authorizationGuidance.reviewedAt
+          ? { reviewedAt: authorizationGuidance.reviewedAt }
+          : {}),
+        steps: authorizationGuidance.steps,
+        callbacks: authorizationGuidance.callbacks,
+        settings: authorizationGuidance.settings,
+        ...(authorizationGuidance.documentationUrl
+          ? { documentationUrl: authorizationGuidance.documentationUrl }
+          : {}),
+        ...(authorizationGuidance.registrationUrl
+          ? { registrationUrl: authorizationGuidance.registrationUrl }
+          : {}),
+        ...(authorizationGuidance.alternativeAuthType
+          && ['bearer-token', 'api-token', 'api-key'].includes(
+            authorizationGuidance.alternativeAuthType
+          )
+          ? { alternativeAuthType: authorizationGuidance.alternativeAuthType as 'bearer-token' | 'api-token' | 'api-key' }
+          : {}),
+        ...(authorizationGuidance.alternativeHeaderName
+          ? { alternativeHeaderName: authorizationGuidance.alternativeHeaderName }
+          : {}),
+        ...(authorizationGuidance.alternativeHeaderTemplate
+          ? { alternativeHeaderTemplate: authorizationGuidance.alternativeHeaderTemplate }
+          : {}),
+        provenance: 'current-catalog-guidance',
+      },
     } : {}),
     sections: Object.entries(report.sections).map(([id, section]) => {
       const status = sectionStatus(id, section, outcome, report.outcome === undefined);
@@ -1981,6 +2177,45 @@ const scoreLabel = (section: PublicReport['sections'][number]): string => (
     : `${section.score.earned} / ${section.score.maximum}`
 );
 
+const inventoryStatusLabel = (
+  section: NonNullable<PublicReport['capabilityInventory']>['tools']
+): string => {
+  const omitted = section.omittedCount > 0 ? `; ${section.omittedCount} omitted` : '';
+  const counts = `${section.retainedCount} retained of ${section.observedCount} observed`;
+  if (section.status === 'complete') return `Complete discovery: ${counts}${omitted}.`;
+  if (section.status === 'partial' && !section.paginationComplete) {
+    return `Partial discovery: ${counts}${omitted}. More capabilities may exist.`;
+  }
+  if (section.status === 'partial' && section.omittedCount > 0) {
+    return `Discovery completed; bounded inventory: ${counts}${omitted}.`;
+  }
+  if (section.status === 'partial') {
+    return `Discovery completed; sanitized inventory: ${counts}. Capability details were sanitized for public display.`;
+  }
+  if (section.status === 'unsupported') return 'This discovery method is unsupported.';
+  return 'Discovery was unavailable. This does not mean the server provides no capabilities.';
+};
+
+const emptyInventoryLabel = (
+  section: NonNullable<PublicReport['capabilityInventory']>['tools']
+): string => {
+  if (section.status === 'complete') return 'No capabilities were reported.';
+  if (section.status === 'unsupported') return 'This discovery method is unsupported.';
+  if (section.status === 'unavailable') {
+    return 'Capabilities are unavailable; this does not mean the server provides none.';
+  }
+  if (!section.paginationComplete) {
+    return 'No retained capabilities are available from this incomplete discovery.';
+  }
+  return section.omittedCount > 0
+    ? 'No capabilities were retained in this completed, bounded inventory.'
+    : 'No capabilities were retained in this completed, sanitized inventory.';
+};
+
+const argumentSummary = (
+  argument: { name: string; type?: string; required: boolean }
+): string => `${markdownInline(argument.name)}${argument.type ? `: ${markdownInline(argument.type)}` : ''}${argument.required ? ' (required)' : ' (optional)'}`;
+
 /** Produces deterministic, standalone human-readable Markdown. */
 export const serializePublicReportMarkdown = (report: PublicReport): string => {
   const validated = PublicReportSchema.parse(report);
@@ -2004,12 +2239,43 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       === 'proxy-authentication-required';
     lines.push(
       proxyAuthenticationRequired
-        ? '> A valid mcptest login is a proxy prerequisite, not a target authorization failure. This run was not scored.'
+        ? '> The mcptest proxy rejected an invalid or expired mcptest login. This is not a target authorization failure. This run was not scored.'
         : '> Authorization is a prerequisite, not a failed 0% grade. This run was not scored.',
       '',
       markdownInline(value.outcome.authorizationPrerequisite.message),
       ''
     );
+  }
+
+  if (value.authorizationSetup) {
+    const setup = value.authorizationSetup;
+    lines.push(
+      '## Authorization setup',
+      '',
+      `**${markdownInline(setup.statusLabel)}** — ${markdownInline(setup.summary)}`,
+      '',
+      `- Catalog entry: ${markdownInline(setup.catalogId)}`,
+      ...(setup.responsibleParty
+        ? [`- Responsible party: ${markdownInline(setup.responsibleParty)}`]
+        : []),
+      `- Provenance: Current catalog guidance${setup.reviewedAt ? `, reviewed ${setup.reviewedAt}` : ''}; not evidence observed during this report run.`,
+      ...(setup.callbacks.map(callback => `- Callback URI: ${markdownInline(callback)}`)),
+      ...(setup.settings.map(setting => `- ${markdownInline(setting.label)}: ${markdownInline(setting.value)}${setting.required ? ' (required)' : ' (optional)'}`)),
+      ...(setup.alternativeAuthType ? [`- Alternative credential: ${markdownInline(setup.alternativeAuthType)}`] : []),
+      ...(setup.alternativeHeaderName && setup.alternativeHeaderTemplate
+        ? [`- Safe header template: ${markdownInline(setup.alternativeHeaderName)}: ${markdownInline(setup.alternativeHeaderTemplate)}`]
+        : []),
+      ''
+    );
+    if (setup.steps.length > 0) {
+      lines.push(...setup.steps.map((step, index) => `${index + 1}. ${markdownInline(step)}`), '');
+    }
+    if (setup.registrationUrl) {
+      lines.push(`[Provider setup or application page](${setup.registrationUrl})`, '');
+    }
+    if (setup.documentationUrl) {
+      lines.push(`[Publisher documentation](${setup.documentationUrl})`, '');
+    }
   }
 
   lines.push('## Score', '');
@@ -2045,6 +2311,38 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     }
     if (value.transport) lines.push(`- Transport: ${markdownInline(value.transport.type)}`);
     lines.push('');
+  }
+
+  if (value.capabilityInventory) {
+    const inventory = value.capabilityInventory;
+    lines.push(
+      '## Capabilities provided',
+      '',
+      `Observed ${inventory.observedAt} at ${markdownInline(inventory.provenance.testedEndpoint)} via ${inventory.provenance.route}; ${inventory.authentication}.`,
+      ''
+    );
+    const groups = [
+      ['Tools', inventory.tools, (item: typeof inventory.tools.items[number]) => (
+        `${markdownInline(item.name)}${item.description ? ` — ${markdownInline(item.description)}` : ''}${item.input?.length ? ` (${item.input.map(argumentSummary).join(', ')})` : ''}`
+      )],
+      ['Resources', inventory.resources, (item: typeof inventory.resources.items[number]) => (
+        `${markdownInline(item.name)}${item.title ? ` — ${markdownInline(item.title)}` : ''}${item.description ? `: ${markdownInline(item.description)}` : ''}${item.mimeType ? ` [${markdownInline(item.mimeType)}]` : ''}`
+      )],
+      ['Resource templates', inventory.resourceTemplates, (item: typeof inventory.resourceTemplates.items[number]) => (
+        `${markdownInline(item.name)}${item.title ? ` — ${markdownInline(item.title)}` : ''}${item.description ? `: ${markdownInline(item.description)}` : ''}${item.mimeType ? ` [${markdownInline(item.mimeType)}]` : ''}`
+      )],
+      ['Prompts', inventory.prompts, (item: typeof inventory.prompts.items[number]) => (
+        `${markdownInline(item.name)}${item.description ? ` — ${markdownInline(item.description)}` : ''}${item.arguments?.length ? ` (${item.arguments.map(argumentSummary).join(', ')})` : ''}`
+      )],
+    ] as const;
+    for (const [label, section, formatItem] of groups) {
+      lines.push(`### ${label}`, '', inventoryStatusLabel(section), '');
+      if (section.items.length > 0) {
+        lines.push(...section.items.map((item) => `- ${formatItem(item as never)}`), '');
+      } else {
+        lines.push(emptyInventoryLabel(section), '');
+      }
+    }
   }
 
   if (value.timings) {

@@ -15,6 +15,7 @@ export type OAuthTraceEventType =
   | 'target_challenge'
   | 'protected_resource_metadata'
   | 'authorization_server_metadata'
+  | 'client_establishment'
   | 'cimd'
   | 'dynamic_client_registration'
   | 'pre_registered_client'
@@ -79,7 +80,10 @@ export type OAuthTraceTerminalStatus =
   | 'redirected'
   | 'pre_registered_client_required'
   | 'provider_approval_required'
+  | 'provider_callback_incompatible'
+  | 'operator_client_not_configured'
   | 'proxy_authentication_required'
+  | 'proxy_limit_reached'
   | 'transient_discovery_failure'
   | 'discovery_blocked_invalid'
   /** @deprecated retained for traces written before provider outcome classification. */
@@ -653,6 +657,7 @@ export class OAuthFlightRecorder {
           : status === 'manual_client_required'
             || status === 'pre_registered_client_required'
             || status === 'provider_approval_required'
+            || status === 'operator_client_not_configured'
             ? 'required'
             : status === 'cancelled'
               ? 'cancelled'
@@ -740,6 +745,7 @@ export const createOAuthFlightRecorder = ({
 type OAuthTraceResponseOrigin = {
   route: 'direct' | 'proxy';
   source: 'target' | 'proxy';
+  relayFailure?: 'unsupported_client_authentication';
 };
 
 const oauthTraceResponseOrigins = new WeakMap<Response, OAuthTraceResponseOrigin>();
@@ -1065,6 +1071,8 @@ export const createOAuthTraceFetch = (
       route: 'direct' as const,
       source: 'target' as const,
     };
+    const unsupportedClientAuthentication = responseOrigin.source === 'proxy'
+      && responseOrigin.relayFailure === 'unsupported_client_authentication';
     const durationMs = Math.max(0, Date.now() - startedAtMs);
     recorder.record({
       type,
@@ -1075,9 +1083,11 @@ export const createOAuthTraceFetch = (
           ? 'direct_target'
           : 'authorization_server',
       route: responseOrigin.route,
-      explanation: response.ok
-        ? `${oauthRequestLabel(type)} received HTTP ${response.status} via ${responseOrigin.route} discovery; awaiting SDK parsing and validation.`
-        : `${explanationForRequest(type, false, response.status)} The response was ${responseOrigin.source}-owned and used ${responseOrigin.route} discovery.`,
+      explanation: unsupportedClientAuthentication
+        ? 'The authenticated proxy rejected unsupported OAuth client authentication before contacting the target token endpoint.'
+        : response.ok
+          ? `${oauthRequestLabel(type)} received HTTP ${response.status} via the ${responseOrigin.route} route; awaiting SDK parsing and validation.`
+          : `${explanationForRequest(type, false, response.status)} The response was ${responseOrigin.source}-owned and used the ${responseOrigin.route} route.`,
       request: {
         method: details.method,
         url: sanitizeOAuthTraceUrl(details.url),
@@ -1085,12 +1095,20 @@ export const createOAuthTraceFetch = (
       response: {
         status: response.status,
         headers: safeResponseHeaders(response, new Set()),
+        ...(unsupportedClientAuthentication ? {
+          metadata: {
+            relayFailure: 'unsupported_client_authentication',
+            targetContacted: false,
+          },
+        } : {}),
       },
       timing: { startedAt, durationMs },
     });
     if (responseOrigin.source === 'proxy') {
       throw new ProxyOwnedOAuthDiscoveryResponseError(
-        `Authenticated proxy returned its own HTTP ${response.status} response during OAuth discovery.`
+        unsupportedClientAuthentication
+          ? 'Authenticated proxy rejected unsupported OAuth client authentication before contacting the target token endpoint.'
+          : `Authenticated proxy returned its own HTTP ${response.status} response during ${oauthRequestLabel(type).toLowerCase()}.`
       );
     }
     return response;
