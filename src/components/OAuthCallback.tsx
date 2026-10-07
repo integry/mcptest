@@ -1,8 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { completeOAuthFlow } from '../utils/oauthFlow';
+import {
+  OAuthProxyAuthenticationRequiredError,
+  completeOAuthFlow,
+  getHostedOAuthTokenProxyUrl,
+} from '../utils/oauthFlow';
 import { completeHostedOAuthFlow } from '../utils/hostedOAuth';
 import { getSpaceUrl } from '../utils/urlUtils';
+import { storeOAuthReconnectRequest } from '../utils/oauthReconnect';
 import { useAuth } from '../context/AuthContext';
 
 interface OAuthReturnView {
@@ -15,6 +20,7 @@ interface OAuthReturnView {
 
 interface OAuthNavigationState {
   oauthSuccess: boolean;
+  authorizedServerUrl?: string;
   fromOAuthReturn?: boolean;
   targetSpaceId?: string;
   serverUrl?: string;
@@ -23,26 +29,42 @@ interface OAuthNavigationState {
 const OAuthCallback: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { currentUser, loading } = useAuth();
   const processingRef = useRef(false);
-  const { currentUser } = useAuth();
 
   useEffect(() => {
-    if (processingRef.current) return;
+    if (loading || processingRef.current) return;
     processingRef.current = true;
+
+    const getSessionItem = (key: string) => {
+      try {
+        return sessionStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    };
+
+    const setSessionItem = (key: string, value: string) => {
+      try {
+        sessionStorage.setItem(key, value);
+      } catch {
+        // OAuth navigation state remains available when storage is blocked.
+      }
+    };
 
     const addOAuthLog = (type: 'info' | 'error' | 'warning', message: string) => {
       let logs: Array<{ type: string; message: string; timestamp: string }> = [];
       try {
-        logs = JSON.parse(sessionStorage.getItem('oauth_callback_logs') || '[]');
+        logs = JSON.parse(getSessionItem('oauth_callback_logs') || '[]');
       } catch {
         // Replace malformed legacy callback logs.
       }
       logs.push({ type, message, timestamp: new Date().toISOString() });
-      sessionStorage.setItem('oauth_callback_logs', JSON.stringify(logs));
+      setSessionItem('oauth_callback_logs', JSON.stringify(logs));
     };
 
     const handleOAuthCallback = async () => {
-      sessionStorage.setItem('oauth_callback_logs', '[]');
+      setSessionItem('oauth_callback_logs', '[]');
       addOAuthLog('info', 'Processing the OAuth authorization response...');
 
       try {
@@ -51,9 +73,10 @@ const OAuthCallback: React.FC = () => {
           window.location.origin
         );
         const hostedResult = callbackUrl.searchParams.get('hosted_result');
+        const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
         let serverUrl: string;
         if (hostedResult) {
-          const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
+          // Hosted grants are bound to the Firebase user, so completion needs a login.
           if (!proxyUrl || !currentUser) throw new Error('Sign in again to complete hosted OAuth.');
           ({ serverUrl } = await completeHostedOAuthFlow({
             result: hostedResult,
@@ -61,13 +84,40 @@ const OAuthCallback: React.FC = () => {
             firebaseToken: await currentUser.getIdToken(),
           }));
         } else {
-          ({ serverUrl } = await completeOAuthFlow(callbackUrl));
+          const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+          // The hosted token relay works without a login; a login only lifts
+          // its anonymous limits. A login that cannot produce a token is stale.
+          let proxyToken: string | undefined;
+          if (tokenProxyUrl && currentUser) {
+            try {
+              proxyToken = await currentUser.getIdToken();
+            } catch {
+              throw new OAuthProxyAuthenticationRequiredError();
+            }
+          }
+          ({ serverUrl } = await completeOAuthFlow(callbackUrl, {
+            ...(tokenProxyUrl
+              ? {
+                  tokenProxy: {
+                    url: tokenProxyUrl,
+                    authorizationToken: proxyToken,
+                  },
+                }
+              : {}),
+          }));
         }
         addOAuthLog('info', 'OAuth authorization completed successfully.');
 
+        // The token remains in OAuth storage. Only hand the exact endpoint to
+        // the app so it can select and reconnect the authorized server.
+        storeOAuthReconnectRequest(serverUrl);
+
         let targetPath = '/';
-        let navigationState: OAuthNavigationState = { oauthSuccess: true };
-        const returnViewJson = sessionStorage.getItem('oauth_return_view');
+        let navigationState: OAuthNavigationState = {
+          oauthSuccess: true,
+          authorizedServerUrl: serverUrl,
+        };
+        const returnViewJson = getSessionItem('oauth_return_view');
 
         if (returnViewJson) {
           try {
@@ -96,7 +146,7 @@ const OAuthCallback: React.FC = () => {
           }
         }
 
-        sessionStorage.setItem('oauth_server_url', serverUrl);
+        setSessionItem('oauth_server_url', serverUrl);
         navigate(targetPath, { state: navigationState, replace: true });
       } catch (error) {
         const message = error instanceof Error
@@ -111,7 +161,7 @@ const OAuthCallback: React.FC = () => {
     };
 
     void handleOAuthCallback();
-  }, [currentUser, location.pathname, location.search, navigate]);
+  }, [currentUser, loading, location.pathname, location.search, navigate]);
 
   return (
     <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">

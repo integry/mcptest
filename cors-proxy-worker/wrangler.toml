@@ -1,6 +1,7 @@
 name = "cors-proxy-worker"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["global_fetch_strictly_public"]
 
 [vars]
 FIREBASE_PROJECT_ID = "mcptest-a530d"
@@ -14,6 +15,21 @@ class_name = "HostedOAuthBroker"
 [[migrations]]
 tag = "v1-hosted-oauth"
 new_sqlite_classes = ["HostedOAuthBroker"]
+
+# Caller-based limits (Cloudflare native Rate Limiting, no Durable Objects).
+# These double as the spend cap for the Workers Paid plan; keep them in sync
+# with ANONYMOUS_REQUESTS_PER_PERIOD / SIGNED_IN_REQUESTS_PER_PERIOD in
+# src/index.ts. Anonymous callers are keyed by CF-Connecting-IP, signed-in
+# callers by Firebase uid. Cloudflare only supports period = 10 or 60.
+[[ratelimits]]
+name = "ANON_RATE_LIMITER"
+namespace_id = "3320"
+simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "USER_RATE_LIMITER"
+namespace_id = "3321"
+simple = { limit = 600, period = 60 }
 
 [observability.logs]
 enabled = true

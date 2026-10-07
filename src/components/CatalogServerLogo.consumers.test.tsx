@@ -20,8 +20,7 @@ describe('shared catalog server logo consumers', () => {
     ['CatalogServerCard', () => render(<CatalogServerCard server={server} onTest={vi.fn()} />)],
     ['SuggestedServersPanel', () => render(
       <SuggestedServersPanel
-        setServerUrl={vi.fn()}
-        handleConnect={vi.fn()}
+        onServerSelect={vi.fn()}
         isConnected={false}
         isConnecting={false}
       />

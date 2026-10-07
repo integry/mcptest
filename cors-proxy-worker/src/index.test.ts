@@ -1,13 +1,31 @@
 import { createServer } from 'node:http';
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
+import { describe, expect, it, vi } from 'vitest';
 import proxyWorker, {
-  HostedOAuthBroker,
+  ANONYMOUS_MAX_RESPONSE_BYTES,
+  OAUTH_RELAY_FAILURE_HEADER,
+  limitResponseBody,
+  PROXY_LIMIT_HEADER,
+  PROXY_LIMIT_KIND_HEADER,
+  PROXY_LIMIT_SIGNAL_HEADER,
+  PROXY_LIMIT_TRAILER_PREFIX,
   PROXY_RESPONSE_SOURCE_HEADER,
+  type RateLimiter,
   fetchTargetRequest,
   getOperatorOAuthClient,
   getTargetRequestHeaders,
+  handleOAuthOperatorClientRequest,
+  handleOAuthRegistrationRequest,
+  handleOAuthTokenRequest,
+  handleProxyRequest,
   withCorsResponseHeaders,
 } from './index';
+
+const rateLimiter = (success = true) => {
+  const limit = vi.fn(async (_options: { key: string }) => ({ success }));
+  return { limit } satisfies RateLimiter;
+};
 
 interface CorsRequest {
   getResponseHeader(name: string): string | null;
@@ -32,13 +50,6 @@ const readProvenanceThroughCors = (url: string): Promise<string | null> => (
 );
 
 describe('proxy target credential forwarding', () => {
-  it('retains the registered hosted OAuth Durable Object export', async () => {
-    const response = await new HostedOAuthBroker().fetch();
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get('cache-control')).toBe('no-store');
-  });
-
   it('resolves confidential provider clients only from server bindings', () => {
     const env = {
       FIREBASE_PROJECT_ID: 'test-project',
@@ -57,6 +68,10 @@ describe('proxy target credential forwarding', () => {
       Authorization: 'Bearer firebase-jwt',
       'X-MCP-Authorization': 'Bearer target-token',
       'X-MCP-Hosted-Grant': 'opaque-hosted-grant',
+      'X-MCP-OAuth-Client-Authorization': 'Basic dynamic-secret',
+      'X-MCP-OAuth-Issuer': 'https://issuer.example',
+      'X-MCP-OAuth-Registration-Endpoint': 'https://issuer.example/register',
+      'X-MCP-OAuth-Token-Endpoint': 'https://issuer.example/token',
       'x-api-key': 'target-api-key',
       'CF-Connecting-IP': '192.0.2.1',
     });
@@ -64,8 +79,56 @@ describe('proxy target credential forwarding', () => {
     expect(headers.get('authorization')).toBe('Bearer target-token');
     expect(headers.get('x-mcp-authorization')).toBeNull();
     expect(headers.get('x-mcp-hosted-grant')).toBeNull();
+    expect(headers.get('x-mcp-oauth-client-authorization')).toBeNull();
+    expect(headers.get('x-mcp-oauth-issuer')).toBeNull();
+    expect(headers.get('x-mcp-oauth-registration-endpoint')).toBeNull();
+    expect(headers.get('x-mcp-oauth-token-endpoint')).toBeNull();
     expect(headers.get('x-api-key')).toBe('target-api-key');
     expect(headers.get('cf-connecting-ip')).toBeNull();
+  });
+
+  it('strips browser context while preserving MCP and user target headers', () => {
+    const headers = getTargetRequestHeaders({
+      Origin: 'https://mcptest.io',
+      Referer: 'https://mcptest.io/',
+      'Sec-Fetch-Site': 'cross-site',
+      'SEC-FETCH-MODE': 'cors',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-User': '?1',
+      'Sec-CH-UA': '"Chromium";v="140"',
+      'sec-ch-ua-platform': '"Linux"',
+      Priority: 'u=1, i',
+      Authorization: 'Bearer firebase-jwt',
+      'X-MCP-Authorization': 'Bearer target-token',
+      Accept: 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+      'MCP-Protocol-Version': '2025-11-25',
+      'MCP-Session-Id': 'session-1',
+      'Last-Event-ID': 'event-9',
+      'X-Tenant-API-Key': 'target-api-key',
+    });
+
+    for (const name of [
+      'origin',
+      'referer',
+      'sec-fetch-site',
+      'sec-fetch-mode',
+      'sec-fetch-dest',
+      'sec-fetch-user',
+      'sec-ch-ua',
+      'sec-ch-ua-platform',
+      'priority',
+      'x-mcp-authorization',
+    ]) {
+      expect(headers.get(name), name).toBeNull();
+    }
+    expect(headers.get('authorization')).toBe('Bearer target-token');
+    expect(headers.get('accept')).toBe('application/json, text/event-stream');
+    expect(headers.get('content-type')).toBe('application/json');
+    expect(headers.get('mcp-protocol-version')).toBe('2025-11-25');
+    expect(headers.get('mcp-session-id')).toBe('session-1');
+    expect(headers.get('last-event-id')).toBe('event-9');
+    expect(headers.get('x-tenant-api-key')).toBe('target-api-key');
   });
 
   it('never forwards Firebase authorization when no target credential exists', () => {
@@ -102,6 +165,123 @@ describe('proxy target credential forwarding', () => {
     ]);
     expect(requests[1].headers.get('authorization')).toBe('Bearer target-token');
     expect(requests[1].headers.get('x-api-key')).toBe('target-api-key');
+  });
+
+  it.each([
+    ['POST', 'application/json, text/event-stream'],
+    ['GET', 'text/event-stream'],
+  ])('sanitizes the final %s target hop without dropping MCP state', async (method, accept) => {
+    const requests: Request[] = [];
+    const response = await fetchTargetRequest(new Request('https://example.com/mcp', {
+      method,
+      headers: {
+        Origin: 'https://mcptest.io',
+        Referer: 'https://mcptest.io/',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-User': '?1',
+        'Sec-CH-UA-Mobile': '?0',
+        Priority: 'u=1',
+        Accept: accept,
+        'MCP-Protocol-Version': '2025-11-25',
+        'MCP-Session-Id': 'session-1',
+        'Last-Event-ID': 'event-9',
+        'X-Tenant-API-Key': 'target-api-key',
+      },
+      ...(method === 'POST' ? { body: '{}' } : {}),
+      redirect: 'manual',
+    }), async request => {
+      requests.push(request);
+      return new Response('connected');
+    });
+
+    expect(await response.text()).toBe('connected');
+    expect(requests).toHaveLength(1);
+    expect([...requests[0].headers.keys()]).not.toEqual(expect.arrayContaining([
+      'origin',
+      'referer',
+      'sec-fetch-site',
+      'sec-fetch-mode',
+      'sec-fetch-dest',
+      'sec-fetch-user',
+      'sec-ch-ua-mobile',
+      'priority',
+    ]));
+    expect(requests[0].headers.get('accept')).toBe(accept);
+    expect(requests[0].headers.get('mcp-protocol-version')).toBe('2025-11-25');
+    expect(requests[0].headers.get('mcp-session-id')).toBe('session-1');
+    expect(requests[0].headers.get('last-event-id')).toBe('event-9');
+    expect(requests[0].headers.get('x-tenant-api-key')).toBe('target-api-key');
+  });
+
+  it('keeps the sanitized header set across same-origin redirects', async () => {
+    const requests: Request[] = [];
+    await fetchTargetRequest(new Request('https://example.com/mcp', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://mcptest.io',
+        Referer: 'https://mcptest.io/',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-CH-UA-Platform': '"Linux"',
+        Priority: 'u=1',
+        Authorization: 'Bearer target-token',
+        'MCP-Session-Id': 'session-1',
+        'X-Tenant-API-Key': 'target-api-key',
+      },
+      body: '{}',
+      redirect: 'manual',
+    }), async request => {
+      requests.push(request);
+      return requests.length === 1
+        ? new Response(null, { status: 307, headers: { Location: '/mcp/' } })
+        : new Response('connected');
+    });
+
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.headers.get('origin')).toBeNull();
+      expect(request.headers.get('referer')).toBeNull();
+      expect(request.headers.get('sec-fetch-mode')).toBeNull();
+      expect(request.headers.get('sec-ch-ua-platform')).toBeNull();
+      expect(request.headers.get('priority')).toBeNull();
+      expect(request.headers.get('authorization')).toBe('Bearer target-token');
+      expect(request.headers.get('mcp-session-id')).toBe('session-1');
+      expect(request.headers.get('x-tenant-api-key')).toBe('target-api-key');
+    }
+  });
+
+  it('passes through a Cloudflare-like OAuth challenge once Origin is absent', async () => {
+    const response = await fetchTargetRequest(new Request('https://mcp.cloudflare.com/mcp', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://mcptest.io',
+        Accept: 'application/json, text/event-stream',
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+      redirect: 'manual',
+    }), async request => request.headers.has('origin')
+      ? new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Invalid Origin: mcptest.io' },
+          id: null,
+        }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+      : new Response(null, {
+          status: 401,
+          headers: {
+            'WWW-Authenticate': 'Bearer resource_metadata="https://mcp.cloudflare.com/.well-known/oauth-protected-resource/mcp"',
+          },
+        }));
+    const proxiedResponse = withCorsResponseHeaders(response, 'target');
+
+    expect(proxiedResponse.status).toBe(401);
+    expect(proxiedResponse.headers.get('www-authenticate')).toContain(
+      'https://mcp.cloudflare.com/.well-known/oauth-protected-resource/mcp'
+    );
+    expect(proxiedResponse.headers.get('access-control-expose-headers')?.toLowerCase())
+      .toContain('www-authenticate');
+    expect(proxiedResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
   });
 
   it('rejects cross-origin redirects before forwarding target credentials', async () => {
@@ -200,3 +380,2229 @@ describe('proxy target credential forwarding', () => {
     expect(response.headers.get('vary')).toBe('Access-Control-Request-Headers');
   });
 });
+
+describe('issuer-bound operator OAuth client route', () => {
+  const request = (
+    resource = 'https://api.githubcopilot.com/mcp/',
+    issuer = 'https://github.com/login/oauth'
+  ): Request => new Request('https://proxy.mcptest.test/oauth/client', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://mcptest.io',
+      Authorization: 'Bearer firebase-credential',
+      'X-MCP-OAuth-Resource': resource,
+      'X-MCP-OAuth-Issuer': issuer,
+    },
+  });
+
+  it('returns only the configured public client ID for an exact approved binding', async () => {
+    const clientSecret = 'must-stay-in-worker';
+    const response = await handleOAuthOperatorClientRequest(request(), {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+      GITHUB_OAUTH_CLIENT_SECRET: clientSecret,
+    }, { verifyToken: async () => 'user-1' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    const text = await response.text();
+    expect(text).not.toContain(clientSecret);
+    expect(JSON.parse(text)).toEqual({ client_id: 'github-operator-client' });
+  });
+
+  it('returns the public client ID to anonymous callers under the anonymous limiter', async () => {
+    const anonymous = request();
+    anonymous.headers.delete('Authorization');
+    const anonLimiter = rateLimiter();
+    const response = await handleOAuthOperatorClientRequest(anonymous, {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+      GITHUB_OAUTH_CLIENT_SECRET: 'github-operator-secret',
+      ANON_RATE_LIMITER: anonLimiter,
+    });
+
+    expect(response.status).toBe(200);
+    expect(anonLimiter.limit).toHaveBeenCalledWith({ key: 'ip:unknown' });
+    await expect(response.json()).resolves.toEqual({ client_id: 'github-operator-client' });
+  });
+
+  it('still rejects an invalid operator client login with 401', async () => {
+    const response = await handleOAuthOperatorClientRequest(request(), {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+      GITHUB_OAUTH_CLIENT_SECRET: 'github-operator-secret',
+    }, { verifyToken: async () => null });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('returns one safe prerequisite when operator credentials are incomplete', async () => {
+    const response = await handleOAuthOperatorClientRequest(request(), {
+      FIREBASE_PROJECT_ID: 'test-project',
+      GITHUB_OAUTH_CLIENT_ID: 'id-without-secret',
+    }, { verifyToken: async () => 'user-1' });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    await expect(response.json()).resolves.toEqual({
+      error: 'operator_client_not_configured',
+      error_description: 'The operator OAuth client is not configured for this provider.',
+    });
+  });
+
+  it('rejects browser-selected issuer or resource mappings outside the exact policy', async () => {
+    for (const untrusted of [
+      request('https://attacker.example/mcp', 'https://github.com/login/oauth'),
+      request('https://api.githubcopilot.com/mcp/', 'https://attacker.github.com/login/oauth'),
+    ]) {
+      const response = await handleOAuthOperatorClientRequest(untrusted, {
+        FIREBASE_PROJECT_ID: 'test-project',
+        GITHUB_OAUTH_CLIENT_ID: 'github-operator-client',
+        GITHUB_OAUTH_CLIENT_SECRET: 'github-operator-secret',
+      }, { verifyToken: async () => 'user-1' });
+      expect(response.status).toBe(400);
+      expect(await response.text()).not.toContain('github-operator-client');
+    }
+  });
+});
+
+describe('hosted OAuth token route', () => {
+  const issuer = 'https://auth.example.com/';
+  const discoveryUrl = 'https://auth.example.com/.well-known/oauth-authorization-server';
+  const tokenEndpoint = 'https://tokens.example.net/token';
+  const formBody = [
+    'grant_type=authorization_code',
+    'code=single-use-code',
+    'code_verifier=pkce-verifier',
+    'redirect_uri=https%3A%2F%2Fmcptest.io%2Foauth%2Fcallback',
+    'client_id=https%3A%2F%2Fmcptest.io%2Foauth%2Fclient-metadata.json',
+    'resource=https%3A%2F%2Fmcp.example.com%2Fmcp',
+  ].join('&');
+
+  const tokenRequest = (
+    body = formBody,
+    tokenEndpointHeader = tokenEndpoint,
+    issuerHeader = issuer
+  ) => new Request(
+    'https://proxy.mcptest.test/oauth/token',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://mcptest.io',
+        Authorization: 'Bearer firebase-credential',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-MCP-OAuth-Issuer': issuerHeader,
+        'X-MCP-OAuth-Token-Endpoint': tokenEndpointHeader,
+      },
+      body,
+    }
+  );
+
+  const huggingFaceIssuer = 'https://huggingface.co';
+  const huggingFaceDiscoveryUrl =
+    'https://huggingface.co/.well-known/oauth-authorization-server';
+  const huggingFaceTokenEndpoint = 'https://huggingface.co/oauth/token';
+  const huggingFaceResource = 'https://huggingface.co/mcp?login';
+  const huggingFaceForm = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: 'hf-single-use-code',
+    code_verifier: 'hf-pkce-verifier',
+    redirect_uri: 'https://mcptest.io/oauth/callback',
+    client_id: 'https://mcptest.io/oauth/client-metadata.json',
+    resource: huggingFaceResource,
+  }).toString();
+
+  const huggingFaceTokenRequest = (
+    body = huggingFaceForm,
+    tokenEndpointHeader = huggingFaceTokenEndpoint,
+    issuerHeader = huggingFaceIssuer
+  ): Request => tokenRequest(body, tokenEndpointHeader, issuerHeader);
+
+  const huggingFaceMetadata = (
+    overrides: Partial<Record<string, unknown>> = {}
+  ): Record<string, unknown> => ({
+    issuer: huggingFaceIssuer,
+    token_endpoint: huggingFaceTokenEndpoint,
+    client_id_metadata_document_supported: true,
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+    ...overrides,
+  });
+
+  type HuggingFaceInteropMutation = {
+    clientId?: string;
+    resource?: string;
+    redirectUri?: string;
+    issuer?: string;
+    tokenEndpoint?: string;
+    metadata?: Record<string, unknown>;
+    clientSecret?: string;
+    basicSecret?: string;
+    grantType?: 'authorization_code' | 'refresh_token';
+  };
+
+  it('relays the exact verified Hugging Face CIMD public-client form unchanged', async () => {
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === huggingFaceDiscoveryUrl) {
+        return new Response(JSON.stringify(huggingFaceMetadata()), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      expect(request.url).toBe(huggingFaceTokenEndpoint);
+      expect(request.headers.get('authorization')).toBeNull();
+      expect(await request.text()).toBe(huggingFaceForm);
+      return new Response(JSON.stringify({
+        access_token: 'hf-target-access-token',
+        refresh_token: 'hf-target-refresh-token',
+        token_type: 'Bearer',
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      huggingFaceTokenRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl,
+        resolveHostname: async () => ['203.0.114.10'],
+        verifyToken: async token => token === 'firebase-credential' ? 'user-1' : null,
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(requests.map(request => request.url)).toEqual([
+      huggingFaceDiscoveryUrl,
+      huggingFaceTokenEndpoint,
+    ]);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: 'hf-target-access-token',
+      refresh_token: 'hf-target-refresh-token',
+    });
+  });
+
+  it('relays an otherwise valid Hugging Face public-client refresh form unchanged', async () => {
+    const refreshForm = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: 'hf-rotating-refresh-token',
+      client_id: 'https://mcptest.io/oauth/client-metadata.json',
+      resource: huggingFaceResource,
+    }).toString();
+    const requests: Request[] = [];
+    const response = await handleOAuthTokenRequest(
+      huggingFaceTokenRequest(refreshForm),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => {
+          requests.push(request);
+          if (request.url === huggingFaceDiscoveryUrl) {
+            return new Response(JSON.stringify(huggingFaceMetadata()), {
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+          expect(request.headers.get('authorization')).toBeNull();
+          expect(await request.text()).toBe(refreshForm);
+          return new Response(JSON.stringify({
+            access_token: 'hf-refreshed-access-token',
+            token_type: 'Bearer',
+          }), { headers: { 'Content-Type': 'application/json' } });
+        },
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(requests.map(request => request.url)).toEqual([
+      huggingFaceDiscoveryUrl,
+      huggingFaceTokenEndpoint,
+    ]);
+  });
+
+  it('relays Hugging Face invalid_grant JSON as target evidence', async () => {
+    const requests: Request[] = [];
+    const response = await handleOAuthTokenRequest(
+      huggingFaceTokenRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => {
+          requests.push(request);
+          return request.url === huggingFaceDiscoveryUrl
+            ? new Response(JSON.stringify(huggingFaceMetadata()), {
+                headers: { 'Content-Type': 'application/json' },
+              })
+            : new Response(JSON.stringify({
+                error: 'invalid_grant',
+                error_description: 'The authorization grant is invalid.',
+              }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+              });
+        },
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(response.headers.get(OAUTH_RELAY_FAILURE_HEADER)).toBeNull();
+    expect(requests.map(request => request.url)).toEqual([
+      huggingFaceDiscoveryUrl,
+      huggingFaceTokenEndpoint,
+    ]);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      error_description: 'The authorization grant is invalid.',
+    });
+  });
+
+  it('keeps another issuer fail-closed when the same token metadata omits none', async () => {
+    const otherIssuer = 'https://auth.other-provider.example';
+    const otherDiscovery = `${otherIssuer}/.well-known/oauth-authorization-server`;
+    const requests: Request[] = [];
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const response = await handleOAuthTokenRequest(
+        huggingFaceTokenRequest(huggingFaceForm, huggingFaceTokenEndpoint, otherIssuer),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: async request => {
+            requests.push(request);
+            return new Response(JSON.stringify(huggingFaceMetadata({ issuer: otherIssuer })), {
+              headers: { 'Content-Type': 'application/json' },
+            });
+          },
+          verifyToken: async () => 'user-1',
+        }
+      );
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(response.headers.get(OAUTH_RELAY_FAILURE_HEADER))
+        .toBe('unsupported_client_authentication');
+      expect(requests.map(request => request.url)).toEqual([otherDiscovery]);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  const rejectedHuggingFaceInteropMutations: Array<[
+    string,
+    HuggingFaceInteropMutation,
+  ]> = [
+    ['wrong client ID', { clientId: 'https://mcptest.io/oauth/wrong-client.json' }],
+    ['the resource query omitted', { resource: 'https://huggingface.co/mcp' }],
+    ['a different Hugging Face path and query', {
+      resource: 'https://huggingface.co/other-mcp?login=1',
+    }],
+    ['an external HTTPS resource', { resource: 'https://resource.example/mcp?login' }],
+    ['a refresh grant with the resource query omitted', {
+      resource: 'https://huggingface.co/mcp',
+      grantType: 'refresh_token',
+    }],
+    ['a refresh grant with a different Hugging Face path and query', {
+      resource: 'https://huggingface.co/other-mcp?login=1',
+      grantType: 'refresh_token',
+    }],
+    ['a refresh grant with an external HTTPS resource', {
+      resource: 'https://resource.example/mcp?login',
+      grantType: 'refresh_token',
+    }],
+    ['wrong redirect URI', { redirectUri: 'https://mcptest.io/oauth/wrong-callback' }],
+    ['issuer spelling', { issuer: 'https://huggingface.co/' }],
+    ['wrong token endpoint', { tokenEndpoint: 'https://huggingface.co/oauth/token/' }],
+    ['missing CIMD support', { metadata: { client_id_metadata_document_supported: undefined } }],
+    ['a client secret', { clientSecret: 'hf-browser-client-secret' }],
+    ['an empty client secret parameter', { clientSecret: '' }],
+    ['a Basic header', { basicSecret: 'hf-basic-client-secret' }],
+  ];
+
+  it.each(rejectedHuggingFaceInteropMutations)(
+    'rejects Hugging Face public-client interop with %s before token fetch', async (
+      _label,
+      mutation
+    ) => {
+      const params = new URLSearchParams(huggingFaceForm);
+      if (mutation.clientId) params.set('client_id', mutation.clientId);
+      if (mutation.resource) params.set('resource', mutation.resource);
+      if (mutation.redirectUri) params.set('redirect_uri', mutation.redirectUri);
+      if (mutation.grantType === 'refresh_token') {
+        params.set('grant_type', 'refresh_token');
+        params.set('refresh_token', 'hf-rejected-refresh-token');
+        params.delete('code');
+        params.delete('code_verifier');
+        params.delete('redirect_uri');
+      }
+      if (mutation.clientSecret !== undefined) {
+        params.set('client_secret', mutation.clientSecret);
+      }
+      const requestIssuer = mutation.issuer || huggingFaceIssuer;
+      const requestTokenEndpoint = mutation.tokenEndpoint || huggingFaceTokenEndpoint;
+      const request = huggingFaceTokenRequest(
+        params.toString(),
+        requestTokenEndpoint,
+        requestIssuer
+      );
+      if (mutation.basicSecret) {
+        request.headers.set(
+          'X-MCP-OAuth-Client-Authorization',
+          `Basic ${btoa(`${encodeURIComponent(params.get('client_id')!)}:${mutation.basicSecret}`)}`
+        );
+      }
+      const requests: Request[] = [];
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const response = await handleOAuthTokenRequest(
+          request,
+          { FIREBASE_PROJECT_ID: 'test-project' },
+          {
+            fetchImpl: async targetRequest => {
+              requests.push(targetRequest);
+              return new Response(JSON.stringify(huggingFaceMetadata({
+                issuer: requestIssuer,
+                token_endpoint: requestTokenEndpoint,
+                ...(mutation.metadata || {}),
+              })), { headers: { 'Content-Type': 'application/json' } });
+            },
+            verifyToken: async () => 'user-1',
+          }
+        );
+
+        expect(response.status).toBeGreaterThanOrEqual(400);
+        expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+        expect(requests.some(targetRequest => (
+          targetRequest.method === 'POST' && targetRequest.url === requestTokenEndpoint
+        ))).toBe(false);
+        const responseText = await response.text();
+        const serializedLog = JSON.stringify(errorLog.mock.calls);
+        for (const secret of [
+          'hf-single-use-code',
+          'hf-pkce-verifier',
+          'hf-rejected-refresh-token',
+          'firebase-credential',
+          'hf-browser-client-secret',
+          'hf-basic-client-secret',
+        ]) {
+          expect(responseText).not.toContain(secret);
+          expect(serializedLog).not.toContain(secret);
+        }
+      } finally {
+        errorLog.mockRestore();
+      }
+    }
+  );
+
+  it('uses the exact cross-domain token endpoint advertised by issuer metadata', async () => {
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['none'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (request.url === tokenEndpoint) {
+        expect(request.method).toBe('POST');
+        expect(request.headers.get('authorization')).toBeNull();
+        expect(await request.text()).toBe(formBody);
+        return new Response(JSON.stringify({
+          access_token: 'target-access-token',
+          refresh_token: 'target-refresh-token',
+          token_type: 'Bearer',
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl,
+        verifyToken: async token => token === 'firebase-credential' ? 'user-1' : null,
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://mcptest.io');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(requests.filter(request => request.url === tokenEndpoint)).toHaveLength(1);
+    expect(requests.map(request => request.url).join('\n')).not.toContain('single-use-code');
+    await expect(response.json()).resolves.toMatchObject({ access_token: 'target-access-token' });
+  });
+
+  it.each([
+    ['advertises client_secret_basic', ['client_secret_basic']],
+    ['omits token endpoint authentication methods', undefined],
+  ])('relays form-encoded opaque client IDs with dynamic Basic authentication when metadata %s', async (
+    _,
+    tokenEndpointAuthMethods
+  ) => {
+    const clientId = 'client id:percent%+&café';
+    const clientSecret = 'dynamic secret';
+    const encode = (value: string): string => (
+      new URLSearchParams({ value }).toString().slice('value='.length)
+    );
+    const authorization = `Basic ${btoa(`${encode(clientId)}:${encode(clientSecret)}`)}`;
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set('X-MCP-OAuth-Client-Authorization', authorization);
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          ...(tokenEndpointAuthMethods
+            ? { token_endpoint_auth_methods_supported: tokenEndpointAuthMethods }
+            : {}),
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      expect(targetRequest.headers.get('authorization')).toBe(authorization);
+      expect(new URLSearchParams(await targetRequest.text()).has('client_id')).toBe(false);
+      return new Response(JSON.stringify({ access_token: 'dynamic-access-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      discoveryUrl,
+      tokenEndpoint,
+    ]);
+  });
+
+  it('rejects mixed dynamic Basic and form client authentication before discovery', async () => {
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: 'dynamic-client',
+      client_secret: 'form-secret',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set(
+      'X-MCP-OAuth-Client-Authorization',
+      `Basic ${btoa('dynamic-client:basic-secret')}`
+    );
+    const fetchImpl = vi.fn();
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['client_secret_post', true],
+    ['none', false],
+  ])('rejects dynamic %s authentication when metadata omits the Basic-only default', async (
+    _,
+    includeSecret
+  ) => {
+    const params = new URLSearchParams(formBody);
+    if (includeSecret) params.set('client_secret', 'dynamic-secret');
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: tokenEndpoint,
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(params.toString()),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([discoveryUrl]);
+  });
+
+  it('relays Basic credentials at the registration length boundaries', async () => {
+    const clientId = '\u0800'.repeat(2048);
+    const clientSecret = '\u0800'.repeat(4096);
+    const encode = (value: string): string => (
+      new URLSearchParams({ value }).toString().slice('value='.length)
+    );
+    const authorization = `Basic ${btoa(`${encode(clientId)}:${encode(clientSecret)}`)}`;
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set('X-MCP-OAuth-Client-Authorization', authorization);
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      expect(targetRequest.headers.get('authorization')).toBe(authorization);
+      expect(new URLSearchParams(await targetRequest.text()).has('client_secret')).toBe(false);
+      return new Response(JSON.stringify({ access_token: 'boundary-access-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(authorization).toHaveLength(73738);
+    expect(response.status).toBe(200);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      discoveryUrl,
+      tokenEndpoint,
+    ]);
+  });
+
+  it('relays post credentials at the registration length boundaries', async () => {
+    const clientId = '\u0800'.repeat(2048);
+    const clientSecret = '\u0800'.repeat(4096);
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      client_secret: clientSecret,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_post'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      expect(targetRequest.headers.get('authorization')).toBeNull();
+      expect(await targetRequest.text()).toBe(body);
+      return new Response(JSON.stringify({ access_token: 'boundary-access-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(body.length).toBeGreaterThan(32 * 1024);
+    expect(response.status).toBe(200);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      discoveryUrl,
+      tokenEndpoint,
+    ]);
+  });
+
+  it('rejects an oversized Basic secret even when the client ID is short', async () => {
+    const clientId = 'short-client';
+    const encode = (value: string): string => (
+      new URLSearchParams({ value }).toString().slice('value='.length)
+    );
+    const authorization = `Basic ${btoa(`${encode(clientId)}:${encode('s'.repeat(4097))}`)}`;
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: clientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const request = tokenRequest(body);
+    request.headers.set('X-MCP-OAuth-Client-Authorization', authorization);
+    const requests: Request[] = [];
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: tokenEndpoint,
+        token_endpoint_auth_methods_supported: ['client_secret_basic'],
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([discoveryUrl]);
+  });
+
+  it('rejects an issuer/token-endpoint mismatch before a target token request', async () => {
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: tokenEndpoint,
+        token_endpoint_auth_methods_supported: ['none'],
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(formBody, 'https://attacker.example/token'),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe(discoveryUrl);
+  });
+
+  it.each([
+    ['IPv4-mapped loopback IPv6', 'https://[::ffff:127.0.0.1]/'],
+    ['IPv4-mapped link-local IPv6', 'https://[::ffff:169.254.169.254]/'],
+    ['NAT64-mapped loopback IPv6', 'https://[64:ff9b::127.0.0.1]/'],
+    ['unspecified IPv6', 'https://[::]/'],
+    ['reserved IETF protocol assignment IPv6', 'https://[2001:100::1]/'],
+    ['ORCHIDv2 IPv6', 'https://[2001:20::1]/'],
+    ['reserved documentation IPv6', 'https://[2001:db8::1]/'],
+    ['unallocated IPv6', 'https://[4000::1]/'],
+    ['short IPv4 loopback', 'https://127.1/'],
+    ['octal IPv4 loopback', 'https://0177.0.0.1/'],
+    ['hexadecimal IPv4 loopback', 'https://0x7f000001/'],
+    ['integer IPv4 loopback', 'https://2130706433/'],
+    ['hexadecimal IPv4 link-local', 'https://0xa9fea9fe/'],
+  ])('rejects a forbidden issuer before discovery: %s', async (_, forbiddenIssuer) => {
+    const fetchImpl = vi.fn();
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(formBody, tokenEndpoint, forbiddenIssuer),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['IPv4-mapped loopback IPv6', 'https://[::ffff:127.0.0.1]/token'],
+    ['IPv4-mapped link-local IPv6', 'https://[::ffff:169.254.169.254]/token'],
+    ['unspecified IPv6', 'https://[::]/token'],
+    ['reserved IETF protocol assignment IPv6', 'https://[2001:100::1]/token'],
+    ['reserved documentation IPv6', 'https://[2001:db8::1]/token'],
+    ['unallocated IPv6', 'https://[4000::1]/token'],
+    ['short IPv4 loopback', 'https://127.1/token'],
+    ['octal IPv4 loopback', 'https://0177.0.0.1/token'],
+    ['hexadecimal IPv4 link-local', 'https://0xa9fea9fe/token'],
+  ])('rejects a forbidden advertised token endpoint before token fetch: %s', async (_, forbiddenEndpoint) => {
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: forbiddenEndpoint,
+        token_endpoint_auth_methods_supported: ['none'],
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(formBody, forbiddenEndpoint),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+  });
+
+  it.each([
+    ['public IPv4 issuer', 'https://8.8.8.8/', tokenEndpoint],
+    ['public IPv6 issuer', 'https://[2606:4700:4700::1111]/', tokenEndpoint],
+    ['global AMT protocol assignment', 'https://[2001:3::1]/', tokenEndpoint],
+    ['global Drone Remote ID protocol assignment', 'https://[2001:30::1]/', tokenEndpoint],
+    ['public IPv4 token endpoint', issuer, 'https://1.1.1.1/token'],
+    ['public IPv6 token endpoint', issuer, 'https://[2606:4700:4700::1001]/token'],
+    ['public IPv4-mapped endpoint', issuer, 'https://[::ffff:8.8.8.8]/token'],
+  ])('allows a public OAuth host: %s', async (_, publicIssuer, publicTokenEndpoint) => {
+    const expectedDiscoveryUrl = new URL('/.well-known/oauth-authorization-server', publicIssuer).toString();
+    const requests: Request[] = [];
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === expectedDiscoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer: publicIssuer,
+          token_endpoint: publicTokenEndpoint,
+          token_endpoint_auth_methods_supported: ['none'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ access_token: 'public-host-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(formBody, publicTokenEndpoint, publicIssuer),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(request => request.url)).toEqual([
+      expectedDiscoveryUrl,
+      new URL(publicTokenEndpoint).toString(),
+    ]);
+  });
+
+  it.each([307, 308])(
+    'rejects an HTTP %s token redirect without forwarding the form to its destination',
+    async status => {
+      const redirectedEndpoint = 'https://tokens.example.net/redirected-token';
+      const requests: Request[] = [];
+      const fetchImpl = async (request: Request) => {
+        requests.push(request);
+        if (request.url === discoveryUrl) {
+          return new Response(JSON.stringify({
+            issuer,
+            token_endpoint: tokenEndpoint,
+            token_endpoint_auth_methods_supported: ['none'],
+          }), { headers: { 'Content-Type': 'application/json' } });
+        }
+        if (request.url === tokenEndpoint) {
+          expect(request.redirect).toBe('manual');
+          expect(await request.text()).toBe(formBody);
+          return new Response(null, {
+            status,
+            headers: { Location: redirectedEndpoint },
+          });
+        }
+        throw new Error(`Unexpected fetch to ${request.url}`);
+      };
+
+      const response = await handleOAuthTokenRequest(
+        tokenRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        { fetchImpl, verifyToken: async () => 'user-1' }
+      );
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(requests.map(request => request.url)).toEqual([discoveryUrl, tokenEndpoint]);
+      expect(requests.some(request => request.url === redirectedEndpoint)).toBe(false);
+    }
+  );
+
+  it('keeps confidential operator secrets server-side', async () => {
+    const slackIssuer = 'https://mcp.slack.com/';
+    const slackTokenEndpoint = 'https://slack.com/api/oauth.v2.user.access';
+    const operatorClientId = 'operator client:plus+percent%&';
+    const operatorClientSecret = 'operator secret:/+?%&=';
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'slack-code',
+      code_verifier: 'slack-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: operatorClientId,
+      resource: 'https://mcp.slack.com/mcp',
+    }).toString();
+    const request = new Request('https://proxy.mcptest.test/oauth/token', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://mcptest.io',
+        Authorization: 'Bearer firebase-credential',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-MCP-OAuth-Issuer': slackIssuer,
+        'X-MCP-OAuth-Token-Endpoint': slackTokenEndpoint,
+      },
+      body,
+    });
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url.includes('/.well-known/')) {
+        return new Response(JSON.stringify({
+          issuer: slackIssuer,
+          token_endpoint: slackTokenEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      expect(targetRequest.headers.get('authorization')).toBe(
+        `Basic ${btoa('operator+client%3Aplus%2Bpercent%25%26:operator+secret%3A%2F%2B%3F%25%26%3D')}`
+      );
+      expect(await targetRequest.text()).toBe(body);
+      return new Response(JSON.stringify({ access_token: 'slack-access', token_type: 'Bearer' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(request, {
+      FIREBASE_PROJECT_ID: 'test-project',
+      SLACK_OAUTH_CLIENT_ID: operatorClientId,
+      SLACK_OAUTH_CLIENT_SECRET: operatorClientSecret,
+    }, { fetchImpl, verifyToken: async () => 'user-1' });
+
+    expect(response.status).toBe(200);
+    expect(requests.filter(targetRequest => targetRequest.url === slackTokenEndpoint)).toHaveLength(1);
+    expect(await response.text()).not.toContain(operatorClientSecret);
+  });
+
+  it('does not authenticate an endpoint advertised by a provider subdomain issuer', async () => {
+    const unapprovedIssuer = 'https://attacker.slack.com/';
+    const advertisedEndpoint = 'https://tokens.example.net/collect';
+    const operatorClientId = 'operator-client';
+    const operatorClientSecret = 'operator-secret';
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'attacker-code',
+      code_verifier: 'attacker-verifier',
+      redirect_uri: 'https://mcptest.io/oauth/callback',
+      client_id: operatorClientId,
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (targetRequest: Request) => {
+      requests.push(targetRequest);
+      if (targetRequest.url.includes('/.well-known/')) {
+        return new Response(JSON.stringify({
+          issuer: unapprovedIssuer,
+          token_endpoint: advertisedEndpoint,
+          token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new Error('Unapproved token endpoint must not be fetched');
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body, advertisedEndpoint, unapprovedIssuer),
+      {
+        FIREBASE_PROJECT_ID: 'test-project',
+        SLACK_OAUTH_CLIENT_ID: operatorClientId,
+        SLACK_OAUTH_CLIENT_SECRET: operatorClientSecret,
+      },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(requests.map(targetRequest => targetRequest.url)).toEqual([
+      'https://attacker.slack.com/.well-known/oauth-authorization-server',
+    ]);
+    expect(requests[0].headers.get('authorization')).toBeNull();
+  });
+
+  it.each([
+    'javascript://localhost/callback',
+    'ftp://127.0.0.1/callback',
+    'https://user@client.example/callback',
+    'https://user:password@client.example/callback',
+    'https://@client.example/callback',
+    'https:user@client.example/callback',
+    'https:/user@client.example/callback',
+    'https:\\user@client.example\\callback',
+    'https:////user@client.example/callback',
+    'https:@client.example/callback',
+    'https:/@client.example/callback',
+    'https:\\@client.example\\callback',
+    'https://client.example/callback#fragment',
+    'https://client.example/callback#',
+    'http://user@localhost/callback',
+    'http://127.0.0.1/callback#fragment',
+  ])('rejects an unsafe redirect URI: %s', async redirectUri => {
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: redirectUri,
+      client_id: 'loopback-client',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      return new Response(JSON.stringify({
+        issuer,
+        token_endpoint: tokenEndpoint,
+        token_endpoint_auth_methods_supported: ['none'],
+      }), { headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests).toHaveLength(0);
+  });
+
+  it.each([
+    'https://client.example/callback',
+    'http://localhost:5173/callback',
+    'http://127.0.0.1:5173/callback',
+  ])('preserves a valid redirect URI: %s', async redirectUri => {
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: redirectUri,
+      client_id: 'loopback-client',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['none'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ access_token: 'redirect-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl, tokenEndpoint]);
+  });
+
+  it.each([
+    'http://[::1]:5173/callback',
+    'http://127.42.3.4:5173/callback',
+    'http://127.1:5173/callback',
+  ])('preserves an explicit HTTP IP loopback redirect URI: %s', async redirectUri => {
+    const requests: Request[] = [];
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'single-use-code',
+      code_verifier: 'pkce-verifier',
+      redirect_uri: redirectUri,
+      client_id: 'loopback-client',
+      resource: 'https://mcp.example.com/mcp',
+    }).toString();
+    const fetchImpl = async (request: Request) => {
+      requests.push(request);
+      if (request.url === discoveryUrl) {
+        return new Response(JSON.stringify({
+          issuer,
+          token_endpoint: tokenEndpoint,
+          token_endpoint_auth_methods_supported: ['none'],
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ access_token: 'loopback-token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl, tokenEndpoint]);
+  });
+
+  it.each((() => {
+    const duplicateAuthorizationCodeForm = (name: string, value: string): string => {
+      const params = new URLSearchParams(formBody);
+      params.append(name, value);
+      return params.toString();
+    };
+    const refreshParams = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: 'first-refresh-token',
+      client_id: 'public-client',
+      resource: 'https://mcp.example.com/mcp',
+    });
+    refreshParams.append('refresh_token', 'second-refresh-token');
+    return [
+      ['grant_type', duplicateAuthorizationCodeForm('grant_type', 'refresh_token')],
+      ['client_id', duplicateAuthorizationCodeForm('client_id', 'attacker-client')],
+      ['resource', duplicateAuthorizationCodeForm('resource', 'https://attacker.example/mcp')],
+      ['code', duplicateAuthorizationCodeForm('code', 'second-code')],
+      ['code_verifier', duplicateAuthorizationCodeForm('code_verifier', 'second-verifier')],
+      ['redirect_uri', duplicateAuthorizationCodeForm('redirect_uri', 'https://attacker.example/callback')],
+      ['refresh_token', refreshParams.toString()],
+    ];
+  })())('rejects duplicate %s before authorization-server discovery', async (_, body) => {
+    const fetchImpl = vi.fn();
+
+    const response = await handleOAuthTokenRequest(
+      tokenRequest(body),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('relays anonymous callers under the anonymous limiter', async () => {
+    const anonymous = huggingFaceTokenRequest();
+    anonymous.headers.delete('Authorization');
+    anonymous.headers.set('CF-Connecting-IP', '198.51.100.7');
+    const anonLimiter = rateLimiter();
+    const userLimiter = rateLimiter();
+    const verifyToken = vi.fn(async () => 'user-1');
+    const response = await handleOAuthTokenRequest(
+      anonymous,
+      {
+        FIREBASE_PROJECT_ID: 'test-project',
+        ANON_RATE_LIMITER: anonLimiter,
+        USER_RATE_LIMITER: userLimiter,
+      },
+      {
+        fetchImpl: async request => request.url === huggingFaceDiscoveryUrl
+          ? new Response(JSON.stringify(huggingFaceMetadata()), {
+              headers: { 'Content-Type': 'application/json' },
+            })
+          : new Response(JSON.stringify({ access_token: 'anonymous-token', token_type: 'Bearer' }), {
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        resolveHostname: async () => ['203.0.114.10'],
+        verifyToken,
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(verifyToken).not.toHaveBeenCalled();
+    expect(anonLimiter.limit).toHaveBeenCalledWith({ key: 'ip:198.51.100.7' });
+    expect(userLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('rejects over-limit, invalid-token and cross-origin callers without discovery', async () => {
+    const fetchImpl = vi.fn();
+    const anonymous = tokenRequest();
+    anonymous.headers.delete('Authorization');
+    const limitedResponse = await handleOAuthTokenRequest(
+      anonymous,
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter(false) },
+      { fetchImpl, verifyToken: async () => null }
+    );
+    const invalidResponse = await handleOAuthTokenRequest(
+      tokenRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => null }
+    );
+    const crossOrigin = tokenRequest();
+    crossOrigin.headers.set('Origin', 'https://preview.mcptest.io');
+    const crossOriginResponse = await handleOAuthTokenRequest(
+      crossOrigin,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+    const crossOriginAnonymous = tokenRequest();
+    crossOriginAnonymous.headers.delete('Authorization');
+    crossOriginAnonymous.headers.set('Origin', 'https://attacker.example');
+    const crossOriginAnonymousResponse = await handleOAuthTokenRequest(
+      crossOriginAnonymous,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(limitedResponse.status).toBe(429);
+    expect(limitedResponse.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(limitedResponse.headers.get('access-control-allow-origin')).toBe('https://mcptest.io');
+    expect(limitedResponse.headers.get('access-control-expose-headers')).toContain(PROXY_LIMIT_HEADER);
+    await expect(limitedResponse.json()).resolves.toMatchObject({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      signInLiftsLimit: true,
+    });
+    expect(invalidResponse.status).toBe(401);
+    expect(crossOriginResponse.status).toBe(403);
+    expect(crossOriginResponse.headers.get('access-control-allow-origin')).toBeNull();
+    expect(crossOriginAnonymousResponse.status).toBe(403);
+    expect(crossOriginAnonymousResponse.headers.get('access-control-allow-origin')).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('hosted issuer-bound OAuth registration route', () => {
+  const issuer = 'https://api.supabase.com';
+  const discoveryUrl = 'https://api.supabase.com/.well-known/oauth-authorization-server';
+  const registrationEndpoint = 'https://api.supabase.com/platform/oauth/apps/register';
+  const registrationBody = {
+    redirect_uris: ['https://mcptest.io/oauth/callback'],
+    token_endpoint_auth_method: 'client_secret_post',
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    application_type: 'web',
+    client_name: 'mcptest-io',
+    client_uri: 'https://mcptest.io/',
+    logo_uri: 'https://mcptest.io/logo.png',
+    scope: 'openid offline_access',
+  };
+
+  const registrationRequest = (
+    body: string = JSON.stringify(registrationBody),
+    endpointHeader = registrationEndpoint
+  ): Request => new Request('https://proxy.mcptest.test/oauth/register', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://mcptest.io',
+      Authorization: 'Bearer firebase-credential',
+      'Content-Type': 'application/json',
+      'X-MCP-OAuth-Issuer': issuer,
+      'X-MCP-OAuth-Registration-Endpoint': endpointHeader,
+    },
+    body,
+  });
+
+  const metadataResponse = (endpoint = registrationEndpoint): Response => new Response(JSON.stringify({
+    issuer,
+    token_endpoint: 'https://api.supabase.com/v1/oauth/token',
+    registration_endpoint: endpoint,
+    token_endpoint_auth_methods_supported: ['client_secret_post'],
+  }), { headers: { 'Content-Type': 'application/json' } });
+
+  it('enforces public-Internet routing for production outbound fetches', () => {
+    const workerConfiguration = readFileSync(new NodeURL('../wrangler.toml', import.meta.url), 'utf8');
+
+    expect(workerConfiguration).toMatch(
+      /^compatibility_flags\s*=\s*\[[^\]]*"global_fetch_strictly_public"[^\]]*\]/m
+    );
+  });
+
+  it('allows the exact hosted registration relay browser preflight', async () => {
+    const response = await proxyWorker.fetch(
+      new Request('https://proxy.mcptest.test/oauth/register', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://mcptest.io',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': [
+            'authorization',
+            'content-type',
+            'x-mcp-oauth-issuer',
+            'x-mcp-oauth-registration-endpoint',
+          ].join(', '),
+        },
+      }),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+    const allowedHeaders = response.headers.get('Access-Control-Allow-Headers')?.toLowerCase();
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://mcptest.io');
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+    expect(allowedHeaders).toContain('x-mcp-oauth-registration-endpoint');
+  });
+
+  it('uses only strict-public global fetches for the production-style Supabase relay', async () => {
+    const requests: Request[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const request = input instanceof Request ? input : new Request(input);
+      requests.push(request);
+      if (request.url === discoveryUrl) return metadataResponse();
+      if (request.url === registrationEndpoint) {
+        return new Response(JSON.stringify({
+          ...registrationBody,
+          id: 'provider-only-row-id',
+          client_id: 'supabase-production-client',
+          client_secret: 'supabase-production-secret',
+          client_secret_expires_at: 0,
+          token_endpoint_auth_method: 'client_secret_post',
+        }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new Error(`Unexpected outbound request to ${request.url}`);
+    });
+
+    try {
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        { verifyToken: async () => 'user-1' }
+      );
+
+      expect(response.status).toBe(201);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+      await expect(response.json()).resolves.toEqual({
+        ...registrationBody,
+        client_id: 'supabase-production-client',
+        client_secret: 'supabase-production-secret',
+        client_secret_expires_at: 0,
+        token_endpoint_auth_method: 'client_secret_post',
+      });
+      expect(requests.map(request => request.url)).toEqual([
+        discoveryUrl,
+        registrationEndpoint,
+      ]);
+      expect(requests.some(request => request.url.includes('cloudflare-dns.com'))).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rediscovers and posts once to an exact cross-domain advertised endpoint', async () => {
+    const requests: Request[] = [];
+    const resolveHostname = vi.fn(async () => ['203.0.114.10']);
+    const fetchImpl = async (request: Request): Promise<Response> => {
+      requests.push(request);
+      if (request.url === discoveryUrl) return metadataResponse();
+      expect(request.url).toBe(registrationEndpoint);
+      expect(request.redirect).toBe('manual');
+      expect(request.headers.get('authorization')).toBeNull();
+      expect(await request.json()).toEqual(registrationBody);
+      return new Response(JSON.stringify({
+        ...registrationBody,
+        id: 'provider-only-row-id',
+        client_id: 'supabase-dynamic-client',
+        client_secret: 'session-only-secret',
+        client_secret_expires_at: 0,
+        token_endpoint_auth_method: 'client_secret_post',
+        ignored_provider_field: 'not exposed',
+      }), {
+        status: 201,
+        headers: {
+          'Content-Type': 'application/json',
+          'Set-Cookie': 'provider_session=secret',
+          'X-Provider-Internal': 'hidden',
+        },
+      });
+    };
+
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl,
+        resolveHostname,
+        verifyToken: async token => token === 'firebase-credential' ? 'user-1' : null,
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(response.headers.get('x-provider-internal')).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      ...registrationBody,
+      client_id: 'supabase-dynamic-client',
+      client_secret: 'session-only-secret',
+      client_secret_expires_at: 0,
+      token_endpoint_auth_method: 'client_secret_post',
+    });
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl, registrationEndpoint]);
+    expect(resolveHostname).toHaveBeenCalledWith('api.supabase.com');
+    expect(resolveHostname).toHaveBeenCalledTimes(2);
+  });
+
+  it('relays the literal Stripe response when Stripe assigns the omitted mcp scope', async () => {
+    const stripeIssuer = 'https://access.stripe.com/mcp';
+    const stripeDiscoveryUrl = 'https://access.stripe.com/.well-known/oauth-authorization-server/mcp';
+    const stripeRegistrationEndpoint = 'https://access.stripe.com/mcp/oauth2/register';
+    const stripeRequestBody = {
+      redirect_uris: ['https://mcptest.io/oauth/callback'],
+      client_name: 'mcptest-io',
+      client_uri: 'https://mcptest.io/',
+      logo_uri: 'https://mcptest.io/logo.png',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+      application_type: 'web',
+    };
+    const response = await handleOAuthRegistrationRequest(
+      new Request('https://proxy.mcptest.test/oauth/register', {
+        method: 'POST',
+        headers: {
+          Origin: 'https://mcptest.io',
+          Authorization: 'Bearer firebase-credential',
+          'Content-Type': 'application/json',
+          'X-MCP-OAuth-Issuer': stripeIssuer,
+          'X-MCP-OAuth-Resource': 'https://mcp.stripe.com/',
+          'X-MCP-OAuth-Registration-Endpoint': stripeRegistrationEndpoint,
+        },
+        body: JSON.stringify(stripeRequestBody),
+      }),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === stripeDiscoveryUrl
+          ? new Response(JSON.stringify({
+              issuer: stripeIssuer,
+              authorization_endpoint: 'https://access.stripe.com/mcp/oauth2/authorize',
+              token_endpoint: 'https://access.stripe.com/mcp/oauth2/token',
+              registration_endpoint: stripeRegistrationEndpoint,
+              response_types_supported: ['code'],
+              code_challenge_methods_supported: ['S256'],
+              token_endpoint_auth_methods_supported: ['none'],
+              scopes_supported: ['mcp'],
+            }), { headers: { 'Content-Type': 'application/json' } })
+          : new Response(JSON.stringify({
+              ...stripeRequestBody,
+              client_id: 'stripe-issued-client',
+              client_id_issued_at: 1787563559,
+              scope: 'mcp',
+              provider_internal_id: 'discard-me',
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    await expect(response.json()).resolves.toEqual({
+      ...stripeRequestBody,
+      client_id: 'stripe-issued-client',
+      client_id_issued_at: 1787563559,
+      scope: 'mcp',
+    });
+  });
+
+  it.each([
+    'authorization_metadata_discovery',
+    'destination_validation',
+    'dns_safety_validation',
+    'outbound_fetch',
+    'response_validation',
+  ] as const)('returns and logs a secret-safe %s failure', async stage => {
+    const secret = 'must-not-appear-in-registration-diagnostics';
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const privateRegistrationEndpoint = 'https://127.0.0.1/platform/oauth/apps/register';
+    const dependencies: Parameters<typeof handleOAuthRegistrationRequest>[2] = {
+      verifyToken: async () => 'user-1',
+      fetchImpl: async request => {
+        if (stage === 'authorization_metadata_discovery') {
+          throw new TypeError(`metadata transport contained ${secret}`);
+        }
+        if (request.url === discoveryUrl) {
+          return stage === 'destination_validation'
+            ? metadataResponse(privateRegistrationEndpoint)
+            : metadataResponse();
+        }
+        if (stage === 'outbound_fetch') {
+          throw new TypeError(`provider transport contained ${secret}`);
+        }
+        if (stage === 'response_validation') {
+          return new Response(`invalid provider payload ${secret}`, {
+            status: 201,
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        }
+        return new Response('unreachable');
+      },
+      ...(stage === 'dns_safety_validation'
+        ? { resolveHostname: async () => ['127.0.0.1'] }
+        : {}),
+    };
+
+    try {
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        dependencies
+      );
+      const responseText = await response.text();
+      const serializedLog = JSON.stringify(errorLog.mock.calls);
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(responseText.toLowerCase()).toContain(
+        stage === 'authorization_metadata_discovery'
+          ? 'issuer discovery'
+          : stage === 'destination_validation'
+            ? 'destination validation'
+            : stage === 'dns_safety_validation'
+              ? 'dns safety validation'
+              : stage === 'outbound_fetch'
+                ? 'could not reach'
+                : 'response validation'
+      );
+      expect(errorLog).toHaveBeenCalledWith(
+        '[OAuth registration relay failure]',
+        expect.objectContaining({ stage })
+      );
+      expect(responseText).not.toContain(secret);
+      expect(serializedLog).not.toContain(secret);
+      expect(serializedLog).not.toContain('firebase-credential');
+      expect(serializedLog).not.toContain('user-1');
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it.each([
+    ['redirect_uris', ['https://attacker.example/callback']],
+    ['grant_types', ['client_credentials']],
+    ['response_types', ['token']],
+    ['application_type', 'native'],
+    ['scope', 'mcp'],
+  ])('rejects provider-returned %s that conflicts with the safe request', async (
+    field,
+    conflictingValue
+  ) => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              ...registrationBody,
+              [field]: conflictingValue,
+              client_id: 'conflicting-client',
+              client_secret: 'session-only-secret',
+              token_endpoint_auth_method: 'client_secret_post',
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+  });
+
+  it('rejects the provider-selected token authentication method unless it is advertised', async () => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              ...registrationBody,
+              client_id: 'wrong-method-client',
+              client_secret: 'session-only-secret',
+              token_endpoint_auth_method: 'client_secret_basic',
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+  });
+
+  it.each(['client_secret_post', 'none'])(
+    'rejects registration requesting %s when metadata omits the Basic-only default',
+    async tokenEndpointAuthMethod => {
+      const requests: Request[] = [];
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(JSON.stringify({
+          ...registrationBody,
+          token_endpoint_auth_method: tokenEndpointAuthMethod,
+        })),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: async request => {
+            requests.push(request);
+            return new Response(JSON.stringify({
+              issuer,
+              token_endpoint: 'https://api.supabase.com/v1/oauth/token',
+              registration_endpoint: registrationEndpoint,
+            }), { headers: { 'Content-Type': 'application/json' } });
+          },
+          verifyToken: async () => 'user-1',
+        }
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+      expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+    }
+  );
+
+  it('rejects an asserted endpoint mismatch before credential-bearing registration', async () => {
+    const requests: Request[] = [];
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(undefined, 'https://attacker.example/register'),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => {
+          requests.push(request);
+          return metadataResponse();
+        },
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+  });
+
+  it('rejects private or mixed DNS answers before sending registration metadata', async () => {
+    const requests: Request[] = [];
+    let resolutionCount = 0;
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => {
+          requests.push(request);
+          return metadataResponse();
+        },
+        resolveHostname: async () => {
+          resolutionCount += 1;
+          return resolutionCount === 1
+            ? ['203.0.114.10']
+            : ['203.0.114.11', '127.0.0.1'];
+        },
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(502);
+    expect(requests.map(request => request.url)).toEqual([discoveryUrl]);
+  });
+
+  it('fails closed when outbound DNS rebinds privately after public validation', async () => {
+    const deliveredRequests: Request[] = [];
+    let outboundConnectionCount = 0;
+    const fetchImpl = async (request: Request): Promise<Response> => {
+      outboundConnectionCount += 1;
+      // Models global_fetch_strictly_public rejecting the connection chosen by
+      // the runtime resolver before any HTTP request reaches a private target.
+      if (outboundConnectionCount === 2) {
+        throw new TypeError('Network destination is not publicly routable');
+      }
+      deliveredRequests.push(request);
+      if (request.url === discoveryUrl) return metadataResponse();
+      throw new Error(`Unexpected public request to ${request.url}`);
+    };
+
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl,
+        // The preflight sees a public address; the independent outbound
+        // resolver above changes only the registration hop to loopback.
+        resolveHostname: async () => ['203.0.114.10'],
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(502);
+    expect(deliveredRequests.map(request => request.url)).toEqual([discoveryUrl]);
+    expect(outboundConnectionCount).toBe(2);
+  });
+
+  it.each([
+    ['unknown metadata', { ...registrationBody, software_statement: 'dangerous' }],
+    ['arbitrary callback', { ...registrationBody, redirect_uris: ['https://attacker.example/callback'] }],
+    ['unsupported auth method', { ...registrationBody, token_endpoint_auth_method: 'private_key_jwt' }],
+    ['unsupported grant', { ...registrationBody, grant_types: ['client_credentials'] }],
+  ])('rejects invalid JSON registration schema: %s', async (_, body) => {
+    const fetchImpl = vi.fn();
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(JSON.stringify(body)),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized request and response bodies without exposing them', async () => {
+    const oversizedRequest = registrationRequest();
+    oversizedRequest.headers.set('Content-Length', String(20 * 1024));
+    const requestResponse = await handleOAuthRegistrationRequest(
+      oversizedRequest,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl: vi.fn(), verifyToken: async () => 'user-1' }
+    );
+    const responseResponse = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              client_id: 'client',
+              error_description: 'x'.repeat(70 * 1024),
+            }), { headers: { 'Content-Type': 'application/json' } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(requestResponse.status).toBe(413);
+    expect(responseResponse.status).toBe(502);
+    expect(await responseResponse.text()).not.toContain('xxxxx');
+  });
+
+  it('rejects redirects and sanitizes readable provider errors', async () => {
+    const redirectResponse = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(null, {
+              status: 307,
+              headers: { Location: 'https://attacker.example/collect' },
+            }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+    const errorResponse = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              error: 'invalid_client_metadata',
+              error_description: 'redirect URI is not accepted',
+              client_secret: 'must-not-leak',
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'hidden=1' },
+            }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(redirectResponse.status).toBe(502);
+    expect(errorResponse.status).toBe(400);
+    expect(errorResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    expect(errorResponse.headers.get('set-cookie')).toBeNull();
+    await expect(errorResponse.json()).resolves.toEqual({
+      error: 'invalid_client_metadata',
+      error_description: 'redirect URI is not accepted',
+    });
+  });
+
+  it('normalizes the literal live Calendly errors.name response for the exact binding', async () => {
+    const calendlyResource = 'https://mcp.calendly.com/';
+    const calendlyIssuer = 'https://calendly.com/';
+    const calendlyDiscoveryUrl =
+      'https://calendly.com/.well-known/oauth-authorization-server';
+    const calendlyRegistrationEndpoint = 'https://calendly.com/oauth/register';
+    const request = registrationRequest(
+      JSON.stringify({ ...registrationBody, token_endpoint_auth_method: 'none' }),
+      calendlyRegistrationEndpoint
+    );
+    request.headers.set('X-MCP-OAuth-Resource', calendlyResource);
+    request.headers.set('X-MCP-OAuth-Issuer', calendlyIssuer);
+    const response = await handleOAuthRegistrationRequest(
+      request,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === calendlyDiscoveryUrl
+          ? new Response(JSON.stringify({
+              issuer: calendlyIssuer,
+              token_endpoint: 'https://calendly.com/oauth/token',
+              registration_endpoint: calendlyRegistrationEndpoint,
+              token_endpoint_auth_methods_supported: ['none'],
+            }), { headers: { 'Content-Type': 'application/json' } })
+          : new Response(JSON.stringify({
+              error: 'invalid_client_metadata',
+              errors: {
+                name: ['may only contain alphanumeric characters, hyphens, and spaces.'],
+              },
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_client_metadata',
+      registrationValidationErrors: [{
+        field: 'client_name',
+        message: 'Use only alphanumeric characters, hyphens, and spaces.',
+      }],
+    });
+  });
+
+  it('does not trust the Calendly errors.name shape for a generic provider binding', async () => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(JSON.stringify({
+              error: 'invalid_client_metadata',
+              errors: {
+                name: ['may only contain alphanumeric characters, hyphens, and spaces.'],
+              },
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_client_metadata' });
+  });
+
+  it.each([
+    ['Figma malformed JSON', 'Forbidden', 'application/json', 403],
+    ['provider HTML', '<html>internal request id and cookie</html>', 'text/html', 400],
+    ['provider server error', 'backend instance secret', 'text/plain', 503],
+  ])('preserves target status with a fixed safe body for %s', async (
+    _label,
+    body,
+    contentType,
+    status
+  ) => {
+    const response = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async request => request.url === discoveryUrl
+          ? metadataResponse()
+          : new Response(body, { status, headers: { 'Content-Type': contentType } }),
+        verifyToken: async () => 'user-1',
+      }
+    );
+
+    expect(response.status).toBe(status);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    const responseText = await response.text();
+    expect(responseText).not.toContain(body);
+    expect(JSON.parse(responseText)).toEqual({
+      error: 'invalid_response',
+      error_description: 'The provider rejected OAuth client registration with a non-JSON or malformed-JSON response.',
+    });
+  });
+
+  it.each([400, 503])(
+    'preserves target provenance for an oversized provider HTTP %s error',
+    async (status) => {
+      const unsafeBody = `provider-secret-${'x'.repeat(70 * 1024)}`;
+      const response = await handleOAuthRegistrationRequest(
+        registrationRequest(),
+        { FIREBASE_PROJECT_ID: 'test-project' },
+        {
+          fetchImpl: async request => request.url === discoveryUrl
+            ? metadataResponse()
+            : new Response(unsafeBody, {
+                status,
+                headers: { 'Content-Type': 'application/json' },
+              }),
+          verifyToken: async () => 'user-1',
+        }
+      );
+
+      expect(response.status).toBe(status);
+      expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+      const responseText = await response.text();
+      expect(responseText).not.toContain('provider-secret');
+      expect(JSON.parse(responseText)).toEqual({
+        error: 'invalid_response',
+        error_description: 'The provider rejected OAuth client registration with a non-JSON or malformed-JSON response.',
+      });
+    }
+  );
+
+  it('limits anonymous callers and rejects invalid Firebase authentication before discovery', async () => {
+    const fetchImpl = vi.fn();
+    const anonymous = registrationRequest();
+    anonymous.headers.delete('Authorization');
+    const limitedResponse = await handleOAuthRegistrationRequest(
+      anonymous,
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter(false) },
+      { fetchImpl, verifyToken: async () => null }
+    );
+    const invalidResponse = await handleOAuthRegistrationRequest(
+      registrationRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl, verifyToken: async () => null }
+    );
+    const crossOrigin = registrationRequest();
+    crossOrigin.headers.delete('Authorization');
+    crossOrigin.headers.set('Origin', 'https://attacker.example');
+    const crossOriginResponse = await handleOAuthRegistrationRequest(
+      crossOrigin,
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl }
+    );
+
+    expect(limitedResponse.status).toBe(429);
+    expect(limitedResponse.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(limitedResponse.headers.get('retry-after')).toBe('60');
+    expect(invalidResponse.status).toBe(401);
+    expect(crossOriginResponse.status).toBe(403);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('caller-based proxy limits', () => {
+  const target = 'https://mcp.example.com/mcp';
+  const proxyRequest = (headers: Record<string, string> = {}): Request => new Request(
+    `https://proxy.mcptest.test/?target=${encodeURIComponent(target)}`,
+    { headers: { Accept: 'application/json, text/event-stream', ...headers } }
+  );
+
+  it('proxies anonymous callers without a login, keyed by client IP', async () => {
+    const anonLimiter = rateLimiter();
+    const userLimiter = rateLimiter();
+    const fetchImpl = vi.fn(async (request: Request) => {
+      expect(request.url).toBe(target);
+      expect(request.headers.get('authorization')).toBeNull();
+      expect(request.headers.get('cf-connecting-ip')).toBeNull();
+      return new Response('{"jsonrpc":"2.0","id":1,"result":{}}', {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    const verifyToken = vi.fn(async () => 'user-1');
+
+    const response = await handleProxyRequest(
+      proxyRequest({ 'CF-Connecting-IP': '198.51.100.7' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter, USER_RATE_LIMITER: userLimiter },
+      { fetchImpl, verifyToken }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+    await expect(response.text()).resolves.toBe('{"jsonrpc":"2.0","id":1,"result":{}}');
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(verifyToken).not.toHaveBeenCalled();
+    expect(anonLimiter.limit).toHaveBeenCalledWith({ key: 'ip:198.51.100.7' });
+    expect(userLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('returns a marked proxy 429 when an anonymous caller is over the limit', async () => {
+    const fetchImpl = vi.fn();
+    const response = await handleProxyRequest(
+      proxyRequest({ 'CF-Connecting-IP': '198.51.100.7' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter(false) },
+      { fetchImpl }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('60');
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-expose-headers')?.split(', ')).toEqual(
+      expect.arrayContaining([PROXY_RESPONSE_SOURCE_HEADER, PROXY_LIMIT_HEADER, 'Retry-After'])
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      limit: 'requests',
+      signInLiftsLimit: true,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('keys signed-in callers by uid on the user limiter without a body cap', async () => {
+    const anonLimiter = rateLimiter(false);
+    const userLimiter = rateLimiter();
+    const largeBody = new Uint8Array(64);
+    const response = await handleProxyRequest(
+      proxyRequest({ Authorization: 'Bearer firebase-credential' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter, USER_RATE_LIMITER: userLimiter },
+      {
+        fetchImpl: async request => {
+          expect(request.headers.get('authorization')).toBeNull();
+          return new Response(largeBody);
+        },
+        verifyToken: async token => token === 'firebase-credential' ? 'user-1' : null,
+        anonymousResponseLimits: { maxBytes: 16 },
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.arrayBuffer()).byteLength).toBe(64);
+    expect(userLimiter.limit).toHaveBeenCalledWith({ key: 'uid:user-1' });
+    expect(anonLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('reports a signed-in over-limit 429 without offering sign-in as the remedy', async () => {
+    const response = await handleProxyRequest(
+      proxyRequest({ Authorization: 'Bearer firebase-credential' }),
+      { FIREBASE_PROJECT_ID: 'test-project', USER_RATE_LIMITER: rateLimiter(false) },
+      { fetchImpl: vi.fn(), verifyToken: async () => 'user-1' }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('signed-in');
+    await expect(response.json()).resolves.toMatchObject({ tier: 'signed-in', signInLiftsLimit: false });
+  });
+
+  it('rejects a present but invalid login instead of downgrading to anonymous', async () => {
+    const anonLimiter = rateLimiter();
+    const fetchImpl = vi.fn();
+    const response = await handleProxyRequest(
+      proxyRequest({ Authorization: 'Bearer expired-credential' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter },
+      { fetchImpl, verifyToken: async () => null }
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    expect(anonLimiter.limit).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('fails open when the rate-limit bindings are not configured', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      { fetchImpl: async () => new Response('ok') }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('ok');
+    warn.mockRestore();
+  });
+
+  it('cuts off an anonymous streamed body that exceeds the byte cap', async () => {
+    const cancel = vi.fn();
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    const upstream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+      cancel,
+    });
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl: async () => new Response(upstream, { headers: { 'Content-Type': 'text/event-stream' } }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-length')).toBeNull();
+    const signalToken = response.headers.get(PROXY_LIMIT_SIGNAL_HEADER);
+    expect(signalToken).toBeTruthy();
+    expect(response.headers.get('access-control-expose-headers')?.split(', '))
+      .toContain(PROXY_LIMIT_SIGNAL_HEADER);
+    const body = new Uint8Array(await response.arrayBuffer());
+    const marker = new TextEncoder().encode(`${PROXY_LIMIT_TRAILER_PREFIX}${signalToken}\n`);
+    const markerAt = body.length - findTrailerLength(body, marker);
+    expect(markerAt).toBeLessThanOrEqual(ANONYMOUS_MAX_RESPONSE_BYTES);
+    expect(JSON.parse(new TextDecoder().decode(body.subarray(markerAt + marker.length)))).toMatchObject({
+      error: 'rate_limited',
+      tier: 'anonymous',
+      limit: 'response_bytes',
+      signInLiftsLimit: true,
+    });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
+    expect(sent).toBeLessThanOrEqual(ANONYMOUS_MAX_RESPONSE_BYTES + 3 * chunk.byteLength);
+  });
+
+  it('rejects an anonymous response whose declared length exceeds the byte cap', async () => {
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async () => new Response('x'.repeat(32), { headers: { 'Content-Length': '32' } }),
+        anonymousResponseLimits: { maxBytes: 16 },
+      }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'response_bytes', signInLiftsLimit: true });
+  });
+
+  it('ends an anonymous long-lived stream after the lifetime cap', async () => {
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: ping\n\n'));
+      },
+    });
+    const response = await handleProxyRequest(
+      proxyRequest(),
+      { FIREBASE_PROJECT_ID: 'test-project' },
+      {
+        fetchImpl: async () => new Response(upstream, { headers: { 'Content-Type': 'text/event-stream' } }),
+        anonymousResponseLimits: { maxDurationMs: 20 },
+      }
+    );
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    const signalToken = response.headers.get(PROXY_LIMIT_SIGNAL_HEADER);
+
+    // Incremental SSE delivery is preserved before the cut-off.
+    await expect(reader.read().then(({ value }) => decoder.decode(value))).resolves.toBe('event: ping\n\n');
+    const trailer = await reader.read();
+    expect(decoder.decode(trailer.value)).toMatch(
+      new RegExp(`^${PROXY_LIMIT_TRAILER_PREFIX}${signalToken}\n.*"limit":"stream_duration"`)
+    );
+    await expect(reader.read()).resolves.toMatchObject({ done: true });
+  });
+
+  it('errors the stream without a signal token when called directly', async () => {
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(32));
+      },
+    });
+    const reader = limitResponseBody(upstream, { maxBytes: 16 }).getReader();
+    await expect(reader.read()).rejects.toThrow(/response limit of 16 bytes exceeded/);
+  });
+
+  const uploadRequest = (body: BodyInit, headers: Record<string, string> = {}): Request => new Request(
+    `https://proxy.mcptest.test/?target=${encodeURIComponent(target)}`,
+    { method: 'POST', body, headers, duplex: 'half' } as RequestInit
+  );
+
+  it('rejects an anonymous upload whose declared length exceeds the request budget', async () => {
+    const anonLimiter = rateLimiter();
+    const fetchImpl = vi.fn();
+    const response = await handleProxyRequest(
+      uploadRequest('x'.repeat(32), { 'Content-Length': '32' }),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter },
+      { fetchImpl, anonymousMaxRequestBytes: 16 }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    expect(response.headers.get(PROXY_LIMIT_KIND_HEADER)).toBe('request_bytes');
+    expect(response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('proxy');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'request_bytes', signInLiftsLimit: true });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('stops forwarding an anonymous streamed upload at the request budget', async () => {
+    const chunk = new Uint8Array(8);
+    let pulled = 0;
+    const upload = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    let forwarded = 0;
+    const fetchImpl = vi.fn(async (request: Request) => {
+      expect(request.headers.get('content-length')).toBeNull();
+      const reader = request.body!.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        forwarded += value.byteLength;
+      }
+      return new Response('ok');
+    });
+    const response = await handleProxyRequest(
+      uploadRequest(upload),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, anonymousMaxRequestBytes: 20 }
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get(PROXY_LIMIT_HEADER)).toBe('anonymous');
+    await expect(response.json()).resolves.toMatchObject({ limit: 'request_bytes' });
+    expect(forwarded).toBeLessThanOrEqual(20);
+    expect(pulled).toBeLessThan(10);
+  });
+
+  it('forwards an anonymous upload within the request budget', async () => {
+    const fetchImpl = vi.fn(async (request: Request) => new Response(await request.text()));
+    const response = await handleProxyRequest(
+      uploadRequest('{"jsonrpc":"2.0"}'),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, anonymousMaxRequestBytes: 64 }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('{"jsonrpc":"2.0"}');
+  });
+
+  it('does not apply the upload budget to signed-in callers', async () => {
+    const fetchImpl = vi.fn(async (request: Request) => new Response(String((await request.arrayBuffer()).byteLength)));
+    const response = await handleProxyRequest(
+      uploadRequest('x'.repeat(64), { Authorization: 'Bearer firebase-credential', 'Content-Length': '64' }),
+      { FIREBASE_PROJECT_ID: 'test-project', USER_RATE_LIMITER: rateLimiter() },
+      { fetchImpl, verifyToken: async () => 'user-1', anonymousMaxRequestBytes: 16 }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('64');
+  });
+
+  it('keeps rejecting non-http targets for anonymous callers before any limiter call', async () => {
+    const anonLimiter = rateLimiter();
+    const response = await handleProxyRequest(
+      new Request(`https://proxy.mcptest.test/?target=${encodeURIComponent('file:///etc/passwd')}`),
+      { FIREBASE_PROJECT_ID: 'test-project', ANON_RATE_LIMITER: anonLimiter },
+      { fetchImpl: vi.fn() }
+    );
+
+    expect(response.status).toBe(400);
+    expect(anonLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('routes anonymous traffic through the default export', async () => {
+    const response = await proxyWorker.fetch(
+      new Request(`https://proxy.mcptest.test/?target=${encodeURIComponent('ftp://example.com/')}`),
+      { FIREBASE_PROJECT_ID: 'test-project' }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toContain('http or https');
+  });
+
+  it('declares both Cloudflare rate-limit bindings with a 60 second period', () => {
+    const workerConfiguration = readFileSync(new NodeURL('../wrangler.toml', import.meta.url), 'utf8');
+
+    expect(workerConfiguration).toMatch(/name = "ANON_RATE_LIMITER"[\s\S]*?simple = \{ limit = 60, period = 60 \}/);
+    expect(workerConfiguration).toMatch(/name = "USER_RATE_LIMITER"[\s\S]*?simple = \{ limit = 600, period = 60 \}/);
+  });
+});
+
+function findTrailerLength(body: Uint8Array, marker: Uint8Array): number {
+  for (let index = body.length - marker.length; index >= 0; index -= 1) {
+    if (marker.every((byte, offset) => body[index + offset] === byte)) return body.length - index;
+  }
+  throw new Error('limit trailer not found');
+}

@@ -58,6 +58,8 @@ export const formatCatalogAuth = (authType: CatalogAuthType): string => {
       return 'OAuth 2.1';
     case 'bearer-token':
       return 'Bearer token';
+    case 'api-token':
+      return 'API token';
     case 'api-key':
       return 'API key';
     default:
@@ -78,6 +80,25 @@ export const formatProtocolEra = (era: CatalogProtocolEra, version?: string): st
     default:
       return 'Not yet negotiated';
   }
+};
+
+export const formatCatalogTimestamp = (value: string): string => {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return value;
+  }
+
+  const date = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(timestamp);
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(timestamp);
+
+  return `${date} at ${time}`;
 };
 
 const truncateDescription = (value: string, maxLength = 158): string => {
@@ -128,6 +149,11 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
           name: 'Authentication',
           value: formatCatalogAuth(server.authType),
         },
+        ...(server.alternativeAuthTypes ?? []).map((authType) => ({
+          '@type': 'PropertyValue' as const,
+          name: 'Alternative authentication',
+          value: formatCatalogAuth(authType),
+        })),
         {
           '@type': 'PropertyValue',
           name: 'MCP protocol lifecycle',

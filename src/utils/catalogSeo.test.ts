@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogServer } from '../types/catalog';
 import {
   formatCatalogAuth,
+  formatCatalogTimestamp,
   formatCatalogTransport,
   formatProtocolEra,
   getCatalogServerMetaDescription,
@@ -18,6 +19,7 @@ const server: CatalogServer = {
   description: 'An example remote MCP server.',
   category: 'Developer Tools',
   tags: ['example', 'tools'],
+  listingSource: { kind: 'community' },
   declaredTransport: 'streamable-http',
   transport: 'unknown',
   requiresOAuth: true,
@@ -49,6 +51,11 @@ describe('catalog SEO helpers', () => {
     );
     expect(seo.canonicalUrl).toBe('https://mcptest.io/servers/example-server/');
     expect(seo.structuredData.endpointUrl).toBe(server.url);
+  });
+
+  it('formats report timestamps without database-style seconds', () => {
+    expect(formatCatalogTimestamp('2026-08-18T12:32:48')).toBe('Aug 18, 2026 at 12:32 PM');
+    expect(formatCatalogTimestamp('not-a-date')).toBe('not-a-date');
   });
 
   it('uses a curated search summary when the catalog provides one', () => {

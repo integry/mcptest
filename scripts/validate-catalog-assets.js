@@ -31,6 +31,16 @@ function isHttpsUrl(value) {
   }
 }
 
+function hasInvalidSimpleIconsVersionTag(value) {
+  try {
+    const url = new URL(value);
+    return url.hostname === 'github.com'
+      && /^\/simple-icons\/simple-icons\/blob\/v\d[^/]*\/icons\/[^/]+\.svg$/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function validateSvg(contents) {
   const errors = [];
   const forbiddenElements = contents.match(/<(?:script|foreignObject|iframe|object|embed)\b/i);
@@ -49,9 +59,11 @@ function validateSvg(contents) {
       for (const element of document.querySelectorAll('*')) {
         for (const attribute of element.attributes) {
           const value = attribute.value.trim();
+          if (containsDataUrl(value)) hasEmbeddedDataResource = true;
+
           if (['href', 'src'].includes(attribute.localName.toLowerCase())) {
             if (value.startsWith('#')) continue;
-            if (/^data:/i.test(value)) hasEmbeddedDataResource = true;
+            if (containsDataUrl(value)) hasEmbeddedDataResource = true;
             else hasExternalResource = true;
           }
 
@@ -80,6 +92,10 @@ function validateSvg(contents) {
     errors.push('must contain an SVG root with a viewBox');
   }
   return errors;
+}
+
+function containsDataUrl(value) {
+  return /(?:^|[^a-z0-9+.-])data:/i.test(value);
 }
 
 function containsExternalCssResource(value) {
@@ -198,6 +214,9 @@ function validateCatalogAssets(
       }
     } else if (!isHttpsUrl(seed.logoSourceUrl)) {
       errors.push(`${label}: sourced logo requires an HTTPS logoSourceUrl`);
+    } else if (seed.logoSourceKind === 'simple-icons'
+      && hasInvalidSimpleIconsVersionTag(seed.logoSourceUrl)) {
+      errors.push(`${label}: Simple Icons version tags must not have a leading v`);
     }
   }
 

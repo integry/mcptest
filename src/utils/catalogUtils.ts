@@ -1,5 +1,7 @@
 import serverCatalog from '../data/serverCatalog.json';
 import catalogValidation from '../data/catalogValidation.json';
+import catalogCapabilities from '../data/catalogCapabilities.json';
+import { validateCapabilityInventory } from './capabilityInventory';
 import {
   CATALOG_CATEGORY_ALL,
   type CatalogFilters,
@@ -7,9 +9,11 @@ import {
   type CatalogProtocolEra,
   type CatalogServer,
   type CatalogServerSeed,
+  type CatalogSortOrder,
   type CatalogValidationResult,
   type CatalogValidationTransport,
   type OAuthFilter,
+  type CatalogTransport,
 } from '../types/catalog';
 
 type CatalogFilterInput = Partial<Omit<CatalogFilters, 'oauth'>> & {
@@ -21,6 +25,27 @@ const CATALOG_SEEDS = Array.isArray(serverCatalog) ? (serverCatalog as CatalogSe
 const CATALOG_VALIDATION = Array.isArray(catalogValidation)
   ? (catalogValidation as CatalogValidationResult[])
   : [];
+const CATALOG_CAPABILITIES = catalogCapabilities as Record<string, unknown>;
+
+export interface CatalogEndpointDiagnosticEvidence {
+  transport: CatalogValidationTransport | CatalogTransport;
+  authType: CatalogAuthType;
+  supportsBearerToken: boolean;
+  serverReachable: boolean;
+}
+
+const normalizedEndpointKey = (value: string): string | undefined => {
+  try {
+    const url = new URL(value);
+    // Trusted catalog guidance is endpoint-bound. Fragments and embedded
+    // credentials are never part of an MCP endpoint and must not be silently
+    // discarded during a security-sensitive match.
+    if (url.hash || url.username || url.password) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+};
 
 const isValidationTransport = (transport: string | undefined): transport is CatalogValidationTransport => {
   return (
@@ -36,6 +61,7 @@ const isCatalogAuthType = (authType: string | undefined): authType is CatalogAut
     authType === 'none' ||
     authType === 'oauth' ||
     authType === 'bearer-token' ||
+    authType === 'api-token' ||
     authType === 'api-key' ||
     authType === 'unknown'
   );
@@ -54,7 +80,7 @@ const getDeclaredAuthType = (seed: CatalogServerSeed): CatalogAuthType => {
 };
 
 const getSearchText = (server: CatalogServer): string => {
-  return [
+  const searchText = [
     server.name,
     server.description,
     server.url,
@@ -64,8 +90,21 @@ const getSearchText = (server: CatalogServer): string => {
     server.protocolEra,
     server.protocolVersion,
     server.registryName,
+    ...(server.alternativeAuthTypes ?? []),
+    ...(server.alternativeEndpoints ?? []).flatMap(({ url, authType, description }) => [
+      url,
+      authType,
+      description,
+    ]),
+    ...(server.caveats ?? []),
     ...server.tags,
   ].join(' ').toLowerCase();
+
+  return `${searchText} ${searchText.replace(/-/g, ' ')}`;
+};
+
+const supportsAuthType = (server: CatalogServer, authType: CatalogAuthType): boolean => {
+  return server.authType === authType || server.alternativeAuthTypes?.includes(authType) === true;
 };
 
 export const getCatalogServers = (): CatalogServer[] => {
@@ -76,7 +115,9 @@ export const getCatalogServers = (): CatalogServer[] => {
   return CATALOG_SEEDS.map((seed) => {
     const validation = validationByServerId.get(seed.id);
     const declaredAuthType = getDeclaredAuthType(seed);
-    const authType = declaredAuthType === 'api-key' || declaredAuthType === 'bearer-token'
+    const authType = declaredAuthType === 'api-key'
+      || declaredAuthType === 'api-token'
+      || declaredAuthType === 'bearer-token'
       ? declaredAuthType
       : isCatalogAuthType(validation?.authType)
         ? validation.authType
@@ -100,12 +141,78 @@ export const getCatalogServers = (): CatalogServer[] => {
       authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
+      ...(CATALOG_CAPABILITIES[seed.id]
+        ? { capabilityInventory: validateCapabilityInventory(CATALOG_CAPABILITIES[seed.id]) }
+        : {}),
     };
   });
 };
 
 export const getCatalogServerById = (serverId: string): CatalogServer | undefined => {
   return getCatalogServers().find((server) => server.id === serverId);
+};
+
+/**
+ * Resolve trusted catalog data only for a canonical, exact endpoint. Issuers,
+ * hostnames, parent paths, redirects, and decoded/rewritten targets are not
+ * evidence that an arbitrary endpoint belongs to a catalog provider.
+ */
+export const getCatalogServerByEndpoint = (endpoint: string): CatalogServer | undefined => {
+  const endpointKey = normalizedEndpointKey(endpoint);
+  if (!endpointKey) return undefined;
+
+  return getCatalogServers().find((server) => [
+    server.url,
+    server.browserUrl,
+    server.validatedUrl,
+    ...(server.alternativeEndpoints?.map(({ url }) => url) ?? []),
+  ].some((value) => value && normalizedEndpointKey(value) === endpointKey));
+};
+
+/**
+ * Resolve only exact catalog endpoints. Hostname or path heuristics would turn
+ * unrelated user URLs into authoritative transport/auth evidence.
+ */
+export const getCatalogEndpointDiagnosticEvidence = (
+  endpoint: string
+): CatalogEndpointDiagnosticEvidence | undefined => {
+  const endpointKey = normalizedEndpointKey(endpoint);
+  if (!endpointKey) return undefined;
+
+  for (const server of getCatalogServers()) {
+    const primaryUrls = [server.url, server.browserUrl, server.validatedUrl].filter(
+      (value): value is string => Boolean(value)
+    );
+    if (primaryUrls.some((value) => normalizedEndpointKey(value) === endpointKey)) {
+      const validatedEndpointMatches = server.validatedUrl
+        && normalizedEndpointKey(server.validatedUrl) === endpointKey;
+      return {
+        transport: validatedEndpointMatches && server.transport !== 'unknown'
+          ? server.transport
+          : server.declaredTransport,
+        authType: server.authType,
+        supportsBearerToken: server.authType === 'bearer-token'
+          || server.alternativeAuthTypes?.includes('bearer-token') === true,
+        serverReachable: server.status === 'online' && Boolean(validatedEndpointMatches),
+      };
+    }
+
+    const alternative = server.alternativeEndpoints?.find(({ url }) => (
+      normalizedEndpointKey(url) === endpointKey
+    ));
+    if (alternative) {
+      return {
+        transport: server.declaredTransport,
+        authType: alternative.authType || server.authType,
+        supportsBearerToken: alternative.authType === 'bearer-token'
+          || server.authType === 'bearer-token'
+          || server.alternativeAuthTypes?.includes('bearer-token') === true,
+        serverReachable: server.status === 'online'
+          && normalizedEndpointKey(server.validatedUrl || '') === endpointKey,
+      };
+    }
+  }
+  return undefined;
 };
 
 export const filterCatalogServers = (
@@ -130,23 +237,120 @@ export const filterCatalogServers = (
     }
 
     if (oauthFilter === 'oauth') {
-      return server.authType === 'oauth';
+      return supportsAuthType(server, 'oauth');
     }
 
     if (oauthFilter === 'bearer-token') {
-      return server.authType === 'bearer-token';
+      return supportsAuthType(server, 'bearer-token');
     }
 
     if (oauthFilter === 'api-key') {
-      return server.authType === 'api-key';
+      return supportsAuthType(server, 'api-key');
+    }
+
+    if (oauthFilter === 'api-token') {
+      return supportsAuthType(server, 'api-token');
     }
 
     if (oauthFilter === 'no-auth') {
-      return server.authType === 'none';
+      return supportsAuthType(server, 'none');
     }
 
     return true;
   });
+};
+
+const compareCatalogNames = (a: CatalogServer, b: CatalogServer): number => {
+  return a.name.localeCompare(b.name);
+};
+
+const getValidCheckedAt = (server: CatalogServer): number | null => {
+  if (!server.checkedAt) {
+    return null;
+  }
+
+  const timestamp = Date.parse(server.checkedAt);
+  return Number.isNaN(timestamp) ? null : timestamp;
+};
+
+const BROWSER_ACCESS_RANK = {
+  direct: 0,
+  'proxy-required': 1,
+  unknown: 2,
+} as const;
+
+/**
+ * Stable-sort a copy of catalog results. Source data is never mutated and the
+ * original index remains the final deterministic tie breaker.
+ */
+export const sortCatalogServers = (
+  servers: CatalogServer[],
+  order: CatalogSortOrder
+): CatalogServer[] => {
+  const indexedServers = servers.map((server, originalIndex) => ({ server, originalIndex }));
+
+  if (order === 'catalog-order') {
+    return indexedServers.map(({ server }) => server);
+  }
+
+  indexedServers.sort((a, b) => {
+    if (order === 'recently-tested') {
+      const aCheckedAt = getValidCheckedAt(a.server);
+      const bCheckedAt = getValidCheckedAt(b.server);
+
+      if (aCheckedAt !== null && bCheckedAt === null) return -1;
+      if (aCheckedAt === null && bCheckedAt !== null) return 1;
+      if (aCheckedAt !== null && bCheckedAt !== null && aCheckedAt !== bCheckedAt) {
+        return bCheckedAt - aCheckedAt;
+      }
+    }
+
+    if (order === 'browser-ready') {
+      const aRank = BROWSER_ACCESS_RANK[a.server.browserAccess ?? 'unknown'];
+      const bRank = BROWSER_ACCESS_RANK[b.server.browserAccess ?? 'unknown'];
+
+      if (aRank !== bRank) return aRank - bRank;
+    }
+
+    const nameComparison = compareCatalogNames(a.server, b.server);
+    return nameComparison || a.originalIndex - b.originalIndex;
+  });
+
+  return indexedServers.map(({ server }) => server);
+};
+
+export interface CatalogCategoryCount {
+  category: string;
+  count: number;
+}
+
+/**
+ * Count categories after search/auth filtering while intentionally ignoring
+ * the selected category. Supplying the full category set keeps zero rows in
+ * the facet navigation.
+ */
+export const getCatalogCategoryCounts = (
+  servers: CatalogServer[],
+  filters: CatalogFilterInput,
+  categories: string[] = getCatalogCategories(servers)
+): { all: number; categories: CatalogCategoryCount[] } => {
+  const matchingServers = filterCatalogServers(servers, {
+    ...filters,
+    category: CATALOG_CATEGORY_ALL,
+  });
+  const counts = new Map<string, number>();
+
+  matchingServers.forEach((server) => {
+    counts.set(server.category, (counts.get(server.category) ?? 0) + 1);
+  });
+
+  return {
+    all: matchingServers.length,
+    categories: categories.map((category) => ({
+      category,
+      count: counts.get(category) ?? 0,
+    })),
+  };
 };
 
 export const getCatalogCategories = (servers: CatalogServer[]): string[] => {

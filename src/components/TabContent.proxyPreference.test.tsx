@@ -15,8 +15,25 @@ vi.mock('../utils/transportDetection', async (importOriginal) => {
   return { ...actual, attemptParallelConnections: connectionMocks.attempt };
 });
 
+vi.mock('../utils/catalogUtils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/catalogUtils')>();
+  return {
+    ...actual,
+    getCatalogServers: () => actual.getCatalogServers().map((server) => (
+      server.id === 'coingecko'
+        ? {
+            ...server,
+            browserUrl: 'https://mcp.api.coingecko.com/sse',
+            validatedUrl: 'https://mcp.api.coingecko.com/sse',
+            transport: 'streamable-http' as const,
+          }
+        : server
+    )),
+  };
+});
+
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ currentUser: authMocks.currentUser, loading: false }),
+  useAuth: () => ({ currentUser: authMocks.currentUser, loading: false, loginWithGoogle: vi.fn() }),
 }));
 
 vi.mock('../utils/oauthFlow', async (importOriginal) => {
@@ -32,11 +49,11 @@ vi.mock('../utils/hostedOAuth', async (importOriginal) => {
 vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
 
 import TabContent, { savePlaygroundOAuthReturnState } from './TabContent';
+import { OAuthPrerequisiteError, type OAuthPrerequisite } from '../utils/oauthFlow';
 import {
   ProxiedAuthenticationError,
   TransportConnectionError,
 } from '../utils/transportDetection';
-import { OAuthPrerequisiteError } from '../utils/oauthFlow';
 
 beforeAll(() => {
   (
@@ -53,6 +70,33 @@ const setInputValue = (input: HTMLInputElement, value: string) => {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
+const renderTab = (tab: ConnectionTab, onUpdateTab = vi.fn()) => {
+  const container = document.createElement('div');
+  const root: Root = createRoot(container);
+  const render = (nextTab: ConnectionTab) => {
+    root.render(
+      <MemoryRouter>
+        <TabContent
+          tab={nextTab}
+          isActive
+          onUpdateTab={onUpdateTab}
+          spaces={[]}
+          onAddCardToSpace={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+  };
+
+  act(() => render(tab));
+
+  return {
+    container,
+    onUpdateTab,
+    rerender: (nextTab: ConnectionTab) => act(() => render(nextTab)),
+    unmount: () => act(() => root.unmount()),
+  };
+};
+
 const renderNewTab = (useProxy = true) => {
   const tab: ConnectionTab = {
     id: 'new-tab',
@@ -61,27 +105,7 @@ const renderNewTab = (useProxy = true) => {
     connectionStatus: 'Disconnected',
     useProxy,
   };
-  const container = document.createElement('div');
-  const root: Root = createRoot(container);
-
-  act(() => {
-    root.render(
-      <MemoryRouter>
-        <TabContent
-          tab={tab}
-          isActive
-          onUpdateTab={vi.fn()}
-          spaces={[]}
-          onAddCardToSpace={vi.fn()}
-        />
-      </MemoryRouter>
-    );
-  });
-
-  return {
-    container,
-    unmount: () => act(() => root.unmount()),
-  };
+  return renderTab(tab);
 };
 
 const connectToSlack = async (container: HTMLElement) => {
@@ -118,19 +142,41 @@ describe('rendered anonymous proxy preference', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
-  it('shows the proxy-login prerequisite from a default proxy-enabled new tab', async () => {
+  it('uses the proxy without a login and offers sign-in when the anonymous limit is hit', async () => {
+    const proxyUrl = `https://proxy.mcptest.test/?target=${encodeURIComponent('https://mcp.slack.com/mcp')}`;
+    const limitError = new Error('Streamable HTTP error: 429');
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockRejectedValueOnce(new TransportConnectionError([limitError], [{
+        candidateUrl: proxyUrl,
+        transportType: 'streamable-http',
+        error: limitError,
+        observedRequests: [{
+          method: 'POST',
+          url: proxyUrl,
+          status: 429,
+          responseSource: 'proxy',
+          proxyLimit: { tier: 'anonymous', retryAfterSeconds: 60 },
+          outcome: 'failed',
+        }],
+      }]));
     const view = renderNewTab();
 
     await connectToSlack(view.container);
 
-    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    expect(connectionMocks.attempt.mock.calls[1][0]).toBe(proxyUrl);
+    expect(connectionMocks.attempt.mock.calls[1][2]).toBeUndefined();
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(true);
-    expect(view.container.textContent).toContain('mcptest proxy authentication required');
+    expect(view.container.textContent).toContain('mcptest proxy limit reached');
+    expect(view.container.textContent).toContain('Sign in with Google to lift the limit');
     expect(view.container.textContent).not.toContain('MCP Server Connection Failed');
+    expect(view.container.textContent).not.toContain('mcptest proxy authentication required');
 
     const connectionPanel = view.container.querySelector('.connection-console');
     const prerequisitePanel = view.container.querySelector('.oauth-prerequisite-panel');
@@ -140,14 +186,15 @@ describe('rendered anonymous proxy preference', () => {
     view.unmount();
   });
 
-  it('shows the generic direct failure from an explicitly opted-out new tab', async () => {
+  it('shows the browser/CORS diagnosis from an explicitly opted-out new tab', async () => {
     const view = renderNewTab(false);
 
     await connectToSlack(view.container);
 
     expect(connectionMocks.attempt).toHaveBeenCalledOnce();
     expect(view.container.querySelector<HTMLInputElement>('#proxyFallbackCheck')?.checked).toBe(false);
-    expect(view.container.textContent).toContain('MCP Server Connection Failed');
+    expect(view.container.textContent).toContain('Browser access blocked');
+    expect(view.container.textContent).toContain('Automatically use proxy for CORS errors');
     expect(view.container.textContent).not.toContain('mcptest proxy authentication required');
     view.unmount();
   });
@@ -210,4 +257,284 @@ describe('playground hosted OAuth return state', () => {
       expect.objectContaining({ activeView: 'playground', activeTabId: 'tab-2' })
     );
   });
+});
+
+describe('endpoint-scoped preferred transport hints', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    connectionMocks.attempt.mockReset();
+    connectionMocks.attempt.mockRejectedValue(new Error('Connection failed'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('uses the hint for the initial auto-connect without treating it as negotiated output', async () => {
+    vi.useFakeTimers();
+    const endpoint = 'https://initial.example/mcp';
+    const tab: ConnectionTab = {
+      id: 'initial-auto-connect',
+      title: 'Initial connection',
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      transportType: 'legacy-sse',
+      preferredTransportHint: 'streamable-http',
+      autoConnect: true,
+      useProxy: false,
+    };
+    const view = renderTab(tab);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[0][7]).toBe('streamable-http');
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, expect.objectContaining({
+      transportType: null,
+    }));
+    expect(view.onUpdateTab.mock.calls.some(([, updates]) => (
+      Object.prototype.hasOwnProperty.call(updates, 'preferredTransportHint')
+    ))).toBe(false);
+    view.unmount();
+  });
+
+  it('uses the normal connection path once for an OAuth reconnect request', async () => {
+    vi.useFakeTimers();
+    const endpoint = 'https://mcp.example/mcp';
+    const tab: ConnectionTab = {
+      id: 'oauth-reconnect',
+      title: endpoint,
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      shouldReconnect: true,
+      useProxy: true,
+    };
+    const view = renderTab(tab);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, { shouldReconnect: false });
+
+    view.rerender(tab);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
+  it('does not duplicate an OAuth reconnect when auto-connect is already pending', async () => {
+    vi.useFakeTimers();
+    const endpoint = 'https://mcp.example/mcp';
+    const tab: ConnectionTab = {
+      id: 'oauth-auto-reconnect',
+      title: endpoint,
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      shouldReconnect: true,
+      autoConnect: true,
+      useProxy: true,
+    };
+    const view = renderTab(tab);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, { shouldReconnect: false });
+
+    view.rerender(tab);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
+  it('uses definitive Streamable HTTP evidence for a suggested /sse endpoint', async () => {
+    const view = renderNewTab(false);
+    const firstConnectionButton = Array.from(view.container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Connect your first server')
+    );
+    act(() => firstConnectionButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    const suggestedServerButton = Array.from(view.container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('CoinGecko')
+    );
+    expect(suggestedServerButton).toBeDefined();
+    await act(async () => {
+      suggestedServerButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const endpoint = 'https://mcp.api.coingecko.com/sse';
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[0][7]).toBe('streamable-http');
+    expect(view.onUpdateTab).toHaveBeenCalledWith('new-tab', {
+      serverUrl: endpoint,
+      title: 'mcp.api.coingecko.com',
+      preferredTransportHint: 'streamable-http',
+    });
+    view.unmount();
+  });
+
+  it('uses a transport hint added after the matching tab is already mounted', async () => {
+    const endpoint = 'https://existing.example/sse';
+    const tab: ConnectionTab = {
+      id: 'existing-tab',
+      title: 'Existing connection',
+      serverUrl: endpoint,
+      connectionStatus: 'Disconnected',
+      transportType: 'streamable-http',
+      useProxy: false,
+    };
+    const view = renderTab(tab);
+
+    view.rerender({ ...tab, preferredTransportHint: 'legacy-sse' });
+    const connectButton = view.container.querySelector<HTMLButtonElement>('#connectBtn');
+    expect(connectButton?.disabled).toBe(false);
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[0][7]).toBe('legacy-sse');
+    view.unmount();
+  });
+
+  it('clears the hint when the tab endpoint changes', () => {
+    const tab: ConnectionTab = {
+      id: 'edited-endpoint',
+      title: 'Edited endpoint',
+      serverUrl: 'https://before.example/mcp',
+      connectionStatus: 'Disconnected',
+      preferredTransportHint: 'streamable-http',
+      useProxy: false,
+    };
+    const view = renderTab(tab);
+    view.onUpdateTab.mockClear();
+
+    const input = view.container.querySelector<HTMLInputElement>('#serverUrl');
+    expect(input).not.toBeNull();
+    act(() => setInputValue(input!, 'https://after.example/sse'));
+
+    expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, {
+      preferredTransportHint: undefined,
+    });
+    view.unmount();
+  });
+});
+
+describe('Playground OAuth credential alternatives', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    oauthMocks.begin.mockReset();
+    connectionMocks.attempt.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    [
+      'PagerDuty',
+      'https://mcp.pagerduty.com/mcp',
+      'pd-token',
+      'Token token=pd-token',
+      'Token token=<TOKEN>',
+    ],
+    [
+      'GitHub',
+      'https://api.githubcopilot.com/mcp/',
+      'github-token',
+      'Bearer github-token',
+      undefined,
+    ],
+    [
+      'Intercom',
+      'https://mcp.intercom.com/mcp',
+      'intercom-token',
+      'Bearer intercom-token',
+      undefined,
+    ],
+  ] as const)(
+    'sends the exact %s Authorization header through Playground',
+    async (
+      providerName,
+      target,
+      token,
+      expectedAuthorization,
+      authorizationHeaderTemplate
+    ) => {
+      const prerequisite: OAuthPrerequisite = {
+        kind: 'discovery_blocked_invalid',
+        serverUrl: target,
+        providerName,
+        explanation: `${providerName} supports a direct credential alternative.`,
+        requiredScopes: [],
+        pkceS256: false,
+        publicClientSecretSupported: 'unknown',
+        canConfigureClient: false,
+        supportsBearerToken: true,
+        bearerTokenName: `${providerName} token`,
+        authorizationHeaderTemplate,
+      };
+      const challenge = new TransportConnectionError([
+        new ProxiedAuthenticationError(
+          401,
+          'target',
+          new Error('Authorization required'),
+          { method: 'POST', url: target },
+          { 'www-authenticate': 'Bearer' }
+        ),
+      ]);
+      connectionMocks.attempt.mockRejectedValue(challenge);
+      oauthMocks.begin.mockRejectedValueOnce(new OAuthPrerequisiteError(prerequisite));
+
+      const view = renderTab({
+        id: `${providerName.toLowerCase()}-credential`,
+        title: providerName,
+        serverUrl: target,
+        connectionStatus: 'Disconnected',
+        useProxy: false,
+      });
+      const connectButton = view.container.querySelector<HTMLButtonElement>('#connectBtn');
+      await act(async () => {
+        connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+
+      const bearerInput = view.container.querySelector<HTMLInputElement>(
+        '#oauth-prerequisite-bearer-token'
+      );
+      expect(bearerInput).not.toBeNull();
+      act(() => setInputValue(bearerInput!, token));
+
+      await act(async () => {
+        bearerInput?.closest('form')?.dispatchEvent(new Event('submit', {
+          bubbles: true,
+          cancelable: true,
+        }));
+      });
+
+      expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+      expect(connectionMocks.attempt.mock.calls[1][3]).toEqual({
+        Authorization: expectedAuthorization,
+      });
+      view.unmount();
+    }
+  );
 });

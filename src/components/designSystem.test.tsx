@@ -79,6 +79,54 @@ describe('outline button palette', () => {
   });
 });
 
+describe('technical string semantics', () => {
+  it('renders standard URLs as neutral text instead of danger text', () => {
+    const url = ruleFor('.technical-string-url')!.body;
+
+    expect(declaration(url, 'color')).toBe('var(--text-accent)');
+  });
+
+  it('renders inline identifiers as bordered neutral code', () => {
+    const inline = ruleFor('.technical-string-inline')!.body;
+
+    expect(declaration(inline, 'color')).toBe('var(--text-accent)');
+    expect(declaration(inline, 'border')).toBe('1px solid var(--border-color)');
+    expect(declaration(inline, 'background')).toBe('var(--card-bg-secondary)');
+  });
+
+  it('keeps partial inventory warnings amber', () => {
+    expect(declaration(ruleFor('.capability-inventory-status-partial')!.body, 'color'))
+      .toBe('var(--warning-color)');
+  });
+});
+
+describe('server connection grouping', () => {
+  it('encloses read-only connection properties in a subtle panel', () => {
+    const specs = ruleFor('.server-connection-specs')!.body;
+
+    expect(declaration(specs, 'border')).toBe('1px solid var(--border-color)');
+    expect(declaration(specs, 'border-radius')).toBe('var(--border-radius)');
+    expect(declaration(specs, 'padding')).toBe('0 1rem');
+  });
+});
+
+describe('server profile controls', () => {
+  it('keeps hero actions rectangular and the endpoint copy action borderless', () => {
+    expect(declaration(ruleFor('.server-profile-actions .server-profile-action')!.body, 'border-radius'))
+      .toBe('var(--button-radius)');
+    expect(declaration(ruleFor('.server-endpoint-copy')!.body, 'border')).toBe('0');
+  });
+
+  it('gives breadcrumb levels distinct interactive treatments', () => {
+    expect(declaration(ruleFor('.server-profile-breadcrumb-parent a')!.body, 'color'))
+      .toBe('var(--text-muted)');
+    expect(declaration(ruleFor('.server-profile-breadcrumb-parent a:hover')!.body, 'color'))
+      .toBe('var(--text-color)');
+    expect(declaration(ruleFor('.server-profile-breadcrumb .server-profile-breadcrumb-current')!.body, 'color'))
+      .toBe('var(--text-color)');
+  });
+});
+
 describe('grouped actions', () => {
   it('spaces grouped buttons instead of sharing their borders', () => {
     const group = ruleFor('.panel-actions, .result-actions, .btn-group')!.body;

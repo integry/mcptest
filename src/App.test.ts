@@ -109,6 +109,9 @@ describe('saved card authentication failures', () => {
         authorizationToken: 'firebase-session-token',
       },
     }));
+    expect(startFlow).toHaveBeenCalledWith(target, expect.not.objectContaining({
+      tokenProxy: expect.anything(),
+    }));
     expect(directCalls).toContain(resourceMetadataUrl);
     expect(directCalls).toContain(authorizationMetadataUrl);
     expect(proxyTargets).toEqual([authorizationMetadataUrl]);

@@ -19,7 +19,13 @@ export type CatalogValidationTransport = CatalogTransport | 'both' | 'unknown';
 export type CatalogProtocolEra = 'stateless' | 'stateful' | 'legacy' | 'unknown';
 
 /** Credential mechanism declared by a listing or detected during validation. */
-export type CatalogAuthType = 'none' | 'oauth' | 'bearer-token' | 'api-key' | 'unknown';
+export type CatalogAuthType =
+  | 'none'
+  | 'oauth'
+  | 'bearer-token'
+  | 'api-token'
+  | 'api-key'
+  | 'unknown';
 
 /**
  * Reachability state for a catalog server after validation. The unknown state
@@ -31,10 +37,33 @@ export type CatalogServerStatus = 'online' | 'offline' | 'unknown';
 /** Whether a hosted endpoint was verified from a browser, not just from Node. */
 export type CatalogBrowserAccess = 'direct' | 'proxy-required' | 'unknown';
 
+/** How a catalog listing was discovered. This is independent of live validation. */
+export type CatalogListingSourceKind = 'publisher' | 'mcp-registry' | 'community';
+
+export interface CatalogListingSource {
+  /** Curated source class; it must not be inferred from tags or validation results. */
+  kind: CatalogListingSourceKind;
+  /** HTTPS evidence for the listing source, when available. */
+  url?: string;
+}
+
+/** Stable sort options supported by the catalog URL and UI. */
+export type CatalogSortOrder =
+  | 'catalog-order'
+  | 'name'
+  | 'recently-tested'
+  | 'browser-ready';
+
 /**
  * Authentication-method filter used by the searchable catalog UI.
  */
-export type OAuthFilter = 'all' | 'oauth' | 'bearer-token' | 'api-key' | 'no-auth';
+export type OAuthFilter =
+  | 'all'
+  | 'oauth'
+  | 'bearer-token'
+  | 'api-token'
+  | 'api-key'
+  | 'no-auth';
 
 /** Provenance category for a self-hosted catalog logo. */
 export type CatalogLogoSourceKind =
@@ -49,10 +78,116 @@ export interface CatalogRequiredHeader {
   name: string;
   /** Short setup guidance that is safe to render publicly. */
   description?: string;
+  /**
+   * Complete publisher-documented header value, written with exactly one named
+   * credential placeholder such as `Bearer <SERVICE_TOKEN>` or
+   * `Token token=<SERVICE_TOKEN>`. Generated setups reproduce this value
+   * verbatim, so it must never contain a real credential.
+   */
+  valueTemplate?: string;
   /** Whether the header must be supplied for a successful MCP connection. */
   required?: boolean;
   /** Whether the value is a credential and must never be stored or rendered. */
   secret?: boolean;
+}
+
+export interface CatalogAlternativeEndpoint {
+  /** Publisher-documented endpoint used for a regional or authentication-specific connection. */
+  url: string;
+  /** Authentication method associated with this endpoint, when it differs from the primary flow. */
+  authType?: CatalogAuthType;
+  /** Public-safe explanation of when a client should use this endpoint. */
+  description: string;
+}
+
+/** How an OAuth client obtains registration credentials for a hosted server. */
+export type CatalogOAuthRegistrationMode =
+  | 'automatic'
+  | 'pre-registered-required'
+  | 'operator-confidential'
+  | 'provider-approval'
+  | 'unavailable-or-use-alternative'
+  | 'unknown';
+
+/** Party that must complete the prerequisite before mcptest can authorize. */
+export type CatalogOAuthResponsibleParty =
+  | 'automatic'
+  | 'user'
+  | 'mcptest-operator'
+  | 'provider-approval';
+
+/** Whether the hosted mcptest integration can currently start authorization. */
+export type CatalogOAuthAvailability =
+  | 'ready'
+  | 'operator-configuration-missing'
+  | 'provider-approval-pending'
+  | 'unsupported';
+
+export interface CatalogOAuthPublicSetting {
+  /** Short publisher field name, such as App type or Distribution. */
+  label: string;
+  /** Required non-secret value or selection. */
+  value: string;
+  required: boolean;
+}
+
+/** MCP clients whose publisher-documented OAuth callbacks can be cataloged. */
+export type CatalogOAuthClientId = 'claude-code' | 'codex-cli' | 'cursor' | 'vs-code';
+
+export interface CatalogOAuthCredentialRequirement {
+  /** Whether the client must receive this value before it can start OAuth. */
+  required: boolean;
+  /** Public environment-variable name used in generated setup; never the credential value. */
+  environmentVariable?: string;
+}
+
+export interface CatalogOAuthCallbackRequirement {
+  /** Whether the OAuth app must have a callback registered before setup. */
+  required: boolean;
+  /** Exact publisher-documented redirect URLs, grouped by client. */
+  redirectUrls?: Partial<Record<CatalogOAuthClientId, string[]>>;
+}
+
+export interface CatalogOAuthMcpRemoteSetup {
+  /** OAuth resource passed to the publisher-documented mcp-remote bridge. */
+  resourceUrl: string;
+  /** Exact loopback callback URL used by the publisher-documented bridge. */
+  callbackUrl: string;
+  /** Static loopback port used by mcp-remote for the registered callback. */
+  callbackPort: number;
+}
+
+/** Publisher evidence that setup generators consume without parsing prose caveats. */
+export interface CatalogOAuthRegistrationEvidence {
+  mode: CatalogOAuthRegistrationMode;
+  responsibleParty?: CatalogOAuthResponsibleParty;
+  clientId: CatalogOAuthCredentialRequirement;
+  clientSecret: CatalogOAuthCredentialRequirement;
+  callback: CatalogOAuthCallbackRequirement;
+  /** Whether the publisher accepts a secretless browser/public OAuth client. */
+  browserPublicClientSupported?: boolean;
+  /** Exact callback for the hosted mcptest integration. */
+  hostedCallbackUrl?: string;
+  /** Provider console or application page used to register the app. */
+  registrationUrl?: string;
+  /** Provider application/waitlist page. */
+  approvalUrl?: string;
+  /** Explicit publisher-evidence note when no application URL is published. */
+  approvalUrlAbsentReason?: string;
+  /** Ordered, bounded, public-safe provider setup instructions. */
+  setupSteps?: string[];
+  /** Required public app fields and selections. Never credential values. */
+  settings?: CatalogOAuthPublicSetting[];
+  /** Current availability of this flow specifically for hosted mcptest. */
+  availability?: CatalogOAuthAvailability;
+  /** ISO date on which the publisher evidence was reviewed. */
+  reviewedAt?: string;
+  /** Credential method preferred when automatic OAuth registration is unavailable. */
+  alternativeAuthType?: CatalogAuthType;
+  /** Publisher-documented compatibility bridge for clients without native static OAuth. */
+  codexMcpRemote?: CatalogOAuthMcpRemoteSetup;
+  /** HTTPS publisher page supporting these registration requirements. */
+  evidenceUrl: string;
 }
 
 /**
@@ -78,14 +213,26 @@ export interface CatalogServerSeed {
   category: string;
   /** Searchable keywords, capabilities, or ecosystem labels. */
   tags: string[];
+  /** Explicit listing provenance, kept separate from runtime validation evidence. */
+  listingSource: CatalogListingSource;
   /** Known or preferred transport for this remote server. */
   transport: CatalogTransport;
   /** Whether the server requires an OAuth flow before testing. */
   requiresOAuth: boolean;
   /** Declared authentication method; requiresOAuth remains for older seed compatibility. */
   authType?: CatalogAuthType;
+  /** Additional publisher-supported credential methods; the primary method remains recommended. */
+  alternativeAuthTypes?: CatalogAuthType[];
+  /** Typed publisher evidence for OAuth client registration and callback requirements. */
+  oauthRegistration?: CatalogOAuthRegistrationEvidence;
   /** Non-secret header requirements documented by the server publisher. */
   requiredHeaders?: CatalogRequiredHeader[];
+  /** Publisher-documented regional or authentication-specific endpoint alternatives. */
+  alternativeEndpoints?: CatalogAlternativeEndpoint[];
+  /** Prevent validation from synthesizing conventional child or sibling endpoint paths. */
+  exactEndpointOnly?: boolean;
+  /** Provider limitations and safety guidance that must remain visible on profiles. */
+  caveats?: string[];
   /** Self-hosted logo path used by every catalog, profile, and SEO surface. */
   logoUrl: string;
   /** HTTPS page or asset from which the self-hosted logo was retrieved. */
@@ -166,6 +313,8 @@ export interface CatalogServer extends Omit<CatalogServerSeed, 'transport'> {
   checkedAt?: string;
   /** Optional validation detail surfaced to maintainers or debug views. */
   validationMessage?: string;
+  /** Durable, public-safe capability snapshot maintained separately from reachability evidence. */
+  capabilityInventory?: CapabilityInventoryV1;
 }
 
 /**
@@ -178,4 +327,7 @@ export interface CatalogFilters {
   category: string;
   /** Authentication-method filter. */
   oauth: OAuthFilter;
+  /** Stable catalog ordering selected by the user. */
+  sort: CatalogSortOrder;
 }
+import type { CapabilityInventoryV1 } from './capabilityInventory';

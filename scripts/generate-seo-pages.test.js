@@ -2,8 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
 import learnData from '../src/data/learnArticles.json';
+import catalogSeeds from '../src/data/serverCatalog.json';
+import catalogValidation from '../src/data/catalogValidation.json';
+import catalogCapabilities from '../src/data/catalogCapabilities.json';
+import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 
-const { renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml } = seoGenerator;
+const {
+  mergeCatalogServers, renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml,
+  validateCapabilitySnapshots,
+} = seoGenerator;
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
 function catalogServer(url, declaredTransport) {
@@ -67,6 +74,28 @@ describe('generated server report Playground links', () => {
     });
   });
 
+  it('uses definitive Streamable HTTP evidence for a validated /sse endpoint', () => {
+    const server = catalogServer('https://example.com/sse', 'legacy-sse');
+    server.validatedUrl = 'https://example.com/sse';
+    server.transport = 'streamable-http';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('href="/server/https://example.com/sse/mcp"');
+    expect(html).toContain('claude mcp add --transport http');
+  });
+
+  it('uses /mcp inference when validation reports both despite a legacy declaration', () => {
+    const server = catalogServer('https://example.com/mcp', 'legacy-sse');
+    server.validatedUrl = 'https://example.com/mcp';
+    server.transport = 'both';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('href="/server/https://example.com/mcp/mcp"');
+    expect(html).toContain('claude mcp add --transport http');
+  });
+
   it('uses the browser-verified endpoint ahead of a server-only validation endpoint', () => {
     const server = catalogServer('https://example.com', 'streamable-http');
     server.validatedUrl = 'https://example.com/mcp';
@@ -82,6 +111,338 @@ describe('generated server report Playground links', () => {
 });
 
 describe('generated page metadata', () => {
+  it('renders the same four literal, escaped client setup sections', () => {
+    const server = catalogServer('https://example.com/mcp?label=<unsafe>', 'streamable-http');
+    server.id = 'unsafe-id';
+    server.name = 'Unsafe <Server>';
+    server.authType = 'oauth';
+    server.declaredAuthType = 'oauth';
+    server.requiresOAuth = true;
+
+    const html = renderServerHtml(indexHtml, server);
+
+    for (const heading of ['Claude Code setup', 'Codex CLI setup', 'Cursor setup', 'VS Code setup']) {
+      expect(html).toContain(`<h3>${heading}</h3>`);
+    }
+    expect(html).toContain('claude mcp add');
+    expect(html).toContain('codex mcp add');
+    expect(html).toContain('&lt;unsafe&gt;');
+    expect(html).not.toContain('<unsafe>');
+    expect(html).toContain('Canonical catalog endpoint'.toLowerCase());
+    expect(html).toContain('client will request authorization');
+    expect(html).toContain('After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.');
+    expect(html).not.toContain('claude mcp login');
+  });
+
+  it('renders Claude authentication options before the server name and URL', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.id = 'private-data';
+    server.authType = 'bearer-token';
+    server.declaredAuthType = 'bearer-token';
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain(
+      `claude mcp add --transport http --scope user --header 'Authorization: Bearer '&quot;\${PRIVATE_DATA_TOKEN}&quot; 'private-data' 'https://example.com/mcp'`
+    );
+  });
+
+  it('renders a documented ApiKey scheme exactly in the static setups', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.id = 'key-service';
+    server.authType = 'api-key';
+    server.declaredAuthType = 'api-key';
+    server.requiredHeaders = [{
+      name: 'Authorization', description: 'Service credential',
+      valueTemplate: 'ApiKey <SERVICE_KEY>', required: true, secret: true,
+    }];
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain(
+      `claude mcp add --transport http --scope user --header 'Authorization: ApiKey '&quot;\${SERVICE_KEY}&quot; 'key-service' 'https://example.com/mcp'`
+    );
+    expect(html).toContain('ApiKey ${env:SERVICE_KEY}');
+    expect(html).toContain('ApiKey ${input:service_key}');
+    expect(html).toContain('including the required syntax ApiKey &lt;credential&gt;');
+    expect(html).not.toContain('<strong>Setup unavailable</strong>');
+  });
+
+  it('renders prose-only credential metadata as unsupported static setups', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.authType = 'api-key';
+    server.declaredAuthType = 'api-key';
+    server.requiredHeaders = [{
+      name: 'Authorization', description: 'Send the key as ApiKey <SERVICE_KEY>',
+      required: true, secret: true,
+    }];
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html.match(/<strong>Setup unavailable<\/strong>/g)).toHaveLength(4);
+    expect(html).not.toContain('claude mcp add');
+    expect(html).not.toContain('${env:SERVICE_KEY}');
+  });
+
+  it('renders unsupported static setups as non-executable guidance', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.authType = 'api-key';
+    server.declaredAuthType = 'api-key';
+    server.requiredHeaders = [{
+      name: 'X-Region', description: 'Select the account region',
+      required: true, secret: false,
+    }];
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html.match(/<strong>Setup unavailable<\/strong>/g)).toHaveLength(4);
+    expect(html).toContain('required header X-Region');
+    expect(html).not.toContain('claude mcp add');
+    expect(html).not.toContain('codex mcp add');
+    expect(html).not.toContain('aria-label="Claude Code configuration"');
+  });
+
+  it('renders static Asana setup parity from typed registration evidence', () => {
+    const asana = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ id }) => id === 'asana');
+    expect(asana).toBeDefined();
+
+    const html = renderServerHtml(indexHtml, asana);
+    expect(html).toContain('--client-id &quot;${ASANA_CLIENT_ID}&quot; --client-secret --callback-port 8080');
+    expect(html.indexOf('--callback-port 8080')).toBeLessThan(html.indexOf("'asana'"));
+    expect(html).toContain('mcp-remote@latest');
+    expect(html).toContain('${env:ASANA_CLIENT_SECRET}');
+    expect(html).toContain('http://127.0.0.1:33418/');
+    expect(html).toContain('https://vscode.dev/redirect');
+    expect(html).toContain('natively prompts first for the client ID');
+    expect(html).toContain('Hosted mcptest operator setup required');
+    expect(html).toContain('user-created Asana app and secret work with documented supported clients');
+    expect(html).toContain('Retry remains unavailable until the mcptest operator configures a confidential binding server-side');
+    expect(html).toContain('creating the app alone does not enable hosted mcptest');
+    expect(html).not.toContain('no OAuth secret belongs in this configuration');
+  });
+
+  it('renders verified automatic Stripe registration guidance in static HTML', () => {
+    const stripe = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ id }) => id === 'stripe');
+    expect(stripe).toBeDefined();
+
+    const html = renderServerHtml(indexHtml, stripe);
+    expect(html).toContain('No app registration needed');
+    expect(html).toContain('No additional provider app setup is required');
+    expect(html).toContain('https://access.stripe.com/.well-known/oauth-authorization-server/mcp');
+    expect(html).not.toContain('Registration requirements not verified');
+  });
+
+  it('renders missing callback evidence as unsupported for all four static setups', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.authType = 'oauth';
+    server.declaredAuthType = 'oauth';
+    server.requiresOAuth = true;
+    server.oauthRegistration = {
+      mode: 'pre-registered-required',
+      clientId: { required: true, environmentVariable: 'EXAMPLE_CLIENT_ID' },
+      clientSecret: { required: true, environmentVariable: 'EXAMPLE_CLIENT_SECRET' },
+      callback: { required: true, redirectUrls: {} },
+      codexMcpRemote: {
+        resourceUrl: 'https://example.com',
+        callbackUrl: 'http://localhost:3334/oauth/callback',
+        callbackPort: 3334,
+      },
+      evidenceUrl: 'https://example.com/oauth-registration',
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+    expect(html.match(/<strong>Setup unavailable<\/strong>/g)).toHaveLength(4);
+    expect(html).not.toContain('claude mcp add');
+    expect(html).not.toContain('mcp-remote@latest');
+    expect(html).not.toMatch(/redirect URL:\s*\./);
+  });
+
+  it('renders static PagerDuty API-token and EU endpoint parity', () => {
+    const pagerduty = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ id }) => id === 'pagerduty');
+    expect(pagerduty).toBeDefined();
+    expect(pagerduty.oauthRegistration).toMatchObject({
+      clientId: { required: false },
+      clientSecret: { required: false },
+      callback: { required: false, redirectUrls: {} },
+    });
+
+    const html = renderServerHtml(indexHtml, pagerduty);
+    expect(html).toContain('Token token=&lt;PAGERDUTY_API_TOKEN&gt;');
+    expect(html).toContain('https://mcp.eu.pagerduty.com/mcp');
+    expect(html).toContain('automatic OAuth client registration is unavailable');
+    expect(html).not.toContain('no OAuth secret belongs in this configuration');
+    expect(html).not.toContain('codex mcp login');
+  });
+
+  it('renders observed catalog capability names and descriptions as literal server HTML', () => {
+    const server = mergeCatalogServers(
+      catalogSeeds, catalogValidation, catalogCapabilities
+    ).find(({ capabilityInventory }) => capabilityInventory?.tools.items.some(
+      ({ description }) => description
+    ));
+    const observedTool = server?.capabilityInventory?.tools.items.find(({ description }) => description);
+
+    expect(server).toBeDefined();
+    expect(observedTool).toBeDefined();
+    const html = renderServerHtml(indexHtml, server);
+    expect(html).toContain(`<strong>${observedTool.name}</strong>`);
+    expect(html).toContain(`<p>${observedTool.description}</p>`);
+  });
+
+  it('renders escaped literal capabilities and only aggregate inventory counts in JSON-LD', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.checkedAt = '2026-08-18T00:32:48';
+    const section = (items) => ({
+      status: 'complete', observedCount: items.length, retainedCount: items.length,
+      omittedCount: 0, paginationComplete: true, items,
+    });
+    server.capabilityInventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://example.com/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: section([{
+        name: '<script>alert(1)</script>',
+        description: 'safe & useful',
+        input: [{ name: 'libraryId', type: 'string', required: true }],
+      }]),
+      resources: section([{ name: 'Records' }]),
+      resourceTemplates: section([{ name: 'Record template' }]),
+      prompts: section([{ name: 'summarize' }]),
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('Tools provided by Example Server');
+    expect(html).toContain('Resources provided by Example Server');
+    expect(html).toContain('Resource templates provided by Example Server');
+    expect(html).toContain('Prompts provided by Example Server');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('Aug 18, 2026 at 12:32 AM');
+    expect(html).not.toContain('<dd>2026-08-18T00:32:48</dd>');
+    expect(html).toContain('server-spec-list server-connection-specs');
+    expect(html).toContain('<code class="technical-string technical-string-url technical-string-inline">https://example.com/mcp</code>');
+    expect(html).toContain('<code class="technical-string technical-string-inline">libraryId</code>');
+    expect(html).toContain('server-profile-breadcrumb-parent');
+    expect(html).toContain('server-profile-breadcrumb-current');
+    expect(html).toContain('"name":"Tools observed","value":1');
+    const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
+    expect(structuredData).not.toContain('alert(1)');
+  });
+
+  it('keeps standalone and quoted credentials out of generated static HTML', () => {
+    const githubToken = `ghp_${'a'.repeat(36)}`;
+    const stripeKey = `sk_live_${'b'.repeat(24)}`;
+    const quotedSecret = 'quoted static secret';
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.capabilityInventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: `https://example.com/mcp?sig=${stripeKey}`,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'safe_tool',
+          description: `Use ${githubToken}; client_secret='${quotedSecret}'`,
+        }],
+        resources: [{ name: stripeKey }],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain('[REDACTED]');
+    for (const secret of [githubToken, stripeKey, quotedSecret]) {
+      expect(html).not.toContain(secret);
+    }
+
+    const unsafeEndpointInventory = structuredClone(server.capabilityInventory);
+    unsafeEndpointInventory.provenance.testedEndpoint = `https://example.com/mcp?label=${githubToken}`;
+    expect(() => validateCapabilitySnapshots(
+      { 'example-server': unsafeEndpointInventory },
+      [server]
+    )).toThrow('inventory endpoint does not match its catalog origin');
+  });
+
+  it('accepts canonical inventories created from case-distinct argument names', () => {
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-08-17T22:00:00.000Z',
+      testedEndpoint: 'https://example.com/mcp',
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: {
+        tools: [{
+          name: 'case_distinct_arguments',
+          inputSchema: {
+            properties: {
+              Foo: { type: 'string' },
+              foo: { type: 'number' },
+            },
+          },
+        }],
+        resources: [],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    expect(inventory.tools.items[0].input).toHaveLength(1);
+    expect(() => validateCapabilitySnapshots(
+      { 'example-server': inventory },
+      [catalogServer('https://example.com/mcp', 'streamable-http')]
+    )).not.toThrow();
+  });
+
+  it('distinguishes incomplete discovery from completed sanitized and bounded inventories', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.capabilityInventory = {
+      version: 1,
+      observedAt: '2026-08-17T22:00:00.000Z',
+      provenance: { testedEndpoint: 'https://example.com/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: {
+        status: 'partial', observedCount: 1, retainedCount: 1,
+        omittedCount: 0, paginationComplete: true, items: [{ name: 'search' }],
+      },
+      resources: {
+        status: 'partial', observedCount: 2, retainedCount: 1,
+        omittedCount: 1, paginationComplete: true, items: [{ name: 'Public records' }],
+      },
+      resourceTemplates: {
+        status: 'partial', observedCount: 1, retainedCount: 1,
+        omittedCount: 0, paginationComplete: false, items: [{ name: 'Record template' }],
+      },
+      prompts: {
+        status: 'complete', observedCount: 0, retainedCount: 0,
+        omittedCount: 0, paginationComplete: true, items: [],
+      },
+    };
+
+    const html = renderServerHtml(indexHtml, server);
+
+    expect(html).toContain(
+      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
+    );
+    expect(html).toContain(
+      'Discovery completed; bounded inventory: 1 retained of 2 observed; 1 omitted.'
+    );
+    expect(html).toContain(
+      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
+    );
+    expect(html.match(/Partial discovery:/g)).toHaveLength(1);
+  });
+
   it('uses the absolute local logo in social metadata and static profile markup', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     const html = renderServerHtml(indexHtml, server);

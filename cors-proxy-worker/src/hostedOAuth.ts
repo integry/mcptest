@@ -4,8 +4,37 @@ export const HOSTED_AUTHORIZE_PATH = '/oauth/hosted/authorize';
 export const HOSTED_CALLBACK_PATH = '/oauth/hosted/callback';
 export const HOSTED_EXCHANGE_PATH = '/oauth/hosted/exchange';
 
+/**
+ * Structural subsets of the Durable Object API used by the hosted broker. They
+ * keep this module type-checkable outside the Worker tsconfig (the app test
+ * suite imports the Worker entry point) while accepting the runtime bindings.
+ */
+interface HostedOAuthStorageTransaction {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  put(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  setAlarm(scheduledTime: number): Promise<void>;
+  deleteAlarm(): Promise<void>;
+}
+
+interface HostedOAuthBrokerState {
+  storage: HostedOAuthStorageTransaction & {
+    transaction<T>(closure: (transaction: HostedOAuthStorageTransaction) => Promise<T>): Promise<T>;
+  };
+  blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
+}
+
+interface HostedOAuthBrokerStub {
+  fetch(input: string, init?: RequestInit): Promise<Response>;
+}
+
+interface HostedOAuthBrokerNamespace<Id = unknown> {
+  idFromName(name: string): Id;
+  get(id: Id): HostedOAuthBrokerStub;
+}
+
 export interface HostedOAuthEnv {
-  HOSTED_OAUTH_BROKER?: DurableObjectNamespace;
+  HOSTED_OAUTH_BROKER?: HostedOAuthBrokerNamespace;
   HOSTED_OAUTH_CALLBACK_URL?: string;
   HOSTED_OAUTH_ENCRYPTION_KEY?: string;
   PUBLIC_APP_ORIGIN?: string;
@@ -176,7 +205,7 @@ const base64Url = (bytes: Uint8Array): string => {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
-const decodeBase64Url = (value: string): Uint8Array => {
+const decodeBase64Url = (value: string): Uint8Array<ArrayBuffer> => {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/')
     .padEnd(Math.ceil(value.length / 4) * 4, '=');
   return Uint8Array.from(atob(padded), character => character.charCodeAt(0));
@@ -324,7 +353,7 @@ const parseTokenResponse = async (
   return {
     accessToken,
     ...(refreshToken ? { refreshToken } : {}),
-    ...(expiresIn !== undefined ? { expiresAt: Date.now() + expiresIn * 1000 } : {}),
+    ...(typeof expiresIn === 'number' ? { expiresAt: Date.now() + expiresIn * 1000 } : {}),
     ...(typeof body.scope === 'string' ? { scope: body.scope } : {}),
   };
 };
@@ -403,7 +432,7 @@ const verifyProviderMetadata = async (
   ) throw new Error('Trusted provider authorization metadata did not match the allowlist.');
 };
 
-const transactionStub = (env: HostedOAuthEnv, opaque: string): DurableObjectStub => {
+const transactionStub = (env: HostedOAuthEnv, opaque: string): HostedOAuthBrokerStub => {
   if (!env.HOSTED_OAUTH_BROKER) throw new Error('Hosted OAuth state storage is not configured.');
   return env.HOSTED_OAUTH_BROKER.get(env.HOSTED_OAUTH_BROKER.idFromName(opaque));
 };
@@ -559,7 +588,7 @@ export const resolveHostedGrant = async (
 };
 
 export class HostedOAuthBroker {
-  constructor(private readonly state: DurableObjectState, private readonly env: HostedOAuthEnv) {}
+  constructor(private readonly state: HostedOAuthBrokerState, private readonly env: HostedOAuthEnv) {}
 
   private async storeRecord(record: TransactionRecord | CompletionRecord | StoredGrant): Promise<void> {
     await this.state.storage.transaction(async transaction => {
@@ -690,7 +719,7 @@ export class HostedOAuthBroker {
     if (path === '/completion/init') {
       const existing = await this.state.storage.get('record');
       if (existing) return json({ error: 'completion_collision' }, 409);
-      await this.storeRecord(await request.json<CompletionRecord>());
+      await this.storeRecord(await request.json() as CompletionRecord);
       return json({ ok: true });
     }
 
@@ -721,7 +750,7 @@ export class HostedOAuthBroker {
     if (path === '/grant/store') {
       const existing = await this.state.storage.get('record');
       if (existing) return json({ error: 'grant_collision' }, 409);
-      await this.storeRecord(await request.json<StoredGrant>());
+      await this.storeRecord(await request.json() as StoredGrant);
       return json({ ok: true });
     }
 

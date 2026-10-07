@@ -7,10 +7,12 @@ import ReleaseReadinessReport from './ReleaseReadinessReport';
 import ReportHistory from './ReportHistory';
 import {
   beginOAuthFlow,
+  getHostedOAuthTokenProxyUrl,
   getOAuthPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
   prepareManualOAuthClient,
+  renderOAuthAuthorizationHeader,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
@@ -30,6 +32,7 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import {
   clearHostedOAuthAuthorization,
   loadHostedOAuthAuthorization,
@@ -46,6 +49,16 @@ import {
 } from '../utils/reportHistory';
 
 type StaticAuthorizationScheme = 'bearer' | 'api-key';
+
+const catalogAlternativeScheme = (
+  authType: ReturnType<typeof getAuthorizationGuidanceForEndpoint>['alternativeAuthType']
+): StaticAuthorizationScheme | undefined => (
+  authType === 'api-key'
+    ? 'api-key'
+    : authType === 'api-token' || authType === 'bearer-token'
+      ? 'bearer'
+      : undefined
+);
 
 export const getAuthorizationGateOptions = (
   report: EvaluationReport,
@@ -140,7 +153,7 @@ export const getOAuthTraceForEvaluation = (
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   
   // Parse the server URL from the pathname since we're not using React Router's Route params
   const urlParam = location.pathname.startsWith('/report/') 
@@ -183,6 +196,7 @@ const ReportView: React.FC = () => {
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [reportRunnerReady, setReportRunnerReady] = useState(false);
   const isRunningRef = useRef(false);
   const hasProcessedOAuthReturn = useRef(false);
   const oauthChallengeRef = useRef<{
@@ -222,13 +236,14 @@ const ReportView: React.FC = () => {
         setServerUrl(decodedUrl);
       }
 
-      // Automatically run the report if the user is logged in and we haven't run it yet for this session
-      if (currentUser && !hasInitialized && handleRunReportRef.current) {
+      // Automatically run the report once the login state is known. Signing in
+      // is optional; it only lifts the proxy's anonymous limits.
+      if (!authLoading && !hasInitialized && handleRunReportRef.current) {
         handleRunReportRef.current(decodedUrl);
         setHasInitialized(true);
       }
     }
-  }, [urlParam, currentUser, hasInitialized, serverUrl]);
+  }, [urlParam, authLoading, hasInitialized, serverUrl, reportRunnerReady]);
   
   // Separate effect to handle OAuth returns
   useEffect(() => {
@@ -273,7 +288,7 @@ const ReportView: React.FC = () => {
           console.log('[ReportView] Setting serverUrl after OAuth return:', decodedUrl);
           setServerUrl(decodedUrl);
           
-          if (currentUser && !isRunning && !isRunningRef.current) {
+          if (!isRunning && !isRunningRef.current) {
             console.log('[ReportView] Starting delayed report run after OAuth');
             // Use a longer delay to ensure handleRunReportRef is set
             setTimeout(() => {
@@ -292,8 +307,7 @@ const ReportView: React.FC = () => {
               }
             }, 500);
           } else {
-            console.log('[ReportView] Cannot run report:', { 
-              hasUser: !!currentUser, 
+            console.log('[ReportView] Cannot run report:', {
               isRunning,
               isRunningRef: isRunningRef.current
             });
@@ -303,7 +317,7 @@ const ReportView: React.FC = () => {
         console.error('Failed to parse OAuth return data:', e);
       }
     }
-  }, [location.state, urlParam, currentUser, isRunning]);
+  }, [location.state, urlParam, isRunning]);
 
   useEffect(() => {
     let storage: Storage;
@@ -363,10 +377,6 @@ const ReportView: React.FC = () => {
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext
   ) => {
-    if (!currentUser) {
-      alert('Please login to run a report.');
-      return;
-    }
     if (isRunning || isRunningRef.current) {
       console.log('[ReportView] Report already running, skipping');
       return;
@@ -395,8 +405,8 @@ const ReportView: React.FC = () => {
     const oauthAccessToken = loadOAuthAuthorization(urlToTest)?.accessToken;
     const hostedGrant = loadHostedOAuthAuthorization(urlToTest)?.grant;
     
-    // Get Firebase auth token
-    const token = await currentUser.getIdToken();
+    // Optional Firebase login: it only lifts the proxy's anonymous limits.
+    const token = currentUser ? await currentUser.getIdToken() : undefined;
     
     // Progress callback
     const onProgress = (message: string) => {
@@ -460,7 +470,7 @@ const ReportView: React.FC = () => {
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
         if (isProxyAuthenticationRequired(reportData)) {
           setProgress(prev => [...prev,
-            'A valid mcptest login is required before the proxy can observe the target; this run was not scored.'
+            'The mcptest proxy rejected an invalid or expired mcptest login before it could observe the target; this run was not scored.'
           ]);
           return;
         }
@@ -498,6 +508,7 @@ const ReportView: React.FC = () => {
   // Assign handleRunReport to ref after it's defined
   useEffect(() => {
     handleRunReportRef.current = handleRunReport;
+    setReportRunnerReady(true);
   }, [handleRunReport]);
 
   const saveOAuthReturnState = useCallback((authenticationUrl: string) => {
@@ -515,7 +526,8 @@ const ReportView: React.FC = () => {
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
-      const discoveryProxyToken = proxyUrl && currentUser
+      const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+      const proxyAuthorizationToken = (proxyUrl || tokenProxyUrl) && currentUser
         ? await currentUser.getIdToken()
         : undefined;
       const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
@@ -526,11 +538,19 @@ const ReportView: React.FC = () => {
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
         ...(challenge?.scope ? { scope: challenge.scope } : {}),
-        ...(proxyUrl && discoveryProxyToken
+        ...(proxyUrl
           ? {
               discoveryProxy: {
                 url: proxyUrl,
-                authorizationToken: discoveryProxyToken,
+                authorizationToken: proxyAuthorizationToken,
+              },
+            }
+          : {}),
+        ...(tokenProxyUrl
+          ? {
+              tokenProxy: {
+                url: tokenProxyUrl,
+                authorizationToken: proxyAuthorizationToken,
               },
             }
           : {}),
@@ -570,7 +590,7 @@ const ReportView: React.FC = () => {
         ...(challenge?.resourceMetadataUrl
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
           : {}),
-        ...(proxyUrl && discoveryProxyToken
+        ...(proxyUrl
           ? {
               discoveryProxy: {
                 url: proxyUrl,
@@ -601,9 +621,22 @@ const ReportView: React.FC = () => {
     : false;
   const reportRequiresAuthorization = reportOutcome === 'authorization-required'
     && !reportRequiresProxyAuthentication;
-  const authorizationGateOptions = report
+  const observedAuthorizationGateOptions = report
     ? getAuthorizationGateOptions(report, oauthTrace)
     : { offersOAuth: false, staticSchemes: [], isUnknown: true };
+  const reportAuthorizationGuidance = report
+    ? getAuthorizationGuidanceForEndpoint(report.serverUrl)
+    : undefined;
+  const catalogStaticScheme = catalogAlternativeScheme(
+    reportAuthorizationGuidance?.alternativeAuthType
+  );
+  const authorizationGateOptions = {
+    ...observedAuthorizationGateOptions,
+    staticSchemes: catalogStaticScheme
+      ? [...new Set([...observedAuthorizationGateOptions.staticSchemes, catalogStaticScheme])]
+      : observedAuthorizationGateOptions.staticSchemes,
+    isUnknown: observedAuthorizationGateOptions.isUnknown && !catalogStaticScheme,
+  };
   const selectedStaticAuthorizationScheme = authorizationGateOptions.staticSchemes.includes(
     staticAuthorizationScheme
   )
@@ -624,9 +657,20 @@ const ReportView: React.FC = () => {
     }
     const targetUrl = report.authenticationUrl || report.serverUrl;
     setStaticCredentialError(null);
+    const catalogHeaderName = reportAuthorizationGuidance?.alternativeHeaderName;
+    const catalogHeaderTemplate = reportAuthorizationGuidance?.alternativeHeaderTemplate;
+    const catalogPlaceholder = catalogHeaderTemplate?.match(/<[A-Z][A-Z0-9_]{1,63}>/)?.[0];
+    const targetHeaders = catalogHeaderName && catalogHeaderTemplate && catalogPlaceholder
+      ? {
+          [catalogHeaderName]: catalogHeaderTemplate.replace(
+            catalogPlaceholder,
+            () => credential
+          ),
+        }
+      : getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader);
     await handleRunReport(
       targetUrl,
-      getStaticCredentialHeaders(report, scheme, credential, selectedApiKeyHeader),
+      targetHeaders,
       {
         priorChallenge: {
           outcome: 'challenged',
@@ -768,17 +812,17 @@ const ReportView: React.FC = () => {
                   </div>
                   <div>
                     <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-                      <h3 id="report-proxy-auth-title" className="mb-0">mcptest login required</h3>
+                      <h3 id="report-proxy-auth-title" className="mb-0">mcptest login expired</h3>
                       <span className="badge text-bg-warning">Not scored</span>
                     </div>
                     <p className="mb-0">
-                      The authenticated proxy requested a valid mcptest login before it could return
-                      target evidence. This is not target OAuth and is not an MCP server failure.
+                      The mcptest proxy rejected an invalid or expired mcptest login before it could
+                      return target evidence. This is not target OAuth and is not an MCP server failure.
                     </p>
                   </div>
                 </div>
                 <div className="report-auth-note">
-                  Sign in again and retry the report. Target OAuth will only be offered if the MCP
+                  Sign in again (or sign out to use the proxy anonymously) and retry the report. Target OAuth will only be offered if the MCP
                   target subsequently returns its own authentication challenge.
                 </div>
               </section>
@@ -999,7 +1043,12 @@ const ReportView: React.FC = () => {
             // Do not invent direct-target provenance when this continuation has no route context.
             await handleRunReport(
               configuredServerUrl,
-              { Authorization: `Bearer ${token}` }
+              {
+                Authorization: renderOAuthAuthorizationHeader(
+                  oauthPrerequisite.authorizationHeaderTemplate,
+                  token
+                ),
+              }
             );
           } : undefined}
           onBeforeHostedAuthorization={() => saveOAuthReturnState(oauthConfigServerUrl)}

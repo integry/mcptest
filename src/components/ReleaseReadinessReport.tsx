@@ -20,6 +20,9 @@ import {
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
+import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
+import AuthorizationSetup from './AuthorizationSetup';
+import CapabilitiesProvided from './CapabilitiesProvided';
 
 interface ReleaseReadinessReportProps {
   report: EvaluationReport;
@@ -46,6 +49,7 @@ const traceEventTitles: Record<OAuthTraceEventV1['type'], string> = {
   target_challenge: 'Server requested authorization',
   protected_resource_metadata: 'Protected resource discovered',
   authorization_server_metadata: 'Authorization server discovered',
+  client_establishment: 'OAuth client strategy selected',
   cimd: 'Client metadata document checked',
   dynamic_client_registration: 'OAuth client registered',
   pre_registered_client: 'Registered OAuth client selected',
@@ -152,6 +156,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
   onToggleItem,
 }) => {
   const facts = useMemo(() => createObservedServerFacts(report, oauthTrace), [report, oauthTrace]);
+  const authorizationGuidance = useMemo(
+    () => getAuthorizationGuidanceForEndpoint(report.serverUrl),
+    [report.serverUrl]
+  );
   const matrix = useMemo(() => createCompatibilityMatrix(report, oauthTrace), [report, oauthTrace]);
   const decision = useMemo(
     () => createReleaseDecision(report, matrix, report.toolSurfaceAnalysis, oauthTrace),
@@ -210,6 +218,8 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           </div>
         </div>
       </section>
+
+      <AuthorizationSetup guidance={authorizationGuidance} currentCatalogContext />
 
       <section className="release-section" aria-labelledby="release-blockers-title">
         <div className="release-section-heading">
@@ -345,6 +355,15 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           </>
         )}
       </section>
+
+      {report.capabilityInventory && (
+        <section className="release-section" aria-labelledby="release-capabilities-title">
+          <CapabilitiesProvided
+            inventory={report.capabilityInventory}
+            titleId="release-capabilities-title"
+          />
+        </section>
+      )}
 
       <section className="release-section" aria-labelledby="tool-surface-title">
         <div className="release-section-heading">

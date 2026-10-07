@@ -7,7 +7,10 @@ import { useAuth } from '../context/AuthContext';
 import ConnectionPanel from './ConnectionPanel';
 import { UnifiedPanel } from './UnifiedPanel';
 import { RecentServersPanel } from './RecentServersPanel';
-import { SuggestedServersPanel } from './SuggestedServersPanel';
+import {
+  SuggestedServersPanel,
+  type SuggestedServerSelection,
+} from './SuggestedServersPanel';
 import ParamsPanel from './ParamsPanel';
 import OutputPanel from './OutputPanel';
 import OAuthConfig from './OAuthConfig';
@@ -22,7 +25,10 @@ import { useResourceAccess } from '../hooks/useResourceAccess';
 
 // Import Utils
 import { parseUriTemplateArgs } from '../utils/uriUtils';
-import { normalizeOAuthServerUrl } from '../utils/oauthFlow';
+import {
+  normalizeOAuthServerUrl,
+  renderOAuthAuthorizationHeader,
+} from '../utils/oauthFlow';
 
 // Constants for localStorage keys
 const TOOL_HISTORY_KEY = 'mcpToolCallHistory';
@@ -83,7 +89,7 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, loginWithGoogle } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
@@ -202,13 +208,22 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       : undefined;
   }, [tab.catalogProtocolEra]);
 
+  const getPreferredTransportHint = useCallback((urlToConnect: string) => {
+    return urlToConnect === tab.serverUrl
+      ? tab.preferredTransportHint
+      : undefined;
+  }, [tab.preferredTransportHint, tab.serverUrl]);
+
   const handleServerUrlChange = useCallback((nextServerUrl: string) => {
     setServerUrl(nextServerUrl);
     if (catalogProtocolEndpointRef.current && nextServerUrl !== catalogProtocolEndpointRef.current) {
       catalogProtocolEndpointRef.current = undefined;
       onUpdateTab(tab.id, { catalogProtocolEra: undefined });
     }
-  }, [onUpdateTab, setServerUrl, tab.id]);
+    if (nextServerUrl !== tab.serverUrl && tab.preferredTransportHint) {
+      onUpdateTab(tab.id, { preferredTransportHint: undefined });
+    }
+  }, [onUpdateTab, setServerUrl, tab.id, tab.preferredTransportHint, tab.serverUrl]);
 
   const {
     tools,
@@ -299,7 +314,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResponses,
           tab.serverUrl,
           tab.useProxy, // Pass the current tab's useProxy value
-          getCatalogProtocolEraHint(tab.serverUrl)
+          getCatalogProtocolEraHint(tab.serverUrl),
+          getPreferredTransportHint(tab.serverUrl)
         );
       }, 100);
     }
@@ -313,6 +329,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     addLogEntry, 
     handleConnect,
     getCatalogProtocolEraHint,
+    getPreferredTransportHint,
     onUpdateTab,
     setTools,
     setResources,
@@ -641,8 +658,23 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   // Wrapper function to handle resource access and save history
   // Effect to handle OAuth callback reconnection
+  const isHandlingReconnect = useRef(false);
   useEffect(() => {
+    if (!tab.shouldReconnect) {
+      isHandlingReconnect.current = false;
+      return;
+    }
+
     if (tab.shouldReconnect && !isConnecting && connectionStatus === 'Disconnected') {
+      if (isHandlingReconnect.current) return;
+      // Result-share and catalog tabs may already have scheduled their normal
+      // auto-connect effect. Let that path win instead of connecting twice.
+      if (hasAutoConnected.current) {
+        onUpdateTab(tab.id, { shouldReconnect: false });
+        return;
+      }
+      isHandlingReconnect.current = true;
+      hasAutoConnected.current = true;
       console.log('[OAuth] Reconnecting after successful authentication...');
       // Clear the shouldReconnect flag
       onUpdateTab(tab.id, { shouldReconnect: false });
@@ -657,11 +689,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           setResponses,
           tab.serverUrl,
           tab.useProxy,
-          getCatalogProtocolEraHint(tab.serverUrl)
+          getCatalogProtocolEraHint(tab.serverUrl),
+          getPreferredTransportHint(tab.serverUrl)
         );
       }, 500); // 500ms delay to ensure token is available
     }
-  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, getCatalogProtocolEraHint, setTools, setResources, setResponses, onUpdateTab]);
+  }, [tab.shouldReconnect, isConnecting, connectionStatus, tab.id, tab.serverUrl, tab.useProxy, handleConnect, getCatalogProtocolEraHint, getPreferredTransportHint, setTools, setResources, setResponses, onUpdateTab]);
   
   // Effect to handle OAuth callback logs
   useEffect(() => {
@@ -716,7 +749,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   };
 
   // Wrapper function to handle connect
-  const handleConnectWrapper = (urlToConnect?: string, protocolEraHint?: string) => {
+  const handleConnectWrapper = (
+    urlToConnect?: string,
+    protocolEraHint?: string,
+    preferredTransportHint?: ConnectionTab['preferredTransportHint']
+  ) => {
     const requestedUrl = urlToConnect || serverUrl;
     return handleConnect(
       setTools,
@@ -728,8 +765,28 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         || protocolEraHint === 'stateful'
         || protocolEraHint === 'legacy'
         ? protocolEraHint
-        : getCatalogProtocolEraHint(requestedUrl)
+        : getCatalogProtocolEraHint(requestedUrl),
+      preferredTransportHint ?? getPreferredTransportHint(requestedUrl)
     );
+  };
+
+  const handleSuggestedServerSelect = ({
+    endpoint,
+    protocolEra,
+  }: SuggestedServerSelection) => {
+    let title = endpoint.url;
+    try {
+      title = new URL(endpoint.url).hostname;
+    } catch {
+      // Catalog validation reports malformed URLs; retain the URL as a safe fallback.
+    }
+    setServerUrl(endpoint.url);
+    onUpdateTab(tab.id, {
+      serverUrl: endpoint.url,
+      title,
+      preferredTransportHint: endpoint.transport,
+    });
+    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport);
   };
 
   useEffect(() => {
@@ -923,6 +980,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             oauthUserInfo={oauthUserInfo}
             isOAuthConnection={isOAuthConnection}
             catalogAuthType={tab.catalogAuthType}
+            diagnosticTransport={tab.preferredTransportHint || 'unknown'}
             credentialHeader={credentialHeader}
             credentialValue={catalogCredential}
             setCredentialValue={setCatalogCredential}
@@ -937,10 +995,17 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           serverUrl={oauthConfigServerUrl}
           currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
+          onSignIn={oauthPrerequisite?.kind === 'proxy_authentication_required'
+            || (oauthPrerequisite?.kind === 'proxy_limit_reached' && !currentUser)
+            ? loginWithGoogle
+            : undefined}
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
             setPrerequisiteBearerCredential({
               targetUrl: normalizeConnectionTarget(oauthConfigServerUrl),
-              authorization: `Bearer ${token}`,
+              authorization: renderOAuthAuthorizationHeader(
+                oauthPrerequisite.authorizationHeaderTemplate,
+                token
+              ),
               attemptId: ++nextBearerAttemptId.current,
             });
             clearOAuthConfigNeed();
@@ -976,8 +1041,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             {!showFirstConnectionOnboarding && <AwaitingConnectionPanel />}
             {isFirstConnection ? (
               <SuggestedServersPanel
-                setServerUrl={handleServerUrlChange}
-                handleConnect={handleConnectWrapper}
+                onServerSelect={handleSuggestedServerSelect}
                 isConnected={isConnected}
                 isConnecting={isConnecting}
                 showOnboardingIntro={showFirstConnectionOnboarding}
@@ -998,8 +1062,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 )}
                 <div className={recentServers.length > 0 ? 'col-md-6' : 'col-12'}>
                   <SuggestedServersPanel
-                    setServerUrl={handleServerUrlChange}
-                    handleConnect={handleConnectWrapper}
+                    onServerSelect={handleSuggestedServerSelect}
                     isConnected={isConnected}
                     isConnecting={isConnecting}
                   />
