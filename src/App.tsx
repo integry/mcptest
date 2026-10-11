@@ -14,6 +14,7 @@ import DashboardsView from './components/DashboardsView'; // New
 import ReportView from './components/ReportView'; // New
 import CatalogView from './components/CatalogView';
 import ServerProfileView from './components/ServerProfileView';
+import ToolSelectionEvalsView from './components/ToolSelectionEvalsView';
 import Tabs from './components/Tabs'; // New
 import LearnArticlePage from './components/learn/LearnArticlePage';
 import LearnIndex from './components/learn/LearnIndex';
@@ -245,7 +246,7 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'evals' => {
   const path = window.location.pathname;
   if (path.startsWith('/docs/')) {
     return 'docs';
@@ -258,6 +259,9 @@ const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'rep
   }
   if (path.startsWith('/report')) {
     return 'report';
+  }
+  if (path.startsWith('/evals')) {
+    return 'evals';
   }
   if (getCatalogServerIdFromPath(path)) {
     return 'server-profile';
@@ -379,6 +383,10 @@ function App() {
     // Check for report routes
     if (path.startsWith('/report')) {
       return { activeView: 'report' as const, activeDocPage: null };
+    }
+
+    if (path.startsWith('/evals')) {
+      return { activeView: 'evals' as const, activeDocPage: null };
     }
 
     if (getCatalogServerIdFromPath(path)) {
@@ -1927,6 +1935,10 @@ function App() {
           {/* Report View */}
           <div className={`view-panel ${activeView === 'report' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             <ReportView />
+          </div>
+
+          <div className={`view-panel ${activeView === 'evals' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            <ToolSelectionEvalsView />
           </div>
 
           {/* Catalog View */}

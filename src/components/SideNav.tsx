@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { RESOURCE_NAV_ITEMS } from '../content/resourceNavigation';
 
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
+  activeView: 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'evals';
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -275,6 +275,14 @@ const SideNav: React.FC<SideNavProps> = ({
         onClick={() => document.body.classList.remove('menu-open')}
       >
         <i className="bi bi-clipboard2-data me-2"></i> Report
+      </Link>
+
+      <Link
+        to="/evals"
+        className={`nav-link ${activeView === 'evals' ? 'active fw-bold' : ''}`}
+        onClick={() => document.body.classList.remove('menu-open')}
+      >
+        <i className="bi bi-bezier2 me-2"></i> Tool-selection evals
       </Link>
 
       {/* Dashboards Header */}
