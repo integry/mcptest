@@ -1925,7 +1925,7 @@ function App() {
           </div>
 
           {/* Report View */}
-          <div className={`view-panel ${activeView === 'report' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+          <div className={`view-panel report-view-panel ${activeView === 'report' ? '' : 'd-none'}`}>
             <ReportView />
           </div>
 

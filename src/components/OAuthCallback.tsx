@@ -15,6 +15,7 @@ interface OAuthReturnView {
   selectedSpaceId?: string;
   selectedSpaceName?: string;
   serverUrl?: string;
+  reportInputUrl?: string;
 }
 
 interface OAuthNavigationState {
@@ -120,8 +121,8 @@ const OAuthCallback: React.FC = () => {
                 fromOAuthReturn: true,
                 targetSpaceId: returnView.selectedSpaceId,
               };
-            } else if (returnView.activeView === 'report' && returnView.serverUrl) {
-              targetPath = `/report/${encodeURIComponent(returnView.serverUrl)}`;
+            } else if (returnView.activeView === 'report' && returnView.serverUrl === serverUrl) {
+              targetPath = `/report/${encodeURIComponent(returnView.reportInputUrl || serverUrl)}`;
               navigationState = {
                 ...navigationState,
                 fromOAuthReturn: true,

@@ -494,7 +494,7 @@ export const createReleaseDecision = (
       : 'Inspect the target WWW-Authenticate challenge or authorization configuration, provide the required credential, then rerun the report.';
     return {
       status: 'authorization-required',
-      answer: 'Not yet — authorization is required',
+      answer: 'Not scored — authorization is required',
       summary: `${authorizationLabels.length > 0 ? authorizationLabels.join(' or ') : 'Target'} authorization must complete before a release decision can be made.`,
       priorities: [{
         id: 'evaluation.authorization',
