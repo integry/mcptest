@@ -4,15 +4,25 @@
 // are rate limited by client IP and have their streamed responses capped, while
 // a valid Firebase login lifts those limits to a generous per-user allowance.
 
-export interface Env {
+import {
+  HOSTED_GRANT_HEADER,
+  HostedOAuthBroker,
+  handleHostedOAuthRequest,
+  resolveHostedGrant,
+  type HostedOAuthEnv,
+} from './hostedOAuth';
+
+export interface Env extends HostedOAuthEnv {
   FIREBASE_PROJECT_ID: string;
   /** Server-only operator OAuth configuration. Set these with `wrangler secret put`. */
   FIGMA_OAUTH_CLIENT_ID?: string;
   FIGMA_OAUTH_CLIENT_SECRET?: string;
   SLACK_OAUTH_CLIENT_ID?: string;
   SLACK_OAUTH_CLIENT_SECRET?: string;
+  SLACK_OAUTH_SCOPES?: string;
   GITHUB_OAUTH_CLIENT_ID?: string;
   GITHUB_OAUTH_CLIENT_SECRET?: string;
+  GITHUB_OAUTH_SCOPES?: string;
   /**
    * Cloudflare Rate Limiting bindings (see wrangler.toml). Optional so local
    * development and tests without the bindings still work; the Worker fails
@@ -25,22 +35,6 @@ export interface Env {
 /** Shape of Cloudflare's native Rate Limiting binding. */
 export interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
-}
-
-/**
- * Keep this export while Cloudflare has Durable Objects registered under this
- * script name. Removing an exported Durable Object class without an explicit
- * migration causes every subsequent version upload to fail. This compatibility
- * implementation intentionally leaves existing object storage untouched and
- * fails closed if an old binding routes a request to it.
- */
-export class HostedOAuthBroker {
-  async fetch(): Promise<Response> {
-    return new Response('Hosted OAuth broker is unavailable in this Worker version.', {
-      status: 503,
-      headers: { 'Cache-Control': 'no-store' },
-    });
-  }
 }
 
 export type OperatorOAuthProvider = 'figma' | 'slack' | 'github';
@@ -68,6 +62,8 @@ export function getOperatorOAuthClient(
     : undefined;
 }
 
+export { HostedOAuthBroker };
+
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_TARGET_REDIRECTS = 20;
 export const PROXY_RESPONSE_SOURCE_HEADER = 'X-MCP-Proxy-Response-Source';
@@ -94,6 +90,7 @@ const REQUIRED_CORS_REQUEST_HEADERS = [
   'Mcp-Name',
   'Mcp-Session-Id',
   'X-MCP-Authorization',
+  HOSTED_GRANT_HEADER,
   'X-MCP-OAuth-Issuer',
   'X-MCP-OAuth-Resource',
   'X-MCP-OAuth-Client-Authorization',
@@ -134,6 +131,8 @@ export interface ProxyCaller {
   tier: CallerTier;
   /** Rate-limit key: client IP for anonymous callers, Firebase uid when signed in. */
   key: string;
+  /** Firebase uid of a signed-in caller; binds hosted OAuth grants. */
+  uid?: string;
 }
 
 export interface ResponseBodyLimits {
@@ -167,7 +166,7 @@ export async function identifyCaller(
     };
   }
   const uid = await verifyToken(firebaseToken, env.FIREBASE_PROJECT_ID);
-  return uid ? { tier: 'signed-in', key: `uid:${uid}` } : null;
+  return uid ? { tier: 'signed-in', key: `uid:${uid}`, uid } : null;
 }
 
 const missingRateLimiterWarnings = new Set<string>();
@@ -1777,6 +1776,7 @@ export function getTargetRequestHeaders(requestHeaders: HeadersInit): Headers {
 
   headers.delete('Authorization');
   headers.delete('X-MCP-Authorization');
+  headers.delete(HOSTED_GRANT_HEADER);
   headers.delete('X-MCP-OAuth-Client-Authorization');
   headers.delete('X-MCP-OAuth-Issuer');
   headers.delete('X-MCP-OAuth-Resource');
@@ -1953,6 +1953,15 @@ export async function handleProxyRequest(
   }
 
   const url = new URL(request.url);
+  const isHostedCallbackOrAuthorize = url.pathname === '/oauth/hosted/callback'
+    || url.pathname === '/oauth/hosted/authorize';
+  let hostedUid: string | null = null;
+  if (!isHostedCallbackOrAuthorize && url.pathname.startsWith('/oauth/hosted/')) {
+    hostedUid = await authenticatedUid(request, env, dependencies.verifyToken);
+  }
+  const hostedResponse = await handleHostedOAuthRequest(request, env, hostedUid);
+  if (hostedResponse) return withCorsResponseHeaders(hostedResponse, 'proxy');
+
   // Extract the target URL from query string
   const targetUrl = url.searchParams.get('target');
 
@@ -2010,8 +2019,18 @@ export async function handleProxyRequest(
       return callerLimitResponse(caller, getCorsHeaders());
     }
 
-    // Create a new request to the target URL
-    const headers = getTargetRequestHeaders(request.headers);
+    // Create a new request to the target URL. A hosted grant is bound to a
+    // Firebase user, so it is only resolved for signed-in callers.
+    if (request.headers.has(HOSTED_GRANT_HEADER) && !caller.uid) {
+      void request.body?.cancel().catch(() => {});
+      return new Response(JSON.stringify({ error: 'authentication_required' }), {
+        status: 401,
+        headers: { ...getCorsHeaders(), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+    const headers = getTargetRequestHeaders(
+      caller.uid ? await withHostedGrantAuthorization(request.headers, env, caller.uid, target) : request.headers
+    );
     // A declared length can understate a streamed body, so the budget is also
     // enforced on the bytes actually forwarded.
     const limitedRequestBody = request.body && maxRequestBytes !== undefined
@@ -2080,6 +2099,62 @@ export default {
     return handleProxyRequest(request, env);
   },
 };
+
+export async function forwardAuthenticatedProxyRequest(
+  request: Request,
+  env: HostedOAuthEnv,
+  uid: string,
+  target: URL
+): Promise<Response> {
+  try {
+    const headers = getTargetRequestHeaders(
+      await withHostedGrantAuthorization(request.headers, env, uid, target)
+    );
+    const targetRequest = new Request(target.toString(), {
+      method: request.method,
+      headers,
+      body: request.body,
+      redirect: 'manual',
+    });
+
+    return withCorsResponseHeaders(await fetchTargetRequest(targetRequest), 'target');
+  } catch (error) {
+    if (error instanceof Response) {
+      return withCorsResponseHeaders(error, 'proxy');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Places the provider access token behind a hosted grant on the isolated
+ * target-authorization channel. Throws a proxy-owned Response when the grant
+ * is expired, unknown, or bound to another user or target.
+ */
+async function withHostedGrantAuthorization(
+  requestHeaders: Headers,
+  env: HostedOAuthEnv,
+  uid: string,
+  target: URL
+): Promise<Headers> {
+  const inboundHeaders = new Headers(requestHeaders);
+  const hostedGrant = inboundHeaders.get(HOSTED_GRANT_HEADER);
+  if (hostedGrant) {
+    const targetAuthorization = await resolveHostedGrant(env, hostedGrant, uid, target.toString());
+    inboundHeaders.set('X-MCP-Authorization', targetAuthorization);
+  }
+  return inboundHeaders;
+}
+
+async function authenticatedUid(
+  request: Request,
+  env: Env,
+  verifyToken: (token: string, projectId: string) => Promise<string | null> = verifyFirebaseToken
+): Promise<string | null> {
+  const authorization = request.headers.get('Authorization');
+  if (!authorization?.startsWith('Bearer ')) return null;
+  return verifyToken(authorization.slice(7), env.FIREBASE_PROJECT_ID);
+}
 
 /**
  * Handles CORS preflight (OPTIONS) requests
@@ -2173,70 +2248,54 @@ function getCorsHeaders(
  */
 async function verifyFirebaseToken(token: string, projectId: string): Promise<string | null> {
   try {
-    console.log("[DEBUG] Starting JWT token verification");
-    
     // Parse the token
     const parts = token.split('.');
     if (parts.length !== 3) {
-      console.log("[DEBUG] Token has invalid format - expected 3 parts, got", parts.length);
       return null;
     }
 
     // Decode header and payload
     const header = JSON.parse(atob(parts[0]));
     const payload = JSON.parse(atob(parts[1]));
-    console.log("[DEBUG] Token header:", JSON.stringify(header));
-    console.log("[DEBUG] Token payload (user ID):", payload.sub || payload.user_id);
     
     // Check token expiration
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp && payload.exp < now) {
-      console.log("[DEBUG] Token expired");
       return null;
     }
     
     // Check token not before time
     if (payload.nbf && payload.nbf > now) {
-      console.log("[DEBUG] Token not yet valid");
       return null;
     }
     
     // Validate issuer
     const expectedIssuer = `https://securetoken.google.com/${projectId}`;
     if (payload.iss !== expectedIssuer) {
-      console.log("[DEBUG] Invalid issuer");
       return null;
     }
     
     // Validate audience
     if (payload.aud !== projectId) {
-      console.log("[DEBUG] Invalid audience");
       return null;
     }
     
     // Get the signing key
     const publicKeys = await getFirebasePublicKeys();
-    console.log('[DEBUG] Available key IDs:', Object.keys(publicKeys));
-    console.log('[DEBUG] Looking for key ID:', header.kid);
-    
     const key = publicKeys[header.kid];
     if (!key) {
-      console.log('[DEBUG] Key not found! Available keys:', Object.keys(publicKeys));
       return null;
     }
-    console.log('[DEBUG] Found key for ID:', header.kid);
     
     // Verify the signature
     const isValid = await verifySignature(token, key);
     if (!isValid) {
-      console.log('[DEBUG] Invalid signature');
       return null;
     }
     
     // Extract user ID
     const userId = payload.sub || payload.user_id;
     if (!userId) {
-      console.log('[DEBUG] No user ID in token');
       return null;
     }
     
@@ -2294,15 +2353,12 @@ async function verifySignature(token: string, publicKeyPem: string): Promise<boo
     const [headerB64, payloadB64, signatureB64] = token.split('.');
     const message = `${headerB64}.${payloadB64}`;
     
-    console.log('[DEBUG] Verifying signature for token with header:', headerB64);
     
     // Convert base64url to base64
     const signature = Uint8Array.from(atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-    console.log('[DEBUG] Signature length:', signature.length);
     
     // Convert PEM to crypto key
     const publicKey = await importPublicKey(publicKeyPem);
-    console.log('[DEBUG] Successfully imported public key');
     
     // Verify the signature
     const encoder = new TextEncoder();
@@ -2318,7 +2374,6 @@ async function verifySignature(token: string, publicKeyPem: string): Promise<boo
       data
     );
     
-    console.log('[DEBUG] Signature verification result:', isValid);
     return isValid;
   } catch (error) {
     console.error('Signature verification error:', error);

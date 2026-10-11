@@ -4,7 +4,6 @@ import { URL as NodeURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import proxyWorker, {
   ANONYMOUS_MAX_RESPONSE_BYTES,
-  HostedOAuthBroker,
   OAUTH_RELAY_FAILURE_HEADER,
   limitResponseBody,
   PROXY_LIMIT_HEADER,
@@ -51,13 +50,6 @@ const readProvenanceThroughCors = (url: string): Promise<string | null> => (
 );
 
 describe('proxy target credential forwarding', () => {
-  it('retains the registered hosted OAuth Durable Object export', async () => {
-    const response = await new HostedOAuthBroker().fetch();
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get('cache-control')).toBe('no-store');
-  });
-
   it('resolves confidential provider clients only from server bindings', () => {
     const env = {
       FIREBASE_PROJECT_ID: 'test-project',
@@ -75,6 +67,7 @@ describe('proxy target credential forwarding', () => {
     const headers = getTargetRequestHeaders({
       Authorization: 'Bearer firebase-jwt',
       'X-MCP-Authorization': 'Bearer target-token',
+      'X-MCP-Hosted-Grant': 'opaque-hosted-grant',
       'X-MCP-OAuth-Client-Authorization': 'Basic dynamic-secret',
       'X-MCP-OAuth-Issuer': 'https://issuer.example',
       'X-MCP-OAuth-Registration-Endpoint': 'https://issuer.example/register',
@@ -85,6 +78,7 @@ describe('proxy target credential forwarding', () => {
 
     expect(headers.get('authorization')).toBe('Bearer target-token');
     expect(headers.get('x-mcp-authorization')).toBeNull();
+    expect(headers.get('x-mcp-hosted-grant')).toBeNull();
     expect(headers.get('x-mcp-oauth-client-authorization')).toBeNull();
     expect(headers.get('x-mcp-oauth-issuer')).toBeNull();
     expect(headers.get('x-mcp-oauth-registration-endpoint')).toBeNull();

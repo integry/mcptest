@@ -31,6 +31,10 @@ import {
   sanitizeOAuthTraceUrl,
 } from './oauthTrace';
 import {
+  classifyHostedOAuthProvider,
+  type HostedOAuthProviderId,
+} from './hostedOAuth';
+import {
   getOAuthClientEstablishmentStrategy,
   getOAuthProviderPolicy,
   isPolicyRegistrationApprovalRejection,
@@ -154,6 +158,7 @@ export interface OAuthPrerequisite {
   explanation: string;
   issuer?: string;
   registrationEndpoint?: string;
+  resourceMetadataUrl?: string;
   documentationUrl?: string;
   registrationUrl?: string;
   requiredScopes: string[];
@@ -166,6 +171,8 @@ export interface OAuthPrerequisite {
   authorizationHeaderTemplate?: string;
   failedStage?: string;
   httpStatus?: number;
+  hostedProvider?: HostedOAuthProviderId;
+  hostedScope?: string;
   /** Bounded, normalized field errors; never an arbitrary provider response body. */
   registrationValidationErrors?: OAuthRegistrationValidationError[];
 }
@@ -723,6 +730,7 @@ const buildOAuthPrerequisite = (
   const issuer = issuerForDiscovery(discovery);
   const guidance = providerGuidance(serverUrl, issuer);
   const policy = guidance.policy;
+  const hostedProvider = classifyHostedOAuthProvider(serverUrl, issuer);
   const issuerBoundPolicy = issuer ? getOAuthProviderPolicy(serverUrl, issuer) : undefined;
   const resourceScopes = discovery?.resourceMetadata?.scopes_supported || [];
   const requiredScopes = Array.from(new Set([
@@ -758,6 +766,7 @@ const buildOAuthPrerequisite = (
     providerName: guidance.name,
     issuer,
     registrationEndpoint: metadata?.registration_endpoint,
+    resourceMetadataUrl: discovery?.resourceMetadataUrl,
     documentationUrl: guidance.documentationUrl,
     registrationUrl: guidance.registrationUrl,
     requiredScopes,
@@ -771,6 +780,8 @@ const buildOAuthPrerequisite = (
     } : { configurationMode: 'browser-public' as const }),
     failedStage,
     ...(error instanceof RegistrationRejectedError ? { httpStatus: error.status } : {}),
+    ...(hostedProvider ? { hostedProvider: hostedProvider.provider } : {}),
+    ...(requestedScope ? { hostedScope: requestedScope } : {}),
   };
 
   if (kind === 'provider_approval_required') {
@@ -818,7 +829,9 @@ const buildOAuthPrerequisite = (
       return {
         ...base,
         canConfigureClient: false,
-        explanation: `${operatorRequirement}${credentialAlternative}`,
+        explanation: `${operatorRequirement}${hostedProvider
+          ? ' mcptest.io can use its operator-owned app without exposing the client secret to this browser.'
+          : ''}${credentialAlternative}`,
       };
     }
     return {
@@ -2677,19 +2690,24 @@ export const prepareManualOAuthClient = async (
       throw new OAuthPrerequisiteError(prerequisite);
     }
     if (providerForbidsDynamicRegistration(normalizedServerUrl, issuer)) {
+      const hostedProvider = classifyHostedOAuthProvider(normalizedServerUrl, issuer);
       trace.record({
         type: 'pre_registered_client',
         outcome: 'required',
         provenance: 'oauth_client',
         route: 'client',
-        explanation: 'Provider policy requires an operator-owned confidential OAuth application.',
+        explanation: hostedProvider
+          ? 'This trusted provider requires the operator-owned confidential OAuth client.'
+          : 'Provider policy requires an operator-owned confidential OAuth application.',
       });
       const prerequisite = buildOAuthPrerequisite(
         'pre_registered_client_required',
         normalizedServerUrl,
         provider,
         trace,
-        new Error('Authorization server does not support dynamic client registration')
+        new Error(hostedProvider
+          ? 'A hosted confidential client is required.'
+          : 'Authorization server does not support dynamic client registration')
       );
       trace.terminal(prerequisite.kind, prerequisite.explanation);
       throw new OAuthPrerequisiteError(prerequisite);
