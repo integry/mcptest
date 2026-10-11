@@ -81,6 +81,8 @@ export interface ObservedTransportRequest {
   status?: number;
   /** Who produced a proxied HTTP response, when the proxy exposes provenance. */
   responseSource?: ProxyAuthenticationSource;
+  /** Unmodified standard retry guidance; contains no request credentials. */
+  retryAfter?: string;
   /** Set when the mcptest proxy itself rejected the caller for exceeding its limit. */
   proxyLimit?: ProxyCallerLimit;
   /** Bounded and credential-redacted target response detail. */
@@ -738,6 +740,8 @@ const observeAuthenticationResponses = (
         attemptedRequest.outcome = 'failed';
       });
     }
+    const retryAfter = response.headers.get('Retry-After');
+    if (retryAfter) attemptedRequest.retryAfter = retryAfter;
     attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
     attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
     if (attemptedRequest.responseSource === 'target' && !response.ok) {

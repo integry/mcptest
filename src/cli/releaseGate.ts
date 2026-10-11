@@ -210,14 +210,14 @@ const LOCAL_METADATA_KEYS = new Set([
   'authenticationSource', 'authorizationChallenge', 'authorizationScheme',
   'authorizationSchemes', 'durationMs', 'endpoint', 'evaluationRuntime', 'method',
   'outcome', 'protocolEra', 'protocolVersion', 'provenance', 'responseHeaders',
-  'result', 'route', 'routeFailures', 'transportType',
+  'responseSource', 'result', 'retryAfter', 'route', 'routeFailures', 'transportType',
   'unauthenticatedTargetRequestSucceeded',
 ]);
 
 const LOCAL_METADATA_VALUE_KEYS = new Set([
   'authenticationSource', 'authorizationScheme', 'authorizationSchemes',
   'evaluationRuntime', 'method', 'outcome', 'protocolEra', 'provenance', 'result',
-  'route', 'transportType',
+  'responseSource', 'route', 'transportType',
 ]);
 
 const isLocalToolAnalysisString = (path: readonly string[]): boolean => (
