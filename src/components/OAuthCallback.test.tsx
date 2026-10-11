@@ -168,14 +168,29 @@ describe('OAuthCallback authentication restoration', () => {
       label: 'report',
       returnView: {
         activeView: 'report',
-        serverUrl: 'https://report-target.example/mcp',
+        serverUrl: 'https://mcp.example/mcp',
       },
-      path: '/report/https%3A%2F%2Freport-target.example%2Fmcp',
+      path: '/report/https%3A%2F%2Fmcp.example%2Fmcp',
       state: {
         oauthSuccess: true,
         authorizedServerUrl: 'https://mcp.example/mcp',
         fromOAuthReturn: true,
-        serverUrl: 'https://report-target.example/mcp',
+        serverUrl: 'https://mcp.example/mcp',
+      },
+    },
+    {
+      label: 'root report with authorized candidate',
+      returnView: {
+        activeView: 'report',
+        serverUrl: 'https://mcp.example/mcp',
+        reportInputUrl: 'https://mcp.example/',
+      },
+      path: '/report/https%3A%2F%2Fmcp.example%2F',
+      state: {
+        oauthSuccess: true,
+        authorizedServerUrl: 'https://mcp.example/mcp',
+        fromOAuthReturn: true,
+        serverUrl: 'https://mcp.example/mcp',
       },
     },
   ])('preserves the saved $label return destination', async ({ returnView, path, state }) => {
@@ -192,6 +207,22 @@ describe('OAuthCallback authentication restoration', () => {
 
     expect(callbackMocks.navigate).toHaveBeenCalledWith(path, {
       state,
+      replace: true,
+    });
+  });
+
+  it('does not restore report context saved for a different authorized endpoint', async () => {
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'report', serverUrl: 'https://different.example/mcp',
+      reportInputUrl: 'https://different.example/',
+    }));
+    authState.loading = false;
+    await act(async () => {
+      root = createRoot(document.createElement('div'));
+      root.render(<OAuthCallback />);
+    });
+    expect(callbackMocks.navigate).toHaveBeenCalledWith('/', {
+      state: { oauthSuccess: true, authorizedServerUrl: 'https://mcp.example/mcp' },
       replace: true,
     });
   });

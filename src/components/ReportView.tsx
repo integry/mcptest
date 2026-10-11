@@ -32,6 +32,7 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import { getCatalogServerByEndpoint } from '../utils/catalogUtils';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import {
   clearHostedOAuthAuthorization,
@@ -70,7 +71,11 @@ export const getAuthorizationGateOptions = (
 } => {
   const schemes = createObservedServerFacts(report, trace).authorization.schemes.value;
   if (schemes === 'unknown' || schemes.length === 0) {
-    return { offersOAuth: false, staticSchemes: [], isUnknown: true };
+    // Catalog policy is only trusted for the exact locally challenged endpoint.
+    // It supplies a continuation, not observed capability or OAuth test results.
+    const catalog = getCatalogServerByEndpoint(report.authenticationUrl || report.serverUrl);
+    const offersOAuth = !isProxyAuthenticationRequired(report) && catalog?.requiresOAuth === true;
+    return { offersOAuth, staticSchemes: [], isUnknown: !offersOAuth };
   }
   return {
     offersOAuth: schemes.includes('oauth'),
@@ -209,7 +214,8 @@ const ReportView: React.FC = () => {
   const handleRunReportRef = useRef<((
     urlToTest: string,
     targetHeaders?: Record<string, string>,
-    authorizationContext?: EvaluationAuthorizationContext
+    authorizationContext?: EvaluationAuthorizationContext,
+    displayUrl?: string
   ) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
@@ -236,88 +242,32 @@ const ReportView: React.FC = () => {
         setServerUrl(decodedUrl);
       }
 
-      // Automatically run the report once the login state is known. Signing in
-      // is optional; it only lifts the proxy's anonymous limits.
+      // Wait for both login state and the runner. OAuth callbacks rerun exactly
+      // once against the authorized resource while retaining the original input.
       if (!authLoading && !hasInitialized && handleRunReportRef.current) {
-        handleRunReportRef.current(decodedUrl);
-        setHasInitialized(true);
-      }
-    }
-  }, [urlParam, authLoading, hasInitialized, serverUrl, reportRunnerReady]);
-  
-  // Separate effect to handle OAuth returns
-  useEffect(() => {
-    if (!urlParam || !location.state) return;
-    
-    const state = location.state as any;
-    if (!state.fromOAuthReturn) return;
-    
-    // Check if we've already processed this OAuth return
-    if (hasProcessedOAuthReturn.current) {
-      console.log('[ReportView] OAuth return already processed, skipping');
-      return;
-    }
-    
-    const decodedUrl = decodeURIComponent(urlParam);
-    const returnView = sessionStorage.getItem('oauth_return_view');
-    
-    console.log('[ReportView] OAuth return detected in location state:', {
-      state,
-      returnView,
-      decodedUrl,
-      isRunning,
-      isRunningRef: isRunningRef.current
-    });
-    
-    if (returnView) {
-      try {
-        const returnData = JSON.parse(returnView);
-        if (returnData.activeView === 'report' && returnData.serverUrl === decodedUrl) {
-          // Mark that we've processed this OAuth return
-          hasProcessedOAuthReturn.current = true;
-          
-          // Clear the return view
-          sessionStorage.removeItem('oauth_return_view');
-          sessionStorage.removeItem('oauth_completed_time');
-          
-          // Re-run the report after successful OAuth
-          console.log('[ReportView] Re-running report after OAuth return (from location state)');
-          setProgress(['OAuth authentication successful! Restarting report...']);
-          
-          // Ensure the URL is set in the input field
-          console.log('[ReportView] Setting serverUrl after OAuth return:', decodedUrl);
-          setServerUrl(decodedUrl);
-          
-          if (!isRunning && !isRunningRef.current) {
-            console.log('[ReportView] Starting delayed report run after OAuth');
-            // Use a longer delay to ensure handleRunReportRef is set
-            setTimeout(() => {
-              if (handleRunReportRef.current && !isRunningRef.current) {
-                handleRunReportRef.current(decodedUrl);
-              } else if (!handleRunReportRef.current) {
-                // If handleRunReportRef is still not available, try again
-                console.log('[ReportView] handleRunReportRef not ready, retrying...');
-                setTimeout(() => {
-                  if (handleRunReportRef.current && !isRunningRef.current) {
-                    handleRunReportRef.current(decodedUrl);
-                  } else {
-                    console.error('[ReportView] Failed to get handleRunReportRef after retries or report already running');
-                  }
-                }, 1000);
-              }
-            }, 500);
-          } else {
-            console.log('[ReportView] Cannot run report:', {
-              isRunning,
-              isRunningRef: isRunningRef.current
-            });
+        const state = location.state as { fromOAuthReturn?: boolean; authorizedServerUrl?: string } | null;
+        let evaluationUrl = decodedUrl;
+        if (state?.fromOAuthReturn && !hasProcessedOAuthReturn.current) {
+          try {
+            const saved = JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null');
+            if (saved?.activeView === 'report'
+              && (saved.reportInputUrl || saved.serverUrl) === decodedUrl
+              && typeof state.authorizedServerUrl === 'string'
+              && saved.serverUrl === state.authorizedServerUrl) {
+              evaluationUrl = state.authorizedServerUrl;
+              hasProcessedOAuthReturn.current = true;
+              sessionStorage.removeItem('oauth_return_view');
+              sessionStorage.removeItem('oauth_completed_time');
+            }
+          } catch {
+            // Invalid return context never selects a different credential target.
           }
         }
-      } catch (e) {
-        console.error('Failed to parse OAuth return data:', e);
+        setHasInitialized(true);
+        void handleRunReportRef.current(evaluationUrl, undefined, undefined, decodedUrl);
       }
     }
-  }, [location.state, urlParam, isRunning]);
+  }, [urlParam, authLoading, hasInitialized, serverUrl, reportRunnerReady, location.state]);
 
   useEffect(() => {
     let storage: Storage;
@@ -375,7 +325,8 @@ const ReportView: React.FC = () => {
   const handleRunReport = useCallback(async (
     urlToTest: string,
     targetHeaders?: Record<string, string>,
-    authorizationContext?: EvaluationAuthorizationContext
+    authorizationContext?: EvaluationAuthorizationContext,
+    displayUrl = urlToTest
   ) => {
     if (isRunning || isRunningRef.current) {
       console.log('[ReportView] Report already running, skipping');
@@ -397,8 +348,8 @@ const ReportView: React.FC = () => {
     
     // Only navigate if we're not already on the correct URL
     const currentReportUrl = urlParam ? decodeURIComponent(urlParam) : '';
-    if (currentReportUrl !== urlToTest) {
-      navigate(`/report/${encodeURIComponent(urlToTest)}`);
+    if (currentReportUrl !== displayUrl) {
+      navigate(`/report/${encodeURIComponent(displayUrl)}`);
     }
 
     // Get the exact resource's issuer-bound OAuth access token if available.
@@ -440,6 +391,10 @@ const ReportView: React.FC = () => {
           authorizationContext,
           null
         );
+      }
+      if (displayUrl !== urlToTest) {
+        reportData.authenticationUrl ||= urlToTest;
+        reportData.serverUrl = displayUrl;
       }
       if (isTargetAuthenticationRequired(reportData)) {
         oauthChallengeRef.current = {
@@ -515,9 +470,10 @@ const ReportView: React.FC = () => {
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
       activeView: 'report',
       serverUrl: authenticationUrl,
+      reportInputUrl: report?.serverUrl || authenticationUrl,
       timestamp: Date.now()
     }));
-  }, []);
+  }, [report?.serverUrl]);
 
   const startOAuth = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('authorize');
@@ -557,7 +513,8 @@ const ReportView: React.FC = () => {
         deferAuthorizedTraceOutcome: true,
       });
       if (result === 'AUTHORIZED') {
-        await handleRunReportRef.current?.(authenticationUrl);
+        sessionStorage.removeItem('oauth_return_view');
+        await handleRunReportRef.current?.(authenticationUrl, undefined, undefined, report?.serverUrl);
       }
     } catch (error) {
       const prerequisite = getOAuthPrerequisite(error);
@@ -571,7 +528,7 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, [currentUser, saveOAuthReturnState]);
+  }, [currentUser, saveOAuthReturnState, report?.serverUrl]);
 
   const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('configure');
@@ -625,7 +582,7 @@ const ReportView: React.FC = () => {
     ? getAuthorizationGateOptions(report, oauthTrace)
     : { offersOAuth: false, staticSchemes: [], isUnknown: true };
   const reportAuthorizationGuidance = report
-    ? getAuthorizationGuidanceForEndpoint(report.serverUrl)
+    ? getAuthorizationGuidanceForEndpoint(report.authenticationUrl || report.serverUrl)
     : undefined;
   const catalogStaticScheme = catalogAlternativeScheme(
     reportAuthorizationGuidance?.alternativeAuthType
@@ -676,12 +633,13 @@ const ReportView: React.FC = () => {
           outcome: 'challenged',
           provenance: 'direct_target',
         },
-      }
+      },
+      report.serverUrl
     );
   };
 
   return (
-    <div className="container-fluid h-100 d-flex flex-column" style={{ paddingBottom: '2rem' }}>
+    <div className="container-fluid report-view" style={{ paddingBottom: '2rem' }}>
       <h2 className="mb-3">MCP release-readiness report</h2>
       <div className="input-group mb-3">
         <input
@@ -802,204 +760,207 @@ const ReportView: React.FC = () => {
               oauthTrace={oauthTrace}
               expandedItems={expandedItems}
               onToggleItem={toggleItemExpanded}
-            />
-            {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
-            {reportRequiresProxyAuthentication && (
-              <section className="report-auth-gate" aria-labelledby="report-proxy-auth-title">
-                <div className="report-auth-heading">
-                  <div className="report-auth-icon" aria-hidden="true">
-                    <i className="bi bi-person-lock"></i>
-                  </div>
-                  <div>
-                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-                      <h3 id="report-proxy-auth-title" className="mb-0">mcptest login expired</h3>
-                      <span className="badge text-bg-warning">Not scored</span>
+              authorizationActions={<>
+                {reportRequiresProxyAuthentication && (
+                  <section className="report-auth-gate" aria-labelledby="report-proxy-auth-title">
+                    <div className="report-auth-heading">
+                      <div className="report-auth-icon" aria-hidden="true">
+                        <i className="bi bi-person-lock"></i>
+                      </div>
+                      <div>
+                        <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                          <h3 id="report-proxy-auth-title" className="mb-0">mcptest login expired</h3>
+                          <span className="badge text-bg-warning">Not scored</span>
+                        </div>
+                        <p className="mb-0">
+                          The mcptest proxy rejected an invalid or expired mcptest login before it could
+                          return target evidence. This is not target OAuth and is not an MCP server failure.
+                        </p>
+                      </div>
                     </div>
-                    <p className="mb-0">
-                      The mcptest proxy rejected an invalid or expired mcptest login before it could
-                      return target evidence. This is not target OAuth and is not an MCP server failure.
-                    </p>
-                  </div>
-                </div>
-                <div className="report-auth-note">
-                  Sign in again (or sign out to use the proxy anonymously) and retry the report. Target OAuth will only be offered if the MCP
-                  target subsequently returns its own authentication challenge.
-                </div>
-              </section>
-            )}
-            {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
-              <ReportAuthorizationGate
-                serverUrl={report.serverUrl}
-                error={oauthError}
-                isAuthorizing={oauthAction === 'authorize'}
-                isPreparingClient={oauthAction === 'configure'}
-                onAuthorize={() => startOAuth(report.authenticationUrl || report.serverUrl)}
-                onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
-              />
-            )}
-            {reportRequiresAuthorization
-              && selectedStaticAuthorizationScheme && (
-              <section className="report-auth-gate" aria-labelledby="report-static-auth-title">
-                <div className="report-auth-heading">
-                  <div className="report-auth-icon" aria-hidden="true">
-                    <i className="bi bi-key-fill"></i>
-                  </div>
-                  <div>
-                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-                      <h3 id="report-static-auth-title" className="mb-0">
-                        {authorizationGateOptions.staticSchemes.length > 1
-                          ? 'Choose a target credential'
-                          : `${selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'} required`}
-                      </h3>
-                      <span className="badge text-bg-warning">Not scored</span>
+                    <div className="report-auth-note">
+                      Sign in again (or sign out to use the proxy anonymously) and retry the report. Target OAuth will only be offered if the MCP
+                      target subsequently returns its own authentication challenge.
                     </div>
-                    <p className="mb-0">
-                      Enter the target credential to retry this report. It is kept only in this
-                      page&apos;s memory and is not saved, logged, or added to the URL.
+                  </section>
+                )}
+                {reportRequiresAuthorization && authorizationGateOptions.offersOAuth && (
+                  <ReportAuthorizationGate
+                    serverUrl={report.authenticationUrl || report.serverUrl}
+                    error={oauthError}
+                    isAuthorizing={oauthAction === 'authorize'}
+                    isPreparingClient={oauthAction === 'configure'}
+                    onAuthorize={() => startOAuth(report.authenticationUrl || report.serverUrl)}
+                    onConfigureClient={() => configureOAuthClient(report.authenticationUrl || report.serverUrl)}
+                  />
+                )}
+                {reportRequiresAuthorization
+                  && selectedStaticAuthorizationScheme && (
+                  <section className="report-auth-gate" aria-labelledby="report-static-auth-title">
+                    <div className="report-auth-heading">
+                      <div className="report-auth-icon" aria-hidden="true">
+                        <i className="bi bi-key-fill"></i>
+                      </div>
+                      <div>
+                        <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                          <h3 id="report-static-auth-title" className="mb-0">
+                            {authorizationGateOptions.staticSchemes.length > 1
+                              ? 'Choose a target credential'
+                              : `${selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'} required`}
+                          </h3>
+                          <span className="badge text-bg-warning">Not scored</span>
+                        </div>
+                        <p className="mb-0">
+                          Enter the target credential to retry this report. It is kept only in this
+                          page&apos;s memory and is not saved, logged, or added to the URL.
+                        </p>
+                      </div>
+                    </div>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void retryWithStaticCredential(selectedStaticAuthorizationScheme);
+                      }}
+                    >
+                      {authorizationGateOptions.staticSchemes.length > 1 && (
+                        <>
+                          <label className="form-label" htmlFor="report-static-auth-scheme">
+                            Authentication type
+                          </label>
+                          <select
+                            id="report-static-auth-scheme"
+                            className="form-select mb-3"
+                            value={selectedStaticAuthorizationScheme}
+                            onChange={(event) => {
+                              setStaticAuthorizationScheme(event.target.value as StaticAuthorizationScheme);
+                              setStaticCredentialError(null);
+                            }}
+                            disabled={isRunning}
+                          >
+                            {authorizationGateOptions.staticSchemes.map((scheme) => (
+                              <option key={scheme} value={scheme}>
+                                {scheme === 'bearer' ? 'Bearer token' : 'API key'}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+                      <label className="form-label" htmlFor="report-static-credential">
+                        {selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
+                      </label>
+                      <input
+                        id="report-static-credential"
+                        className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
+                        type="password"
+                        value={staticCredential}
+                        onChange={(event) => {
+                          setStaticCredential(event.target.value);
+                          setStaticCredentialError(null);
+                        }}
+                        disabled={isRunning}
+                        autoComplete="new-password"
+                        spellCheck={false}
+                        aria-describedby={staticCredentialError ? 'report-static-credential-error' : undefined}
+                      />
+                      {staticCredentialError && (
+                        <div id="report-static-credential-error" className="invalid-feedback">
+                          {staticCredentialError}
+                        </div>
+                      )}
+                      <button
+                        type="submit"
+                        className="btn btn-primary mt-3"
+                        disabled={isRunning}
+                      >
+                        {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                      </button>
+                    </form>
+                  </section>
+                )}
+                {reportRequiresAuthorization && authorizationGateOptions.isUnknown && (
+                  <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
+                    <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
+                    <p>
+                      Choose the target&apos;s credential type and retry. The credential is kept only
+                      in this page&apos;s memory and is not saved, logged, or added to the URL.
                     </p>
-                  </div>
-                </div>
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void retryWithStaticCredential(selectedStaticAuthorizationScheme);
-                  }}
-                >
-                  {authorizationGateOptions.staticSchemes.length > 1 && (
-                    <>
-                      <label className="form-label" htmlFor="report-static-auth-scheme">
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void retryWithStaticCredential(
+                          unknownAuthorizationScheme,
+                          unknownAuthorizationScheme === 'api-key' ? apiKeyHeader : undefined
+                        );
+                      }}
+                    >
+                      <label className="form-label" htmlFor="report-unknown-auth-scheme">
                         Authentication type
                       </label>
                       <select
-                        id="report-static-auth-scheme"
+                        id="report-unknown-auth-scheme"
                         className="form-select mb-3"
-                        value={selectedStaticAuthorizationScheme}
+                        value={unknownAuthorizationScheme}
                         onChange={(event) => {
-                          setStaticAuthorizationScheme(event.target.value as StaticAuthorizationScheme);
+                          setUnknownAuthorizationScheme(event.target.value as 'bearer' | 'api-key');
                           setStaticCredentialError(null);
                         }}
                         disabled={isRunning}
                       >
-                        {authorizationGateOptions.staticSchemes.map((scheme) => (
-                          <option key={scheme} value={scheme}>
-                            {scheme === 'bearer' ? 'Bearer token' : 'API key'}
-                          </option>
-                        ))}
+                        <option value="bearer">Bearer token</option>
+                        <option value="api-key">API key</option>
                       </select>
-                    </>
-                  )}
-                  <label className="form-label" htmlFor="report-static-credential">
-                    {selectedStaticAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
-                  </label>
-                  <input
-                    id="report-static-credential"
-                    className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
-                    type="password"
-                    value={staticCredential}
-                    onChange={(event) => {
-                      setStaticCredential(event.target.value);
-                      setStaticCredentialError(null);
-                    }}
-                    disabled={isRunning}
-                    autoComplete="new-password"
-                    spellCheck={false}
-                    aria-describedby={staticCredentialError ? 'report-static-credential-error' : undefined}
-                  />
-                  {staticCredentialError && (
-                    <div id="report-static-credential-error" className="invalid-feedback">
-                      {staticCredentialError}
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    className="btn btn-primary mt-3"
-                    disabled={isRunning}
-                  >
-                    {isRunning ? 'Retrying report...' : 'Retry report with credential'}
-                  </button>
-                </form>
-              </section>
-            )}
-            {reportRequiresAuthorization && authorizationGateOptions.isUnknown && (
-              <section className="report-auth-gate" aria-labelledby="report-unknown-auth-title">
-                <h3 id="report-unknown-auth-title">Authorization method unknown</h3>
-                <p>
-                  Choose the target&apos;s credential type and retry. The credential is kept only
-                  in this page&apos;s memory and is not saved, logged, or added to the URL.
-                </p>
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void retryWithStaticCredential(
-                      unknownAuthorizationScheme,
-                      unknownAuthorizationScheme === 'api-key' ? apiKeyHeader : undefined
-                    );
-                  }}
-                >
-                  <label className="form-label" htmlFor="report-unknown-auth-scheme">
-                    Authentication type
-                  </label>
-                  <select
-                    id="report-unknown-auth-scheme"
-                    className="form-select mb-3"
-                    value={unknownAuthorizationScheme}
-                    onChange={(event) => {
-                      setUnknownAuthorizationScheme(event.target.value as 'bearer' | 'api-key');
-                      setStaticCredentialError(null);
-                    }}
-                    disabled={isRunning}
-                  >
-                    <option value="bearer">Bearer token</option>
-                    <option value="api-key">API key</option>
-                  </select>
-                  {unknownAuthorizationScheme === 'api-key' && (
-                    <>
-                      <label className="form-label" htmlFor="report-api-key-header">
-                        API-key header
+                      {unknownAuthorizationScheme === 'api-key' && (
+                        <>
+                          <label className="form-label" htmlFor="report-api-key-header">
+                            API-key header
+                          </label>
+                          <select
+                            id="report-api-key-header"
+                            className="form-select mb-3"
+                            value={apiKeyHeader}
+                            onChange={(event) => setApiKeyHeader(
+                              event.target.value as 'x-api-key' | 'api-key' | 'authorization'
+                            )}
+                            disabled={isRunning}
+                          >
+                            <option value="x-api-key">x-api-key</option>
+                            <option value="api-key">api-key</option>
+                            <option value="authorization">Authorization (ApiKey value)</option>
+                          </select>
+                        </>
+                      )}
+                      <label className="form-label" htmlFor="report-unknown-static-credential">
+                        {unknownAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
                       </label>
-                      <select
-                        id="report-api-key-header"
-                        className="form-select mb-3"
-                        value={apiKeyHeader}
-                        onChange={(event) => setApiKeyHeader(
-                          event.target.value as 'x-api-key' | 'api-key' | 'authorization'
-                        )}
+                      <input
+                        id="report-unknown-static-credential"
+                        className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
+                        type="password"
+                        value={staticCredential}
+                        onChange={(event) => {
+                          setStaticCredential(event.target.value);
+                          setStaticCredentialError(null);
+                        }}
                         disabled={isRunning}
-                      >
-                        <option value="x-api-key">x-api-key</option>
-                        <option value="api-key">api-key</option>
-                        <option value="authorization">Authorization (ApiKey value)</option>
-                      </select>
-                    </>
-                  )}
-                  <label className="form-label" htmlFor="report-unknown-static-credential">
-                    {unknownAuthorizationScheme === 'bearer' ? 'Bearer token' : 'API key'}
-                  </label>
-                  <input
-                    id="report-unknown-static-credential"
-                    className={`form-control${staticCredentialError ? ' is-invalid' : ''}`}
-                    type="password"
-                    value={staticCredential}
-                    onChange={(event) => {
-                      setStaticCredential(event.target.value);
-                      setStaticCredentialError(null);
-                    }}
-                    disabled={isRunning}
-                    autoComplete="new-password"
-                    spellCheck={false}
-                    aria-describedby={staticCredentialError ? 'report-unknown-static-credential-error' : undefined}
-                  />
-                  {staticCredentialError && (
-                    <div id="report-unknown-static-credential-error" className="invalid-feedback">
-                      {staticCredentialError}
-                    </div>
-                  )}
-                  <button type="submit" className="btn btn-primary mt-3" disabled={isRunning}>
-                    {isRunning ? 'Retrying report...' : 'Retry report with credential'}
-                  </button>
-                </form>
-              </section>
-            )}
+                        autoComplete="new-password"
+                        spellCheck={false}
+                        aria-describedby={staticCredentialError ? 'report-unknown-static-credential-error' : undefined}
+                      />
+                      {staticCredentialError && (
+                        <div id="report-unknown-static-credential-error" className="invalid-feedback">
+                          {staticCredentialError}
+                        </div>
+                      )}
+                      <button type="submit" className="btn btn-primary mt-3" disabled={isRunning}>
+                        {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                      </button>
+                    </form>
+                  </section>
+                )}
+              </>}
+            />
+            {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
+
           </div>
         </div>
       )}
@@ -1048,7 +1009,9 @@ const ReportView: React.FC = () => {
                   oauthPrerequisite.authorizationHeaderTemplate,
                   token
                 ),
-              }
+              },
+              undefined,
+              report?.serverUrl
             );
           } : undefined}
           onBeforeHostedAuthorization={() => saveOAuthReturnState(oauthConfigServerUrl)}
