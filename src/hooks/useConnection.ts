@@ -353,7 +353,8 @@ export const useConnection = (
     preferredTransport?: TransportType
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
-    const targetUrl = addProtocolIfMissing(rawUrl); // Add protocol if missing
+    const originalTargetUrl = addProtocolIfMissing(rawUrl);
+    let targetUrl = originalTargetUrl; // Add protocol if missing
     const catalogEndpointEvidence = getCatalogEndpointDiagnosticEvidence(targetUrl);
     const effectivePreferredTransport = preferredTransport
       || (catalogEndpointEvidence?.transport === 'streamable-http'
@@ -645,6 +646,13 @@ export const useConnection = (
             return;
           }
 
+          if (shouldDiscoverOAuth && challenge.targetUrl) {
+            targetUrl = challenge.targetUrl;
+            if (targetUrl !== originalTargetUrl) {
+              addLogEntry({ type: 'info', data: `OAuth endpoint discovered: ${targetUrl} (entered URL: ${originalTargetUrl})` });
+            }
+          }
+
           if (challenge && !oauthTrace) {
             oauthTrace = recordOAuthAuthenticationChallenge({
               targetUrl,
@@ -816,6 +824,8 @@ export const useConnection = (
             setConnectionStatus('Error');
             setConnectionError({
               error: `OAuth authorization failed: ${message}`,
+              failureStage: 'oauth',
+              originalServerUrl: originalTargetUrl,
               serverUrl: targetUrl,
               timestamp: new Date(),
               attempts: collectConnectionAttemptFacts(

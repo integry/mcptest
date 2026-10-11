@@ -44,6 +44,8 @@ export interface ConnectionFailureEvidence {
 }
 
 export interface ConnectionErrorDetails {
+  failureStage?: 'oauth';
+  originalServerUrl?: string;
   error: string;
   serverUrl: string;
   timestamp: Date;
