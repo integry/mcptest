@@ -530,9 +530,9 @@ const makeRouteFailure = (
     message: errorMessage(error),
     httpStatus,
     authenticationSource,
-    candidateUrl: failedCandidateUrl
+    candidateUrl: authenticationChallenge?.targetUrl || (failedCandidateUrl
       ? getEvaluationTargetUrl(failedCandidateUrl, route === 'proxy')
-      : undefined,
+      : undefined),
     method: authenticationChallenge?.method,
     requestUrl: authenticationChallenge?.requestUrl || failedCandidateUrl,
     responseHeaders: authenticationChallenge?.responseHeaders,

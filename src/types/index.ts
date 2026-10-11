@@ -67,6 +67,8 @@ export type TransportType = 'streamable-http' | 'legacy-sse';
 
 // --- Connection Tab Types ---
 export interface ConnectionTab {
+  /** Input retained when endpoint discovery selects a different OAuth endpoint. */
+  originalServerUrl?: string;
   id: string;
   title: string;
   serverUrl: string;

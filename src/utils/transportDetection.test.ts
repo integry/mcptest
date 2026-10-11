@@ -789,3 +789,62 @@ describe('authenticated proxy retry classification', () => {
     expect(shouldRetryMcpConnectionThroughProxy(error)).toBe(false);
   });
 });
+
+
+describe('challenge endpoint binding', () => {
+  it.each([false, true])('records the discovered candidate with proxy=%s', async (usesProxy) => {
+    const root = 'https://mcp.sentry.dev/';
+    const endpoint = `${root}mcp`;
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = new URL(String(input));
+      const target = usesProxy ? url.searchParams.get('target') : url.toString();
+      return new Response('', {
+        status: target === endpoint ? 401 : 405,
+        headers: { 'X-MCP-Proxy-Response-Source': 'target',
+          'WWW-Authenticate': 'Bearer resource_metadata="https://unrelated.example/metadata"' },
+      });
+    }));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      await fetch?.(endpoint, { method: 'POST' });
+      throw new Error('Connection failed');
+    };
+    const error = await attemptParallelConnections(
+      usesProxy ? `https://proxy.example/?target=${encodeURIComponent(root)}` : root,
+      undefined, undefined, undefined, usesProxy
+    ).catch(error => error);
+    expect(getObservedAuthenticationChallenge(error)).toMatchObject({
+      source: 'target', targetUrl: endpoint,
+      resourceMetadataUrl: 'https://unrelated.example/metadata',
+    });
+  });
+
+  it('does not unwrap a direct publisher target query or trust metadata as the endpoint', async () => {
+    const endpoint = 'https://publisher.example/mcp?target=https%3A%2F%2Funrelated.example%2F';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', {
+      status: 401,
+      headers: { 'WWW-Authenticate': 'Bearer resource_metadata="https://unrelated.example/metadata"' },
+    })));
+    connectionMocks.connect = async ({ endpoint, fetch }) => {
+      await fetch?.(endpoint);
+      throw new Error('Unauthorized');
+    };
+    const error = await attemptParallelConnections(endpoint).catch(error => error);
+    expect(getObservedAuthenticationChallenge(error)?.targetUrl).toBe(endpoint);
+  });
+
+  it.each([false, true])('never probes sibling audiences with target credentials (proxy=%s)', async usesProxy => {
+    const endpoint = 'https://publisher.example/mcp';
+    const calls: string[] = [];
+    connectionMocks.connect = async ({ endpoint }) => {
+      calls.push(endpoint.toString());
+      throw new Error('Failed');
+    };
+    await attemptParallelConnections(
+      usesProxy ? `https://proxy.example/?target=${encodeURIComponent(endpoint)}` : endpoint,
+      undefined, usesProxy ? undefined : 'target-token',
+      usesProxy ? { Authorization: 'Bearer target-token' } : undefined, usesProxy
+    ).catch(() => {});
+    expect(calls).toHaveLength(1);
+    expect(usesProxy ? new URL(calls[0]).searchParams.get('target') : calls[0]).toBe(endpoint);
+  });
+});

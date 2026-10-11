@@ -53,6 +53,8 @@ export interface SafeTargetErrorDetail {
 }
 
 export interface ObservedAuthenticationChallenge {
+  /** Endpoint selected locally by transport discovery, never inferred from metadata. */
+  targetUrl?: string;
   status: 401 | 403;
   source: ProxyAuthenticationSource;
   responseHeaders?: Record<string, string>;
@@ -67,6 +69,7 @@ export interface ObservedAuthenticationChallenge {
 }
 
 export interface ObservedTransportRequest {
+  targetUrl?: string;
   method: string;
   /** JSON-RPC method when it can be read safely from the outgoing body. */
   mcpMethod?: string;
@@ -111,6 +114,7 @@ export class ProxiedAuthenticationError extends Error {
     this.cause = cause;
     this.method = request?.method;
     this.requestUrl = request?.url;
+    this.targetUrl = request?.targetUrl;
     this.startedAt = request?.startedAt;
     this.durationMs = request?.durationMs;
     if (resourceMetadataUrl) {
@@ -121,6 +125,7 @@ export class ProxiedAuthenticationError extends Error {
 
   readonly method?: string;
   readonly requestUrl?: string;
+  readonly targetUrl?: string;
   readonly startedAt?: string;
   readonly durationMs?: number;
 }
@@ -150,6 +155,7 @@ export const getObservedAuthenticationChallenge = (
 
   if (error instanceof ProxiedAuthenticationError) {
     return attachEphemeralChallengeParameters({
+      ...(error.targetUrl ? { targetUrl: error.targetUrl } : {}),
       status: error.status,
       source: error.responseSource,
       ...(error.responseHeaders ? { responseHeaders: error.responseHeaders } : {}),
@@ -700,6 +706,11 @@ const observeAuthenticationResponses = (
     ...(mcpMethod ? { mcpMethod } : {}),
     url: request?.url || String(input),
     candidateUrl: candidate.url,
+    // Only this explicit transport route may unwrap the proxy envelope. A
+    // direct publisher URL may legitimately have its own target parameter.
+    targetUrl: usesProxy
+      ? new URL(candidate.url).searchParams.get('target')!
+      : candidate.url,
     transportType: candidate.transportType,
     startedAt: new Date(startedAtMs).toISOString(),
     ...(Array.from(outgoingHeaders.keys()).length > 0
@@ -755,6 +766,7 @@ const observeAuthenticationResponses = (
       ...(responseHeaders ? { responseHeaders } : {}),
       method: attemptedRequest.method,
       requestUrl: attemptedRequest.url,
+      targetUrl: attemptedRequest.targetUrl,
       startedAt: attemptedRequest.startedAt,
       durationMs: attemptedRequest.durationMs,
       ...(attemptedRequest.targetError ? { targetError: attemptedRequest.targetError } : {}),
@@ -963,7 +975,15 @@ export async function attemptParallelConnections(
   onRequest?: (request: ObservedTransportRequest) => void,
   preferredTransport?: TransportType
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
-  const candidates = getTransportCandidates(serverUrl, usesProxy, preferredTransport);
+  const hasTargetCredential = usesProxy
+    ? new Headers(requestHeaders).has('Authorization')
+    : Boolean(authToken) || new Headers(requestHeaders).has('Authorization');
+  const targetEndpoint = (url: string): string => {
+    const parsed = new URL(url);
+    return usesProxy ? new URL(parsed.searchParams.get('target')!).toString() : parsed.toString();
+  };
+  const candidates = getTransportCandidates(serverUrl, usesProxy, preferredTransport)
+    .filter(candidate => !hasTargetCredential || targetEndpoint(candidate.url) === targetEndpoint(serverUrl));
   const clients: Client[] = [];
   const transportOptionsFor = (
     candidate: TransportCandidate,
@@ -1019,6 +1039,7 @@ export async function attemptParallelConnections(
           ? {
               method: challenge.method,
               url: challenge.requestUrl,
+              targetUrl: challenge.targetUrl,
               startedAt: challenge.startedAt,
               durationMs: challenge.durationMs,
             }
@@ -1054,6 +1075,7 @@ export async function attemptParallelConnections(
             ? {
                 method: authenticationChallenge.method,
                 url: authenticationChallenge.requestUrl,
+                targetUrl: authenticationChallenge.targetUrl,
                 startedAt: authenticationChallenge.startedAt,
                 durationMs: authenticationChallenge.durationMs,
               }

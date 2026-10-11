@@ -711,6 +711,24 @@ describe('dual-era server evaluation', () => {
     });
   });
 
+  it('uses the recorded anonymous proxy candidate in the report OAuth handoff', async () => {
+    const endpoint = 'https://mcp.sentry.dev/mcp';
+    const metadata = 'https://mcp.sentry.dev/.well-known/oauth-protected-resource/mcp';
+    connectionMocks.attempt.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new ProxiedAuthenticationError(401, 'target', new Error('Unauthorized'), {
+        method: 'POST', url: `https://proxy.example/?target=${encodeURIComponent(endpoint)}`,
+        targetUrl: endpoint,
+      }, undefined, metadata));
+    const report = await evaluateServer('https://mcp.sentry.dev/', undefined, vi.fn());
+    expect(report.outcome).toBe('authorization-required');
+    expect(report.serverUrl).toBe('https://mcp.sentry.dev/');
+    expect(report.authenticationUrl).toBe(endpoint);
+    expect(report.resourceMetadataUrl).toBe(metadata);
+    expect(getStoredOAuthTrace(endpoint, sessionStorage)?.events[0]).toMatchObject({
+      type: 'target_challenge', route: 'proxy', response: { status: 401 },
+    });
+  });
+
   it('uses the challenged fallback endpoint for authentication', async () => {
     const targetAuthError = Object.assign(new Error('Fallback returned HTTP 401'), {
       status: 401,

@@ -202,6 +202,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   const handleServerUrlChange = useCallback((nextServerUrl: string) => {
     setServerUrl(nextServerUrl);
+    if (tab.originalServerUrl) onUpdateTab(tab.id, { originalServerUrl: undefined });
     if (catalogProtocolEndpointRef.current && nextServerUrl !== catalogProtocolEndpointRef.current) {
       catalogProtocolEndpointRef.current = undefined;
       onUpdateTab(tab.id, { catalogProtocolEra: undefined });
@@ -209,7 +210,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     if (nextServerUrl !== tab.serverUrl && tab.preferredTransportHint) {
       onUpdateTab(tab.id, { preferredTransportHint: undefined });
     }
-  }, [onUpdateTab, setServerUrl, tab.id, tab.preferredTransportHint, tab.serverUrl]);
+  }, [onUpdateTab, setServerUrl, tab.id, tab.preferredTransportHint, tab.serverUrl, tab.originalServerUrl]);
 
   const {
     tools,
@@ -350,7 +351,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         newTitle = 'New Connection';
       }
       
-      onUpdateTab(tab.id, { serverUrl, title: newTitle });
+      onUpdateTab(tab.id, {
+        serverUrl, title: newTitle,
+        ...(connectionStatus === 'Connected' && tab.serverUrl
+          ? { originalServerUrl: tab.originalServerUrl || tab.serverUrl }
+          : {}),
+      });
     }
   }, [serverUrl, tab.id, onUpdateTab]);
 
@@ -973,6 +979,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
             credentialInputId={`${tab.id}-catalog-credential`}
             autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
           />
+      )}
+
+      {tab.originalServerUrl && tab.originalServerUrl !== serverUrl && tab.serverUrl === serverUrl && (
+        <p className="small text-muted px-3">
+          Entered URL: <code>{tab.originalServerUrl}</code>. Discovered endpoint: <code>{serverUrl}</code>.
+        </p>
       )}
 
       {/* OAuth authorization prerequisite */}
