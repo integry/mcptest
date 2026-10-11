@@ -146,13 +146,16 @@ type SavedCardOAuthUser = {
 
 type SavedCardOAuthChallenge = Pick<
   ObservedAuthenticationChallenge,
-  'resourceMetadataUrl' | 'scope'
+  'resourceMetadataUrl' | 'scope' | 'targetUrl'
 >;
 
 export const attachSavedCardOAuthChallenge = <T extends object>(
   value: T,
   challenge?: SavedCardOAuthChallenge
 ): T & SavedCardOAuthChallenge => {
+  if (challenge?.targetUrl) {
+    Object.defineProperty(value, 'targetUrl', { value: challenge.targetUrl, enumerable: false });
+  }
   if (challenge?.resourceMetadataUrl) {
     Object.defineProperty(value, 'resourceMetadataUrl', {
       value: challenge.resourceMetadataUrl,
@@ -192,7 +195,7 @@ export const beginSavedCardOAuthFlow = async ({
     ? await currentUser.getIdToken()
     : undefined;
 
-  return startFlow(serverUrl, {
+  return startFlow(challenge?.targetUrl || serverUrl, {
     forceReauthorization: true,
     ...(challenge?.resourceMetadataUrl
       ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
@@ -887,6 +890,7 @@ function App() {
                 shouldReconnect: true,
                 ...(tab.serverUrl !== reconnectServerUrl
                   ? {
+                      originalServerUrl: tab.originalServerUrl || tab.serverUrl,
                       preferredTransportHint: undefined,
                       catalogProtocolEra: undefined,
                     }
@@ -1395,7 +1399,7 @@ function App() {
       currentSpaces: Space[],
       sId: string,
       cId: string,
-      newState: Partial<Pick<SpaceCard, 'loading' | 'error' | 'responseData' | 'responseType'>>
+      newState: Partial<Pick<SpaceCard, 'loading' | 'error' | 'responseData' | 'responseType' | 'serverUrl'>>
   ): Space[] => {
       return currentSpaces.map(space => {
           if (space.id === sId) {
@@ -1546,7 +1550,7 @@ function App() {
           });
           if (authenticationChallenge && !finalizedPendingRetry) {
             const trace = recordOAuthAuthenticationChallenge({
-              targetUrl: card.serverUrl,
+              targetUrl: isTargetAuthError ? authenticationChallenge.targetUrl || card.serverUrl : card.serverUrl,
               status: authenticationChallenge.status,
               source: authenticationChallenge.source,
               route: shouldUseProxy ? 'proxy' : 'direct',
@@ -1611,7 +1615,12 @@ function App() {
             );
           }
           
-          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, {
+            loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error',
+            ...(isTargetAuthError && authenticationChallenge.targetUrl
+              ? { serverUrl: authenticationChallenge.targetUrl }
+              : {}),
+          }));
           break; // Exit the loop
         }
       } finally {
@@ -1651,6 +1660,7 @@ function App() {
     const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
     const discoveryProxyApplicable = card?.useProxy !== false;
 
+    serverUrl = challenge?.targetUrl || serverUrl;
     clearOAuthTokens(serverUrl);
     sessionStorage.setItem('oauth_cards_to_refresh', JSON.stringify([{ spaceId, cardId }]));
     const activeTabs = localStorage.getItem(TABS_KEY);

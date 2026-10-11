@@ -30,6 +30,7 @@ import { useConnection } from './useConnection';
 import {
   BrowserOAuthProvider,
   completeOAuthFlow,
+  loadOAuthAuthorization,
   OAuthPrerequisiteError,
 } from '../utils/oauthFlow';
 import {
@@ -104,6 +105,149 @@ describe('connection URL finalization', () => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  it.each(['https://mcp.sentry.dev/', 'https://mcp.sentry.dev/mcp'])(
+    'binds anonymous OAuth, callback tokens and proxy reconnect to the challenged endpoint from %s', async originalUrl => {
+      const endpoint = 'https://mcp.sentry.dev/mcp';
+      const issuer = 'https://mcp.sentry.dev';
+      const metadataUrl = `${issuer}/.well-known/oauth-protected-resource/mcp`;
+      const proxyUrl = 'https://proxy.mcptest.test/';
+      vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+      let authorizationUrl: URL | undefined;
+      const json = (value: unknown) => new Response(JSON.stringify(value), {
+        headers: { 'Content-Type': 'application/json', 'X-MCP-Proxy-Response-Source': 'target' },
+      });
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const url = new URL(String(input));
+        // Metadata is accessible only through the anonymous proxy, as in production.
+        if (url.origin !== new URL(proxyUrl).origin) throw new TypeError('Failed to fetch');
+        expect(new Headers(init?.headers).get('authorization')).toBeNull();
+        const target = url.searchParams.get('target');
+        if (target === metadataUrl) return json({ resource: endpoint, authorization_servers: [issuer] });
+        if (target === `${issuer}/.well-known/oauth-authorization-server`) return json({
+          issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`,
+          registration_endpoint: `${issuer}/register`, response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['none'],
+        });
+        if (url.pathname === '/oauth/register') return json({
+          ...JSON.parse(String(init?.body)), client_id: 'sentry-test-client',
+        });
+        if (url.pathname === '/oauth/token') {
+          const body = new URLSearchParams(String(init?.body));
+          expect(body.get('resource')).toBe(endpoint);
+          expect(body.get('code_verifier')).toBeTruthy();
+          return json({ access_token: 'sentry-target-token', token_type: 'Bearer' });
+        }
+        throw new Error(`Unexpected OAuth request ${url}`);
+      });
+      oauthMocks.begin.mockImplementationOnce((serverUrl, options) => oauthMocks.actualBegin?.(serverUrl, {
+        ...options, redirectUrl: 'https://mcptest.io/oauth/callback',
+        // This suite runs on localhost; enable the relay used on the production origin.
+        tokenProxy: { url: proxyUrl },
+        redirect: (url: URL) => { authorizationUrl = url; },
+      }));
+      connectionMocks.attempt
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TransportConnectionError([
+          new ProxiedAuthenticationError(401, 'target', new Error('Unauthorized'), {
+            method: 'POST', url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`, targetUrl: endpoint,
+          }, undefined, metadataUrl),
+        ]));
+      const before = renderConnectionHook(undefined, true);
+      await act(async () => {
+        await before.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), originalUrl);
+      });
+      expect(before.connection.connectionError).toBeNull();
+      expect(before.connection.oauthPrerequisite).toBeNull();
+      expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.anything());
+      expect(authorizationUrl?.pathname).toBe('/authorize');
+      expect(authorizationUrl?.searchParams.get('resource')).toBe(endpoint);
+      expect(authorizationUrl?.searchParams.get('code_challenge_method')).toBe('S256');
+      expect(sessionStorage.getItem('oauth_server_url')).toBe(endpoint);
+      before.unmount();
+
+      const completed = await completeOAuthFlow(
+        `https://mcptest.io/oauth/callback?code=provider-code&state=${authorizationUrl?.searchParams.get('state')}`,
+        { tokenProxy: { url: proxyUrl } }
+      );
+      expect(completed.serverUrl).toBe(endpoint);
+      expect(loadOAuthAuthorization(endpoint)?.accessToken).toBe('sentry-target-token');
+      expect(loadOAuthAuthorization('https://mcp.sentry.dev/')).toBeUndefined();
+      connectionMocks.attempt
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({
+          client: { close: vi.fn().mockResolvedValue(undefined) },
+          url: `${proxyUrl}?target=${encodeURIComponent(endpoint)}`,
+          transportType: 'streamable-http', protocolEra: 'stateless',
+        });
+      const after = renderConnectionHook(undefined, true);
+      await act(async () => {
+        await after.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), completed.serverUrl);
+      });
+      expect(connectionMocks.attempt.mock.calls[2][0]).toBe(endpoint);
+      expect(connectionMocks.attempt.mock.calls[2][2]).toBe('sentry-target-token');
+      expect(connectionMocks.attempt.mock.calls[3].slice(0, 5)).toEqual([
+        `${proxyUrl}?target=${encodeURIComponent(endpoint)}`, expect.anything(), undefined,
+        { Authorization: 'Bearer sentry-target-token' }, true,
+      ]);
+      expect(after.connection.connectionStatus).toBe('Connected');
+      expect(after.connection.serverUrl).toBe(endpoint);
+      expect(oauthMocks.begin).toHaveBeenCalledOnce();
+      expect(getStoredOAuthTrace(endpoint, sessionStorage)?.outcome?.status).toBe('authorized');
+      expect(fetchMock).toHaveBeenCalled();
+      after.unmount();
+    }
+  );
+
+  it.each(['https://unrelated.example/mcp', 'https://mcp.sentry.dev/other'])(
+    'still rejects unrelated protected-resource metadata %s', async resource => {
+      const endpoint = 'https://mcp.sentry.dev/mcp';
+      connectionMocks.attempt.mockRejectedValueOnce(new ProxiedAuthenticationError(
+        401, 'target', new Error('Unauthorized'), { method: 'POST', url: endpoint, targetUrl: endpoint },
+        undefined, 'https://mcp.sentry.dev/.well-known/oauth-protected-resource/mcp'
+      ));
+      const redirect = vi.fn();
+      oauthMocks.begin.mockImplementationOnce((serverUrl, options) => oauthMocks.actualBegin?.(serverUrl, {
+        ...options, redirect,
+        fetchFn: vi.fn(async (input) => new Response(JSON.stringify(
+          String(input).includes('oauth-protected-resource')
+            ? { resource, authorization_servers: ['https://mcp.sentry.dev'] }
+            : {
+                issuer: 'https://mcp.sentry.dev', authorization_endpoint: 'https://mcp.sentry.dev/authorize',
+                token_endpoint: 'https://mcp.sentry.dev/token', response_types_supported: ['code'],
+                code_challenge_methods_supported: ['S256'], client_id_metadata_document_supported: true,
+              }
+        ), { headers: { 'Content-Type': 'application/json' } })),
+      }));
+      const view = renderConnectionHook();
+      await act(async () => {
+        await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), 'https://mcp.sentry.dev/');
+      });
+      expect(redirect).not.toHaveBeenCalled();
+      expect(view.connection.connectionError?.error).toContain('does not match expected');
+      expect(loadOAuthAuthorization(endpoint)).toBeUndefined();
+      view.unmount();
+    }
+  );
+
+  it('surfaces an OAuth failure at the candidate while retaining the original input', async () => {
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.example/');
+    const endpoint = 'https://mcp.sentry.dev/mcp';
+    connectionMocks.attempt.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new ProxiedAuthenticationError(401, 'target', new Error('Unauthorized'), {
+        method: 'POST', url: 'https://proxy.example/?target=' + encodeURIComponent(endpoint), targetUrl: endpoint,
+      }));
+    oauthMocks.begin.mockRejectedValueOnce(new Error('Protected resource mismatch'));
+    const view = renderConnectionHook(undefined, true);
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), 'https://mcp.sentry.dev/');
+    });
+    expect(view.connection.connectionError).toMatchObject({
+      failureStage: 'oauth', serverUrl: endpoint, originalServerUrl: 'https://mcp.sentry.dev/',
+      error: 'OAuth authorization failed: Protected resource mismatch',
+    });
+    view.unmount();
   });
 
   it('starts a first connection with a blank endpoint', () => {
@@ -627,7 +771,7 @@ describe('connection URL finalization', () => {
           401,
           'target',
           new Error('Target authorization required through proxy'),
-          { method: 'GET', url: observedProxyUrl }
+          { method: 'GET', url: observedProxyUrl, targetUrl: endpoint }
         ),
       ]))
       .mockImplementationOnce(async (...args: any[]) => {
@@ -642,9 +786,12 @@ describe('connection URL finalization', () => {
     const view = renderConnectionHook(undefined, true);
 
     await act(async () => {
-      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), new URL(endpoint).origin + '/');
     });
 
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.anything());
+    expect(connectionMocks.attempt.mock.calls[2][0]).toBe(endpoint);
+    expect(connectionMocks.attempt.mock.calls[2][2]).toBe('proxy-challenge-token');
     const trace = getStoredOAuthTrace(endpoint, sessionStorage);
     expect(trace?.events).toEqual(expect.arrayContaining([
       expect.objectContaining({

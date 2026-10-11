@@ -108,7 +108,7 @@ const renderNewTab = (useProxy = true) => {
   return renderTab(tab);
 };
 
-const connectToSlack = async (container: HTMLElement) => {
+const connectToSlack = async (container: HTMLElement, endpoint = 'https://mcp.slack.com/mcp') => {
   const firstConnectionButton = Array.from(container.querySelectorAll('button')).find(
     (button) => button.textContent?.includes('Connect your first server')
   );
@@ -118,7 +118,7 @@ const connectToSlack = async (container: HTMLElement) => {
 
   const input = container.querySelector<HTMLInputElement>('#serverUrl');
   expect(input).not.toBeNull();
-  act(() => setInputValue(input!, 'https://mcp.slack.com/mcp'));
+  act(() => setInputValue(input!, endpoint));
 
   const connectButton = container.querySelector<HTMLButtonElement>('#connectBtn');
   expect(connectButton?.disabled).toBe(false);
@@ -145,6 +145,23 @@ describe('rendered anonymous proxy preference', () => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  it('retains the originating tab and entered root when discovery redirects from /mcp', async () => {
+    const endpoint = 'https://mcp.sentry.dev/mcp';
+    connectionMocks.attempt.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new ProxiedAuthenticationError(401, 'target', new Error('Unauthorized'), {
+        method: 'POST', url: `https://proxy.mcptest.test/?target=${encodeURIComponent(endpoint)}`,
+        targetUrl: endpoint,
+      }));
+    oauthMocks.begin.mockResolvedValueOnce('REDIRECT');
+    const view = renderNewTab();
+    await connectToSlack(view.container, 'https://mcp.sentry.dev/');
+    expect(oauthMocks.begin).toHaveBeenCalledWith(endpoint, expect.anything());
+    expect(sessionStorage.getItem('oauth_tab_id')).toBe('new-tab');
+    expect(view.onUpdateTab).toHaveBeenCalledWith('new-tab', { isAuthFlowActive: true });
+    expect(view.container.querySelector<HTMLInputElement>('#serverUrl')?.value).toBe('https://mcp.sentry.dev/');
+    view.unmount();
   });
 
   it('uses the proxy without a login and offers sign-in when the anonymous limit is hit', async () => {
@@ -308,6 +325,7 @@ describe('endpoint-scoped preferred transport hints', () => {
     const endpoint = 'https://mcp.example/mcp';
     const tab: ConnectionTab = {
       id: 'oauth-reconnect',
+      originalServerUrl: 'https://mcp.example/',
       title: endpoint,
       serverUrl: endpoint,
       connectionStatus: 'Disconnected',
@@ -322,6 +340,7 @@ describe('endpoint-scoped preferred transport hints', () => {
 
     expect(connectionMocks.attempt).toHaveBeenCalledOnce();
     expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(view.container.textContent).toContain('Entered URL: https://mcp.example/');
     expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, { shouldReconnect: false });
 
     view.rerender(tab);

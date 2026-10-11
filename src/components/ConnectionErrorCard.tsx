@@ -65,6 +65,14 @@ const inferTransportEvidence = (
 };
 
 const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
+  if (errorDetails.failureStage === 'oauth') {
+    return {
+      badge: 'OAuth failed',
+      heading: 'OAuth authorization failed',
+      summary: errorDetails.error,
+      alertClass: 'alert-danger border-danger',
+    };
+  }
   const attempts = errorDetails.attempts || [];
   const targetAuthentication = attempts.find(({ authenticationSource, status }) => (
     authenticationSource === 'target' && status === 401
@@ -204,7 +212,10 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const showHttpProbe = transportEvidence !== 'legacy-sse';
   const showSseProbe = transportEvidence !== 'streamable-http';
   const exploratory = transportEvidence === 'unknown';
-  const browserBlocked = attempts.some(({ route, browserUnreadable }) => (
+  const oauthFailed = errorDetails.failureStage === 'oauth';
+  const proxyReachedTarget = attempts.some(attempt => attempt.route === 'proxy'
+    && (attempt.responseSource === 'target' || attempt.authenticationSource === 'target'));
+  const browserBlocked = !oauthFailed && !proxyReachedTarget && attempts.some(({ route, browserUnreadable }) => (
     route === 'direct' && browserUnreadable
   ));
   const oauthExpected = errorDetails.expectedAuthentication === 'oauth'
@@ -247,6 +258,9 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
             <strong>Endpoint:</strong> <code className="text-break">{errorDetails.serverUrl}</code>
           </div>
 
+          {errorDetails.originalServerUrl && errorDetails.originalServerUrl !== errorDetails.serverUrl && (
+            <p><strong>Entered URL:</strong> <code>{errorDetails.originalServerUrl}</code></p>
+          )}
           {attempts.length > 0 && (
             <div className="mb-3">
               <strong>Connection attempts</strong>
@@ -296,7 +310,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
               {browserBlocked && !showProxyOption && (
                 <li>Use the exact terminal probe below or configure a trusted backend proxy to inspect the response outside the browser.</li>
               )}
-              {!browserBlocked && attempts.some(({ failureKind }) => failureKind === 'http') && (
+              {!oauthFailed && !browserBlocked && attempts.some(({ failureKind }) => failureKind === 'http') && (
                 <li>Verify that the publisher&apos;s exact MCP endpoint path matches the readable HTTP response.</li>
               )}
               {!browserBlocked && attempts.some(({ failureKind }) => failureKind === 'timeout') && (
@@ -305,7 +319,9 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
               {!browserBlocked && attempts.some(({ failureKind }) => failureKind === 'refused') && (
                 <li>Verify the host, port, firewall, and whether the MCP service is listening.</li>
               )}
-              <li>Compare the exact endpoint&apos;s terminal response with the browser evidence below.</li>
+              {oauthFailed
+                ? <li>Retry OAuth authorization for the discovered endpoint. If it fails again, review the provider error above and its OAuth configuration.</li>
+                : <li>Compare the exact endpoint&apos;s terminal response with the browser evidence below.</li>}
             </ul>
           </div>
 
@@ -375,7 +391,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
 
       {(onRetry || (browserBlocked && !useProxy && onRetryWithProxy)) && (
         <div className="d-flex flex-wrap gap-2 mt-3">
-          {onRetry && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onRetry}>Retry connection</button>}
+          {onRetry && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onRetry}>{oauthFailed ? 'Retry OAuth authorization' : 'Retry connection'}</button>}
           {browserBlocked && !useProxy && onRetryWithProxy && (
             <button type="button" className="btn btn-primary btn-sm" onClick={onRetryWithProxy}>Enable proxy and retry</button>
           )}

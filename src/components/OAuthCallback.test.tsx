@@ -77,6 +77,27 @@ describe('OAuthCallback authentication restoration', () => {
     vi.restoreAllMocks();
   });
 
+  it('hands the discovered endpoint back without losing the initiating playground tab', async () => {
+    sessionStorage.setItem('oauth_tab_id', 'originating-tab');
+    sessionStorage.setItem('oauth_tabs_before_redirect', JSON.stringify([
+      { id: 'originating-tab', serverUrl: 'https://mcp.sentry.dev/' },
+      { id: 'other-tab', serverUrl: 'https://other.example/mcp' },
+    ]));
+    callbackMocks.complete.mockResolvedValueOnce({ serverUrl: 'https://mcp.sentry.dev/mcp' });
+    authState.loading = false;
+    root = createRoot(document.createElement('div'));
+    await act(async () => { root?.render(<OAuthCallback />); });
+    expect(callbackMocks.getIdToken).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('oauth_tab_id')).toBe('originating-tab');
+    expect(JSON.parse(sessionStorage.getItem('oauth_tabs_before_redirect') || '[]')[0].serverUrl)
+      .toBe('https://mcp.sentry.dev/');
+    expect(callbackMocks.navigate).toHaveBeenCalledWith('/', {
+      replace: true, state: { oauthSuccess: true, authorizedServerUrl: 'https://mcp.sentry.dev/mcp' },
+    });
+    expect(JSON.parse(sessionStorage.getItem(OAUTH_RECONNECT_REQUEST_KEY) || '{}').serverUrl)
+      .toBe('https://mcp.sentry.dev/mcp');
+  });
+
   it('waits for a signed-in user to be restored before completing the hosted callback', async () => {
     const container = document.createElement('div');
     root = createRoot(container);
