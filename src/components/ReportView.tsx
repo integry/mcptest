@@ -7,6 +7,7 @@ import ReleaseReadinessReport from './ReleaseReadinessReport';
 import ReportHistory from './ReportHistory';
 import ReportBadgeEmbed from './ReportBadgeEmbed';
 import PublishedReportHistory from './PublishedReportHistory';
+import SavedPlanRunAction from './SavedPlanRunAction';
 import {
   beginOAuthFlow,
   getHostedOAuthTokenProxyUrl,
@@ -23,6 +24,7 @@ import {
   isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
   type EvaluationAuthorizationContext,
+  type EvaluationOptions,
   type EvaluationReport,
 } from '../utils/evaluation';
 import {
@@ -217,7 +219,8 @@ const ReportView: React.FC = () => {
     urlToTest: string,
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext,
-    displayUrl?: string
+    displayUrl?: string,
+    evaluationOptions?: EvaluationOptions
   ) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
@@ -328,7 +331,8 @@ const ReportView: React.FC = () => {
     urlToTest: string,
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext,
-    displayUrl = urlToTest
+    displayUrl = urlToTest,
+    evaluationOptions?: EvaluationOptions
   ) => {
     if (isRunning || isRunningRef.current) {
       console.log('[ReportView] Report already running, skipping');
@@ -373,7 +377,8 @@ const ReportView: React.FC = () => {
         onProgress,
         oauthAccessToken,
         targetHeaders,
-        authorizationContext
+        authorizationContext,
+        ...(evaluationOptions ? [evaluationOptions] : [])
       );
       if (displayUrl !== urlToTest) {
         reportData.authenticationUrl ||= urlToTest;
@@ -962,6 +967,15 @@ const ReportView: React.FC = () => {
                 report={report}
                 oauthTrace={oauthTrace}
                 publishedEndpoint={liveBadgeEndpoint}
+              />
+            )}
+            {!reportRequiresAuthorization && !reportRequiresProxyAuthentication && (
+              <SavedPlanRunAction
+                endpoint={report.serverUrl}
+                disabled={isRunning}
+                onRun={(savedPlan) => {
+                  void handleRunReport(report.authenticationUrl || report.serverUrl, undefined, undefined, report.serverUrl, { savedPlan });
+                }}
               />
             )}
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}

@@ -7,6 +7,7 @@ export const CALL_HISTORY_STORAGE_KEY = 'mcpPlaygroundCallHistoryV1';
 export const CALL_HISTORY_LIMIT_PER_SERVER = 50;
 export const CALL_HISTORY_SERVER_LIMIT = 20;
 export const CALL_HISTORY_SUMMARY_LIMIT = 160;
+export const CALL_HISTORY_TEXT_EXCERPT_LIMIT = 120;
 
 export type CallOutputVerdict = 'pass' | 'fail';
 
@@ -22,6 +23,11 @@ export interface CallHistoryEntry {
   isError: boolean;
   outputVerdict?: CallOutputVerdict;
   outputViolationCount?: number;
+  /**
+   * The first text block of a successful result, uncollapsed and redacted, cut
+   * to a short excerpt. Test plans derive `contains` assertions from it.
+   */
+  resultText?: { index: number; excerpt: string };
   calledAt: string;
 }
 
@@ -39,9 +45,10 @@ const record = (value: unknown): Record<string, unknown> | undefined => (
 
 // Report redaction covers named secrets, URLs and JWTs; typed arguments can also
 // hold bare provider tokens, which the capability inventory pattern catches.
-const redactText = (value: string): string => redactStandaloneCredentials(redactReportString(value));
+export const redactHistoryText = (value: string): string => redactStandaloneCredentials(redactReportString(value));
+const redactText = redactHistoryText;
 
-const redactArguments = (value: unknown): Record<string, unknown> => {
+export const redactArguments = (value: unknown): Record<string, unknown> => {
   const scrub = (child: unknown): unknown => {
     if (typeof child === 'string') return redactStandaloneCredentials(child);
     if (Array.isArray(child)) return child.map(scrub);
@@ -51,7 +58,7 @@ const redactArguments = (value: unknown): Record<string, unknown> => {
   return record(scrub(redactReportValue(value ?? {}))) ?? {};
 };
 
-const containsRedaction = (value: unknown): boolean => {
+export const containsRedaction = (value: unknown): boolean => {
   if (typeof value === 'string') return value.includes(REDACTED_VALUE);
   if (Array.isArray(value)) return value.some(containsRedaction);
   const object = record(value);
@@ -63,6 +70,12 @@ const truncate = (value: string): string => {
   return singleLine.length > CALL_HISTORY_SUMMARY_LIMIT
     ? `${singleLine.slice(0, CALL_HISTORY_SUMMARY_LIMIT - 1).trimEnd()}…`
     : singleLine;
+};
+
+const firstTextBlock = (content: unknown): { index: number; text: string } | undefined => {
+  if (!Array.isArray(content)) return undefined;
+  const index = content.findIndex((block) => record(block)?.type === 'text' && typeof record(block)?.text === 'string');
+  return index >= 0 ? { index, text: String(record(content[index])!.text) } : undefined;
 };
 
 const contentSummary = (content: unknown): string | undefined => {
@@ -77,7 +90,7 @@ const contentSummary = (content: unknown): string | undefined => {
 /** Reduces a tools/call log entry to the outcome fields the history keeps. */
 export const summarizeCallResult = (entry: LogEntry | null | undefined): Pick<
   CallHistoryEntry,
-  'resultSummary' | 'isError' | 'outputVerdict' | 'outputViolationCount'
+  'resultSummary' | 'isError' | 'outputVerdict' | 'outputViolationCount' | 'resultText'
 > => {
   if (!entry) return { resultSummary: 'No result', isError: true };
   const result = entry.toolCall?.result;
@@ -86,9 +99,17 @@ export const summarizeCallResult = (entry: LogEntry | null | undefined): Pick<
   const raw = entry.type === 'tool_result'
     ? contentSummary(result?.content ?? entry.data) ?? 'Result received'
     : typeof entry.data === 'string' ? entry.data : JSON.stringify(entry.data ?? null);
+  const textBlock = entry.type === 'tool_result' && !isError ? firstTextBlock(result?.content ?? entry.data) : undefined;
   return {
     resultSummary: truncate(redactText(raw)),
     isError,
+    ...(textBlock ? {
+      resultText: {
+        index: textBlock.index,
+        // Redact before cutting so a secret split at the limit is still caught.
+        excerpt: redactText(textBlock.text.slice(0, 4_096)).slice(0, CALL_HISTORY_TEXT_EXCERPT_LIMIT),
+      },
+    } : {}),
     ...(contract && (contract.status === 'pass' || contract.status === 'fail') ? {
       outputVerdict: contract.status,
       outputViolationCount: contract.violations.length,
@@ -139,6 +160,14 @@ const isEntry = (value: unknown): value is CallHistoryEntry => {
     && typeof entry!.calledAt === 'string';
 };
 
+const validResultText = (value: unknown): CallHistoryEntry['resultText'] => {
+  const text = record(value);
+  return text && typeof text.index === 'number' && Number.isInteger(text.index) && text.index >= 0
+    && typeof text.excerpt === 'string'
+    ? { index: text.index, excerpt: redactText(text.excerpt.slice(0, CALL_HISTORY_TEXT_EXCERPT_LIMIT)) }
+    : undefined;
+};
+
 const readStore = (storage: ReadStorage): CallHistoryStore => {
   try {
     const parsed = record(JSON.parse(storage.getItem(CALL_HISTORY_STORAGE_KEY) || 'null'));
@@ -149,11 +178,16 @@ const readStore = (storage: ReadStorage): CallHistoryStore => {
         const value = record(server);
         if (typeof value?.endpoint !== 'string' || !Array.isArray(value.calls)) return [];
         // Re-redact on read so entries written by older builds stay scrubbed.
-        const calls = value.calls.filter(isEntry).slice(0, CALL_HISTORY_LIMIT_PER_SERVER).map((call) => ({
-          ...call,
-          arguments: redactArguments(call.arguments),
-          resultSummary: redactText(call.resultSummary),
-        }));
+        const calls = value.calls.filter(isEntry).slice(0, CALL_HISTORY_LIMIT_PER_SERVER).map((call) => {
+          const { resultText, ...rest } = call;
+          const text = validResultText(resultText);
+          return {
+            ...rest,
+            arguments: redactArguments(call.arguments),
+            resultSummary: redactText(call.resultSummary),
+            ...(text ? { resultText: text } : {}),
+          };
+        });
         return [{ endpoint: value.endpoint, calls }];
       }),
     };
