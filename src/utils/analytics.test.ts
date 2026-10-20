@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'v
 
 const firebase = vi.hoisted(() => ({ analytics: { app: 'test' } as object | null, logEvent: vi.fn() }));
 
+// Firebase is loaded on demand; the tests stand in for an already-loaded runtime.
 vi.mock('../firebase', () => ({
-  get analytics() {
-    return firebase.analytics;
-  },
+  getLoadedFirebase: () => ({ analytics: firebase.analytics, logEvent: firebase.logEvent }),
+  isFirebaseLoading: () => false,
+  onFirebaseLoaded: vi.fn(),
 }));
-vi.mock('firebase/analytics', () => ({ logEvent: firebase.logEvent }));
 
 import {
   REDACTED_VALUE,

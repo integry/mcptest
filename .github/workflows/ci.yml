@@ -47,6 +47,9 @@ jobs:
       - name: First paint of the built home page
         run: npm run test:first-paint
 
+      - name: Chunk graph of the built site
+        run: npm run test:bundle-graph
+
       # The e2e job reuses this build instead of building again.
       - name: Upload the built site
         uses: actions/upload-artifact@v4
@@ -121,9 +124,8 @@ jobs:
           export CHROME_PATH="$(node -p "require('playwright').chromium.executablePath()")"
           npm run test:lighthouse
 
-      - name: Lighthouse mobile (informational, no assertions)
+      - name: Lighthouse budgets (mobile)
         if: success() || steps.lighthouse.outcome == 'failure'
-        continue-on-error: true
         run: |
           export CHROME_PATH="$(node -p "require('playwright').chromium.executablePath()")"
           npm run test:lighthouse:mobile

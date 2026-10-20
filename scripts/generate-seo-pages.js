@@ -51,6 +51,7 @@ const { createDefaultSpaces, createDefaultTabs } = require('../src/utils/default
 const { selectLandingQuickPicks } = require('../src/utils/landingQuickPicks.ts');
 const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.ts');
 const { getSpaceUrl } = require('../src/utils/urlUtils.ts');
+const { highlightCode } = require('../src/content/codeHighlighting.ts');
 const { writeOgImages } = require('./og/ogImages.js');
 
 const SITE_URL = 'https://mcptest.io';
@@ -721,7 +722,13 @@ function renderMarkdown(markdown, context = undefined) {
         index += 1;
       }
       index += 1;
-      html.push(`<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
+      // Highlighted at build time with the same highlight.js languages the
+      // browser registers, so a guide paints its code colored before any
+      // script runs; unknown languages stay plain, exactly as in the browser.
+      const highlighted = highlightCode(code.join('\n'), language || undefined);
+      html.push(highlighted !== null
+        ? `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>`
+        : `<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
       continue;
     }
 
@@ -1008,7 +1015,7 @@ function renderHeaderFallback({ authEnabled }) {
     '  <div class="app-header-brand">',
     '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu"><span class="hamburger"></span></button>',
     '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo.png" alt="MCP Logo" width="40" height="40"></a>',
-    '    <a href="/" class="app-brand-copy" aria-label="mcptest.io home">',
+    '    <a href="/" class="app-brand-copy">',
     '      <h1 class="app-brand-title">mcptest.io</h1>',
     '      <p class="app-brand-subtitle d-none d-md-block">Remote MCP Inspector</p>',
     '    </a>',
@@ -1148,7 +1155,7 @@ function renderShellFallback({
       + `<button type="button" class="nav-link active active-tab-override" role="tab" aria-selected="true" title="${escapeHtml(tab.title)}">`
       + '<span class="me-2 playground-tab-status" style="width: 8px; height: 8px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>'
       + `<span class="playground-tab-label">${escapeHtml(tab.title)}</span></button></div>`,
-    '<div class="nav-item"><button type="button" class="nav-link playground-tab-new">+ New</button></div>',
+    '<div class="nav-item" role="presentation"><button type="button" class="nav-link playground-tab-new">+ New</button></div>',
     '</div>',
     '</div>',
     '</div>',

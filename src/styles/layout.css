@@ -687,7 +687,6 @@
   flex-direction: column;
   margin: 0;
   font-size: 0.6875rem;
-  opacity: 0.85;
 }
 
 .sidenav-collapse-toggle {
@@ -770,4 +769,12 @@
   .sidenav-chevron {
     transition: none;
   }
+}
+
+/* Shown while a route's chunk is still arriving after client-side navigation. */
+.view-loading {
+  display: flex;
+  align-items: center;
+  padding: 2rem 0.5rem;
+  opacity: 0.75;
 }

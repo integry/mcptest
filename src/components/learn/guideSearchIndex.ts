@@ -3,7 +3,7 @@
  * the first time a search field is used, and prepares it once per session.
  */
 import { prepareGuideSearch, type PreparedGuideSearch } from '../../content/guideSearch';
-import { SEARCH_INDEX_PATH, SEARCH_INDEX_VERSION, type SearchIndex } from '../../content/searchIndex';
+import { SEARCH_INDEX_PATH, SEARCH_INDEX_VERSION, type SearchIndex } from '../../content/searchIndexContract';
 
 export type GuideSearchLoader = () => Promise<PreparedGuideSearch>;
 

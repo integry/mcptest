@@ -1,17 +1,10 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-// Auth stays loading: the static shell stands in for the app's first render,
-// which happens before Firebase reports a user.
-vi.mock('firebase/auth', () => ({
-  onAuthStateChanged: vi.fn(() => () => {}),
-  GoogleAuthProvider: class {},
-  signInWithPopup: vi.fn(),
-  signOut: vi.fn(),
-}));
-vi.mock('../src/firebase', () => ({ auth: {} }));
+// Auth is "loading" in the app's first render (before Firebase, loaded on
+// demand, reports a user); the static shell stands in for that frame.
 vi.mock('../src/utils/analytics', async (importOriginal) => ({
   ...(await importOriginal()),
   trackEvent: vi.fn(),
@@ -24,6 +17,7 @@ import { LandingHero, selectLandingQuickPicks } from '../src/components/LandingH
 import { LEARN_HUB_NAVIGATION, LEARN_TRACKS, PRIMARY_NAVIGATION } from '../src/content/navigation';
 import * as landingCopy from '../src/content/landingCopy';
 import { getCatalogServers } from '../src/utils/catalogUtils';
+import { preloadViewsForPath } from '../src/views/deferredViews';
 import seoGenerator from './generate-seo-pages.js';
 import catalogSeeds from '../src/data/serverCatalog.json';
 
@@ -151,6 +145,10 @@ const renderShell = (authEnabled) => parse(renderShellFallback({
 })).querySelector('.app-shell');
 
 describe('static first frame (header, sidebar, playground landing)', () => {
+  // main.tsx fetches the playground chunk before mounting on "/", so the
+  // first React frame already contains it.
+  beforeAll(() => preloadViewsForPath('/'));
+
   afterEach(() => {
     vi.unstubAllEnvs();
     localStorage.clear();

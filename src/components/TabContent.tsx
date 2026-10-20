@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// Bootstrap's dropdown behaviour; loaded with this chunk rather than on every page.
+import 'bootstrap';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
 import { trackEvent, type ConnectSource } from '../utils/analytics';
 

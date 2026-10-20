@@ -152,6 +152,8 @@ npm audit --audit-level=low
 `npm run build` creates the Vite production bundle, generates one static HTML report document per catalog server, and refreshes `sitemap.xml` and `robots.txt`. It also writes the crawler-visible landing copy into `dist/index.html` (the text lives in `src/content/landingCopy.ts`, shared with `LandingHero`) and renders a 1200x630 Open Graph image per page to `dist/og/` with satori and resvg, no browser needed. Images whose inputs have not changed are copied from `node_modules/.cache/og`, so only the first build renders all of them.
 `npm run build:workers` type-checks the TypeScript proxy and creates dry-run Cloudflare bundles for both Workers.
 
+After `npm run build`, the built site has its own checks: `npm run test:first-paint` (cold first load of the home page in headless Chromium), `npm run test:bundle-graph` (the chunk graph in `dist/.vite/manifest.json`: the inspector, Firebase, the Markdown renderer and highlight.js must stay out of the JavaScript every page loads), `npm run test:e2e` (Playwright smoke suite against a mock MCP server) and `npm run test:lighthouse` / `npm run test:lighthouse:mobile` (Lighthouse budgets, desktop and mobile). `npm run analyze` prints what is in each chunk, and `npm run lighthouse-summary` tabulates the last Lighthouse reports.
+
 Install the two Worker package trees separately before running their combined build:
 
 ```bash

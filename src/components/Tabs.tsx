@@ -137,7 +137,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
             </div>
           );
         })}
-        <div className="nav-item">
+        <div className="nav-item" role="presentation">
           <button type="button" className="nav-link playground-tab-new" onClick={onNewTab}>+ New</button>
         </div>
       </div>

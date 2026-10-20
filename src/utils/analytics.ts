@@ -1,5 +1,4 @@
-import { analytics } from '../firebase';
-import { logEvent as firebaseLogEvent } from 'firebase/analytics';
+import { getLoadedFirebase, isFirebaseLoading, onFirebaseLoaded, type FirebaseRuntime } from '../firebase';
 import type { ProtocolEra } from '@modelcontextprotocol/client';
 import type { TransportType } from '../types';
 import type { BadgeSnippets } from './badges';
@@ -172,6 +171,51 @@ export const redactAnalyticsParams = (
   return safe;
 };
 
+type QueuedEvent = { name: string; params: Record<string, AnalyticsValue> };
+
+/** Events fired before the Firebase chunk arrives; replayed once, in order. */
+const MAX_QUEUED_EVENTS = 50;
+let queued: QueuedEvent[] = [];
+let flushRegistered = false;
+
+const deliver = (runtime: FirebaseRuntime, name: string, params: Record<string, AnalyticsValue>): void => {
+  try {
+    runtime.logEvent(runtime.analytics!, name, params);
+  } catch (error) {
+    console.warn('[Analytics] Event could not be sent:', error);
+  }
+};
+
+const registerFlush = (): void => {
+  if (flushRegistered) return;
+  flushRegistered = true;
+  onFirebaseLoaded((runtime) => {
+    const events = queued;
+    queued = [];
+    if (!runtime.analytics) return;
+    events.forEach(event => deliver(runtime, event.name, event.params));
+  });
+};
+
+/**
+ * Delivers an event through Firebase Analytics when it is loaded, queues it
+ * while the SDK chunk is still loading, and otherwise calls `fallback`.
+ */
+const send = (name: string, params: Record<string, AnalyticsValue>, fallback: () => void): void => {
+  const runtime = getLoadedFirebase();
+  if (runtime) {
+    if (runtime.analytics) deliver(runtime, name, params);
+    else fallback();
+    return;
+  }
+  if (isFirebaseLoading()) {
+    registerFlush();
+    if (queued.length < MAX_QUEUED_EVENTS) queued.push({ name, params });
+    return;
+  }
+  fallback();
+};
+
 /**
  * Sends one catalog event. Dropped when the browser opts out of tracking;
  * never throws, so analytics cannot break the flow that reports it.
@@ -179,18 +223,12 @@ export const redactAnalyticsParams = (
 export function trackEvent<K extends AnalyticsEventName>(name: K, ...args: AnalyticsEventArgs<K>): void {
   if (!isAnalyticsAllowed()) return;
   const params = redactAnalyticsParams(args[0] as Record<string, unknown> | undefined);
-  try {
-    if (analytics) {
-      // gtag otherwise attaches the full document URL, which on report, server and
-      // OAuth callback routes carries the endpoint, query credentials or auth codes.
-      firebaseLogEvent(analytics, name as string, { ...params, page_location: getSanitizedPageLocation() });
-    } else {
-      // Fallback for local development or if Firebase fails to initialize
-      console.log(`[Analytics Disabled] Event: ${name}`, params);
-    }
-  } catch (error) {
-    console.warn('[Analytics] Event could not be sent:', error);
-  }
+  // gtag otherwise attaches the full document URL, which on report, server and
+  // OAuth callback routes carries the endpoint, query credentials or auth codes.
+  send(name as string, { ...params, page_location: getSanitizedPageLocation() }, () => {
+    // Fallback for local development or if Firebase fails to initialize
+    console.log(`[Analytics Disabled] Event: ${name}`, params);
+  });
 }
 
 /** `oauth_flow` with the provider policy id when the endpoint has a known policy. */
@@ -289,15 +327,13 @@ export const logPageView = (path: string, title: string) => {
     const sanitizedPath = sanitizePagePath(path);
     const sanitizedTitle = sanitizePageTitle(title);
 
-    if (analytics) {
-        firebaseLogEvent(analytics, 'page_view', {
-            page_location: window.location.origin + sanitizedPath,
-            page_path: sanitizedPath,
-            page_title: sanitizedTitle,
-        });
-    } else {
+    send('page_view', {
+        page_location: window.location.origin + sanitizedPath,
+        page_path: sanitizedPath,
+        page_title: sanitizedTitle,
+    }, () => {
         console.log(`[Analytics Disabled] Page View: ${sanitizedTitle} (${sanitizedPath})`);
-    }
+    });
 };
 
 // Export sanitization functions for use in other components
