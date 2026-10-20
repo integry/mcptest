@@ -62,6 +62,8 @@ describe('catalog authentication metadata', () => {
     expect(catalog).toHaveLength(111);
     expect(catalogValidation).toHaveLength(111);
     expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(111);
+    expect(new Set(catalogValidation.map(({ serverId }) => serverId)))
+      .toEqual(new Set(catalog.map(({ id }) => id)));
     expect(catalog.find(({ id }) => id === 'asana')).toBeDefined();
     expect(catalog.find(({ id }) => id === 'canva')).toBeDefined();
     expect(catalog.find(({ id }) => id === 'gitlab')).toBeDefined();
