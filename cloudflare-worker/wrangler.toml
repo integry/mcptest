@@ -4,9 +4,14 @@ compatibility_date = "2025-07-30"
 
 # The state API stays on workers.dev; the public catalog badge route is also
 # mounted on the site so README embeds use https://mcptest.io/badge/server/<id>.svg.
+# Published report permalinks (/r/*) and their live badges (/badge/report/*) are
+# mounted on the site too; the app publishes through VITE_CLOUDFLARE_WORKER_URL.
 workers_dev = true
 routes = [
-  { pattern = "mcptest.io/badge/server/*", zone_name = "mcptest.io" }
+  { pattern = "mcptest.io/badge/server/*", zone_name = "mcptest.io" },
+  { pattern = "mcptest.io/badge/report/*", zone_name = "mcptest.io" },
+  { pattern = "mcptest.io/r", zone_name = "mcptest.io" },
+  { pattern = "mcptest.io/r/*", zone_name = "mcptest.io" }
 ]
 
 [vars]
@@ -15,12 +20,19 @@ FIREBASE_PROJECT_ID = "mcptest-a530d"
 
 [durable_objects]
 bindings = [
-  { name = "USER_STATE", class_name = "UserState" }
+  { name = "USER_STATE", class_name = "UserState" },
+  # Published report snapshots and publish rate limits, keyed by endpoint (see
+  # cloudflare-worker/src/PublishedReports.js). No secrets are required.
+  { name = "PUBLISHED_REPORTS", class_name = "PublishedReports" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_classes = ["UserState"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["PublishedReports"]
 
 [observability.logs]
 enabled = true

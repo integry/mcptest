@@ -136,6 +136,11 @@ export const getCatalogBadgeUrl = (serverId: string, siteUrl = BADGE_SITE_URL) =
   `${siteUrl}/badge/server/${encodeURIComponent(serverId)}.svg`
 );
 
+/** URL of the worker-served badge that follows the latest published report for an endpoint. */
+export const getPublishedReportBadgeUrl = (endpoint: string, siteUrl = BADGE_SITE_URL) => (
+  `${siteUrl}/badge/report/${encodeURIComponent(endpoint)}.svg`
+);
+
 /** Canonical public report URL for an endpoint, matching ReportView's /report/<encoded> route. */
 export const getReportUrl = (endpoint: string, siteUrl = BADGE_SITE_URL) => (
   `${siteUrl}/report/${encodeURIComponent(endpoint)}`
@@ -183,6 +188,13 @@ export const createReportBadgeSnippets = (endpoint: string, variant: BadgeVarian
   imageUrl: getStaticBadgeUrl(variant),
   linkUrl: getReportUrl(endpoint),
   alt: getBadgeTitle(variant),
+});
+
+/** Snippets for a published report: the live badge that follows the latest published snapshot. */
+export const createPublishedReportBadgeSnippets = (endpoint: string) => createBadgeSnippets({
+  imageUrl: getPublishedReportBadgeUrl(endpoint),
+  linkUrl: getReportUrl(endpoint),
+  alt: 'Tested on mcptest.io',
 });
 
 /** Snippets for a catalog server: the worker badge that follows the latest validation data. */

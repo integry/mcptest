@@ -1,0 +1,381 @@
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import reportSchema from '../../public/schemas/report/v2.schema.json';
+import { createPublicReport, serializePublicReportJson } from '../../src/utils/reportArtifact.ts';
+import { analyzeToolSurface } from '../../src/utils/toolSurfaceAnalysis.ts';
+import { createCompatibilityMatrix, createReleaseDecision } from '../../src/utils/releaseReadiness.ts';
+import {
+  PUBLISHED_REPORT_RETENTION,
+  publishedReportId,
+} from '../../src/utils/publishedReportIdentity.ts';
+import worker from './index.js';
+import { PublishedReports } from './PublishedReports.js';
+import { PUBLISH_RATE_LIMITS, PUBLISHED_REPORT_CACHE_CONTROL } from './publishedReportRoutes.js';
+import { findUnredactedSecret } from './redactionGuard.js';
+import { KNOWN_BADGE_CACHE_CONTROL, UNKNOWN_BADGE_CACHE_CONTROL } from './badges.js';
+
+// In-memory stand-in for a Durable Object namespace: one PublishedReports instance per name.
+class MemoryStorage {
+  constructor() { this.map = new Map(); }
+  async get(key) {
+    if (Array.isArray(key)) return new Map(key.filter((k) => this.map.has(k)).map((k) => [k, this.map.get(k)]));
+    return this.map.get(key);
+  }
+  async put(key, value) {
+    if (typeof key === 'object') Object.entries(key).forEach(([k, v]) => this.map.set(k, v));
+    else this.map.set(key, value);
+  }
+  async delete(key) {
+    (Array.isArray(key) ? key : [key]).forEach((k) => this.map.delete(k));
+  }
+}
+
+const createNamespace = () => {
+  const instances = new Map();
+  return {
+    instances,
+    idFromName: (name) => ({ name }),
+    get: (id) => {
+      if (!instances.has(id.name)) {
+        instances.set(id.name, new PublishedReports({ storage: new MemoryStorage() }));
+      }
+      return instances.get(id.name);
+    },
+  };
+};
+
+const ENDPOINT = 'https://Published.Example/mcp';
+const evaluation = (overrides = {}) => ({
+  serverUrl: ENDPOINT,
+  outcome: 'scored',
+  finalScore: 55,
+  toolSurfaceAnalysis: analyzeToolSurface([{
+    name: 'search',
+    description: 'Search records.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+  }]),
+  sections: {
+    protocol: {
+      name: 'Protocol', description: 'Protocol', score: 15, maxScore: 15,
+      details: [{ text: 'Negotiated', metadata: {
+        protocolEra: 'modern', protocolVersion: '2026-07-28', endpoint: ENDPOINT, route: 'direct',
+      } }],
+    },
+    capabilities: {
+      name: 'Capabilities', description: 'Capabilities', score: 10, maxScore: 10,
+      details: [{ text: 'Tools', metadata: { method: 'tools/list', itemCount: 1 } }],
+    },
+    transport: {
+      name: 'Transport', description: 'Transport', score: 15, maxScore: 15,
+      details: [{ text: 'Connected', metadata: { transportType: 'streamable-http' } }],
+    },
+    performance: {
+      name: 'Performance', description: 'Performance', score: 15, maxScore: 15,
+      details: [{ text: 'Fast', metadata: { durationMs: 200 } }],
+    },
+  },
+  ...overrides,
+});
+
+const artifactFor = (report, generatedAt = '2026-10-20T09:00:00.000Z') => {
+  const compatibilityMatrix = createCompatibilityMatrix(report);
+  const releaseDecision = createReleaseDecision(report, compatibilityMatrix, report.toolSurfaceAnalysis);
+  return JSON.parse(serializePublicReportJson(createPublicReport(report, {
+    generatedAt, releaseDecision, compatibilityMatrix, toolSurfaceAnalysis: report.toolSurfaceAnalysis,
+  })));
+};
+
+// Building an artifact through the evaluator is slow, so variants clone one base
+// artifact: a distinct evidence message changes the content hash, a distinct
+// tested endpoint moves the run to another host.
+const baseArtifact = artifactFor(evaluation());
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const scoredRun = (run) => {
+  const artifact = clone(baseArtifact);
+  artifact.sections[3].evidence[0].message = `Fast (run ${run})`;
+  return artifact;
+};
+const forHost = (host) => {
+  const artifact = clone(baseArtifact);
+  artifact.target.testedEndpoint = `https://${host}/mcp`;
+  return artifact;
+};
+
+let env;
+let ipCounter = 0;
+const request = (path, init = {}, ip = '203.0.113.7') => worker.fetch(
+  new Request(`https://mcptest.io${path}`, {
+    ...init,
+    headers: { 'CF-Connecting-IP': ip, Origin: 'https://mcptest.io', ...(init.headers || {}) },
+  }),
+  env,
+  {}
+);
+const publish = (body, ip) => request('/r', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: typeof body === 'string' ? body : JSON.stringify(body),
+}, ip ?? `198.51.100.${(ipCounter += 1) % 250}`);
+
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+const validateStored = ajv.compile(reportSchema);
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+beforeEach(() => {
+  env = {
+    FIREBASE_PROJECT_ID: 'test-project',
+    USER_STATE: { idFromName: () => { throw new Error('published report routes must not reach UserState'); } },
+    PUBLISHED_REPORTS: createNamespace(),
+  };
+});
+
+describe('publishing a report', () => {
+  it('stores the redacted artifact, returns a removal token once and serves the permalink', async () => {
+    const artifact = artifactFor(evaluation());
+    const response = await publish(artifact);
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.endpoint).toBe('https://published.example/mcp');
+    expect(body.id).toMatch(/^[a-f0-9]{20}-[a-f0-9]{20}$/);
+    expect(body.url).toBe(`https://mcptest.io/r/${body.id}`);
+    expect(body.removalToken).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+    expect(body.deduplicated).toBe(false);
+    expect(body.entry.summary).toMatchObject({ status: 'scored', releaseStatus: expect.any(String), scorePercentage: 100 });
+    expect(body.entry).not.toHaveProperty('removalTokenHash');
+
+    const read = await request(`/r/${body.id}`);
+    expect(read.status).toBe(200);
+    expect(read.headers.get('Content-Type')).toBe('application/json; charset=utf-8');
+    expect(read.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    expect(read.headers.get('Cache-Control')).toBe(PUBLISHED_REPORT_CACHE_CONTROL);
+    expect(read.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    const stored = await read.json();
+    expect(stored).toEqual(artifact);
+    expect(validateStored(stored), JSON.stringify(validateStored.errors)).toBe(true);
+  });
+
+  it('deduplicates identical runs by content hash without issuing a second removal token', async () => {
+    const first = await (await publish(artifactFor(evaluation(), '2026-10-20T09:00:00.000Z'))).json();
+    const again = await publish(artifactFor(evaluation(), '2026-10-20T10:00:00.000Z'));
+    expect(again.status).toBe(200);
+    const body = await again.json();
+    expect(body.deduplicated).toBe(true);
+    expect(body.id).toBe(first.id);
+    expect(body.removalToken).toBeUndefined();
+    expect(body.snapshotCount).toBe(1);
+    expect(body.entry.createdAt).toBe(first.entry.createdAt);
+    expect(Date.parse(body.entry.lastPublishedAt)).toBeGreaterThanOrEqual(Date.parse(first.entry.lastPublishedAt));
+
+    const changed = await publish(scoredRun(3));
+    expect(changed.status).toBe(201);
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.endpoint).toBe('https://published.example/mcp');
+    expect(index.retention).toBe(PUBLISHED_REPORT_RETENTION);
+    expect(index.snapshots.map((entry) => entry.id)).toEqual([(await changed.json()).id, first.id]);
+    expect(index.snapshots[0]).not.toHaveProperty('removalTokenHash');
+  });
+
+  it('keeps only the newest snapshots per endpoint', async () => {
+    // Spread the runs over several hours so the per-host publish limit never applies.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const ids = [];
+    for (let run = 0; run < PUBLISHED_REPORT_RETENTION + 2; run += 1) {
+      vi.setSystemTime(Date.parse('2026-10-20T00:00:00.000Z') + run * 10 * 60 * 1000);
+      const response = await publish(scoredRun(run));
+      expect(response.status).toBe(201);
+      ids.push((await response.json()).id);
+    }
+    vi.useRealTimers();
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots).toHaveLength(PUBLISHED_REPORT_RETENTION);
+    expect(index.snapshots[0].id).toBe(ids[ids.length - 1]);
+    expect((await request(`/r/${ids[0]}`)).status).toBe(404);
+    expect((await request(`/r/${ids[ids.length - 1]}`)).status).toBe(200);
+  });
+
+  it('rejects artifacts that fail schema validation', async () => {
+    const artifact = artifactFor(evaluation());
+    delete artifact.outcome;
+    const response = await publish(artifact);
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error).toBe('schema_validation_failed');
+    expect(body.errors[0].message).toContain('outcome');
+
+    const extra = await publish({ ...artifactFor(evaluation()), extraField: true });
+    expect((await extra.json()).error).toBe('schema_validation_failed');
+    expect((await publish('{not json')).status).toBe(400);
+    expect((await publish([])).status).toBe(400);
+  });
+
+  it.each([
+    ['an Authorization header in evidence metadata', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { Authorization: 'Bearer target-token' };
+    }],
+    ['a bearer credential in evidence text', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'Retry with Bearer secret-access-token';
+    }],
+    ['a sensitive query parameter in a URL', (artifact) => {
+      artifact.sections[0].evidence[0].context = 'Tried https://published.example/mcp?access_token=abc';
+    }],
+    ['an unredacted assignment', (artifact) => {
+      artifact.sections[0].evidence[0].context = 'response: api_key=sk_live_123456789012';
+    }],
+    ['a JWT', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'Got eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+    }],
+    ['a well-known provider key shape', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij';
+    }],
+    ['a JSON-shaped string with a secret', (artifact) => {
+      artifact.sections[0].evidence[0].context = '{"headers":{"x-api-key":"plain-key"}}';
+    }],
+    ['a sensitive key in a tool schema', (artifact) => {
+      artifact.toolSurfaceAnalysis.toolDefinitions.tools[0].inputSchema.properties.password = { type: 'string' };
+    }],
+  ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
+    const artifact = artifactFor(evaluation());
+    poison(artifact);
+    const response = await publish(artifact);
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error).toBe('unredacted_content');
+    expect(body.message).toContain('redacted');
+    // Nothing is stored for a rejected publish.
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots).toHaveLength(0);
+  });
+
+  it('accepts redacted markers the app produces and the schema fields that look sensitive', async () => {
+    const artifact = artifactFor(evaluation({
+      serverUrl: 'https://published.example/mcp?token=secret',
+      sections: {
+        ...evaluation().sections,
+        auth: {
+          name: 'Authorization Required', description: 'OAuth', score: 0, maxScore: 0,
+          details: [{
+            text: 'Authorization: Bearer secret-token', context: 'Set-Cookie: sid=abc',
+            metadata: { authorization: 'Bearer x', responseHeaders: { 'WWW-Authenticate': 'Bearer realm="mcp"' } },
+          }],
+        },
+      },
+    }));
+    expect(JSON.stringify(artifact)).not.toContain('secret');
+    expect(findUnredactedSecret(artifact)).toBeUndefined();
+    expect((await publish(artifact)).status).toBe(201);
+  });
+
+  it('rejects oversized bodies and non-public endpoints', async () => {
+    const artifact = artifactFor(evaluation());
+    artifact.sections[0].evidence[0].context = 'x'.repeat(600 * 1024);
+    expect((await publish(artifact)).status).toBe(413);
+    for (const serverUrl of ['http://localhost:3000/mcp', 'http://127.0.0.1/mcp', 'ftp://files.example/mcp']) {
+      const local = await publish(artifactFor(evaluation({ serverUrl })));
+      expect(local.status).toBe(422);
+      expect((await local.json()).error).toBe('endpoint_not_publishable');
+    }
+  });
+
+  it('rate limits publishing per endpoint host and per address', async () => {
+    const hostLimit = PUBLISH_RATE_LIMITS.host.limit;
+    for (let run = 0; run < hostLimit; run += 1) {
+      expect((await publish(scoredRun(run))).status).toBe(201);
+    }
+    const limited = await publish(scoredRun(99));
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('Retry-After')).toMatch(/^\d+$/);
+    expect((await limited.json()).message).toContain('endpoint host');
+
+    const ipLimit = PUBLISH_RATE_LIMITS.ip.limit;
+    for (let run = 0; run < ipLimit; run += 1) {
+      const response = await publish(forHost(`host-${run}.example`), '192.0.2.1');
+      expect(response.status).toBe(201);
+    }
+    const ipLimited = await publish(forHost('host-x.example'), '192.0.2.1');
+    expect(ipLimited.status).toBe(429);
+    expect((await ipLimited.json()).message).toContain('address');
+  });
+
+  it('answers preflight and refuses other methods', async () => {
+    const preflight = await request('/r', { method: 'OPTIONS' });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('https://mcptest.io');
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('X-Removal-Token');
+    expect((await request('/r', { method: 'GET' })).status).toBe(405);
+    expect((await request('/r/not-an-id')).status).toBe(404);
+    expect((await request('/r/a/b')).status).toBe(404);
+  });
+
+  it('returns 503 when the binding is missing and leaves other routes to the state API', async () => {
+    delete env.PUBLISHED_REPORTS;
+    expect((await request(`/r/${publishedReportId('a'.repeat(20), 'b'.repeat(20))}`)).status).toBe(503);
+    expect((await request('/api/state')).status).toBe(401);
+  });
+});
+
+describe('removing a published report', () => {
+  it('deletes with the removal token and refuses without it', async () => {
+    const published = await (await publish(artifactFor(evaluation()))).json();
+    const missing = await request(`/r/${published.id}`, { method: 'DELETE' });
+    expect(missing.status).toBe(401);
+    const wrong = await request(`/r/${published.id}`, { method: 'DELETE', headers: { 'X-Removal-Token': 'nope' } });
+    expect(wrong.status).toBe(403);
+    expect((await request(`/r/${published.id}`)).status).toBe(200);
+
+    const removed = await request(`/r/${published.id}`, {
+      method: 'DELETE',
+      headers: { 'X-Removal-Token': published.removalToken },
+    });
+    expect(removed.status).toBe(204);
+    expect((await request(`/r/${published.id}`)).status).toBe(404);
+    const again = await request(`/r/${published.id}`, {
+      method: 'DELETE',
+      headers: { 'X-Removal-Token': published.removalToken },
+    });
+    expect(again.status).toBe(404);
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots).toHaveLength(0);
+  });
+});
+
+describe('published report badges', () => {
+  it('serves the neutral badge until a report is published, then the latest result', async () => {
+    const path = `/badge/report/${encodeURIComponent(ENDPOINT)}.svg`;
+    const neutral = await request(path);
+    expect(neutral.status).toBe(200);
+    expect(neutral.headers.get('X-Badge-Result')).toBe('neutral');
+    expect(neutral.headers.get('Cache-Control')).toBe(UNKNOWN_BADGE_CACHE_CONTROL);
+    expect(await neutral.text()).toContain('<title>tested on: mcptest.io</title>');
+
+    await publish(artifactFor(evaluation()));
+    const published = await request(path);
+    expect(published.headers.get('Content-Type')).toBe('image/svg+xml; charset=utf-8');
+    expect(published.headers.get('Cache-Control')).toBe(KNOWN_BADGE_CACHE_CONTROL);
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots[0].summary.releaseStatus).toBe('review');
+    expect(published.headers.get('X-Badge-Result')).toBe('review');
+    expect(await published.text()).toContain('<title>mcptest.io: review</title>');
+
+    await publish(artifactFor(evaluation({
+      outcome: 'failed',
+      finalScore: 0,
+      sections: { protocol: { name: 'Protocol', description: 'Protocol', score: 0, maxScore: 15, status: 'failed', details: [{ text: 'Unreachable' }] } },
+    })));
+    expect((await request(path)).headers.get('X-Badge-Result')).toBe('blocked');
+  });
+
+  it('keeps the catalog badge route and answers HEAD', async () => {
+    const catalog = await request('/badge/server/context7.svg');
+    expect(catalog.headers.get('X-Badge-Result')).toBe('ready');
+    const head = await request(`/badge/report/${encodeURIComponent(ENDPOINT)}.svg`, { method: 'HEAD' });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe('');
+    expect((await request('/badge/report/not-a-url.svg')).headers.get('X-Badge-Result')).toBe('neutral');
+    expect((await request('/badge/report/x.svg', { method: 'POST' })).status).toBe(405);
+  });
+});
