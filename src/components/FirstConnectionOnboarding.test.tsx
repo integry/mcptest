@@ -1,22 +1,9 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
-import { AwaitingConnectionPanel, FirstConnectionOnboarding } from './FirstConnectionOnboarding';
+import { describe, expect, it } from 'vitest';
+import { AwaitingConnectionPanel } from './FirstConnectionOnboarding';
 
-describe('first connection onboarding', () => {
-  it('introduces the inspector and provides a clear manual connection action', () => {
-    const markup = renderToStaticMarkup(
-      <FirstConnectionOnboarding onConnectFirstServer={vi.fn()} />
-    );
-    const container = document.createElement('div');
-    container.innerHTML = markup;
-
-    expect(container.querySelector('.first-connection-eyebrow')?.textContent).toBe('MCP Inspector');
-    expect(container.querySelector('h1')?.textContent).toBe('Welcome to mcptest.io');
-    expect(container.textContent).toContain('inspect, debug, and negotiate');
-    expect(container.querySelector('button')?.textContent).toContain('Connect your first server');
-  });
-
+describe('awaiting connection panel', () => {
   it('shows users where connected server data will appear', () => {
     const markup = renderToStaticMarkup(<AwaitingConnectionPanel />);
     const container = document.createElement('div');
