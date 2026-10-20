@@ -68,8 +68,8 @@ const PRE_EXISTING_PAGES = [
 
 describe('content registry', () => {
   it('loads every Markdown article and resolves it by slug and canonical path', () => {
-    const files = readdirSync(resolve('src/content/articles')).filter(name => name.endsWith('.md'));
-    expect(LEARN_ARTICLES).toHaveLength(files.length);
+    const markdownFiles = readdirSync(resolve('src/content/articles')).filter(file => file.endsWith('.md'));
+    expect(LEARN_ARTICLES).toHaveLength(markdownFiles.length);
     for (const article of LEARN_ARTICLES) {
       expect(getLearnArticle(article.slug)).toBe(article);
       expect(getLearnArticleFromPath(article.path)).toBe(article);
