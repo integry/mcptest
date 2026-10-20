@@ -92,6 +92,8 @@ Catalog seeds live in `src/data/serverCatalog.json`; `src/data/serverCatalog.ts`
 
 A protected endpoint that returns a valid authentication challenge can be catalog-valid and reachable without being transport-verified anonymously. Keep that distinction explicit in catalog metadata and UI copy.
 
+Server authors can submit a new entry by pull request. See [docs/catalog-submissions.md](docs/catalog-submissions.md) for the required fields, the validation that runs, and the logo licensing rules.
+
 ## Core JSON-RPC methods
 
 - `server/discover` — advertises versions and capabilities for the stateless 2026 era.
