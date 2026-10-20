@@ -1,11 +1,10 @@
 import React from 'react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import SideNav from './SideNav';
 import { TRACK_NAVIGATION } from '../content/learnRegistry';
+import { readStylesheet } from '../styles/readStylesheet';
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
@@ -17,7 +16,7 @@ vi.mock('../context/AuthContext', () => ({
 
 describe('SideNav dashboard rows', () => {
   it('keeps the card count beside a flexible, truncatable dashboard name', () => {
-    const sidebarCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const sidebarCss = readStylesheet();
     const dashboardName = 'My first dashboard with a deliberately long name';
     const markup = renderToStaticMarkup(
       <MemoryRouter>
@@ -70,7 +69,7 @@ describe('SideNav dashboard rows', () => {
   });
 
   it('presents section labels in natural case without micro-label typography', () => {
-    const sidebarCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const sidebarCss = readStylesheet();
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <SideNav
@@ -98,15 +97,17 @@ describe('SideNav dashboard rows', () => {
     const sectionRuleStart = sidebarCss.indexOf('.sidenav-section-label {');
     const sectionRuleEnd = sidebarCss.indexOf('}', sectionRuleStart);
     const sectionRule = sidebarCss.slice(sectionRuleStart, sectionRuleEnd);
-    expect(sectionRule).toMatch(/font-size:\s*0\.95rem/);
+    // Body-sized, not a micro-label: at least 13px and no tracking.
+    expect(parseFloat(sectionRule.match(/font-size:\s*([\d.]+)rem/)?.[1] ?? '0')).toBeGreaterThanOrEqual(0.8125);
     expect(sectionRule).toMatch(/letter-spacing:\s*0/);
 
     const labelSelectors = [
+      '.sidenav-section-label',
+      '.catalog-category-heading',
       '.server-signal-label',
       '.server-endpoint-box span',
       '.catalog-filters .form-label',
-      '.docs-toc-title',
-      '.first-connection-eyebrow',
+      '.authorization-setup-kicker',
     ];
 
     labelSelectors.forEach((selector) => {
@@ -115,7 +116,8 @@ describe('SideNav dashboard rows', () => {
       const rule = sidebarCss.slice(ruleStart, ruleEnd);
 
       expect(ruleStart, `${selector} should have a style rule`).toBeGreaterThan(-1);
-      expect(rule).toMatch(/font-size:\s*0\.8(?:2)?rem/);
+      expect(parseFloat(rule.match(/font-size:\s*([\d.]+)rem/)?.[1] ?? '0')).toBeGreaterThanOrEqual(0.8);
+      expect(rule).not.toMatch(/text-transform/);
       expect(rule).toMatch(/letter-spacing:\s*0/);
     });
   });

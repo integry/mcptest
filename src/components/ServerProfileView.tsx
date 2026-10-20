@@ -116,7 +116,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       </nav>
 
       <header className="server-profile-hero">
-        <div className="server-profile-glow" aria-hidden="true"></div>
         <div className="server-profile-identity">
           <CatalogServerLogo
             name={server.name}

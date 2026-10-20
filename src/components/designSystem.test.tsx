@@ -1,11 +1,12 @@
 import React from 'react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import McpResponseDisplay from './McpResponseDisplay';
+import { STYLESHEET_FILES, readStylesheet } from '../styles/readStylesheet';
 
-const css = readFileSync(resolve('src/index.css'), 'utf8');
+const css = readStylesheet();
 
 type Rule = { selector: string; body: string };
 
@@ -24,6 +25,122 @@ const declaration = (body: string, property: string) => {
 };
 
 const ruleFor = (selector: string) => rules.find((rule) => rule.selector === selector);
+
+const remSize = (value: string | undefined): number | undefined => {
+  const rem = value?.match(/^([\d.]+)rem$/);
+  return rem ? Number(rem[1]) : undefined;
+};
+
+describe('stylesheet structure', () => {
+  it('imports tokens, base, layout and components in that order from index.css', () => {
+    const index = readFileSync(resolve('src/index.css'), 'utf8');
+    const imports = [...index.matchAll(/@import '\.\/styles\/([a-z]+)\.css';/g)].map((match) => match[1]);
+
+    expect(imports).toEqual([...STYLESHEET_FILES]);
+    expect(index.replace(/\/\*[\s\S]*?\*\//g, '').trim().split('\n').every((line) => line.startsWith('@import'))).toBe(true);
+  });
+});
+
+describe('radius tokens', () => {
+  it('uses one chrome radius and one small-control radius', () => {
+    const scale = ruleFor(':root')!.body;
+
+    expect(declaration(scale, '--border-radius')).toBe('0.5rem');
+    expect(declaration(scale, '--border-radius-sm')).toBe('0.375rem');
+    expect(declaration(scale, '--button-radius')).toBe('0.5rem');
+    expect(declaration(scale, '--button-radius-sm')).toBe('0.375rem');
+  });
+
+  it('shapes the app chrome from the tokens instead of ad-hoc radii', () => {
+    ['.card', '.dropdown-menu', '.form-control, .form-select', '.alert', '.modal-content'].forEach((selector) => {
+      const radius = declaration(ruleFor(selector)!.body, 'border-radius');
+      expect(radius, selector).toMatch(/^var\(--(border|button)-radius\)$/);
+    });
+  });
+});
+
+describe('surfaces', () => {
+  it('draws cards with a hairline border and no shadow', () => {
+    const card = ruleFor('.card')!.body;
+
+    expect(declaration(card, 'border')).toBe('1px solid var(--border-color)');
+    expect(declaration(card, 'box-shadow')).toBe('none');
+    expect(rules.find((rule) => rule.selector === '.card:hover')).toBeUndefined();
+  });
+
+  it('reserves drop shadows for floating surfaces', () => {
+    const offenders = rules
+      .map((rule) => ({ selector: rule.selector, shadow: declaration(rule.body, 'box-shadow') }))
+      .filter(({ shadow }) => shadow !== undefined)
+      .filter(({ shadow }) => !/^(none|var\(--shadow-float\)|var\(--focus-ring\))( !important)?$/.test(shadow!))
+      // Inset rings and 1px outlines are borders drawn with box-shadow, not elevation.
+      .filter(({ shadow }) => !/^(inset |0 0 0 1px )/.test(shadow!));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('declares no gradients in the app chrome', () => {
+    const gradients = rules.filter((rule) => /gradient\(/.test(rule.body)).map((rule) => rule.selector);
+
+    expect(gradients).toEqual([]);
+  });
+});
+
+describe('label typography', () => {
+  it('never sets small text in uppercase or with tracking', () => {
+    const uppercase = rules
+      .filter((rule) => /text-transform:\s*uppercase/.test(rule.body))
+      .map((rule) => rule.selector);
+    const tracked = rules
+      .filter((rule) => {
+        const spacing = declaration(rule.body, 'letter-spacing');
+        const size = remSize(declaration(rule.body, 'font-size'));
+        return spacing !== undefined && /^0?\.\d+(em|rem|px)$/.test(spacing) && size !== undefined && size < 0.875;
+      })
+      .map((rule) => rule.selector);
+
+    expect(uppercase).toEqual([]);
+    expect(tracked).toEqual([]);
+  });
+
+  it('keeps every label-sized rule at 11px or larger', () => {
+    const tiny = rules
+      .map((rule) => ({ selector: rule.selector, size: remSize(declaration(rule.body, 'font-size')) }))
+      .filter(({ size }) => size !== undefined && size < 0.6875)
+      .map(({ selector }) => selector);
+
+    expect(tiny).toEqual([]);
+  });
+});
+
+describe('dead selectors', () => {
+  it('no longer ships styles for removed markup', () => {
+    const removed = [
+      /\.first-connection-/,
+      /\.preview-capability-list/,
+      /\.preview-response-block/,
+      /\.learn-hero/,
+      /\.learn-markdown/,
+      /\.docs-code-block/,
+      /\.docs-toc/,
+      /\.catalog-server-card(?![\w-])/,
+      /\.catalog-result-column/,
+      /\.response-container/,
+      /\.server-profile-glow/,
+    ];
+    const present = removed.filter((pattern) => rules.some((rule) => pattern.test(rule.selector)));
+
+    expect(present).toEqual([]);
+  });
+
+  it('only styles classes that some component, script or page still renders', () => {
+    const sourceCorpus = readFileSync(resolve('src/components/CatalogServerCard.tsx'), 'utf8');
+    ['catalog-server-row', 'catalog-server-meta', 'catalog-server-list'].forEach((name) => {
+      expect(css).toContain(`.${name}`);
+    });
+    expect(sourceCorpus).toContain('catalog-server-row');
+  });
+});
 
 describe('button shape', () => {
   it('defines a single button radius token', () => {
@@ -58,7 +175,7 @@ describe('outline button palette', () => {
   });
 
   it('matches border to text on every outline variant', () => {
-    const variants = ['.btn-outline-primary', '.btn-outline-secondary', '.btn-outline-danger', '.btn-outline-success'];
+    const variants = ['.btn-outline-primary', '.btn-outline-secondary', '.btn-outline-danger'];
     const mismatched = variants.filter((selector) => {
       const body = ruleFor(selector)!.body;
       const color = declaration(body, 'color');

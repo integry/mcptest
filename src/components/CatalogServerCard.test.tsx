@@ -1,11 +1,10 @@
 import React from 'react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { CatalogServer } from '../types/catalog';
 import { CatalogServerCard } from './CatalogServerCard';
+import { readStylesheet } from '../styles/readStylesheet';
 
 const server: CatalogServer = {
   id: 'example',
@@ -49,7 +48,7 @@ describe('CatalogServerCard presentation', () => {
     const listingSourceIcon = container.querySelector<SVGElement>(
       '.catalog-listing-source-icon'
     );
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const listingSourceIconRule =
       catalogCss.match(/\.catalog-listing-source-icon\s*\{([^}]*)\}/)?.[1] ?? '';
     const onlineStatusRule =
@@ -73,11 +72,11 @@ describe('CatalogServerCard presentation', () => {
     expect(container.querySelector('.catalog-status-dot--online')).not.toBeNull();
     expect(container.querySelector('.catalog-runtime-status--online')).not.toBeNull();
     expect(container.querySelector('.catalog-refresh')).toBeNull();
-    expect(container.querySelector('.catalog-server-footer')?.classList.contains('mt-auto')).toBe(
-      true
-    );
-    expect(container.querySelector('.catalog-server-footer .catalog-server-badges')).not.toBeNull();
-    expect(container.querySelector('.catalog-server-footer .catalog-card-actions')).not.toBeNull();
+    expect(container.querySelector('article.catalog-server-row')).not.toBeNull();
+    expect(container.querySelector('.catalog-server-row .card')).toBeNull();
+    expect(container.querySelector('.catalog-server-meta .catalog-server-badges')).not.toBeNull();
+    expect(container.querySelector('.catalog-server-meta .catalog-browser-evidence')).not.toBeNull();
+    expect(container.querySelector('.catalog-server-row > .catalog-card-actions')).not.toBeNull();
     expect(reportLink?.classList.contains('btn')).toBe(false);
     expect(reportLink?.getAttribute('href')).toBe('/servers/example/');
     expect(badges?.tagName).toBe('DIV');
@@ -117,7 +116,7 @@ describe('CatalogServerCard presentation', () => {
     const container = document.createElement('div');
     container.innerHTML = markup;
     const endpoint = container.querySelector<HTMLElement>('.catalog-server-url');
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const endpointRule =
       catalogCss.match(/\.catalog-server-url\s*\{([^}]*)\}/)?.[1] ?? '';
 
@@ -128,7 +127,7 @@ describe('CatalogServerCard presentation', () => {
     expect(endpointRule).toMatch(/color:\s*var\(--catalog-secondary-text\);/);
   });
 
-  it('keeps a long title and runtime status within card bounds at 1024px', () => {
+  it('keeps a long title inside the row and stacks the row below the tablet breakpoint', () => {
     const longName = 'ExampleEnterpriseProductionEnvironmentServer';
     const markup = renderToStaticMarkup(
       <MemoryRouter>
@@ -144,23 +143,30 @@ describe('CatalogServerCard presentation', () => {
 
     const title = container.querySelector<HTMLElement>('.catalog-server-title');
     const runtimeStatus = container.querySelector<HTMLElement>('.catalog-runtime-status');
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const titleRule = catalogCss.match(/\.catalog-server-title\s*\{([^}]*)\}/)?.[1] ?? '';
     const statusRule = catalogCss.match(/\.catalog-runtime-status\s*\{([^}]*)\}/)?.[1] ?? '';
-    const constrainedDesktopRule = catalogCss.match(
-      /@media \(min-width: (\d+)px\) and \(max-width: ([\d.]+)px\) \{\s*\.catalog-server-title-row\s*\{([^}]*)\}\s*\.catalog-server-name-source,\s*\.catalog-runtime-status\s*\{([^}]*)\}/
+    const rowRule = catalogCss.match(/\.catalog-server-row\s*\{([^}]*)\}/)?.[1] ?? '';
+    const listItemRule = catalogCss.match(/\.catalog-server-list-item\s*\{([^}]*)\}/)?.[1] ?? '';
+    const stackedRule = catalogCss.match(
+      /@media \(max-width: ([\d.]+)px\) \{[^@]*?\.catalog-server-row\s*\{([^}]*)\}[^@]*?\.catalog-server-title-row\s*\{([^}]*)\}/
     );
-    const viewportWidth = 1024;
 
     expect(title?.textContent).toBe(longName);
     expect(titleRule).toMatch(/overflow-wrap:\s*anywhere;/);
     expect(runtimeStatus?.classList).not.toContain('flex-shrink-0');
     expect(statusRule).toMatch(/min-width:\s*0;/);
     expect(statusRule).toMatch(/max-width:\s*100%;/);
-    expect(constrainedDesktopRule?.[3]).toMatch(/flex-wrap:\s*wrap;/);
-    expect(constrainedDesktopRule?.[4]).toMatch(/flex-basis:\s*100%;/);
-    expect(viewportWidth).toBeGreaterThanOrEqual(Number(constrainedDesktopRule?.[1]));
-    expect(viewportWidth).toBeLessThanOrEqual(Number(constrainedDesktopRule?.[2]));
+    // Desktop: one grid row with logo, identity, badges and actions columns.
+    expect(rowRule).toMatch(/display:\s*grid;/);
+    expect(rowRule).toMatch(/grid-template-columns:\s*2\.5rem minmax\(0, 1\.5fr\) minmax\(0, 1fr\) auto;/);
+    // Rows are divided by a hairline, never boxed.
+    expect(listItemRule).toMatch(/border-bottom:\s*1px solid var\(--border-color\);/);
+    expect(rowRule).not.toMatch(/box-shadow/);
+    // Phones: the identity column keeps the logo beside it, badges and actions wrap underneath.
+    expect(Number(stackedRule?.[1])).toBeLessThanOrEqual(768);
+    expect(stackedRule?.[2]).toMatch(/grid-template-columns:\s*2\.5rem minmax\(0, 1fr\);/);
+    expect(stackedRule?.[3]).toMatch(/flex-wrap:\s*wrap;/);
   });
 
   it('shows initials without a logo and keeps report access enabled offline', () => {
