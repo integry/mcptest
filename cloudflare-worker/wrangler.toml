@@ -35,3 +35,7 @@ new_sqlite_classes = ["SubmissionRateLimiter"]
 
 [observability.logs]
 enabled = true
+[alias]
+# The submissions route bundles src/utils/catalogSubmissionSchema.ts from the app tree,
+# so bare imports there resolve against the app, not this package. Point them here.
+"@cfworker/json-schema" = "./node_modules/@cfworker/json-schema/dist/esm/index.js"
