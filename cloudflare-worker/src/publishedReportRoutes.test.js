@@ -365,6 +365,16 @@ describe('publishing a report', () => {
     ['a query credential in a wss URL', (artifact) => {
       artifact.sections[0].evidence[0].message = 'wss://relay.example/mcp?access_token=opaquecredential123';
     }],
+    // F10: userinfo detection is context-free; a scheme without `//` is no escape.
+    ['a password in the userinfo of an https URL written without //', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'https:alice:opaquecredential123@files.example/report';
+    }],
+    ['a mailto-style user:password@host', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'mailto:alice:opaquecredential123@mail.example';
+    }],
+    ['a percent-encoded userinfo password after a scheme without //', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { command: 'curl https:alice:opaque%40credential%2F123%3Ax@files.example/report' };
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);

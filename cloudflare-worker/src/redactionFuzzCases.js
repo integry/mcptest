@@ -8,7 +8,7 @@ import {
 } from '../../src/utils/reportRedactionFixtures.ts';
 
 const enc = encodeURIComponent;
-// `encodeURIComponent` keeps `'`, which ends a bare userinfo password; encode it too.
+// `encodeURIComponent` keeps `'`; encode it too so the userinfo embeddings carry no quotes.
 const encUserinfo = (text) => enc(text).replace(/'/g, '%27');
 const unicodeEscape = (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`;
 const escapeNonAlphanumerics = (text) => text.replace(/[^A-Za-z0-9]/g, unicodeEscape);
@@ -31,6 +31,7 @@ export const CREDENTIAL_EMBEDDINGS = [
   ['a custom-scheme URL userinfo password', (text) => `x-mcp+v1://alice:${enc(text)}@fuzz.example/session`],
   ['a file URL userinfo password', (text) => `file://alice:${encUserinfo(text)}@fuzz.example/report`],
   ['a bare user:password@host outside a URL', (text) => `sftp alice:${encUserinfo(text)}@fuzz.example:22`],
+  ['a scheme-prefixed userinfo password without //', (text) => `https:alice:${encUserinfo(text)}@fuzz.example/report`],
   ['a JSON-encoded string', (text) => JSON.stringify(text)],
   ['a twice JSON-encoded string', (text) => JSON.stringify(JSON.stringify(text))],
   ['a JSON fragment after a prefix', (text) => `response: ${JSON.stringify({ note: text })} end`],

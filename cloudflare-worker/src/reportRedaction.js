@@ -294,18 +294,54 @@ const redactUrlsInText = (value, depth) => value.replace(URL_IN_TEXT_PATTERN, (c
   return `${redactUrl(url, depth)}${trailing}`;
 });
 
-// The `user:password@host` shape outside a URL (`sftp alice:secret@files.example`,
-// a URL whose scheme cannot carry userinfo). The user is kept and the password
-// becomes the marker; a password that is already the marker, plain or
-// percent-encoded as the URL serializer writes it, is left alone. Quotes,
-// brackets, braces, backslashes, slashes and whitespace end the password, so a
-// JSON pair such as `"email":"alice@example.com"` is not a userinfo match.
-export const BARE_USERINFO_PATTERN_SOURCE = String.raw`(^|[^A-Za-z0-9._~%+:@\\-])([A-Za-z0-9._~%+-]+):([^\s@/:"'<>\\\[\]{}]+)@(?=[A-Za-z0-9]|\[[0-9A-Fa-f:.]+\])`;
+// The `user:password@host` shape anywhere in text, whatever precedes it: a
+// scheme without `//` (`https:alice:secret@host`, `mailto:alice:secret@host`),
+// prose, quotes or nothing at all. Each `@` ends a run, which reaches back to
+// the previous whitespace, slash or `@`; the run's first colon splits a
+// non-empty user from a non-empty password, so, as in URL userinfo, a password
+// may itself contain colons and everything between that colon and the `@` is
+// redacted. The user is kept and the password becomes the marker; a password
+// that is already the marker, plain or percent-encoded as the URL serializer
+// writes it, is left alone. The one colon that never splits a run is the JSON
+// pair separator `":"`, so `{"email":"alice@example.com"}` is not a userinfo
+// match while a credential inside a JSON string (`{"url":"alice:secret@host"}`)
+// still is. The scan visits every character once, so a long run without an `@`
+// costs nothing more than its length.
+const USERINFO_RUN_BOUNDARY = /[\s/@]/;
+const USERINFO_HOST_START = /[A-Za-z0-9]|\[[0-9A-Fa-f:.]+\]/y;
+
+const firstUserinfoColon = (value, runStart, at) => {
+  for (let index = runStart + 1; index < at - 1; index += 1) {
+    if (value[index] !== ':') continue;
+    if (value[index - 1] === '"' && value[index + 1] === '"') continue;
+    return index;
+  }
+  return -1;
+};
+
+/** Every `user:password@host` password in `value` as `{ start, end, password }` spans, in order. */
+export const findUserinfoPasswords = (value) => {
+  const spans = [];
+  let runStart = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (!USERINFO_RUN_BOUNDARY.test(character)) continue;
+    if (character === '@') {
+      const colon = firstUserinfoColon(value, runStart, index);
+      USERINFO_HOST_START.lastIndex = index + 1;
+      if (colon !== -1 && USERINFO_HOST_START.test(value)) {
+        spans.push({ start: colon + 1, end: index, password: value.slice(colon + 1, index) });
+      }
+    }
+    runStart = index + 1;
+  }
+  return spans;
+};
 export const isRedactedMarkerText = (value) => value === REDACTED_VALUE || value === ENCODED_REDACTED_VALUE;
 
-const redactBareUserinfo = (value) => value.replace(new RegExp(BARE_USERINFO_PATTERN_SOURCE, 'g'), (match, lead, user, password) => (
-  isRedactedMarkerText(password) ? match : `${lead}${user}:${REDACTED_VALUE}@`
-));
+const redactBareUserinfo = (value) => spliceMatches(value, findUserinfoPasswords(value)
+  .filter(({ password }) => !isRedactedMarkerText(password))
+  .map(({ start, end }) => ({ start, end, replacement: REDACTED_VALUE })));
 
 export const JWT_PATTERN_SOURCE = String.raw`(^|[^A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=$|[^A-Za-z0-9_-])`;
 export const SCHEME_CREDENTIAL_PATTERN_SOURCE = String.raw`\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+`;

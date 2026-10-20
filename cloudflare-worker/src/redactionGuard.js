@@ -5,7 +5,7 @@
 // the detection half of that redaction, sharing its vocabulary and patterns with
 // the Worker's port of the transform (cloudflare-worker/src/reportRedaction.js):
 // assignment and URL parameter scanning for URLs of any scheme, userinfo in a
-// URL or bare in text, Bearer/Basic credentials, JWTs, JSON-shaped strings, JSON
+// URL or as a `user:password@host` run anywhere in text, Bearer/Basic credentials, JWTs, JSON-shaped strings, JSON
 // fragments embedded anywhere in a string, JSON escape sequences, plus a few
 // well-known API key shapes. Every rule flags a strict
 // subset of what the app's redaction would rewrite (the key-shape rules, the
@@ -19,7 +19,6 @@
 // redacted.
 import {
   ASSIGNMENT_START_SOURCE,
-  BARE_USERINFO_PATTERN_SOURCE,
   CANONICAL_REFERENCE_URL_PATTERN,
   ENCODED_REDACTED_VALUE,
   JWT_PATTERN_SOURCE,
@@ -30,6 +29,7 @@ import {
   TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS,
   URL_IN_TEXT_PATTERN,
   URL_TRAILING_PUNCTUATION,
+  findUserinfoPasswords,
   isAuthorizationPrerequisiteSchemaField,
   isAuthorizationSetupHeaderTemplateField,
   isAuthorizationSetupSchemaField,
@@ -172,15 +172,16 @@ const findSecretInUrls = (value, depth) => {
   return undefined;
 };
 
-/** The bare `user:password@host` shape outside a URL, mirroring the transform's rule. */
-const findBareUserinfoCredential = (value) => {
-  const pattern = new RegExp(BARE_USERINFO_PATTERN_SOURCE, 'g');
-  let match;
-  while ((match = pattern.exec(value)) !== null) {
-    if (!isRedactedMarker(match[3])) return 'userinfo carries a password';
-  }
-  return undefined;
-};
+/**
+ * The `user:password@host` shape anywhere in text, mirroring the transform's
+ * rule: it needs no `://` and no particular preceding character, so a
+ * scheme-prefixed form such as `https:alice:secret@host` is found as well.
+ */
+const findBareUserinfoCredential = (value) => (
+  findUserinfoPasswords(value).some(({ password }) => !isRedactedMarker(password))
+    ? 'userinfo carries a password'
+    : undefined
+);
 
 const isStructuredJsonText = (value) => (
   (value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))

@@ -149,6 +149,49 @@ describe('the Worker port of the app redaction', () => {
     }
   });
 
+  it('redacts a user:password@host run whatever precedes it, including a scheme without //', () => {
+    // F10: `https:alice:secret@host` is a valid URL whose userinfo the URL parser
+    // sees, but URL discovery needs `://`; the userinfo rule is context-free instead.
+    const f10 = 'https:alice:opaquecredential123@files.example/report';
+    expect(new URL(f10).password).toBe('opaquecredential123');
+    expect(findUnredactedSecret({ note: f10 })?.reason).toBe('userinfo carries a password');
+    expect(appRedactReportString(f10)).toBe(f10);
+    const redacted = redactReportString(f10);
+    expect(redacted).toBe('https:[REDACTED]@files.example/report');
+    expect(findUnredactedSecret({ note: redacted })).toBeUndefined();
+    expect(redactReportString(redacted)).toBe(redacted);
+
+    for (const [text, secret, expected] of [
+      ['mailto:alice:mail-userinfo-secret@mail.example', 'mail-userinfo-secret', 'mailto:[REDACTED]@mail.example'],
+      ['alice:p%40ss%2Fw0rd%3A1@files.example', 'p%40ss%2Fw0rd%3A1', 'alice:[REDACTED]@files.example'],
+      // Everything between the first colon and the `@` is the password, as in URL userinfo.
+      ['alice:colon:userinfo-secret@files.example', 'colon:userinfo-secret', 'alice:[REDACTED]@files.example'],
+      ['"alice:quote\'d-userinfo-secret@files.example"', 'quote\'d-userinfo-secret', '"alice:[REDACTED]@files.example"'],
+      ['(alice:paren-userinfo-secret@files.example)', 'paren-userinfo-secret', '(alice:[REDACTED]@files.example)'],
+      ['{"url":"alice:json-value-userinfo-secret@files.example"}', 'json-value-userinfo-secret',
+        '{"url":"alice:[REDACTED]@files.example"}'],
+      ['seen {"url":"alice:fragment-userinfo-secret@files.example"} end', 'fragment-userinfo-secret',
+        'seen {"url":"alice:[REDACTED]@files.example"} end'],
+    ]) {
+      expect(findUnredactedSecret({ note: text }), text).toBeDefined();
+      const output = redactReportString(text);
+      expect(output, text).toBe(expected);
+      expect(output, text).not.toContain(secret);
+      expect(findUnredactedSecret({ note: output }), text).toBeUndefined();
+      expect(redactReportString(output), text).toBe(output);
+    }
+
+    // The JSON pair separator is the one colon that never splits a run.
+    for (const kept of [
+      '{"email":"alice@example.com"}',
+      '{"a":"x","b":"alice@example.com"}',
+      'response: {"contact":"ops@example.com"} end',
+    ]) {
+      expect(redactReportString(kept), kept).toBe(kept);
+      expect(findUnredactedSecret({ note: kept }), kept).toBeUndefined();
+    }
+  });
+
   it.each(CREDENTIAL_FUZZ_CASES)('stores nothing the guard recognizes for %s', (_name, text, secrets) => {
     // The storage invariant: an artifact the guard accepts after the transform
     // carries none of the fixture secrets, in any encoding the embeddings use.
