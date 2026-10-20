@@ -18,6 +18,24 @@ The exact URL entered by a user or supplied by the catalog is tried first. Conve
 For command-line and GitHub Actions usage, credential handling, thresholds, and
 stable exit codes, see the [headless release gate guide](docs/headless-release-gate.md).
 
+## Embedding a badge
+
+Show that your MCP server has been tested by adding a badge to its README. Every report page and catalog server profile has a "Share and embed" section with ready-to-copy Markdown, HTML and reStructuredText snippets that link to the public report for the endpoint.
+
+```markdown
+[![Tested on mcptest.io](https://mcptest.io/badge/mcptest.svg)](https://mcptest.io/report/https%3A%2F%2Fexample.com%2Fmcp)
+```
+
+Replace the URL-encoded endpoint after `/report/` with your own. Result badges use the release decision vocabulary from the report: `ready.svg`, `review.svg`, `blocked.svg`, `unknown.svg` and `authorization-required.svg` under `https://mcptest.io/badge/`. These static badges record the result at the time you copied the snippet.
+
+Catalog servers can use a badge that follows the latest catalog validation instead:
+
+```markdown
+[![Tested on mcptest.io](https://mcptest.io/badge/server/context7.svg)](https://mcptest.io/servers/context7/)
+```
+
+The main worker serves `GET /badge/server/<catalog id>.svg` from validation data bundled at build time (`src/data/catalogValidation.json`), so a badge request never contacts the MCP server. Redeploy the worker after running `npm run validate-catalog` to publish new results. A negotiated session maps to `ready`, an authentication challenge to `authorization-required`, an offline endpoint to `blocked` and an inconclusive probe to `unknown`. Unknown ids return the neutral badge with HTTP 200, so an embed never shows a broken image. Run `npm run generate-badges` after changing `src/utils/badges.ts` to regenerate the static SVGs in `public/badge/`.
+
 ## Report history and privacy
 
 Completed reports are saved as redacted snapshots in the current browser so the report page can show semantic drift. History retains the newest 10 snapshots for each endpoint and 20 snapshots overall. Once either limit is reached, the oldest applicable snapshots are removed automatically.
@@ -42,6 +60,8 @@ See the in-app guides for the complete wire behavior:
 - `/docs/testing-guide`
 - `/docs/troubleshooting`
 
+Every guide is also available as raw Markdown by appending `.md` to its URL, and `/llms.txt` indexes all of them.
+
 ## Local development
 
 Requirements: Node.js 22 or newer and npm.
@@ -63,6 +83,60 @@ The app works without Firebase when `VITE_FIREBASE_AUTH_ENABLED=false`. To enabl
 Set `VITE_CLOUDFLARE_WORKER_URL` for persisted dashboards and reports. Set `VITE_PROXY_URL` to an approved deployment of `cors-proxy-worker` when browser CORS prevents a direct connection. The proxy requires Firebase authentication and forwards MCP target credentials through its isolated target-auth channel.
 
 Do not commit `.env` or real server credentials.
+
+## Adding a content page
+
+All `/learn/*` and `/docs/*` guides are Markdown files in `src/content/articles/`. The file name is the slug, so `src/content/articles/my-guide.md` is served at `/learn/my-guide`. No React code changes are needed: the browser registry (`src/content/learnRegistry.ts`) loads every file at build time, and `scripts/generate-seo-pages.js` prerenders the same files into static HTML, `dist/<path>.md`, `sitemap.xml`, and `llms.txt`.
+
+A file starts with YAML frontmatter followed by the body (standard Markdown with GitHub tables; code fences get JetBrains Mono styling and syntax highlighting for `bash`, `http`, `javascript`, `typescript`, `json`, and `yaml`):
+
+```markdown
+---
+title: How to connect to a remote MCP server
+summary: One sentence shown under the title, in the index, and in llms.txt.
+track: use
+level: newcomer
+order: 1
+category: Getting started
+readingTimeMinutes: 8
+lastReviewed: "2026-08-17"
+relatedSlugs:
+  - oauth-for-mcp-explained
+sourceLinks:
+  - title: MCP 2026-07-28 specification
+    url: "https://modelcontextprotocol.io/specification/2026-07-28"
+---
+
+## First heading
+
+Body text. Internal links such as [the testing guide](/docs/testing-guide) use site-relative paths.
+```
+
+Required fields:
+
+| Field | Meaning |
+| --- | --- |
+| `title` | Page `<h1>`; also the default `<title>` as `title \| mcptest.io`. |
+| `summary` | One-line description used in the index, related lists, llms.txt, and as the default meta description. |
+| `track` | Navigation track: `understand`, `use`, `build`, or `reference`. |
+| `level` | Audience: `newcomer`, `practitioner`, or `expert`. |
+| `order` | Position within the track (positive integer, unique per track). Drives the sidebar and previous/next links. |
+| `category` | Free-form editorial section name used in structured data. |
+| `readingTimeMinutes` | Positive integer. |
+| `lastReviewed` | `YYYY-MM-DD` (quote it so it stays a string). |
+| `relatedSlugs` | Slugs of related articles; every slug must exist. |
+| `sourceLinks` | At least one `{ title, url }` reference. |
+
+Optional fields:
+
+| Field | Meaning |
+| --- | --- |
+| `path` | Canonical URL path override, for example `/docs/testing-guide`. Defaults to `/learn/<slug>`. Must be unique and must not collide with the React-only pages. |
+| `navTitle` | Short label for the sidebar (defaults to `title`). |
+| `metaTitle`, `metaDescription` | SEO overrides for `<title>` and the meta description. |
+| `component` | Name of a registered React component (`src/content/componentRegistry.ts`) rendered where the body contains a `<!-- component -->` line, or after the body if the marker is absent. |
+
+Tracks and their descriptions live in `src/content/contentModel.ts`. The registry validates every rule above when the app or the build starts, so a broken article fails `npm test` and `npm run build` rather than shipping. Privacy, Terms, and Contact remain React components; their routes and metadata are registered in the same registry (`COMPONENT_PAGES`) with titles in `src/data/pageMetadata.json`.
 
 ## Verification
 
@@ -91,6 +165,8 @@ npm run build:workers
 Catalog seeds live in `src/data/serverCatalog.json`; `src/data/serverCatalog.ts` combines them with the latest validation snapshot. Run `npm run validate-catalog` after changing a seed. Validation uses actual MCP negotiation and records the observed endpoint, transport, protocol era, version, reachability, and authentication requirement in `src/data/catalogValidation.json`.
 
 A protected endpoint that returns a valid authentication challenge can be catalog-valid and reachable without being transport-verified anonymously. Keep that distinction explicit in catalog metadata and UI copy.
+
+Server authors can submit a new entry by pull request. See [docs/catalog-submissions.md](docs/catalog-submissions.md) for the required fields, the validation that runs, and the logo licensing rules.
 
 ## Core JSON-RPC methods
 

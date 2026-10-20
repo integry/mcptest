@@ -1,7 +1,10 @@
 import {
   auth,
+  checkResourceAllowed,
+  computeScopeUnion,
   discoverOAuthServerInfo,
   RegistrationRejectedError,
+  resourceUrlFromServerUrl,
   validateAuthorizationResponseIssuer,
   type AuthOptions,
   type AuthResult,
@@ -38,6 +41,7 @@ import {
   providerRequiresDynamicRegistration,
   type OAuthProviderPolicy,
 } from './oauthProviderPolicy';
+import { getPrivateNetworkOAuthGuidance } from './authorizationGuidance';
 
 export {
   OAUTH_TRACE_VERSION,
@@ -66,6 +70,12 @@ export const getHostedOAuthTokenProxyUrl = (
 
 const OAUTH_SERVER_URL_KEY = 'oauth_server_url';
 const OAUTH_STORE_PREFIX = 'mcp_oauth_v2:';
+// Maps one authorization `state` to the MCP resource whose flow issued it, so a
+// callback completes the flow that started it even when another flow (for the
+// same or another resource, or the same authorization server) began later.
+const OAUTH_FLOW_INDEX_PREFIX = 'mcp_oauth_flow:';
+const MAX_PENDING_OAUTH_FLOWS = 5;
+const PENDING_OAUTH_FLOW_TTL_MS = 30 * 60 * 1000;
 
 export interface OAuthStorage extends Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
   /** Explicitly declares that a custom adapter is cleared with the browser session. */
@@ -78,8 +88,19 @@ interface PersistedOAuthState {
   latestIssuer?: string;
   codeVerifier?: string;
   expectedState?: string;
+  /** Per-flow PKCE verifiers keyed by their single-use authorization state. */
+  pendingFlows?: Record<string, PendingOAuthFlow>;
   discovery?: OAuthDiscoveryState;
+  /** Set when the user supplied endpoints because the AS publishes no metadata. */
+  userSuppliedEndpoints?: boolean;
 }
+
+interface PendingOAuthFlow {
+  createdAt: number;
+  codeVerifier?: string;
+}
+
+const flowIndexKey = (state: string): string => `${OAUTH_FLOW_INDEX_PREFIX}${state}`;
 
 interface LegacyOAuthClient {
   clientId?: string;
@@ -107,6 +128,11 @@ export interface BrowserOAuthProviderOptions {
   enforcePkceS256?: boolean;
   /** Internal capability: a dynamically issued secret can only be used via the hosted relay. */
   hostedTokenRelayAvailable?: boolean;
+  /**
+   * Only refresh an expired access token. When the refresh cannot succeed, stop
+   * with a re-authorization prerequisite instead of silently redirecting.
+   */
+  refreshOnly?: boolean;
 }
 
 export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
@@ -114,6 +140,11 @@ export interface OAuthFlowOptions extends BrowserOAuthProviderOptions {
   fetchFn?: FetchLike;
   forceReauthorization?: boolean;
   scope?: string;
+  /**
+   * RFC 6750 insufficient_scope step-up: re-authorize for the union of the
+   * currently granted scope and the challenged `scope`; never refresh instead.
+   */
+  stepUp?: boolean;
   /** Exact RFC 9728 location observed in the target's WWW-Authenticate challenge. */
   resourceMetadataUrl?: string | URL;
   /** mcptest proxy used only after a browser CORS failure on safe discovery GETs. */
@@ -145,7 +176,9 @@ export type OAuthPrerequisiteKind =
   | 'proxy_authentication_required'
   | 'proxy_limit_reached'
   | 'transient_discovery_failure'
-  | 'discovery_blocked_invalid';
+  | 'discovery_blocked_invalid'
+  | 'authorization_metadata_unavailable'
+  | 'reauthorization_required';
 
 export interface OAuthPrerequisite {
   kind: OAuthPrerequisiteKind;
@@ -168,6 +201,8 @@ export interface OAuthPrerequisite {
   httpStatus?: number;
   /** Bounded, normalized field errors; never an arbitrary provider response body. */
   registrationValidationErrors?: OAuthRegistrationValidationError[];
+  /** Browser-platform explanation when the target or issuer is on a private network. */
+  privateNetworkGuidance?: string;
 }
 
 export interface OAuthRegistrationValidationError {
@@ -203,6 +238,8 @@ export interface OAuthAuthorization {
   accessToken: string;
   issuer: string;
   userInfoEndpoint?: string;
+  /** Whether a refresh token is stored; the token itself is never exposed. */
+  refreshable?: boolean;
 }
 
 export class OAuthStateMismatchError extends Error {
@@ -212,10 +249,41 @@ export class OAuthStateMismatchError extends Error {
   }
 }
 
+const INVALID_TARGET_EXPLANATION = 'The authorization server rejected the RFC 8707 resource indicator (invalid_target). mcptest sends the MCP server URL as `resource` on both the authorization and token requests and does not silently drop it, because a token without that audience binding is not scoped to this MCP server. The provider must accept this MCP server as a resource (for example, register it as an application ID URI or allowed audience).';
+
 export class OAuthAuthorizationResponseError extends Error {
   constructor(readonly errorCode: string, description?: string | null) {
-    super(description ? `Authorization failed: ${description}` : `Authorization failed: ${errorCode}`);
+    super(
+      errorCode === 'invalid_target'
+        ? `Authorization failed: ${INVALID_TARGET_EXPLANATION}${description ? ` Provider description: ${description}` : ''}`
+        : description ? `Authorization failed: ${description}` : `Authorization failed: ${errorCode}`
+    );
     this.name = 'OAuthAuthorizationResponseError';
+  }
+}
+
+export class OAuthReauthorizationRequiredError extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+    this.name = 'OAuthReauthorizationRequiredError';
+  }
+}
+
+export class OAuthAuthorizationMetadataUnavailableError extends Error {
+  constructor() {
+    super('The authorization server publishes no OAuth authorization-server metadata.');
+    this.name = 'OAuthAuthorizationMetadataUnavailableError';
+  }
+}
+
+/** A 403 that authorization cannot fix; surfaced once and never retried. */
+export class OAuthForbiddenError extends Error {
+  readonly cause?: unknown;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'OAuthForbiddenError';
+    this.cause = options?.cause;
   }
 }
 
@@ -398,6 +466,25 @@ const latestFailureIsProxyAuthentication = (trace: OAuthFlightRecorder): boolean
   return event?.provenance === 'authenticated_proxy'
     && recordsProxyOwnedResponse
     && (event.response?.status === 401 || event.response?.status === 403);
+};
+
+/**
+ * True only when every authorization-server metadata URL answered with a
+ * definitive client error. Unreadable (CORS) or transient responses are not
+ * evidence that the server publishes no metadata.
+ */
+const hasDefinitiveMetadataAbsence = (trace: OAuthFlightRecorder): boolean => {
+  const latestByUrl = new Map<string, number | undefined>();
+  for (const event of trace.snapshot().events) {
+    if (event.type !== 'authorization_server_metadata' || event.outcome !== 'failed') continue;
+    latestByUrl.set(event.request?.url || '', event.response?.status);
+  }
+  return latestByUrl.size > 0 && Array.from(latestByUrl.values()).every((status) => (
+    typeof status === 'number'
+    && status >= 400
+    && status < 500
+    && ![408, 425, 429].includes(status)
+  ));
 };
 
 const latestFailureIsTransientDiscovery = (trace: OAuthFlightRecorder): boolean => {
@@ -736,6 +823,7 @@ const buildOAuthPrerequisite = (
       ? false
       : 'unknown';
   const failedStage = discoveryStage(trace);
+  const privateNetworkGuidance = getPrivateNetworkOAuthGuidance(serverUrl, issuer);
 
   if (kind === 'proxy_authentication_required') {
     return {
@@ -771,8 +859,24 @@ const buildOAuthPrerequisite = (
     } : { configurationMode: 'browser-public' as const }),
     failedStage,
     ...(error instanceof RegistrationRejectedError ? { httpStatus: error.status } : {}),
+    ...(privateNetworkGuidance ? { privateNetworkGuidance } : {}),
   };
 
+  if (kind === 'reauthorization_required') {
+    return {
+      ...base,
+      canConfigureClient: false,
+      explanation: `The MCP server rejected the stored access token. ${error instanceof Error ? error.message : 'The token could not be refreshed.'} Authorize again to continue; mcptest did not start a new authorization automatically.`,
+    };
+  }
+  if (kind === 'authorization_metadata_unavailable') {
+    return {
+      ...base,
+      canConfigureClient: !providerRequiresDynamicRegistration(serverUrl, issuer)
+        && policy?.registrationMode !== 'operator-confidential',
+      explanation: `${guidance.name} publishes no OAuth authorization-server metadata (neither RFC 8414 nor OpenID Connect discovery returned a document), so mcptest cannot locate its authorization and token endpoints. If the provider documents them, enter both endpoints with a public client ID registered for the hosted callback; mcptest will use them with PKCE S256 and the RFC 8707 resource indicator.`,
+    };
+  }
   if (kind === 'provider_approval_required') {
     return {
       ...base,
@@ -1364,7 +1468,11 @@ const createOAuthTokenProxyFetch = (
   const isFormPost = method === 'POST'
     && requestHeaders.get('content-type')?.split(';', 1)[0].trim().toLowerCase()
       === 'application/x-www-form-urlencoded';
-  if (!isFormPost || !proxy) return directFetch(input, init);
+  // The hosted relay re-discovers the issuer, which cannot work for endpoints
+  // the user supplied because the server publishes no metadata.
+  if (!isFormPost || !proxy || provider.usesUserSuppliedEndpoints()) {
+    return directFetch(input, init);
+  }
   if (
     !issuer
     || !metadata?.issuer
@@ -1637,6 +1745,26 @@ export const getOAuthCallbackUrl = (): string => {
   return `${window.location.origin}${OAUTH_CALLBACK_PATH}`;
 };
 
+const prunePendingFlows = (
+  flows: Record<string, PendingOAuthFlow>,
+  now: number
+): { kept: Record<string, PendingOAuthFlow>; discarded: string[] } => {
+  const entries = Object.entries(flows).sort(([, a], [, b]) => b.createdAt - a.createdAt);
+  const kept: Record<string, PendingOAuthFlow> = {};
+  const discarded: string[] = [];
+  for (const [flowState, flow] of entries) {
+    if (
+      Object.keys(kept).length < MAX_PENDING_OAUTH_FLOWS
+      && now - flow.createdAt <= PENDING_OAUTH_FLOW_TTL_MS
+    ) {
+      kept[flowState] = flow;
+    } else {
+      discarded.push(flowState);
+    }
+  }
+  return { kept, discarded };
+};
+
 const defaultRedirect = (authorizationUrl: URL): void => {
   window.location.assign(authorizationUrl.toString());
 };
@@ -1652,7 +1780,14 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   private readonly enforcePkceS256: boolean;
   private readonly hostedTokenRelayAvailable: boolean;
   private readonly sessionOnlyStorage: boolean;
+  private readonly refreshOnly: boolean;
   private resourceMetadataUrlOverride?: string;
+  /** State issued by this provider instance for its outgoing authorization request. */
+  private activeFlowState?: string;
+  /** State of the callback this provider instance validated. */
+  private callbackFlowState?: string;
+  /** Why the most recent refresh attempt could not produce a token. */
+  refreshFailureReason?: string;
 
   constructor(
     readonly serverUrl: string,
@@ -1667,6 +1802,7 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     this.trace = options.trace;
     this.enforcePkceS256 = options.enforcePkceS256 === true;
     this.hostedTokenRelayAvailable = options.hostedTokenRelayAvailable === true;
+    this.refreshOnly = options.refreshOnly === true;
     const persistedState = this.readState();
     // Older releases accepted confidential client secrets in a host-only key.
     // Remove that unsafe legacy record during migration rather than loading it.
@@ -1725,16 +1861,50 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     // If a refresh response remains provisional when the SDK proceeds to
     // state generation, it was rejected in favor of a fresh authorization.
     this.trace?.settleLatestProvisionalOAuthResponse('failed', ['refresh']);
+    if (this.refreshOnly) {
+      // The SDK only generates state after refresh was impossible or failed.
+      throw new OAuthReauthorizationRequiredError(
+        this.refreshFailureReason
+          || 'The rejected access token could not be renewed with a stored refresh token.'
+      );
+    }
     const value = randomState();
-    this.updateState({ expectedState: value });
+    this.trace?.registerSecret(value);
+    const now = Date.now();
+    const state = this.readState();
+    const { kept, discarded } = prunePendingFlows(
+      { ...state.pendingFlows, [value]: { createdAt: now } },
+      now
+    );
+    this.writeState({ ...state, expectedState: value, pendingFlows: kept });
+    for (const discardedState of discarded) this.storage.removeItem(flowIndexKey(discardedState));
+    this.storage.setItem(flowIndexKey(value), this.serverUrl);
+    this.activeFlowState = value;
     return value;
   }
 
   assertState(actualState: string | null): void {
-    const expectedState = this.readState().expectedState;
+    const state = this.readState();
+    const flow = actualState ? state.pendingFlows?.[actualState] : undefined;
+    if (flow) {
+      if (Date.now() - flow.createdAt > PENDING_OAUTH_FLOW_TTL_MS) {
+        this.discardFlow(actualState!);
+        throw new OAuthStateMismatchError();
+      }
+      this.callbackFlowState = actualState!;
+      return;
+    }
+    const expectedState = state.expectedState;
     if (!expectedState || !actualState || expectedState !== actualState) {
       throw new OAuthStateMismatchError();
     }
+    // A legacy single-flow state is consumed by the same callback paths.
+    this.callbackFlowState = actualState;
+  }
+
+  /** Removes the validated callback's single-use flow record. */
+  discardCallbackFlow(): void {
+    if (this.callbackFlowState) this.discardFlow(this.callbackFlowState);
   }
 
   clientInformation(
@@ -1993,7 +2163,16 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
   saveCodeVerifier(codeVerifier: string): void {
     this.trace?.registerSecret(codeVerifier);
-    this.updateState({ codeVerifier });
+    const state = this.readState();
+    const flowState = this.activeFlowState;
+    const flow = flowState ? state.pendingFlows?.[flowState] : undefined;
+    this.writeState({
+      ...state,
+      codeVerifier,
+      ...(flow && flowState
+        ? { pendingFlows: { ...state.pendingFlows, [flowState]: { ...flow, codeVerifier } } }
+        : {}),
+    });
     this.trace?.record({
       type: 'pkce',
       outcome: 'succeeded',
@@ -2005,13 +2184,22 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
   }
 
   codeVerifier(): string {
-    const codeVerifier = this.readState().codeVerifier;
+    const state = this.readState();
+    // A validated callback uses only the verifier of the flow that issued its
+    // state; a later flow can never substitute its own verifier.
+    const codeVerifier = this.callbackFlowState
+      ? state.pendingFlows?.[this.callbackFlowState]?.codeVerifier
+        ?? (state.expectedState === this.callbackFlowState ? state.codeVerifier : undefined)
+      : state.codeVerifier;
     if (!codeVerifier) throw new Error('OAuth PKCE verifier is missing. Start authentication again.');
     this.trace?.registerSecret(codeVerifier);
     return codeVerifier;
   }
 
   saveDiscoveryState(discovery: OAuthDiscoveryState): void {
+    if (this.enforcePkceS256 && !discovery.authorizationServerMetadata) {
+      throw new OAuthAuthorizationMetadataUnavailableError();
+    }
     if (this.enforcePkceS256) assertPkceS256Discovery(discovery);
     this.resourceMetadataUrlOverride = discovery.resourceMetadataUrl
       || this.resourceMetadataUrlOverride;
@@ -2113,7 +2301,31 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
         response: serverResponse,
       });
     }
-    this.updateState({ discovery });
+    this.updateState({ discovery, userSuppliedEndpoints: undefined });
+  }
+
+  /** Stores user-supplied endpoints for an AS that publishes no metadata. */
+  saveUserSuppliedEndpoints(discovery: OAuthDiscoveryState): void {
+    this.updateState({ discovery, userSuppliedEndpoints: true });
+  }
+
+  usesUserSuppliedEndpoints(): boolean {
+    const state = this.readState();
+    return state.userSuppliedEndpoints === true && Boolean(state.discovery);
+  }
+
+  /**
+   * RFC 8707: always name the MCP server as the resource, on both the
+   * authorization and token requests, even when the server publishes no
+   * protected-resource metadata. Published metadata must still match.
+   */
+  async validateResourceURL(serverUrl: string | URL, resource?: string): Promise<URL | undefined> {
+    const defaultResource = resourceUrlFromServerUrl(serverUrl);
+    if (!resource) return defaultResource;
+    if (!checkResourceAllowed({ requestedResource: defaultResource, configuredResource: resource })) {
+      throw new Error(`Protected resource ${resource} does not match expected ${defaultResource} (or origin)`);
+    }
+    return new URL(resource);
   }
 
   discoveryState(): OAuthDiscoveryState | undefined {
@@ -2143,7 +2355,10 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
   invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): void {
     if (scope === 'all') {
-      const tokens = this.readState().tokens;
+      const { tokens, pendingFlows } = this.readState();
+      for (const flowState of Object.keys(pendingFlows || {})) {
+        this.storage.removeItem(flowIndexKey(flowState));
+      }
       this.storage.removeItem(this.storeKey);
       this.clearLegacyTokens(tokens);
       this.storage.removeItem(`oauth_client_${legacyHostForServer(this.serverUrl)}`);
@@ -2162,11 +2377,38 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
       this.clearLegacyTokens(tokens);
     }
     if (scope === 'verifier') {
+      // Other pending flows keep their own verifiers; only the validated
+      // callback's flow is consumed.
       delete state.codeVerifier;
       delete state.expectedState;
+      if (this.callbackFlowState && state.pendingFlows) {
+        const { [this.callbackFlowState]: _consumed, ...pendingFlows } = state.pendingFlows;
+        state.pendingFlows = pendingFlows;
+        this.storage.removeItem(flowIndexKey(this.callbackFlowState));
+      }
     }
-    if (scope === 'discovery') delete state.discovery;
+    if (scope === 'discovery') {
+      delete state.discovery;
+      delete state.userSuppliedEndpoints;
+    }
     this.writeState(state);
+  }
+
+  private discardFlow(flowState: string): void {
+    const state = this.readState();
+    const ownsLegacyFields = state.expectedState === flowState;
+    if (state.pendingFlows?.[flowState] || ownsLegacyFields) {
+      const { [flowState]: _discarded, ...pendingFlows } = state.pendingFlows || {};
+      const next: PersistedOAuthState = { ...state, pendingFlows };
+      // The legacy single-flow fields mirror the latest flow; once that flow
+      // is discarded they must not keep its state and verifier usable.
+      if (ownsLegacyFields) {
+        delete next.expectedState;
+        delete next.codeVerifier;
+      }
+      this.writeState(next);
+    }
+    this.storage.removeItem(flowIndexKey(flowState));
   }
 
   private readState(): PersistedOAuthState {
@@ -2285,7 +2527,64 @@ export const loadOAuthAuthorization = (
     accessToken: tokens.access_token,
     issuer,
     ...(userInfoEndpoint ? { userInfoEndpoint } : {}),
+    ...(tokens.refresh_token ? { refreshable: true } : {}),
   };
+};
+
+const RFC6749_TOKEN_ERROR_CODES = new Set([
+  'invalid_request',
+  'invalid_client',
+  'invalid_grant',
+  'unauthorized_client',
+  'unsupported_grant_type',
+  'invalid_scope',
+  'invalid_target',
+]);
+
+const isRefreshGrantRequest = async (
+  input: Parameters<FetchLike>[0],
+  init?: Parameters<FetchLike>[1]
+): Promise<boolean> => {
+  const { method, request } = requestMethodAndUrl(input, init);
+  if (method !== 'POST') return false;
+  try {
+    const body = init?.body instanceof URLSearchParams
+      ? init.body
+      : new URLSearchParams(await oauthRequestBody(request, init));
+    return body.get('grant_type') === 'refresh_token';
+  } catch {
+    return false;
+  }
+};
+
+/** Records, without any response prose, why a refresh could not renew the token. */
+const createRefreshObservationFetch = (
+  provider: BrowserOAuthProvider,
+  fetchFn: FetchLike
+): FetchLike => async (input, init) => {
+  if (!await isRefreshGrantRequest(input, init)) return fetchFn(input, init);
+  let response: Response;
+  try {
+    response = await fetchFn(input, init);
+  } catch (error) {
+    provider.refreshFailureReason = 'The refresh request to the authorization server did not receive a readable HTTP response.';
+    throw error;
+  }
+  if (!response.ok) {
+    let errorCode: string | undefined;
+    try {
+      const body = await response.clone().json() as { error?: unknown };
+      errorCode = typeof body.error === 'string' && RFC6749_TOKEN_ERROR_CODES.has(body.error)
+        ? body.error
+        : undefined;
+    } catch {
+      errorCode = undefined;
+    }
+    provider.refreshFailureReason = errorCode === 'invalid_grant'
+      ? `The authorization server rejected the refresh token (HTTP ${response.status} invalid_grant); it has expired or been revoked.`
+      : `The authorization server rejected the refresh request with HTTP ${response.status}${errorCode ? ` ${errorCode}` : ''}.`;
+  }
+  return response;
 };
 
 export const beginOAuthFlow = async (
@@ -2325,13 +2624,45 @@ export const beginOAuthFlow = async (
   const resourceMetadataUrl = options.resourceMetadataUrl
     ? new URL(options.resourceMetadataUrl).toString()
     : undefined;
+  const userSuppliedEndpoints = provider.usesUserSuppliedEndpoints();
   if (
     resourceMetadataUrl
+    && !userSuppliedEndpoints
     && provider.discoveryState()?.resourceMetadataUrl !== resourceMetadataUrl
   ) {
     provider.invalidateCredentials('discovery');
   }
   provider.setResourceMetadataUrlOverride(resourceMetadataUrl);
+  if (userSuppliedEndpoints) {
+    const metadata = provider.discoveryState()?.authorizationServerMetadata;
+    trace.record({
+      type: 'authorization_server_metadata',
+      outcome: 'skipped',
+      provenance: 'oauth_client',
+      route: 'client',
+      explanation: 'The authorization server publishes no metadata, so the user-supplied authorization and token endpoints are used with PKCE S256 and the RFC 8707 resource indicator.',
+      response: {
+        metadata: {
+          issuer: metadata?.issuer,
+          authorizationEndpoint: metadata?.authorization_endpoint,
+          tokenEndpoint: metadata?.token_endpoint,
+          source: 'user-supplied',
+        },
+      },
+    });
+  }
+  // Step-up keeps the scopes already granted so a later call that needed them
+  // does not trigger another challenge.
+  const scope = options.stepUp
+    ? computeScopeUnion(
+        provider.tokens((() => {
+          const issuer = issuerForDiscovery(provider.discoveryState());
+          return issuer ? { issuer } : undefined;
+        })())?.scope,
+        options.scope
+      )
+    : options.scope;
+  const forceReauthorization = Boolean(options.forceReauthorization || options.stepUp);
   const authenticate = options.authenticate || auth;
   if (resourceMetadataUrl) trace.trackResourceMetadataUrl(resourceMetadataUrl);
   const discoveryFetch = createCorsFallbackDiscoveryFetch(
@@ -2351,11 +2682,14 @@ export const beginOAuthFlow = async (
       )
     )
   );
-  const fetchFn = createCimdInteroperabilityFetch(
+  const interoperableFetch = createCimdInteroperabilityFetch(
     normalizedServerUrl,
     provider,
     createKnownProviderDiscoveryEvidenceFetch(normalizedServerUrl, trace, tracedFetch)
   );
+  const fetchFn = options.refreshOnly
+    ? createRefreshObservationFetch(provider, interoperableFetch)
+    : interoperableFetch;
   try {
     if (
       getOAuthProviderPolicy(normalizedServerUrl)?.clientEstablishmentStrategy
@@ -2387,8 +2721,8 @@ export const beginOAuthFlow = async (
       ...(resourceMetadataUrl
         ? { resourceMetadataUrl: new URL(resourceMetadataUrl) }
         : {}),
-      ...(options.scope ? { scope: options.scope } : {}),
-      ...(options.forceReauthorization ? { forceReauthorization: true } : {}),
+      ...(scope ? { scope } : {}),
+      ...(forceReauthorization ? { forceReauthorization: true } : {}),
     });
     if (result === 'AUTHORIZED') {
       provider.syncLegacyTokens();
@@ -2411,6 +2745,30 @@ export const beginOAuthFlow = async (
     return result;
   } catch (error) {
     trace.settleLatestProvisionalOAuthResponse('failed');
+    if (
+      error instanceof OAuthReauthorizationRequiredError
+      || (
+        error instanceof OAuthAuthorizationMetadataUnavailableError
+        && hasDefinitiveMetadataAbsence(trace)
+      )
+    ) {
+      if (error instanceof OAuthReauthorizationRequiredError) {
+        // Clear the rejected tokens so the next attempt starts a fresh authorization.
+        provider.invalidateCredentials('tokens');
+      }
+      const prerequisite = buildOAuthPrerequisite(
+        error instanceof OAuthReauthorizationRequiredError
+          ? 'reauthorization_required'
+          : 'authorization_metadata_unavailable',
+        normalizedServerUrl,
+        provider,
+        trace,
+        error,
+        options.scope
+      );
+      trace.terminal(prerequisite.kind, prerequisite.explanation);
+      throw new OAuthPrerequisiteError(prerequisite, { cause: error });
+    }
     if (
       error instanceof Error
       && error.message.includes('does not advertise PKCE S256 support')
@@ -2725,10 +3083,14 @@ export const completeOAuthFlow = async (
   options: OAuthFlowOptions = {}
 ): Promise<CompletedOAuthFlow> => {
   const storage = options.storage || getSessionStorage();
-  const serverUrl = storage.getItem(OAUTH_SERVER_URL_KEY);
+  const callback = callbackUrl instanceof URL ? callbackUrl : new URL(callbackUrl);
+  // Resolve the flow from its own state first, so a callback is never
+  // validated against whichever flow happened to start most recently.
+  const indexedState = callback.searchParams.get('state');
+  const serverUrl = (indexedState && storage.getItem(flowIndexKey(indexedState)))
+    || storage.getItem(OAUTH_SERVER_URL_KEY);
   if (!serverUrl) throw new Error('OAuth server context is missing. Start authentication again.');
 
-  const callback = callbackUrl instanceof URL ? callbackUrl : new URL(callbackUrl);
   const trace = options.trace
     || resumeOAuthFlightRecorder(serverUrl, storage)
     || createOAuthFlightRecorder({ targetUrl: serverUrl, storage });
@@ -2818,6 +3180,8 @@ export const completeOAuthFlow = async (
     }
     return { serverUrl, issuer };
   } catch (error) {
+    // A callback that passed state validation consumes its flow either way.
+    provider.discardCallbackFlow();
     trace.settleLatestProvisionalOAuthResponse('failed');
     trace.enrichLast('callback', {
       outcome: 'failed',
@@ -2873,6 +3237,85 @@ export const saveManualOAuthClient = (
   }, { issuer });
 };
 
+export interface ManualOAuthEndpoints {
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+}
+
+const parseUserSuppliedEndpoint = (value: string, label: string): URL => {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error(`The ${label} must be an absolute https:// URL.`);
+  }
+  if (url.protocol !== 'https:') {
+    throw new Error(`The ${label} must use https://; browsers block insecure OAuth endpoints from mcptest.io.`);
+  }
+  if (url.username || url.password || url.hash) {
+    throw new Error(`The ${label} must not contain credentials or a fragment.`);
+  }
+  return url;
+};
+
+/**
+ * Configures a server whose authorization server publishes no metadata. The
+ * endpoints and public client ID stay bound to this exact MCP resource, and
+ * the flow still uses PKCE S256 and the RFC 8707 resource indicator.
+ */
+export const saveManualOAuthEndpoints = (
+  serverUrl: string,
+  endpoints: ManualOAuthEndpoints,
+  clientId: string,
+  storage: OAuthStorage = getSessionStorage()
+): void => {
+  const authorizationEndpoint = parseUserSuppliedEndpoint(
+    endpoints.authorizationEndpoint,
+    'authorization endpoint'
+  );
+  const tokenEndpoint = parseUserSuppliedEndpoint(endpoints.tokenEndpoint, 'token endpoint');
+  if (!clientId.trim()) throw new Error('A public client ID is required with user-supplied endpoints.');
+  const issuer = authorizationEndpoint.origin;
+  const provider = new BrowserOAuthProvider(serverUrl, { storage });
+  if (providerRequiresDynamicRegistration(provider.serverUrl, issuer)) {
+    throw new Error(
+      'This provider supports Dynamic Client Registration only; manual or static client IDs cannot be configured.'
+    );
+  }
+  provider.invalidateCredentials('discovery');
+  provider.saveUserSuppliedEndpoints({
+    authorizationServerUrl: issuer,
+    authorizationServerMetadata: {
+      issuer,
+      authorization_endpoint: authorizationEndpoint.toString(),
+      token_endpoint: tokenEndpoint.toString(),
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+      code_challenge_methods_supported: ['S256'],
+      token_endpoint_auth_methods_supported: ['none'],
+    },
+  });
+  provider.saveClientInformation({
+    client_id: clientId.trim(),
+    issuer,
+    registeredManually: true,
+  }, { issuer });
+};
+
+export const loadManualOAuthEndpoints = (
+  serverUrl: string,
+  storage: OAuthStorage = getSessionStorage()
+): ManualOAuthEndpoints | undefined => {
+  const provider = new BrowserOAuthProvider(serverUrl, { storage });
+  const metadata = provider.discoveryState()?.authorizationServerMetadata;
+  return provider.usesUserSuppliedEndpoints() && metadata
+    ? {
+        authorizationEndpoint: metadata.authorization_endpoint,
+        tokenEndpoint: metadata.token_endpoint,
+      }
+    : undefined;
+};
+
 export const loadManualOAuthClient = (
   serverUrl: string,
   storage: OAuthStorage = getSessionStorage()
@@ -2925,4 +3368,47 @@ export const isOAuthClientConfigurationRequired = (error: unknown): boolean => {
   return prerequisite
     ? prerequisite.kind === 'pre_registered_client_required' && prerequisite.canConfigureClient
     : isPreRegisteredClientRequired(error);
+};
+
+export type OAuthChallengeResponse =
+  | { kind: 'authorize' }
+  | { kind: 'refresh' }
+  | { kind: 'step_up' }
+  | { kind: 'forbidden'; explanation: string };
+
+export interface OAuthChallengeFacts {
+  status: 401 | 403;
+  /** Sanitized WWW-Authenticate header; only its scheme and error code are read. */
+  wwwAuthenticate?: string;
+  /** Whether the rejected request carried a stored OAuth access token. */
+  sentAccessToken: boolean;
+  /** Whether a refresh token is stored for that access token. */
+  refreshable?: boolean;
+}
+
+const challengeErrorCode = (wwwAuthenticate?: string): string | undefined => (
+  wwwAuthenticate?.match(/(?:^|[\s,])error\s*=\s*"?([a-z_]+)"?/i)?.[1]?.toLowerCase()
+);
+
+export const OAUTH_FORBIDDEN_EXPLANATION = 'The MCP server returned HTTP 403 Forbidden to a request that carried the OAuth access token, without an insufficient_scope challenge naming more scope. The token was accepted, but this account or client is not permitted to use the server; authorizing again would not change that, so mcptest stopped without retrying. Check the account\'s permissions or the server\'s access policy.';
+
+/**
+ * Decides the single response to one target 401/403. Each connection attempt
+ * acts on at most one challenge, so none of these can loop:
+ * - insufficient_scope with a token: step-up authorization for more scope;
+ * - 401 with a refreshable token: refresh once, then retry once;
+ * - 403 with a token otherwise: surface the 403 and stop;
+ * - anything else: standards-based OAuth discovery and authorization.
+ */
+export const planOAuthChallengeResponse = (facts: OAuthChallengeFacts): OAuthChallengeResponse => {
+  const error = challengeErrorCode(facts.wwwAuthenticate);
+  if (error === 'insufficient_scope') {
+    return facts.sentAccessToken ? { kind: 'step_up' } : { kind: 'authorize' };
+  }
+  if (facts.status === 403) {
+    return facts.sentAccessToken
+      ? { kind: 'forbidden', explanation: OAUTH_FORBIDDEN_EXPLANATION }
+      : { kind: 'authorize' };
+  }
+  return facts.sentAccessToken && facts.refreshable ? { kind: 'refresh' } : { kind: 'authorize' };
 };

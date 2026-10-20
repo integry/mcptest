@@ -338,3 +338,28 @@ describe('transport-aware exact probes', () => {
     expect(text).not.toContain('/mcp/');
   });
 });
+
+
+it('surfaces the later OAuth failure and retry instead of the earlier successful proxy challenge', () => {
+  const onRetry = vi.fn();
+  const container = renderError({
+    failureStage: 'oauth',
+    error: 'Protected resource does not match expected endpoint',
+    serverUrl: 'https://mcp.sentry.dev/mcp',
+    originalServerUrl: 'https://mcp.sentry.dev/',
+    attempts: [unreadableAttempt(), {
+      route: 'proxy', candidateUrl: 'https://mcp.sentry.dev/mcp', status: 401,
+      authenticationSource: 'target', responseSource: 'target', browserUnreadable: false,
+      failureKind: 'authentication', message: 'Unauthorized',
+    }],
+  }, { onRetry, useProxy: false, showProxyOption: true, onRetryWithProxy: vi.fn() });
+  expect(container.querySelector('h6')?.textContent).toBe('OAuth authorization failed');
+  expect(container.querySelector('p')?.textContent).toContain('Protected resource does not match');
+  expect(container.textContent).toContain('Entered URL: https://mcp.sentry.dev/');
+  expect(container.textContent).not.toContain('Automatically use proxy');
+  expect(container.textContent).not.toContain('Enable proxy and retry');
+  const retry = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Retry OAuth authorization');
+  expect(retry).toBeDefined();
+  act(() => retry?.click());
+  expect(onRetry).toHaveBeenCalledOnce();
+});

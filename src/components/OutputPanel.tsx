@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { LogEntry, Space, SpaceCard, SelectedTool, ResourceTemplate } from '../types';
-import McpResponseDisplay from './McpResponseDisplay';
+import ToolResultView from './ToolResultView';
 import ResultPanel from './ResultPanel';
 import ResponsePanel from './ResponsePanel';
 import { getResultShareUrl } from '../utils/urlUtils';
@@ -229,14 +229,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                 ></button>
               </div>
               <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem', overflow: 'auto' }}>
-                <McpResponseDisplay
-                  logEntry={props.lastResult}
-                  showTimestamp={false}
-                  spacesMode={true}
-                  toolName={props.lastResult.callContext?.name}
-                  hideControls={true}
-                  forceExpanded={true}
-                />
+                <ToolResultView logEntry={props.lastResult} />
               </div>
             </div>
           </div>

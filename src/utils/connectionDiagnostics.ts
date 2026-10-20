@@ -8,6 +8,11 @@ import {
   type SafeTargetErrorDetail,
   type TransportCandidateFailure,
 } from './transportDetection';
+import type { TransportDiagnostic } from '../types/transportDiagnostics';
+import {
+  collectTransportDiagnostics,
+  transportDiagnosticSourcesFromFailures,
+} from './transportDiagnostics';
 
 export type ConnectionAttemptRoute = 'direct' | 'proxy';
 export type DiagnosticTransportEvidence = TransportType | 'both' | 'unknown';
@@ -36,6 +41,10 @@ export interface ConnectionAttemptFact {
   failureKind: ConnectionFailureKind;
   message: string;
   targetError?: SafeTargetErrorDetail;
+  /** Target HTTP 429 handling: one automatic retry at most, or the reason there was none. */
+  rateLimitRetry?: ObservedTransportRequest['rateLimitRetry'];
+  /** Set when this request was mcptest's single automatic retry after a target 429. */
+  automaticRetry?: ObservedTransportRequest['automaticRetry'];
 }
 
 export interface ConnectionFailureEvidence {
@@ -44,6 +53,8 @@ export interface ConnectionFailureEvidence {
 }
 
 export interface ConnectionErrorDetails {
+  failureStage?: 'oauth';
+  originalServerUrl?: string;
   error: string;
   serverUrl: string;
   timestamp: Date;
@@ -54,6 +65,8 @@ export interface ConnectionErrorDetails {
   expectedAuthentication?: 'oauth' | 'bearer-token' | 'api-key' | 'none' | 'unknown';
   supportsBearerToken?: boolean;
   serverReachable?: boolean;
+  /** Transport-level diagnostics with stable ids, explanation and remediation. */
+  transportDiagnostics?: readonly TransportDiagnostic[];
 }
 
 const errorMessage = (error: unknown): string => (
@@ -129,6 +142,8 @@ const factsFromCandidateFailure = (
           ? `Readable HTTP ${status} response`
           : errorMessage(failure.error),
         ...(targetError ? { targetError } : {}),
+        ...(request.rateLimitRetry ? { rateLimitRetry: request.rateLimitRetry } : {}),
+        ...(request.automaticRetry ? { automaticRetry: request.automaticRetry } : {}),
       };
     });
   }
@@ -237,11 +252,17 @@ export const collectConnectionAttemptFacts = (
       fact.message,
       fact.targetError?.code,
       fact.targetError?.message,
+      fact.automaticRetry ? 'automatic-retry' : '',
     ].join('|');
     if (!unique.has(key)) unique.set(key, fact);
   }
   return [...unique.values()];
 };
+
+/** Transport diagnostics for every route a failed connection attempted. */
+export const collectConnectionTransportDiagnostics = (
+  failures: readonly ConnectionFailureEvidence[]
+): TransportDiagnostic[] => collectTransportDiagnostics(transportDiagnosticSourcesFromFailures(failures));
 
 /** POSIX shell single-quoting; no endpoint or generated value is executable. */
 export const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;

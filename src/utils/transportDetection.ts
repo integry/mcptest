@@ -19,6 +19,7 @@ import {
   readProxyCallerLimit,
   type ProxyCallerLimit,
 } from './proxyLimit';
+import { parseRetryAfter } from './transportDiagnostics';
 
 export interface TransportCandidate {
   url: string;
@@ -53,6 +54,8 @@ export interface SafeTargetErrorDetail {
 }
 
 export interface ObservedAuthenticationChallenge {
+  /** Endpoint selected locally by transport discovery, never inferred from metadata. */
+  targetUrl?: string;
   status: 401 | 403;
   source: ProxyAuthenticationSource;
   responseHeaders?: Record<string, string>;
@@ -67,6 +70,7 @@ export interface ObservedAuthenticationChallenge {
 }
 
 export interface ObservedTransportRequest {
+  targetUrl?: string;
   method: string;
   /** JSON-RPC method when it can be read safely from the outgoing body. */
   mcpMethod?: string;
@@ -84,6 +88,24 @@ export interface ObservedTransportRequest {
   targetError?: SafeTargetErrorDetail;
   /** Header names only. Values are deliberately never retained. */
   requestHeaders?: readonly string[];
+  /** Non-credential negotiation header values, retained for transport diagnostics. */
+  requestAccept?: string;
+  requestContentType?: string;
+  responseContentType?: string;
+  /** Raw, bounded Retry-After value when the browser could read it. */
+  retryAfter?: string;
+  /** Diagnostic header names the browser could read on this response. */
+  readableResponseHeaders?: readonly string[];
+  /** True when the browser enforced CORS on this response (direct, other origin). */
+  crossOrigin?: boolean;
+  /** Set on a target HTTP 429: whether mcptest retried once, and after how long. */
+  rateLimitRetry?: {
+    action: 'retried' | 'not-retried';
+    waitMs?: number;
+    reason?: string;
+  };
+  /** Set on the single automatic retry that follows a target HTTP 429. */
+  automaticRetry?: { reason: 'target-rate-limit'; waitMs: number };
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -111,6 +133,7 @@ export class ProxiedAuthenticationError extends Error {
     this.cause = cause;
     this.method = request?.method;
     this.requestUrl = request?.url;
+    this.targetUrl = request?.targetUrl;
     this.startedAt = request?.startedAt;
     this.durationMs = request?.durationMs;
     if (resourceMetadataUrl) {
@@ -121,6 +144,7 @@ export class ProxiedAuthenticationError extends Error {
 
   readonly method?: string;
   readonly requestUrl?: string;
+  readonly targetUrl?: string;
   readonly startedAt?: string;
   readonly durationMs?: number;
 }
@@ -150,6 +174,7 @@ export const getObservedAuthenticationChallenge = (
 
   if (error instanceof ProxiedAuthenticationError) {
     return attachEphemeralChallengeParameters({
+      ...(error.targetUrl ? { targetUrl: error.targetUrl } : {}),
       status: error.status,
       source: error.responseSource,
       ...(error.responseHeaders ? { responseHeaders: error.responseHeaders } : {}),
@@ -676,6 +701,54 @@ const jsonRpcMethodFromBody = (body: BodyInit | null | undefined): string | unde
   }
 };
 
+/**
+ * Longest target Retry-After that one automatic retry may wait for. Longer
+ * waits exceed the candidate deadline, so they are shown to the user instead.
+ */
+export const MAX_AUTOMATIC_RATE_LIMIT_WAIT_MS = 2_000;
+/** Backoff for a target HTTP 429 that carries no readable Retry-After. */
+export const DEFAULT_RATE_LIMIT_BACKOFF_MS = 1_000;
+
+/** Response headers whose browser readability is diagnostic evidence. */
+const DIAGNOSTIC_RESPONSE_HEADERS = ['mcp-session-id', 'mcp-protocol-version', 'retry-after'];
+const MAX_DIAGNOSTIC_HEADER_LENGTH = 128;
+
+const boundHeaderValue = (value: string | null | undefined): string | undefined => {
+  if (!value) return undefined;
+  const normalized = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  return normalized ? normalized.slice(0, MAX_DIAGNOSTIC_HEADER_LENGTH) : undefined;
+};
+
+const isCrossOriginRequest = (url: string): boolean | undefined => {
+  if (typeof location === 'undefined' || !location.origin || location.origin === 'null') {
+    return undefined;
+  }
+  try {
+    return new URL(url, location.href).origin !== location.origin;
+  } catch {
+    return undefined;
+  }
+};
+
+const waitForRateLimitRetry = (waitMs: number, signal?: AbortSignal | null): Promise<void> => (
+  new Promise((resolve, reject) => {
+    const aborted = () => signal?.reason ?? new Error('Connection aborted by user');
+    if (signal?.aborted) {
+      reject(aborted());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timeoutId);
+      reject(aborted());
+    };
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, waitMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  })
+);
+
 const observeAuthenticationResponses = (
   usesProxy: boolean,
   onChallenge: (challenge: ObservedAuthenticationChallenge) => void,
@@ -683,84 +756,151 @@ const observeAuthenticationResponses = (
   candidate: TransportCandidate,
   onRequest?: (request: ObservedTransportRequest) => void,
   knownCredentials: readonly string[] = []
-): FetchLike => async (input, init) => {
-  const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
-  const startedAtMs = Date.now();
-  const outgoingHeaders = new Headers(init?.headers || request?.headers);
-  let mcpMethod = jsonRpcMethodFromBody(init?.body);
-  if (!mcpMethod && request && request.method.toUpperCase() === 'POST') {
+): FetchLike => {
+  // One automatic retry per candidate, so rate limiting is never retried silently.
+  let rateLimitRetryUsed = false;
+
+  const observedFetch = async (
+    input: Parameters<FetchLike>[0],
+    init: Parameters<FetchLike>[1],
+    automaticRetry?: ObservedTransportRequest['automaticRetry']
+  ): Promise<Response> => {
+    const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
+    const startedAtMs = Date.now();
+    const outgoingHeaders = new Headers(init?.headers || request?.headers);
+    let mcpMethod = jsonRpcMethodFromBody(init?.body);
+    if (!mcpMethod && request && request.method.toUpperCase() === 'POST') {
+      try {
+        mcpMethod = jsonRpcMethodFromBody(await request.clone().text());
+      } catch {
+        // Request stage is best-effort evidence; never interfere with transport.
+      }
+    }
+    const requestUrl = request?.url || String(input);
+    const requestAccept = boundHeaderValue(outgoingHeaders.get('accept'));
+    const requestContentType = boundHeaderValue(outgoingHeaders.get('content-type'));
+    const crossOrigin = isCrossOriginRequest(requestUrl);
+    const attemptedRequest: ObservedTransportRequest = {
+      method: (init?.method || request?.method || 'GET').toUpperCase(),
+      ...(mcpMethod ? { mcpMethod } : {}),
+      url: requestUrl,
+      candidateUrl: candidate.url,
+      // Only this explicit transport route may unwrap the proxy envelope. A
+      // direct publisher URL may legitimately have its own target parameter.
+      targetUrl: usesProxy
+        ? new URL(candidate.url).searchParams.get('target')!
+        : candidate.url,
+      transportType: candidate.transportType,
+      startedAt: new Date(startedAtMs).toISOString(),
+      ...(Array.from(outgoingHeaders.keys()).length > 0
+        ? { requestHeaders: Array.from(outgoingHeaders.keys()) }
+        : {}),
+      ...(requestAccept ? { requestAccept } : {}),
+      ...(requestContentType ? { requestContentType } : {}),
+      ...(crossOrigin !== undefined ? { crossOrigin } : {}),
+      ...(automaticRetry ? { automaticRetry } : {}),
+      outcome: 'started',
+    };
+    observedRequests.push(attemptedRequest);
+    onRequest?.(attemptedRequest);
+    let response: Response;
     try {
-      mcpMethod = jsonRpcMethodFromBody(await request.clone().text());
-    } catch {
-      // Request stage is best-effort evidence; never interfere with transport.
+      response = await fetch(input, init);
+      attemptedRequest.status = response.status;
+      if (!usesProxy) {
+        attemptedRequest.responseSource = 'target';
+      } else {
+        const source = response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)?.toLowerCase();
+        if (source === 'target' || source === 'proxy') attemptedRequest.responseSource = source;
+        const proxyLimit = source === 'proxy' ? readProxyCallerLimit(response) : undefined;
+        if (proxyLimit) attemptedRequest.proxyLimit = proxyLimit;
+        // A target response the proxy later cuts off at a caller limit is still
+        // a proxy limit, not a target failure.
+        response = decodeProxyLimitSignal(response, (limit) => {
+          attemptedRequest.proxyLimit = limit;
+          attemptedRequest.outcome = 'failed';
+        });
+      }
+      const responseContentType = boundHeaderValue(response.headers.get('content-type'));
+      if (responseContentType) attemptedRequest.responseContentType = responseContentType;
+      const readableResponseHeaders = DIAGNOSTIC_RESPONSE_HEADERS
+        .filter((header) => response.headers.has(header));
+      if (readableResponseHeaders.length > 0) {
+        attemptedRequest.readableResponseHeaders = readableResponseHeaders;
+      }
+      if (response.status === 429) {
+        const retryAfter = boundHeaderValue(response.headers.get('retry-after'));
+        if (retryAfter) attemptedRequest.retryAfter = retryAfter;
+      }
+      attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
+      attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
+      if (attemptedRequest.responseSource === 'target' && !response.ok) {
+        // Diagnostics are best-effort and must never replace the target's actual
+        // response with an inspection failure.
+        const targetError = await inspectSafeTargetError(response, knownCredentials)
+          .catch(() => undefined);
+        if (targetError) attemptedRequest.targetError = targetError;
+      }
+    } catch (error) {
+      attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
+      attemptedRequest.outcome = 'failed';
+      throw error;
     }
-  }
-  const attemptedRequest: ObservedTransportRequest = {
-    method: (init?.method || request?.method || 'GET').toUpperCase(),
-    ...(mcpMethod ? { mcpMethod } : {}),
-    url: request?.url || String(input),
-    candidateUrl: candidate.url,
-    transportType: candidate.transportType,
-    startedAt: new Date(startedAtMs).toISOString(),
-    ...(Array.from(outgoingHeaders.keys()).length > 0
-      ? { requestHeaders: Array.from(outgoingHeaders.keys()) }
-      : {}),
-    outcome: 'started',
-  };
-  observedRequests.push(attemptedRequest);
-  onRequest?.(attemptedRequest);
-  let response: Response;
-  try {
-    response = await fetch(input, init);
-    attemptedRequest.status = response.status;
-    if (!usesProxy) {
-      attemptedRequest.responseSource = 'target';
-    } else {
-      const source = response.headers.get(PROXY_RESPONSE_SOURCE_HEADER)?.toLowerCase();
-      if (source === 'target' || source === 'proxy') attemptedRequest.responseSource = source;
-      const proxyLimit = source === 'proxy' ? readProxyCallerLimit(response) : undefined;
-      if (proxyLimit) attemptedRequest.proxyLimit = proxyLimit;
-      // A target response the proxy later cuts off at a caller limit is still
-      // a proxy limit, not a target failure.
-      response = decodeProxyLimitSignal(response, (limit) => {
-        attemptedRequest.proxyLimit = limit;
-        attemptedRequest.outcome = 'failed';
-      });
+
+    // Only the target's own rate limit is retried; the proxy caller limit has
+    // its own guidance and a response of unknown provenance is left alone.
+    if (
+      response.status === 429
+      && attemptedRequest.responseSource === 'target'
+      && !attemptedRequest.proxyLimit
+    ) {
+      const retryAfterSeconds = parseRetryAfter(attemptedRequest.retryAfter);
+      const waitMs = retryAfterSeconds !== undefined
+        ? Math.ceil(retryAfterSeconds * 1000)
+        : DEFAULT_RATE_LIMIT_BACKOFF_MS;
+      const replayable = !request || attemptedRequest.method === 'GET';
+      const reason = automaticRetry || rateLimitRetryUsed
+        ? 'mcptest retries a rate-limited request at most once.'
+        : waitMs > MAX_AUTOMATIC_RATE_LIMIT_WAIT_MS
+          ? `The target asked to wait ${Math.ceil(waitMs / 1000)} seconds, longer than one connection attempt can wait.`
+          : !replayable
+            ? 'The request body cannot be replayed safely.'
+            : undefined;
+      if (reason) {
+        attemptedRequest.rateLimitRetry = { action: 'not-retried', waitMs, reason };
+      } else {
+        rateLimitRetryUsed = true;
+        attemptedRequest.rateLimitRetry = { action: 'retried', waitMs };
+        await response.body?.cancel().catch(() => {});
+        await waitForRateLimitRetry(waitMs, init?.signal ?? request?.signal);
+        return observedFetch(input, init, { reason: 'target-rate-limit', waitMs });
+      }
     }
-    attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
-    attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
-    if (attemptedRequest.responseSource === 'target' && !response.ok) {
-      // Diagnostics are best-effort and must never replace the target's actual
-      // response with an inspection failure.
-      const targetError = await inspectSafeTargetError(response, knownCredentials)
-        .catch(() => undefined);
-      if (targetError) attemptedRequest.targetError = targetError;
-    }
-  } catch (error) {
-    attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
-    attemptedRequest.outcome = 'failed';
-    throw error;
-  }
-  if (response.status === 401 || response.status === 403) {
-    const responseSource = !usesProxy
-      ? 'target'
-      : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
+
+    if (response.status === 401 || response.status === 403) {
+      const responseSource = !usesProxy
         ? 'target'
-        : 'proxy';
-    const responseHeaders = authenticationChallengeHeaders(response);
-    const challengeParameters = authenticationChallengeParameters(response);
-    onChallenge(attachEphemeralChallengeParameters({
-      status: response.status,
-      source: responseSource,
-      ...(responseHeaders ? { responseHeaders } : {}),
-      method: attemptedRequest.method,
-      requestUrl: attemptedRequest.url,
-      startedAt: attemptedRequest.startedAt,
-      durationMs: attemptedRequest.durationMs,
-      ...(attemptedRequest.targetError ? { targetError: attemptedRequest.targetError } : {}),
-    }, challengeParameters));
-  }
-  return response;
+        : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
+          ? 'target'
+          : 'proxy';
+      const responseHeaders = authenticationChallengeHeaders(response);
+      const challengeParameters = authenticationChallengeParameters(response);
+      onChallenge(attachEphemeralChallengeParameters({
+        status: response.status,
+        source: responseSource,
+        ...(responseHeaders ? { responseHeaders } : {}),
+        method: attemptedRequest.method,
+        requestUrl: attemptedRequest.url,
+        targetUrl: attemptedRequest.targetUrl,
+        startedAt: attemptedRequest.startedAt,
+        durationMs: attemptedRequest.durationMs,
+        ...(attemptedRequest.targetError ? { targetError: attemptedRequest.targetError } : {}),
+      }, challengeParameters));
+    }
+    return response;
+  };
+
+  return (input, init) => observedFetch(input, init);
 };
 
 export const CANDIDATE_GROUP_TIMEOUT_MS = 5_000;
@@ -963,7 +1103,15 @@ export async function attemptParallelConnections(
   onRequest?: (request: ObservedTransportRequest) => void,
   preferredTransport?: TransportType
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
-  const candidates = getTransportCandidates(serverUrl, usesProxy, preferredTransport);
+  const hasTargetCredential = usesProxy
+    ? new Headers(requestHeaders).has('Authorization')
+    : Boolean(authToken) || new Headers(requestHeaders).has('Authorization');
+  const targetEndpoint = (url: string): string => {
+    const parsed = new URL(url);
+    return usesProxy ? new URL(parsed.searchParams.get('target')!).toString() : parsed.toString();
+  };
+  const candidates = getTransportCandidates(serverUrl, usesProxy, preferredTransport)
+    .filter(candidate => !hasTargetCredential || targetEndpoint(candidate.url) === targetEndpoint(serverUrl));
   const clients: Client[] = [];
   const transportOptionsFor = (
     candidate: TransportCandidate,
@@ -1019,6 +1167,7 @@ export async function attemptParallelConnections(
           ? {
               method: challenge.method,
               url: challenge.requestUrl,
+              targetUrl: challenge.targetUrl,
               startedAt: challenge.startedAt,
               durationMs: challenge.durationMs,
             }
@@ -1054,6 +1203,7 @@ export async function attemptParallelConnections(
             ? {
                 method: authenticationChallenge.method,
                 url: authenticationChallenge.requestUrl,
+                targetUrl: authenticationChallenge.targetUrl,
                 startedAt: authenticationChallenge.startedAt,
                 durationMs: authenticationChallenge.durationMs,
               }

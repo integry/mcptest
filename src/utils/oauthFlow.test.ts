@@ -252,10 +252,12 @@ describe('BrowserOAuthProvider', () => {
       accessToken: 'token-a',
       issuer: ISSUER_A,
       userInfoEndpoint: `${ISSUER_A}userinfo`,
+      refreshable: true,
     });
     expect(loadOAuthAuthorization(serverB)).toEqual({
       accessToken: 'token-b',
       issuer: ISSUER_B,
+      refreshable: true,
     });
     expect(sessionStorage.getItem('oauth_access_token_mcp.example')).toBe('token-b');
 

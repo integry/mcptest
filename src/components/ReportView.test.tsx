@@ -126,20 +126,23 @@ const oauthMocks = vi.hoisted(() => ({
   begin: vi.fn(),
   prepare: vi.fn(),
   hostedTokenProxy: vi.fn(),
+  load: vi.fn(),
 }));
 const evaluationMocks = vi.hoisted(() => ({
   evaluate: vi.fn(),
+}));
+
+const routerMocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  location: { pathname: '', state: null as null | { fromOAuthReturn: boolean; authorizedServerUrl: string } },
 }));
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
   return {
     ...actual,
-    useNavigate: () => vi.fn(),
-    useLocation: () => ({
-      pathname: `/report/${encodeURIComponent('https://api.githubcopilot.com/mcp/')}`,
-      state: null,
-    }),
+    useNavigate: () => routerMocks.navigate,
+    useLocation: () => routerMocks.location,
   };
 });
 
@@ -155,6 +158,7 @@ vi.mock('../utils/oauthFlow', async (importOriginal) => {
   return {
     ...actual,
     beginOAuthFlow: oauthMocks.begin,
+    loadOAuthAuthorization: oauthMocks.load,
     getHostedOAuthTokenProxyUrl: oauthMocks.hostedTokenProxy,
     prepareManualOAuthClient: oauthMocks.prepare,
   };
@@ -178,6 +182,9 @@ let root: Root | undefined;
 
 describe('ReportView OAuth discovery', () => {
   beforeEach(() => {
+    routerMocks.location = { pathname: `/report/${encodeURIComponent('https://api.githubcopilot.com/mcp/')}`, state: null };
+    routerMocks.navigate.mockReset();
+    oauthMocks.load.mockReset();
     localStorage.clear();
     sessionStorage.clear();
     vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
@@ -208,6 +215,92 @@ describe('ReportView OAuth discovery', () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+
+  it.each(['figma', 'sentry'])('uses the challenged %s candidate for top-level auth guidance without scoring unknown capabilities', async (provider) => {
+    const original = provider === 'figma' ? 'https://mcp.figma.com/' : 'https://mcp.sentry.dev/';
+    const target = `${original}mcp`;
+    routerMocks.location.pathname = `/report/${encodeURIComponent(original)}`;
+    const report = challengedReport('');
+    report.serverUrl = original;
+    report.authenticationUrl = target;
+    // Browsers may hide WWW-Authenticate (Figma does not expose it via CORS).
+    report.sections.auth.details = [{ text: 'Authorize with the server before running its report.' }];
+    evaluationMocks.evaluate.mockResolvedValue(report);
+    const container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+    expect(container.querySelector('input')?.value).toBe(original);
+    expect(container.textContent).toContain(`Report for: ${original}`);
+    expect(container.textContent).toContain('Evaluation incomplete');
+    expect(container.textContent).toContain('Not scored');
+    expect(container.textContent).not.toContain('Authorization method unknown');
+    expect(container.querySelector('.release-score')).toBeNull();
+    expect(container.textContent).toContain('Usable capabilities are unknown');
+    expect(container.querySelector('.report-auth-gate')!.compareDocumentPosition(
+      container.querySelector('#release-blockers-title')!
+    ) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const authorize = Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Authorize and run report'));
+    if (provider === 'figma') {
+      expect(authorize).toBeUndefined();
+      expect(container.textContent).toContain('Provider approval required');
+      expect(container.textContent).toContain("Figma's official client-developer waitlist");
+      expect(container.querySelector('#report-unknown-static-credential')).toBeNull();
+      expect(container.querySelector('#report-static-credential')).toBeNull();
+    } else {
+      expect(authorize).toBeDefined();
+      await act(async () => authorize?.click());
+      expect(oauthMocks.begin).toHaveBeenCalledWith(target, expect.any(Object));
+      expect(JSON.parse(sessionStorage.getItem('oauth_return_view')!)).toMatchObject({
+        activeView: 'report', serverUrl: target, reportInputUrl: original,
+      });
+    }
+  });
+
+  it('does not trust arbitrary same-host paths or metadata resource claims', () => {
+    const report = challengedReport('');
+    report.serverUrl = 'https://mcp.figma.com/';
+    report.authenticationUrl = 'https://mcp.figma.com/untrusted';
+    report.sections.auth.details = [{ text: 'Authorization required', metadata: {
+      resource: 'https://mcp.figma.com/mcp', endpoint: 'https://mcp.figma.com/mcp',
+    } }];
+    expect(getAuthorizationGateOptions(report)).toEqual({
+      offersOAuth: false, staticSchemes: [], isUnknown: true,
+    });
+  });
+
+  it('reruns once after OAuth at the authorized candidate and restores original report context', async () => {
+    const original = 'https://mcp.sentry.dev/';
+    const target = `${original}mcp`;
+    routerMocks.location = {
+      pathname: `/report/${encodeURIComponent(original)}`,
+      state: { fromOAuthReturn: true, authorizedServerUrl: target },
+    };
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'report', serverUrl: target, reportInputUrl: original,
+    }));
+    oauthMocks.load.mockReturnValue({ accessToken: 'authorized-token' });
+    evaluationMocks.evaluate.mockResolvedValue({
+      serverUrl: target, outcome: 'scored', finalScore: 0, sections: {},
+    });
+    const container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+    expect(evaluationMocks.evaluate).toHaveBeenCalledTimes(1);
+    expect(evaluationMocks.evaluate).toHaveBeenCalledWith(
+      target, 'firebase-session-token', expect.any(Function), 'authorized-token', undefined, undefined
+    );
+    expect(oauthMocks.load).toHaveBeenCalledWith(target);
+    expect(container.querySelector('input')?.value).toBe(original);
+    expect(container.textContent).toContain(`Report for: ${original}`);
+    expect(routerMocks.navigate).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('oauth_return_view')).toBeNull();
   });
 
   it('does not offer a futile browser OAuth action for GitHub operator setup', async () => {
@@ -538,6 +631,53 @@ describe('ReportView OAuth discovery', () => {
     )).toBe(false);
   });
 
+  it('renders a share and embed section whose badge matches the report result', async () => {
+    const container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+
+    const section = container.querySelector('section[aria-labelledby="report-badge-embed-title"]');
+    expect(section?.querySelector('h3')?.textContent).toBe('Share and embed');
+    const preview = section?.querySelector('img');
+    expect(preview?.getAttribute('src')).toBe('/badge/authorization-required.svg');
+    expect(preview?.getAttribute('alt')).toBe('mcptest.io: auth required');
+    const reportUrl = `https://mcptest.io/report/${encodeURIComponent('https://api.githubcopilot.com/mcp/')}`;
+    expect(section?.querySelector('a')?.getAttribute('href')).toBe(reportUrl);
+    const snippets = Array.from(section?.querySelectorAll('textarea') ?? []).map((field) => field.value);
+    expect(snippets).toEqual([
+      `[![mcptest.io: auth required](https://mcptest.io/badge/authorization-required.svg)](${reportUrl})`,
+      `<a href="${reportUrl}"><img src="https://mcptest.io/badge/authorization-required.svg" alt="mcptest.io: auth required"></a>`,
+      `.. image:: https://mcptest.io/badge/authorization-required.svg\n   :alt: mcptest.io: auth required\n   :target: ${reportUrl}`,
+    ]);
+    expect(Array.from(section?.querySelectorAll('label') ?? []).map((label) => label.textContent))
+      .toEqual(['Markdown', 'HTML', 'reStructuredText']);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    const copyHtml = section?.querySelector<HTMLButtonElement>('button[aria-label="Copy HTML badge snippet"]');
+    await act(async () => copyHtml?.click());
+    expect(writeText).toHaveBeenCalledWith(snippets[1]);
+    expect(copyHtml?.textContent).toContain('Copied');
+  });
+
+  it('shows the blocked badge for a failed evaluation', async () => {
+    evaluationMocks.evaluate.mockResolvedValue({
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      outcome: 'failed',
+      finalScore: 0,
+      sections: {},
+    });
+    const container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+    expect(container.querySelector('#report-badge-embed-title')).not.toBeNull();
+    expect(container.querySelector('.badge-embed-preview img')?.getAttribute('src')).toBe('/badge/blocked.svg');
+  });
+
   it('renders proxy login without target-authorization actions or guidance', async () => {
     evaluationMocks.evaluate.mockResolvedValue({
       serverUrl: 'https://mcp.slack.com/mcp',
@@ -573,6 +713,7 @@ describe('ReportView OAuth discovery', () => {
     expect(container.textContent).not.toContain('Complete server authorization');
     expect(container.textContent).not.toContain('Authorize and run report');
     expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(container.querySelector('#report-badge-embed-title')).toBeNull();
   });
 
   it('keeps rendering and surfaces an error when browser storage cannot be acquired', () => {

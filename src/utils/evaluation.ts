@@ -7,6 +7,13 @@ import {
   type ProtocolEra,
 } from '@modelcontextprotocol/client';
 import {
+  OUTPUT_CONTRACT_FINDING_ID,
+  getRecordedOutputContractResults,
+  summarizeOutputContracts,
+  type OutputContractEvidenceV1,
+  type OutputContractResult,
+} from './outputContract';
+import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
@@ -33,6 +40,12 @@ import type {
 } from '../types/capabilityInventory';
 import { createCapabilityInventory } from './capabilityInventory';
 import { requestCapabilityDiscoveryPage } from './mcpClient';
+import {
+  collectTransportDiagnostics,
+  transportDiagnosticReportDetail,
+  transportDiagnosticSourcesFromFailures,
+  type TransportDiagnosticSource,
+} from './transportDiagnostics';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
@@ -153,6 +166,8 @@ export interface EvaluationReport {
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
   /** Bounded, public-safe definitions returned by MCP discovery methods. */
   capabilityInventory?: CapabilityInventoryV1;
+  /** Output-contract verdicts for tool results observed in this session. */
+  outputContracts?: OutputContractEvidenceV1;
 }
 
 export interface EvaluationAuthorizationContext {
@@ -168,6 +183,11 @@ export interface EvaluationOptions {
    * the same evaluator but omit that browser-only observation from scoring.
    */
   runtime?: 'browser' | 'headless';
+  /**
+   * Output-contract verdicts to include. Defaults to the verdicts recorded for
+   * this server by playground tool calls and deterministic test runs.
+   */
+  outputContractResults?: readonly OutputContractResult[];
 }
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
@@ -426,6 +446,8 @@ interface ConnectedEvaluation {
   protocolVersion?: string;
   usedProxy: boolean;
   directError?: string;
+  /** The direct route's failure, kept for its transport evidence. */
+  directFailureError?: unknown;
   observedRequests?: readonly ObservedTransportRequest[];
   takeAuthenticationChallenge?: () => ObservedAuthenticationChallenge | undefined;
 }
@@ -530,9 +552,9 @@ const makeRouteFailure = (
     message: errorMessage(error),
     httpStatus,
     authenticationSource,
-    candidateUrl: failedCandidateUrl
+    candidateUrl: authenticationChallenge?.targetUrl || (failedCandidateUrl
       ? getEvaluationTargetUrl(failedCandidateUrl, route === 'proxy')
-      : undefined,
+      : undefined),
     method: authenticationChallenge?.method,
     requestUrl: authenticationChallenge?.requestUrl || failedCandidateUrl,
     responseHeaders: authenticationChallenge?.responseHeaders,
@@ -609,7 +631,12 @@ const connectForEvaluation = async (
         undefined,
         pendingRetry?.observeRequest('proxy')
       );
-      return { ...proxied, usedProxy: true, directError: directFailure.message };
+      return {
+        ...proxied,
+        usedProxy: true,
+        directError: directFailure.message,
+        directFailureError: directError,
+      };
     } catch (proxyError) {
       const proxyFailure = makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt);
       // The proxy's own caller limit is not a target failure; say how to lift it.
@@ -946,6 +973,24 @@ const evaluateCapabilities = async (
   };
 };
 
+const outputContractDetail = (evidence: OutputContractEvidenceV1): DetailItem => {
+  const violating = evidence.violatingTools;
+  return {
+    text: violating.length > 0
+      ? `✗ ${violating.length} of ${evidence.checkedToolCount} checked tools broke their declared output contract`
+      : `✓ ${evidence.checkedToolCount} checked ${evidence.checkedToolCount === 1 ? 'tool' : 'tools'} honored the declared output contract`,
+    context: violating.length > 0
+      ? violating.map(tool => `${tool.toolName}: ${tool.violations.map(item => `${item.path} — ${item.message}`).join('; ')}`).join(' | ')
+      : 'Structured results observed in this session validated against each tool outputSchema.',
+    metadata: {
+      method: 'tools/call',
+      ...(violating.length > 0 ? { findingId: OUTPUT_CONTRACT_FINDING_ID } : {}),
+      checkedToolCount: evidence.checkedToolCount,
+      violatingTools: violating.map(tool => tool.toolName),
+    },
+  };
+};
+
 type AuthorizationServerMetadata = NonNullable<
   Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
 >;
@@ -1132,8 +1177,36 @@ const evaluateBrowserAccessibility = (
       metadata: { transportType: connection.transportType },
     }
   );
+  const exposedInitialize = connection.observedRequests?.find((request) => (
+    request.mcpMethod === 'initialize'
+    && request.crossOrigin === true
+    && request.readableResponseHeaders?.includes('mcp-session-id')
+  ));
+  if (exposedInitialize) {
+    section.details.push({
+      text: '✓ The browser could read Mcp-Session-Id on the initialize response',
+      context: 'The server lists the session header in Access-Control-Expose-Headers, so cross-origin web clients can keep the session.',
+      metadata: { readableResponseHeaders: [...(exposedInitialize.readableResponseHeaders || [])] },
+    });
+  }
 
   return section;
+};
+
+/**
+ * Records transport diagnostics as transport-section evidence. They do not
+ * change the score; release readiness turns detected ones into priorities.
+ */
+const appendTransportDiagnostics = (
+  report: EvaluationReport,
+  sources: readonly TransportDiagnosticSource[],
+  runtime: NonNullable<EvaluationOptions['runtime']>
+): void => {
+  const section = report.sections.transport;
+  if (!section) return;
+  for (const diagnostic of collectTransportDiagnostics(sources, runtime)) {
+    section.details.push(transportDiagnosticReportDetail(diagnostic));
+  }
 };
 
 const performanceSection = (durationMs: number): EvaluationSection => {
@@ -1384,6 +1457,11 @@ export async function evaluateServer(
       15,
       'Performance was not scored because negotiation failed.'
     );
+    appendTransportDiagnostics(
+      report,
+      transportDiagnosticSourcesFromFailures(failures),
+      runtime
+    );
     report.finalScore = report.sections.cors.score;
     onProgress('Evaluation finished without an MCP connection.');
     return report;
@@ -1479,6 +1557,13 @@ export async function evaluateServer(
       report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
     }
     report.capabilityInventory = capabilityEvaluation.capabilityInventory;
+    const outputContracts = summarizeOutputContracts(
+      options.outputContractResults ?? getRecordedOutputContractResults(serverUrl)
+    );
+    if (outputContracts) {
+      report.outputContracts = outputContracts;
+      report.sections.capabilities.details.push(outputContractDetail(outputContracts));
+    }
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';
     }
@@ -1522,6 +1607,18 @@ export async function evaluateServer(
     } else {
       onProgress('Browser CORS checks are not applicable in the headless runtime.');
     }
+
+    appendTransportDiagnostics(report, [
+      ...(connection.directFailureError === undefined
+        ? []
+        : transportDiagnosticSourcesFromFailures([
+            { route: 'direct', error: connection.directFailureError },
+          ])),
+      {
+        route: connection.usedProxy ? 'proxy' : 'direct',
+        requests: connection.observedRequests || [],
+      },
+    ], runtime);
 
     report.sections.performance = performanceSection(durationMs);
     report.finalScore = Object.entries(report.sections)

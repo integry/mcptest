@@ -119,12 +119,12 @@ describe('SideNav dashboard rows', () => {
     });
   });
 
-  it('renders only high-level resource destinations and keeps the guide hub active', () => {
+  const renderSideNav = (activeView: 'learn' | 'docs' | 'catalog', path: string) => {
     const markup = renderToStaticMarkup(
-      <MemoryRouter initialEntries={['/learn/mcp-clients-compared']}>
+      <MemoryRouter initialEntries={[path]}>
         <SideNav
-          activeView="learn"
-          spaces={[]}
+          activeView={activeView}
+          spaces={[{ id: 'dashboard-1', name: 'Saved space', cards: [] }]}
           selectedSpaceId={null}
           handleSelectSpace={vi.fn()}
           handleCreateSpace={vi.fn()}
@@ -138,24 +138,59 @@ describe('SideNav dashboard rows', () => {
     );
     const container = document.createElement('div');
     container.innerHTML = markup;
+    return container;
+  };
 
-    const hrefs = Array.from(container.querySelectorAll('a'), link => link.getAttribute('href'));
-    expect(hrefs).toEqual(expect.arrayContaining([
-      '/docs/what-is-mcp',
-      '/docs/troubleshooting',
+  it('shows track navigation instead of dashboards on content pages', () => {
+    const container = renderSideNav('learn', '/learn/mcp-clients-compared');
+
+    expect(container.textContent).not.toContain('Dashboards');
+    expect(container.textContent).not.toContain('Saved space');
+    expect(container.querySelector('.dashboard-list')).toBeNull();
+    expect(container.querySelector('[aria-label="Create new dashboard"]')).toBeNull();
+    expect(container.textContent).not.toContain('Resources');
+
+    expect(
+      Array.from(container.querySelectorAll('.content-track-label'), (label) => label.textContent)
+    ).toEqual(['Understand', 'Use', 'Build', 'Reference']);
+    const hrefs = Array.from(container.querySelectorAll('.content-track-nav a'), link => link.getAttribute('href'));
+    expect(hrefs).toEqual([
       '/learn',
-    ]));
-    expect(hrefs).not.toEqual(expect.arrayContaining([
+      '/docs/what-is-mcp',
       '/docs/remote-vs-local',
-      '/docs/testing-guide',
-      '/learn/mcp-clients-compared',
-      '/learn/connect-remote-mcp-server',
-      '/learn/oauth-for-mcp-explained',
       '/learn/should-you-build-mcp-server',
+      '/learn/connect-remote-mcp-server',
+      '/learn/mcp-clients-compared',
+      '/learn/oauth-for-mcp-explained',
+      '/docs/testing-guide',
       '/learn/designing-production-mcp-server',
       '/learn/mcp-server-trust-checklist',
-    ]));
+      '/docs/troubleshooting',
+    ]);
+    expect(container.querySelector('a[href="/learn/mcp-clients-compared"]')?.classList).toContain('active');
+    expect(container.querySelector('a[href="/learn"]')?.classList).not.toContain('active');
+    expect(container.querySelector('a[href="/docs/what-is-mcp"]')?.textContent).toBe('What is MCP?');
+
+    // Playground, catalog, and report links stay available for getting back to the app.
+    expect(container.querySelector('a[href="/"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/catalog"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/report"]')).not.toBeNull();
+
+    const docs = renderSideNav('docs', '/docs/troubleshooting');
+    expect(docs.querySelector('.dashboard-list')).toBeNull();
+    expect(docs.querySelector('a[href="/docs/troubleshooting"]')?.classList).toContain('active');
+  });
+
+  it('keeps dashboards and the generated resource hub on app views', () => {
+    const container = renderSideNav('catalog', '/catalog');
+
+    expect(
+      Array.from(container.querySelectorAll('.sidenav-section-label'), (label) => label.textContent)
+    ).toEqual(['Dashboards', 'Resources']);
+    expect(container.textContent).toContain('Saved space');
+    const hrefs = Array.from(container.querySelectorAll('.sidenav-content-section a'), link => link.getAttribute('href'));
+    expect(hrefs).toEqual(['/docs/what-is-mcp', '/learn', '/docs/troubleshooting']);
     expect(container.querySelector('a[href="/learn"]')?.textContent).toContain('Guides & Tutorials');
-    expect(container.querySelector('a[href="/learn"]')?.classList).toContain('active');
+    expect(container.querySelector('.content-track-nav')).toBeNull();
   });
 });

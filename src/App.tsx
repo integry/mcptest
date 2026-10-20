@@ -19,8 +19,9 @@ import Tabs from './components/Tabs'; // New
 import LearnArticlePage from './components/learn/LearnArticlePage';
 import LearnIndex from './components/learn/LearnIndex';
 import LearnNotFound from './components/learn/LearnNotFound';
-import { getDocumentationPage } from './content/docsRegistry';
+import { PAGE_COMPONENTS } from './content/componentRegistry';
 import {
+  getContentPage,
   getLearnArticle,
   getLearnArticleSlugFromPath,
   isLearnIndexPath,
@@ -74,6 +75,7 @@ import {
   type PendingAuthenticatedMcpRetry,
 } from './utils/oauthTrace';
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
+import { isLandingEligible } from './utils/landingEligibility';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -147,13 +149,16 @@ type SavedCardOAuthUser = {
 
 type SavedCardOAuthChallenge = Pick<
   ObservedAuthenticationChallenge,
-  'resourceMetadataUrl' | 'scope'
+  'resourceMetadataUrl' | 'scope' | 'targetUrl'
 >;
 
 export const attachSavedCardOAuthChallenge = <T extends object>(
   value: T,
   challenge?: SavedCardOAuthChallenge
 ): T & SavedCardOAuthChallenge => {
+  if (challenge?.targetUrl) {
+    Object.defineProperty(value, 'targetUrl', { value: challenge.targetUrl, enumerable: false });
+  }
   if (challenge?.resourceMetadataUrl) {
     Object.defineProperty(value, 'resourceMetadataUrl', {
       value: challenge.resourceMetadataUrl,
@@ -193,7 +198,7 @@ export const beginSavedCardOAuthFlow = async ({
     ? await currentUser.getIdToken()
     : undefined;
 
-  return startFlow(serverUrl, {
+  return startFlow(challenge?.targetUrl || serverUrl, {
     forceReauthorization: true,
     ...(challenge?.resourceMetadataUrl
       ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
@@ -362,24 +367,23 @@ function App() {
   useMetaTags();
   
   // Derive active view and doc page from location
-  const { activeView, activeDocPage } = useMemo(() => {
+  const { activeView } = useMemo(() => {
     const path = location.pathname;
     console.log('[ActiveView Calculation] Path:', path, 'Spaces count:', spaces.length);
     
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
-      const docPage = path.replace('/docs/', '');
       console.log('[ActiveView] Detected docs view');
-      return { activeView: 'docs' as const, activeDocPage: docPage };
+      return { activeView: 'docs' as const };
     }
 
     if (path === '/learn' || path.startsWith('/learn/')) {
-      return { activeView: 'learn' as const, activeDocPage: null };
+      return { activeView: 'learn' as const };
     }
 
     // Check for report routes
     if (path.startsWith('/report')) {
-      return { activeView: 'report' as const, activeDocPage: null };
+      return { activeView: 'report' as const };
     }
 
     if (path.startsWith('/evals')) {
@@ -387,12 +391,12 @@ function App() {
     }
 
     if (getCatalogServerIdFromPath(path)) {
-      return { activeView: 'server-profile' as const, activeDocPage: null };
+      return { activeView: 'server-profile' as const };
     }
 
     // Check for catalog routes
     if (path.startsWith('/catalog')) {
-      return { activeView: 'catalog' as const, activeDocPage: null };
+      return { activeView: 'catalog' as const };
     }
     
     // Check for dashboard routes
@@ -402,19 +406,19 @@ function App() {
       console.log('[ActiveView] Checking slug:', slug, 'Found space:', !!space);
       if (space) {
         console.log('[ActiveView] Detected dashboards view for space:', space.name);
-        return { activeView: 'dashboards' as const, activeDocPage: null };
+        return { activeView: 'dashboards' as const };
       }
       // If we have a slug but no matching space yet (e.g., during OAuth callback when spaces aren't loaded),
       // still treat it as a dashboard view to prevent flashing
       if (spaces.length === 0 || sessionStorage.getItem('oauth_return_view')) {
         console.log('[ActiveView] Dashboard path detected, waiting for spaces to load');
-        return { activeView: 'dashboards' as const, activeDocPage: null };
+        return { activeView: 'dashboards' as const };
       }
     }
     
     // Default to inspector
     console.log('[ActiveView] Defaulting to playground view');
-    return { activeView: 'playground' as const, activeDocPage: null };
+    return { activeView: 'playground' as const };
   }, [location.pathname, spaces]);
 
 
@@ -895,6 +899,7 @@ function App() {
                 shouldReconnect: true,
                 ...(tab.serverUrl !== reconnectServerUrl
                   ? {
+                      originalServerUrl: tab.originalServerUrl || tab.serverUrl,
                       preferredTransportHint: undefined,
                       catalogProtocolEra: undefined,
                     }
@@ -1403,7 +1408,7 @@ function App() {
       currentSpaces: Space[],
       sId: string,
       cId: string,
-      newState: Partial<Pick<SpaceCard, 'loading' | 'error' | 'responseData' | 'responseType'>>
+      newState: Partial<Pick<SpaceCard, 'loading' | 'error' | 'responseData' | 'responseType' | 'serverUrl'>>
   ): Space[] => {
       return currentSpaces.map(space => {
           if (space.id === sId) {
@@ -1554,7 +1559,7 @@ function App() {
           });
           if (authenticationChallenge && !finalizedPendingRetry) {
             const trace = recordOAuthAuthenticationChallenge({
-              targetUrl: card.serverUrl,
+              targetUrl: isTargetAuthError ? authenticationChallenge.targetUrl || card.serverUrl : card.serverUrl,
               status: authenticationChallenge.status,
               source: authenticationChallenge.source,
               route: shouldUseProxy ? 'proxy' : 'direct',
@@ -1619,7 +1624,12 @@ function App() {
             );
           }
           
-          setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error' }));
+          setSpaces(prev => updateCardState(prev, spaceId, cardId, {
+            loading: false, error: errorWithAuthInfo, responseData: null, responseType: 'error',
+            ...(isTargetAuthError && authenticationChallenge.targetUrl
+              ? { serverUrl: authenticationChallenge.targetUrl }
+              : {}),
+          }));
           break; // Exit the loop
         }
       } finally {
@@ -1659,6 +1669,7 @@ function App() {
     const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
     const discoveryProxyApplicable = card?.useProxy !== false;
 
+    serverUrl = challenge?.targetUrl || serverUrl;
     clearOAuthTokens(serverUrl);
     sessionStorage.setItem('oauth_cards_to_refresh', JSON.stringify([{ spaceId, cardId }]));
     const activeTabs = localStorage.getItem(TABS_KEY);
@@ -1791,10 +1802,30 @@ function App() {
   const selectedCatalogServer = selectedCatalogServerId
     ? getCatalogServerById(selectedCatalogServerId)
     : undefined;
-  const selectedDocumentationPage = getDocumentationPage(activeDocPage);
-  const DocumentationComponent = selectedDocumentationPage?.component;
-  const selectedLearnSlug = getLearnArticleSlugFromPath(location.pathname);
-  const selectedLearnArticle = getLearnArticle(selectedLearnSlug);
+  // Markdown articles (/docs/* and /learn/*) and React-only pages resolve from one registry.
+  const selectedContentPage = getContentPage(location.pathname);
+  const SelectedPageComponent = selectedContentPage?.kind === 'page'
+    ? PAGE_COMPONENTS[selectedContentPage.page.component]
+    : undefined;
+  const renderContentView = () => {
+    if (activeView === 'learn' && isLearnIndexPath(location.pathname)) {
+      return <LearnIndex />;
+    }
+    if (selectedContentPage?.kind === 'article') {
+      return <LearnArticlePage article={selectedContentPage.article} />;
+    }
+    if (SelectedPageComponent) {
+      return <SelectedPageComponent />;
+    }
+    if (activeView === 'learn') {
+      return <LearnNotFound />;
+    }
+    return (
+      <div className="alert alert-warning">
+        Documentation page not found. Please select a page from the navigation.
+      </div>
+    );
+  };
 
   // Check if we're on the OAuth callback page
   if (location.pathname === '/oauth/callback') {
@@ -1902,28 +1933,16 @@ function App() {
         {/* Main Panel (Playground, Dashboards, or Docs) - All views kept in DOM */}
         <div className="main-content col overflow-auto p-3 position-relative">
           
-          {/* Documentation View */}
-          <div className={`view-panel ${activeView === 'docs' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            {DocumentationComponent ? <DocumentationComponent /> : (
-              <div className="alert alert-warning">
-                Documentation page not found. Please select a page from the navigation.
-              </div>
-            )}
-          </div>
-
-          {/* Learn View */}
-          <div className={`view-panel ${activeView === 'learn' ? '' : 'd-none'}`} style={{ minHeight: '100%' }}>
-            {isLearnIndexPath(location.pathname) ? (
-              <LearnIndex />
-            ) : selectedLearnArticle ? (
-              <LearnArticlePage article={selectedLearnArticle} />
-            ) : (
-              <LearnNotFound />
-            )}
+          {/* Content View: documentation and Learn articles */}
+          <div
+            className={`view-panel ${activeView === 'docs' || activeView === 'learn' ? '' : 'd-none'}`}
+            style={{ minHeight: '100%' }}
+          >
+            {(activeView === 'docs' || activeView === 'learn') && renderContentView()}
           </div>
 
           {/* Report View */}
-          <div className={`view-panel ${activeView === 'report' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+          <div className={`view-panel report-view-panel ${activeView === 'report' ? '' : 'd-none'}`}>
             <ReportView />
           </div>
 
@@ -1962,6 +1981,7 @@ function App() {
                     onUpdateTab={handleUpdateTab}
                     spaces={spaces}
                     onAddCardToSpace={handleAddCardToDashboard}
+                    landingEligible={isLandingEligible(tabs, tab.id)}
                   />
                 ))}
               </div>
@@ -2000,6 +2020,7 @@ function App() {
                   onUpdateTab={handleUpdateTab}
                   spaces={spaces}
                   onAddCardToSpace={handleAddCardToSpace}
+                  landingEligible={isLandingEligible(tabs, tab.id)}
                 />
               ))}
             </div>
