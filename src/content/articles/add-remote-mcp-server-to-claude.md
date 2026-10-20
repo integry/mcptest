@@ -97,8 +97,10 @@ Claude Code connects from your own machine, so it can reach servers on a private
 
    ```bash
    claude mcp add --transport http example https://mcp.example.com/mcp \
-     --header "Authorization: Bearer ${EXAMPLE_TOKEN}"
+     --header 'Authorization: Bearer ${EXAMPLE_TOKEN}'
    ```
+
+   Keep the single quotes. They stop your shell from expanding `${EXAMPLE_TOKEN}`, so Claude Code stores the reference and reads the token from your environment when it connects. With double quotes the shell substitutes the token itself, and with `--scope project` that secret ends up in the shared `.mcp.json`.
 
 4. Run `claude mcp list`. Each server shows **Connected**, **Needs authentication** or **Failed to connect**.
 
