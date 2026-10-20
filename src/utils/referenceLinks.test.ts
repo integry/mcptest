@@ -8,6 +8,7 @@ import { OUTPUT_CONTRACT_FINDING_ID } from './outputContract';
 import { redactReportValue } from './reportArtifact';
 import {
   DIAGNOSTICS_REFERENCE_PATH,
+  documentedEvidenceIdFor,
   REFERENCED_FINDING_IDS,
   referenceAnchorFor,
   referencePathFor,
@@ -32,6 +33,17 @@ describe('reference links', () => {
   it('derives the anchor by replacing dots with hyphens', () => {
     expect(referenceAnchorFor('transport.accept-header-406')).toBe('transport-accept-header-406');
     expect(referenceAnchorFor('tool.output-contract-violation')).toBe('tool-output-contract-violation');
+  });
+
+  it('reads a documented id from transport diagnostic or finding evidence metadata', () => {
+    expect(documentedEvidenceIdFor({ transportDiagnostic: { id: 'transport.get-stream-405' } }))
+      .toBe('transport.get-stream-405');
+    expect(documentedEvidenceIdFor({ method: 'tools/call', findingId: 'tool.output-contract-violation' }))
+      .toBe('tool.output-contract-violation');
+    expect(documentedEvidenceIdFor({ findingId: 'tool.unknown' })).toBeUndefined();
+    expect(documentedEvidenceIdFor({ transportDiagnostic: { id: 'transport.unknown' } })).toBeUndefined();
+    expect(documentedEvidenceIdFor(undefined)).toBeUndefined();
+    expect(documentedEvidenceIdFor(['tool.output-contract-violation'])).toBeUndefined();
   });
 
   it('builds a site-relative path and a canonical absolute URL', () => {

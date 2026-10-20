@@ -199,6 +199,39 @@ describe('ReleaseReadinessReport', () => {
     expect(container.querySelector('.protocol-evidence button a')).toBeNull();
   });
 
+  it('links expanded output-contract evidence to its reference section', () => {
+    const report: EvaluationReport = {
+      serverUrl: 'https://tools.example/mcp',
+      outcome: 'scored',
+      finalScore: 10,
+      sections: {
+        capabilities: {
+          name: 'Capabilities',
+          description: 'Capability checks',
+          score: 10,
+          maxScore: 10,
+          details: [{
+            text: '✗ 1 of 1 checked tools broke their declared output contract',
+            context: 'weather: structuredContent.city — Expected string but got number.',
+            metadata: { method: 'tools/call', findingId: 'tool.output-contract-violation', violatingTools: ['weather'] },
+          }],
+        },
+      },
+    };
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(
+      <ReleaseReadinessReport
+        report={report}
+        expandedItems={new Set(['protocol-capabilities-0'])}
+        onToggleItem={() => undefined}
+      />
+    );
+
+    const link = container.querySelector<HTMLAnchorElement>('#protocol-capabilities-0-body a');
+    expect(link?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#tool-output-contract-violation');
+  });
+
   it('labels an expected OAuth challenge as a step instead of an error', () => {
     const markup = renderToStaticMarkup(
       <ReleaseReadinessReport

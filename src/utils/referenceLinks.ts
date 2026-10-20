@@ -44,3 +44,15 @@ const REFERENCE_URLS = new Set(REFERENCED_FINDING_IDS.map((id) => referenceUrlFo
 export const isCanonicalReferenceUrl = (value: unknown): value is string => (
   typeof value === 'string' && REFERENCE_URLS.has(value)
 );
+
+/**
+ * The documented id recorded in an evidence item's metadata, if any: either a
+ * transport diagnostic (`transportDiagnostic.id`) or a finding (`findingId`).
+ */
+export const documentedEvidenceIdFor = (metadata: unknown): ReferencedFindingId | undefined => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
+  const { transportDiagnostic, findingId } = metadata as { transportDiagnostic?: { id?: unknown }; findingId?: unknown };
+  const diagnosticId = transportDiagnostic && typeof transportDiagnostic === 'object' ? transportDiagnostic.id : undefined;
+  if (typeof diagnosticId === 'string' && hasReference(diagnosticId)) return diagnosticId;
+  return typeof findingId === 'string' && hasReference(findingId) ? findingId : undefined;
+};

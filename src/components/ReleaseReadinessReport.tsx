@@ -20,7 +20,7 @@ import {
   createReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
-import { hasReference } from '../utils/referenceLinks';
+import { documentedEvidenceIdFor, hasReference } from '../utils/referenceLinks';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import AuthorizationSetup from './AuthorizationSetup';
@@ -441,8 +441,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
               {section.details.map((detail, index) => {
                 const detailKey = `protocol-${key}-${index}`;
                 const expandable = detail.context || detail.metadata;
-                const diagnosticId = (detail.metadata as { transportDiagnostic?: { id?: unknown } } | undefined)
-                  ?.transportDiagnostic?.id;
+                const referenceId = documentedEvidenceIdFor(detail.metadata);
                 return (
                   <div className="protocol-evidence" key={detailKey}>
                     {expandable ? (
@@ -453,8 +452,8 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                     {expandable && expandedItems.has(detailKey) && (
                       <div id={`${detailKey}-body`} className="protocol-evidence-body">
                         {detail.context && <p>{detail.context}</p>}
-                        {typeof diagnosticId === 'string' && hasReference(diagnosticId) && (
-                          <p><FindingReferenceLink id={diagnosticId} /></p>
+                        {referenceId && (
+                          <p><FindingReferenceLink id={referenceId} /></p>
                         )}
                         {detail.metadata !== undefined && <pre>{JSON.stringify(detail.metadata, null, 2)}</pre>}
                       </div>

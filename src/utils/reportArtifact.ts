@@ -17,7 +17,7 @@ import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
 import { getTrustedAuthorizationGuidanceForEndpoint } from './authorizationGuidanceLookup';
-import { isCanonicalReferenceUrl, referenceUrlFor } from './referenceLinks';
+import { documentedEvidenceIdFor, isCanonicalReferenceUrl, referenceUrlFor } from './referenceLinks';
 
 export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
 export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
@@ -1946,16 +1946,22 @@ const sectionStatus = (
   return 'evaluated';
 };
 
-/** Adds `referenceUrl` next to the id of a transport diagnostic recorded in evidence metadata. */
+/**
+ * Adds `referenceUrl` next to the documented id recorded in evidence metadata:
+ * inside `transportDiagnostic` for a transport diagnostic, or beside a
+ * top-level `findingId` such as `tool.output-contract-violation`.
+ */
 const withDiagnosticReferenceUrl = (metadata: unknown): unknown => {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
   const diagnostic = (metadata as { transportDiagnostic?: unknown }).transportDiagnostic;
-  if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic)) return metadata;
-  const id = (diagnostic as { id?: unknown }).id;
-  const referenceUrl = typeof id === 'string' ? referenceUrlFor(id) : undefined;
-  return referenceUrl
-    ? { ...metadata, transportDiagnostic: { ...diagnostic, referenceUrl } }
-    : metadata;
+  if (diagnostic && typeof diagnostic === 'object' && !Array.isArray(diagnostic)) {
+    const id = (diagnostic as { id?: unknown }).id;
+    const referenceUrl = typeof id === 'string' ? referenceUrlFor(id) : undefined;
+    if (referenceUrl) return { ...metadata, transportDiagnostic: { ...diagnostic, referenceUrl } };
+  }
+  const findingId = (metadata as { findingId?: unknown }).findingId;
+  const referenceUrl = typeof findingId === 'string' ? referenceUrlFor(findingId) : undefined;
+  return referenceUrl ? { ...metadata, referenceUrl } : metadata;
 };
 
 const redactEvidence = (detail: DetailItem): PublicReport['sections'][number]['evidence'][number] => ({
@@ -2203,13 +2209,18 @@ const markdownFindingId = (id: string): string => {
   return url ? `[${markdownInline(id)}](${url})` : markdownInline(id);
 };
 
-/** Links the `(id)` suffix of a transport diagnostic evidence message to its reference section. */
+/**
+ * Links the documented id of an evidence item to its reference section: the
+ * `(id)` suffix of the message when present, otherwise an appended link.
+ */
 const markdownEvidenceMessage = (message: string, metadata: unknown): string => {
   const text = markdownInline(message);
-  const id = (metadata as { transportDiagnostic?: { id?: unknown } } | undefined)?.transportDiagnostic?.id;
-  if (typeof id !== 'string' || !referenceUrlFor(id)) return text;
+  const id = documentedEvidenceIdFor(metadata);
+  if (!id) return text;
   const suffix = `(${markdownInline(id)})`;
-  return text.endsWith(suffix) ? `${text.slice(0, -suffix.length)}(${markdownFindingId(id)})` : text;
+  return text.endsWith(suffix)
+    ? `${text.slice(0, -suffix.length)}(${markdownFindingId(id)})`
+    : `${text} (${markdownFindingId(id)})`;
 };
 
 const scoreLabel = (section: PublicReport['sections'][number]): string => (
