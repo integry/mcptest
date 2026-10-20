@@ -62,11 +62,7 @@ export const buildLearnTrackNavigation = (
 
 /** Project links shown above the legal links in the sidebar footer. */
 export const FOOTER_NAVIGATION: readonly FooterLink[] = [
-  {
-    label: 'Submit a server',
-    href: `${GITHUB_REPOSITORY_URL}/blob/master/docs/catalog-submissions.md`,
-    external: true,
-  },
+  { label: 'Submit a server', href: '/submit' },
   {
     label: 'Badges',
     href: `${GITHUB_REPOSITORY_URL}#embedding-a-badge`,
