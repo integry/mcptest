@@ -111,6 +111,16 @@ const consumeRateLimit = async (env, key, { limit, windowMs }) => {
   return response.json();
 };
 
+/** Gives back the most recent slot, used when a submission could not be queued through no fault of the submitter. */
+const releaseRateLimit = async (env, key) => {
+  try {
+    const stub = env.SUBMISSION_RATE_LIMITER.get(env.SUBMISSION_RATE_LIMITER.idFromName(key));
+    await stub.fetch("https://rate-limiter/release", { method: "POST" });
+  } catch (error) {
+    console.error(`[submissions] could not release rate-limit slot ${key}: ${error}`);
+  }
+};
+
 const dispatchPayload = (submissionId, proposedCatalogId, submission) => {
   const { evidence, contactEmail, turnstileToken: _turnstileToken, $schema: _schema, ...listing } = submission;
   return {
@@ -169,6 +179,19 @@ const handleSubmission = async (request, env) => {
   }
 
   const clientIp = request.headers.get("CF-Connecting-IP") || "";
+  const ipKey = `ip:${await sha256Hex(clientIp || "unknown")}`;
+  // Keyed by host name only: a different port or path is still the same host.
+  const hostKey = `host:${catalogEndpointHost(submission.url)}`;
+  const rateLimited = (decision, scope) => {
+    const retryAfter = String(Math.max(1, decision.retryAfterSeconds || 3600));
+    return failure(request, 429, "rate_limited", `Too many submissions from this ${scope} today. Try again later.`, { retryAfterSeconds: Number(retryAfter) }, { "Retry-After": retryAfter });
+  };
+
+  // The per-address slot is taken before the Turnstile call so an anonymous client cannot
+  // drive unbounded siteverify requests with this deployment's secret.
+  const ipDecision = await consumeRateLimit(env, ipKey, SUBMISSION_RATE_LIMITS.perIp);
+  if (!ipDecision.allowed) return rateLimited(ipDecision, "address");
+
   if (env.TURNSTILE_SECRET) {
     const turnstile = await verifyTurnstile(env.TURNSTILE_SECRET, submission.turnstileToken, clientIp);
     if (!turnstile.success) {
@@ -180,18 +203,11 @@ const handleSubmission = async (request, env) => {
     }
   }
 
-  const ipKey = `ip:${await sha256Hex(clientIp || "unknown")}`;
-  // Keyed by host name only: a different port or path is still the same host.
-  const hostKey = `host:${catalogEndpointHost(submission.url)}`;
-  for (const [key, rule, scope] of [
-    [ipKey, SUBMISSION_RATE_LIMITS.perIp, "address"],
-    [hostKey, SUBMISSION_RATE_LIMITS.perHost, "endpoint host"],
-  ]) {
-    const decision = await consumeRateLimit(env, key, rule);
-    if (!decision.allowed) {
-      const retryAfter = String(Math.max(1, decision.retryAfterSeconds || 3600));
-      return failure(request, 429, "rate_limited", `Too many submissions from this ${scope} today. Try again later.`, { retryAfterSeconds: Number(retryAfter) }, { "Retry-After": retryAfter });
-    }
+  const hostDecision = await consumeRateLimit(env, hostKey, SUBMISSION_RATE_LIMITS.perHost);
+  if (!hostDecision.allowed) {
+    // The host rule rejected after the address slot was taken; give that slot back.
+    await releaseRateLimit(env, ipKey);
+    return rateLimited(hostDecision, "endpoint host");
   }
 
   const submissionId = crypto.randomUUID();
@@ -204,6 +220,8 @@ const handleSubmission = async (request, env) => {
   }
   if (!dispatch || !dispatch.ok) {
     console.error(`[submissions] repository_dispatch failed with status ${dispatch ? dispatch.status : "network error"}`);
+    // Not the submitter's fault: do not let a GitHub outage or a revoked token exhaust the quotas.
+    await Promise.all([releaseRateLimit(env, ipKey), releaseRateLimit(env, hostKey)]);
     return failure(request, 502, "dispatch_failed", "The submission was valid but could not be queued. Try again later.");
   }
 
@@ -224,7 +242,13 @@ export async function handleSubmissionRequest(request, env) {
   if (request.method !== "POST") {
     return failure(request, 405, "method_not_allowed", "Use POST.", {}, { Allow: "POST, OPTIONS" });
   }
-  return handleSubmission(request, env);
+  try {
+    return await handleSubmission(request, env);
+  } catch (error) {
+    // A Durable Object or network failure must still answer with CORS headers and a readable message.
+    console.error(`[submissions] unexpected failure: ${error}`);
+    return failure(request, 500, "submission_failed", "The submission could not be processed right now. Try again in a minute.");
+  }
 }
 
 /**
@@ -238,6 +262,12 @@ export class SubmissionRateLimiter {
   }
 
   async fetch(request) {
+    if (new URL(request.url).pathname === "/release") {
+      const stored = (await this.storage.get("hits")) || [];
+      stored.pop();
+      await this.storage.put("hits", stored);
+      return Response.json({ released: true, remaining: stored.length });
+    }
     const { limit, windowMs, now } = await request.json();
     const hits = ((await this.storage.get("hits")) || []).filter((time) => time > now - windowMs);
     if (hits.length >= limit) {

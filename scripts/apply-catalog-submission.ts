@@ -364,7 +364,8 @@ export const escapeMarkdown = (value: string): string => value
   .replace(/[\\`*_{}[\]()#+!|<>~@]/g, (character) => `\\${character}`)
   .replace(/\r?\n/g, ' ');
 
-const code = (value: string) => `\`${value.replace(/`/g, "'")}\``;
+// GFM table cells end at a bare pipe even inside a code span, so escape it.
+const code = (value: string) => `\`${value.replace(/`/g, "'").replace(/\|/g, '\\|')}\``;
 
 const tail = (file: string | undefined, lines = 40): string => {
   if (!file || !fs.existsSync(file)) return '';

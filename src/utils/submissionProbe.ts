@@ -94,7 +94,7 @@ const connectedEvidence = async (
     authChallenge: 'none',
     browserAccess: proxied ? 'proxy-required' : 'direct',
     ...(toolCount === undefined ? {} : { toolCount }),
-    detail: `Negotiated ${protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''} over ${connection.transportType} at ${validatedUrl}${proxied ? ' through the mcptest CORS proxy' : ''}.`,
+    detail: `Negotiated ${protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''} over ${connection.transportType} at ${new URL(validatedUrl).host}${proxied ? ' through the mcptest CORS proxy' : ''}.`,
   };
 };
 

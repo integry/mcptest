@@ -454,10 +454,16 @@ const SideNav: React.FC<SideNavProps> = ({
         <ul className="sidenav-footer-links" aria-label="Project links">
           {FOOTER_NAVIGATION.map(link => (
             <li key={link.href}>
-              <a href={link.href} target="_blank" rel="noopener noreferrer" className="sidenav-footer-link">
-                {link.label}
-                <span className="visually-hidden"> (opens in a new tab)</span>
-              </a>
+              {link.external ? (
+                <a href={link.href} target="_blank" rel="noopener noreferrer" className="sidenav-footer-link">
+                  {link.label}
+                  <span className="visually-hidden"> (opens in a new tab)</span>
+                </a>
+              ) : (
+                <Link to={link.href} className="sidenav-footer-link" onClick={closeMobileDrawer}>
+                  {link.label}
+                </Link>
+              )}
             </li>
           ))}
         </ul>

@@ -296,6 +296,22 @@ describe('POST /api/catalog/submissions', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('gives the rate-limit slots back when the dispatch fails', async () => {
+    const { limit } = SUBMISSION_RATE_LIMITS.perHost;
+    fetchMock.mockImplementation(async () => new Response('{"message":"Bad credentials"}', { status: 401 }));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Burn through more attempts than the host quota while GitHub is rejecting dispatches.
+    for (let index = 0; index < limit + 2; index += 1) {
+      const failed = await post(submission(), { ip: '198.51.100.77' });
+      expect(failed.status).toBe(502);
+    }
+    errorSpy.mockRestore();
+    // Once dispatch works again the same host and address are not locked out.
+    fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    const recovered = await post(submission(), { ip: '198.51.100.77' });
+    expect(recovered.status).toBe(202);
+  });
+
   it('reports 502 without details when GitHub rejects the dispatch', async () => {
     fetchMock.mockImplementation(async () => new Response('{"message":"Bad credentials"}', { status: 401 }));
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
