@@ -17,8 +17,12 @@
 // The guard is the second line: the route stores every artifact through the
 // redaction transform, so even an input that slips past detection is stored
 // redacted.
+//
+// Every scan here is linear in the text it walks and is charged to the shared
+// inspection budget (reportRedaction.js), so the work one request may spend on
+// an accepted-size body is bounded; past the budget the artifact is refused as
+// uninspectable rather than scanned on.
 import {
-  ASSIGNMENT_START_SOURCE,
   CANONICAL_REFERENCE_URL_PATTERN,
   ENCODED_REDACTED_VALUE,
   JWT_PATTERN_SOURCE,
@@ -27,8 +31,10 @@ import {
   REDACTED_VALUE,
   SCHEME_CREDENTIAL_PATTERN_SOURCE,
   TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS,
-  URL_IN_TEXT_PATTERN,
-  URL_TRAILING_PUNCTUATION,
+  chargeCandidates,
+  chargeScannedCharacters,
+  findAssignmentStarts,
+  findUrlsInText,
   findUserinfoPasswords,
   isAuthorizationPrerequisiteSchemaField,
   isAuthorizationSetupHeaderTemplateField,
@@ -38,6 +44,8 @@ import {
   isRedactedMarkerText,
   isSensitiveKey,
   isSensitiveQueryKey,
+  splitTrailingUrlPunctuation,
+  underInspectionBudget,
 } from './reportRedaction.js';
 
 export { REDACTED_VALUE, isSensitiveKey, isSensitiveQueryKey };
@@ -82,21 +90,20 @@ const isRedactedMarker = isRedactedMarkerText;
 // produced and must be treated as a credential (`api_key=[REDACTED]plain-secret`).
 const REDACTED_MARKER_TERMINATOR = /^(?:$|[\s"'`,;&)\]}>#?])/;
 
-const isCompletelyRedactedValue = (value) => {
-  const marker = [REDACTED_VALUE, ENCODED_REDACTED_VALUE].find((candidate) => value.startsWith(candidate));
-  return marker !== undefined && REDACTED_MARKER_TERMINATOR.test(value.slice(marker.length));
+// Looks only at the marker and the one character after it, so checking an
+// assignment costs the same wherever it sits in a long string.
+const isCompletelyRedactedValueAt = (value, start) => {
+  const marker = [REDACTED_VALUE, ENCODED_REDACTED_VALUE].find((candidate) => value.startsWith(candidate, start));
+  return marker !== undefined
+    && REDACTED_MARKER_TERMINATOR.test(value.slice(start + marker.length, start + marker.length + 1));
 };
 
 /** Mirrors the app's assignment scan: a sensitive `key: value` / `key=value` whose value is not redacted. */
 const findUnredactedAssignment = (value) => {
-  const assignmentStart = new RegExp(ASSIGNMENT_START_SOURCE, 'g');
-  let match;
-  while ((match = assignmentStart.exec(value)) !== null) {
-    const key = match[2] || match[3];
+  for (const { key, end } of findAssignmentStarts(value)) {
     if (!isSensitiveQueryKey(key)) continue;
-    let rest = value.slice(match.index + match[0].length);
-    if (rest.startsWith('"') || rest.startsWith("'")) rest = rest.slice(1);
-    if (!isCompletelyRedactedValue(rest)) return `assignment "${key}" is not redacted`;
+    const valueStart = value[end] === '"' || value[end] === "'" ? end + 1 : end;
+    if (!isCompletelyRedactedValueAt(value, valueStart)) return `assignment "${key}" is not redacted`;
   }
   return undefined;
 };
@@ -161,11 +168,8 @@ const findSecretInUrl = (candidate, depth) => {
 };
 
 const findSecretInUrls = (value, depth) => {
-  const urlPattern = new RegExp(URL_IN_TEXT_PATTERN.source, 'gi');
-  let match;
-  while ((match = urlPattern.exec(value)) !== null) {
-    const trailing = match[0].match(URL_TRAILING_PUNCTUATION)?.[0] || '';
-    const url = trailing ? match[0].slice(0, -trailing.length) : match[0];
+  for (const { start, end } of findUrlsInText(value)) {
+    const { url } = splitTrailingUrlPunctuation(value.slice(start, end));
     const reason = findSecretInUrl(url, depth);
     if (reason) return reason;
   }
@@ -224,6 +228,8 @@ const findSecretInParsedJson = (parsed, depth) => {
 const inspectJsonShapedText = (value, depth) => {
   const candidate = value.trim();
   if (!isStructuredJsonText(candidate) && !candidate.startsWith('"')) return undefined;
+  chargeScannedCharacters(candidate.length);
+  chargeCandidates();
   let parsed;
   try {
     parsed = JSON.parse(candidate);
@@ -247,6 +253,7 @@ const describeNestedReason = (found, location) => {
  * not match the innermost opener discards the pending openers.
  */
 const balancedFragmentSpans = (value, trackQuotes) => {
+  chargeScannedCharacters(value.length);
   const spans = new Map();
   const stack = [];
   let quoted = false;
@@ -295,6 +302,8 @@ const findSecretInEmbeddedJson = (value, depth) => {
     const fragment = value.slice(start, end);
     budget -= fragment.length;
     if (budget < 0) return 'contains too many JSON-shaped fragments to inspect';
+    chargeScannedCharacters(fragment.length);
+    chargeCandidates();
     let parsed;
     try {
       parsed = JSON.parse(fragment);
@@ -309,9 +318,12 @@ const findSecretInEmbeddedJson = (value, depth) => {
   return undefined;
 };
 
-const decodeJsonEscapes = (value) => value.replace(JSON_ESCAPE_PATTERN, (_, hex, character) => (
-  hex ? String.fromCharCode(parseInt(hex, 16)) : JSON_ESCAPE_CHARACTERS[character]
-));
+const decodeJsonEscapes = (value) => {
+  chargeScannedCharacters(value.length);
+  return value.replace(JSON_ESCAPE_PATTERN, (_, hex, character) => (
+    hex ? String.fromCharCode(parseInt(hex, 16)) : JSON_ESCAPE_CHARACTERS[character]
+  ));
+};
 
 /**
  * A string carrying JSON escape sequences (`Bearer\u0020…`, `{\"token\":…}`) is
@@ -330,6 +342,7 @@ const findSecretBehindJsonEscapes = (value, depth, scan) => {
 
 /** Credential shapes that are refused wherever they appear, exemptions included. */
 const findCredentialShape = (value) => {
+  chargeScannedCharacters(value.length * (2 + KNOWN_CREDENTIAL_SHAPES.length));
   if (JWT_PATTERN.test(value)) return 'contains a JWT';
   if (SCHEME_CREDENTIAL_PATTERN.test(value)) return 'contains a Bearer or Basic credential';
   for (const shape of KNOWN_CREDENTIAL_SHAPES) {
@@ -429,5 +442,9 @@ const findSecretInValue = (value, key, path, depth = 0) => {
   return undefined;
 };
 
-/** Returns { path, reason } when the artifact carries unredacted credential material. */
-export const findUnredactedSecret = (artifact) => findSecretInValue(artifact, undefined, []);
+/**
+ * Returns { path, reason } when the artifact carries unredacted credential
+ * material. Runs under the active inspection budget, or a fresh default one
+ * when called on its own, and throws InspectionBudgetExceededError past it.
+ */
+export const findUnredactedSecret = (artifact) => underInspectionBudget(() => findSecretInValue(artifact, undefined, []));

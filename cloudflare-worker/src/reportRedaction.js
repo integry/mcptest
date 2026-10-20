@@ -36,6 +36,69 @@ export const MAX_JSON_STRING_DECODE_PASSES = 4;
 // below it; a string past it cannot be inspected and is redacted whole.
 export const MAX_EMBEDDED_FRAGMENT_PARSE_RATIO = 16;
 
+// ---------------------------------------------------------------------------
+// Inspection budget
+//
+// Every scan the transform and the guard (cloudflare-worker/src/redactionGuard.js)
+// perform is linear in the text it walks, but a request may chain many of them
+// (eight redaction passes, URL components decoded and rescanned, JSON fragments
+// decoded and traversed, a next-assignment search per sensitive assignment), so
+// the total work on an accepted-size body is bounded only by this budget: one
+// per publish request, shared by the detector runs and the transform, counting
+// the characters walked and the candidates (assignments, URLs, userinfo runs,
+// JSON fragments) examined. Past it the artifact cannot be inspected and the
+// request is refused rather than served unseen. An artifact the app produced
+// stays far below it: the limits are hundreds of times the 512 KiB body limit.
+// ---------------------------------------------------------------------------
+export const INSPECTION_BUDGET_MAX_SCANNED_CHARACTERS = 512 * 1024 * 256;
+export const INSPECTION_BUDGET_MAX_CANDIDATES = 4 * 1024 * 1024;
+
+export class InspectionBudgetExceededError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InspectionBudgetExceededError';
+  }
+}
+
+export const createInspectionBudget = ({
+  maxScannedCharacters = INSPECTION_BUDGET_MAX_SCANNED_CHARACTERS,
+  maxCandidates = INSPECTION_BUDGET_MAX_CANDIDATES,
+} = {}) => ({ maxScannedCharacters, maxCandidates, scannedCharacters: 0, candidates: 0 });
+
+let activeBudget;
+
+/** Runs `run` with `budget` charged for every scan; nested calls share it. */
+export const withInspectionBudget = (budget, run) => {
+  const previous = activeBudget;
+  activeBudget = budget;
+  try {
+    return run();
+  } finally {
+    activeBudget = previous;
+  }
+};
+
+/** Runs `run` under the active budget, or under a fresh default one when none is active. */
+export const underInspectionBudget = (run) => (
+  activeBudget ? run() : withInspectionBudget(createInspectionBudget(), run)
+);
+
+export const chargeScannedCharacters = (characters) => {
+  if (!activeBudget) return;
+  activeBudget.scannedCharacters += characters;
+  if (activeBudget.scannedCharacters > activeBudget.maxScannedCharacters) {
+    throw new InspectionBudgetExceededError('the artifact needs more scanning than one publish request may spend');
+  }
+};
+
+export const chargeCandidates = (count = 1) => {
+  if (!activeBudget) return;
+  activeBudget.candidates += count;
+  if (activeBudget.candidates > activeBudget.maxCandidates) {
+    throw new InspectionBudgetExceededError('the artifact carries more credential-shaped candidates than one publish request may examine');
+  }
+};
+
 const EXACT_SENSITIVE_KEYS = new Set([
   'key', 'accesskey', 'subscriptionkey', 'authorization', 'proxyauthorization',
   'xmcpauthorization', 'cookie', 'setcookie', 'cookies', 'password', 'passwd', 'secret',
@@ -101,7 +164,9 @@ const balancedAssignmentValueEnd = (value, start) => {
   if (opening !== '{' && opening !== '[') return undefined;
   const stack = [opening];
   let quote;
-  for (let index = start + 1; index < value.length; index += 1) {
+  let index = start + 1;
+  let end;
+  for (; index < value.length && end === undefined; index += 1) {
     const character = value[index];
     if (quote) {
       if (character === '\\') index += 1;
@@ -113,60 +178,283 @@ const balancedAssignmentValueEnd = (value, start) => {
     } else if (character === '{' || character === '[') {
       stack.push(character);
     } else if (character === '}' || character === ']') {
-      if (stack[stack.length - 1] !== (character === '}' ? '{' : '[')) return undefined;
+      if (stack[stack.length - 1] !== (character === '}' ? '{' : '[')) break;
       stack.pop();
-      if (stack.length === 0) return index + 1;
+      if (stack.length === 0) end = index + 1;
     }
+  }
+  chargeScannedCharacters(index - start);
+  return end;
+};
+
+/**
+ * The quote that is open on the current line at successive positions: the app
+ * rescans the line from its start for every sensitive assignment, which is
+ * quadratic on a line of many assignments; this scanner keeps the state and
+ * advances forward (positions are asked for in increasing order), resetting it
+ * at a line break, including one that a backslash would otherwise skip over.
+ */
+const createSurroundingQuoteScanner = (value) => {
+  let cursor = 0;
+  let quote;
+  return (end) => {
+    chargeScannedCharacters(Math.max(0, end - cursor));
+    for (; cursor < end; cursor += 1) {
+      const character = value[cursor];
+      if (character === '\n' || character === '\r') {
+        quote = undefined;
+      } else if (quote) {
+        if (character === '\\') {
+          if (value[cursor + 1] === '\n' || value[cursor + 1] === '\r') quote = undefined;
+          cursor += 1;
+        } else if (character === quote) {
+          quote = undefined;
+        }
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      }
+    }
+    return quote;
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Assignment tokenizer
+//
+// The app finds assignment starts with the regular expression
+//   (?:(['"])(KEY)\1|\b(KEY)\b)\s*([:=])\s*
+// where KEY is one to three whitespace-separated parts, each a letter followed
+// by letters, digits, `_+.-` or `%XX`. Because the part characters include the
+// hyphen while every letter after a hyphen is a word boundary, that expression
+// restarts a suffix scan at each such letter and does quadratic work on a long
+// hyphenated run without a separator. The tokenizer below walks the text once:
+// at a candidate start it parses the parts forward, and when no separator
+// follows, every later start inside the same part run would parse the same run
+// to the same end and fail the same way, so the scan resumes after the run. The
+// candidates it yields are exactly the expression's matches, in order, with the
+// search resuming after each match as the global expression does.
+// ---------------------------------------------------------------------------
+const isAsciiLetterCode = (code) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+const isAsciiDigitCode = (code) => code >= 48 && code <= 57;
+const isWordCode = (code) => isAsciiLetterCode(code) || isAsciiDigitCode(code) || code === 95;
+const isKeyCode = (code) => isWordCode(code) || code === 43 || code === 45 || code === 46;
+const isHexCode = (code) => isAsciiDigitCode(code) || (code >= 65 && code <= 70) || (code >= 97 && code <= 102);
+// `\s` as the app's expressions see it, with a fast path for ASCII: the
+// control range and the space, then the Unicode spaces only above Latin-1.
+const isWhitespace = (character) => {
+  if (character === undefined) return false;
+  const code = character.charCodeAt(0);
+  if (code <= 32) return code === 32 || (code >= 9 && code <= 13);
+  return code >= 160 && /\s/.test(character);
+};
+const isQuoteCode = (code) => code === 34 || code === 39;
+
+/** End of the key part starting at `start`, whose first character is a letter. */
+const keyPartEnd = (value, start) => {
+  let index = start + 1;
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    if (isKeyCode(code)) {
+      index += 1;
+    } else if (code === 37 && index + 2 < value.length
+      && isHexCode(value.charCodeAt(index + 1)) && isHexCode(value.charCodeAt(index + 2))) {
+      index += 3;
+    } else {
+      break;
+    }
+  }
+  return index;
+};
+
+/** Ends of the one to three parts of the compound key starting at `start`, shortest first. */
+const compoundKeyPartEnds = (value, start) => {
+  const ends = [keyPartEnd(value, start)];
+  while (ends.length < 3) {
+    const partEnd = ends[ends.length - 1];
+    let next = partEnd;
+    while (next < value.length && isWhitespace(value[next])) next += 1;
+    if (next === partEnd || next >= value.length || !isAsciiLetterCode(value.charCodeAt(next))) break;
+    ends.push(keyPartEnd(value, next));
+  }
+  return ends;
+};
+
+/** The end of `\s*[:=]\s*` starting at `index`, or -1 when no separator follows. */
+const assignmentSeparatorEnd = (value, index) => {
+  while (index < value.length && isWhitespace(value[index])) index += 1;
+  if (value[index] !== ':' && value[index] !== '=') return -1;
+  index += 1;
+  while (index < value.length && isWhitespace(value[index])) index += 1;
+  return index;
+};
+
+/**
+ * The assignment start the app's expression matches at exactly `index`, as
+ * { index, end, key, keyQuote } where `end` follows the separator and its
+ * trailing whitespace, or undefined. Longer compound keys are preferred, as the
+ * greedy part repetition is.
+ */
+const matchAssignmentStartAt = (value, index) => {
+  const code = value.charCodeAt(index);
+  if (isQuoteCode(code)) {
+    const keyQuote = value[index];
+    if (!isAsciiLetterCode(value.charCodeAt(index + 1))) return undefined;
+    const ends = compoundKeyPartEnds(value, index + 1);
+    for (let part = ends.length - 1; part >= 0; part -= 1) {
+      const keyEnd = ends[part];
+      if (value[keyEnd] !== keyQuote) continue;
+      const end = assignmentSeparatorEnd(value, keyEnd + 1);
+      if (end !== -1) return { index, end, key: value.slice(index + 1, keyEnd), keyQuote };
+    }
+    return undefined;
+  }
+  if (!isAsciiLetterCode(code) || (index > 0 && isWordCode(value.charCodeAt(index - 1)))) return undefined;
+  const ends = compoundKeyPartEnds(value, index);
+  for (let part = ends.length - 1; part >= 0; part -= 1) {
+    const keyEnd = ends[part];
+    // The word boundary after the key: its last character must be a word character.
+    if (!isWordCode(value.charCodeAt(keyEnd - 1))) continue;
+    const end = assignmentSeparatorEnd(value, keyEnd);
+    if (end !== -1) return { index, end, key: value.slice(index, keyEnd), keyQuote: undefined };
   }
   return undefined;
 };
 
-const surroundingQuoteAt = (value, end) => {
-  let quote;
-  const lineStart = Math.max(value.lastIndexOf('\n', end - 1), value.lastIndexOf('\r', end - 1)) + 1;
-  for (let index = lineStart; index < end; index += 1) {
-    const character = value[index];
-    if (quote) {
-      if (character === '\\') index += 1;
-      else if (character === quote) quote = undefined;
-    } else if (character === '"' || character === "'") {
-      quote = character;
+/** Every assignment start in `value`, in order, as matchAssignmentStartAt describes them. */
+export const findAssignmentStarts = (value) => {
+  chargeScannedCharacters(value.length);
+  const matches = [];
+  let index = 0;
+  while (index < value.length) {
+    const match = matchAssignmentStartAt(value, index);
+    if (match) {
+      chargeCandidates();
+      matches.push(match);
+      index = match.end;
+      continue;
     }
+    const code = value.charCodeAt(index);
+    // A failed unquoted start: every later start in this part run fails the same way.
+    index = isAsciiLetterCode(code) && (index === 0 || !isWordCode(value.charCodeAt(index - 1)))
+      ? keyPartEnd(value, index)
+      : index + 1;
   }
-  return quote;
+  return matches;
 };
 
-const keyPart = String.raw`[A-Za-z](?:[A-Za-z0-9_+.-]|%[A-Fa-f0-9]{2})*`;
-const compoundKey = `${keyPart}(?:\\s+${keyPart}){0,2}`;
-export const ASSIGNMENT_START_SOURCE = `(?:(['"])(${compoundKey})\\1|\\b(${compoundKey})\\b)\\s*([:=])\\s*`;
-const NEXT_ASSIGNMENT_SOURCE = `([,;&]|\\s+)(?:(['"])(${compoundKey})\\2|\\b(${compoundKey})\\b)\\s*[:=]\\s*`;
+/**
+ * The first assignment start at or after `from` that a delimiter precedes, as
+ * the app's next-assignment expression `([,;&]|\s+)(?:…)\s*[:=]\s*` finds it:
+ * { index, end, key, delimiter } where `index` is the delimiter's position (the
+ * start of a whitespace run), or undefined.
+ */
+const findDelimitedAssignment = (value, from) => {
+  let index = from;
+  let found;
+  while (index < value.length && !found) {
+    const character = value[index];
+    if (character === ',' || character === ';' || character === '&') {
+      const match = matchAssignmentStartAt(value, index + 1);
+      if (match) found = { index, end: match.end, key: match.key, delimiter: character };
+      else index += 1;
+    } else if (isWhitespace(character)) {
+      let keyStart = index + 1;
+      while (keyStart < value.length && isWhitespace(value[keyStart])) keyStart += 1;
+      const match = matchAssignmentStartAt(value, keyStart);
+      if (match) found = { index, end: match.end, key: match.key, delimiter: value.slice(index, keyStart) };
+      else index = keyStart;
+    } else {
+      index += 1;
+    }
+  }
+  chargeScannedCharacters((found ? found.end : value.length) - from);
+  if (found) chargeCandidates();
+  return found;
+};
 
-const spliceMatches = (value, matches) => matches.reduceRight((redacted, match) => (
-  `${redacted.slice(0, match.start)}${match.replacement}${redacted.slice(match.end)}`
-), value);
+/**
+ * Replaces each matched span with its replacement, as the app does by splicing
+ * the spans into the string last to first. That splice costs a copy of the
+ * string per span, which is quadratic on a string of many spans, so it is
+ * computed here in one pass over the spans, which arrive in start order: the
+ * text after the first span is built last span first as a list of segments,
+ * and a span that overlaps the one after it drops the overlapped prefix of
+ * that text, exactly as the app's slice at the span's end would. The app's
+ * splice is kept only for spans out of start order, which no caller produces.
+ */
+const spliceMatches = (value, matches) => {
+  if (matches.length === 0) return value;
+  if (matches.some((match, index) => index > 0 && match.start < matches[index - 1].start)) {
+    return matches.reduceRight((redacted, match) => (
+      `${redacted.slice(0, match.start)}${match.replacement}${redacted.slice(match.end)}`
+    ), value);
+  }
+  // Segments of the text after the first span, in reverse order; `offset` is
+  // how much of a segment's front an overlapping earlier span has dropped.
+  const reversed = [];
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const { end, replacement } = matches[index];
+    const gapEnd = index + 1 < matches.length ? matches[index + 1].start : value.length;
+    if (end < gapEnd) {
+      reversed.push({ text: value.slice(end, gapEnd), offset: 0 });
+    } else {
+      let drop = end - gapEnd;
+      while (drop > 0 && reversed.length > 0) {
+        const front = reversed[reversed.length - 1];
+        const available = front.text.length - front.offset;
+        if (available <= drop) {
+          drop -= available;
+          reversed.pop();
+        } else {
+          front.offset += drop;
+          drop = 0;
+        }
+      }
+    }
+    reversed.push({ text: replacement, offset: 0 });
+  }
+  const parts = [value.slice(0, matches[0].start)];
+  for (let index = reversed.length - 1; index >= 0; index -= 1) {
+    const { text, offset } = reversed[index];
+    parts.push(offset ? text.slice(offset) : text);
+  }
+  return parts.join('');
+};
 
 const redactSensitiveAssignments = (value) => {
   const matches = [];
-  const assignmentStart = new RegExp(ASSIGNMENT_START_SOURCE, 'g');
-  const nextAssignment = new RegExp(NEXT_ASSIGNMENT_SOURCE, 'g');
-  let match;
-  while ((match = assignmentStart.exec(value)) !== null) {
-    const keyQuote = match[1];
-    const key = match[2] || match[3];
+  const surroundingQuoteAt = createSurroundingQuoteScanner(value);
+  // The end of the line a value starts on, found once per line: positions are
+  // asked for in increasing order, so the last line end found stays valid for
+  // every position up to it, and many whole-line values on one line (several
+  // `Authorization:` headers) cost the line once rather than once each.
+  let lineEnd = -1;
+  const lineEndFrom = (from) => {
+    if (from > lineEnd) {
+      lineEnd = from;
+      while (lineEnd < value.length && !/[\r\n]/.test(value[lineEnd])) lineEnd += 1;
+      chargeScannedCharacters(lineEnd - from);
+    }
+    return lineEnd;
+  };
+  let coveredUntil = -1;
+  for (const match of findAssignmentStarts(value)) {
+    const { keyQuote, key } = match;
     if (!isSensitiveQueryKey(key)) continue;
     const assignmentStartIndex = match.index;
-    const valueStart = assignmentStartIndex + match[0].length;
+    const valueStart = match.end;
+    const matched = value.slice(assignmentStartIndex, valueStart);
     let valueEnd = valueStart;
     const quote = value[valueStart];
-    const surroundingQuote = surroundingQuoteAt(value, assignmentStartIndex);
+    const surroundingQuote = surroundingQuoteAt(assignmentStartIndex);
     const canonical = canonicalKey(key);
     const consumesEntireLine = !keyQuote && (
       ['authorization', 'proxyauthorization', 'xmcpauthorization'].includes(canonical)
       || ['cookie', 'setcookie', 'cookies'].includes(canonical)
     );
-    let replacement = `${match[0]}${REDACTED_VALUE}`;
+    let replacement = `${matched}${REDACTED_VALUE}`;
     if (consumesEntireLine) {
-      while (valueEnd < value.length && !/[\r\n]/.test(value[valueEnd])) valueEnd += 1;
+      valueEnd = lineEndFrom(valueStart);
     } else if (quote === '"' || quote === "'") {
       valueEnd += 1;
       while (valueEnd < value.length) {
@@ -179,35 +467,43 @@ const redactSensitiveAssignments = (value) => {
           valueEnd += 1;
         }
       }
+      chargeScannedCharacters(valueEnd - valueStart);
       replacement = keyQuote
-        ? `${match[0]}${quote}${REDACTED_VALUE}${quote}`
-        : `${match[0]}${REDACTED_VALUE}`;
+        ? `${matched}${quote}${REDACTED_VALUE}${quote}`
+        : `${matched}${REDACTED_VALUE}`;
     } else if (quote === '{' || quote === '[') {
-      valueEnd = balancedAssignmentValueEnd(value, valueStart) ?? valueStart;
-      if (valueEnd === valueStart) {
-        while (valueEnd < value.length && !/[\r\n]/.test(value[valueEnd])) valueEnd += 1;
-      }
-      if (keyQuote) replacement = `${match[0]}${keyQuote}${REDACTED_VALUE}${keyQuote}`;
+      valueEnd = balancedAssignmentValueEnd(value, valueStart) ?? lineEndFrom(valueStart);
+      if (keyQuote) replacement = `${matched}${keyQuote}${REDACTED_VALUE}${keyQuote}`;
     } else {
-      while (valueEnd < value.length && !/[\r\n]/.test(value[valueEnd])) {
+      // The value runs to the end of the line or to the surrounding quote, cut
+      // short by the first following assignment that a `,`, `;` or `&` or a
+      // sensitive key after whitespace introduces. The app walks to the line
+      // end and then looks for the cut; finding the cut first bounds the walk
+      // by it, so many sensitive assignments on one line cost their own spans.
+      let cut = value.length;
+      let from = valueStart;
+      let boundary;
+      while ((boundary = findDelimitedAssignment(value, from)) !== undefined) {
+        if (/[,;&]/.test(boundary.delimiter) || isSensitiveQueryKey(boundary.key)) {
+          cut = boundary.index;
+          break;
+        }
+        from = boundary.end;
+      }
+      while (valueEnd < cut && !/[\r\n]/.test(value[valueEnd])) {
         const character = value[valueEnd];
         if (character === '\\') valueEnd = Math.min(valueEnd + 1, value.length);
         else if (character === surroundingQuote) break;
         valueEnd += 1;
       }
-      nextAssignment.lastIndex = valueStart;
-      let boundary;
-      while ((boundary = nextAssignment.exec(value)) !== null && boundary.index < valueEnd) {
-        const delimiter = boundary[1];
-        const nextKey = boundary[3] || boundary[4];
-        if (/[,;&]/.test(delimiter) || isSensitiveQueryKey(nextKey)) {
-          valueEnd = boundary.index;
-          break;
-        }
-      }
+      if (valueEnd > cut) valueEnd = cut;
+      chargeScannedCharacters(Math.max(valueEnd, valueStart) - valueStart);
     }
-    if (!matches.some((assignment) => assignment.start <= assignmentStartIndex && assignment.end >= valueEnd)) {
+    // Matches arrive in start order, so an earlier one contains this assignment
+    // exactly when the furthest end reached so far is at or past its end.
+    if (valueEnd > coveredUntil) {
       matches.push({ start: assignmentStartIndex, end: valueEnd, replacement });
+      coveredUntil = valueEnd;
     }
   }
   return spliceMatches(value, matches);
@@ -280,10 +576,66 @@ const redactUrl = (value, depth = 0) => {
 // Any scheme with an authority (`https://`, `ftp://`, `wss://`, a custom
 // scheme) is a URL whose userinfo, path, query and fragment are inspected.
 export const URL_SCHEME_SOURCE = String.raw`[a-z][a-z0-9+.-]*`;
-export const URL_IN_TEXT_PATTERN = new RegExp(String.raw`\b${URL_SCHEME_SOURCE}://[^\s<>]+`, 'gi');
-export const URL_TRAILING_PUNCTUATION = /["'),.;!?]+$/;
 const ABSOLUTE_URL_PATTERN = new RegExp(String.raw`^${URL_SCHEME_SOURCE}://`, 'i');
 export const ENCODED_REDACTED_VALUE = encodeURIComponent(REDACTED_VALUE);
+
+// ---------------------------------------------------------------------------
+// URL tokenizer
+//
+// The app discovers URLs in text with `\b[a-z][a-z0-9+.-]*://[^\s<>]+` (case-
+// insensitive). Its scheme class accepts hyphens while its prefix needs a word
+// boundary, so, like the assignment expression, it restarts a scheme scan at
+// every letter after a hyphen and does quadratic work on a long hyphenated run
+// without `://`. The tokenizer below finds each `://` once and reads the scheme
+// run backwards from it: the match starts at the first letter of that run that
+// follows a non-word character, and the body runs to the next whitespace, `<`
+// or `>`. It yields exactly the expression's matches, in order.
+// ---------------------------------------------------------------------------
+const isSchemeCode = (code) => isAsciiLetterCode(code) || isAsciiDigitCode(code) || code === 43 || code === 45 || code === 46;
+const isUrlBodyEnd = (character) => character === '<' || character === '>' || isWhitespace(character);
+const TRAILING_URL_PUNCTUATION = new Set(['"', "'", ')', ',', '.', ';', '!', '?']);
+
+/** Every `scheme://…` run in `value` as { start, end } spans, in order. */
+export const findUrlsInText = (value) => {
+  chargeScannedCharacters(value.length);
+  const spans = [];
+  let from = 0;
+  for (;;) {
+    const separator = value.indexOf('://', from);
+    if (separator === -1) break;
+    let runStart = separator;
+    while (runStart > from && isSchemeCode(value.charCodeAt(runStart - 1))) runStart -= 1;
+    let start = -1;
+    for (let index = runStart; index < separator && start === -1; index += 1) {
+      if (isAsciiLetterCode(value.charCodeAt(index)) && (index === 0 || !isWordCode(value.charCodeAt(index - 1)))) {
+        start = index;
+      }
+    }
+    let end = separator + 3;
+    while (end < value.length && !isUrlBodyEnd(value[end])) end += 1;
+    if (start === -1 || end === separator + 3) {
+      // No match here; the expression goes on to try the positions after the
+      // separator, where the body may itself begin a URL (`9a://b://c`).
+      from = separator + 3;
+      continue;
+    }
+    chargeCandidates();
+    spans.push({ start, end });
+    from = end;
+  }
+  return spans;
+};
+
+/**
+ * Splits a URL candidate into the URL and the sentence punctuation that trails
+ * it (`"'),.;!?`), walking back from the end so a body of punctuation costs
+ * only its length.
+ */
+export const splitTrailingUrlPunctuation = (candidate) => {
+  let urlEnd = candidate.length;
+  while (urlEnd > 0 && TRAILING_URL_PUNCTUATION.has(candidate[urlEnd - 1])) urlEnd -= 1;
+  return { url: candidate.slice(0, urlEnd), trailing: candidate.slice(urlEnd) };
+};
 
 const isAbsoluteUrl = (value) => {
   if (!ABSOLUTE_URL_PATTERN.test(value)) return false;
@@ -295,11 +647,10 @@ const isAbsoluteUrl = (value) => {
   }
 };
 
-const redactUrlsInText = (value, depth) => value.replace(URL_IN_TEXT_PATTERN, (candidate) => {
-  const trailing = candidate.match(URL_TRAILING_PUNCTUATION)?.[0] || '';
-  const url = trailing ? candidate.slice(0, -trailing.length) : candidate;
-  return `${redactUrl(url, depth)}${trailing}`;
-});
+const redactUrlsInText = (value, depth) => spliceMatches(value, findUrlsInText(value).map(({ start, end }) => {
+  const { url, trailing } = splitTrailingUrlPunctuation(value.slice(start, end));
+  return { start, end, replacement: `${redactUrl(url, depth)}${trailing}` };
+}));
 
 // The `user:password@host` shape anywhere in text, whatever precedes it: a
 // scheme without `//` (`https:alice:secret@host`, `mailto:alice:secret@host`),
@@ -332,6 +683,7 @@ const firstUserinfoColon = (value, runStart, at) => {
 
 /** Every `user:password@host` password in `value` as `{ start, end, password }` spans, in order. */
 export const findUserinfoPasswords = (value) => {
+  chargeScannedCharacters(value.length);
   const spans = [];
   let runStart = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -341,6 +693,7 @@ export const findUserinfoPasswords = (value) => {
       const colon = firstUserinfoColon(value, runStart, index);
       USERINFO_HOST_START.lastIndex = index + 1;
       if (colon !== -1 && USERINFO_HOST_START.test(value)) {
+        chargeCandidates();
         spans.push({ start: colon + 1, end: index, password: value.slice(colon + 1, index) });
       }
     }
@@ -357,7 +710,14 @@ const redactBareUserinfo = (value) => spliceMatches(value, findUserinfoPasswords
 export const JWT_PATTERN_SOURCE = String.raw`(^|[^A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=$|[^A-Za-z0-9_-])`;
 export const SCHEME_CREDENTIAL_PATTERN_SOURCE = String.raw`\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+`;
 
-const redactStandaloneJwtValues = (value) => value.replace(new RegExp(JWT_PATTERN_SOURCE, 'g'), `$1${REDACTED_VALUE}`);
+const redactStandaloneJwtValues = (value) => {
+  chargeScannedCharacters(value.length);
+  return value.replace(new RegExp(JWT_PATTERN_SOURCE, 'g'), `$1${REDACTED_VALUE}`);
+};
+const redactSchemeCredentials = (value) => {
+  chargeScannedCharacters(value.length);
+  return value.replace(new RegExp(SCHEME_CREDENTIAL_PATTERN_SOURCE, 'gi'), `$1 ${REDACTED_VALUE}`);
+};
 
 const isObjectOrArrayText = (candidate) => (
   (candidate.startsWith('{') && candidate.endsWith('}')) || (candidate.startsWith('[') && candidate.endsWith(']'))
@@ -379,6 +739,7 @@ const redactJsonShapedFragment = (value) => {
     const isObjectOrArray = isObjectOrArrayText(candidate);
     if (!isObjectOrArray && !candidate.startsWith('"')) return { redacted: value, parsedRaw };
     isStructured ||= isObjectOrArray;
+    chargeScannedCharacters(candidate.length);
     let parsed;
     try {
       parsed = JSON.parse(candidate);
@@ -425,6 +786,8 @@ const redactJsonShapedString = (value) => redactJsonShapedFragment(value).redact
 export const JSON_STRING_LITERAL_PATTERN = /"(?:\\["\\/bfnrt]|\\u[A-Fa-f0-9]{4}|[^"\\\u0000-\u001f])*"/g;
 
 const redactJsonEncodedStringLiterals = (value) => value.replace(JSON_STRING_LITERAL_PATTERN, (literal) => {
+  chargeScannedCharacters(literal.length);
+  chargeCandidates();
   let decoded;
   try {
     decoded = JSON.parse(literal);
@@ -444,6 +807,7 @@ const redactJsonEncodedStringLiterals = (value) => value.replace(JSON_STRING_LIT
  * pending openers.
  */
 const balancedFragmentSpans = (value, trackQuotes) => {
+  chargeScannedCharacters(value.length);
   const spans = new Map();
   const stack = [];
   let quoted = false;
@@ -494,6 +858,7 @@ const redactEmbeddedJsonFragments = (value) => {
     const fragment = value.slice(start, end);
     budget -= fragment.length;
     if (budget < 0) return REDACTED_VALUE;
+    chargeCandidates();
     const { redacted, parsedRaw } = redactJsonShapedFragment(fragment);
     if (redacted !== fragment) {
       matches.push({ start, end, replacement: redacted });
@@ -508,8 +873,7 @@ const redactEmbeddedJsonFragments = (value) => {
 const redactReportStringAtDepth = (value, urlDepth) => {
   let redacted = redactEmbeddedJsonFragments(redactJsonEncodedStringLiterals(redactJsonShapedString(value)));
   for (let pass = 0; pass < MAX_REDACTION_PASSES; pass += 1) {
-    const redactedAssignments = redactSensitiveAssignments(redacted)
-      .replace(new RegExp(SCHEME_CREDENTIAL_PATTERN_SOURCE, 'gi'), `$1 ${REDACTED_VALUE}`);
+    const redactedAssignments = redactSchemeCredentials(redactSensitiveAssignments(redacted));
     const next = redactBareUserinfo(redactUrlsInText(redactStandaloneJwtValues(redactedAssignments), urlDepth));
     if (next === redacted) break;
     redacted = next;
@@ -517,8 +881,12 @@ const redactReportStringAtDepth = (value, urlDepth) => {
   return redacted;
 };
 
-/** The app's string redaction: assignments, scheme credentials, JWTs, URLs and JSON in text. */
-export const redactReportString = (value) => redactReportStringAtDepth(value, 0);
+/**
+ * The app's string redaction: assignments, scheme credentials, JWTs, URLs and
+ * JSON in text. Charged to the active inspection budget, or to a fresh default
+ * one when called on its own, so a standalone call is bounded the same way.
+ */
+export const redactReportString = (value) => underInspectionBudget(() => redactReportStringAtDepth(value, 0));
 
 // Artifact locations the schema fills with values that look sensitive but are
 // not credentials (src/utils/reportArtifact.ts keeps the same exemptions).
@@ -732,5 +1100,10 @@ const redactReportValueAtPath = (value, key, path, inputSchemaSanitized = false)
   return String(value);
 };
 
-/** The app's value redaction: sensitive keys become the marker, every string is redacted. */
-export const redactReportValue = (value, key) => redactReportValueAtPath(value, key, key ? [key] : []);
+/**
+ * The app's value redaction: sensitive keys become the marker, every string is
+ * redacted. Runs under the active inspection budget, or a fresh default one.
+ */
+export const redactReportValue = (value, key) => underInspectionBudget(() => (
+  redactReportValueAtPath(value, key, key ? [key] : [])
+));

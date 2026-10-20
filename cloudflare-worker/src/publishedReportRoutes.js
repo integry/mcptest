@@ -12,6 +12,11 @@
 // redacted. The transformed artifact is then scanned by the guard again and is
 // stored only when that scan finds nothing, so a stored artifact always passes
 // the guard. Identity (content hash, permalink id) is derived from the stored form.
+//
+// Both resource bounds are enforced before any rate-limit or storage work: the
+// body is read from the stream and dropped with 413 as soon as it exceeds the
+// size limit, and the guard runs and the transform share one inspection budget
+// per request, past which the artifact is refused as uninspectable (422).
 import reportSchema from '../../public/schemas/report/v2.schema.json';
 import { getBadgeVariantForResult, renderBadgeSvg } from '../../src/utils/badges.ts';
 import {
@@ -28,7 +33,12 @@ import {
 import { KNOWN_BADGE_CACHE_CONTROL, UNKNOWN_BADGE_CACHE_CONTROL } from './badges.js';
 import { compileSchema } from './jsonSchema.js';
 import { findUnredactedSecret } from './redactionGuard.js';
-import { redactReportValue } from './reportRedaction.js';
+import {
+  InspectionBudgetExceededError,
+  createInspectionBudget,
+  redactReportValue,
+  withInspectionBudget,
+} from './reportRedaction.js';
 
 export const PUBLISH_RATE_LIMITS = {
   host: { limit: 10, windowMs: 60 * 60 * 1000 },
@@ -97,13 +107,65 @@ const randomToken = () => {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
+/**
+ * Reads the body within the size limit. A declared Content-Length past the
+ * limit is refused before anything is read; otherwise the stream is consumed
+ * chunk by chunk, counting bytes, and cancelled the moment the running total
+ * exceeds the limit, so no more than the limit is ever buffered whatever the
+ * sender streams or declares.
+ */
 const readBody = async (request) => {
   const declared = Number(request.headers.get('Content-Length') || 0);
   if (declared > PUBLISHED_REPORT_MAX_BYTES) return { error: 'too_large' };
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > PUBLISHED_REPORT_MAX_BYTES) return { error: 'too_large' };
-  return { text };
+  if (!request.body) return { text: '' };
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > PUBLISHED_REPORT_MAX_BYTES) {
+        await reader.cancel().catch(() => {});
+        return { error: 'too_large' };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(bytes) };
 };
+
+/**
+ * The guard, the transform and the guard again, under one inspection budget.
+ * Returns { artifact } to store, or { refusal } with the reason the artifact was
+ * refused; throws InspectionBudgetExceededError when the budget runs out.
+ */
+const inspectArtifact = (received) => withInspectionBudget(createInspectionBudget(), () => {
+  const secret = findUnredactedSecret(received);
+  if (secret) {
+    return { refusal: `Only the redacted public artifact can be published: ${secret.reason} at ${secret.path}.` };
+  }
+  // Store the redacted form even when the guard found nothing. The transform is
+  // the identity on an artifact the app produced; anything it changes was not the
+  // app's output, and must still satisfy the schema to be stored.
+  const artifact = redactReportValue(received);
+  // Fail closed: the stored artifact must itself pass the guard. If the transform
+  // left anything the guard still recognizes, nothing is stored.
+  const residual = findUnredactedSecret(artifact);
+  if (residual) {
+    return { refusal: `The artifact still carries credential material once redacted: ${residual.reason} at ${residual.path}.` };
+  }
+  return { artifact };
+});
 
 const publish = async (request, env, url) => {
   const methods = 'POST, OPTIONS';
@@ -128,26 +190,20 @@ const publish = async (request, env, url) => {
       errors: validation.errors,
     }, 422, methods);
   }
-  const secret = findUnredactedSecret(received);
-  if (secret) {
+  let inspected;
+  try {
+    inspected = inspectArtifact(received);
+  } catch (error) {
+    if (!(error instanceof InspectionBudgetExceededError)) throw error;
     return jsonResponse(request, {
-      error: 'unredacted_content',
-      message: `Only the redacted public artifact can be published: ${secret.reason} at ${secret.path}.`,
+      error: 'uninspectable_content',
+      message: `The artifact cannot be inspected within one request's budget: ${error.message}.`,
     }, 422, methods);
   }
-  // Store the redacted form even when the guard found nothing. The transform is
-  // the identity on an artifact the app produced; anything it changes was not the
-  // app's output, and must still satisfy the schema to be stored.
-  const artifact = redactReportValue(received);
-  // Fail closed: the stored artifact must itself pass the guard. If the transform
-  // left anything the guard still recognizes, nothing is stored.
-  const residual = findUnredactedSecret(artifact);
-  if (residual) {
-    return jsonResponse(request, {
-      error: 'unredacted_content',
-      message: `The artifact still carries credential material once redacted: ${residual.reason} at ${residual.path}.`,
-    }, 422, methods);
+  if (inspected.refusal) {
+    return jsonResponse(request, { error: 'unredacted_content', message: inspected.refusal }, 422, methods);
   }
+  const { artifact } = inspected;
   const storedValidation = validateReport(artifact);
   if (!storedValidation.valid) {
     return jsonResponse(request, {

@@ -9,7 +9,15 @@ import {
 } from '../../src/utils/reportRedactionFixtures.ts';
 import { findUnredactedSecret } from './redactionGuard.js';
 import { CREDENTIAL_FUZZ_CASES, findEmbeddedSecret } from './redactionFuzzCases.js';
-import { REDACTED_VALUE, redactReportString, redactReportValue } from './reportRedaction.js';
+import {
+  INSPECTION_BUDGET_MAX_SCANNED_CHARACTERS,
+  InspectionBudgetExceededError,
+  REDACTED_VALUE,
+  createInspectionBudget,
+  redactReportString,
+  redactReportValue,
+  withInspectionBudget,
+} from './reportRedaction.js';
 
 const containsSecret = (output, secrets) => secrets.find((secret) => output.includes(secret));
 
@@ -341,5 +349,68 @@ describe('the Worker port of the app redaction', () => {
     });
     expect(redacted.fingerprint.value).toMatch(/^[0-9a-f]{16}$/);
     expect(redacted.fingerprint.value).not.toBe('stale');
+  });
+
+  it('scans 400 KB of hyphenated runs without separators in well under a second (F14)', () => {
+    // Every letter after a hyphen is a word boundary and the key and scheme
+    // classes accept hyphens, so the app's expressions restart a suffix scan at
+    // each of them; the tokenizers walk the text once in both the detector and
+    // the transform. No `:`, `=` or `://` ever follows, so nothing is found and
+    // the transform is the identity.
+    const runs = 'a-'.repeat(200000);
+    expect(runs.length).toBe(400000);
+    const mixedRuns = 'Xy-z9.w+v-'.repeat(40000);
+    for (const text of [runs, mixedRuns]) {
+      const detectorStarted = performance.now();
+      expect(findUnredactedSecret({ note: text })).toBeUndefined();
+      expect(performance.now() - detectorStarted).toBeLessThan(1000);
+      const transformStarted = performance.now();
+      expect(redactReportString(text)).toBe(text);
+      expect(performance.now() - transformStarted).toBeLessThan(1000);
+    }
+    // The tokenizers still find what the expressions find around such runs.
+    expect(findUnredactedSecret({ note: `${runs}; api-key=plain-secret` }))
+      .toEqual({ path: 'note', reason: 'assignment "api-key" is not redacted' });
+    expect(redactReportString(`${runs}; api-key=plain-secret`)).toBe(`${runs}; api-key=${REDACTED_VALUE}`);
+    // A run that ends in a hyphen joins the key after it into one compound key, as the app's expression does.
+    const compound = findUnredactedSecret({ note: `${runs} api-key=plain-secret` });
+    expect(compound.path).toBe('note');
+    expect(compound.reason.startsWith('assignment "a-a-')).toBe(true);
+    expect(compound.reason.endsWith('a- api-key" is not redacted')).toBe(true);
+    expect(findUnredactedSecret({ note: `${runs} x-scheme://alice:pw@host/` }))
+      .toEqual({ path: 'note', reason: 'URL carries credentials' });
+    const encodedMarker = encodeURIComponent(REDACTED_VALUE);
+    expect(redactReportString(`${runs} x-scheme://alice:pw@host/`))
+      .toBe(`${runs} x-scheme://${encodedMarker}:${encodedMarker}@host/`);
+  });
+
+  it('charges the detector and the transform to one inspection budget and refuses the text past it', () => {
+    const text = 'plain words '.repeat(1000);
+    const shared = createInspectionBudget();
+    withInspectionBudget(shared, () => {
+      expect(findUnredactedSecret({ note: text })).toBeUndefined();
+      const afterDetector = shared.scannedCharacters;
+      expect(afterDetector).toBeGreaterThan(text.length);
+      expect(redactReportValue({ note: text })).toEqual({ note: text });
+      expect(shared.scannedCharacters).toBeGreaterThan(afterDetector);
+    });
+    expect(shared.maxScannedCharacters).toBe(INSPECTION_BUDGET_MAX_SCANNED_CHARACTERS);
+
+    const tooSmall = () => createInspectionBudget({ maxScannedCharacters: text.length });
+    expect(() => withInspectionBudget(tooSmall(), () => findUnredactedSecret({ note: text }))).toThrow(InspectionBudgetExceededError);
+    expect(() => withInspectionBudget(tooSmall(), () => redactReportString(text))).toThrow(InspectionBudgetExceededError);
+    const fewCandidates = () => createInspectionBudget({ maxCandidates: 10 });
+    expect(() => withInspectionBudget(fewCandidates(), () => findUnredactedSecret({ note: 'a=1 '.repeat(20) }))).toThrow(InspectionBudgetExceededError);
+    expect(() => withInspectionBudget(fewCandidates(), () => redactReportString('a=1 '.repeat(20)))).toThrow(InspectionBudgetExceededError);
+    // The budget is restored after a throw, so the next standalone call starts fresh.
+    expect(findUnredactedSecret({ note: 'a=1 '.repeat(20) })).toBeUndefined();
+
+    // A standalone call runs under a default budget: a shape whose assignment
+    // walks the app repeats per sensitive key is refused rather than scanned on.
+    const quadratic = '/secret=%5BREDACTED%5D '.repeat(21000);
+    expect(findUnredactedSecret({ note: quadratic })).toBeUndefined();
+    const started = performance.now();
+    expect(() => redactReportString(quadratic)).toThrow(InspectionBudgetExceededError);
+    expect(performance.now() - started).toBeLessThan(10000);
   });
 });

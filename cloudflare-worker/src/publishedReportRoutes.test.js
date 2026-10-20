@@ -629,6 +629,99 @@ describe('publishing a report', () => {
     expect((await refused.json()).error).toBe('unredacted_content');
   });
 
+  it('publishes accepted-size evidence of hyphenated runs within a bounded time', async () => {
+    // F14: 400 KB of `a-` runs has a word boundary at every letter and no
+    // separator; the detector and the transform must scan it once, before any
+    // rate-limit work, rather than restart at each boundary.
+    const artifact = artifactFor(evaluation());
+    const byteLength = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    artifact.sections[0].evidence[0].message = 'a-'.repeat(200000);
+    expect(byteLength(artifact)).toBeLessThanOrEqual(PUBLISHED_REPORT_MAX_BYTES);
+    const started = Date.now();
+    const response = await publish(artifact);
+    expect(Date.now() - started).toBeLessThan(10000);
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+    const stored = await (await request(`/r/${id}`)).json();
+    expect(stored.sections[0].evidence[0].message).toBe(artifact.sections[0].evidence[0].message);
+  });
+
+  it('refuses an artifact that exhausts the inspection budget before any rate-limit or storage work', async () => {
+    // Each `/secret=…` is a sensitive assignment that no delimiter cuts short,
+    // so the transform's value walk repeats per key over the whole line: the
+    // one request budget shared by the detector and the transform runs out and
+    // the artifact is refused as uninspectable, with nothing stored and no
+    // rate-limit bucket touched.
+    const artifact = artifactFor(evaluation());
+    const byteLength = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    const unit = '/secret=%5BREDACTED%5D ';
+    const headroom = PUBLISHED_REPORT_MAX_BYTES - byteLength(artifact) - 1024;
+    artifact.sections[0].evidence[0].context = unit.repeat(Math.floor(headroom / unit.length));
+    expect(byteLength(artifact)).toBeLessThanOrEqual(PUBLISHED_REPORT_MAX_BYTES);
+    expect(findUnredactedSecret(artifact)).toBeUndefined();
+    const response = await publish(artifact);
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ error: 'uninspectable_content' });
+    expect([...env.PUBLISHED_REPORTS.instances.keys()]).toEqual([]);
+  });
+
+  it('stops reading a streamed body at the size limit and refuses a declared oversized length unread', async () => {
+    // F15: without a Content-Length the body is read from the stream and
+    // dropped as soon as the running total passes the limit: the handler reads
+    // exactly one chunk past it, buffers at most the limit, and cancels the
+    // rest instead of consuming it.
+    const CHUNK = 64 * 1024;
+    expect(PUBLISHED_REPORT_MAX_BYTES % CHUNK).toBe(0);
+    let delivered = 0;
+    let cancelled = false;
+    const endless = new ReadableStream({
+      pull(controller) {
+        delivered += CHUNK;
+        controller.enqueue(new Uint8Array(CHUNK).fill(0x7b));
+      },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 });
+    const response = await request('/r', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: endless, duplex: 'half',
+    });
+    expect(response.status).toBe(413);
+    expect((await response.json()).error).toBe('too_large');
+    expect(cancelled).toBe(true);
+    expect(delivered).toBe(PUBLISHED_REPORT_MAX_BYTES + CHUNK);
+
+    // A declared length past the limit is refused before the stream is read at all.
+    let pulls = 0;
+    const declared = new ReadableStream({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(16));
+      },
+    }, { highWaterMark: 0 });
+    const refused = await request('/r', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(PUBLISHED_REPORT_MAX_BYTES + 1) },
+      body: declared,
+      duplex: 'half',
+    });
+    expect(refused.status).toBe(413);
+    expect(pulls).toBe(0);
+
+    // A streamed body within the limit is read whole and handled as usual.
+    const small = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"not":'));
+        controller.enqueue(new TextEncoder().encode('"a report"}'));
+        controller.close();
+      },
+    });
+    const parsed = await request('/r', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: small, duplex: 'half',
+    });
+    expect(parsed.status).toBe(422);
+    expect((await parsed.json()).error).toBe('schema_validation_failed');
+    expect([...env.PUBLISHED_REPORTS.instances.keys()]).toEqual([]);
+  });
+
   it('rejects oversized bodies and non-public endpoints', async () => {
     const artifact = artifactFor(evaluation());
     artifact.sections[0].evidence[0].context = 'x'.repeat(600 * 1024);
