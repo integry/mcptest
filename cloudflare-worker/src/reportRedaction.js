@@ -313,9 +313,13 @@ const redactUrlsInText = (value, depth) => value.replace(URL_IN_TEXT_PATTERN, (c
 // pair separator `":"`, so `{"email":"alice@example.com"}` is not a userinfo
 // match while a credential inside a JSON string (`{"url":"alice:secret@host"}`)
 // still is. The scan visits every character once, so a long run without an `@`
-// costs nothing more than its length.
+// costs nothing more than its length. The host after the `@` starts with any
+// character that is not a run boundary: an ASCII label, a bracketed IPv6
+// address, a punycode label or an internationalized label (`éxample.com`),
+// and the password between the colon and the `@` is likewise any run of
+// non-boundary characters, so neither side is restricted to ASCII.
 const USERINFO_RUN_BOUNDARY = /[\s/@]/;
-const USERINFO_HOST_START = /[A-Za-z0-9]|\[[0-9A-Fa-f:.]+\]/y;
+const USERINFO_HOST_START = /[^\s/@]/y;
 
 const firstUserinfoColon = (value, runStart, at) => {
   for (let index = runStart + 1; index < at - 1; index += 1) {

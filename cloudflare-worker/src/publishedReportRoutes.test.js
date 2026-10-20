@@ -6,6 +6,7 @@ import { createPublicReport, serializePublicReportJson } from '../../src/utils/r
 import { analyzeToolSurface } from '../../src/utils/toolSurfaceAnalysis.ts';
 import { createCompatibilityMatrix, createReleaseDecision } from '../../src/utils/releaseReadiness.ts';
 import {
+  PUBLISHED_REPORT_MAX_BYTES,
   PUBLISHED_REPORT_RETENTION,
   publishedReportId,
 } from '../../src/utils/publishedReportIdentity.ts';
@@ -379,6 +380,19 @@ describe('publishing a report', () => {
     ['a percent-encoded userinfo password after a scheme without //', (artifact) => {
       artifact.sections[0].evidence[0].metadata = { command: 'curl https:alice:opaque%40credential%2F123%3Ax@files.example/report' };
     }],
+    // F13: the host after the `@` may start with an internationalized label.
+    ['a password in the userinfo before an internationalized host after a scheme without //', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'https:alice:opaquecredential123@éxample.com/report';
+    }],
+    ['a password in the userinfo of an https URL with an internationalized host', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'https://alice:opaquecredential123@éxample.com/report';
+    }],
+    ['a bare user:password@host before a punycode host', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { command: 'sftp alice:opaquecredential123@xn--xample-9ua.com:22' };
+    }],
+    ['a Unicode password before an internationalized host', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'mailto:alice:пароль-opaquecredential123@пример.рф';
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);
@@ -586,8 +600,18 @@ describe('publishing a report', () => {
   it('publishes accepted-size evidence full of ordinary brackets within a bounded time', async () => {
     // F11: tens of thousands of `[INFO]` fit the body limit; the transform must
     // not spend quadratic work on them before the request is answered.
+    // The fixture is sized from the artifact it rides in, so it stays just under
+    // the body limit however large the base artifact is: the test exercises the
+    // transform's budget, not the size cap.
     const artifact = artifactFor(evaluation());
-    artifact.sections[0].evidence[0].context = `${'[INFO] '.repeat(50000)}done`;
+    const byteLength = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    const bracket = '[INFO] ';
+    const headroom = PUBLISHED_REPORT_MAX_BYTES - byteLength(artifact) - 1024;
+    const brackets = bracket.repeat(Math.floor(headroom / bracket.length));
+    // Tens of thousands of brackets ride along however large the base artifact is.
+    expect(brackets.length).toBeGreaterThan(20000 * bracket.length);
+    artifact.sections[0].evidence[0].context = `${brackets}done`;
+    expect(byteLength(artifact)).toBeLessThanOrEqual(PUBLISHED_REPORT_MAX_BYTES);
     const started = Date.now();
     const response = await publish(artifact);
     expect(Date.now() - started).toBeLessThan(10000);
@@ -598,7 +622,8 @@ describe('publishing a report', () => {
 
     // A credential fragment hidden among the brackets is still refused, not stored.
     const withSecret = artifactFor(evaluation());
-    withSecret.sections[0].evidence[0].context = `${'[INFO] '.repeat(50000)}{"token":"plain-bracket-secret"} done`;
+    withSecret.sections[0].evidence[0].context = `${brackets}{"token":"plain-bracket-secret"} done`;
+    expect(byteLength(withSecret)).toBeLessThanOrEqual(PUBLISHED_REPORT_MAX_BYTES);
     const refused = await publish(withSecret);
     expect(refused.status).toBe(422);
     expect((await refused.json()).error).toBe('unredacted_content');

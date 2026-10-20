@@ -224,6 +224,57 @@ describe('the Worker port of the app redaction', () => {
     }
   });
 
+  it('redacts userinfo passwords before internationalized, punycode and Unicode hosts', () => {
+    // F13: the host after the `@` is not restricted to ASCII, so an
+    // internationalized label is no escape, with or without `://`.
+    const f13 = 'https:alice:opaquecredential123@éxample.com/report';
+    expect(findUnredactedSecret({ note: f13 })?.reason).toBe('userinfo carries a password');
+    const redacted = redactReportString(f13);
+    expect(redacted).toBe('https:[REDACTED]@éxample.com/report');
+    expect(redacted).not.toContain('opaquecredential123');
+    expect(findUnredactedSecret({ note: redacted })).toBeUndefined();
+    expect(redactReportString(redacted)).toBe(redacted);
+
+    for (const [text, secret, expected] of [
+      ['https://alice:idn-url-secret@éxample.com/report', 'idn-url-secret',
+        'https://%5BREDACTED%5D:%5BREDACTED%5D@xn--xample-9ua.com/report'],
+      ['sftp alice:punycode-secret@xn--xample-9ua.com:22', 'punycode-secret', 'sftp alice:[REDACTED]@xn--xample-9ua.com:22'],
+      ['mailto:alice:cyrillic-host-secret@пример.рф', 'cyrillic-host-secret', 'mailto:[REDACTED]@пример.рф'],
+      ['user alice:cjk-host-secret@例え.jp/share', 'cjk-host-secret', 'user alice:[REDACTED]@例え.jp/share'],
+      ['alice:emoji-host-secret@🔒.example', 'emoji-host-secret', 'alice:[REDACTED]@🔒.example'],
+      // The password is likewise any run of non-boundary characters.
+      ['alice:pässwörd-ünïcode@éxample.com', 'pässwörd-ünïcode', 'alice:[REDACTED]@éxample.com'],
+      ['ftp alice:пароль@files.example', 'пароль', 'ftp alice:[REDACTED]@files.example'],
+      ['{"url":"alice:json-idn-secret@éxample.com"}', 'json-idn-secret', '{"url":"alice:[REDACTED]@éxample.com"}'],
+      ['seen {"url":"https:alice:fragment-idn-secret@éxample.com"} end', 'fragment-idn-secret',
+        'seen {"url":"https:[REDACTED]@éxample.com"} end'],
+    ]) {
+      // The `://` forms are found by the URL scanner first; every other form by the userinfo scanner.
+      expect(findUnredactedSecret({ note: text }), text).toBeDefined();
+      const output = redactReportString(text);
+      expect(output, text).toBe(expected);
+      expect(output, text).not.toContain(secret);
+      expect(findUnredactedSecret({ note: output }), text).toBeUndefined();
+      expect(redactReportString(output), text).toBe(output);
+    }
+
+    // Internationalized addresses and hosts without a password are preserved.
+    for (const kept of [
+      'Contact: ops@éxample.com',
+      '{"email":"alice@пример.рф"}',
+      'https://xn--xample-9ua.com/mcp',
+      'alice:[REDACTED]@éxample.com',
+      'https:%5BREDACTED%5D@xn--xample-9ua.com/report',
+    ]) {
+      expect(redactReportString(kept), kept).toBe(kept);
+      expect(findUnredactedSecret({ note: kept }), kept).toBeUndefined();
+    }
+    // The URL scanner serializes an IDN host as punycode, which is not a redaction.
+    expect(redactReportString('https://éxample.com/mcp')).toBe('https://xn--xample-9ua.com/mcp');
+    expect(findUnredactedSecret({ note: 'https://éxample.com/mcp' })).toBeUndefined();
+  });
+
+
   it.each(CREDENTIAL_FUZZ_CASES)('stores nothing the guard recognizes for %s', (_name, text, secrets) => {
     // The storage invariant: an artifact the guard accepts after the transform
     // carries none of the fixture secrets, in any encoding the embeddings use.
