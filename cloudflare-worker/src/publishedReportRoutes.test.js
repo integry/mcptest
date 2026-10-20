@@ -646,6 +646,24 @@ describe('publishing a report', () => {
     expect(stored.sections[0].evidence[0].message).toBe(artifact.sections[0].evidence[0].message);
   });
 
+  it('publishes accepted-size evidence of repeated invalid scheme prefixes within a bounded time', async () => {
+    // F16: 300 KB of `9a://` has a separator every five characters but no
+    // scheme before any of them; the tokenizer must skip each separator
+    // without scanning the body after it, so the request completes within
+    // the inspection budget rather than at the runtime limit.
+    const artifact = artifactFor(evaluation());
+    const byteLength = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    artifact.sections[0].evidence[0].message = '9a://'.repeat(60000);
+    expect(byteLength(artifact)).toBeLessThanOrEqual(PUBLISHED_REPORT_MAX_BYTES);
+    const started = Date.now();
+    const response = await publish(artifact);
+    expect(Date.now() - started).toBeLessThan(10000);
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+    const stored = await (await request(`/r/${id}`)).json();
+    expect(stored.sections[0].evidence[0].message).toBe(artifact.sections[0].evidence[0].message);
+  });
+
   it('refuses an artifact that exhausts the inspection budget before any rate-limit or storage work', async () => {
     // Each `/secret=…` is a sensitive assignment that no delimiter cuts short,
     // so the transform's value walk repeats per key over the whole line: the

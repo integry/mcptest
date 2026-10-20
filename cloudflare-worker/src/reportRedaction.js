@@ -611,11 +611,22 @@ export const findUrlsInText = (value) => {
         start = index;
       }
     }
+    // Every walk is charged where it happens, so the loop's total work stays
+    // within the shared budget whatever shape the text takes.
+    chargeScannedCharacters(separator + 3 - from);
+    if (start === -1) {
+      // No scheme can start before this separator (`9a://`). Skip it without
+      // reading the body: the body is scanned again only from the next
+      // separator on, so repeated invalid prefixes cost their own length once.
+      from = separator + 3;
+      continue;
+    }
     let end = separator + 3;
     while (end < value.length && !isUrlBodyEnd(value[end])) end += 1;
-    if (start === -1 || end === separator + 3) {
-      // No match here; the expression goes on to try the positions after the
-      // separator, where the body may itself begin a URL (`9a://b://c`).
+    chargeScannedCharacters(end - (separator + 3));
+    if (end === separator + 3) {
+      // A scheme with an empty body is no URL; the expression goes on to try
+      // the positions after the separator.
       from = separator + 3;
       continue;
     }

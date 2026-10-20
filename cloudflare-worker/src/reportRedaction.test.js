@@ -14,6 +14,7 @@ import {
   InspectionBudgetExceededError,
   REDACTED_VALUE,
   createInspectionBudget,
+  findUrlsInText,
   redactReportString,
   redactReportValue,
   withInspectionBudget,
@@ -382,6 +383,43 @@ describe('the Worker port of the app redaction', () => {
     const encodedMarker = encodeURIComponent(REDACTED_VALUE);
     expect(redactReportString(`${runs} x-scheme://alice:pw@host/`))
       .toBe(`${runs} x-scheme://${encodedMarker}:${encodedMarker}@host/`);
+  });
+
+  it('scans 300 KB of repeated invalid scheme prefixes in well under a second (F16)', () => {
+    // `9a://` carries a separator but no scheme: `9` cannot start one and `a`
+    // has no word boundary before it. The tokenizer must skip such a separator
+    // without reading the whitespace-free body after it, or each of the 60,000
+    // separators rescans nearly the whole string. No candidate exists, so the
+    // transform is the identity and the budget is charged once per character walked.
+    const invalidPrefixes = '9a://'.repeat(60000);
+    expect(invalidPrefixes.length).toBe(300000);
+    const emptyBodies = 'a:// '.repeat(60000);
+    for (const text of [invalidPrefixes, emptyBodies]) {
+      const detectorStarted = performance.now();
+      expect(findUnredactedSecret({ note: text })).toBeUndefined();
+      expect(performance.now() - detectorStarted).toBeLessThan(1000);
+      const transformStarted = performance.now();
+      expect(redactReportString(text)).toBe(text);
+      expect(performance.now() - transformStarted).toBeLessThan(1000);
+      // The tokenizer charges the text once plus every character it walks, so
+      // its spend is linear: more than one pass, far from the quadratic cost.
+      const tokenizer = createInspectionBudget();
+      expect(withInspectionBudget(tokenizer, () => findUrlsInText(text))).toEqual([]);
+      expect(tokenizer.candidates).toBe(0);
+      expect(tokenizer.scannedCharacters).toBeGreaterThan(text.length);
+      expect(tokenizer.scannedCharacters).toBeLessThanOrEqual(text.length * 3);
+      const shared = createInspectionBudget();
+      withInspectionBudget(shared, () => findUnredactedSecret({ note: text }));
+      expect(shared.scannedCharacters).toBeLessThan(text.length * 64);
+    }
+    // A URL after the run is still found, and the body after an invalid prefix may itself start one.
+    expect(findUnredactedSecret({ note: `${invalidPrefixes} x-scheme://alice:pw@host/` }))
+      .toEqual({ path: 'note', reason: 'URL carries credentials' });
+    const encodedMarker = encodeURIComponent(REDACTED_VALUE);
+    expect(redactReportString(`${invalidPrefixes} x-scheme://alice:pw@host/`))
+      .toBe(`${invalidPrefixes} x-scheme://${encodedMarker}:${encodedMarker}@host/`);
+    expect(redactReportString('see 9a://b://alice:pw@host/ now'))
+      .toBe(`see 9a://b://${encodedMarker}:${encodedMarker}@host/ now`);
   });
 
   it('charges the detector and the transform to one inspection budget and refuses the text past it', () => {
