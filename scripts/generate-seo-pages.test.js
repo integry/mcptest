@@ -8,8 +8,9 @@ import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 import { extractOutline } from '../src/content/outline';
 
 const {
-  loadArticles, mergeCatalogServers, renderLearnArticleHtml, renderLearnIndexHtml, renderServerHtml,
-  renderMarkdown, renderSitemap, renderStaticPageHtml, validateCapabilitySnapshots,
+  loadArticles, mergeCatalogServers, renderCatalogHtml, renderHomeHtml, renderLearnArticleHtml,
+  renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
+  stripLandingFallback, validateCapabilitySnapshots,
 } = seoGenerator;
 const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
 const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
@@ -445,12 +446,13 @@ describe('generated page metadata', () => {
     expect(html.match(/Partial discovery:/g)).toHaveLength(1);
   });
 
-  it('uses the absolute local logo in social metadata and static profile markup', () => {
+  it('uses the server Open Graph card in social metadata and the local logo in static profile markup', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('property="og:image" content="https://mcptest.io/server-logos/example-server.svg"');
-    expect(html).toContain('name="twitter:image" content="https://mcptest.io/server-logos/example-server.svg"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/servers/example-server.png"');
+    expect(html).toContain('name="twitter:image" content="https://mcptest.io/og/servers/example-server.png"');
+    expect(html).toContain('name="twitter:card" content="summary_large_image"');
     expect(html).toContain('<img src="/server-logos/example-server.svg" alt=""');
     expect(html).not.toContain('server-profile-eyebrow');
   });
@@ -461,7 +463,7 @@ describe('generated page metadata', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).not.toContain('https://remote.example/logo.svg');
-    expect(html).toContain('property="og:image" content="https://mcptest.io/logo.png"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/servers/example-server.png"');
     expect(html).toContain('role="img" aria-label="Example Server logo"');
     expect(html).toContain('catalog-server-logo-initials');
   });
@@ -476,6 +478,37 @@ describe('generated page metadata', () => {
     expect(html).toContain(`name="description" content="${server.seoDescription}"`);
     expect(html).toContain(`property="og:description" content="${server.seoDescription}"`);
     expect(html).toContain(`name="twitter:description" content="${server.seoDescription}"`);
+  });
+
+  it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
+    const html = renderHomeHtml(indexHtml, { title: 'Home | mcptest.io', description: 'Home description.' }, 111);
+    const document = new DOMParser().parseFromString(html, 'text/html');
+
+    expect(html).toContain('rel="canonical" href="https://mcptest.io"');
+    expect(html).toContain('property="og:url" content="https://mcptest.io"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/home.png"');
+    const root = document.getElementById('root');
+    expect(root.querySelector('h1').textContent).toBe('Inspect, debug and evaluate remote MCP servers in your browser');
+    expect(root.querySelector('a[href="/catalog"]').textContent).toContain('Browse 111 public remote MCP servers');
+  });
+
+  it('removes a previous landing fallback so rerunning never copies it into other pages', () => {
+    const builtHome = renderHomeHtml(indexHtml, { title: 'Home', description: 'Home description.' }, 3);
+    const shell = stripLandingFallback(builtHome);
+
+    expect(shell).toContain('<div id="root"></div>');
+    expect(shell).not.toContain('landing-title');
+    expect(renderLearnIndexHtml(shell, learnIndex, articles)).not.toContain('seo-landing-fallback');
+    expect(() => stripLandingFallback('<html><body><div id="root"><p>x</p></div></body></html>')).toThrow('rebuild with Vite');
+  });
+
+  it('renders the catalog page with its own metadata and Open Graph card', () => {
+    const html = renderCatalogHtml(indexHtml, { title: 'Catalog | mcptest.io', description: 'Catalog description.' });
+
+    expect(html).toContain('<title>Catalog | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/catalog"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/catalog.png"');
+    expect(html).toContain('<div id="root"></div>');
   });
 
   it('renders unique initial metadata for documentation routes', () => {
@@ -509,6 +542,37 @@ describe('generated page metadata', () => {
     expect(html).toContain('Sources</h2>');
     expect(html).toContain('rel="prev" href="/learn/connect-remote-mcp-server"');
     expect(html).toContain('rel="next" href="/learn/oauth-for-mcp-explained"');
+  });
+
+  it('sets parseable large-card Open Graph and Twitter image tags and the feed link on article pages', () => {
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const shell = '<!DOCTYPE html><html><head><title>mcptest.io</title><meta property="og:image" content="https://mcptest.io/logo.png" /><meta name="twitter:card" content="summary" /></head><body><div id="root"></div></body></html>';
+    const document = new DOMParser().parseFromString(renderLearnArticleHtml(shell, article, articles, learnIndex), 'text/html');
+    const property = name => Array.from(document.head.querySelectorAll(`meta[property="${name}"]`), meta => meta.getAttribute('content'));
+    const named = name => Array.from(document.head.querySelectorAll(`meta[name="${name}"]`), meta => meta.getAttribute('content'));
+    const imageUrl = `https://mcptest.io/og${article.path}.png`;
+
+    expect(property('og:image')).toEqual([imageUrl]);
+    expect(property('og:image:width')).toEqual(['1200']);
+    expect(property('og:image:height')).toEqual(['630']);
+    expect(property('og:image:alt')).toEqual([`${article.title} | mcptest.io`]);
+    expect(property('og:title')).toEqual([`${article.title} | mcptest.io`]);
+    expect(property('og:url')).toEqual([`https://mcptest.io${article.path}`]);
+    expect(named('twitter:card')).toEqual(['summary_large_image']);
+    expect(named('twitter:image')).toEqual([imageUrl]);
+
+    const feeds = document.head.querySelectorAll('link[rel="alternate"][type="application/rss+xml"]');
+    expect(Array.from(feeds, link => link.getAttribute('href'))).toEqual(['https://mcptest.io/learn/feed.xml']);
+    const structuredData = JSON.parse(document.getElementById('server-structured-data').textContent);
+    expect(structuredData.image).toBe(imageUrl);
+  });
+
+  it('advertises the feed on the Learn index but not on server or documentation pages', () => {
+    const feedLink = 'type="application/rss+xml"';
+    expect(renderLearnIndexHtml(indexHtml, learnIndex, articles)).toContain(feedLink);
+    expect(renderLearnIndexHtml(indexHtml, learnIndex, articles)).toContain('property="og:image" content="https://mcptest.io/og/learn.png"');
+    expect(renderServerHtml(indexHtml, catalogServer('https://example.com/mcp', 'streamable-http'))).not.toContain(feedLink);
+    expect(renderStaticPageHtml(indexHtml, '/docs/contact', { title: 'Contact', description: 'Contact us.' })).not.toContain(feedLink);
   });
 
   it('nests the prerendered article inside a single-column shell so the no-JS layout reads top to bottom', () => {

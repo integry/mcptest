@@ -13,15 +13,32 @@ const {
   getArticleBodyMarkdown,
   getArticleMetaDescription,
   getArticleMetaTitle,
+  getTrack,
   getTrackNeighbors,
 } = require('../src/content/contentModel.ts');
 const { extractHeadings, splitHeadingAnchor } = require('../src/content/outline.ts');
 const { loadArticles } = require('./content/loadArticles.js');
 const {
+  FEED_PATH,
+  FEED_TITLE,
+  FEED_URL,
   articleMarkdownPath,
   renderArticleMarkdown,
+  renderLearnFeed,
   renderLlmsTxt,
 } = require('./content/machineReadable.js');
+const {
+  LANDING_AUDIENCE_PATHS,
+  LANDING_CATALOG_LINK_PREFIX,
+  LANDING_CATALOG_LINK_SUFFIX,
+  LANDING_COVERAGE_TITLE,
+  LANDING_HEADLINE,
+  LANDING_LEDE,
+  LANDING_PATHS_LABEL,
+  LANDING_REPORT_COVERAGE,
+} = require('../src/content/landingCopy.ts');
+const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/utils/ogImage.ts');
+const { writeOgImages } = require('./og/ogImages.js');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -31,6 +48,7 @@ const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
 const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.json');
 const capabilitiesPath = path.join(projectRoot, 'src', 'data', 'catalogCapabilities.json');
 const pageMetadataPath = path.join(projectRoot, 'src', 'data', 'pageMetadata.json');
+const publicRoot = path.join(projectRoot, 'public');
 const DEFAULT_LEARN_INDEX = { title: 'Learn MCP' };
 const STANDALONE_CREDENTIAL = /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}|sk-(?:proj-)?[A-Za-z0-9_-]{20,255}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox(?:b|p|a|r|s)-[A-Za-z0-9-]{20,255}|npm_[A-Za-z0-9]{20,255}|glpat-[A-Za-z0-9_-]{20,255}|hf_[A-Za-z0-9]{20,255})(?![A-Za-z0-9])/g;
 
@@ -281,6 +299,32 @@ function setNamedMeta(html, name, content) {
   );
 }
 
+/** Advertises the guides RSS feed in a page head. */
+function setFeedLink(html) {
+  return replaceOrInsertHead(
+    html,
+    /<link\s+[^>]*type=["']application\/rss\+xml["'][^>]*>/i,
+    `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(FEED_TITLE)}" href="${escapeHtml(FEED_URL)}" />`
+  );
+}
+
+/** Absolute URL of the build-time Open Graph image for a page path. */
+function ogImageUrl(pathname) {
+  return `${SITE_URL}${getOgImagePath(pathname)}`;
+}
+
+/** Large-card social image tags for Open Graph and Twitter. */
+function setSocialImage(html, imageUrl, alt) {
+  html = setNamedMeta(html, 'twitter:card', 'summary_large_image');
+  html = setNamedMeta(html, 'twitter:image', imageUrl);
+  html = setNamedMeta(html, 'twitter:image:alt', alt);
+  html = setPropertyMeta(html, 'og:image', imageUrl);
+  html = setPropertyMeta(html, 'og:image:width', String(OG_IMAGE_WIDTH));
+  html = setPropertyMeta(html, 'og:image:height', String(OG_IMAGE_HEIGHT));
+  html = setPropertyMeta(html, 'og:image:alt', alt);
+  return html;
+}
+
 function serverInitials(name) {
   const words = String(name).match(/[\p{L}\p{N}]+/gu) || [];
   const initials = words.length > 1
@@ -482,9 +526,7 @@ function renderServerHtml(indexHtml, server) {
     server.seoDescription
       || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
   );
-  const imageUrl = isLocalServerLogo(server.logoUrl)
-    ? `${SITE_URL}${server.logoUrl}`
-    : `${SITE_URL}/logo.png`;
+  const imageUrl = ogImageUrl(serverPath(server.id));
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'WebAPI',
@@ -521,15 +563,13 @@ function renderServerHtml(indexHtml, server) {
 
   let html = indexHtml.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(title)}</title>`);
   html = setNamedMeta(html, 'description', description);
-  html = setNamedMeta(html, 'twitter:card', 'summary');
   html = setNamedMeta(html, 'twitter:title', title);
   html = setNamedMeta(html, 'twitter:description', description);
-  html = setNamedMeta(html, 'twitter:image', imageUrl);
   html = setPropertyMeta(html, 'og:title', title);
   html = setPropertyMeta(html, 'og:description', description);
   html = setPropertyMeta(html, 'og:url', canonicalUrl);
-  html = setPropertyMeta(html, 'og:image', imageUrl);
   html = setPropertyMeta(html, 'og:type', 'website');
+  html = setSocialImage(html, imageUrl, title);
   html = replaceOrInsertHead(
     html,
     /<link\s+[^>]*rel=["']canonical["'][^>]*>/i,
@@ -549,23 +589,26 @@ function renderServerHtml(indexHtml, server) {
   return html;
 }
 
+/**
+ * Head metadata (and optional static body) for a prerendered page. Every page
+ * gets its build-time Open Graph image; `options.feed` adds the guides RSS
+ * link. The home page's canonical URL has no trailing slash, as in the app.
+ */
 function renderStaticPageHtml(indexHtml, pathname, metadata, options = {}) {
-  const canonicalUrl = `${SITE_URL}${pathname}`;
-  const imageUrl = `${SITE_URL}/logo.png`;
+  const canonicalUrl = pathname === '/' ? SITE_URL : `${SITE_URL}${pathname}`;
   let html = indexHtml.replace(
     /<title>[^<]*<\/title>/i,
     `<title>${escapeHtml(metadata.title)}</title>`
   );
   html = setNamedMeta(html, 'description', metadata.description);
-  html = setNamedMeta(html, 'twitter:card', 'summary');
   html = setNamedMeta(html, 'twitter:title', metadata.title);
   html = setNamedMeta(html, 'twitter:description', metadata.description);
-  html = setNamedMeta(html, 'twitter:image', imageUrl);
   html = setPropertyMeta(html, 'og:title', metadata.title);
   html = setPropertyMeta(html, 'og:description', metadata.description);
   html = setPropertyMeta(html, 'og:url', canonicalUrl);
-  html = setPropertyMeta(html, 'og:image', imageUrl);
   html = setPropertyMeta(html, 'og:type', options.type || 'website');
+  html = setSocialImage(html, ogImageUrl(pathname), metadata.title);
+  if (options.feed) html = setFeedLink(html);
   html = replaceOrInsertHead(
     html,
     /<link\s+[^>]*rel=["']canonical["'][^>]*>/i,
@@ -845,6 +888,7 @@ function getLearnArticleStructuredData(article, learnIndex) {
       url: SITE_URL,
       logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` },
     },
+    image: ogImageUrl(article.path),
     citation: article.sourceLinks.map(({ url }) => url),
     isPartOf: { '@type': 'CollectionPage', name: learnIndex.title, url: `${SITE_URL}/learn` },
   };
@@ -856,6 +900,7 @@ function renderLearnArticleHtml(indexHtml, article, articles, learnIndex = DEFAU
     description: getArticleMetaDescription(article),
   }, {
     type: 'article',
+    feed: true,
     structuredData: getLearnArticleStructuredData(article, learnIndex),
     fallbackHtml: renderLearnArticleFallback(article, articles),
   });
@@ -866,8 +911,117 @@ function renderLearnIndexHtml(indexHtml, learnIndex, articles) {
     title: `${learnIndex.title} | mcptest.io`,
     description: learnIndex.description,
   }, {
+    feed: true,
     fallbackHtml: renderLearnIndexFallback(learnIndex, articles),
   });
+}
+
+const LANDING_FALLBACK_PATTERN = /<div id="root">\s*<section class="landing seo-landing-fallback"[\s\S]*?<\/section>\s*<\/div>/;
+
+/**
+ * Static copy of LandingHero for crawlers: the same strings from
+ * src/content/landingCopy.ts in the component's own elements and classes, so
+ * the page looks the same before React mounts and replaces the root. The
+ * connect form and quick picks are interactive and left to the app.
+ */
+function renderLandingFallback(catalogCount) {
+  return [
+    '<section class="landing seo-landing-fallback" aria-labelledby="landing-title">',
+    '  <div class="landing-hero">',
+    `    <h1 id="landing-title" class="landing-title">${escapeHtml(LANDING_HEADLINE)}</h1>`,
+    `    <p class="landing-lede">${escapeHtml(LANDING_LEDE)}</p>`,
+    '  </div>',
+    `  <nav class="landing-paths" aria-label="${escapeHtml(LANDING_PATHS_LABEL)}">`,
+    '    <ul>',
+    ...LANDING_AUDIENCE_PATHS.map(item => [
+      `      <li><a href="${escapeHtml(item.to)}" class="landing-path">`,
+      `<span class="landing-path-title">${escapeHtml(item.title)}</span>`,
+      `<span class="landing-path-description">${escapeHtml(item.description)}</span>`,
+      '<span class="landing-path-arrow" aria-hidden="true">&rarr;</span></a></li>',
+    ].join('')),
+    '    </ul>',
+    '  </nav>',
+    '  <div class="landing-coverage">',
+    `    <h2 class="landing-coverage-title">${escapeHtml(LANDING_COVERAGE_TITLE)}</h2>`,
+    '    <ul>',
+    ...LANDING_REPORT_COVERAGE.map(item => (
+      `      <li><i class="bi bi-check2" aria-hidden="true"></i>${escapeHtml(item)}</li>`
+    )),
+    '    </ul>',
+    '  </div>',
+    '  <p class="landing-catalog">',
+    `    <a href="/catalog">${escapeHtml(LANDING_CATALOG_LINK_PREFIX)} ${catalogCount} ${escapeHtml(LANDING_CATALOG_LINK_SUFFIX)} <span aria-hidden="true">&rarr;</span></a>`,
+    '  </p>',
+    '</section>',
+  ].join('\n');
+}
+
+/**
+ * dist/index.html is both the home page and the shell every other page is
+ * rendered from. Running the generator twice must not copy the landing
+ * fallback into other pages, so a previous run's fallback is removed first.
+ */
+function stripLandingFallback(indexHtml) {
+  const html = indexHtml.replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>');
+  if (!html.includes('<div id="root"></div>')) {
+    throw new Error('dist/index.html has no empty <div id="root"></div>; rebuild with Vite before generating SEO pages.');
+  }
+  return html;
+}
+
+function renderHomeHtml(indexHtml, homeMetadata, catalogCount) {
+  return renderStaticPageHtml(indexHtml, '/', homeMetadata, {
+    fallbackHtml: renderLandingFallback(catalogCount),
+  });
+}
+
+function renderCatalogHtml(indexHtml, catalogMetadata) {
+  return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata);
+}
+
+/** Title without the trailing `| mcptest.io` suffix, for image cards. */
+function stripSiteSuffix(title) {
+  return title.replace(/\s*\|\s*mcptest\.io$/i, '');
+}
+
+/** One Open Graph card per prerendered page. */
+function buildOgCards({ servers, articles, pageMetadata }) {
+  const cards = [
+    { pagePath: '/', title: LANDING_HEADLINE, summary: LANDING_LEDE },
+    {
+      pagePath: '/catalog',
+      eyebrow: 'Server catalog',
+      title: stripSiteSuffix(pageMetadata.catalog.title),
+      summary: `${servers.length} public remote MCP servers. ${pageMetadata.catalog.description}`,
+    },
+    { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
+    ...Object.entries(pageMetadata.docs).map(([slug, metadata]) => ({
+      pagePath: `/docs/${slug}`,
+      title: stripSiteSuffix(metadata.title),
+      summary: metadata.description,
+    })),
+    ...articles.map(article => ({
+      pagePath: article.path,
+      eyebrow: `Guide · ${getTrack(article.track)?.label || article.category}`,
+      title: article.title,
+      summary: article.summary,
+    })),
+    ...servers.map(server => ({
+      pagePath: serverPath(server.id),
+      eyebrow: `MCP server · ${server.category}`,
+      title: server.name,
+      summary: server.description,
+      ...(isLocalServerLogo(server.logoUrl)
+        ? { logoFile: path.join(publicRoot, ...server.logoUrl.split('/').filter(Boolean)) }
+        : { initials: serverInitials(server.name) }),
+    })),
+  ];
+  for (const card of cards) {
+    if (card.logoFile && !card.logoFile.startsWith(publicRoot + path.sep)) {
+      throw new Error(`Server logo resolves outside public/: ${card.logoFile}`);
+    }
+  }
+  return cards;
 }
 
 function writeServerPages(indexHtml, servers) {
@@ -924,6 +1078,17 @@ function writeArticlePages(indexHtml, learnIndex, articles) {
     );
     fs.writeFileSync(distPathFor(articleMarkdownPath(article)), renderArticleMarkdown(article), 'utf8');
   }
+}
+
+function writeHomeAndCatalogPages(indexHtml, pageMetadata, catalogCount) {
+  // catalog.html, not catalog/index.html: hosts serve /catalog from it without
+  // a trailing-slash redirect, and the app matches /catalog exactly.
+  fs.writeFileSync(path.join(distRoot, 'catalog.html'), renderCatalogHtml(indexHtml, pageMetadata.catalog), 'utf8');
+  fs.writeFileSync(indexPath, renderHomeHtml(indexHtml, pageMetadata.home, catalogCount), 'utf8');
+}
+
+function writeLearnFeed(articles, learnIndex) {
+  fs.writeFileSync(distPathFor(FEED_PATH), renderLearnFeed(articles, learnIndex), 'utf8');
 }
 
 function writeLlmsTxt(articles) {
@@ -1114,7 +1279,15 @@ function validateLearnIndex(learnIndex) {
   }
 }
 
-function main() {
+function validatePageMetadata(pageMetadata) {
+  for (const key of ['home', 'catalog']) {
+    if (!pageMetadata[key]?.title || !pageMetadata[key]?.description) {
+      throw new Error(`pageMetadata.json requires a title and description for ${key}.`);
+    }
+  }
+}
+
+async function main() {
   if (!fs.existsSync(indexPath)) {
     throw new Error('dist/index.html is missing; run Vite before generating SEO pages.');
   }
@@ -1127,29 +1300,45 @@ function main() {
   validateInputs(seeds);
   validateCapabilitySnapshots(capabilitySnapshots, seeds);
   validateLearnIndex(learnIndex);
+  validatePageMetadata(pageMetadata);
   const articles = loadArticles({
     reservedPaths: Object.keys(pageMetadata.docs).map(slug => `/docs/${slug}`),
   });
   const servers = mergeCatalogServers(seeds, validationResults, capabilitySnapshots);
-  const indexHtml = fs.readFileSync(indexPath, 'utf8');
+  const indexHtml = stripLandingFallback(fs.readFileSync(indexPath, 'utf8'));
 
   writeServerPages(indexHtml, servers);
   writeStaticPages(indexHtml, pageMetadata.docs);
   writeArticlePages(indexHtml, learnIndex, articles);
+  // Last: overwrites the shell the pages above were rendered from.
+  writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length);
+  writeLearnFeed(articles, learnIndex);
   writeLlmsTxt(articles);
   writeSitemap(servers, articles);
 
-  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), llms.txt, sitemap.xml, and robots.txt.`);
+  const ogStartedAt = Date.now();
+  const cards = buildOgCards({ servers, articles, pageMetadata });
+  const og = await writeOgImages(cards, { distRoot });
+
+  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, llms.txt, sitemap.xml, and robots.txt.`);
+  console.log(`Open Graph images: ${cards.length} (${og.rendered} rendered, ${og.cached} from cache) in ${((Date.now() - ogStartedAt) / 1000).toFixed(1)}s.`);
 }
 
 if (require.main === module || process.argv[1] === __filename) {
-  main();
+  main().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
 
 module.exports = {
+  buildOgCards,
   loadArticles,
   mergeCatalogServers,
   renderArticleMarkdown,
+  renderCatalogHtml,
+  renderHomeHtml,
+  renderLandingFallback,
   renderLearnArticleHtml,
   renderLearnIndexHtml,
   renderLlmsTxt,
@@ -1161,6 +1350,7 @@ module.exports = {
   renderSitemap,
   renderStaticPageHtml,
   serverPath,
+  stripLandingFallback,
   transportLabel,
   validateCapabilitySnapshots,
 };

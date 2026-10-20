@@ -44,6 +44,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
@@ -51,6 +52,7 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "jsdom": "^26.1.0",
+    "satori": "^0.63.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vite-node": "^3.2.4",
@@ -58,9 +60,11 @@
     "wrangler": "^4.151.2"
   },
   "//": [
-    "overrides.@grpc/grpc-js: firebase -> @firebase/firestore pins ~1.9.0; 1.13.7 fixes GHSA-m9gg-hp2v-232j and GHSA-f596-whhp-79r4 (minor bump, client API unchanged). Remove once @firebase/firestore depends on a fixed grpc-js."
+    "overrides.@grpc/grpc-js: firebase -> @firebase/firestore pins ~1.9.0; 1.13.7 fixes GHSA-m9gg-hp2v-232j and GHSA-f596-whhp-79r4 (minor bump, client API unchanged). Remove once @firebase/firestore depends on a fixed grpc-js.",
+    "overrides.fflate: satori pins fflate 0.7.3 (GHSA-px8p-9vwx-vf98, unzipSync ZIP64 loop). satori only calls inflateSync, whose API is unchanged in 0.8.x. Remove once satori depends on a fixed fflate."
   ],
   "overrides": {
-    "@grpc/grpc-js": "~1.13.7"
+    "@grpc/grpc-js": "~1.13.7",
+    "fflate": "^0.8.3"
   }
 }
