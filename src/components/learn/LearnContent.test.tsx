@@ -125,6 +125,21 @@ describe('content registry', () => {
     expect(TRACK_NAVIGATION[0].items[0].path).toBe('/docs/what-is-mcp');
   });
 
+  it('keeps environment references unexpanded in shell commands that save MCP server config', () => {
+    const shellBlocks = (markdown: string) =>
+      [...markdown.matchAll(/^[ \t]*```(?:bash|sh|shell|console)\n([\s\S]*?)^[ \t]*```/gm)].map(match => match[1]);
+    const mcpAddCommands = LEARN_ARTICLES.flatMap(article =>
+      shellBlocks(article.content)
+        .flatMap(block => block.replace(/\\\n/g, ' ').split('\n'))
+        .filter(command => /\bmcp add\b/.test(command))
+        .map(command => ({ slug: article.slug, command }))
+    );
+    expect(mcpAddCommands.some(({ command }) => command.includes("'Authorization: Bearer ${EXAMPLE_TOKEN}'"))).toBe(true);
+    for (const { slug, command } of mcpAddCommands) {
+      expect(command, slug).not.toMatch(/"[^"]*\$[^"]*"/);
+    }
+  });
+
   it('generates the resource hub links from the tracks', () => {
     expect(RESOURCE_NAV_ITEMS.map(item => item.path)).toEqual(['/docs/what-is-mcp', '/learn', '/docs/troubleshooting']);
     expect(RESOURCE_NAV_ITEMS[0].label).toBe('What is MCP?');
