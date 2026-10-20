@@ -40,6 +40,12 @@ import type {
 } from '../types/capabilityInventory';
 import { createCapabilityInventory } from './capabilityInventory';
 import { requestCapabilityDiscoveryPage } from './mcpClient';
+import {
+  collectTransportDiagnostics,
+  transportDiagnosticReportDetail,
+  transportDiagnosticSourcesFromFailures,
+  type TransportDiagnosticSource,
+} from './transportDiagnostics';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
@@ -440,6 +446,8 @@ interface ConnectedEvaluation {
   protocolVersion?: string;
   usedProxy: boolean;
   directError?: string;
+  /** The direct route's failure, kept for its transport evidence. */
+  directFailureError?: unknown;
   observedRequests?: readonly ObservedTransportRequest[];
   takeAuthenticationChallenge?: () => ObservedAuthenticationChallenge | undefined;
 }
@@ -623,7 +631,12 @@ const connectForEvaluation = async (
         undefined,
         pendingRetry?.observeRequest('proxy')
       );
-      return { ...proxied, usedProxy: true, directError: directFailure.message };
+      return {
+        ...proxied,
+        usedProxy: true,
+        directError: directFailure.message,
+        directFailureError: directError,
+      };
     } catch (proxyError) {
       const proxyFailure = makeRouteFailure('proxy', proxyError, undefined, undefined, proxyStartedAt);
       // The proxy's own caller limit is not a target failure; say how to lift it.
@@ -1164,8 +1177,36 @@ const evaluateBrowserAccessibility = (
       metadata: { transportType: connection.transportType },
     }
   );
+  const exposedInitialize = connection.observedRequests?.find((request) => (
+    request.mcpMethod === 'initialize'
+    && request.crossOrigin === true
+    && request.readableResponseHeaders?.includes('mcp-session-id')
+  ));
+  if (exposedInitialize) {
+    section.details.push({
+      text: '✓ The browser could read Mcp-Session-Id on the initialize response',
+      context: 'The server lists the session header in Access-Control-Expose-Headers, so cross-origin web clients can keep the session.',
+      metadata: { readableResponseHeaders: [...(exposedInitialize.readableResponseHeaders || [])] },
+    });
+  }
 
   return section;
+};
+
+/**
+ * Records transport diagnostics as transport-section evidence. They do not
+ * change the score; release readiness turns detected ones into priorities.
+ */
+const appendTransportDiagnostics = (
+  report: EvaluationReport,
+  sources: readonly TransportDiagnosticSource[],
+  runtime: NonNullable<EvaluationOptions['runtime']>
+): void => {
+  const section = report.sections.transport;
+  if (!section) return;
+  for (const diagnostic of collectTransportDiagnostics(sources, runtime)) {
+    section.details.push(transportDiagnosticReportDetail(diagnostic));
+  }
 };
 
 const performanceSection = (durationMs: number): EvaluationSection => {
@@ -1416,6 +1457,11 @@ export async function evaluateServer(
       15,
       'Performance was not scored because negotiation failed.'
     );
+    appendTransportDiagnostics(
+      report,
+      transportDiagnosticSourcesFromFailures(failures),
+      runtime
+    );
     report.finalScore = report.sections.cors.score;
     onProgress('Evaluation finished without an MCP connection.');
     return report;
@@ -1561,6 +1607,18 @@ export async function evaluateServer(
     } else {
       onProgress('Browser CORS checks are not applicable in the headless runtime.');
     }
+
+    appendTransportDiagnostics(report, [
+      ...(connection.directFailureError === undefined
+        ? []
+        : transportDiagnosticSourcesFromFailures([
+            { route: 'direct', error: connection.directFailureError },
+          ])),
+      {
+        route: connection.usedProxy ? 'proxy' : 'direct',
+        requests: connection.observedRequests || [],
+      },
+    ], runtime);
 
     report.sections.performance = performanceSection(durationMs);
     report.finalScore = Object.entries(report.sections)

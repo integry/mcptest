@@ -18,6 +18,24 @@ The exact URL entered by a user or supplied by the catalog is tried first. Conve
 For command-line and GitHub Actions usage, credential handling, thresholds, and
 stable exit codes, see the [headless release gate guide](docs/headless-release-gate.md).
 
+## Embedding a badge
+
+Show that your MCP server has been tested by adding a badge to its README. Every report page and catalog server profile has a "Share and embed" section with ready-to-copy Markdown, HTML and reStructuredText snippets that link to the public report for the endpoint.
+
+```markdown
+[![Tested on mcptest.io](https://mcptest.io/badge/mcptest.svg)](https://mcptest.io/report/https%3A%2F%2Fexample.com%2Fmcp)
+```
+
+Replace the URL-encoded endpoint after `/report/` with your own. Result badges use the release decision vocabulary from the report: `ready.svg`, `review.svg`, `blocked.svg`, `unknown.svg` and `authorization-required.svg` under `https://mcptest.io/badge/`. These static badges record the result at the time you copied the snippet.
+
+Catalog servers can use a badge that follows the latest catalog validation instead:
+
+```markdown
+[![Tested on mcptest.io](https://mcptest.io/badge/server/context7.svg)](https://mcptest.io/servers/context7/)
+```
+
+The main worker serves `GET /badge/server/<catalog id>.svg` from validation data bundled at build time (`src/data/catalogValidation.json`), so a badge request never contacts the MCP server. Redeploy the worker after running `npm run validate-catalog` to publish new results. A negotiated session maps to `ready`, an authentication challenge to `authorization-required`, an offline endpoint to `blocked` and an inconclusive probe to `unknown`. Unknown ids return the neutral badge with HTTP 200, so an embed never shows a broken image. Run `npm run generate-badges` after changing `src/utils/badges.ts` to regenerate the static SVGs in `public/badge/`.
+
 ## Report history and privacy
 
 Completed reports are saved as redacted snapshots in the current browser so the report page can show semantic drift. History retains the newest 10 snapshots for each endpoint and 20 snapshots overall. Once either limit is reached, the oldest applicable snapshots are removed automatically.
@@ -91,6 +109,8 @@ npm run build:workers
 Catalog seeds live in `src/data/serverCatalog.json`; `src/data/serverCatalog.ts` combines them with the latest validation snapshot. Run `npm run validate-catalog` after changing a seed. Validation uses actual MCP negotiation and records the observed endpoint, transport, protocol era, version, reachability, and authentication requirement in `src/data/catalogValidation.json`.
 
 A protected endpoint that returns a valid authentication challenge can be catalog-valid and reachable without being transport-verified anonymously. Keep that distinction explicit in catalog metadata and UI copy.
+
+Server authors can submit a new entry by pull request. See [docs/catalog-submissions.md](docs/catalog-submissions.md) for the required fields, the validation that runs, and the logo licensing rules.
 
 ## Core JSON-RPC methods
 

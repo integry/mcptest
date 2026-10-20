@@ -19,6 +19,8 @@ import {
   getProxyLimitPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
+  OAuthForbiddenError,
+  planOAuthChallengeResponse,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
@@ -29,6 +31,7 @@ import {
 } from '../utils/oauthTrace';
 import {
   collectConnectionAttemptFacts,
+  collectConnectionTransportDiagnostics,
   type ConnectionErrorDetails,
   type ConnectionFailureEvidence,
 } from '../utils/connectionDiagnostics';
@@ -624,10 +627,21 @@ export const useConnection = (
           // A pending authenticated retry suppresses recursive discovery, but
           // terminalization belongs to the outer connection-attempt boundary.
           const suppressOAuthDiscovery = oauthRetryPending;
+          const challengePlan = challenge?.source === 'target' && !hasExplicitTargetCredential
+            ? planOAuthChallengeResponse({
+                status: challenge.status,
+                wwwAuthenticate: challenge.responseHeaders?.['www-authenticate'],
+                sentAccessToken: Boolean(latestAccessToken),
+                refreshable: Boolean(
+                  latestAccessToken && loadOAuthAuthorization(targetUrl)?.refreshable
+                ),
+              })
+            : undefined;
           const shouldDiscoverOAuth = challenge?.source === 'target'
             && !attemptedAutomaticOAuth
             && !suppressOAuthDiscovery
-            && !hasExplicitTargetCredential;
+            && !hasExplicitTargetCredential
+            && challengePlan?.kind !== 'forbidden';
 
           // The proxy's own caller limit is never a target/server error.
           const proxyLimit = getProxyCallerLimit(error);
@@ -686,6 +700,11 @@ export const useConnection = (
               addLogEntry({ type: 'warning', data: prerequisite.explanation });
               return;
             }
+            if (challengePlan?.kind === 'forbidden' && !suppressOAuthDiscovery) {
+              // Surface the 403 once with its explanation; never re-authorize.
+              oauthTrace?.terminal('failed', challengePlan.explanation);
+              throw new OAuthForbiddenError(challengePlan.explanation, { cause: error });
+            }
             if (!suppressOAuthDiscovery) oauthTrace?.terminal(
               'failed',
               challenge?.source === 'proxy'
@@ -719,7 +738,11 @@ export const useConnection = (
               ? await currentUser.getIdToken()
               : undefined;
             const result = await beginOAuthFlow(targetUrl, {
-              ...(latestAccessToken ? { forceReauthorization: true } : {}),
+              ...(challengePlan?.kind === 'refresh'
+                ? { refreshOnly: true }
+                : challengePlan?.kind === 'step_up'
+                  ? { stepUp: true }
+                  : latestAccessToken ? { forceReauthorization: true } : {}),
               ...(challenge.resourceMetadataUrl
                 ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
                 : {}),
@@ -834,6 +857,7 @@ export const useConnection = (
                 effectivePreferredTransport
               ),
               transportEvidence: diagnosticTransportEvidence,
+              transportDiagnostics: collectConnectionTransportDiagnostics(diagnosticFailures),
               expectedAuthentication: 'oauth',
               supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
               serverReachable: catalogEndpointEvidence?.serverReachable,
@@ -901,19 +925,21 @@ export const useConnection = (
                 serverUrl: targetUrl, // Report error against the target URL
                 operation: 'connection'
             });
+            const reportedFailures: ConnectionFailureEvidence[] = diagnosticFailures.length > 0
+              ? diagnosticFailures
+              : [{ route: connectionRoute, error }];
             setConnectionError({
                 error: errorDetails,
                 serverUrl: targetUrl,
                 timestamp: new Date(),
                 details: error.stack || error.toString(),
                 attempts: collectConnectionAttemptFacts(
-                  diagnosticFailures.length > 0
-                    ? diagnosticFailures
-                    : [{ route: connectionRoute, error }],
+                  reportedFailures,
                   targetUrl,
                   effectivePreferredTransport
                 ),
                 transportEvidence: diagnosticTransportEvidence,
+                transportDiagnostics: collectConnectionTransportDiagnostics(reportedFailures),
                 expectedAuthentication,
                 supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
                 serverReachable: catalogEndpointEvidence?.serverReachable,

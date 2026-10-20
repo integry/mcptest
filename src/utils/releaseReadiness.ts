@@ -17,6 +17,11 @@ import type { EvaluationReport } from './evaluation';
 import { resolveEvaluationOutcome } from './evaluation';
 import type { OAuthTraceV1 } from './oauthTrace';
 import { OUTPUT_CONTRACT_FINDING_ID } from './outputContract';
+import type { TransportDiagnostic } from '../types/transportDiagnostics';
+import {
+  detectedTransportDiagnostics,
+  transportDiagnosticsFromSections,
+} from './transportDiagnostics';
 
 const observed = <T>(
   value: Known<T>,
@@ -448,6 +453,26 @@ const severityOrder: Record<ReleasePriority['severity'], number> = {
   unknown: 3,
 };
 
+/**
+ * A detected transport diagnostic as a release priority with the same stable
+ * id. Errors block release; warnings (such as an optional GET stream refused
+ * with 405) only ask for review.
+ */
+export const transportDiagnosticPriority = (
+  diagnostic: TransportDiagnostic
+): ReleasePriority | undefined => {
+  if (diagnostic.status !== 'detected' || diagnostic.severity === 'info') return undefined;
+  const observation = diagnostic.evidence[0]?.observation;
+  return {
+    id: diagnostic.id,
+    severity: diagnostic.severity === 'error' ? 'high' : 'medium',
+    title: diagnostic.title,
+    detail: observation ? `${observation} ${diagnostic.explanation}` : diagnostic.explanation,
+    remediation: diagnostic.remediation.summary,
+    source: 'Evaluation',
+  };
+};
+
 /** Builds one prioritized decision from protocol, host, and tool-surface evidence. */
 export const createReleaseDecision = (
   report: EvaluationReport,
@@ -538,6 +563,10 @@ export const createReleaseDecision = (
       remediation: 'Resolve the skipped check shown in protocol evidence and rerun until the report completes.',
       source: 'Evaluation',
     });
+  }
+  for (const diagnostic of detectedTransportDiagnostics(transportDiagnosticsFromSections(report.sections))) {
+    const priority = transportDiagnosticPriority(diagnostic);
+    if (priority) priorities.push(priority);
   }
   for (const assessment of Object.values(matrix.assessments)) {
     for (const finding of assessment.findings) {

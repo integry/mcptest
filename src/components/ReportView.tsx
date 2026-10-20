@@ -5,6 +5,7 @@ import OAuthConfig from './OAuthConfig';
 import ReportAuthorizationGate from './ReportAuthorizationGate';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
 import ReportHistory from './ReportHistory';
+import ReportBadgeEmbed from './ReportBadgeEmbed';
 import {
   beginOAuthFlow,
   getHostedOAuthTokenProxyUrl,
@@ -936,6 +937,9 @@ const ReportView: React.FC = () => {
                 )}
               </>}
             />
+            {!reportRequiresProxyAuthentication && (
+              <ReportBadgeEmbed report={report} oauthTrace={oauthTrace} />
+            )}
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
 
           </div>
