@@ -13,6 +13,7 @@ import {
   type OutputContractEvidenceV1,
   type OutputContractResult,
 } from './outputContract';
+import { callHistoryCounts, type CallHistoryCounts } from './callHistory';
 import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
@@ -188,6 +189,11 @@ export interface EvaluationOptions {
    * this server by playground tool calls and deterministic test runs.
    */
   outputContractResults?: readonly OutputContractResult[];
+  /**
+   * Playground call-history counts to include. Defaults to this browser's
+   * stored history for the server; contents are never included.
+   */
+  playgroundCallCounts?: CallHistoryCounts;
 }
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
@@ -991,6 +997,17 @@ const outputContractDetail = (evidence: OutputContractEvidenceV1): DetailItem =>
   };
 };
 
+// Counts only, and no `method`: report diffs key capability evidence by method.
+const playgroundCallDetail = (counts: CallHistoryCounts): DetailItem => ({
+  text: `ℹ ${counts.calls} playground tool ${counts.calls === 1 ? 'call' : 'calls'} recorded, `
+    + `${counts.failures} ${counts.failures === 1 ? 'failure' : 'failures'}`,
+  context: 'Counted from the recent tool calls this browser keeps for this server; call contents are not included.',
+  metadata: {
+    playgroundCalls: counts.calls,
+    playgroundCallFailures: counts.failures,
+  },
+});
+
 type AuthorizationServerMetadata = NonNullable<
   Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
 >;
@@ -1563,6 +1580,11 @@ export async function evaluateServer(
     if (outputContracts) {
       report.outputContracts = outputContracts;
       report.sections.capabilities.details.push(outputContractDetail(outputContracts));
+    }
+    const playgroundCalls = options.playgroundCallCounts
+      ?? (runtime === 'browser' ? callHistoryCounts(serverUrl) : { calls: 0, failures: 0 });
+    if (playgroundCalls.calls > 0) {
+      report.sections.capabilities.details.push(playgroundCallDetail(playgroundCalls));
     }
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';

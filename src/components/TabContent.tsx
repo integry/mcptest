@@ -16,12 +16,15 @@ import OAuthConfig from './OAuthConfig';
 import { AwaitingConnectionPanel } from './FirstConnectionOnboarding';
 import { LandingHero } from './LandingHero';
 import DeterministicTestPanel from './DeterministicTestPanel';
+import CallHistoryPanel from './CallHistoryPanel';
+import InterfaceChangeStrip from './InterfaceChangeStrip';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
 import { useConnection } from '../hooks/useConnection';
 import { useToolsAndResources } from '../hooks/useToolsAndResources';
 import { useResourceAccess } from '../hooks/useResourceAccess';
+import { usePlaygroundHistory } from '../hooks/usePlaygroundHistory';
 import { useAuth } from '../context/AuthContext';
 
 // Import Utils
@@ -230,6 +233,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setSelectedResourceTemplate,
     prompts,
     setPrompts,
+    discovery,
     selectedPrompt,
     setSelectedPrompt,
     toolParams,
@@ -271,6 +275,24 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   };
 
   const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry, serverUrl);
+
+  const playgroundHistory = usePlaygroundHistory({
+    serverUrl,
+    isConnected: connectionStatus === 'Connected',
+    tools,
+    resources,
+    resourceTemplates,
+    prompts,
+    discovery,
+    protocolVersion,
+    transportType,
+    selectedTool,
+    toolParams,
+    selectTool: handleSelectTool,
+    setToolParams,
+    // Called after render, once the wrapper below is defined.
+    executeTool: () => handleExecuteToolWrapper(),
+  });
 
   // Initialize tab state and handle auto-connection
   const hasAutoConnected = useRef(false);
@@ -812,8 +834,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setExecutionStartTime(Date.now());
     
     const toolName = selectedTool.name;
-    const result = await handleExecuteTool();
+    const startedAt = Date.now();
+    // History keeps the arguments as sent, so copy and replay match the wire.
+    let sentArguments: Record<string, unknown> | undefined;
+    const result = await handleExecuteTool((args) => { sentArguments = args; });
     setLastResult(result);
+    if (sentArguments) playgroundHistory.recordCall(toolName, sentArguments, result, Date.now() - startedAt);
     
     setIsExecuting(false);
     setExecutionStartTime(null);
@@ -1078,6 +1104,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       )}
 
+      {!showLanding && isConnected && playgroundHistory.interfaceDiff && (
+        <InterfaceChangeStrip
+          diff={playgroundHistory.interfaceDiff}
+          onDismiss={playgroundHistory.dismissInterfaceDiff}
+        />
+      )}
       {!showLanding && (
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
@@ -1133,6 +1165,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               onRefreshLists={handleRefreshAllLists}
               isConnecting={isConnecting}
               onOpenTestPlan={() => setShowDeterministicTests(true)}
+              shortcutEnabled={isActive}
             />
             </section>
             <section className="workbench-pane workbench-request" aria-label="Request builder">
@@ -1157,6 +1190,20 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 setResourceArgs={setResourceArgs}
                 isExecuting={isExecuting}
                 executionStartTime={executionStartTime}
+                callHistoryCount={playgroundHistory.calls.length}
+                renderCallHistory={(showRequest) => (
+                  <CallHistoryPanel
+                    calls={playgroundHistory.calls}
+                    availableToolNames={new Set(tools.map((tool) => tool.name))}
+                    canRun={isConnected && !isConnecting && !isExecuting}
+                    onReplay={(entry) => {
+                      playgroundHistory.replayCall(entry);
+                      if (entry.argumentsRedacted) showRequest();
+                    }}
+                    onClearServer={playgroundHistory.clearServerHistory}
+                    onClearAll={playgroundHistory.clearAllHistory}
+                  />
+                )}
               />
             </section>
             <section className="workbench-pane workbench-response" aria-label="Server response">

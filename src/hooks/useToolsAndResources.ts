@@ -8,6 +8,18 @@ import { normalizeCapabilityParams } from '../utils/capabilityParams';
 import { withoutOutputSchema } from '../utils/outputContract';
 import { createToolResultLogEntry } from '../utils/toolCallResult';
 
+/**
+ * Where each list request stands. `complete` is the only state that proves the
+ * list's membership; `partial` means the server reported more pages.
+ */
+export type DiscoveryState = 'idle' | 'loading' | 'complete' | 'partial' | 'failed';
+export type DiscoverySection = 'tools' | 'resources' | 'resourceTemplates' | 'prompts';
+export type DiscoveryStatus = Record<DiscoverySection, DiscoveryState>;
+
+const IDLE_DISCOVERY: DiscoveryStatus = {
+  tools: 'idle', resources: 'idle', resourceTemplates: 'idle', prompts: 'idle',
+};
+
 export const useToolsAndResources = (
   client: Client | null,
   addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void,
@@ -24,6 +36,29 @@ export const useToolsAndResources = (
   const [toolParams, setToolParams] = useState<Record<string, any>>({});
   const [resourceArgs, setResourceArgs] = useState<Record<string, any>>({});
   const [promptParams, setPromptParams] = useState<Record<string, any>>({}); // State for prompt params
+  const [discovery, setDiscovery] = useState<DiscoveryStatus>(IDLE_DISCOVERY);
+  // Only the newest request per list may update it, so a superseded or
+  // previous-connection response cannot overwrite a later outcome.
+  const discoveryRequest = useRef<Record<DiscoverySection, number>>({
+    tools: 0, resources: 0, resourceTemplates: 0, prompts: 0,
+  });
+  const beginDiscovery = useCallback((section: DiscoverySection) => {
+    const request = ++discoveryRequest.current[section];
+    setDiscovery((current) => ({ ...current, [section]: 'loading' }));
+    return (state: DiscoveryState) => {
+      if (discoveryRequest.current[section] !== request) return false;
+      setDiscovery((current) => ({ ...current, [section]: state }));
+      return true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (connectionStatus === 'Connected') return;
+    (Object.keys(discoveryRequest.current) as DiscoverySection[]).forEach((section) => {
+      discoveryRequest.current[section] += 1;
+    });
+    setDiscovery(IDLE_DISCOVERY);
+  }, [connectionStatus]);
 
 
   // Refactored handleListTools using SDK Client
@@ -34,11 +69,13 @@ export const useToolsAndResources = (
     }
     console.log("[DEBUG] Listing tools via SDK client...");
     addLogEntry({ type: 'info', data: 'Listing tools...' });
+    const settle = beginDiscovery('tools');
     try {
       const toolsList = await client.listTools();
       console.log("[DEBUG] SDK Client: Fetched tools:", toolsList);
       // Extract the array from the result object
       const toolsArray = toolsList?.tools || [];
+      if (!settle(toolsList?.nextCursor ? 'partial' : 'complete')) return;
       setTools(toolsArray);
       addLogEntry({ type: 'info', data: `Fetched ${toolsArray.length} tools.` });
     } catch (error: any) {
@@ -48,9 +85,10 @@ export const useToolsAndResources = (
         operation: 'list tools'
       });
       addLogEntry({ type: 'error', data: `Failed to list tools: ${errorDetails}` });
+      if (!settle('failed')) return;
       setTools([]); // Clear tools on error
     }
-  }, [client, connectionStatus, addLogEntry, setTools]); // Use client
+  }, [client, connectionStatus, addLogEntry, setTools, beginDiscovery]); // Use client
 
 
   // List resource templates using SDK Client
@@ -61,11 +99,13 @@ export const useToolsAndResources = (
      }
     console.log("[DEBUG] Listing resource templates via SDK client...");
     addLogEntry({ type: 'info', data: 'Listing resource templates...' });
+    const settle = beginDiscovery('resourceTemplates');
     try {
       const resourcesList = await client.listResourceTemplates();
       console.log("[DEBUG] SDK Client: Fetched resource templates:", resourcesList);
       // Extract the array from the result object
       const templatesArray = resourcesList?.resourceTemplates || [];
+      if (!settle(resourcesList?.nextCursor ? 'partial' : 'complete')) return;
       setResourceTemplates(templatesArray);
       addLogEntry({ type: 'info', data: `Fetched ${templatesArray.length} resource templates.` });
     } catch (error: any) {
@@ -75,9 +115,10 @@ export const useToolsAndResources = (
         operation: 'list resource templates'
       });
       addLogEntry({ type: 'error', data: `Failed to list resource templates: ${errorDetails}` });
+      if (!settle('failed')) return;
       setResourceTemplates([]); // Clear resource templates on error
     }
-  }, [client, connectionStatus, addLogEntry, setResourceTemplates]); // Use client
+  }, [client, connectionStatus, addLogEntry, setResourceTemplates, beginDiscovery]); // Use client
 
   // List actual resources using SDK Client
   const handleListResources = useCallback(async () => {
@@ -87,11 +128,13 @@ export const useToolsAndResources = (
      }
     console.log("[DEBUG] Listing resources via SDK client...");
     addLogEntry({ type: 'info', data: 'Listing resources...' });
+    const settle = beginDiscovery('resources');
     try {
       const resourcesList = await client.listResources();
       console.log("[DEBUG] SDK Client: Fetched resources:", resourcesList);
       // Extract the array from the result object
       const resourcesArray = resourcesList?.resources || [];
+      if (!settle(resourcesList?.nextCursor ? 'partial' : 'complete')) return;
       setResources(resourcesArray);
       addLogEntry({ type: 'info', data: `Fetched ${resourcesArray.length} resources.` });
     } catch (error: any) {
@@ -101,13 +144,18 @@ export const useToolsAndResources = (
         operation: 'list resources'
       });
       addLogEntry({ type: 'error', data: `Failed to list resources: ${errorDetails}` });
+      if (!settle('failed')) return;
       setResources([]); // Clear resources on error
     }
-  }, [client, connectionStatus, addLogEntry, setResources]); // Use client
+  }, [client, connectionStatus, addLogEntry, setResources, beginDiscovery]); // Use client
 
 
   // Refactored handleExecuteTool using SDK Client
-  const handleExecuteTool = useCallback(async (): Promise<LogEntry | null> => {
+  // `onRequestSent` receives the normalized arguments of a request that reached
+  // the transport; local validation failures never call it.
+  const handleExecuteTool = useCallback(async (
+    onRequestSent?: (args: Record<string, unknown>) => void
+  ): Promise<LogEntry | null> => {
     if (!client || !selectedTool || connectionStatus !== 'Connected') {
       const warningLog: LogEntry = { type: 'warning', data: 'Cannot execute tool: Client not connected or no tool selected.', timestamp: new Date().toLocaleTimeString() };
       addLogEntry(warningLog);
@@ -133,6 +181,7 @@ export const useToolsAndResources = (
     addLogEntry({ type: 'info', data: `Executing tool: ${selectedTool.name}...` });
 
     try {
+      onRequestSent?.(normalizedParams);
       // Output-contract validation happens client-side (see createToolResultLogEntry)
       // so violations are shown with details instead of the SDK rejecting the result.
       const result = await client.callTool({
@@ -183,11 +232,13 @@ export const useToolsAndResources = (
     }
     console.log("[DEBUG] Listing prompts via SDK client...");
     addLogEntry({ type: 'info', data: 'Listing prompts...' });
+    const settle = beginDiscovery('prompts');
     try {
       // Use the specific schema for validation if needed, or cast
       const promptsResult = await client.listPrompts();
       console.log("[DEBUG] SDK Client: Fetched prompts:", promptsResult);
       const promptsArray = promptsResult?.prompts || [];
+      if (!settle(promptsResult?.nextCursor ? 'partial' : 'complete')) return;
       setPrompts(promptsArray);
       addLogEntry({ type: 'info', data: `Fetched ${promptsArray.length} prompts.` });
     } catch (error: any) {
@@ -197,9 +248,10 @@ export const useToolsAndResources = (
         operation: 'list prompts'
       });
       addLogEntry({ type: 'error', data: `Failed to list prompts: ${errorDetails}` });
+      if (!settle('failed')) return;
       setPrompts([]); // Clear prompts on error
     }
-  }, [client, connectionStatus, addLogEntry, setPrompts]);
+  }, [client, connectionStatus, addLogEntry, setPrompts, beginDiscovery]);
 
   // Execute Prompt using SDK Client
   const handleExecutePrompt = useCallback(async (): Promise<LogEntry | null> => {
@@ -330,6 +382,7 @@ export const useToolsAndResources = (
     resourceTemplates, // Resource templates
     setResourceTemplates,
     prompts, // Add prompt state
+    discovery,
     setPrompts,
     selectedTool,
     setSelectedTool,
