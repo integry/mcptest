@@ -54,11 +54,11 @@ The evidence in `src/data/catalogValidation.json` and `src/data/catalogCapabilit
 2. `npm run import-catalog-capabilities -- --all` checks every stored capability snapshot against the canonical schema, including authenticated inventories that were imported from public reports, and drops snapshots for servers that are no longer in the catalog.
 3. `npm run validate-catalog-assets` checks the logos and provenance fields.
 4. `npm run summarize-catalog-diff` compares the files before and after the run and writes the pull request body.
-5. If either evidence file changed, the workflow opens a pull request from the `bot/catalog-revalidation` branch, or force-updates the one that is already open. If the evidence now matches `master` again, it closes the open bot pull request and deletes the branch.
+5. If either evidence file changed (including refreshed timestamps), the workflow opens a pull request from the `bot/catalog-revalidation` branch, or force-updates the one that is already open. If the evidence now matches `master` again, it closes the open bot pull request and deletes the branch.
 
 The job times out after 30 minutes. A concurrency group ensures that two runs never overlap. A failure in any step, including a validator crash, fails the run, and GitHub reports it in the Actions tab. The job's token can only write repository contents and pull requests.
 
-The output is deterministic. Fields are written in a fixed order, and servers keep their catalog order. A server keeps its previous `checkedAt`, and a capability snapshot keeps its previous `observedAt`, unless something observable about it changed. A run in which nothing changed therefore produces no diff and no pull request. As a result, `checkedAt` records when the current evidence was first observed, not when it was last confirmed.
+The output is deterministic. Fields are written in a fixed order, and servers keep their catalog order. Every server probed in the run gets a fresh `checkedAt`, and every capability snapshot the validator observed gets a fresh `observedAt`, so both always record when the evidence was last confirmed. Imported authenticated inventories that the validator cannot observe keep their own `observedAt`. Because of the refreshed timestamps, a run normally produces a pull request even when nothing else changed; the summary then reports no observable change, and merging it only refreshes the timestamps shown on server pages and badges.
 
 **Run it manually.** Go to **Actions → Catalog revalidation → Run workflow** and choose `master`, or use the CLI:
 
@@ -85,7 +85,7 @@ With [`act`](https://github.com/nektos/act), `act workflow_dispatch -W .github/w
 
 **Review the bot pull request.**
 
-1. Read the summary table and its sections. They list servers that went online or offline (with the error code), protocol version or era changes, transport changes, authentication changes (auth type and authorization servers), and tool count changes with the names of added and removed tools. Protocol, transport and auth changes are listed only for servers that were online in both runs, because a status change already explains the rest.
+1. Read the summary table and its sections. They list servers that went online or offline (with the error code), protocol version or era changes, transport changes, authentication changes (auth type and authorization servers), tool count changes with the names of added and removed tools, and other capability changes (for example a tool, resource or prompt section that became unavailable) with the fields that changed. Timestamp-only changes count as no observable change. Protocol, transport and auth changes are listed only for servers that were online in both runs, because a status change already explains the rest.
 2. For each server that went offline, check whether it is a transient failure, such as a `timeout`, or a real outage. Re-run the workflow or run `npm run validate-catalog` locally to confirm. A server that stays offline for several runs needs a catalog change in a separate pull request: an updated `url`, a caveat, or removal.
 3. If a server's observed authentication no longer matches the `authType` declared in `serverCatalog.json`, update the seed in a separate pull request.
 4. The diff should touch only the two evidence files. Then merge. If the evidence looks wrong, close the pull request; the next run opens a new one.

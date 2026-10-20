@@ -69,6 +69,58 @@ describe('catalog revalidation diff summary', () => {
     expect(body).toContain('No observable change since the last snapshot.');
   });
 
+  it('does not count a server unchanged when only its capability evidence changed', () => {
+    const { beforeValidation, beforeCapabilities } = input();
+    const emptyComplete = {
+      ...beforeCapabilities.foxtrot,
+      tools: { status: 'complete' as const, observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] },
+    };
+    const before = { foxtrot: emptyComplete };
+    const after = {
+      foxtrot: {
+        ...emptyComplete,
+        observedAt: '2027-01-01T00:00:00.000Z',
+        tools: { ...emptyComplete.tools, status: 'unavailable' as const, paginationComplete: false },
+      },
+    };
+    const diff = diffCatalogEvidence({
+      beforeValidation, afterValidation: beforeValidation, beforeCapabilities: before, afterCapabilities: after,
+    });
+
+    expect(diff.tools).toEqual([]);
+    expect(diff.otherCapabilities).toEqual([{ serverId: 'foxtrot', fields: ['tools'] }]);
+    expect(diff.unchanged).toBe(beforeValidation.length - 1);
+    const body = summarizeCatalogDiff({
+      beforeValidation, afterValidation: beforeValidation, beforeCapabilities: before, afterCapabilities: after,
+    });
+    expect(body).toContain('| Other capability evidence changed | 1 |');
+    expect(body).toContain('| `foxtrot` | `tools` |');
+    expect(body).not.toContain('No observable change since the last snapshot.');
+  });
+
+  it('reports resource changes and keeps tool-only changes out of the unchanged count', () => {
+    const { beforeValidation, beforeCapabilities } = input();
+    const foxtrot = beforeCapabilities.foxtrot;
+    const afterCapabilities = {
+      ...beforeCapabilities,
+      foxtrot: {
+        ...foxtrot,
+        tools: {
+          ...foxtrot.tools,
+          items: foxtrot.tools.items.map((item) => ({ ...item, name: `${item.name}-renamed` })),
+        },
+        resources: { ...foxtrot.resources, status: 'unavailable' as const, paginationComplete: false },
+      },
+    };
+    const diff = diffCatalogEvidence({
+      beforeValidation, afterValidation: beforeValidation, beforeCapabilities, afterCapabilities,
+    });
+
+    expect(diff.tools.map(({ serverId }) => serverId)).toEqual(['foxtrot']);
+    expect(diff.otherCapabilities).toEqual([{ serverId: 'foxtrot', fields: ['resources'] }]);
+    expect(diff.unchanged).toBe(beforeValidation.length - 1);
+  });
+
   it('reports message-only changes and removed tools, and uses catalog names', () => {
     const { beforeValidation, beforeCapabilities } = input();
     const afterValidation = beforeValidation.map((result) => (

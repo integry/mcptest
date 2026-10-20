@@ -18,6 +18,7 @@ export interface CatalogDiffInput {
 
 interface StatusChange { serverId: string; from?: string; to: string; detail?: string }
 interface FieldChange { serverId: string; from: string; to: string }
+interface CapabilityChange { serverId: string; fields: string[] }
 interface ToolChange {
   serverId: string;
   from?: number;
@@ -38,7 +39,9 @@ export interface CatalogDiff {
   tools: ToolChange[];
   /** Servers whose evidence changed only in fields not listed above (message, URL, error code). */
   otherEvidence: string[];
-  /** Servers whose evidence was re-observed with no observable change. */
+  /** Capability snapshots that changed outside tool names and counts (section status, resources, prompts, ...). */
+  otherCapabilities: CapabilityChange[];
+  /** Servers whose validation and capability evidence was re-observed with no observable change. */
   unchanged: number;
 }
 
@@ -65,9 +68,35 @@ const toolNames = (inventory?: CapabilityInventoryV1): string[] => (
   inventory?.tools.items.map(({ name }) => name) ?? []
 );
 
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort()
+      .filter((key) => record[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+};
+
 const comparable = (result: CatalogValidationResult): string => {
   const { checkedAt: _checkedAt, ...rest } = result;
-  return JSON.stringify(Object.keys(rest).sort().map((key) => [key, rest[key as keyof typeof rest]]));
+  return canonicalJson(rest);
+};
+
+// Top-level capability fields that differ, ignoring the observation time.
+const changedCapabilityFields = (
+  previous?: CapabilityInventoryV1,
+  next?: CapabilityInventoryV1
+): string[] => {
+  if (!previous || !next) return previous === next ? [] : ['snapshot'];
+  const fields = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  fields.delete('observedAt');
+  return [...fields].sort().filter((field) => (
+    canonicalJson(previous[field as keyof CapabilityInventoryV1])
+      !== canonicalJson(next[field as keyof CapabilityInventoryV1])
+  ));
 };
 
 export function diffCatalogEvidence(input: CatalogDiffInput): CatalogDiff {
@@ -84,8 +113,38 @@ export function diffCatalogEvidence(input: CatalogDiffInput): CatalogDiff {
     auth: [],
     tools: [],
     otherEvidence: [],
+    otherCapabilities: [],
     unchanged: 0,
   };
+  const capabilityChanged = new Set<string>();
+  const capabilityIds = new Set([
+    ...Object.keys(input.beforeCapabilities),
+    ...Object.keys(input.afterCapabilities),
+  ]);
+  for (const serverId of [...capabilityIds].sort()) {
+    const previous = input.beforeCapabilities[serverId];
+    const next = input.afterCapabilities[serverId];
+    const fields = changedCapabilityFields(previous, next);
+    if (fields.length === 0) continue;
+    capabilityChanged.add(serverId);
+    const previousNames = toolNames(previous);
+    const nextNames = toolNames(next);
+    const added = nextNames.filter((name) => !previousNames.includes(name));
+    const removed = previousNames.filter((name) => !nextNames.includes(name));
+    const from = previous?.tools.observedCount;
+    const to = next?.tools.observedCount;
+    const toolsListed = from !== to || added.length > 0 || removed.length > 0;
+    if (toolsListed) diff.tools.push({ serverId, from, to, added, removed });
+    // Anything a tool row does not already explain (tool section status, pagination,
+    // descriptions, resources, prompts, provenance, authentication) is reported separately.
+    const unexplained = toolsListed && previous && next
+      ? changedCapabilityFields(
+        { ...previous, tools: { ...previous.tools, observedCount: 0, retainedCount: 0, items: [] } },
+        { ...next, tools: { ...next.tools, observedCount: 0, retainedCount: 0, items: [] } }
+      )
+      : toolsListed ? [] : fields;
+    if (unexplained.length > 0) diff.otherCapabilities.push({ serverId, fields: unexplained });
+  }
 
   for (const serverId of before.keys()) {
     if (!after.has(serverId)) diff.removed.push(serverId);
@@ -124,28 +183,9 @@ export function diffCatalogEvidence(input: CatalogDiffInput): CatalogDiff {
         listed = true;
       }
     }
-    if (!listed) {
-      if (comparable(previous) === comparable(next)) diff.unchanged += 1;
-      else diff.otherEvidence.push(serverId);
-    }
-  }
-
-  const capabilityIds = new Set([
-    ...Object.keys(input.beforeCapabilities),
-    ...Object.keys(input.afterCapabilities),
-  ]);
-  for (const serverId of [...capabilityIds].sort()) {
-    const previous = input.beforeCapabilities[serverId];
-    const next = input.afterCapabilities[serverId];
-    const previousNames = toolNames(previous);
-    const nextNames = toolNames(next);
-    const added = nextNames.filter((name) => !previousNames.includes(name));
-    const removed = previousNames.filter((name) => !nextNames.includes(name));
-    const from = previous?.tools.observedCount;
-    const to = next?.tools.observedCount;
-    if (from !== to || added.length > 0 || removed.length > 0) {
-      diff.tools.push({ serverId, from, to, added, removed });
-    }
+    const validationUnchanged = comparable(previous) === comparable(next);
+    if (!listed && !validationUnchanged) diff.otherEvidence.push(serverId);
+    if (!listed && validationUnchanged && !capabilityChanged.has(serverId)) diff.unchanged += 1;
   }
 
   return diff;
@@ -169,7 +209,8 @@ export function renderCatalogDiff(diff: CatalogDiff, names: Record<string, strin
   const lines: string[] = ['## Catalog revalidation', ''];
   const total = diff.wentOnline.length + diff.wentOffline.length + diff.otherStatus.length
     + diff.protocol.length + diff.transport.length + diff.auth.length + diff.tools.length
-    + diff.added.length + diff.removed.length + diff.otherEvidence.length;
+    + diff.added.length + diff.removed.length + diff.otherEvidence.length
+    + diff.otherCapabilities.length;
 
   lines.push(
     '| Change | Servers |',
@@ -181,6 +222,7 @@ export function renderCatalogDiff(diff: CatalogDiff, names: Record<string, strin
     `| Authentication changed | ${diff.auth.length} |`,
     `| Tool count or tool names changed | ${diff.tools.length} |`,
     `| Other evidence changed | ${diff.otherEvidence.length} |`,
+    `| Other capability evidence changed | ${diff.otherCapabilities.length} |`,
     `| No observable change | ${diff.unchanged} |`,
     ''
   );
@@ -213,6 +255,9 @@ export function renderCatalogDiff(diff: CatalogDiff, names: Record<string, strin
   section('Tool changes', '| Server | Tools before | Tools after | Added | Removed |', diff.tools.map(
     (change) => `| ${server(change.serverId)} | ${change.from ?? NONE} | ${change.to ?? NONE} | ${
       nameList(change.added)} | ${nameList(change.removed)} |`
+  ));
+  section('Other capability changes', '| Server | Changed fields |', diff.otherCapabilities.map(
+    (change) => `| ${server(change.serverId)} | ${change.fields.map((field) => `\`${field}\``).join(', ')} |`
   ));
 
   if (diff.added.length > 0) {

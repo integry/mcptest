@@ -962,7 +962,7 @@ describe('catalog capability pagination and persistence', () => {
     expect({ ...second, observedAt: first.observedAt }).toEqual(first);
   });
 
-  it('keeps timestamps and key order stable when a rerun observes nothing new', async () => {
+  it('keeps key order stable and persists fresh timestamps when a rerun observes nothing new', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-stable-'));
     const capabilities = path.join(directory, 'catalogCapabilities.json');
     const validation = path.join(directory, 'catalogValidation.json');
@@ -977,11 +977,11 @@ describe('catalog capability pagination and persistence', () => {
       resourceTemplates: section,
       prompts: section,
     });
-    const result = (checkedAt, overrides = {}) => ({
+    const result = (serverId, checkedAt, overrides = {}) => ({
       // Deliberately out of canonical order, as the validator_error path builds it.
       message: 'Negotiated stateful MCP',
       checkedAt,
-      serverId: 'stable',
+      serverId,
       errorCode: undefined,
       status: 'online',
       transport: 'streamable-http',
@@ -990,11 +990,22 @@ describe('catalog capability pagination and persistence', () => {
       protocolEra: 'stateful',
       ...overrides,
     });
+    const withTimestamps = (json, checkedAt, observedAt) => json
+      .replaceAll('"checkedAt": "2026-10-13T00:00:00.000Z"', `"checkedAt": "${checkedAt}"`)
+      .replaceAll('"observedAt": "2026-10-13T00:00:00.000Z"', `"observedAt": "${observedAt}"`);
     try {
       await writeResults(
-        [{ ...result('2026-10-13T00:00:00.000Z'), capabilityInventory: inventory('2026-10-13T00:00:00.000Z', ['ping']) }],
+        [
+          { ...result('stable', '2026-10-13T00:00:00.000Z'), capabilityInventory: inventory('2026-10-13T00:00:00.000Z', ['ping']) },
+          // Imported authenticated inventory: not re-observed by the validator.
+          result('imported', '2026-10-13T00:00:00.000Z', { authType: 'oauth', requiresOAuth: true }),
+        ],
         { capabilities, validation }
       );
+      fs.writeFileSync(capabilities, `${JSON.stringify({
+        imported: { ...inventory('2026-09-01T00:00:00.000Z', ['secret']), authentication: 'authenticated' },
+        ...JSON.parse(fs.readFileSync(capabilities, 'utf8')),
+      }, null, 2)}\n`);
       const firstValidation = fs.readFileSync(validation, 'utf8');
       const firstCapabilities = fs.readFileSync(capabilities, 'utf8');
       expect(Object.keys(JSON.parse(firstValidation)[0])).toEqual([
@@ -1002,21 +1013,26 @@ describe('catalog capability pagination and persistence', () => {
       ]);
 
       await writeResults(
-        [{ ...result('2026-10-20T00:00:00.000Z'), capabilityInventory: inventory('2026-10-20T00:00:00.000Z', ['ping']) }],
+        [
+          { ...result('stable', '2026-10-20T00:00:00.000Z'), capabilityInventory: inventory('2026-10-20T00:00:00.000Z', ['ping']) },
+          result('imported', '2026-10-20T00:00:00.000Z', { authType: 'oauth', requiresOAuth: true }),
+        ],
         { capabilities, validation }
       );
-      expect(fs.readFileSync(validation, 'utf8')).toBe(firstValidation);
-      expect(fs.readFileSync(capabilities, 'utf8')).toBe(firstCapabilities);
-
-      await writeResults(
-        [{
-          ...result('2026-10-27T00:00:00.000Z', { protocolVersion: '2025-11-25' }),
-          capabilityInventory: inventory('2026-10-27T00:00:00.000Z', ['ping', 'search']),
-        }],
-        { capabilities, validation }
+      const secondValidation = fs.readFileSync(validation, 'utf8');
+      const secondCapabilities = fs.readFileSync(capabilities, 'utf8');
+      // Only the observation times of this run change; the imported inventory keeps its own time.
+      expect(secondValidation).toBe(
+        withTimestamps(firstValidation, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z')
       );
-      expect(JSON.parse(fs.readFileSync(validation, 'utf8'))[0].checkedAt).toBe('2026-10-27T00:00:00.000Z');
-      expect(JSON.parse(fs.readFileSync(capabilities, 'utf8')).stable.observedAt).toBe('2026-10-27T00:00:00.000Z');
+      expect(secondCapabilities).toBe(
+        withTimestamps(firstCapabilities, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z')
+      );
+      expect(JSON.parse(secondValidation).map(({ checkedAt }) => checkedAt)).toEqual([
+        '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z',
+      ]);
+      expect(JSON.parse(secondCapabilities).stable.observedAt).toBe('2026-10-20T00:00:00.000Z');
+      expect(JSON.parse(secondCapabilities).imported.observedAt).toBe('2026-09-01T00:00:00.000Z');
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

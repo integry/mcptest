@@ -9,6 +9,7 @@
 | Authentication changed | 1 |
 | Tool count or tool names changed | 2 |
 | Other evidence changed | 0 |
+| Other capability evidence changed | 0 |
 | No observable change | 1 |
 
 ### Went online

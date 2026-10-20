@@ -948,57 +948,13 @@ const VALIDATION_KEY_ORDER = [
   'errorCode',
 ];
 
-// Emits validation fields in one fixed order so reruns only diff on observed changes.
+// Emits validation fields in one fixed order so reruns diff only on observed values.
 function orderValidationResult(result) {
   const known = VALIDATION_KEY_ORDER.filter((key) => result[key] !== undefined);
   const extra = Object.keys(result)
     .filter((key) => !VALIDATION_KEY_ORDER.includes(key) && result[key] !== undefined)
     .sort();
   return Object.fromEntries([...known, ...extra].map((key) => [key, result[key]]));
-}
-
-function canonicalJson(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort()
-      .filter((key) => value[key] !== undefined)
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function withoutField(value, field) {
-  const { [field]: _omitted, ...rest } = value || {};
-  return canonicalJson(rest);
-}
-
-// Keeps the previous checkedAt when nothing observable about a server changed.
-function stabilizeValidationResults(previous, results) {
-  const previousById = new Map(
-    (Array.isArray(previous) ? previous : []).map((entry) => [entry.serverId, entry])
-  );
-  return results.map((result) => {
-    const ordered = orderValidationResult(result);
-    const prior = previousById.get(ordered.serverId);
-    if (!prior || typeof prior.checkedAt !== 'string') return ordered;
-    return withoutField(prior, 'checkedAt') === withoutField(ordered, 'checkedAt')
-      ? { ...ordered, checkedAt: prior.checkedAt }
-      : ordered;
-  });
-}
-
-// Keeps the previous snapshot (and its observedAt) when the inventory is otherwise identical.
-function stabilizeCapabilitySnapshots(previous, next) {
-  return Object.fromEntries(Object.entries(next).map(([serverId, inventory]) => {
-    const prior = previous?.[serverId];
-    return [
-      serverId,
-      prior && withoutField(prior, 'observedAt') === withoutField(inventory, 'observedAt')
-        ? prior
-        : inventory,
-    ];
-  }));
 }
 
 function readJsonFile(filePath, fallback) {
@@ -1009,18 +965,18 @@ async function writeResults(
   results,
   paths = { validation: outputPath, capabilities: capabilitiesPath }
 ) {
-  const validationResults = stabilizeValidationResults(
-    readJsonFile(paths.validation, []),
-    results.map(({ capabilityInventory, ...result }) => result)
+  // Every result was observed in this run, so its checkedAt is kept as observed.
+  const validationResults = results.map(
+    ({ capabilityInventory, ...result }) => orderValidationResult(result)
   );
   const activeServerIds = new Set(results.map(({ serverId }) => serverId));
   const previous = readJsonFile(paths.capabilities, {});
   // Validate the complete merged file before either durable output is replaced.
-  const capabilities = stabilizeCapabilitySnapshots(previous, await validateCapabilitySnapshots(
+  const capabilities = await validateCapabilitySnapshots(
     Object.fromEntries(Object.entries(mergeCapabilitySnapshots(previous, results)).filter(
       ([serverId]) => activeServerIds.has(serverId)
     ))
-  ));
+  );
   const validationJson = `${JSON.stringify(validationResults, null, 2)}\n`;
   const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;
   fs.writeFileSync(paths.validation, validationJson, 'utf-8');
@@ -1071,8 +1027,6 @@ module.exports = {
   requestDiscoveryPage,
   main,
   mapWithConcurrency,
-  stabilizeCapabilitySnapshots,
-  stabilizeValidationResults,
   validateCapabilitySnapshots,
   validateCatalogSeed,
   validateCatalogSeeds,
