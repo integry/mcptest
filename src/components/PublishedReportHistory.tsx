@@ -108,22 +108,31 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
   // links never carry raw query credentials and always find what was published.
   const identity = useMemo(() => (endpoint ? publishedEndpointIdentity(endpoint) : undefined), [endpoint]);
   const publishable = Boolean(apiBase && identity);
+  // The identity currently shown. Every awaited operation (index load, publish,
+  // delete) is fenced against it, so a completion for an endpoint that is no
+  // longer displayed cannot replace the current endpoint's state.
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
+  const onPublishedStateChangeRef = useRef(onPublishedStateChange);
+  onPublishedStateChangeRef.current = onPublishedStateChange;
 
   const loadIndex = useCallback(async (target: string, fresh = false) => {
+    const forIdentity = identityRef.current;
     const version = requestVersion.current + 1;
     requestVersion.current = version;
     setLoading(true);
     setLoadError(null);
+    const current = () => requestVersion.current === version && identityRef.current === forIdentity;
     try {
       const loaded = await fetchPublishedReportIndex(target, { fresh });
-      if (requestVersion.current !== version) return;
+      if (!current()) return;
       setIndex(loaded);
     } catch (error) {
-      if (requestVersion.current !== version) return;
+      if (!current()) return;
       setIndex(undefined);
       setLoadError(`Published history could not be loaded: ${errorMessage(error)}`);
     } finally {
-      if (requestVersion.current === version) setLoading(false);
+      if (current()) setLoading(false);
     }
   }, []);
 
@@ -131,9 +140,13 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     setIndex(undefined);
     setPublishResult(null);
     setPublishError(null);
+    setPublishing(false);
     setCompare(null);
     setArtifacts({});
     setDiffFailure(null);
+    // Nothing published is known for this identity until its index arrives, so
+    // the parent must not keep showing another endpoint's published state.
+    onPublishedStateChangeRef.current?.(null);
     if (!publishable || !identity) return;
     void loadIndex(identity);
   }, [identity, publishable, loadIndex]);
@@ -149,10 +162,9 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
   const snapshots = useMemo(() => index?.snapshots ?? [], [index]);
 
   useEffect(() => {
-    if (!onPublishedStateChange || !publishable) return;
-    if (index === undefined) return;
-    onPublishedStateChange(snapshots.length > 0 ? index.endpoint : null);
-  }, [index, snapshots, publishable, onPublishedStateChange]);
+    if (!publishable || index === undefined) return;
+    onPublishedStateChangeRef.current?.(snapshots.length > 0 ? index.endpoint : null);
+  }, [index, snapshots, publishable]);
 
   // Default comparison: the newest snapshot against the one before it.
   useEffect(() => {
@@ -207,12 +219,12 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
 
   const handlePublish = async () => {
     if (!report || !identity) return;
+    const forIdentity = identity;
     setPublishing(true);
     setPublishError(null);
     setPublishResult(null);
     try {
       const result = await publishReport(createPublishableReportJson(report, oauthTrace));
-      setPublishResult(result);
       if (result.removalToken) {
         try {
           saveRemovalToken(result.id, result.removalToken, window.localStorage);
@@ -221,13 +233,19 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
           // The token is still shown once on the page.
         }
       }
+      // The page moved to another endpoint while publishing: the snapshot is
+      // filed under the endpoint it was for and its removal token is kept, but
+      // nothing of it belongs on the endpoint shown now.
+      if (identityRef.current !== forIdentity) return;
+      setPublishResult(result);
       // Read the index the Worker filed the snapshot under, bypassing the copy
       // the browser cached before this publish.
       await loadIndex(result.endpoint || identity, true);
     } catch (error) {
+      if (identityRef.current !== forIdentity) return;
       setPublishError(`The report could not be published: ${errorMessage(error)}`);
     } finally {
-      setPublishing(false);
+      if (identityRef.current === forIdentity) setPublishing(false);
     }
   };
 
@@ -235,6 +253,7 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     const token = removalTokens[entry.id];
     if (!token || !identity) return;
     if (!window.confirm('Remove this published snapshot from mcptest.io? Its permalink will stop working.')) return;
+    const forIdentity = identity;
     setPublishError(null);
     try {
       await deletePublishedReport(entry.id, token);
@@ -244,9 +263,11 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
         // Keeping a stale token is harmless.
       }
       setRemovalTokens(({ [entry.id]: _removed, ...rest }) => rest);
+      if (identityRef.current !== forIdentity) return;
       if (publishResult?.id === entry.id) setPublishResult(null);
       await loadIndex(identity, true);
     } catch (error) {
+      if (identityRef.current !== forIdentity) return;
       setPublishError(`The snapshot could not be removed: ${errorMessage(error)}`);
     }
   };

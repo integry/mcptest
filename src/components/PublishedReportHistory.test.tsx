@@ -290,6 +290,97 @@ describe('PublishedReportHistory', () => {
     expect(onPublishedStateChange).toHaveBeenLastCalledWith(null);
   });
 
+  it('binds published state and in-flight completions to the endpoint on screen', async () => {
+    // F12: switching endpoints while the first one's history is shown or its
+    // publish is in flight must not leave the first endpoint's state on the page.
+    const OTHER = 'https://other-ui.example/mcp';
+    const OTHER_IDENTITY = 'https://other-ui.example/mcp';
+    let resolvePublish: ((response: Response) => void) | undefined;
+    const indexRequests: string[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && url.startsWith(`${API}/r/endpoint/`)) {
+        const requested = decodeURIComponent(url.slice(`${API}/r/endpoint/`.length));
+        indexRequests.push(requested);
+        if (requested === OTHER_IDENTITY) return jsonResponse({ error: 'unavailable' }, 503);
+        return jsonResponse({ endpoint: requested, retention: 20, snapshots: [entry(olderId, older)] });
+      }
+      if (method === 'POST' && url === `${API}/r`) {
+        return new Promise<Response>((resolve) => {
+          resolvePublish = resolve;
+        });
+      }
+      return jsonResponse({ error: 'not_found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onPublishedStateChange = vi.fn();
+    const liveReport = { ...report('legacy-sse'), serverUrl: SECRET_ENDPOINT };
+    await render(
+      <PublishedReportHistory
+        endpoint={SECRET_ENDPOINT}
+        report={liveReport}
+        onPublishedStateChange={onPublishedStateChange}
+      />
+    );
+    expect(container.textContent).toContain('Latest published run');
+    expect(onPublishedStateChange).toHaveBeenLastCalledWith(PUBLISHED_IDENTITY);
+
+    await clickButton('Publish report');
+    expect(resolvePublish).toBeDefined();
+    expect(container.textContent).toContain('Publishing...');
+
+    // The page moves to another endpoint while the publish is still in flight.
+    await act(async () => {
+      root?.render(
+        <PublishedReportHistory
+          endpoint={OTHER}
+          report={{ ...report('legacy-sse'), serverUrl: OTHER }}
+          onPublishedStateChange={onPublishedStateChange}
+        />
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onPublishedStateChange).toHaveBeenLastCalledWith(null);
+    expect(container.textContent).not.toContain('Latest published run');
+    expect(container.textContent).toContain('could not be loaded');
+    expect(container.textContent).toContain('Publish report');
+    expect(indexRequests[indexRequests.length - 1]).toBe(OTHER_IDENTITY);
+
+    // The first endpoint's publish completes: its token is kept for later
+    // removal, but neither its result nor its history replaces the current view.
+    await act(async () => {
+      resolvePublish?.(jsonResponse({
+        id: newerId,
+        url: `${API}/r/${newerId}`,
+        reportUrl: `https://mcptest.io/report/${encodeURIComponent(PUBLISHED_IDENTITY)}`,
+        badgeUrl: `https://mcptest.io/badge/report/${encodeURIComponent(PUBLISHED_IDENTITY)}.svg`,
+        endpoint: PUBLISHED_IDENTITY,
+        deduplicated: false,
+        entry: { ...entry(newerId, newer), endpoint: PUBLISHED_IDENTITY },
+        snapshotCount: 2,
+        retention: 20,
+        removalToken: 'removal-token-shown-once',
+      }, 201));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).not.toContain('Report published.');
+    expect(container.textContent).not.toContain('Latest published run');
+    expect(container.querySelector('#published-removal-token')).toBeNull();
+    expect(indexRequests[indexRequests.length - 1]).toBe(OTHER_IDENTITY);
+    expect(onPublishedStateChange).toHaveBeenLastCalledWith(null);
+    expect(JSON.parse(localStorage.getItem(PUBLISHED_REPORT_REMOVAL_TOKENS_KEY)!)).toEqual({
+      [newerId]: 'removal-token-shown-once',
+    });
+  });
+
   it('renders a cached pair again after another comparison failed to load', async () => {
     installFetch(
       [entry(newerId, newer), entry(olderId, older), entry(oldestId, oldest)],

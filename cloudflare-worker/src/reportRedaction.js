@@ -28,6 +28,13 @@ export const MAX_REDACTION_PASSES = 8;
 export const MAX_URL_REDACTION_DEPTH = 4;
 export const MAX_URL_COMPONENT_DECODE_PASSES = 4;
 export const MAX_JSON_STRING_DECODE_PASSES = 4;
+// Characters the embedded-fragment scan may hand to the JSON-shaped redaction
+// per string, as a multiple of the string's length: the guard's budget
+// (cloudflare-worker/src/redactionGuard.js), so an input the guard accepted is
+// transformed within the same bound. Every balanced fragment is tried at most
+// once and only when no enclosing fragment parsed, so ordinary text stays far
+// below it; a string past it cannot be inspected and is redacted whole.
+export const MAX_EMBEDDED_FRAGMENT_PARSE_RATIO = 16;
 
 const EXACT_SENSITIVE_KEYS = new Set([
   'key', 'accesskey', 'subscriptionkey', 'authorization', 'proxyauthorization',
@@ -352,54 +359,64 @@ const isObjectOrArrayText = (candidate) => (
   (candidate.startsWith('{') && candidate.endsWith('}')) || (candidate.startsWith('[') && candidate.endsWith(']'))
 );
 
-const redactJsonShapedString = (value) => {
+/**
+ * Redacts a string that is JSON (an object, array or string literal, possibly
+ * encoded several times). `parsedRaw` reports whether the text itself parsed as
+ * an object or array: everything inside such a fragment was traversed, so a
+ * fragment it encloses needs no scan of its own.
+ */
+const redactJsonShapedFragment = (value) => {
   const trimmed = value.trim();
   let candidate = trimmed;
   const encodings = [];
   let isStructured = false;
+  let parsedRaw = false;
   for (let pass = 0; pass <= MAX_JSON_STRING_DECODE_PASSES; pass += 1) {
     const isObjectOrArray = isObjectOrArrayText(candidate);
-    if (!isObjectOrArray && !candidate.startsWith('"')) return value;
+    if (!isObjectOrArray && !candidate.startsWith('"')) return { redacted: value, parsedRaw };
     isStructured ||= isObjectOrArray;
     let parsed;
     try {
       parsed = JSON.parse(candidate);
     } catch {
-      if (!isObjectOrArray) return value;
-      if (pass === MAX_JSON_STRING_DECODE_PASSES) return REDACTED_VALUE;
+      if (!isObjectOrArray) return { redacted: value, parsedRaw };
+      if (pass === MAX_JSON_STRING_DECODE_PASSES) return { redacted: REDACTED_VALUE, parsedRaw };
       try {
         parsed = JSON.parse(`"${candidate}"`);
       } catch {
-        return value;
+        return { redacted: value, parsedRaw };
       }
-      if (parsed === candidate) return value;
+      if (parsed === candidate) return { redacted: value, parsedRaw };
       encodings.push('content');
     }
     if (typeof parsed === 'string') {
       const decoded = parsed.trim();
       const decodedIsStructured = isObjectOrArrayText(decoded);
-      if (!decodedIsStructured && !decoded.startsWith('"')) return value;
+      if (!decodedIsStructured && !decoded.startsWith('"')) return { redacted: value, parsedRaw };
       if (pass === MAX_JSON_STRING_DECODE_PASSES) {
-        return isStructured || decodedIsStructured ? REDACTED_VALUE : value;
+        return { redacted: isStructured || decodedIsStructured ? REDACTED_VALUE : value, parsedRaw };
       }
       candidate = decoded;
       if (encodings.length === 0 || encodings[encodings.length - 1] !== 'content') encodings.push('literal');
       isStructured ||= decodedIsStructured;
       continue;
     }
-    if (!parsed || typeof parsed !== 'object') return value;
+    if (!parsed || typeof parsed !== 'object') return { redacted: value, parsedRaw };
+    parsedRaw = pass === 0;
     const redacted = redactReportValueAtPath(parsed, undefined, []);
     let serialized = JSON.stringify(redacted);
-    if (serialized === JSON.stringify(parsed)) return value;
+    if (serialized === JSON.stringify(parsed)) return { redacted: value, parsedRaw };
     for (const encoding of [...encodings].reverse()) {
       const encoded = JSON.stringify(serialized);
       serialized = encoding === 'literal' ? encoded : encoded.slice(1, -1);
     }
     const start = value.indexOf(trimmed);
-    return `${value.slice(0, start)}${serialized}${value.slice(start + trimmed.length)}`;
+    return { redacted: `${value.slice(0, start)}${serialized}${value.slice(start + trimmed.length)}`, parsedRaw };
   }
-  return isStructured ? REDACTED_VALUE : value;
+  return { redacted: isStructured ? REDACTED_VALUE : value, parsedRaw };
 };
+
+const redactJsonShapedString = (value) => redactJsonShapedFragment(value).redacted;
 
 export const JSON_STRING_LITERAL_PATTERN = /"(?:\\["\\/bfnrt]|\\u[A-Fa-f0-9]{4}|[^"\\\u0000-\u001f])*"/g;
 
@@ -415,20 +432,70 @@ const redactJsonEncodedStringLiterals = (value) => value.replace(JSON_STRING_LIT
   return redacted === decoded ? literal : JSON.stringify(redacted);
 });
 
+/**
+ * Start → end (exclusive) of every balanced `{…}` / `[…]` span in one pass, the
+ * guard's enumeration: with quote tracking, brackets inside JSON string literals
+ * are ignored; without it, a stray quote in surrounding prose cannot hide a
+ * fragment. A closer that does not match the innermost opener discards the
+ * pending openers.
+ */
+const balancedFragmentSpans = (value, trackQuotes) => {
+  const spans = new Map();
+  const stack = [];
+  let quoted = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (quoted) {
+      if (character === '\\') index += 1;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (trackQuotes && character === '"') {
+      quoted = true;
+    } else if (character === '{' || character === '[') {
+      stack.push([character, index]);
+    } else if (character === '}' || character === ']') {
+      const top = stack[stack.length - 1];
+      if (top && top[0] === (character === '}' ? '{' : '[')) {
+        stack.pop();
+        spans.set(top[1], index + 1);
+      } else {
+        stack.length = 0;
+      }
+    }
+  }
+  return spans;
+};
+
+/**
+ * Redacts JSON objects and arrays embedded anywhere in a string (`response: {…}`).
+ * Only balanced fragments are tried, outermost first, and the fragments inside
+ * one that parsed are covered by its traversal; the work is bounded by the
+ * guard's parse budget, past which the string cannot be inspected and is
+ * redacted whole rather than stored unseen.
+ */
 const redactEmbeddedJsonFragments = (value) => {
+  if (!/[{[]/.test(value)) return value;
+  const candidates = new Map();
+  for (const trackQuotes of [true, false]) {
+    for (const [start, end] of balancedFragmentSpans(value, trackQuotes)) candidates.set(`${start}:${end}`, [start, end]);
+  }
+  const spans = [...candidates.values()]
+    .sort(([leftStart, leftEnd], [rightStart, rightEnd]) => leftStart - rightStart || rightEnd - leftEnd);
   const matches = [];
-  for (let start = 0; start < value.length; start += 1) {
-    const opening = value[start];
-    const closing = opening === '{' ? '}' : opening === '[' ? ']' : undefined;
-    if (!closing) continue;
-    for (let end = start + 1; end < value.length; end += 1) {
-      if (value[end] !== closing) continue;
-      const fragment = value.slice(start, end + 1);
-      const redacted = redactJsonShapedString(fragment);
-      if (redacted === fragment) continue;
-      matches.push({ start, end: end + 1, replacement: redacted });
-      start = end;
-      break;
+  let budget = value.length * MAX_EMBEDDED_FRAGMENT_PARSE_RATIO;
+  let coveredUntil = 0;
+  for (const [start, end] of spans) {
+    if (start < coveredUntil) continue;
+    const fragment = value.slice(start, end);
+    budget -= fragment.length;
+    if (budget < 0) return REDACTED_VALUE;
+    const { redacted, parsedRaw } = redactJsonShapedFragment(fragment);
+    if (redacted !== fragment) {
+      matches.push({ start, end, replacement: redacted });
+      coveredUntil = end;
+    } else if (parsedRaw) {
+      coveredUntil = end;
     }
   }
   return spliceMatches(value, matches);

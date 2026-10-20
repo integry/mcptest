@@ -37,6 +37,7 @@ import { trackEvent, trackOAuthFlow } from '../utils/analytics';
 import { getReportGeneratedParams } from '../utils/reportAnalytics';
 import { getCatalogServerByEndpoint } from '../utils/catalogUtils';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
+import { publishedEndpointIdentity } from '../utils/publishedReports';
 import {
   createReportSnapshot,
   deleteAllReportSnapshots,
@@ -562,6 +563,13 @@ const ReportView: React.FC = () => {
   // Published history follows the route's endpoint so a visitor sees the last
   // published run even before (or without) a live evaluation.
   const publishedReportEndpoint = report?.serverUrl || (urlParam ? decodeURIComponent(urlParam) : undefined);
+  // Live badge snippets only for the endpoint on screen: the published state is
+  // reported as the Worker's normalized identity, so it is compared with the
+  // current report's identity rather than with the raw endpoint it came from.
+  const liveBadgeEndpoint = report?.serverUrl && publishedEndpoint
+    && publishedEndpoint === publishedEndpointIdentity(report.serverUrl)
+    ? publishedEndpoint
+    : undefined;
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresProxyAuthentication = report
     ? isProxyAuthenticationRequired(report)
@@ -953,7 +961,7 @@ const ReportView: React.FC = () => {
               <ReportBadgeEmbed
                 report={report}
                 oauthTrace={oauthTrace}
-                publishedEndpoint={publishedEndpoint && publishedReportEndpoint === report.serverUrl ? publishedEndpoint : undefined}
+                publishedEndpoint={liveBadgeEndpoint}
               />
             )}
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}

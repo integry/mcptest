@@ -583,6 +583,27 @@ describe('publishing a report', () => {
     expect(findUnredactedSecret({ a: { b: { note: 'secret=[REDACTED]-still-a-secret' } } })).toMatchObject({ path: 'a.b.note' });
   });
 
+  it('publishes accepted-size evidence full of ordinary brackets within a bounded time', async () => {
+    // F11: tens of thousands of `[INFO]` fit the body limit; the transform must
+    // not spend quadratic work on them before the request is answered.
+    const artifact = artifactFor(evaluation());
+    artifact.sections[0].evidence[0].context = `${'[INFO] '.repeat(50000)}done`;
+    const started = Date.now();
+    const response = await publish(artifact);
+    expect(Date.now() - started).toBeLessThan(10000);
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+    const stored = await (await request(`/r/${id}`)).json();
+    expect(stored.sections[0].evidence[0].context).toBe(artifact.sections[0].evidence[0].context);
+
+    // A credential fragment hidden among the brackets is still refused, not stored.
+    const withSecret = artifactFor(evaluation());
+    withSecret.sections[0].evidence[0].context = `${'[INFO] '.repeat(50000)}{"token":"plain-bracket-secret"} done`;
+    const refused = await publish(withSecret);
+    expect(refused.status).toBe(422);
+    expect((await refused.json()).error).toBe('unredacted_content');
+  });
+
   it('rejects oversized bodies and non-public endpoints', async () => {
     const artifact = artifactFor(evaluation());
     artifact.sections[0].evidence[0].context = 'x'.repeat(600 * 1024);

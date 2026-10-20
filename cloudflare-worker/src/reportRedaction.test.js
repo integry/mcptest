@@ -61,6 +61,38 @@ describe('the Worker port of the app redaction', () => {
     }
   });
 
+  it('bounds the embedded fragment scan to balanced spans within the guard budget', () => {
+    // F11: the scan used to try every closing bracket after every opening one,
+    // so a long run of ordinary bracketed text cost quadratic work in the Worker.
+    const repeated = `${'[INFO] '.repeat(50000)}done`;
+    expect(findUnredactedSecret({ note: repeated })).toBeUndefined();
+    const started = Date.now();
+    expect(redactReportString(repeated)).toBe(repeated);
+    expect(Date.now() - started).toBeLessThan(5000);
+
+    // Credential-bearing fragments among the harmless brackets are still redacted.
+    const mixed = `${'[INFO] '.repeat(20000)}{"token":"plain-fragment-secret"} ${'[WARN] '.repeat(20000)}done`;
+    const redactedMixed = redactReportString(mixed);
+    expect(redactedMixed).toBe(mixed.replace('plain-fragment-secret', REDACTED_VALUE));
+    expect(findUnredactedSecret({ note: redactedMixed })).toBeUndefined();
+
+    // Fragments inside one that parsed are covered by its traversal, as in the guard.
+    const nested = `${'['.repeat(64)}0${']'.repeat(64)}`;
+    expect(findUnredactedSecret({ note: nested })).toBeUndefined();
+    expect(redactReportString(nested)).toBe(nested);
+    const nestedSecret = `log: [[{"headers":{"x-api-key":"plain"}}]] end`;
+    expect(redactReportString(nestedSecret)).toBe(appRedactReportString(nestedSecret));
+    expect(redactReportString(nestedSecret)).not.toContain('"plain"');
+
+    // Past the guard's parse budget the string cannot be inspected: the guard
+    // refuses it and the transform redacts it whole rather than storing it unseen.
+    const uninspectable = `prefix ${'{"a":'.repeat(40)}x${'}'.repeat(40)}`;
+    expect(findUnredactedSecret({ note: uninspectable }))
+      .toEqual({ path: 'note', reason: 'contains too many JSON-shaped fragments to inspect' });
+    expect(redactReportString(uninspectable)).toBe(REDACTED_VALUE);
+    expect(redactReportValue({ note: uninspectable })).toEqual({ note: REDACTED_VALUE });
+  });
+
   it('redacts a credential carried by a URL query name to the marker', () => {
     // F8: the encoded name holds the credential while the value is already the marker.
     const f8 = 'https://example.test/?access_token%3Dopaquecredential123=%5BREDACTED%5D';
