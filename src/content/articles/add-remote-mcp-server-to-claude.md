@@ -43,6 +43,10 @@ Claude has three places where a remote MCP server can be added, and they are con
 
 This guide reflects the claude.ai connector documentation reviewed on 20 October 2026 and Claude Code v2.1.304 (19 October 2026). It covers remote servers only. If you have not yet confirmed that your URL is a working MCP endpoint, read [How to connect to a remote MCP server](/learn/connect-remote-mcp-server) first.
 
+## Compatibility at a glance
+
+<!-- compat-matrix clients="claude-ai,claude-desktop,claude-code" limitations="true" -->
+
 ## claude.ai custom connectors
 
 Custom connectors are available on Free, Pro, Max, Team and Enterprise plans. Free accounts are limited to one custom connector. The steps differ between individual plans and organization plans.

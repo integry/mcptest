@@ -5,6 +5,7 @@ import {
   type CompatibilityStatus,
   type Known,
 } from '../compatibility';
+import { getClientCompatibilityForHost } from '../data/clientCompatibility';
 import {
   getEvaluationMaxScore,
   getEvaluationPercentage,
@@ -279,6 +280,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           {Object.values(matrix.assessments).map((assessment) => {
             const actionable = assessment.findings.filter((finding) => finding.outcome !== 'pass');
             const evidence = assessment.findings.flatMap((finding) => finding.evidence);
+            const client = getClientCompatibilityForHost(assessment.profileId);
             return (
               <article className={`compatibility-card compatibility-${assessment.status}`} key={assessment.profileId}>
                 <div className="compatibility-card-heading">
@@ -291,6 +293,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                     {statusLabel[assessment.status]}
                   </span>
                 </div>
+                <p className="compatibility-citation small text-muted mb-2">
+                  Client data: <a href={client.documentationUrl} target="_blank" rel="noopener noreferrer">{client.name}</a>
+                  {client.version.value !== 'unknown' && ` ${client.version.value}`}, verified {client.verifiedOn}
+                </p>
                 {actionable.length === 0 ? (
                   <p className="mb-0">No client-specific caveats or blockers were found.</p>
                 ) : (

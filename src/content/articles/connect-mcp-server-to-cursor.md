@@ -31,6 +31,10 @@ This guide reflects Cursor's MCP documentation reviewed on 20 October 2026 and C
 
 Cursor supports stdio, SSE and Streamable HTTP. For a remote server you need the exact MCP endpoint, for example `https://mcp.example.com/mcp`, and to know whether it uses OAuth, a fixed header, or no authentication. [How to connect to a remote MCP server](/learn/connect-remote-mcp-server) covers how to confirm that.
 
+## Compatibility at a glance
+
+<!-- compat-matrix clients="cursor" limitations="true" -->
+
 ## Add the server to mcp.json
 
 Cursor reads two files:
