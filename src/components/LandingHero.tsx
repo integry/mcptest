@@ -4,6 +4,16 @@ import { Link } from 'react-router-dom';
 import { getCatalogServers } from '../utils/catalogUtils';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import type { CatalogServer } from '../types/catalog';
+import {
+  LANDING_AUDIENCE_PATHS as AUDIENCE_PATHS,
+  LANDING_CATALOG_LINK_PREFIX,
+  LANDING_CATALOG_LINK_SUFFIX,
+  LANDING_COVERAGE_TITLE,
+  LANDING_HEADLINE,
+  LANDING_LEDE,
+  LANDING_PATHS_LABEL,
+  LANDING_REPORT_COVERAGE as REPORT_COVERAGE,
+} from '../content/landingCopy';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
 import './LandingHero.css';
@@ -34,32 +44,6 @@ export const selectLandingQuickPicks = (
   const others = eligible.filter((server) => !server.tags.includes('suggested'));
   return [...suggested, ...others].slice(0, limit);
 };
-
-const AUDIENCE_PATHS = [
-  {
-    title: 'New to MCP',
-    description: 'What the Model Context Protocol is, and how remote servers differ from local ones.',
-    to: '/docs/what-is-mcp',
-  },
-  {
-    title: 'Connecting a server to Claude, ChatGPT or Cursor',
-    description: 'Check that an endpoint responds and authorizes before you add it to a client.',
-    to: '/learn/connect-remote-mcp-server',
-  },
-  {
-    title: 'Building a server',
-    description: 'Run the checks a client will run, and find protocol, auth and CORS problems before release.',
-    to: '/docs/testing-guide',
-  },
-] as const;
-
-const REPORT_COVERAGE = [
-  'Protocol negotiation across MCP 2026 stateless, 2025 stateful and legacy HTTP+SSE',
-  'OAuth 2.1 with PKCE, bearer tokens and API keys',
-  'CORS evidence from a real browser',
-  'Tool, resource and prompt contracts',
-  'Shareable reports',
-] as const;
 
 export interface LandingHeroProps {
   serverUrl: string;
@@ -93,12 +77,10 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
     <section className="landing" aria-labelledby="landing-title">
       <div className="landing-hero">
         <h1 id="landing-title" className="landing-title">
-          Inspect, debug and evaluate remote MCP servers in your browser
+          {LANDING_HEADLINE}
         </h1>
         <p className="landing-lede">
-          Paste an endpoint URL to test a remote MCP server. mcptest.io negotiates the protocol,
-          handles authorization, and lists its tools, resources and prompts next to the raw
-          JSON-RPC traffic.
+          {LANDING_LEDE}
         </p>
 
         <div className="landing-connect">
@@ -164,7 +146,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
         )}
       </div>
 
-      <nav className="landing-paths" aria-label="Where to start">
+      <nav className="landing-paths" aria-label={LANDING_PATHS_LABEL}>
         <ul>
           {AUDIENCE_PATHS.map((path) => (
             <li key={path.to}>
@@ -179,7 +161,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
       </nav>
 
       <div className="landing-coverage">
-        <h2 className="landing-coverage-title">What a report covers</h2>
+        <h2 className="landing-coverage-title">{LANDING_COVERAGE_TITLE}</h2>
         <ul>
           {REPORT_COVERAGE.map((item) => (
             <li key={item}>
@@ -192,7 +174,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
 
       <p className="landing-catalog">
         <Link to="/catalog">
-          Browse {catalogCount} public remote MCP servers in the catalog <span aria-hidden="true">&rarr;</span>
+          {LANDING_CATALOG_LINK_PREFIX} {catalogCount} {LANDING_CATALOG_LINK_SUFFIX} <span aria-hidden="true">&rarr;</span>
         </Link>
       </p>
     </section>

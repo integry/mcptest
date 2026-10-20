@@ -1,8 +1,14 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getCatalogServerById } from '../utils/catalogUtils';
-import { getCatalogServerIdFromPath, getCatalogServerSeo, SITE_URL } from '../utils/catalogSeo';
-import { HOME_METADATA } from '../utils/pageMetadata';
+import {
+  getCatalogServerIdFromPath,
+  getCatalogServerPath,
+  getCatalogServerSeo,
+  SITE_URL,
+} from '../utils/catalogSeo';
+import { CATALOG_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
 import {
   LEARN_INDEX_METADATA,
@@ -12,6 +18,9 @@ import {
 } from '../content/learnRegistry';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
+
+/** The build-time Open Graph card for a prerendered page path. */
+const ogImage = (pagePath: string) => `${SITE_URL}${getOgImagePath(pagePath)}`;
 
 const setMetaTag = (property: string, content: string) => {
   let element = document.querySelector(`meta[property='${property}']`);
@@ -77,8 +86,10 @@ const applyMetadata = ({
   robots?: string;
 }) => {
   document.title = title;
+  // Build-time cards are large 1200x630 images; the fallback logo is a square icon.
+  const isCard = imageUrl.startsWith(`${SITE_URL}/og/`);
   setNamedMetaTag('description', description);
-  setNamedMetaTag('twitter:card', 'summary');
+  setNamedMetaTag('twitter:card', isCard ? 'summary_large_image' : 'summary');
   setNamedMetaTag('twitter:title', title);
   setNamedMetaTag('twitter:description', description);
   setNamedMetaTag('twitter:image', imageUrl);
@@ -87,6 +98,16 @@ const applyMetadata = ({
   setMetaTag('og:description', description);
   setMetaTag('og:url', canonicalUrl);
   setMetaTag('og:image', imageUrl);
+  if (isCard) {
+    setMetaTag('og:image:width', String(OG_IMAGE_WIDTH));
+    setMetaTag('og:image:height', String(OG_IMAGE_HEIGHT));
+    setMetaTag('og:image:alt', title);
+    setNamedMetaTag('twitter:image:alt', title);
+  } else {
+    document.querySelectorAll(
+      "meta[property='og:image:width'], meta[property='og:image:height'], meta[property='og:image:alt'], meta[name='twitter:image:alt']"
+    ).forEach(element => element.remove());
+  }
   setMetaTag('og:type', type);
   setCanonical(canonicalUrl);
   setStructuredData(structuredData);
@@ -102,7 +123,10 @@ export const useMetaTags = () => {
     const contentPage = getContentPage(location.pathname);
 
     if (catalogServer) {
-      applyMetadata(getCatalogServerSeo(catalogServer));
+      applyMetadata({
+        ...getCatalogServerSeo(catalogServer),
+        imageUrl: ogImage(getCatalogServerPath(catalogServer.id)),
+      });
     } else if (serverId) {
       applyMetadata({
         title: 'MCP Server Not Found | mcptest.io',
@@ -111,18 +135,23 @@ export const useMetaTags = () => {
         robots: 'noindex, follow',
       });
     } else if (contentPage?.kind === 'article') {
-      applyMetadata(getLearnArticleMetadata(contentPage.article));
+      applyMetadata({
+        ...getLearnArticleMetadata(contentPage.article),
+        imageUrl: ogImage(contentPage.article.path),
+      });
     } else if (contentPage?.kind === 'page') {
       applyMetadata({
         title: contentPage.page.metaTitle,
         description: contentPage.page.metaDescription,
         canonicalUrl: `${SITE_URL}${contentPage.page.path}`,
+        imageUrl: ogImage(contentPage.page.path),
       });
     } else if (isLearnIndexPath(location.pathname)) {
       applyMetadata({
         title: `${LEARN_INDEX_METADATA.title} | mcptest.io`,
         description: LEARN_INDEX_METADATA.description,
         canonicalUrl: `${SITE_URL}/learn`,
+        imageUrl: ogImage('/learn'),
       });
     } else if (location.pathname.startsWith('/learn/')) {
       applyMetadata({
@@ -152,12 +181,12 @@ export const useMetaTags = () => {
       });
     } else {
       const isCatalog = location.pathname === '/catalog';
+      const isHome = location.pathname === '/';
       applyMetadata({
-        title: isCatalog ? 'Remote MCP Server Catalog | mcptest.io' : HOME_METADATA.title,
-        description: isCatalog
-          ? 'Browse remote MCP servers by capability, transport, authentication method, and live validation status.'
-          : HOME_METADATA.description,
+        title: isCatalog ? CATALOG_METADATA.title : HOME_METADATA.title,
+        description: isCatalog ? CATALOG_METADATA.description : HOME_METADATA.description,
         canonicalUrl: `${SITE_URL}${location.pathname === '/' ? '' : location.pathname}`,
+        imageUrl: isCatalog || isHome ? ogImage(location.pathname) : undefined,
       });
     }
 

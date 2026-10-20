@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CONTENT_TRACKS } from '../../src/content/contentModel.ts';
 import { ARTICLES_DIR, loadArticles } from './loadArticles.js';
-import { articleMarkdownPath, renderArticleMarkdown, renderLlmsTxt } from './machineReadable.js';
+import {
+  articleMarkdownPath,
+  renderArticleMarkdown,
+  renderLearnFeed,
+  renderLlmsTxt,
+} from './machineReadable.js';
 
 const SAMPLE = `---
 title: Sample guide
@@ -122,6 +127,7 @@ describe('llms.txt', () => {
     }
     expect(text).toContain('- [Playground](https://mcptest.io/): ');
     expect(text).toContain('- [Server catalog](https://mcptest.io/catalog): ');
+    expect(text).toContain('- [Guides feed](https://mcptest.io/learn/feed.xml): ');
     expect(text.endsWith('\n')).toBe(true);
   });
 
@@ -132,5 +138,72 @@ describe('llms.txt', () => {
     expect(text).not.toContain('## Build');
     expect(text).not.toContain('## Reference');
     expect(text).toContain('- [Sample guide](https://mcptest.io/learn/sample-guide): A short summary.');
+  });
+});
+
+/** jsdom parses XML strictly (saxes) and reports any well-formedness error as <parsererror>. */
+const parseXml = text => {
+  const document = new DOMParser().parseFromString(text, 'application/xml');
+  const error = document.getElementsByTagName('parsererror')[0];
+  if (error) throw new Error(`Invalid XML: ${error.textContent}`);
+  return document;
+};
+
+describe('guides RSS feed', () => {
+  const learnIndex = { title: 'Learn MCP', description: 'Guides & checklists for <MCP>.', summary: 'Summary.' };
+
+  it('uses a parser that rejects malformed XML', () => {
+    expect(() => parseXml('<rss><channel><title>A & B</title></channel></rss>')).toThrow('Invalid XML');
+  });
+
+  it('is well-formed RSS 2.0 with an Atom self link and every guide newest first', () => {
+    const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
+    const document = parseXml(renderLearnFeed(articles, learnIndex));
+    const ATOM = 'http://www.w3.org/2005/Atom';
+
+    const rss = document.documentElement;
+    expect(rss.localName).toBe('rss');
+    expect(rss.getAttribute('version')).toBe('2.0');
+    const channel = rss.getElementsByTagName('channel')[0];
+    const child = (parent, name) => Array.from(parent.children).find(element => element.localName === name && !element.namespaceURI?.includes('Atom'));
+    expect(child(channel, 'title').textContent).toBe('mcptest.io guides');
+    expect(child(channel, 'link').textContent).toBe('https://mcptest.io/learn');
+    expect(child(channel, 'description').textContent).toBe(learnIndex.description);
+
+    const [self] = channel.getElementsByTagNameNS(ATOM, 'link');
+    expect(self.getAttribute('href')).toBe('https://mcptest.io/learn/feed.xml');
+    expect(self.getAttribute('rel')).toBe('self');
+    expect(self.getAttribute('type')).toBe('application/rss+xml');
+
+    const items = Array.from(channel.getElementsByTagName('item'));
+    expect(items).toHaveLength(articles.length);
+    const dates = items.map(item => Date.parse(child(item, 'pubDate').textContent));
+    expect(dates.every(Number.isFinite)).toBe(true);
+    expect([...dates].sort((left, right) => right - left)).toEqual(dates);
+    expect(child(channel, 'lastBuildDate').textContent).toBe(child(items[0], 'pubDate').textContent);
+
+    const byUrl = new Map(articles.map(article => [`https://mcptest.io${article.path}`, article]));
+    for (const item of items) {
+      const link = child(item, 'link').textContent;
+      const article = byUrl.get(link);
+      expect(article, link).toBeDefined();
+      expect(child(item, 'title').textContent).toBe(article.title);
+      expect(child(item, 'description').textContent).toBe(article.summary);
+      expect(child(item, 'guid').textContent).toBe(link);
+      expect(new Date(Date.parse(child(item, 'pubDate').textContent)).toISOString().slice(0, 10)).toBe(article.lastReviewed);
+    }
+  });
+
+  it('orders guides reviewed on the same day by title', () => {
+    const directory = writeFixture({
+      'b-guide.md': SAMPLE.replace('title: Sample guide', 'title: Beta guide'),
+      'a-guide.md': SAMPLE.replace('title: Sample guide', 'title: Alpha guide').replace('order: 1', 'order: 2'),
+      'c-guide.md': SAMPLE.replace('title: Sample guide', 'title: Old guide').replace('order: 1', 'order: 3')
+        .replace('lastReviewed: "2026-08-17"', 'lastReviewed: "2026-01-02"'),
+    });
+    const document = parseXml(renderLearnFeed(loadArticles({ directory }), learnIndex));
+    const titles = Array.from(document.getElementsByTagName('item'))
+      .map(item => item.getElementsByTagName('title')[0].textContent);
+    expect(titles).toEqual(['Alpha guide', 'Beta guide', 'Old guide']);
   });
 });
