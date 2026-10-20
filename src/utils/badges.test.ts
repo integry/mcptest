@@ -7,10 +7,12 @@ import {
   BADGE_VARIANTS,
   createBadgeSnippets,
   createCatalogBadgeSnippets,
+  createPublishedReportBadgeSnippets,
   createReportBadgeSnippets,
   getBadgeVariantForResult,
   getCatalogBadgeUrl,
   getCatalogBadgeVariant,
+  getPublishedReportBadgeUrl,
   getReportUrl,
   getStaticBadgeUrl,
   renderBadgeSvg,
@@ -105,6 +107,13 @@ describe('badge snippets', () => {
     expect(snippets.html).toContain('href="https://mcptest.io/report/a&quot;b"');
     expect(snippets.html).toContain('alt="Tested [on] &lt;mcptest&gt;"');
     expect(snippets.markdown).toContain('[![Tested \\[on\\] <mcptest>]');
+  });
+
+  it('points published report snippets at the live report badge and the canonical report URL', () => {
+    expect(getPublishedReportBadgeUrl(endpoint)).toBe(`https://mcptest.io/badge/report/${encoded}.svg`);
+    const snippets = createPublishedReportBadgeSnippets(endpoint);
+    expect(snippets.markdown).toContain(`(https://mcptest.io/badge/report/${encoded.replace('(', '%28').replace(')', '%29')}.svg)`);
+    expect(snippets.html).toBe(`<a href="https://mcptest.io/report/${encoded}"><img src="https://mcptest.io/badge/report/${encoded}.svg" alt="Tested on mcptest.io"></a>`);
   });
 
   it('points catalog snippets at the worker badge and the server profile', () => {

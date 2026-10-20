@@ -6,6 +6,7 @@ import ReportAuthorizationGate from './ReportAuthorizationGate';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
 import ReportHistory from './ReportHistory';
 import ReportBadgeEmbed from './ReportBadgeEmbed';
+import PublishedReportHistory from './PublishedReportHistory';
 import {
   beginOAuthFlow,
   getHostedOAuthTokenProxyUrl,
@@ -36,6 +37,7 @@ import { trackEvent, trackOAuthFlow } from '../utils/analytics';
 import { getReportGeneratedParams } from '../utils/reportAnalytics';
 import { getCatalogServerByEndpoint } from '../utils/catalogUtils';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
+import { publishedEndpointIdentity } from '../utils/publishedReports';
 import {
   createReportSnapshot,
   deleteAllReportSnapshots,
@@ -196,6 +198,8 @@ const ReportView: React.FC = () => {
   const [oauthTrace, setOAuthTrace] = useState<OAuthTraceV1 | undefined>();
   const [reportSnapshots, setReportSnapshots] = useState<ReportSnapshotV1[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  // Endpoint with at least one snapshot published to the Worker; switches badges to the live variant.
+  const [publishedEndpoint, setPublishedEndpoint] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -556,6 +560,16 @@ const ReportView: React.FC = () => {
     }
   }, [currentUser, report?.serverUrl]);
 
+  // Published history follows the route's endpoint so a visitor sees the last
+  // published run even before (or without) a live evaluation.
+  const publishedReportEndpoint = report?.serverUrl || (urlParam ? decodeURIComponent(urlParam) : undefined);
+  // Live badge snippets only for the endpoint on screen: the published state is
+  // reported as the Worker's normalized identity, so it is compared with the
+  // current report's identity rather than with the raw endpoint it came from.
+  const liveBadgeEndpoint = report?.serverUrl && publishedEndpoint
+    && publishedEndpoint === publishedEndpointIdentity(report.serverUrl)
+    ? publishedEndpoint
+    : undefined;
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresProxyAuthentication = report
     ? isProxyAuthenticationRequired(report)
@@ -944,13 +958,24 @@ const ReportView: React.FC = () => {
               </>}
             />
             {!reportRequiresProxyAuthentication && (
-              <ReportBadgeEmbed report={report} oauthTrace={oauthTrace} />
+              <ReportBadgeEmbed
+                report={report}
+                oauthTrace={oauthTrace}
+                publishedEndpoint={liveBadgeEndpoint}
+              />
             )}
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
 
           </div>
         </section>
       )}
+      <PublishedReportHistory
+        endpoint={publishedReportEndpoint}
+        report={report && !reportRequiresProxyAuthentication ? report : null}
+        oauthTrace={oauthTrace}
+        canPublish={!isRunning}
+        onPublishedStateChange={setPublishedEndpoint}
+      />
       <ReportHistory
         endpoint={report?.serverUrl}
         snapshots={reportSnapshots}
