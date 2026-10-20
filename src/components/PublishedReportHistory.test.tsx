@@ -16,6 +16,10 @@ import {
 import PublishedReportHistory, { describePublishedSummary } from './PublishedReportHistory';
 
 const ENDPOINT = 'https://history-ui.example/mcp';
+// The live run's endpoint carries a query credential; everything published,
+// requested or linked must use the redacted identity instead.
+const SECRET_ENDPOINT = 'https://history-ui.example/mcp?token=secret';
+const PUBLISHED_IDENTITY = 'https://history-ui.example/mcp?token=%5BREDACTED%5D';
 const API = 'https://worker.test';
 
 const report = (transport: 'streamable-http' | 'legacy-sse'): EvaluationReport => ({
@@ -51,9 +55,11 @@ const report = (transport: 'streamable-http' | 'legacy-sse'): EvaluationReport =
 
 const older = createReportSnapshot(report('streamable-http'), undefined, '2026-10-18T20:00:00.000Z').report;
 const newer = createReportSnapshot(report('legacy-sse'), undefined, '2026-10-19T20:00:00.000Z').report;
+const oldest = createReportSnapshot(report('streamable-http'), undefined, '2026-10-17T20:00:00.000Z').report;
 const ENDPOINT_KEY = 'a'.repeat(20);
 const olderId = publishedReportId(ENDPOINT_KEY, '1'.repeat(20));
 const newerId = publishedReportId(ENDPOINT_KEY, '2'.repeat(20));
+const oldestId = publishedReportId(ENDPOINT_KEY, '3'.repeat(20));
 
 const entry = (id: string, artifact: typeof older): PublishedReportEntry => ({
   id,
@@ -71,26 +77,35 @@ const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringif
 
 type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
 
+// Behaves like a browser with the index response still fresh in its HTTP cache:
+// a default-cache GET of an index URL replays the first body served for that
+// URL, and only a request that bypasses the cache sees the current entries.
 const installFetch = (entries: PublishedReportEntry[], artifacts: Record<string, unknown>): FetchMock => {
+  const cachedIndexes = new Map<string, string>();
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const method = init?.method ?? 'GET';
     if (method === 'GET' && url.startsWith(`${API}/r/endpoint/`)) {
-      return jsonResponse({ endpoint: ENDPOINT, retention: 20, snapshots: entries });
+      const requested = decodeURIComponent(url.slice(`${API}/r/endpoint/`.length));
+      const cached = cachedIndexes.get(url);
+      if (cached !== undefined && init?.cache !== 'no-store') return new Response(cached, { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const body = JSON.stringify({ endpoint: requested, retention: 20, snapshots: entries });
+      if (cached === undefined) cachedIndexes.set(url, body);
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (method === 'GET' && url.startsWith(`${API}/r/`)) {
       const id = decodeURIComponent(url.slice(`${API}/r/`.length));
       return artifacts[id] ? jsonResponse(artifacts[id]) : jsonResponse({ error: 'not_found' }, 404);
     }
     if (method === 'POST' && url === `${API}/r`) {
-      const published = entry(newerId, newer);
+      const published = { ...entry(newerId, newer), endpoint: PUBLISHED_IDENTITY };
       entries.splice(0, entries.length, published);
       return jsonResponse({
         id: newerId,
         url: `${API}/r/${newerId}`,
-        reportUrl: `https://mcptest.io/report/${encodeURIComponent(ENDPOINT)}`,
-        badgeUrl: `https://mcptest.io/badge/report/${encodeURIComponent(ENDPOINT)}.svg`,
-        endpoint: ENDPOINT,
+        reportUrl: `https://mcptest.io/report/${encodeURIComponent(PUBLISHED_IDENTITY)}`,
+        badgeUrl: `https://mcptest.io/badge/report/${encodeURIComponent(PUBLISHED_IDENTITY)}.svg`,
+        endpoint: PUBLISHED_IDENTITY,
         deduplicated: false,
         entry: published,
         snapshotCount: 1,
@@ -218,35 +233,49 @@ describe('PublishedReportHistory', () => {
     const onPublishedStateChange = vi.fn();
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
-    const liveReport = report('legacy-sse');
+    const liveReport = { ...report('legacy-sse'), serverUrl: SECRET_ENDPOINT };
     await render(
       <PublishedReportHistory
-        endpoint={ENDPOINT}
+        endpoint={SECRET_ENDPOINT}
         report={liveReport}
         onPublishedStateChange={onPublishedStateChange}
       />
     );
     expect(container.textContent).toContain('No published runs for this endpoint yet.');
     expect(onPublishedStateChange).toHaveBeenLastCalledWith(null);
+    const indexUrl = `${API}/r/endpoint/${encodeURIComponent(PUBLISHED_IDENTITY)}`;
+    expect(fetchMock.mock.calls[0][0]).toBe(indexUrl);
 
     await clickButton('Publish report');
 
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     expect(post?.[0]).toBe(`${API}/r`);
-    const body = JSON.parse(post?.[1]?.body as string) as { generatedAt: string };
+    const body = JSON.parse(post?.[1]?.body as string) as { generatedAt: string; target: { testedEndpoint: string } };
     const expected = JSON.parse(createPublishableReportJson(liveReport, undefined, body.generatedAt));
     expect(body).toEqual(expected);
+    expect(body.target.testedEndpoint).toBe(PUBLISHED_IDENTITY);
+
+    // The reload after publishing reads the index the Worker filed the snapshot
+    // under and bypasses the empty index the browser cached before the publish.
+    const reload = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    expect(reload[0]).toBe(indexUrl);
+    expect(reload[1]?.cache).toBe('no-store');
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes('secret'))).toBe(true);
 
     expect(container.textContent).toContain('Report published.');
     expect(container.querySelector<HTMLInputElement>('#published-removal-token')?.value).toBe('removal-token-shown-once');
     expect(JSON.parse(localStorage.getItem(PUBLISHED_REPORT_REMOVAL_TOKENS_KEY)!)).toEqual({
       [newerId]: 'removal-token-shown-once',
     });
-    expect(onPublishedStateChange).toHaveBeenLastCalledWith(ENDPOINT);
+    expect(onPublishedStateChange).toHaveBeenLastCalledWith(PUBLISHED_IDENTITY);
     expect(container.textContent).toContain('Latest published run');
+    expect(container.textContent).toContain('Remove');
 
     await clickButton('Copy token');
     expect(writeText).toHaveBeenCalledWith('removal-token-shown-once');
+    await clickButton('Copy report link');
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining(encodeURIComponent(PUBLISHED_IDENTITY)));
+    expect(writeText).not.toHaveBeenCalledWith(expect.stringContaining('secret'));
 
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await clickButton('Remove');
@@ -254,8 +283,40 @@ describe('PublishedReportHistory', () => {
     expect(remove?.[0]).toBe(`${API}/r/${newerId}`);
     expect((remove?.[1]?.headers as Record<string, string>)['X-Removal-Token']).toBe('removal-token-shown-once');
     expect(localStorage.getItem(PUBLISHED_REPORT_REMOVAL_TOKENS_KEY)).toBeNull();
+    const reloadAfterDelete = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    expect(reloadAfterDelete[0]).toBe(indexUrl);
+    expect(reloadAfterDelete[1]?.cache).toBe('no-store');
     expect(container.textContent).toContain('No published runs for this endpoint yet.');
     expect(onPublishedStateChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('renders a cached pair again after another comparison failed to load', async () => {
+    installFetch(
+      [entry(newerId, newer), entry(olderId, older), entry(oldestId, oldest)],
+      { [newerId]: newer, [olderId]: older }
+    );
+    await render(<PublishedReportHistory endpoint={ENDPOINT} />);
+    expect(container.textContent).toContain('Transport changed');
+
+    const earlier = container.querySelector<HTMLSelectElement>('select[aria-label="Earlier snapshot"]')!;
+    const select = async (id: string) => {
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+        setter.call(earlier, id);
+        earlier.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+
+    await select(oldestId);
+    expect(container.querySelector('.published-compare [role="alert"]')?.textContent).toContain('could not be compared');
+    expect(container.textContent).not.toContain('Transport changed');
+
+    await select(olderId);
+    expect(container.querySelector('.published-compare [role="alert"]')).toBeNull();
+    expect(container.textContent).toContain('Transport changed');
   });
 
   it('surfaces publish failures without losing the page', async () => {

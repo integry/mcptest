@@ -6,7 +6,7 @@
 import type { EvaluationReport } from './evaluation';
 import type { OAuthTraceV1 } from './oauthTrace';
 import { createReportDownload } from './reportDownloads';
-import { safeParsePublicReport, type PublicReport } from './reportArtifact';
+import { redactReportString, safeParsePublicReport, type PublicReport } from './reportArtifact';
 import { createCompatibilityMatrix, createReleaseDecision } from './releaseReadiness';
 import {
   normalizePublishedEndpoint,
@@ -88,22 +88,43 @@ export const createPublishableReportJson = (
   }).content;
 };
 
+/**
+ * The one endpoint identity publishing, history reads and links share: the
+ * endpoint as the redacted artifact records it (`target.testedEndpoint`, with
+ * query credentials replaced by the redaction marker), normalized the way the
+ * Worker normalizes it before hashing. Undefined when the endpoint cannot have
+ * published reports (non-public http(s) host). Never carries raw credentials.
+ */
+export const publishedEndpointIdentity = (endpoint: string): string | undefined => (
+  normalizePublishedEndpoint(redactReportString(endpoint.trim()))
+);
+
 /** Whether an endpoint can have published reports at all (public http(s) host). */
 export const isPublishableEndpoint = (endpoint: string): boolean => (
-  normalizePublishedEndpoint(endpoint) !== undefined
+  publishedEndpointIdentity(endpoint) !== undefined
 );
+
+interface IndexRequestOptions extends RequestOptions {
+  /**
+   * Bypass HTTP caches. The index is served with a short max-age, so a read
+   * right after a publish or delete must not reuse the response cached before
+   * the mutation.
+   */
+  fresh?: boolean;
+}
 
 /** Lists published snapshots for an endpoint; undefined when publishing is not configured. */
 export const fetchPublishedReportIndex = async (
   endpoint: string,
-  options: RequestOptions = {}
+  options: IndexRequestOptions = {}
 ): Promise<PublishedReportIndex | undefined> => {
   const base = resolveBase(options);
-  const normalized = normalizePublishedEndpoint(endpoint);
-  if (!base || !normalized) return undefined;
+  const identity = publishedEndpointIdentity(endpoint);
+  if (!base || !identity) return undefined;
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(`${base}/r/endpoint/${encodeURIComponent(normalized)}`, {
+  const response = await fetchImpl(`${base}/r/endpoint/${encodeURIComponent(identity)}`, {
     headers: { Accept: 'application/json' },
+    ...(options.fresh ? { cache: 'no-store' as RequestCache } : {}),
   });
   if (!response.ok) throw await readError(response);
   const body = await response.json() as PublishedReportIndex;

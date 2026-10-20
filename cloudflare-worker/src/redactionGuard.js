@@ -58,7 +58,10 @@ const KNOWN_CREDENTIAL_SHAPES = [
 
 const JWT_PATTERN = /(^|[^A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=$|[^A-Za-z0-9_-])/;
 const SCHEME_CREDENTIAL_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/i;
-const CANONICAL_REFERENCE_URL_PREFIX = 'https://mcptest.io/learn/mcp-transport-diagnostics-reference#';
+// A generated reference link: the canonical article plus one heading anchor made of
+// id characters only. Anything else after the prefix (a credential, a second
+// fragment, a query) fails this shape and is scanned like every other string.
+const CANONICAL_REFERENCE_URL_PATTERN = /^https:\/\/mcptest\.io\/learn\/mcp-transport-diagnostics-reference#[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const canonicalKey = (key) => key.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -103,9 +106,17 @@ export const isSensitiveQueryKey = (key) => {
 
 const isRedactedMarker = (value) => value === REDACTED_VALUE || value === ENCODED_REDACTED_VALUE;
 
-const startsWithRedactedMarker = (value) => (
-  value.startsWith(REDACTED_VALUE) || value.startsWith(ENCODED_REDACTED_VALUE)
-);
+// What may follow a redaction marker for the assignment value to count as fully
+// redacted: nothing, whitespace, a closing quote or bracket, or a delimiter that
+// starts the next assignment, URL component or fragment. The app replaces the
+// whole value, so a marker followed by value characters is a value the app never
+// produced and must be treated as a credential (`api_key=[REDACTED]plain-secret`).
+const REDACTED_MARKER_TERMINATOR = /^(?:$|[\s"'`,;&)\]}>#?])/;
+
+const isCompletelyRedactedValue = (value) => {
+  const marker = [REDACTED_VALUE, ENCODED_REDACTED_VALUE].find((candidate) => value.startsWith(candidate));
+  return marker !== undefined && REDACTED_MARKER_TERMINATOR.test(value.slice(marker.length));
+};
 
 const keyPart = String.raw`[A-Za-z](?:[A-Za-z0-9_+.-]|%[A-Fa-f0-9]{2})*`;
 const compoundKey = `${keyPart}(?:\\s+${keyPart}){0,2}`;
@@ -123,7 +134,7 @@ const findUnredactedAssignment = (value) => {
     if (!isSensitiveQueryKey(key)) continue;
     let rest = value.slice(match.index + match[0].length);
     if (rest.startsWith('"') || rest.startsWith("'")) rest = rest.slice(1);
-    if (!startsWithRedactedMarker(rest)) return `assignment "${key}" is not redacted`;
+    if (!isCompletelyRedactedValue(rest)) return `assignment "${key}" is not redacted`;
   }
   return undefined;
 };
@@ -204,13 +215,20 @@ const findSecretInJsonShapedText = (value, depth) => {
   return undefined;
 };
 
-const findSecretInText = (value, depth = 0) => {
-  if (depth > MAX_URL_SCAN_DEPTH) return undefined;
+/** Credential shapes that are refused wherever they appear, exemptions included. */
+const findCredentialShape = (value) => {
   if (JWT_PATTERN.test(value)) return 'contains a JWT';
   if (SCHEME_CREDENTIAL_PATTERN.test(value)) return 'contains a Bearer or Basic credential';
   for (const shape of KNOWN_CREDENTIAL_SHAPES) {
     if (shape.test(value)) return 'contains a well-known API key shape';
   }
+  return undefined;
+};
+
+const findSecretInText = (value, depth = 0) => {
+  if (depth > MAX_URL_SCAN_DEPTH) return undefined;
+  const shape = findCredentialShape(value);
+  if (shape) return shape;
   const assignment = findUnredactedAssignment(value);
   if (assignment) return assignment;
   const urlPattern = /https?:\/\/[^\s<>]+/gi;
@@ -241,6 +259,17 @@ const isJsonRpcErrorCode = (value, key, path) => (
   && canonicalKey(path[path.length - 2] || '') === 'error'
   && Number.isInteger(value)
 );
+// The artifact locations the app fills with generated reference links
+// (src/utils/reportArtifact.ts): release priorities and evidence metadata.
+const isReferenceUrlField = (path) => {
+  if (path[path.length - 1] !== 'referenceUrl') return false;
+  if (path.length === 4 && path[0] === 'releaseDecision' && path[1] === 'priorities') return true;
+  if (path[0] !== 'sections' || path[2] !== 'evidence' || path[4] !== 'metadata') return false;
+  return path.length === 6 || (path.length === 7 && path[5] === 'transportDiagnostic');
+};
+const isCanonicalReferenceUrl = (value, path) => (
+  isReferenceUrlField(path) && CANONICAL_REFERENCE_URL_PATTERN.test(value)
+);
 const isToolInputSchemaRedactedValue = (key, path) => (
   TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS.has(key)
   && path.includes('toolDefinitions')
@@ -268,9 +297,11 @@ const findSecretInValue = (value, key, path, depth = 0) => {
     }
   }
   if (typeof value === 'string') {
-    if (key === 'referenceUrl' && value.startsWith(CANONICAL_REFERENCE_URL_PREFIX)) return undefined;
-    if (isAuthorizationSetupHeaderTemplateField(path)) return undefined;
-    const reason = findSecretInText(value, depth);
+    // A generated reference link keeps its heading anchor, which the URL scan would
+    // otherwise refuse as an unredacted fragment; credential shapes are still refused.
+    const reason = isCanonicalReferenceUrl(value, path) || isAuthorizationSetupHeaderTemplateField(path)
+      ? findCredentialShape(value)
+      : findSecretInText(value, depth);
     return reason ? { path: formatPath(path), reason } : undefined;
   }
   if (Array.isArray(value)) {

@@ -12,9 +12,9 @@ import {
   fetchPublishedReportIndex,
   forgetRemovalToken,
   getPublishedReportsApiBase,
-  isPublishableEndpoint,
   loadRemovalTokens,
   publishReport,
+  publishedEndpointIdentity,
   saveRemovalToken,
   type PublishReportResult,
   type PublishedReportEntry,
@@ -96,20 +96,26 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
   const [removalTokens, setRemovalTokens] = useState<Record<string, string>>({});
   const [artifacts, setArtifacts] = useState<Record<string, PublicReport>>({});
   const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
-  const [diffError, setDiffError] = useState<string | null>(null);
+  // A failed comparison is scoped to the pair it was for, so reselecting a pair
+  // whose artifacts are already cached renders its diff instead of a stale error.
+  const [diffFailure, setDiffFailure] = useState<{ before: string; after: string; message: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
   const requestVersion = useRef(0);
 
-  const publishable = Boolean(apiBase && endpoint && isPublishableEndpoint(endpoint));
+  // The redacted, normalized endpoint the Worker files snapshots under; the same
+  // identity publishing uses (the artifact's testedEndpoint), so history reads and
+  // links never carry raw query credentials and always find what was published.
+  const identity = useMemo(() => (endpoint ? publishedEndpointIdentity(endpoint) : undefined), [endpoint]);
+  const publishable = Boolean(apiBase && identity);
 
-  const loadIndex = useCallback(async (target: string) => {
+  const loadIndex = useCallback(async (target: string, fresh = false) => {
     const version = requestVersion.current + 1;
     requestVersion.current = version;
     setLoading(true);
     setLoadError(null);
     try {
-      const loaded = await fetchPublishedReportIndex(target);
+      const loaded = await fetchPublishedReportIndex(target, { fresh });
       if (requestVersion.current !== version) return;
       setIndex(loaded);
     } catch (error) {
@@ -127,9 +133,10 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     setPublishError(null);
     setCompare(null);
     setArtifacts({});
-    if (!publishable || !endpoint) return;
-    void loadIndex(endpoint);
-  }, [endpoint, publishable, loadIndex]);
+    setDiffFailure(null);
+    if (!publishable || !identity) return;
+    void loadIndex(identity);
+  }, [identity, publishable, loadIndex]);
 
   useEffect(() => {
     try {
@@ -165,14 +172,16 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     const missing = [compare.before, compare.after].filter((id) => !artifacts[id]);
     if (missing.length === 0) return;
     let cancelled = false;
-    setDiffError(null);
+    const { before, after } = compare;
+    setDiffFailure(null);
     void Promise.all(missing.map(async (id) => [id, await fetchPublishedReport(id)] as const))
       .then((loaded) => {
         if (cancelled) return;
         setArtifacts((current) => ({ ...current, ...Object.fromEntries(loaded) }));
       })
       .catch((error: unknown) => {
-        if (!cancelled) setDiffError(`The snapshots could not be compared: ${errorMessage(error)}`);
+        if (cancelled) return;
+        setDiffFailure({ before, after, message: `The snapshots could not be compared: ${errorMessage(error)}` });
       });
     return () => {
       cancelled = true;
@@ -186,6 +195,10 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     return before && after ? diffPublicReports(before, after) : undefined;
   }, [compare, artifacts]);
 
+  const diffError = compare && diffFailure && diffFailure.before === compare.before && diffFailure.after === compare.after
+    ? diffFailure.message
+    : null;
+
   const copy = async (key: string, value: string) => {
     const ok = await copyText(value);
     setCopied(ok ? key : null);
@@ -193,7 +206,7 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
   };
 
   const handlePublish = async () => {
-    if (!report || !endpoint) return;
+    if (!report || !identity) return;
     setPublishing(true);
     setPublishError(null);
     setPublishResult(null);
@@ -208,7 +221,9 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
           // The token is still shown once on the page.
         }
       }
-      await loadIndex(endpoint);
+      // Read the index the Worker filed the snapshot under, bypassing the copy
+      // the browser cached before this publish.
+      await loadIndex(result.endpoint || identity, true);
     } catch (error) {
       setPublishError(`The report could not be published: ${errorMessage(error)}`);
     } finally {
@@ -218,7 +233,7 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
 
   const handleDelete = async (entry: PublishedReportEntry) => {
     const token = removalTokens[entry.id];
-    if (!token || !endpoint) return;
+    if (!token || !identity) return;
     if (!window.confirm('Remove this published snapshot from mcptest.io? Its permalink will stop working.')) return;
     setPublishError(null);
     try {
@@ -230,16 +245,16 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
       }
       setRemovalTokens(({ [entry.id]: _removed, ...rest }) => rest);
       if (publishResult?.id === entry.id) setPublishResult(null);
-      await loadIndex(endpoint);
+      await loadIndex(identity, true);
     } catch (error) {
       setPublishError(`The snapshot could not be removed: ${errorMessage(error)}`);
     }
   };
 
-  if (!publishable || !endpoint) return null;
+  if (!publishable || !identity) return null;
 
   const latest = snapshots[0];
-  const canonicalUrl = getReportUrl(index?.endpoint ?? endpoint);
+  const canonicalUrl = getReportUrl(index?.endpoint ?? identity);
   const permalink = (entry: PublishedReportEntry) => `${apiBase}/r/${entry.id}`;
 
   return (

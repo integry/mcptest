@@ -2,8 +2,9 @@
 // sliding-window rate-limit counter of one publisher scope.
 //
 // Instance names:
-//   - "endpoint:<endpointKey>" keeps up to PUBLISHED_REPORT_RETENTION snapshots, newest
-//     first, each addressed by its content hash so identical runs share one entry.
+//   - "endpoint:<endpointKey>" keeps up to PUBLISHED_REPORT_RETENTION snapshots ordered
+//     by latest publication (a republished identical run moves to the front), each
+//     addressed by its content hash so identical runs share one entry.
 //   - "rate:<scope>:<value>" keeps the timestamps of recent publishes for one IP or host.
 //
 // Artifacts are stored as JSON text split into chunks so a snapshot never exceeds
@@ -63,9 +64,13 @@ export class PublishedReports {
     const index = await this.readIndex();
     const existing = index.find((entry) => entry.contentHash === contentHash);
     if (existing) {
-      existing.lastPublishedAt = now;
-      await this.storage.put(INDEX_KEY, index);
-      return json({ created: false, entry: this.publicEntry(existing), count: index.length });
+      // The index is ordered by latest publication, so a republished snapshot moves
+      // to the front (badge and "latest run" read element zero) and keeps its
+      // artifact, permalink and removal-token hash.
+      const republished = { ...existing, lastPublishedAt: now };
+      const reordered = [republished, ...index.filter((entry) => entry !== existing)];
+      await this.storage.put(INDEX_KEY, reordered);
+      return json({ created: false, entry: this.publicEntry(republished), count: reordered.length });
     }
     const chunkCount = await this.writeArtifact(id, artifactJson);
     const entry = {

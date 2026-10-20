@@ -101,6 +101,13 @@ const forHost = (host) => {
   artifact.target.testedEndpoint = `https://${host}/mcp`;
   return artifact;
 };
+const failedRun = () => artifactFor(evaluation({
+  outcome: 'failed',
+  finalScore: 0,
+  sections: { protocol: { name: 'Protocol', description: 'Protocol', score: 0, maxScore: 15, status: 'failed', details: [{ text: 'Unreachable' }] } },
+}));
+const CANONICAL_REFERENCE = 'https://mcptest.io/learn/mcp-transport-diagnostics-reference#transport-accept-header-406';
+const JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
 
 let env;
 let ipCounter = 0;
@@ -180,6 +187,31 @@ describe('publishing a report', () => {
     expect(index.snapshots[0]).not.toHaveProperty('removalTokenHash');
   });
 
+  it('moves a republished identical run to the front and keeps its permalink and removal token', async () => {
+    const first = await (await publish(artifactFor(evaluation(), '2026-10-20T09:00:00.000Z'))).json();
+    const changed = await (await publish(failedRun())).json();
+    const badgePath = `/badge/report/${encodeURIComponent(ENDPOINT)}.svg`;
+    expect((await request(badgePath)).headers.get('X-Badge-Result')).toBe('blocked');
+
+    const again = await (await publish(artifactFor(evaluation(), '2026-10-20T11:00:00.000Z'))).json();
+    expect(again.deduplicated).toBe(true);
+    expect(again.id).toBe(first.id);
+    expect(again.entry.createdAt).toBe(first.entry.createdAt);
+    expect(Date.parse(again.entry.lastPublishedAt)).toBeGreaterThanOrEqual(Date.parse(changed.entry.createdAt));
+    expect(again.snapshotCount).toBe(2);
+
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots.map((entry) => entry.id)).toEqual([first.id, changed.id]);
+    expect(index.snapshots[0]).toMatchObject({ createdAt: first.entry.createdAt, lastPublishedAt: again.entry.lastPublishedAt });
+    expect((await request(badgePath)).headers.get('X-Badge-Result')).toBe('review');
+    expect((await request(`/r/${first.id}`)).status).toBe(200);
+    expect((await request(`/r/${changed.id}`)).status).toBe(200);
+
+    const removed = await request(`/r/${first.id}`, { method: 'DELETE', headers: { 'X-Removal-Token': first.removalToken } });
+    expect(removed.status).toBe(204);
+    expect((await request(badgePath)).headers.get('X-Badge-Result')).toBe('blocked');
+  });
+
   it('keeps only the newest snapshots per endpoint', async () => {
     // Spread the runs over several hours so the per-host publish limit never applies.
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -238,6 +270,30 @@ describe('publishing a report', () => {
     ['a sensitive key in a tool schema', (artifact) => {
       artifact.toolSurfaceAnalysis.toolDefinitions.tools[0].inputSchema.properties.password = { type: 'string' };
     }],
+    ['a credential appended to the redaction marker of an assignment', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'Retry with api_key=[REDACTED]plain-secret';
+    }],
+    ['a credential appended to an encoded redaction marker inside nested metadata', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { request: { query: { raw: 'token=%5BREDACTED%5Dplain-secret' } } };
+    }],
+    ['an Authorization header nested several objects deep', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { request: { headers: { nested: { Authorization: 'Bearer deep-token' } } } };
+    }],
+    ['a bearer credential after the canonical reference prefix in evidence metadata', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { referenceUrl: `${CANONICAL_REFERENCE} Bearer plain-secret` };
+    }],
+    ['a JWT after the canonical reference prefix in a transport diagnostic', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { transportDiagnostic: { id: 'transport.accept-header-406', referenceUrl: `${CANONICAL_REFERENCE}.${JWT}` } };
+    }],
+    ['a query credential after the canonical reference prefix in a release priority', (artifact) => {
+      artifact.releaseDecision.priorities.push({
+        id: 'transport.accept-header-406', severity: 'high', title: 'Accept header', detail: 'Rejected', remediation: 'Fix it', source: 'Evaluation',
+        referenceUrl: `${CANONICAL_REFERENCE}?access_token=plain-secret`,
+      });
+    }],
+    ['a canonical reference URL under a key the app never writes it to', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { extra: { referenceUrl: `${CANONICAL_REFERENCE}-plain-secret-with-sk-abcdefghijklmnopqrstuvwxyz` } };
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);
@@ -268,6 +324,31 @@ describe('publishing a report', () => {
     expect(JSON.stringify(artifact)).not.toContain('secret');
     expect(findUnredactedSecret(artifact)).toBeUndefined();
     expect((await publish(artifact)).status).toBe(201);
+  });
+
+  it('accepts complete redaction markers and canonical reference links where the app writes them', async () => {
+    const artifact = artifactFor(evaluation());
+    artifact.sections[0].evidence[0].message = 'Retry with api_key=[REDACTED] and token="[REDACTED]"';
+    artifact.sections[0].evidence[0].context = 'https://published.example/mcp?token=%5BREDACTED%5D&page=2';
+    artifact.sections[0].evidence[0].metadata = {
+      referenceUrl: CANONICAL_REFERENCE,
+      transportDiagnostic: { id: 'transport.accept-header-406', referenceUrl: CANONICAL_REFERENCE },
+      request: { headers: { Authorization: '[REDACTED]' } },
+    };
+    artifact.releaseDecision.priorities.push({
+      id: 'transport.accept-header-406', severity: 'high', title: 'Accept header', detail: 'Rejected', remediation: 'Fix it', source: 'Evaluation',
+      referenceUrl: CANONICAL_REFERENCE,
+    });
+    expect(validateStored(artifact), JSON.stringify(validateStored.errors)).toBe(true);
+    expect(findUnredactedSecret(artifact)).toBeUndefined();
+    expect((await publish(artifact)).status).toBe(201);
+  });
+
+  it('refuses credentials in nested objects regardless of their key', () => {
+    expect(findUnredactedSecret({ a: [{ b: { c: { note: `see ${JWT}` } } }] })).toEqual({ path: 'a.0.b.c.note', reason: 'contains a JWT' });
+    expect(findUnredactedSecret({ a: { b: { 'x-api-key': 'plain' } } })).toEqual({ path: 'a.b.x-api-key', reason: 'sensitive key "x-api-key" must be redacted' });
+    expect(findUnredactedSecret({ a: { b: { 'x-api-key': '[REDACTED]', note: 'secret=[REDACTED]' } } })).toBeUndefined();
+    expect(findUnredactedSecret({ a: { b: { note: 'secret=[REDACTED]-still-a-secret' } } })).toMatchObject({ path: 'a.b.note' });
   });
 
   it('rejects oversized bodies and non-public endpoints', async () => {
@@ -361,11 +442,7 @@ describe('published report badges', () => {
     expect(published.headers.get('X-Badge-Result')).toBe('review');
     expect(await published.text()).toContain('<title>mcptest.io: review</title>');
 
-    await publish(artifactFor(evaluation({
-      outcome: 'failed',
-      finalScore: 0,
-      sections: { protocol: { name: 'Protocol', description: 'Protocol', score: 0, maxScore: 15, status: 'failed', details: [{ text: 'Unreachable' }] } },
-    })));
+    await publish(failedRun());
     expect((await request(path)).headers.get('X-Badge-Result')).toBe('blocked');
   });
 

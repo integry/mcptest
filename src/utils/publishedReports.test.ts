@@ -11,8 +11,10 @@ import {
   fetchPublishedReportIndex,
   forgetRemovalToken,
   getPublishedReportsApiBase,
+  isPublishableEndpoint,
   loadRemovalTokens,
   publishReport,
+  publishedEndpointIdentity,
   saveRemovalToken,
 } from './publishedReports';
 import {
@@ -98,6 +100,17 @@ describe('publishable artifact', () => {
     expect(published).not.toContain('secret');
     expect(JSON.parse(published).target.testedEndpoint).toBe('https://published.example/mcp?token=%5BREDACTED%5D');
   });
+
+  it('shares one redacted endpoint identity between the artifact and history lookups', () => {
+    const published = JSON.parse(createPublishableReportJson(report(), undefined, '2026-10-20T09:00:00.000Z'));
+    const identity = publishedEndpointIdentity(report().serverUrl);
+    expect(identity).toBe('https://published.example/mcp?token=%5BREDACTED%5D');
+    expect(identity).toBe(normalizePublishedEndpoint(published.target.testedEndpoint));
+    expect(publishedEndpointIdentity('https://user:pw@published.example/mcp?page=2#frag')).toBe('https://published.example/mcp?page=2');
+    expect(publishedEndpointIdentity('http://localhost:3000/mcp')).toBeUndefined();
+    expect(isPublishableEndpoint('https://published.example/mcp?token=secret')).toBe(true);
+    expect(isPublishableEndpoint('http://127.0.0.1/mcp')).toBe(false);
+  });
 });
 
 describe('published report client', () => {
@@ -124,6 +137,7 @@ describe('published report client', () => {
       endpoint: 'https://published.example/mcp', retention: 20, snapshots: [],
     });
     expect(calls[0].url).toBe(`https://worker.test/r/endpoint/${encodeURIComponent('https://published.example/mcp')}`);
+    expect(calls[0].init?.cache).toBeUndefined();
     expect(await fetchPublishedReportIndex('http://localhost/mcp', options)).toBeUndefined();
     expect(await fetchPublishedReportIndex('https://published.example/mcp', { apiBase: '', fetchImpl })).toBeUndefined();
 
@@ -136,6 +150,22 @@ describe('published report client', () => {
     await deletePublishedReport('x', 'tok', options);
     expect(calls[3].init?.method).toBe('DELETE');
     expect((calls[3].init?.headers as Record<string, string>)['X-Removal-Token']).toBe('tok');
+  });
+
+  it('looks history up under the redacted identity and bypasses caches after a mutation', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({ endpoint: 'https://published.example/mcp?token=%5BREDACTED%5D', retention: 20, snapshots: [] }));
+    }) as typeof fetch;
+    const options = { apiBase: 'https://worker.test', fetchImpl };
+    await fetchPublishedReportIndex('https://Published.Example/mcp?token=secret#frag', options);
+    expect(calls[0].url).toBe(`https://worker.test/r/endpoint/${encodeURIComponent('https://published.example/mcp?token=%5BREDACTED%5D')}`);
+    expect(calls[0].url).not.toContain('secret');
+    expect(calls[0].init?.cache).toBeUndefined();
+    await fetchPublishedReportIndex('https://published.example/mcp?token=secret', { ...options, fresh: true });
+    expect(calls[1].url).toBe(calls[0].url);
+    expect(calls[1].init?.cache).toBe('no-store');
   });
 
   it('turns worker error bodies into typed errors', async () => {
