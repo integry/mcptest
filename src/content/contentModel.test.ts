@@ -12,7 +12,7 @@ import {
   validateArticles,
   type LearnArticle,
 } from './contentModel';
-import { createHeadingIdAllocator, extractOutline, headingPlainText, slugifyHeading, splitHeadingAnchor } from './outline';
+import { createHeadingIdAllocator, extractHeadings, extractOutline, slugifyHeading, splitHeadingAnchor } from './outline';
 
 const baseFrontmatter = {
   title: 'Sample article',
@@ -244,29 +244,71 @@ describe('outline extraction', () => {
     ]);
   });
 
-  it('decodes character references and keeps link labels so ids match the parsed heading', () => {
-    expect(headingPlainText('Authentication &amp; permissions')).toBe('Authentication & permissions');
-    expect(headingPlainText('[OAuth](https://example.com)')).toBe('OAuth');
-    expect(headingPlainText('Tools &#38; resources &#x26; prompts')).toBe('Tools & resources & prompts');
-    expect(headingPlainText('Caf&eacute; &nbsp;menu')).toBe('Café \u00a0menu');
-    expect(headingPlainText('Literal &notanentity; stays')).toBe('Literal &notanentity; stays');
-    expect(headingPlainText('Escaped \\&amp; stays')).toBe('Escaped &amp; stays');
-    expect(headingPlainText('Code `&amp;` ``a`b`` stays')).toBe('Code &amp; a`b stays');
-    expect(headingPlainText('![Logo](/logo.png) alt text')).toBe('Logo alt text');
-    expect(headingPlainText('Invalid &#0; &#1114112; references')).toBe('Invalid \uFFFD \uFFFD references');
-
+  it('reads heading text from the parsed tree so entities, escapes, code, images, and links match the renderer', () => {
     const outline = extractOutline([
       '## Authentication &amp; permissions',
       '## [OAuth](https://example.com)',
-      '### Tools &#38; resources',
-      '## `&amp;` in code',
+      '### Tools &#38; resources &#x26; prompts',
+      '## Caf&eacute; &nbsp;menu',
+      '## Literal &notanentity; stays',
+      '## Escaped \\&amp; stays',
+      '## Code `&amp;` ``a`b`` stays',
+      '## ![Logo](/logo.png) alt text',
+      '## Invalid &#0; &#1114112; references',
+      '## ~~Struck~~ _and_ **bold**',
     ].join('\n'));
     expect(outline).toEqual([
       { level: 2, text: 'Authentication & permissions', id: 'authentication-permissions' },
       { level: 2, text: 'OAuth', id: 'oauth' },
-      { level: 3, text: 'Tools & resources', id: 'tools-resources' },
-      { level: 2, text: '&amp; in code', id: 'amp-in-code' },
+      { level: 3, text: 'Tools & resources & prompts', id: 'tools-resources-prompts' },
+      { level: 2, text: 'Café \u00a0menu', id: 'cafe-menu' },
+      { level: 2, text: 'Literal &notanentity; stays', id: 'literal-notanentity-stays' },
+      { level: 2, text: 'Escaped &amp; stays', id: 'escaped-amp-stays' },
+      { level: 2, text: 'Code &amp; a`b stays', id: 'code-amp-ab-stays' },
+      { level: 2, text: 'Logo alt text', id: 'logo-alt-text' },
+      { level: 2, text: 'Invalid \uFFFD \uFFFD references', id: 'invalid-references' },
+      { level: 2, text: 'Struck and bold', id: 'struck-and-bold' },
     ]);
+  });
+
+  it('resolves reference-style links in headings to their labels, as the renderer does', () => {
+    const outline = extractOutline([
+      '## [OAuth][auth]',
+      '### [Dynamic client registration][]',
+      '## [Tokens]',
+      '## [Undefined][missing]',
+      '',
+      '[auth]: https://example.com/oauth',
+      '[dynamic client registration]: https://example.com/dcr',
+      '[tokens]: https://example.com/tokens',
+    ].join('\n'));
+    expect(outline).toEqual([
+      { level: 2, text: 'OAuth', id: 'oauth' },
+      { level: 3, text: 'Dynamic client registration', id: 'dynamic-client-registration' },
+      { level: 2, text: 'Tokens', id: 'tokens' },
+      { level: 2, text: '[Undefined][missing]', id: 'undefinedmissing' },
+    ]);
+  });
+
+  it('parses component-marker segments separately and reports source lines for every heading', () => {
+    const content = [
+      '',
+      '## [Before][ref]',
+      '',
+      COMPONENT_MARKER,
+      '',
+      '',
+      '## [After][ref] {#after-demo}',
+      '> ### Quoted',
+      '',
+      '[ref]: https://example.com',
+    ].join('\n');
+    expect(extractHeadings(content)).toEqual([
+      { level: 2, text: '[Before][ref]', id: 'beforeref', line: 1 },
+      { level: 2, text: 'After', id: 'after-demo', line: 6 },
+      { level: 3, text: 'Quoted', id: 'quoted', line: 7 },
+    ]);
+    expect(extractOutline(content).map(heading => heading.id)).toEqual(['beforeref', 'after-demo', 'quoted']);
   });
 
   it('slugifies punctuation and accents', () => {

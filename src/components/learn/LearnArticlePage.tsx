@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { getContentComponent } from '../../content/componentRegistry';
 import type { LearnArticle } from '../../content/learnRegistry';
@@ -21,7 +21,7 @@ const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
   const related = getRelatedLearnArticles(article);
   const { previous, next } = getLearnArticleNeighbors(article);
   const track = getTrack(article.track);
-  const outline = extractOutline(article.content);
+  const outline = useMemo(() => extractOutline(article.content), [article.content]);
   const Embedded = getContentComponent(article.component);
   const articleRef = useRef<HTMLElement>(null);
 

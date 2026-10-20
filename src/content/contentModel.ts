@@ -4,7 +4,6 @@
  * tests, and the Node build script alike.
  */
 
-import { HEADING_ANCHOR_ID_PATTERN } from './outline.ts';
 
 export const SITE_NAME = 'mcptest.io';
 export const SITE_URL = 'https://mcptest.io';
@@ -55,6 +54,33 @@ export type ContentComponentName = (typeof CONTENT_COMPONENT_NAMES)[number];
 
 /** Marker line that positions the embedded component inside the body. */
 export const COMPONENT_MARKER = '<!-- component -->';
+
+/** Shape of an explicit anchor accepted after a heading, as in `## Title {#my-anchor}`. */
+export const HEADING_ANCHOR_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+export interface ContentSegment {
+  /** Markdown handed to the parser for this segment. */
+  markdown: string;
+  /** Zero-based line of `markdown`'s first line within the original content. */
+  line: number;
+}
+
+/**
+ * Splits the body at the component marker so the embedded component can be
+ * positioned between two independently parsed Markdown documents. The browser
+ * renderer and the outline both parse exactly these segments, so heading ids
+ * and reference-link resolution agree between them.
+ */
+export const splitAtComponentMarker = (content: string): ContentSegment[] => {
+  const lines = content.split('\n');
+  const markerIndex = lines.findIndex(line => line.trim() === COMPONENT_MARKER);
+  if (markerIndex === -1) return [{ markdown: content, line: 0 }];
+  return [[0, markerIndex], [markerIndex + 1, lines.length]].map(([start, end]) => {
+    const raw = lines.slice(start, end).join('\n');
+    const trimmedLeadingLines = raw.slice(0, raw.length - raw.trimStart().length).split('\n').length - 1;
+    return { markdown: raw.trim(), line: start + trimmedLeadingLines };
+  });
+};
 
 export interface LearnSourceLink {
   title: string;

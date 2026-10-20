@@ -15,7 +15,7 @@ const {
   getArticleMetaTitle,
   getTrackNeighbors,
 } = require('../src/content/contentModel.ts');
-const { createHeadingIdAllocator, headingPlainText, splitHeadingAnchor } = require('../src/content/outline.ts');
+const { extractHeadings, splitHeadingAnchor } = require('../src/content/outline.ts');
 const { loadArticles } = require('./content/loadArticles.js');
 const {
   articleMarkdownPath,
@@ -574,10 +574,19 @@ function isTableSeparator(line) {
   return cells.length > 1 && cells.every(cell => /^\s*:?-{3,}:?\s*$/.test(cell));
 }
 
-function renderMarkdown(markdown) {
+/**
+ * Heading ids come from the parsed Markdown tree (`extractHeadings`), keyed
+ * by source line, so the fallback HTML carries exactly the ids the browser
+ * outline links to. `context` carries that map through blockquote recursion
+ * together with the line offset of the nested slice.
+ */
+function renderMarkdown(markdown, context = undefined) {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const html = [];
-  const allocateHeadingId = createHeadingIdAllocator();
+  const { headingIdsByLine, lineOffset } = context || {
+    headingIdsByLine: new Map(extractHeadings(markdown).map(heading => [heading.line, heading.id])),
+    lineOffset: 0,
+  };
   let index = 0;
 
   while (index < lines.length) {
@@ -603,8 +612,13 @@ function renderMarkdown(markdown) {
     const heading = line.match(/^(#{2,6})\s+(.+)$/);
     if (heading) {
       const level = heading[1].length;
-      const { text, anchor } = splitHeadingAnchor(heading[2]);
-      const id = allocateHeadingId(headingPlainText(text), anchor);
+      const { text } = splitHeadingAnchor(heading[2]);
+      const id = headingIdsByLine.get(lineOffset + index);
+      if (id === undefined) {
+        throw new Error(
+          `Prerenderer treated line ${lineOffset + index + 1} as a heading but the Markdown parser did not: ${line}`
+        );
+      }
       html.push(`<h${level} id="${escapeHtml(id)}">${renderInlineMarkdown(text)}</h${level}>`);
       index += 1;
       continue;
@@ -612,11 +626,12 @@ function renderMarkdown(markdown) {
 
     if (line.startsWith('>')) {
       const quoted = [];
+      const quoteStart = index;
       while (index < lines.length && lines[index].startsWith('>')) {
         quoted.push(lines[index].replace(/^>\s?/, ''));
         index += 1;
       }
-      html.push(`<blockquote>${renderMarkdown(quoted.join('\n'))}</blockquote>`);
+      html.push(`<blockquote>${renderMarkdown(quoted.join('\n'), { headingIdsByLine, lineOffset: lineOffset + quoteStart })}</blockquote>`);
       continue;
     }
 

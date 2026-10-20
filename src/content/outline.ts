@@ -1,16 +1,41 @@
 /**
  * In-page outline helpers shared by the reading layout (browser) and the
- * prerendered fallback HTML (Node). Both derive heading ids from the same
- * plain-text slug so anchors agree.
+ * prerendered fallback HTML (Node). Headings are read from the same parsed
+ * Markdown tree the browser renderer uses, so every outline link targets an
+ * id that the rendered heading actually carries.
  */
 
-import { decodeNamedCharacterReference } from 'decode-named-character-reference';
+import remarkGfm from 'remark-gfm';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
+import { HEADING_ANCHOR_ID_PATTERN, splitAtComponentMarker } from './contentModel.ts';
 
 export interface OutlineHeading {
   level: 2 | 3;
   text: string;
   id: string;
 }
+
+/** Every heading of a document in order, with the zero-based source line it starts on. */
+export interface ParsedHeading {
+  level: number;
+  text: string;
+  id: string;
+  line: number;
+}
+
+/** The subset of an mdast node the heading helpers touch. */
+export interface MarkdownNode {
+  type: string;
+  depth?: number;
+  value?: string;
+  alt?: string | null;
+  children?: MarkdownNode[];
+  data?: { hProperties?: Record<string, unknown> };
+  position?: { start: { line: number } };
+}
+
+export type HeadingIdAllocator = (text: string, anchor?: string) => string;
 
 export const slugifyHeading = (text: string) =>
   text
@@ -22,9 +47,6 @@ export const slugifyHeading = (text: string) =>
     .replace(/[\s-]+/g, '-') || 'section';
 
 const HEADING_ANCHOR_PATTERN = /\s*\{#([^}\s]+)\}\s*$/;
-
-/** Shape of an explicit anchor accepted after a heading, as in `## Title {#my-anchor}`. */
-export const HEADING_ANCHOR_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 /**
  * Splits an explicit `{#anchor}` suffix off a heading. Authors use it to keep
@@ -42,10 +64,10 @@ export const splitHeadingAnchor = (text: string): { text: string; anchor?: strin
  * the `-2` suffix generated for a repeated `Example`. An explicit anchor is
  * used verbatim when it is still free and otherwise suffixed like any slug.
  */
-export const createHeadingIdAllocator = () => {
+export const createHeadingIdAllocator = (): HeadingIdAllocator => {
   const used = new Set<string>();
   const nextSuffix = new Map<string, number>();
-  return (text: string, anchor?: string) => {
+  return (text, anchor) => {
     const base = anchor && HEADING_ANCHOR_ID_PATTERN.test(anchor) ? anchor : slugifyHeading(text);
     let id = base;
     let suffix = nextSuffix.get(base) ?? 2;
@@ -59,98 +81,81 @@ export const createHeadingIdAllocator = () => {
   };
 };
 
-/** A code span: a backtick run, its literal content, and a closing run of the same length. */
-const CODE_SPAN_PATTERN = /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g;
-
-/** A CommonMark backslash escape of ASCII punctuation, or a character reference such as `&amp;`, `&#38;`, `&#x26;`. */
-const ESCAPE_OR_CHARACTER_REFERENCE_PATTERN = /\\([!-/:-@[-`{-~])|&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z][a-z0-9]{0,30});/gi;
+/** Parses Markdown with the same parser and extensions the browser renderer uses. */
+export const parseMarkdown = (markdown: string): MarkdownNode =>
+  unified().use(remarkParse).use(remarkGfm).parse(markdown) as MarkdownNode;
 
 /**
- * Decodes a numeric character reference the way CommonMark parsers do:
- * control characters, surrogates, noncharacters, and out-of-range code
- * points become U+FFFD instead of throwing or leaking into ids.
+ * Plain text of a parsed heading: links (inline or reference) contribute
+ * their label, images their alt text, code its content, and character
+ * references arrive already decoded by the parser.
  */
-const decodeNumericCharacterReference = (reference: string): string => {
-  const hex = reference[1] === 'x' || reference[1] === 'X';
-  const code = Number.parseInt(reference.slice(hex ? 2 : 1), hex ? 16 : 10);
-  const invalid =
-    code < 9 ||
-    code === 11 ||
-    (code > 13 && code < 32) ||
-    (code > 126 && code < 160) ||
-    (code > 0xd7ff && code < 0xe000) ||
-    (code > 0xfdcf && code < 0xfdf0) ||
-    (code & 0xffff) === 0xffff ||
-    (code & 0xffff) === 0xfffe ||
-    code > 0x10ffff;
-  return invalid ? '\uFFFD' : String.fromCodePoint(code);
+export const headingText = (node: MarkdownNode): string => {
+  if (node.type === 'image') return node.alt ?? '';
+  if (typeof node.value === 'string') return node.value;
+  return (node.children ?? []).map(headingText).join('');
 };
 
-/** Decodes one character reference (without `&` and `;`), or returns undefined when Markdown would keep it literal. */
-const decodeCharacterReference = (reference: string): string | undefined => {
-  if (reference[0] === '#') return decodeNumericCharacterReference(reference);
-  const decoded = decodeNamedCharacterReference(reference);
-  return decoded === false ? undefined : decoded;
+/** Removes a trailing `{#anchor}` from the heading's last text node and returns it. */
+const takeHeadingAnchor = (node: MarkdownNode): string | undefined => {
+  const children = node.children ?? [];
+  const last = children[children.length - 1];
+  if (!last || typeof last.value !== 'string') return undefined;
+  const { text, anchor } = splitHeadingAnchor(last.value);
+  if (!anchor) return undefined;
+  if (text) {
+    last.value = text;
+  } else {
+    children.pop();
+  }
+  return anchor;
 };
-
-/** Plain text of a heading fragment outside code spans: links become labels, emphasis markers go, escapes and entities decode. */
-const inlinePlainText = (markdown: string) =>
-  markdown
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_~]+/g, '')
-    .replace(ESCAPE_OR_CHARACTER_REFERENCE_PATTERN, (match, escaped: string | undefined, reference: string | undefined) =>
-      escaped ?? decodeCharacterReference(reference ?? '') ?? match
-    );
 
 /**
- * Strips inline Markdown (code, emphasis, links, images) down to the plain
- * text a Markdown parser would produce, so ids computed from source agree
- * with ids computed from the parsed tree. Code span contents stay literal and
- * character references such as `&amp;` decode exactly as they do in the
- * browser renderer.
+ * Walks every heading of a parsed tree in document order, strips its explicit
+ * anchor, allocates its id, stores the id on the node for rendering, and
+ * returns the headings. `lineOffset` shifts reported lines when the tree was
+ * parsed from a slice of a larger document.
  */
-export const headingPlainText = (markdown: string) => {
-  let text = '';
-  let cursor = 0;
-  for (const match of markdown.matchAll(CODE_SPAN_PATTERN)) {
-    text += inlinePlainText(markdown.slice(cursor, match.index)) + match[2];
-    cursor = match.index + match[0].length;
-  }
-  text += inlinePlainText(markdown.slice(cursor));
-  return text.trim();
-};
-
-/** Extracts h2 and h3 headings from Markdown source, skipping fenced code. */
-export const extractOutline = (markdown: string): OutlineHeading[] => {
-  const headings: OutlineHeading[] = [];
-  const allocate = createHeadingIdAllocator();
-  let inFence = false;
-  let fenceMarker = '';
-
-  for (const rawLine of markdown.split('\n')) {
-    const line = rawLine.replace(/\r$/, '');
-    const fence = line.match(/^\s{0,3}(`{3,}|~{3,})/);
-    if (fence) {
-      if (!inFence) {
-        inFence = true;
-        fenceMarker = fence[1][0];
-      } else if (fence[1][0] === fenceMarker) {
-        inFence = false;
-      }
-      continue;
+export const assignHeadingIds = (tree: MarkdownNode, allocate: HeadingIdAllocator, lineOffset = 0): ParsedHeading[] => {
+  const headings: ParsedHeading[] = [];
+  const visit = (node: MarkdownNode) => {
+    if (node.type === 'heading') {
+      const anchor = takeHeadingAnchor(node);
+      const text = headingText(node).trim();
+      const id = allocate(text, anchor);
+      node.data = { ...(node.data ?? {}), hProperties: { ...(node.data?.hProperties ?? {}), id } };
+      headings.push({ level: node.depth ?? 1, text, id, line: lineOffset + (node.position?.start.line ?? 1) - 1 });
     }
-    if (inFence) continue;
-
-    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
-    if (!heading) continue;
-    const level = heading[1].length;
-    const { text: rawText, anchor } = splitHeadingAnchor(heading[2]);
-    const text = headingPlainText(rawText);
-    const id = allocate(text, anchor);
-    if (level === 2 || level === 3) {
-      headings.push({ level, text, id });
-    }
-  }
-
+    node.children?.forEach(visit);
+  };
+  visit(tree);
   return headings;
 };
+
+/**
+ * Remark plugin that assigns stable ids to headings so the in-page outline
+ * (built from the same parsed tree with the same allocator rules) can link to
+ * them. A heading may pin its id with a trailing `{#anchor}`.
+ */
+export const remarkHeadingIds = (allocate: HeadingIdAllocator) => () => (tree: MarkdownNode) => {
+  assignHeadingIds(tree, allocate);
+};
+
+/**
+ * Every heading of an article body in document order, parsed exactly as the
+ * browser renders it: one document per component-marker segment, ids
+ * allocated across the whole body.
+ */
+export const extractHeadings = (markdown: string): ParsedHeading[] => {
+  const allocate = createHeadingIdAllocator();
+  return splitAtComponentMarker(markdown).flatMap(segment =>
+    segment.markdown ? assignHeadingIds(parseMarkdown(segment.markdown), allocate, segment.line) : []
+  );
+};
+
+/** The h2 and h3 entries of the reading outline, with the ids the rendered headings carry. */
+export const extractOutline = (markdown: string): OutlineHeading[] =>
+  extractHeadings(markdown).flatMap(({ level, text, id }) =>
+    level === 2 || level === 3 ? [{ level, text, id }] : []
+  );

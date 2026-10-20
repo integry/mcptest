@@ -585,6 +585,38 @@ describe('generated page metadata', () => {
     expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
   });
 
+  it('prerenders reference-link and quoted headings with the ids the outline links to', () => {
+    const markdown = [
+      '## [OAuth][auth]',
+      '',
+      'Body.',
+      '',
+      '> ### [Dynamic client registration][]',
+      '> quoted body',
+      '',
+      '## [Tokens] {#token-handling}',
+      '',
+      '## [Undefined][missing]',
+      '',
+      '[auth]: https://example.com/oauth',
+      '[dynamic client registration]: https://example.com/dcr',
+      '[tokens]: https://example.com/tokens',
+    ].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<h2 id="oauth">');
+    expect(html).toContain('<blockquote><h3 id="dynamic-client-registration">');
+    expect(html).toContain('<h2 id="token-handling">');
+    expect(html).toContain('<h2 id="undefinedmissing">');
+    expect(html).not.toContain('{#');
+
+    const ids = Array.from(html.matchAll(/<h[23] id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
+  });
+
+  it('refuses to prerender a heading the Markdown parser does not recognise', () => {
+    expect(() => renderMarkdown(['~~~', '## inside a tilde fence', '~~~'].join('\n'))).toThrow(/line 2/);
+  });
+
   it('renders the Learn index grouped by track', () => {
     const html = renderLearnIndexHtml(indexHtml, learnIndex, articles);
 

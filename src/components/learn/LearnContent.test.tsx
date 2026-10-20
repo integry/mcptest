@@ -220,6 +220,53 @@ describe('Learn article page', () => {
     }
   });
 
+  it('links reference-style link headings in the outline to the ids the rendered headings carry', () => {
+    const base = getLearnArticle('testing-guide')!;
+    const article = {
+      ...base,
+      content: [
+        'Intro paragraph.',
+        '',
+        '## [OAuth][auth]',
+        '',
+        'Body.',
+        '',
+        '### [Dynamic client registration][]',
+        '',
+        '## [Tokens]',
+        '',
+        '## [Undefined][missing]',
+        '',
+        '[auth]: https://example.com/oauth',
+        '[dynamic client registration]: https://example.com/dcr',
+        '[tokens]: /docs/testing-guide',
+      ].join('\n'),
+    };
+    const container = render(<LearnArticlePage article={article} />);
+    const visibleText = (heading: Element) => heading.textContent?.replace(' (opens in a new tab)', '');
+
+    const outline = extractOutline(article.content);
+    expect(outline.map(heading => [heading.id, heading.text])).toEqual([
+      ['oauth', 'OAuth'],
+      ['dynamic-client-registration', 'Dynamic client registration'],
+      ['tokens', 'Tokens'],
+      ['undefinedmissing', '[Undefined][missing]'],
+    ]);
+
+    const outlineLinks = Array.from(container.querySelectorAll('.reading-outline a'), link => link.getAttribute('href'));
+    expect(outlineLinks).toEqual(outline.map(heading => `#${heading.id}`));
+    for (const href of outlineLinks) {
+      const target = container.querySelector(`.reading-prose [id="${href!.slice(1)}"]`);
+      expect(target, `outline link ${href} has no rendered target`).not.toBeNull();
+    }
+    for (const heading of outline) {
+      const rendered = container.querySelector(`.reading-prose h${heading.level}[id="${heading.id}"]`);
+      expect(rendered && visibleText(rendered)).toBe(heading.text);
+    }
+    expect(container.querySelector('.reading-prose h2[id="oauth"] a')?.getAttribute('href')).toBe('https://example.com/oauth');
+    expect(container.querySelector('.reading-prose h2[id="tokens"] a')?.getAttribute('href')).toBe('/docs/testing-guide');
+  });
+
   it('links previous and next articles within the track', () => {
     const article = getLearnArticle('mcp-clients-compared')!;
     const { previous, next } = getLearnArticleNeighbors(article);
