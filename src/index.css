@@ -5613,6 +5613,13 @@ pre.bg-light code {
   .deterministic-tests-footer { align-items: stretch; flex-direction: column; }
 }
 
+/* Reports grow in the workspace's normal scroll flow; cards must never shrink. */
+.report-view-panel { min-height: 100%; height: auto; }
+.report-view { min-width: 0; overflow-wrap: anywhere; }
+.report-view > .card { flex-shrink: 0; }
+.report-view .list-group-item > button.flex-grow-1 { min-width: 0; }
+.report-view .report-auth-heading > div { min-width: 0; }
+
 /* Unified release-readiness report */
 .report-target-title { overflow-wrap: anywhere; }
 

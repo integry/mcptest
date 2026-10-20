@@ -9,6 +9,7 @@ import {
   getEvaluationMaxScore,
   getEvaluationPercentage,
   isLegacySkippedEvaluationSection,
+  isProxyAuthenticationRequired,
   resolveEvaluationOutcome,
   type EvaluationReport,
 } from '../utils/evaluation';
@@ -25,6 +26,7 @@ import AuthorizationSetup from './AuthorizationSetup';
 import CapabilitiesProvided from './CapabilitiesProvided';
 
 interface ReleaseReadinessReportProps {
+  authorizationActions?: React.ReactNode;
   report: EvaluationReport;
   oauthTrace?: OAuthTraceV1;
   expandedItems: Set<string>;
@@ -154,11 +156,12 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
   oauthTrace,
   expandedItems,
   onToggleItem,
+  authorizationActions,
 }) => {
   const facts = useMemo(() => createObservedServerFacts(report, oauthTrace), [report, oauthTrace]);
   const authorizationGuidance = useMemo(
-    () => getAuthorizationGuidanceForEndpoint(report.serverUrl),
-    [report.serverUrl]
+    () => getAuthorizationGuidanceForEndpoint(report.authenticationUrl || report.serverUrl),
+    [report.authenticationUrl, report.serverUrl]
   );
   const matrix = useMemo(() => createCompatibilityMatrix(report, oauthTrace), [report, oauthTrace]);
   const decision = useMemo(
@@ -196,7 +199,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
         <div className="release-decision-main">
           <i className={`bi ${releaseIcon[decision.status]}`} aria-hidden="true"></i>
           <div>
-            <h3 id="release-decision-title">Can I ship?</h3>
+            <h3 id="release-decision-title">{decision.status === 'authorization-required' ? 'Evaluation incomplete' : 'Can I ship?'}</h3>
             <p className="release-answer">{decision.answer}</p>
             <p className="mb-0">{decision.summary}</p>
           </div>
@@ -219,7 +222,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
         </div>
       </section>
 
-      <AuthorizationSetup guidance={authorizationGuidance} currentCatalogContext />
+      {authorizationActions}
+      {!isProxyAuthenticationRequired(report) && (
+        <AuthorizationSetup guidance={authorizationGuidance} currentCatalogContext />
+      )}
 
       <section className="release-section" aria-labelledby="release-blockers-title">
         <div className="release-section-heading">

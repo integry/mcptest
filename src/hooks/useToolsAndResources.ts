@@ -5,6 +5,8 @@ import { Client } from "@modelcontextprotocol/client";
 import { formatErrorForDisplay } from '../utils/errorHandling';
 import { logEvent } from '../utils/analytics';
 import { normalizeCapabilityParams } from '../utils/capabilityParams';
+import { withoutOutputSchema } from '../utils/outputContract';
+import { createToolResultLogEntry } from '../utils/toolCallResult';
 
 export const useToolsAndResources = (
   client: Client | null,
@@ -131,25 +133,22 @@ export const useToolsAndResources = (
     addLogEntry({ type: 'info', data: `Executing tool: ${selectedTool.name}...` });
 
     try {
+      // Output-contract validation happens client-side (see createToolResultLogEntry)
+      // so violations are shown with details instead of the SDK rejecting the result.
       const result = await client.callTool({
         name: selectedTool.name,
         arguments: normalizedParams,
-      });
+      }, { toolDefinition: withoutOutputSchema(selectedTool) });
       console.log(`[DEBUG] SDK Client: Tool "${selectedTool.name}" execution result:`, result);
 
       // Process and log the content array from the tool result
       if (result?.content && Array.isArray(result.content)) {
-        const resultLogEntry: LogEntry = {
-            type: 'tool_result',
-            data: result.content,
-            timestamp: new Date().toLocaleTimeString(),
-            callContext: {
-              serverUrl: serverUrl,
-              type: 'tool',
-              name: selectedTool.name,
-              params: normalizedParams
-            }
-        };
+        const resultLogEntry = createToolResultLogEntry(selectedTool, result, {
+          serverUrl: serverUrl,
+          type: 'tool',
+          name: selectedTool.name,
+          params: normalizedParams
+        });
         addLogEntry(resultLogEntry);
         return resultLogEntry;
       } else {

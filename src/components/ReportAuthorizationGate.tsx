@@ -37,13 +37,15 @@ const ReportAuthorizationGate: React.FC<ReportAuthorizationGateProps> = ({
       </div>
       <div>
         <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-          <h3 id="report-auth-title" className="mb-0">Authorization required</h3>
+          <h3 id="report-auth-title" className="mb-0">{canRetryHostedAuthorization ? 'Authorization required' : guidance.statusLabel}</h3>
           <span className="badge text-bg-warning">Not scored</span>
         </div>
         <p className="mb-0">
-          <strong>{displayHost(serverUrl)}</strong> is a protected MCP server. Its protocol,
-          capabilities, transport, and performance cannot be evaluated until you authorize
-          mcptest.io to access it.
+          {canRetryHostedAuthorization ? <>
+            <strong>{displayHost(serverUrl)}</strong> is a protected MCP server. Its protocol,
+            capabilities, transport, and performance cannot be evaluated until you authorize
+            mcptest.io to access it.
+          </> : guidance.summary}
         </p>
       </div>
     </div>
@@ -56,9 +58,14 @@ const ReportAuthorizationGate: React.FC<ReportAuthorizationGateProps> = ({
 
     {!canRetryHostedAuthorization && (
       <div className="report-auth-note" role="note">
-        Authorization controls are disabled because the current catalog prerequisite is not
-        satisfied. Follow the Authorization setup section above, then return after the operator or
-        provider has made this exact catalog integration available.
+        <p>Follow the Authorization setup steps below before retrying hosted OAuth.</p>
+        {guidance.registrationUrl && (
+          <a href={guidance.registrationUrl} target="_blank" rel="noopener noreferrer">
+            {guidance.status === 'provider-approval-required'
+              ? 'Open provider application or waitlist'
+              : 'Open provider setup'}
+          </a>
+        )}
       </div>
     )}
 

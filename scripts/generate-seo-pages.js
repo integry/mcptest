@@ -344,6 +344,19 @@ function renderAuthorizationSetup(server) {
 }
 
 function renderServerFallback(server) {
+  const {
+    createCatalogBadgeSnippets,
+    getBadgeTitle,
+    getCatalogBadgeVariant,
+    getStaticBadgeUrl,
+  } = require('../src/utils/badges.ts');
+  const badgeVariant = getCatalogBadgeVariant(server.checkedAt ? server : undefined);
+  const badgeSnippets = createCatalogBadgeSnippets(server.id);
+  const badgeFormats = [
+    ['markdown', 'Markdown'],
+    ['html', 'HTML'],
+    ['restructuredText', 'reStructuredText'],
+  ];
   const homepageLink = server.homepageUrl
     ? `<a href="${escapeHtml(server.homepageUrl)}">Product documentation</a>`
     : '';
@@ -410,6 +423,20 @@ function renderServerFallback(server) {
     '  </div></section>',
     renderAuthorizationSetup(server),
     renderClientSetups(server),
+    '  <section class="card server-profile-section"><div class="card-body">',
+    '    <section class="badge-embed" aria-labelledby="server-badge-embed-title">',
+    '      <div class="badge-embed-heading">',
+    '        <h2 id="server-badge-embed-title">Share and embed</h2>',
+    `        <p>Maintain ${escapeHtml(server.name)}? Embed this badge in your README. It follows the latest catalog validation result and links to this server profile.</p>`,
+    '      </div>',
+    `      <a class="badge-embed-preview" href="${escapeHtml(serverPath(server.id))}"><img src="${escapeHtml(getStaticBadgeUrl(badgeVariant, ''))}" alt="${escapeHtml(getBadgeTitle(badgeVariant))}" height="20"></a>`,
+    '      <div class="badge-embed-snippets">',
+    ...badgeFormats.map(([key, label]) => (
+      `        <div class="badge-embed-snippet"><div class="badge-embed-snippet-header"><label for="server-badge-embed-title-${key}">${label}</label></div><textarea id="server-badge-embed-title-${key}" class="form-control badge-embed-code" readonly spellcheck="false" rows="${key === 'restructuredText' ? 3 : 2}">${escapeHtml(badgeSnippets[key])}</textarea></div>`
+    )),
+    '      </div>',
+    '    </section>',
+    '  </div></section>',
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Latest validation evidence</h2>',
     '    <dl class="server-spec-list">',

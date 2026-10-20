@@ -115,7 +115,7 @@ describe('ReleaseReadinessReport', () => {
     const container = document.createElement('div');
     container.innerHTML = markup;
 
-    expect(container.textContent).toContain('Can I ship?');
+    expect(container.textContent).toContain('Evaluation incomplete');
     expect(container.textContent).toContain('What blocks me?');
     expect(container.textContent).toContain('Fix first:');
     expect(container.textContent).toContain('Host compatibility');

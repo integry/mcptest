@@ -95,16 +95,27 @@ describe('deterministic test plans', () => {
     ['allOf', { allOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
     ['oneOf', { oneOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
     ['anyOf', { anyOf: [{ type: 'object', properties: { items: { type: 'array' } }, required: ['items'] }] }],
-  ])('does not preselect output-shape cases requiring manual assertions for %s schemas', (_keyword, outputSchema) => {
+  ])('preselects output-shape cases for %s schemas because the declared schema is validated', async (_keyword, outputSchema) => {
     const plan = generateDeterministicTestPlan([{
       name: 'list_items',
       annotations: { readOnlyHint: true },
       outputSchema,
     }], 'https://example.test', '2026-08-11T00:00:00.000Z');
-    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape');
+    const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape')!;
 
-    expect(outputShape?.selected).toBe(false);
-    expect(outputShape?.name).toContain('manual assertions required');
+    expect(outputShape.selected).toBe(true);
+    expect(outputShape.name).toBe('Output Shape');
+    expect(outputShape.assertions).toContainEqual({ path: '$.structuredContent', operator: 'matches-output-schema' });
+    expect(plan.tools[0].outputSchema).toEqual(outputSchema);
+
+    const [passing, failing] = await runDeterministicPlan({
+      callTool: vi.fn()
+        .mockResolvedValueOnce({ content: [], structuredContent: { items: [] } })
+        .mockResolvedValueOnce({ content: [], structuredContent: { items: 'wrong' } }),
+    }, { ...plan, tools: [{ ...plan.tools[0], cases: [outputShape, { ...outputShape, id: `${outputShape.id}-2` }] }] });
+
+    expect(passing.status).toBe('passed');
+    expect(failing.status).toBe('failed');
   });
 
   it('generates types for recursively required output object properties', () => {

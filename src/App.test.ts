@@ -243,3 +243,20 @@ describe('saved card authentication failures', () => {
     }
   );
 });
+
+
+it('uses the recorded saved-card candidate rather than its original root for OAuth', async () => {
+  const startFlow = vi.fn().mockResolvedValue('REDIRECT');
+  const challenge = attachSavedCardOAuthChallenge({}, {
+    targetUrl: 'https://mcp.sentry.dev/mcp',
+    resourceMetadataUrl: 'https://mcp.sentry.dev/.well-known/oauth-protected-resource/mcp',
+  });
+  await beginSavedCardOAuthFlow({
+    serverUrl: 'https://mcp.sentry.dev/', challenge, discoveryProxyApplicable: true,
+    proxyUrl: 'https://proxy.mcptest.test/', currentUser: null, startFlow,
+  });
+  expect(startFlow).toHaveBeenCalledWith('https://mcp.sentry.dev/mcp', expect.objectContaining({
+    resourceMetadataUrl: challenge.resourceMetadataUrl,
+    discoveryProxy: { url: 'https://proxy.mcptest.test/', authorizationToken: undefined },
+  }));
+});
