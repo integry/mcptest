@@ -14,7 +14,9 @@ const {
   endpointVariants,
   mapWithConcurrency,
   mergeCapabilitySnapshots,
+  mergeValidationResults,
   paginateDiscovery,
+  parseOnlyOption,
   probeSseEndpoint,
   probeStreamableEndpoint,
   validateCatalogSeed,
@@ -149,7 +151,7 @@ describe('catalog seed provenance validation', () => {
     [{ id: 'missing' }, 'listingSource is required'],
     [
       { id: 'kind', listingSource: { kind: 'verified' } },
-      'listingSource.kind must be publisher, mcp-registry, or community',
+      'listingSource.kind must be publisher, mcp-registry, community, or community-submission',
     ],
     [
       { id: 'http', listingSource: { kind: 'community', url: 'http://example.com' } },
@@ -1144,5 +1146,27 @@ describe('catalog capability pagination and persistence', () => {
     expect(results.map(({ errorCode }) => errorCode)).toEqual(Array(6).fill('timeout'));
     expect(maxActive).toBe(2);
     expect(active).toBe(0);
+  });
+});
+
+describe('single-server validation (--only)', () => {
+  it('reads the id after --only and rejects a missing one', () => {
+    expect(parseOnlyOption(['node', 'validate-catalog.js'])).toBeUndefined();
+    expect(parseOnlyOption(['node', 'validate-catalog.js', '--only', 'acme'])).toBe('acme');
+    expect(() => parseOnlyOption(['node', 'validate-catalog.js', '--only'])).toThrow(/needs a catalog server id/);
+    expect(() => parseOnlyOption(['node', 'validate-catalog.js', '--only', '--check-runtime'])).toThrow(/needs a catalog server id/);
+  });
+
+  it('replaces only the validated server and keeps every other stored result in catalog order', () => {
+    const seeds = [{ id: 'alpha' }, { id: 'bravo' }, { id: 'charlie' }];
+    const stored = [
+      { serverId: 'charlie', status: 'online', checkedAt: '2026-01-01T00:00:00.000Z' },
+      { serverId: 'alpha', status: 'online', checkedAt: '2026-01-01T00:00:00.000Z' },
+      { serverId: 'removed', status: 'online', checkedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const fresh = { serverId: 'bravo', status: 'offline', checkedAt: '2026-10-20T00:00:00.000Z' };
+
+    expect(mergeValidationResults(seeds, stored, [fresh])).toEqual([stored[1], fresh, stored[0]]);
+    expect(mergeValidationResults(seeds, undefined, [fresh])).toEqual([fresh]);
   });
 });

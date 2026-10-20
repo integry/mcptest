@@ -1095,8 +1095,9 @@ function renderSideNavFallback({ learnTracks, versionInfo, year }) {
     '  </section>',
     '  <div class="sidenav-footer">',
     '    <ul class="sidenav-footer-links" aria-label="Project links">',
-    ...FOOTER_NAVIGATION.map(link => (
-      `      <li><a href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link">${escapeHtml(link.label)}<span class="visually-hidden"> (opens in a new tab)</span></a></li>`
+    ...FOOTER_NAVIGATION.map(link => (link.external
+      ? `      <li><a href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link">${escapeHtml(link.label)}<span class="visually-hidden"> (opens in a new tab)</span></a></li>`
+      : `      <li><a href="${escapeHtml(link.href)}" class="sidenav-footer-link">${escapeHtml(link.label)}</a></li>`
     )),
     '    </ul>',
     '    <div class="sidenav-legal">',
