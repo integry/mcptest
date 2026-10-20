@@ -996,7 +996,9 @@ export const runDeterministicCase = async (
     });
     error = malformedResponseError(response) || responseError(response);
     assertionEvidence = evaluateAssertions(response, testCase.assertions, { outputSchema: tool?.outputSchema });
-    if (tool?.outputSchema !== undefined && !malformedResponseError(response)) {
+    // A known definition without an outputSchema still yields a `no-schema`
+    // result, so callers can drop verdicts recorded against a removed schema.
+    if (tool && !malformedResponseError(response)) {
       outputContract = checkToolOutputContract({ name: testCase.toolName, outputSchema: tool.outputSchema }, response);
       const assertsSchema = testCase.assertions.some(assertion => assertion.operator === 'matches-output-schema');
       // Without an explicit schema assertion, a broken contract still fails the

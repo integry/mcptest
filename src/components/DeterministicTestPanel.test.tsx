@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateDeterministicTestPlan, serializeDeterministicTestPlan } from '../utils/deterministicTests';
+import { clearRecordedOutputContractResults, getRecordedOutputContractResults } from '../utils/outputContract';
 import DeterministicTestPanel from './DeterministicTestPanel';
 
 describe('DeterministicTestPanel', () => {
@@ -25,6 +26,7 @@ describe('DeterministicTestPanel', () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    clearRecordedOutputContractResults();
   });
 
   const renderConnection = async (tools: any[], client: { callTool: ReturnType<typeof vi.fn> }) => {
@@ -327,6 +329,27 @@ describe('DeterministicTestPanel', () => {
     expect(container.textContent).toContain('Redacted request');
     expect(container.textContent).toContain('Reproducible case (redacted)');
     expect(container.textContent).toContain('Reveal exact case (may contain secrets)');
+  });
+
+  it('clears a recorded contract verdict when a rerun follows removal of the output schema', async () => {
+    const serverUrl = 'https://mcp.example.test/mcp';
+    const callTool = vi.fn().mockResolvedValue({ content: [], structuredContent: { count: 'three' } });
+    const baseTool = { name: 'lookup', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } };
+    const run = () => act(async () => container.querySelector<HTMLButtonElement>('.deterministic-tests-footer .btn-primary')?.click());
+
+    await renderConnection([{
+      ...baseTool,
+      outputSchema: { type: 'object', properties: { count: { type: 'number' } }, required: ['count'] },
+    }], { callTool });
+    await run();
+    expect(getRecordedOutputContractResults(serverUrl)).toMatchObject([{ toolName: 'lookup', status: 'fail' }]);
+
+    // Refreshed capabilities no longer declare the schema; the plan regenerates.
+    await renderConnection([baseTool], { callTool });
+    await run();
+
+    expect(callTool.mock.calls.length).toBeGreaterThan(1);
+    expect(getRecordedOutputContractResults(serverUrl)).toEqual([]);
   });
 
   it('only displays exact fixture values after an intentional warning action', async () => {

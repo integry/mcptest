@@ -15,6 +15,7 @@ import {
   recordOutputContractResult,
 } from './outputContract';
 import { createToolResultLogEntry } from './toolCallResult';
+import { generateDeterministicTestPlan, runDeterministicPlan } from './deterministicTests';
 import { createCompatibilityMatrix, createReleaseDecision } from './releaseReadiness';
 
 const createClient = () => {
@@ -100,6 +101,33 @@ describe('output contract evidence in evaluation runs', () => {
       serverUrl: 'contract.example/mcp', type: 'tool', name: 'count_items', params: {},
     });
     expect(entry.toolCall?.contract.status).toBe('no-schema');
+    expect(getRecordedOutputContractResults(serverUrl)).toEqual([]);
+
+    const report = await evaluateServer(serverUrl, '', vi.fn(), null, undefined, undefined, { runtime: 'headless' });
+
+    expect(report.outputContracts).toBeUndefined();
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+    expect(decision.priorities.map(item => item.id)).not.toContain('tool.output-contract-violation');
+  });
+
+  it('drops a recorded violation when a deterministic rerun follows removal of the output schema', async () => {
+    const baseTool = { name: 'count_items', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } };
+    const callTool = vi.fn().mockResolvedValue({ content: [], structuredContent: { count: 'three' } });
+    // Mirrors DeterministicTestPanel, which records each result's contract verdict.
+    const runAndRecord = async (tool: Record<string, unknown> & { name: string }) => {
+      const plan = generateDeterministicTestPlan([tool], serverUrl, '2026-10-20T00:00:00.000Z');
+      await runDeterministicPlan({ callTool }, plan, {
+        toolDefinitions: [tool],
+        onResult: result => {
+          if (result.outputContract) recordOutputContractResult(serverUrl, result.outputContract);
+        },
+      });
+    };
+
+    await runAndRecord({ ...baseTool, outputSchema: schema });
+    expect(getRecordedOutputContractResults(serverUrl)).toMatchObject([{ toolName: 'count_items', status: 'fail' }]);
+
+    await runAndRecord(baseTool);
     expect(getRecordedOutputContractResults(serverUrl)).toEqual([]);
 
     const report = await evaluateServer(serverUrl, '', vi.fn(), null, undefined, undefined, { runtime: 'headless' });
