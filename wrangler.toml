@@ -30,7 +30,8 @@ tag = "v1"
 new_sqlite_classes = ["UserState"]
 
 [[migrations]]
-tag = "v2"
+# v3, not v2: #385 adds the v2 migration and must merge first.
+tag = "v3"
 new_sqlite_classes = ["SubmissionRateLimiter"]
 
 [observability.logs]

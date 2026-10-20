@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { isSubmittableEvidence } from './catalogSubmission';
 import { probeSubmissionEndpoint, type SubmissionProbeDependencies } from './submissionProbe';
 import { ProxiedAuthenticationError } from './transportDetection';
 
@@ -92,6 +93,33 @@ describe('probeSubmissionEndpoint', () => {
 
   it('does not treat a 403 without WWW-Authenticate as an auth challenge', async () => {
     const evidence = await probe({ connect: vi.fn(async () => { throw challenge(403); }) as unknown as SubmissionProbeDependencies['connect'] });
+    expect(evidence.outcome).toBe('unreachable');
+  });
+
+  it('accepts a 403 that carries WWW-Authenticate as a challenge', async () => {
+    const evidence = await probe({ connect: vi.fn(async () => { throw challenge(403, 'Bearer realm="acme"'); }) as unknown as SubmissionProbeDependencies['connect'] });
+    expect(evidence).toMatchObject({ outcome: 'auth-challenge', authChallenge: 'bearer', authStatus: 403 });
+  });
+
+  it.each([
+    ['Forbidden', new Error('MCP error -32600: Forbidden')],
+    ['authentication required', new Error('Initialization failed: authentication required')],
+    ['a 401 in the message', new Error('Server said 401 Unauthorized in its JSON-RPC error')],
+  ])('does not unlock submission for error text that mentions %s without an HTTP challenge', async (_label, error) => {
+    const connect = vi.fn(async () => { throw error; });
+    const evidence = await probe({ connect: connect as unknown as SubmissionProbeDependencies['connect'] });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(evidence).toMatchObject({ outcome: 'unreachable', authChallenge: 'none' });
+    expect(isSubmittableEvidence(evidence, ENDPOINT)).toBe(false);
+  });
+
+  it('does not treat a challenge from the proxy itself as the target asking for credentials', async () => {
+    const proxyChallenge = new ProxiedAuthenticationError(401, 'proxy', new Error('HTTP 401'), undefined, { 'www-authenticate': 'Bearer' });
+    const connect = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(proxyChallenge);
+    const evidence = await probe({ connect: connect as unknown as SubmissionProbeDependencies['connect'] });
+    expect(connect).toHaveBeenCalledTimes(2);
     expect(evidence.outcome).toBe('unreachable');
   });
 

@@ -54,7 +54,9 @@ describe('catalog submission workflow', () => {
     expect(workflow).toContain('node-version: 22');
     expect(workflow).toContain('npm run validate-catalog -- --only "$SERVER_ID"');
     expect(workflow).toContain('npm run validate-catalog-assets');
-    expect(workflow).toContain('branch: submissions/${{ steps.apply.outputs.id }}');
+    // The branch comes from the validated submission id, never from the derived catalog id.
+    expect(workflow).toContain('branch: ${{ steps.apply.outputs.branch }}');
+    expect(workflow).not.toContain('branch: submissions/${{ steps.apply.outputs.id }}');
     expect(workflow).toContain('labels: catalog-submission');
     expect(workflow).toContain('draft: ${{ steps.report.outputs.draft }}');
     // A failed runner check must still lead to a (draft) pull request.

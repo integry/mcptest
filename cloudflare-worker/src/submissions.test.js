@@ -104,7 +104,8 @@ describe('POST /api/catalog/submissions', () => {
     const body = JSON.parse(text);
     expect(body).toMatchObject({ status: 'queued', proposedCatalogId: 'example-submission' });
     expect(body.submissionId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(body.nextStep).toContain('submissions/example-submission');
+    // The branch is per submission, so two submissions that derive the same id keep separate pull requests.
+    expect(body.nextStep).toContain(`submissions/${body.submissionId}`);
     expect(body.docsUrl).toContain('docs/catalog-submissions.md');
 
     expect(dispatchCalls()).toHaveLength(1);
@@ -150,6 +151,8 @@ describe('POST /api/catalog/submissions', () => {
     ['unreachable evidence', { evidence: evidence({ outcome: 'unreachable' }) }],
     ['evidence for another endpoint', { evidence: evidence({ endpointUrl: 'https://other.example-submission.dev/mcp' }) }],
     ['a handshake with an auth challenge', { evidence: evidence({ authChallenge: 'oauth' }) }],
+    ['an auth challenge without an observed HTTP status', { evidence: evidence({ outcome: 'auth-challenge', authChallenge: 'unspecified', transport: undefined, toolCount: undefined }) }],
+    ['an auth challenge with a non-auth HTTP status', { evidence: evidence({ outcome: 'auth-challenge', authChallenge: 'unspecified', authStatus: 500, transport: undefined, toolCount: undefined }) }],
     ['a plain-HTTP endpoint', { url: 'http://mcp.example-submission.dev/mcp' }],
     ['credentials in the URL', { url: 'https://user:secret@mcp.example-submission.dev/mcp' }],
     ['a query string', { url: `${ENDPOINT}?api_key=abc` }],
@@ -199,6 +202,24 @@ describe('POST /api/catalog/submissions', () => {
     expect(blocked.status).toBe(429);
     expect(Number(blocked.headers.get('Retry-After'))).toBeGreaterThan(0);
     expect((await blocked.json()).message).toContain('endpoint host');
+    expect(dispatchCalls()).toHaveLength(limit);
+  });
+
+  it('counts other ports of the same host against the host limit', async () => {
+    const { limit } = SUBMISSION_RATE_LIMITS.perHost;
+    for (let index = 0; index < limit; index += 1) {
+      const response = await post(submission(), { ip: `198.51.100.${index}` });
+      expect(response.status).toBe(202);
+    }
+    for (const [index, url] of [
+      'https://mcp.example-submission.dev:8443/mcp',
+      'https://mcp.example-submission.dev:443/other',
+      'https://MCP.Example-Submission.dev.:9000/mcp',
+    ].entries()) {
+      const blocked = await post(submission({ url, evidence: evidence({ endpointUrl: url, validatedUrl: undefined }) }), { ip: `192.0.2.${index}` });
+      expect(blocked.status).toBe(429);
+      expect((await blocked.json()).message).toContain('endpoint host');
+    }
     expect(dispatchCalls()).toHaveLength(limit);
   });
 

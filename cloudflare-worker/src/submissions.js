@@ -21,9 +21,9 @@ import {
   CATALOG_SUBMISSION_API_PATH,
   CATALOG_SUBMISSION_DISPATCH_EVENT,
   CATALOG_SUBMISSION_DOCS_URL,
+  catalogEndpointHost,
   deriveCatalogId,
   findCatalogDuplicate,
-  normalizeCatalogEndpoint,
 } from "../../src/utils/catalogSubmission.ts";
 import { validateCatalogSubmission } from "../../src/utils/catalogSubmissionSchema.ts";
 
@@ -181,7 +181,8 @@ const handleSubmission = async (request, env) => {
   }
 
   const ipKey = `ip:${await sha256Hex(clientIp || "unknown")}`;
-  const hostKey = `host:${normalizeCatalogEndpoint(submission.url).split("/")[0]}`;
+  // Keyed by host name only: a different port or path is still the same host.
+  const hostKey = `host:${catalogEndpointHost(submission.url)}`;
   for (const [key, rule, scope] of [
     [ipKey, SUBMISSION_RATE_LIMITS.perIp, "address"],
     [hostKey, SUBMISSION_RATE_LIMITS.perHost, "endpoint host"],
@@ -210,7 +211,7 @@ const handleSubmission = async (request, env) => {
     submissionId,
     proposedCatalogId,
     status: "queued",
-    nextStep: `A GitHub Actions workflow re-checks the endpoint and opens a pull request on the branch submissions/${proposedCatalogId} for a maintainer to review. This usually takes a few minutes.`,
+    nextStep: `A GitHub Actions workflow re-checks the endpoint and opens a pull request on the branch submissions/${submissionId} for a maintainer to review. This usually takes a few minutes.`,
     docsUrl: CATALOG_SUBMISSION_DOCS_URL,
   });
 };

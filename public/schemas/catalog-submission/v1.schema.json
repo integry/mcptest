@@ -250,8 +250,17 @@
                   "bearer",
                   "unspecified"
                 ]
+              },
+              "authStatus": {
+                "enum": [
+                  401,
+                  403
+                ]
               }
-            }
+            },
+            "required": [
+              "authStatus"
+            ]
           }
         }
       ]

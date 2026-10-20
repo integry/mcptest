@@ -6,6 +6,7 @@ import {
   CATALOG_SUBMISSION_CATEGORIES,
   CATALOG_SUBMISSION_SCHEMA_URL,
   buildCatalogSubmission,
+  catalogEndpointHost,
   deriveCatalogId,
   findCatalogDuplicate,
   getSubmissionEndpointError,
@@ -96,6 +97,18 @@ describe('catalog submission rules', () => {
     expect(normalizeCatalogEndpoint('https://gw.acme.dev/a/mcp')).not.toBe(normalizeCatalogEndpoint('https://gw.acme.dev/b/mcp'));
   });
 
+  it('keys the host quota by host name without the port', () => {
+    for (const url of [
+      'https://mcp.acme.dev/mcp',
+      'https://mcp.acme.dev:8443/mcp',
+      'https://MCP.acme.dev.:443/tenant-b',
+      'https://www.mcp.acme.dev:9000/',
+    ]) {
+      expect(catalogEndpointHost(url)).toBe('mcp.acme.dev');
+    }
+    expect(catalogEndpointHost('not a url')).toBeUndefined();
+  });
+
   it('finds catalog duplicates by primary, browser and alternative endpoints', () => {
     const seeds = [{
       id: 'acme',
@@ -131,8 +144,12 @@ describe('catalog submission rules', () => {
     expect(isSubmittableEvidence(undefined)).toBe(false);
     expect(isSubmittableEvidence(evidence, 'https://mcp.acme.dev/mcp')).toBe(true);
     expect(isSubmittableEvidence(evidence, 'https://mcp.acme.dev/other')).toBe(false);
-    expect(isSubmittableEvidence({ ...evidence, outcome: 'auth-challenge', authChallenge: 'oauth' })).toBe(true);
-    expect(isSubmittableEvidence({ ...evidence, outcome: 'auth-challenge', authChallenge: 'none' })).toBe(false);
+    expect(isSubmittableEvidence({ ...evidence, outcome: 'auth-challenge', authChallenge: 'oauth', authStatus: 401 })).toBe(true);
+    expect(isSubmittableEvidence({ ...evidence, outcome: 'auth-challenge', authChallenge: 'bearer', authStatus: 403 })).toBe(true);
+    expect(isSubmittableEvidence({ ...evidence, outcome: 'auth-challenge', authChallenge: 'none', authStatus: 401 })).toBe(false);
+    // A challenge without the target's HTTP 401/403 was never observed.
+    expect(isSubmittableEvidence({ ...evidence, outcome: 'auth-challenge', authChallenge: 'unspecified' })).toBe(false);
+    expect(isSubmittableEvidence({ ...evidence, outcome: 'auth-challenge', authChallenge: 'unspecified', authStatus: 500 })).toBe(false);
     expect(isSubmittableEvidence({ ...evidence, outcome: 'unreachable' })).toBe(false);
   });
 });

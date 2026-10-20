@@ -56,7 +56,7 @@ export interface CatalogSubmissionEvidence {
   /** MCP lifecycle negotiated by the browser client. */
   protocolEra?: 'stateless' | 'stateful';
   authChallenge: CatalogSubmissionAuthChallenge;
-  /** HTTP status of the challenge, when the browser could read it. */
+  /** HTTP status of the target's challenge (401, or 403 with WWW-Authenticate); required for `auth-challenge`. */
   authStatus?: number;
   /** `direct` when the browser read the response itself, `proxy-required` when CORS blocked it. */
   browserAccess: 'direct' | 'proxy-required' | 'unknown';
@@ -157,6 +157,18 @@ export const normalizeCatalogEndpoint = (value: string): string | undefined => {
   }
 };
 
+/**
+ * Host name used for the per-host submission quota: lowercase, without `www.`,
+ * a trailing dot or any port, so `:8443` and `:443` count against the same host.
+ */
+export const catalogEndpointHost = (value: string): string | undefined => {
+  try {
+    return new URL(value.trim()).hostname.toLowerCase().replace(/\.$/, '').replace(/^www\./, '') || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const seedEndpoints = (seed: CatalogServerSeed): string[] => [
   seed.url,
   ...(seed.browserUrl ? [seed.browserUrl] : []),
@@ -238,7 +250,10 @@ export const isSubmittableEvidence = (
   if (!evidence) return false;
   if (endpointUrl !== undefined && evidence.endpointUrl.trim() !== endpointUrl.trim()) return false;
   if (evidence.outcome === 'mcp') return true;
-  return evidence.outcome === 'auth-challenge' && evidence.authChallenge !== 'none';
+  // A challenge counts only with the HTTP status the target answered with.
+  return evidence.outcome === 'auth-challenge'
+    && evidence.authChallenge !== 'none'
+    && (evidence.authStatus === 401 || evidence.authStatus === 403);
 };
 
 const EMAIL_PATTERN = /^[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[^\s@<>()"',;:]{2,}$/;

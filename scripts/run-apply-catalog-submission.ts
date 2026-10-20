@@ -46,6 +46,7 @@ const run = async () => {
     console.error(`Added ${result.id} (${result.entry.url}) with a ${result.entry.logoSourceKind} logo.`);
     if (result.logo.fallbackReason) console.error(result.logo.fallbackReason);
     setOutput('id', result.id);
+    setOutput('branch', result.branch);
     return;
   }
 
