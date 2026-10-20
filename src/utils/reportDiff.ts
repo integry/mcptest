@@ -1296,3 +1296,245 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     hasBreakingChanges: changes.some((change) => change.breaking),
   };
 };
+
+// --- Playground interface diff ---
+
+export interface InterfaceToolSnapshot {
+  name: string;
+  title?: string;
+  description?: string;
+  /** Omitted when the stored snapshot kept only a fingerprint. */
+  inputSchema?: unknown;
+  inputSchemaFingerprint: string;
+  outputSchema?: unknown;
+  /** Absent when the tool declares no outputSchema. */
+  outputSchemaFingerprint?: string;
+}
+
+/** The capability surface a playground visit observed, already redacted for storage. */
+export interface InterfaceSnapshot {
+  observedAt: string;
+  source: 'playground' | 'report';
+  protocolVersion?: string;
+  transport?: string;
+  /** Absent when the source could not prove the complete tool list. */
+  tools?: InterfaceToolSnapshot[];
+  /** Report-derived snapshots do not carry output schemas. */
+  outputSchemasObserved: boolean;
+  resources?: string[];
+  resourceTemplates?: string[];
+  prompts?: string[];
+}
+
+export type InterfaceChangeKind =
+  | 'tool-added'
+  | 'tool-removed'
+  | 'description-changed'
+  | 'input-schema-changed'
+  | 'output-schema-changed'
+  | 'resource-added'
+  | 'resource-removed'
+  | 'prompt-added'
+  | 'prompt-removed'
+  | 'protocol-changed'
+  | 'transport-changed';
+
+export interface InterfaceChange extends ReportDiffChange {
+  kind: InterfaceChangeKind;
+  /** The tool, resource, prompt or scalar the change belongs to. */
+  subject: string;
+  /** Detailed schema findings for input-schema changes, from the report diff rules. */
+  schemaChanges?: ReportDiffChange[];
+}
+
+export interface InterfaceDiff {
+  beforeSource: InterfaceSnapshot['source'];
+  beforeObservedAt: string;
+  afterObservedAt: string;
+  changes: InterfaceChange[];
+  counts: Record<InterfaceChangeKind, number>;
+  hasBreakingChanges: boolean;
+}
+
+const INTERFACE_KIND_ORDER: InterfaceChangeKind[] = [
+  'tool-removed', 'tool-added', 'input-schema-changed', 'output-schema-changed',
+  'description-changed', 'resource-removed', 'resource-added', 'prompt-removed',
+  'prompt-added', 'protocol-changed', 'transport-changed',
+];
+
+const interfaceChange = (
+  kind: InterfaceChangeKind,
+  subject: string,
+  change: ReportDiffChange,
+  schemaDetails?: ReportDiffChange[]
+): InterfaceChange => ({
+  ...change,
+  kind,
+  subject,
+  ...(schemaDetails && schemaDetails.length > 0 ? { schemaChanges: schemaDetails } : {}),
+});
+
+const inputSchemaChange = (
+  left: InterfaceToolSnapshot,
+  right: InterfaceToolSnapshot
+): InterfaceChange | undefined => {
+  if (left.inputSchemaFingerprint === right.inputSchemaFingerprint) return undefined;
+  const path = `tools.${right.name}.inputSchema`;
+  // Redacted portions are only worth naming when no comparable change explains
+  // why the fingerprints differ; otherwise every visit would repeat them.
+  const details = left.inputSchema !== undefined && right.inputSchema !== undefined
+    ? (() => {
+      const redacted = redactedSchemaChanges(left.inputSchema, right.inputSchema, right.name);
+      const redactedPaths = new Set(redacted.map((change) => change.path));
+      const comparable = schemaChanges(left.inputSchema, right.inputSchema, right.name).filter((change) => (
+        !redactedPaths.has(change.path)
+      ));
+      return comparable.length > 0 ? comparable : redacted;
+    })()
+    : [];
+  const breaking = details.some((change) => change.breaking);
+  return interfaceChange('input-schema-changed', right.name, makeChange(
+    breaking ? 'breaking' : details.some((change) => change.classification === 'unknown') ? 'unknown' : 'change',
+    'tools', path, `${right.name} input schema changed`,
+    details.length > 0
+      ? details.map((change) => change.title).join('; ')
+      : 'The stored schema fingerprints differ.',
+    breaking
+  ), details);
+};
+
+const outputSchemaChange = (
+  left: InterfaceToolSnapshot,
+  right: InterfaceToolSnapshot
+): InterfaceChange | undefined => {
+  if (left.outputSchemaFingerprint === right.outputSchemaFingerprint) return undefined;
+  const path = `tools.${right.name}.outputSchema`;
+  if (!left.outputSchemaFingerprint) {
+    return interfaceChange('output-schema-changed', right.name, makeChange(
+      'addition', 'tools', path, `${right.name} now declares an output schema`,
+      'Structured results are now validated against a declared contract.'
+    ));
+  }
+  if (!right.outputSchemaFingerprint) {
+    return interfaceChange('output-schema-changed', right.name, makeChange(
+      'risk', 'tools', path, `${right.name} no longer declares an output schema`,
+      'Clients that relied on structuredContent lose their declared contract.'
+    ));
+  }
+  return interfaceChange('output-schema-changed', right.name, makeChange(
+    'risk', 'tools', path, `${right.name} output schema changed`,
+    'Clients that parse structuredContent should be checked against the new contract.'
+  ));
+};
+
+const compareInterfaceTools = (before: InterfaceSnapshot, after: InterfaceSnapshot): InterfaceChange[] => {
+  if (!before.tools || !after.tools) return [];
+  const beforeTools = new Map(before.tools.map((tool) => [tool.name, tool]));
+  const afterTools = new Map(after.tools.map((tool) => [tool.name, tool]));
+  const changes: InterfaceChange[] = [];
+  for (const name of [...afterTools.keys()].filter((name) => !beforeTools.has(name)).sort()) {
+    changes.push(interfaceChange('tool-added', name, makeChange(
+      'addition', 'tools', `tools.${name}`, `Tool added: ${name}`, 'A new tool is available.'
+    )));
+  }
+  for (const name of [...beforeTools.keys()].filter((name) => !afterTools.has(name)).sort()) {
+    changes.push(interfaceChange('tool-removed', name, makeChange(
+      'removal', 'tools', `tools.${name}`, `Tool removed: ${name}`,
+      'Clients that call this tool will break.', true
+    )));
+  }
+  const compareOutputs = before.outputSchemasObserved && after.outputSchemasObserved;
+  // Report snapshots do not keep tool titles, so only same-source titles compare.
+  const compareTitles = before.source === after.source;
+  for (const name of [...beforeTools.keys()].filter((name) => afterTools.has(name)).sort()) {
+    const left = beforeTools.get(name)!;
+    const right = afterTools.get(name)!;
+    if ((left.description ?? '') !== (right.description ?? '')
+        || (compareTitles && (left.title ?? '') !== (right.title ?? ''))) {
+      changes.push(interfaceChange('description-changed', name, makeChange(
+        'change', 'tools', `tools.${name}.description`, `${name} description changed`,
+        'Tool guidance changed; models may choose or call this tool differently.'
+      )));
+    }
+    const input = inputSchemaChange(left, right);
+    if (input) changes.push(input);
+    const output = compareOutputs ? outputSchemaChange(left, right) : undefined;
+    if (output) changes.push(output);
+  }
+  return changes;
+};
+
+const compareNameSets = (
+  before: readonly string[] | undefined,
+  after: readonly string[] | undefined,
+  label: 'Resource' | 'Resource template' | 'Prompt',
+  kinds: { added: InterfaceChangeKind; removed: InterfaceChangeKind }
+): InterfaceChange[] => {
+  // An unrecorded list cannot prove membership changed in either direction.
+  if (!before || !after) return [];
+  const left = new Set(before);
+  const right = new Set(after);
+  const path = label === 'Prompt' ? 'prompts' : label === 'Resource' ? 'resources' : 'resourceTemplates';
+  return [
+    ...[...right].filter((name) => !left.has(name)).sort().map((name) => interfaceChange(
+      kinds.added, name, makeChange(
+        'addition', 'capabilities', `${path}.${name}`, `${label} added: ${name}`,
+        `A new ${label.toLowerCase()} is available.`
+      )
+    )),
+    ...[...left].filter((name) => !right.has(name)).sort().map((name) => interfaceChange(
+      kinds.removed, name, makeChange(
+        'removal', 'capabilities', `${path}.${name}`, `${label} removed: ${name}`,
+        `Clients that read this ${label.toLowerCase()} will no longer find it.`, true
+      )
+    )),
+  ];
+};
+
+/** Compares two playground capability snapshots of the same server. */
+export const diffInterfaceSnapshots = (
+  before: InterfaceSnapshot,
+  after: InterfaceSnapshot
+): InterfaceDiff => {
+  const changes: InterfaceChange[] = [
+    ...compareInterfaceTools(before, after),
+    ...compareNameSets(before.resources, after.resources, 'Resource', {
+      added: 'resource-added', removed: 'resource-removed',
+    }),
+    ...compareNameSets(before.resourceTemplates, after.resourceTemplates, 'Resource template', {
+      added: 'resource-added', removed: 'resource-removed',
+    }),
+    ...compareNameSets(before.prompts, after.prompts, 'Prompt', {
+      added: 'prompt-added', removed: 'prompt-removed',
+    }),
+  ];
+  if (before.protocolVersion && after.protocolVersion && before.protocolVersion !== after.protocolVersion) {
+    changes.push(interfaceChange('protocol-changed', 'protocol', makeChange(
+      'change', 'protocol', 'protocol.version', 'Protocol version changed',
+      `Changed from ${before.protocolVersion} to ${after.protocolVersion}.`
+    )));
+  }
+  if (before.transport && after.transport && before.transport !== after.transport) {
+    const regressed = before.transport === 'streamable-http' && after.transport === 'legacy-sse';
+    changes.push(interfaceChange('transport-changed', 'transport', makeChange(
+      regressed ? 'breaking' : 'change', 'transport', 'transport.type', 'Transport changed',
+      `Changed from ${before.transport} to ${after.transport}.`
+    )));
+  }
+  changes.sort((left, right) => (
+    INTERFACE_KIND_ORDER.indexOf(left.kind) - INTERFACE_KIND_ORDER.indexOf(right.kind)
+    || left.subject.localeCompare(right.subject)
+  ));
+  const counts = Object.fromEntries(
+    INTERFACE_KIND_ORDER.map((kind) => [kind, 0])
+  ) as Record<InterfaceChangeKind, number>;
+  changes.forEach((change) => { counts[change.kind] += 1; });
+  return {
+    beforeSource: before.source,
+    beforeObservedAt: before.observedAt,
+    afterObservedAt: after.observedAt,
+    changes,
+    counts,
+    hasBreakingChanges: changes.some((change) => change.breaking),
+  };
+};

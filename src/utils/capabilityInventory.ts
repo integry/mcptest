@@ -40,6 +40,10 @@ const SECRET_ASSIGNMENT = /\b(authorization|cookie|password|passwd|secret|client
 const BEARER_VALUE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT_VALUE = /\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
 const STANDALONE_CREDENTIAL = /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}|sk-(?:proj-)?[A-Za-z0-9_-]{20,255}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox(?:b|p|a|r|s)-[A-Za-z0-9-]{20,255}|npm_[A-Za-z0-9]{20,255}|glpat-[A-Za-z0-9_-]{20,255}|hf_[A-Za-z0-9]{20,255})(?![A-Za-z0-9])/g;
+/** Replaces well-known provider credential shapes (GitHub, OpenAI, AWS, Slack, …) that carry no key name. */
+export const redactStandaloneCredentials = (value: string): string => (
+  value.replace(STANDALONE_CREDENTIAL, '[REDACTED]')
+);
 const SAFE_IDENTIFIER = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,127})$/;
 const SAFE_MIME_TYPE = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*charset=[A-Za-z0-9._-]+)?$/i;
 const SCHEMA_TYPES = new Set(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string']);

@@ -163,3 +163,81 @@
   white-space: nowrap;
 }
 
+
+/* --- Capability search --- */
+.capability-search {
+  position: relative;
+  margin: var(--space-2);
+}
+
+.unified-panel .capability-search .filter-input {
+  width: 100%;
+  min-height: 2rem;
+  margin: 0;
+  padding: 0.3125rem 1.75rem 0.3125rem 1.75rem;
+}
+
+/* The native clear button duplicates Escape and collides with the shortcut hint. */
+.capability-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.capability-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.625rem;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.capability-search-shortcut {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  padding: 0 0.3125rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--card-bg-secondary);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  pointer-events: none;
+}
+
+.capability-search-summary {
+  margin: 0 var(--space-3) var(--space-1);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.capability-match {
+  padding: 0;
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--primary-color) 22%, transparent);
+  color: inherit;
+  font-weight: 600;
+}
+
+.tree-item.active {
+  background-color: var(--active-wash);
+  box-shadow: inset 2px 0 0 var(--text-muted);
+}
+
+.tree-item.selected.active {
+  box-shadow: inset 2px 0 0 var(--primary-color);
+}
+
+.item-title {
+  color: var(--text-accent);
+}
+
+.tree-item-empty {
+  padding: 0.25rem var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}

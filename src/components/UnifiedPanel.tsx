@@ -1,6 +1,16 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Tool, Resource, ResourceTemplate, Prompt, SelectedTool, SelectedPrompt } from '../types'; // Added Resource type
-import './UnifiedPanel.css'; // We'll create this CSS file next
+import React, { useState, useMemo, useRef, useEffect, useId } from 'react';
+import { Tool, Resource, ResourceTemplate, Prompt, SelectedTool, SelectedPrompt } from '../types';
+import {
+  highlightSegments,
+  prepareFields,
+  rankItems,
+  tokenizeQuery,
+  type MatchRange,
+  type PreparedField,
+  type RankedItem,
+} from '../utils/fuzzyMatch';
+import { MENU_OPEN_CLASS } from '../hooks/useMobileDrawer';
+import './UnifiedPanel.css';
 
 interface UnifiedPanelProps {
   tools: Tool[];
@@ -18,14 +28,50 @@ interface UnifiedPanelProps {
   onRefreshLists: () => void; // Add prop for refresh handler
   isConnecting: boolean; // Add isConnecting prop
   onOpenTestPlan?: () => void;
+  /** Enables the `/` shortcut; only the visible playground tab should listen. */
+  shortcutEnabled?: boolean;
 }
 
-// Helper to truncate description
-const truncateDescription = (text: string | undefined, length = 50): string => {
-    if (!text) return '';
-    return text.length > length ? text.substring(0, length) + '...' : text;
+type CategoryKey = 'tools' | 'resources' | 'resourceTemplates' | 'prompts';
+
+const CATEGORY_NOUNS: Record<CategoryKey, [singular: string, plural: string]> = {
+  tools: ['tool', 'tools'],
+  resources: ['resource', 'resources'],
+  resourceTemplates: ['template', 'templates'],
+  prompts: ['prompt', 'prompts'],
 };
 
+const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+const itemTitle = (item: any): string => {
+  const title = text(item?.title) || text(item?.annotations?.title);
+  return title && title !== item?.name ? title : '';
+};
+
+const itemSecondaryText = (item: any): string => text(item?.description) || text(item?.uriTemplate) || text(item?.uri);
+
+/** Search fields per item: identifiers rank above prose. */
+const searchFields = (item: any): PreparedField[] => prepareFields([
+  { key: 'name', text: text(item?.name), kind: 'identifier', weight: 3 },
+  { key: 'title', text: itemTitle(item), kind: 'identifier', weight: 2 },
+  { key: 'uri', text: text(item?.uriTemplate) || text(item?.uri), kind: 'prose', weight: 1.5 },
+  { key: 'description', text: text(item?.description), kind: 'prose', weight: 1 },
+]);
+
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+};
+
+const Highlighted: React.FC<{ value: string; ranges?: MatchRange[] }> = ({ value, ranges }) => (
+  <>
+    {highlightSegments(value, ranges).map((segment, index) => (
+      segment.match
+        ? <mark key={index} className="capability-match">{segment.text}</mark>
+        : <React.Fragment key={index}>{segment.text}</React.Fragment>
+    ))}
+  </>
+);
 
 export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   tools,
@@ -43,6 +89,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   onRefreshLists, // Destructure the new prop
   isConnecting, // Destructure isConnecting
   onOpenTestPlan,
+  shortcutEnabled = false,
 }) => {
   const [filterText, setFilterText] = useState('');
   const [expandedCategories, setExpandedCategories] = useState({
@@ -52,53 +99,44 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     prompts: true,
   });
   const [focusedIndex, setFocusedIndex] = useState<{ [key: string]: number }>({});
+  // Index into the flat list of visible results, driven from the search field.
+  const [activeIndex, setActiveIndex] = useState(-1);
   const listRefs = useRef<{ [key: string]: (HTMLLIElement | null)[] }>({});
+  const searchRef = useRef<HTMLInputElement>(null);
+  const idPrefix = useId();
 
   useEffect(() => {
     // Reset focus when filter text changes
     setFocusedIndex({});
+    setActiveIndex(-1);
   }, [filterText]);
 
   const isConnected = connectionStatus === 'Connected';
 
-  const filteredItems = useMemo(() => {
-    const lowerCaseFilter = filterText.toLowerCase();
-    if (!lowerCaseFilter) {
-      return { 
-        filteredTools: tools, 
-        filteredResources: resources, 
-        filteredResourceTemplates: resourceTemplates, 
-        filteredPrompts: prompts 
-      };
-    }
+  // Preparing fields per list keeps each keystroke to a scan of lowercase text.
+  const preparedTools = useMemo(() => tools.map(searchFields), [tools]);
+  const preparedResources = useMemo(() => resources.map(searchFields), [resources]);
+  const preparedTemplates = useMemo(() => resourceTemplates.map(searchFields), [resourceTemplates]);
+  const preparedPrompts = useMemo(() => prompts.map(searchFields), [prompts]);
 
-    const filteredTools = tools.filter(
-      (tool) =>
-        tool.name.toLowerCase().includes(lowerCaseFilter) ||
-        tool.description?.toLowerCase().includes(lowerCaseFilter)
-    );
-    const filteredResources = resources.filter(
-      (res) =>
-        res.name?.toLowerCase().includes(lowerCaseFilter) ||
-        res.uri?.toLowerCase().includes(lowerCaseFilter) ||
-        res.description?.toLowerCase().includes(lowerCaseFilter)
-    );
-    const filteredResourceTemplates = resourceTemplates.filter(
-      (template) =>
-        template.name?.toLowerCase().includes(lowerCaseFilter) ||
-        template.uriTemplate?.toLowerCase().includes(lowerCaseFilter) ||
-        template.description?.toLowerCase().includes(lowerCaseFilter)
-    );
-    const filteredPrompts = prompts.filter(
-      (prompt) =>
-        prompt.name.toLowerCase().includes(lowerCaseFilter) ||
-        prompt.description?.toLowerCase().includes(lowerCaseFilter)
-    );
+  const ranked = useMemo<Record<CategoryKey, RankedItem<any>[]>>(() => ({
+    tools: rankItems(tools, preparedTools, filterText),
+    resources: rankItems(resources, preparedResources, filterText),
+    resourceTemplates: rankItems(resourceTemplates, preparedTemplates, filterText),
+    prompts: rankItems(prompts, preparedPrompts, filterText),
+  }), [
+    filterText, tools, resources, resourceTemplates, prompts,
+    preparedTools, preparedResources, preparedTemplates, preparedPrompts,
+  ]);
+  const isSearching = tokenizeQuery(filterText).length > 0;
 
-    return { filteredTools, filteredResources, filteredResourceTemplates, filteredPrompts };
-  }, [filterText, tools, resources, resourceTemplates, prompts]);
-
-  const { filteredTools, filteredResources, filteredResourceTemplates, filteredPrompts } = filteredItems;
+  const selectItem = (category: string, item: any) => {
+    if (!isConnected) return;
+    if (category === 'tools') handleSelectTool(item);
+    if (category === 'resources') handleSelectResource(item);
+    if (category === 'resourceTemplates') handleSelectResourceTemplate(item);
+    if (category === 'prompts') handleSelectPrompt(item);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent, category: string, items: any[]) => {
     if (e.key === 'ArrowDown') {
@@ -118,30 +156,82 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const index = focusedIndex[category];
-      if (index !== undefined && items[index]) {
-        const item = items[index];
-        if (category === 'tools') handleSelectTool(item);
-        if (category === 'resources') handleSelectResource(item);
-        if (category === 'resourceTemplates') handleSelectResourceTemplate(item);
-        if (category === 'prompts') handleSelectPrompt(item);
-      }
+      if (index !== undefined && items[index]) selectItem(category, items[index]);
+    } else if (e.key === 'Escape' && filterText) {
+      e.preventDefault();
+      setFilterText('');
+      searchRef.current?.focus();
     }
   };
 
   // Separate supported and unsupported capabilities
   // Use original arrays (not filtered) to determine if a capability is supported
-  const allCapabilities = [
-    { key: 'tools', items: filteredTools, originalItems: tools, label: 'Tools', handler: handleSelectTool },
-    { key: 'resources', items: filteredResources, originalItems: resources, label: 'Resources', handler: handleSelectResource },
-    { key: 'resourceTemplates', items: filteredResourceTemplates, originalItems: resourceTemplates, label: 'Resource Templates', handler: handleSelectResourceTemplate },
-    { key: 'prompts', items: filteredPrompts, originalItems: prompts, label: 'Prompts', handler: handleSelectPrompt }
+  const allCapabilities: Array<{ key: CategoryKey; items: RankedItem<any>[]; originalItems: unknown[]; label: string }> = [
+    { key: 'tools', items: ranked.tools, originalItems: tools, label: 'Tools' },
+    { key: 'resources', items: ranked.resources, originalItems: resources, label: 'Resources' },
+    { key: 'resourceTemplates', items: ranked.resourceTemplates, originalItems: resourceTemplates, label: 'Resource Templates' },
+    { key: 'prompts', items: ranked.prompts, originalItems: prompts, label: 'Prompts' },
   ];
 
   const supportedCapabilities = allCapabilities.filter(cap => cap.originalItems.length > 0);
 
+  // Results reachable with the arrow keys from the search field, in display order.
+  const visibleResults = supportedCapabilities.flatMap(({ key, items }) => (
+    expandedCategories[key] ? items.map((result, index) => ({ key, result, index })) : []
+  ));
+  const activeResult = activeIndex >= 0 ? visibleResults[activeIndex] : undefined;
+  const optionId = (key: string, index: number) => `${idPrefix}-${key}-${index}`;
+
+  useEffect(() => {
+    if (!activeResult) return;
+    listRefs.current[activeResult.key]?.[activeResult.index]?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeResult]);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (visibleResults.length === 0) return;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setActiveIndex((current) => {
+        if (current < 0) return step > 0 ? 0 : visibleResults.length - 1;
+        return Math.min(visibleResults.length - 1, Math.max(0, current + step));
+      });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const target = activeResult ?? (isSearching ? visibleResults[0] : undefined);
+      if (target) selectItem(target.key, target.result.item);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (filterText) setFilterText('');
+      else searchRef.current?.blur();
+    }
+  };
+
+  useEffect(() => {
+    if (!shortcutEnabled || !isConnected) return;
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+      if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
+      // An open dialog or drawer owns the keyboard. The mobile drawer stays
+      // mounted as a modal dialog, so it counts only while the menu is open.
+      if (document.body.classList.contains(MENU_OPEN_CLASS)) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]:not(.mobile-sidebar)')) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    document.addEventListener('keydown', handleShortcut);
+    return () => document.removeEventListener('keydown', handleShortcut);
+  }, [shortcutEnabled, isConnected]);
+
   const toggleCategory = (category: keyof typeof expandedCategories) => {
     setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
   };
+
+  const matchSummary = supportedCapabilities
+    .map(({ key, items }) => `${items.length} ${CATEGORY_NOUNS[key][items.length === 1 ? 0 : 1]}`)
+    .join(' · ');
+  const treeId = `${idPrefix}-capability-tree`;
 
   return (
     <div className={`card unified-panel ${!isConnected ? 'unified-panel-deactivated' : ''}`}>
@@ -173,50 +263,85 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
           </button>
         </div>
       </div>
-      <input
-        type="text"
-        placeholder="Filter by name or description..."
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        className="filter-input"
-        disabled={!isConnected}
-      />
-      <nav className="tree-view" aria-label="Playground tool lists">
+      <div className="capability-search">
+        <i className="bi bi-search capability-search-icon" aria-hidden="true"></i>
+        <input
+          ref={searchRef}
+          type="search"
+          placeholder="Search capabilities"
+          aria-label="Search tools, resources and prompts"
+          aria-keyshortcuts="/"
+          role="combobox"
+          aria-expanded={visibleResults.length > 0}
+          aria-controls={treeId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeResult ? optionId(activeResult.key, activeResult.index) : undefined}
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          className="filter-input capability-search-input"
+          disabled={!isConnected}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {!filterText && <kbd className="capability-search-shortcut" aria-hidden="true">/</kbd>}
+      </div>
+      {isConnected && supportedCapabilities.length > 0 && (
+        <p className="capability-search-summary" role="status" aria-live="polite">
+          {isSearching ? `${matchSummary} match` : matchSummary}
+        </p>
+      )}
+      <nav className="tree-view" aria-label="Playground tool lists" id={treeId}>
         {/* Supported Capabilities - Only show sections with items */}
         {supportedCapabilities.map((capability) => {
-          const { key, items, label, handler } = capability;
+          const { key, items, originalItems, label } = capability;
           const isExpanded = expandedCategories[key as keyof typeof expandedCategories];
           listRefs.current[key] = [];
+          const plainItems = items.map((result) => result.item);
 
           return (
             <details key={key} open={isExpanded} onToggle={(e) => setExpandedCategories(prev => ({...prev, [key]: (e.target as HTMLDetailsElement).open}))}>
               <summary onClick={(e) => { e.preventDefault(); toggleCategory(key as keyof typeof expandedCategories); }}>
                 <span className={`category-toggle ${isExpanded ? 'expanded' : ''}`}>▶</span>
-                {label} ({items.length})
+                {label} ({isSearching ? `${items.length} of ${originalItems.length}` : items.length})
               </summary>
               {isExpanded && (
-                <ul onKeyDown={(e) => handleKeyDown(e, key, items)} role="listbox">
-                  {items.map((item: any, index: number) => {
+                <ul onKeyDown={(e) => handleKeyDown(e, key, plainItems)} role="listbox" aria-label={label}>
+                  {items.length === 0 && isSearching && (
+                    <li className="tree-item-empty" role="presentation">No matching {CATEGORY_NOUNS[key][1]}</li>
+                  )}
+                  {items.map(({ item, ranges }, index: number) => {
                     const isSelected =
                       (key === 'tools' && selectedTool?.name === item.name) ||
                       (key === 'resources' && selectedResourceTemplate?.uriTemplate === item.uri) ||
                       (key === 'resourceTemplates' && selectedResourceTemplate?.uriTemplate === item.uriTemplate) ||
                       (key === 'prompts' && selectedPrompt?.name === item.name);
+                    const isActive = activeResult?.key === key && activeResult.index === index;
+                    const title = itemTitle(item);
+                    const secondary = itemSecondaryText(item);
+                    const secondaryRanges = item.description ? ranges.description : ranges.uri;
 
                     return (
                       <li
                         key={item.name || item.uriTemplate || item.uri}
+                        id={optionId(key, index)}
                         ref={(el) => { listRefs.current[key][index] = el; }}
-                        className={`tree-item ${isSelected ? 'selected' : ''}`}
-                        onClick={() => isConnected && handler && handler(item)}
+                        className={`tree-item ${isSelected ? 'selected' : ''} ${isActive ? 'active' : ''}`}
+                        onClick={() => selectItem(key, item)}
                         title={item.description}
                         tabIndex={focusedIndex[key] === index ? 0 : -1}
                         role="option"
                         aria-selected={isSelected}
                         onFocus={() => setFocusedIndex({ ...focusedIndex, [key]: index })}
                       >
-                        <div className="item-name">{item.name}</div>
-                        <div className="item-uri">{truncateDescription(item.description || item.uriTemplate || item.uri)}</div>
+                        <div className="item-name"><Highlighted value={text(item.name) || secondary} ranges={ranges.name} /></div>
+                        {(title || secondary) && (
+                          <div className="item-uri">
+                            {title && <span className="item-title"><Highlighted value={title} ranges={ranges.title} /></span>}
+                            {title && secondary && ' · '}
+                            {secondary && <Highlighted value={secondary} ranges={secondaryRanges} />}
+                          </div>
+                        )}
                       </li>
                     );
                   })}
