@@ -1,0 +1,28 @@
+{
+  "submission_id": "6f1c2a9e-4b7d-4c1e-9a53-2f8e0d4b7c11",
+  "proposed_id": "acme-weather",
+  "submitted_at": "2026-10-20T10:15:00.000Z",
+  "submission": {
+    "url": "https://mcp.acme-weather.dev/mcp",
+    "name": "Acme Weather",
+    "description": "Read-only forecasts and severe-weather alerts for any coordinates. No authentication is required.",
+    "category": "Search",
+    "homepageUrl": "https://acme-weather.dev/docs/mcp",
+    "logoLicense": "none",
+    "authorized": true
+  },
+  "evidence": {
+    "checkedAt": "2026-10-20T10:14:52.000Z",
+    "endpointUrl": "https://mcp.acme-weather.dev/mcp",
+    "outcome": "mcp",
+    "validatedUrl": "https://mcp.acme-weather.dev/mcp",
+    "transport": "streamable-http",
+    "protocolVersion": "2025-06-18",
+    "protocolEra": "stateless",
+    "authChallenge": "none",
+    "browserAccess": "direct",
+    "toolCount": 4,
+    "detail": "Negotiated stateless MCP 2025-06-18 over streamable-http at https://mcp.acme-weather.dev/mcp."
+  },
+  "contact_email": "maintainers@acme-weather.dev"
+}

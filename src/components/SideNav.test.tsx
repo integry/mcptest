@@ -214,7 +214,7 @@ describe('SideNav information architecture', () => {
       link.getAttribute('rel'),
     ]);
     expect(projectLinks).toEqual([
-      ['Submit a server', 'https://github.com/integry/mcptest/blob/master/docs/catalog-submissions.md', '_blank', 'noopener noreferrer'],
+      ['Submit a server', '/submit', null, null],
       ['Badges', 'https://github.com/integry/mcptest#embedding-a-badge', '_blank', 'noopener noreferrer'],
       ['GitHub repository', 'https://github.com/integry/mcptest', '_blank', 'noopener noreferrer'],
     ]);
