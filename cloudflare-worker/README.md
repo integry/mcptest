@@ -14,6 +14,21 @@ This Cloudflare Worker provides data persistence for the MCP Test application us
   Durable Object and serves live badges for them (`/badge/report/<encoded endpoint>.svg`).
   See `../CLOUDFLARE_DEPLOYMENT.md` for the validation rules, rate limits and removal flow.
 
+## Catalog submissions
+
+`src/submissions.js` serves `POST /api/catalog/submissions` for the app's `/submit` page. It is public (no Firebase token), validates the body against `public/schemas/catalog-submission/v1.schema.json`, rate limits per client address and per endpoint host with the `SubmissionRateLimiter` Durable Object, and triggers the `catalog-submission` `repository_dispatch` event that runs `.github/workflows/catalog-submission.yml`.
+
+- `GITHUB_DISPATCH_TOKEN` (secret, required): fine-grained token for the repository with **Contents: Read and write**. Without it the route answers `503`.
+- `TURNSTILE_SECRET` (secret, optional): when set, a valid Cloudflare Turnstile token is required; when unset, the check is skipped. Pair it with `VITE_TURNSTILE_SITE_KEY` in the app build.
+- `GITHUB_DISPATCH_REPOSITORY` (var, optional): defaults to `integry/mcptest`.
+
+```bash
+npx wrangler secret put GITHUB_DISPATCH_TOKEN
+npx wrangler secret put TURNSTILE_SECRET   # optional
+```
+
+See `docs/catalog-submissions.md` for the full flow.
+
 ## Configuration
 
 Before deployment, update the `FIREBASE_PROJECT_ID` in `wrangler.toml` with your actual Firebase project ID:

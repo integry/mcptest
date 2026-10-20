@@ -38,7 +38,8 @@ export type CatalogServerStatus = 'online' | 'offline' | 'unknown';
 export type CatalogBrowserAccess = 'direct' | 'proxy-required' | 'unknown';
 
 /** How a catalog listing was discovered. This is independent of live validation. */
-export type CatalogListingSourceKind = 'publisher' | 'mcp-registry' | 'community';
+/** `community-submission` entries came through the in-app /submit flow and were reviewed by a maintainer. */
+export type CatalogListingSourceKind = 'publisher' | 'mcp-registry' | 'community' | 'community-submission';
 
 export interface CatalogListingSource {
   /** Curated source class; it must not be inferred from tags or validation results. */

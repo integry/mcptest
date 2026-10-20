@@ -21,3 +21,4 @@ mkdir -p "$npm_config_cache"
 
 npm ci --prefix "$WORKSPACE"
 npm ci --prefix "$WORKSPACE/cors-proxy-worker"
+npm ci --prefix "$WORKSPACE/cloudflare-worker"

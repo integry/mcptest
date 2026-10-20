@@ -175,7 +175,7 @@ function exactPortCallback(value, pathname) {
   return { port };
 }
 
-const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community']);
+const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community', 'community-submission']);
 const OAUTH_REGISTRATION_MODES = new Set([
   'automatic',
   'pre-registered-required',
@@ -419,7 +419,7 @@ function validateCatalogSeed(seed, index = 0) {
   }
 
   if (!LISTING_SOURCE_KINDS.has(listingSource.kind)) {
-    throw new Error(`${label}: listingSource.kind must be publisher, mcp-registry, or community`);
+    throw new Error(`${label}: listingSource.kind must be publisher, mcp-registry, community, or community-submission`);
   }
 
   if (listingSource.url !== undefined && !isHttpsUrl(listingSource.url)) {
@@ -1054,9 +1054,14 @@ async function main() {
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
   validateCatalogSeeds(seeds);
-  console.log(`Validating ${seeds.length} catalog servers with concurrency ${CONCURRENCY}...`);
+  const onlyId = parseOnlyOption(process.argv);
+  const targets = onlyId === undefined ? seeds : seeds.filter((seed) => seed.id === onlyId);
+  if (onlyId !== undefined && targets.length === 0) {
+    throw new Error(`--only: no catalog server has the id "${onlyId}"`);
+  }
+  console.log(`Validating ${targets.length} catalog servers with concurrency ${CONCURRENCY}...`);
 
-  const results = await mapWithConcurrency(seeds, CONCURRENCY, async (seed) => {
+  const results = await mapWithConcurrency(targets, CONCURRENCY, async (seed) => {
     const result = await withServerTimeout((signal) => validateSeed(seed, { signal }));
     console.log(
       `${seed.id}: ${result.status}, ${result.transport}, ${result.protocolEra}, ${result.authType} - ${result.message}`
@@ -1064,8 +1069,39 @@ async function main() {
     return result;
   });
 
-  await writeResults(results);
+  await writeResults(onlyId === undefined
+    ? results
+    : mergeValidationResults(seeds, readJsonFile(outputPath, []), results));
   console.log(`Catalog validation results written to ${path.relative(process.cwd(), outputPath)}`);
+
+  // A single-server run is an acceptance check: anything but online fails the command.
+  const notOnline = onlyId === undefined ? [] : results.filter((result) => result.status !== 'online');
+  if (notOnline.length > 0) {
+    console.error(`${onlyId} is ${notOnline[0].status}${notOnline[0].errorCode ? ` (${notOnline[0].errorCode})` : ''}; only online servers are accepted.`);
+    process.exitCode = 1;
+  }
+}
+
+/** Returns the id after `--only`, or undefined when the option is absent. */
+function parseOnlyOption(argv) {
+  const index = argv.indexOf('--only');
+  if (index === -1) return undefined;
+  const value = argv[index + 1];
+  if (!value || value.startsWith('--')) throw new Error('--only needs a catalog server id');
+  return value;
+}
+
+/**
+ * Replaces the stored results of the servers validated in this run and keeps
+ * every other stored result as it was, in catalog order. Servers that have
+ * neither a stored nor a fresh result are left out.
+ */
+function mergeValidationResults(seeds, previous, results) {
+  const fresh = new Map(results.map((result) => [result.serverId, result]));
+  const stored = new Map((Array.isArray(previous) ? previous : []).map((result) => [result.serverId, result]));
+  return seeds
+    .map((seed) => fresh.get(seed.id) || stored.get(seed.id))
+    .filter(Boolean);
 }
 
 if (require.main === module) {
@@ -1088,6 +1124,8 @@ module.exports = {
   requestDiscoveryPage,
   main,
   mapWithConcurrency,
+  mergeValidationResults,
+  parseOnlyOption,
   validateCapabilitySnapshots,
   validateCatalogSeed,
   validateCatalogSeeds,
