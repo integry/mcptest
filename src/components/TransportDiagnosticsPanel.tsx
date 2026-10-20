@@ -12,6 +12,8 @@ interface TransportDiagnosticsPanelProps {
   retryRemainingSeconds?: number;
   /** Absolute time the target asked clients to wait until. */
   retryAt?: Date;
+  /** The requested wait is outstanding but ends beyond any representable time. */
+  retryUnavailable?: boolean;
 }
 
 const severityLabel = (diagnostic: TransportDiagnostic): string => {
@@ -41,6 +43,7 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
   diagnostics,
   retryRemainingSeconds,
   retryAt,
+  retryUnavailable = false,
 }) => {
   if (diagnostics.length === 0) return null;
 
@@ -80,9 +83,11 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
                             The server asked clients to wait {formatRetryWait(diagnostic.retryAfterSeconds)}
                             {retryAt ? ` (until ${retryAt.toLocaleTimeString()})` : ''}.
                           </span>{' '}
-                          {retryRemainingSeconds !== undefined && retryRemainingSeconds > 0
-                            ? `Retry is available in ${formatRetryWait(retryRemainingSeconds)}.`
-                            : 'You can retry now.'}
+                          {retryUnavailable
+                            ? 'That wait ends too far in the future to show a time, so retry is not available.'
+                            : retryRemainingSeconds !== undefined && retryRemainingSeconds > 0
+                              ? `Retry is available in ${formatRetryWait(retryRemainingSeconds)}.`
+                              : 'You can retry now.'}
                         </>
                       ) : (
                         'The server did not send a readable Retry-After header, so wait before retrying.'

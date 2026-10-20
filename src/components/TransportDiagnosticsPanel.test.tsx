@@ -191,6 +191,39 @@ describe('ConnectionErrorCard transport diagnostics', () => {
     expect(button.disabled).toBe(false);
   });
 
+  it('keeps retry unavailable when the Retry-After deadline exceeds the Date range', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-20T00:00:00.000Z'));
+    const onRetry = vi.fn();
+    const container = render({
+      timestamp: new Date('2026-10-20T00:00:00.000Z'),
+      attempts: [],
+      transportDiagnostics: collectTransportDiagnostics([{
+        route: 'direct',
+        requests: [request({
+          status: 429,
+          retryAfter: '9999999999999999',
+          rateLimitRetry: { action: 'not-retried', waitMs: 9999999999999999000, reason: 'too long' },
+        })],
+      }]),
+    }, { onRetry });
+
+    const button = () => Array.from(container.querySelectorAll('button'))
+      .find((element) => /Retry/.test(element.textContent || '')) as HTMLButtonElement;
+    expect(container.textContent).toContain('The server asked clients to wait');
+    expect(container.textContent).toContain('retry is not available');
+    expect(container.textContent).not.toContain('You can retry now.');
+    expect(button().textContent).toBe('Retry unavailable');
+    expect(button().disabled).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(button().disabled).toBe(true);
+    act(() => button().click());
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
   it('presents a hidden session header as unconfirmed after an unrelated failure', () => {
     const container = render({
       attempts: [],

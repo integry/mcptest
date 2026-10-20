@@ -276,7 +276,10 @@ const createDiagnostic = (
   id: TransportDiagnosticId,
   severity: TransportDiagnosticSeverity,
   evidence: TransportDiagnosticEvidence[],
-  extra: Pick<TransportDiagnostic, 'retryAfterSeconds' | 'retryAt' | 'unconfirmedReason' | 'notCheckedReason'> & {
+  extra: Pick<
+    TransportDiagnostic,
+    'retryAfterSeconds' | 'retryAt' | 'retryAtUnrepresentable' | 'unconfirmedReason' | 'notCheckedReason'
+  > & {
     status?: TransportDiagnostic['status'];
   } = {}
 ): TransportDiagnostic => {
@@ -291,6 +294,7 @@ const createDiagnostic = (
     remediation: definition.remediation,
     ...(extra.retryAfterSeconds !== undefined ? { retryAfterSeconds: extra.retryAfterSeconds } : {}),
     ...(extra.retryAt ? { retryAt: extra.retryAt } : {}),
+    ...(extra.retryAtUnrepresentable ? { retryAtUnrepresentable: true as const } : {}),
     ...(extra.unconfirmedReason ? { unconfirmedReason: extra.unconfirmedReason } : {}),
     ...(extra.notCheckedReason ? { notCheckedReason: extra.notCheckedReason } : {}),
   };
@@ -362,6 +366,8 @@ export const detectTransportDiagnostics = (
       const retryAt = retryAfterSeconds === undefined || recovered
         ? undefined
         : retryDeadline(receivedAt, retryAfterSeconds);
+      // An outstanding wait too long for a Date is still outstanding.
+      const retryAtUnrepresentable = retryAfterSeconds !== undefined && !recovered && !retryAt;
       // The GET stream is optional, so its limit never blocks the connection;
       // the wait is still reported so the user knows when to retry.
       diagnostics.push(createDiagnostic(
@@ -370,7 +376,11 @@ export const detectTransportDiagnostics = (
         [toEvidence(request, route, rateLimitObservation(request, retryAfterSeconds))],
         retryAfterSeconds === undefined
           ? {}
-          : { retryAfterSeconds, ...(retryAt ? { retryAt } : {}) }
+          : {
+            retryAfterSeconds,
+            ...(retryAt ? { retryAt } : {}),
+            ...(retryAtUnrepresentable ? { retryAtUnrepresentable: true as const } : {}),
+          }
       ));
     } else if (isSuccess(status) && status !== 202 && status !== 204) {
       const essence = mediaTypeEssence(request.responseContentType);
@@ -485,6 +495,16 @@ export const mergeTransportDiagnostics = (
     if (severityRank[diagnostic.severity] < severityRank[existing.severity]) {
       existing.severity = diagnostic.severity;
     }
+    if (diagnostic.retryAtUnrepresentable) {
+      // A deadline beyond the Date range outlasts every representable one.
+      existing.retryAfterSeconds = existing.retryAtUnrepresentable
+        ? Math.max(existing.retryAfterSeconds ?? 0, diagnostic.retryAfterSeconds ?? 0)
+        : diagnostic.retryAfterSeconds;
+      existing.retryAtUnrepresentable = true;
+      delete existing.retryAt;
+      continue;
+    }
+    if (existing.retryAtUnrepresentable) continue;
     const deadline = deadlineMs(diagnostic);
     const existingDeadline = deadlineMs(existing);
     if (deadline !== undefined && (existingDeadline === undefined || deadline > existingDeadline)) {

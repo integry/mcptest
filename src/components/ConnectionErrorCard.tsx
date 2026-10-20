@@ -238,8 +238,10 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const rateLimit = transportDiagnostics.find((diagnostic) => (
     diagnostic.id === 'transport.target-rate-limited-429'
     && diagnostic.status === 'detected'
-    && diagnostic.retryAt !== undefined
+    && (diagnostic.retryAt !== undefined || diagnostic.retryAtUnrepresentable)
   ));
+  // A wait whose deadline no Date can hold has not elapsed and never will here.
+  const retryUnavailable = rateLimit?.retryAtUnrepresentable === true;
   // The deadline is absolute, taken when the 429 arrived; the error timestamp
   // comes later and must not restart the wait.
   const parsedRetryAt = rateLimit?.retryAt ? Date.parse(rateLimit.retryAt) : Number.NaN;
@@ -258,7 +260,8 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const retryRemainingSeconds = retryAtMs !== undefined
     ? Math.max(0, Math.ceil((retryAtMs - now) / 1000))
     : undefined;
-  const retryWaiting = retryRemainingSeconds !== undefined && retryRemainingSeconds > 0;
+  const retryCountingDown = retryRemainingSeconds !== undefined && retryRemainingSeconds > 0;
+  const retryWaiting = retryUnavailable || retryCountingDown;
   const transportEvidence = inferTransportEvidence(errorDetails.transportEvidence, attempts);
   const showHttpProbe = transportEvidence !== 'legacy-sse';
   const showSseProbe = transportEvidence !== 'streamable-http';
@@ -315,6 +318,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
           <TransportDiagnosticsPanel
             diagnostics={transportDiagnostics}
             retryRemainingSeconds={retryRemainingSeconds}
+            retryUnavailable={retryUnavailable}
             retryAt={retryAtMs !== undefined ? new Date(retryAtMs) : undefined}
           />
 
@@ -455,9 +459,11 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onRetry} disabled={!oauthFailed && retryWaiting}>
               {oauthFailed
                 ? 'Retry OAuth authorization'
-                : retryWaiting
-                  ? `Retry in ${formatRetryWait(retryRemainingSeconds)}`
-                  : 'Retry connection'}
+                : retryUnavailable
+                  ? 'Retry unavailable'
+                  : retryCountingDown
+                    ? `Retry in ${formatRetryWait(retryRemainingSeconds)}`
+                    : 'Retry connection'}
             </button>
           )}
           {browserBlocked && !useProxy && onRetryWithProxy && (

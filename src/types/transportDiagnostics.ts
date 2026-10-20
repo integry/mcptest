@@ -75,6 +75,11 @@ export interface TransportDiagnostic {
    * successful automatic retry.
    */
   retryAt?: string;
+  /**
+   * Set when a wait is still outstanding but its deadline lies beyond the
+   * Date range, so `retryAt` cannot carry it. Retry stays unavailable.
+   */
+  retryAtUnrepresentable?: true;
   /** What a `suspected` diagnostic could not confirm. */
   unconfirmedReason?: string;
   /** Why a `not-checked` diagnostic could not be evaluated. */

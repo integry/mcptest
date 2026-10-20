@@ -264,12 +264,29 @@ describe('transport.target-rate-limited-429', () => {
         retryAfterSeconds: Number(retryAfter),
       })]);
       expect(diagnostics[0].retryAt).toBeUndefined();
+      // The wait is still outstanding, not already satisfied.
+      expect(diagnostics[0].retryAtUnrepresentable).toBe(true);
       expect(transportDiagnosticPriority(diagnostics[0])).toMatchObject({ severity: 'high' });
       expect(transportDiagnosticReportDetail(diagnostics[0]).text).toContain('HTTP 429');
-      // A representable deadline still wins over the unrepresentable one when merging.
+      // The unrepresentable deadline outlasts a representable one in either merge order.
       const [bounded] = detectTransportDiagnostics([request({ status: 429, retryAfter: '30' })], 'direct');
-      expect(mergeTransportDiagnostics([diagnostics[0], bounded])[0].retryAt).toBe('2026-10-20T00:00:30.000Z');
+      for (const order of [[diagnostics[0], bounded], [bounded, diagnostics[0]]]) {
+        const [merged] = mergeTransportDiagnostics(order);
+        expect(merged.retryAt).toBeUndefined();
+        expect(merged.retryAtUnrepresentable).toBe(true);
+        expect(merged.retryAfterSeconds).toBe(Number(retryAfter));
+      }
     }
+  });
+
+  it('marks no outstanding wait when a successful retry satisfied an unrepresentable Retry-After', () => {
+    const [diagnostic] = detectTransportDiagnostics([
+      request({ status: 429, retryAfter: '9999999999999999', rateLimitRetry: { action: 'retried', waitMs: 1000 } }),
+      request({ status: 200, outcome: 'succeeded', automaticRetry: { reason: 'target-rate-limit', waitMs: 1000 } }),
+    ], 'direct');
+    expect(diagnostic).toMatchObject({ id: 'transport.target-rate-limited-429', severity: 'warning' });
+    expect(diagnostic.retryAt).toBeUndefined();
+    expect(diagnostic.retryAtUnrepresentable).toBeUndefined();
   });
 
   it('says when Retry-After was not readable', () => {

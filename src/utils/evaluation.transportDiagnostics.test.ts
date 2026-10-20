@@ -161,6 +161,7 @@ describe('evaluation transport diagnostics', () => {
     const [diagnostic] = transportDiagnosticsFromSections(report.sections);
     expect(diagnostic).toMatchObject({ id: 'transport.target-rate-limited-429', status: 'detected', retryAfterSeconds: 9999999999999999 });
     expect(diagnostic.retryAt).toBeUndefined();
+    expect(diagnostic.retryAtUnrepresentable).toBe(true);
   });
 
   it('reports a GET 405 warning and an explicit "not checked" Expose-Headers note through the proxy', async () => {
