@@ -20,10 +20,12 @@ import {
   createReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
+import { documentedEvidenceIdFor, hasReference } from '../utils/referenceLinks';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import AuthorizationSetup from './AuthorizationSetup';
 import CapabilitiesProvided from './CapabilitiesProvided';
+import FindingReferenceLink from './FindingReferenceLink';
 
 interface ReleaseReadinessReportProps {
   authorizationActions?: React.ReactNode;
@@ -249,6 +251,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                   <div className="release-priority-meta">
                     <span>{priority.source}</span>
                     <span>{priority.severity === 'unknown' ? 'Unknown' : `${priority.severity} priority`}</span>
+                    {hasReference(priority.id) && <FindingReferenceLink id={priority.id} />}
                   </div>
                   <h4>{priority.title}</h4>
                   <p>{priority.detail}</p>
@@ -438,6 +441,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
               {section.details.map((detail, index) => {
                 const detailKey = `protocol-${key}-${index}`;
                 const expandable = detail.context || detail.metadata;
+                const referenceId = documentedEvidenceIdFor(detail.metadata);
                 return (
                   <div className="protocol-evidence" key={detailKey}>
                     {expandable ? (
@@ -448,6 +452,9 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                     {expandable && expandedItems.has(detailKey) && (
                       <div id={`${detailKey}-body`} className="protocol-evidence-body">
                         {detail.context && <p>{detail.context}</p>}
+                        {referenceId && (
+                          <p><FindingReferenceLink id={referenceId} /></p>
+                        )}
                         {detail.metadata !== undefined && <pre>{JSON.stringify(detail.metadata, null, 2)}</pre>}
                       </div>
                     )}

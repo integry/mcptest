@@ -648,7 +648,7 @@ describe('report serialization', () => {
     };
   };
 
-  it('carries diagnostic ids into release priorities, JSON and Markdown without a schema change', () => {
+  it('carries diagnostic ids into release priorities, JSON and Markdown as a backward-compatible addition', () => {
     const report = reportWithDiagnostics();
     expect(transportDiagnosticsFromSections(report.sections).map(({ id }) => id)).toEqual([
       'transport.target-rate-limited-429',
@@ -685,11 +685,25 @@ describe('report serialization', () => {
       'transport.get-stream-405',
     ]);
     expect(transportEvidence?.[0]?.remediation.hints).toHaveLength(3);
+    const reference = 'https://mcptest.io/learn/mcp-transport-diagnostics-reference';
+    expect(parsed.releaseDecision?.priorities
+      .filter(({ id }) => id.startsWith('transport.'))
+      .map(({ id, referenceUrl }) => [id, referenceUrl])).toEqual([
+      ['transport.target-rate-limited-429', `${reference}#transport-target-rate-limited-429`],
+      ['transport.get-stream-405', `${reference}#transport-get-stream-405`],
+    ]);
+    expect(parsed.releaseDecision?.priorities
+      .filter(({ id }) => !id.startsWith('transport.'))
+      .every(({ referenceUrl }) => referenceUrl === undefined)).toBe(true);
+    expect(transportEvidence?.map((diagnostic) => (diagnostic as { referenceUrl?: string })?.referenceUrl)).toEqual([
+      `${reference}#transport-target-rate-limited-429`,
+      `${reference}#transport-get-stream-405`,
+    ]);
 
     const markdown = serializePublicReportMarkdown(artifact);
-    expect(markdown).toContain('  - Id: transport.target-rate-limited-429');
-    expect(markdown).toContain('  - Id: transport.get-stream-405');
-    expect(markdown).toContain('Server does not offer a GET event stream (HTTP 405) (transport.get-stream-405)');
+    expect(markdown).toContain(`  - Id: [transport.target-rate-limited-429](${reference}#transport-target-rate-limited-429)`);
+    expect(markdown).toContain(`  - Id: [transport.get-stream-405](${reference}#transport-get-stream-405)`);
+    expect(markdown).toContain(`Server does not offer a GET event stream (HTTP 405) ([transport.get-stream-405](${reference}#transport-get-stream-405))`);
     expect(markdown).toContain('"retryAfterSeconds": 30');
   });
 

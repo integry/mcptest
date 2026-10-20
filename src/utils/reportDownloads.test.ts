@@ -96,4 +96,45 @@ describe('report downloads', () => {
       ).toBe(true);
     }
   });
+
+  it('links output-contract evidence to its reference section without a release decision', () => {
+    const reference = 'https://mcptest.io/learn/mcp-transport-diagnostics-reference#tool-output-contract-violation';
+    const contractReport: EvaluationReport = {
+      serverUrl: 'https://downloads.example/mcp',
+      outcome: 'scored',
+      finalScore: 10,
+      sections: {
+        capabilities: {
+          name: 'Capabilities',
+          description: 'Capability checks',
+          score: 10,
+          maxScore: 10,
+          details: [{
+            text: '✗ 1 of 2 checked tools broke their declared output contract',
+            context: 'count_items: structuredContent.count — Expected number but got string.',
+            metadata: {
+              method: 'tools/call',
+              findingId: 'tool.output-contract-violation',
+              checkedToolCount: 2,
+              violatingTools: ['count_items'],
+            },
+          }],
+        },
+      },
+    };
+
+    const json = JSON.parse(createReportDownload(contractReport, 'json', '2026-08-11T20:02:00.000Z').content);
+    expect(json.releaseDecision).toBeUndefined();
+    expect(json.sections[0].evidence[0].metadata).toMatchObject({
+      findingId: 'tool.output-contract-violation',
+      referenceUrl: reference,
+    });
+    expect(validatePublishedSchema(json), JSON.stringify(validatePublishedSchema.errors)).toBe(true);
+
+    const markdown = createReportDownload(contractReport, 'markdown', '2026-08-11T20:02:00.000Z').content;
+    expect(markdown).not.toContain('## Release readiness');
+    expect(markdown).toContain(
+      `- ✗ 1 of 2 checked tools broke their declared output contract ([tool.output-contract-violation](${reference}))`
+    );
+  });
 });

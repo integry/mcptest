@@ -71,7 +71,7 @@ The fixes below repeat the code hints shown in the app (`src/utils/transportDiag
 | `transport.sse-content-type-mismatch` | error (warning on the optional GET stream) | Yes when error |
 | `tool.output-contract-violation` | high-priority finding | Yes |
 
-## transport.accept-header-406
+## transport.accept-header-406 {#transport-accept-header-406}
 
 **Observed:** the MCP server answered HTTP `406 Not Acceptable`. The evidence records the `Accept` value mcptest sent.
 
@@ -104,7 +104,7 @@ const ok = accept.includes('application/json') && accept.includes('text/event-st
 
 **Reports:** [ComposioHQ/composio#2152](https://github.com/ComposioHQ/composio/issues/2152). The client sent only `text/event-stream` and the server answered `406` with "Client must accept both application/json and text/event-stream". That is the TypeScript SDK server's wording, so clients that build requests by hand must send both types.
 
-## transport.get-stream-405
+## transport.get-stream-405 {#transport-get-stream-405}
 
 **Observed:** after a 2025-era `initialize`, the optional GET that opens a stream for server-initiated messages was refused with `405 Method Not Allowed`. POST requests are unaffected.
 
@@ -133,7 +133,7 @@ if (request.method === 'GET') {
 
 **Reports:** [cloudflare/agents#403](https://github.com/cloudflare/agents/issues/403). A server built from Cloudflare's remote MCP guide logged `GET /mcp 405`; the reporter asked for the stream because notifications, elicitation and sampling need it.
 
-## transport.unsupported-media-type-415
+## transport.unsupported-media-type-415 {#transport-unsupported-media-type-415}
 
 **Observed:** the MCP server answered `415 Unsupported Media Type`. The evidence records the request `Content-Type`.
 
@@ -163,7 +163,7 @@ if (type !== 'application/json') return new Response(null, { status: 415 });
 
 **Reports:** [typescript-sdk#581](https://github.com/modelcontextprotocol/typescript-sdk/issues/581) (a Java client hit the TypeScript server's "Content-Type must be application/json" `415`). [python-sdk#3670](https://github.com/modelcontextprotocol/python-sdk/issues/3670) (`Application/JSON` rejected although media types are case-insensitive). [python-sdk#3691](https://github.com/modelcontextprotocol/python-sdk/issues/3691) (order-dependent prefix matching).
 
-## transport.target-rate-limited-429
+## transport.target-rate-limited-429 {#transport-target-rate-limited-429}
 
 **Observed:** the MCP server itself answered `429 Too Many Requests`. This is the target's limit, not the mcptest proxy's caller limit, which has its own message. The evidence shows the `Retry-After` value, or says it was absent or unreadable.
 
@@ -196,7 +196,7 @@ return new Response('Too Many Requests', {
 
 **Reports:** [modelcontextprotocol/inspector#2442](https://github.com/modelcontextprotocol/inspector/issues/2442) asks the official Inspector to recognize `429` and `Retry-After` instead of showing raw errors or timeouts.
 
-## transport.cors-expose-headers-missing
+## transport.cors-expose-headers-missing {#transport-cors-expose-headers-missing}
 
 **Observed:** a direct, cross-origin `initialize` succeeded, but the browser could not read `Mcp-Session-Id` on the response. The next request went out without a session and was rejected with `400` or `404`.
 
@@ -237,7 +237,7 @@ return new Response(response.body, { status: response.status, headers });
 
 **Reports:** [Apollo's MCP server CORS guide](https://www.apollographql.com/docs/apollo-mcp-server/cors) exposes `mcp-session-id` by default "for MCP session management". It warns that custom `expose_headers` replace the defaults rather than adding to them. See also the [HTTP headers reference](/learn/mcp-http-headers-reference).
 
-## transport.sse-content-type-mismatch
+## transport.sse-content-type-mismatch {#transport-sse-content-type-mismatch}
 
 **Observed:** a successful response declared the wrong `Content-Type`:
 
@@ -273,7 +273,7 @@ return new Response(readable, {
 
 **Reports:** [postman-app-support#13885](https://github.com/postmanlabs/postman-app-support/issues/13885). After a Postman update, connecting to an HTTP MCP server failed with `SSE error: Invalid content type, expected "text/event-stream"`.
 
-## tool.output-contract-violation
+## tool.output-contract-violation {#tool-output-contract-violation}
 
 **Observed:** a tool that declares an `outputSchema` returned a `tools/call` result that broke it. Either `structuredContent` failed validation, or it was missing. The report lists the violating tools with up to five violations each, as a path and a plain-language message, such as `structuredContent.items[0].name: Expected string but got number.`
 
