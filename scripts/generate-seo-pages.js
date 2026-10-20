@@ -18,6 +18,7 @@ const {
 } = require('../src/content/contentModel.ts');
 const { extractHeadings, splitHeadingAnchor } = require('../src/content/outline.ts');
 const { loadArticles } = require('./content/loadArticles.js');
+const { SEARCH_INDEX_PATH, buildSearchIndex, serializeSearchIndex } = require('../src/content/searchIndex.ts');
 const {
   FEED_PATH,
   FEED_TITLE,
@@ -1077,6 +1078,8 @@ function renderSideNavFallback({ learnTracks, versionInfo, year }) {
     '  </section>',
     `  <section class="sidenav-group content-track-nav" aria-labelledby="${learnPrefix}-learn-heading">`,
     `    <h2 id="${learnPrefix}-learn-heading" class="sidenav-section-label">Learn</h2>`,
+    // The guide search field, inert until React mounts, so the tracks below it do not shift.
+    `    <div class="guide-search guide-search--sidebar" role="search" aria-label="Guides"><div class="guide-search-field"><i class="bi bi-search guide-search-icon" aria-hidden="true"></i><input type="search" class="guide-search-input" placeholder="Search guides" aria-label="Search guides" role="combobox" aria-expanded="false" aria-controls="${learnPrefix}-guide-search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false"></div><p class="guide-search-status visually-hidden" role="status" aria-live="polite"></p><div id="${learnPrefix}-guide-search-results" class="guide-search-results" role="listbox" aria-label="Guide search results" hidden></div></div>`,
     '    <ul class="sidenav-list">',
     `      <li class="nav-item">${sidenavLink(LEARN_HUB_NAVIGATION, 'nav-link sidenav-link')}</li>`,
     ...learnTracks.map(track => [
@@ -1359,6 +1362,11 @@ function writeLearnFeed(articles, learnIndex) {
   fs.writeFileSync(distPathFor(FEED_PATH), renderLearnFeed(articles, learnIndex), 'utf8');
 }
 
+/** The guide search index the sidebar and /learn search fetch on first use. */
+function writeSearchIndex(articles) {
+  fs.writeFileSync(distPathFor(SEARCH_INDEX_PATH), serializeSearchIndex(buildSearchIndex(articles)), 'utf8');
+}
+
 function writeLlmsTxt(articles) {
   fs.writeFileSync(path.join(distRoot, 'llms.txt'), renderLlmsTxt(articles), 'utf8');
 }
@@ -1587,6 +1595,7 @@ async function main() {
   // Last: overwrites the shell the pages above were rendered from.
   writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length, shellOptions);
   writeLearnFeed(articles, learnIndex);
+  writeSearchIndex(articles);
   writeLlmsTxt(articles);
   writeSitemap(servers, articles);
 
@@ -1594,7 +1603,7 @@ async function main() {
   const cards = buildOgCards({ servers, articles, pageMetadata });
   const og = await writeOgImages(cards, { distRoot });
 
-  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, llms.txt, sitemap.xml, and robots.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, and robots.txt.`);
   console.log(`Open Graph images: ${cards.length} (${og.rendered} rendered, ${og.cached} from cache) in ${((Date.now() - ogStartedAt) / 1000).toFixed(1)}s.`);
 }
 

@@ -14,6 +14,8 @@ import {
 import { useSidebarCollapsed } from '../hooks/useSidebarCollapsed';
 import { closeMobileDrawer, useMobileDrawer } from '../hooks/useMobileDrawer';
 import ContentTrackNav from './learn/ContentTrackNav';
+import GuideSearch from './learn/GuideSearch';
+import { isGuideSearchShortcutView } from './learn/guideSearchShortcut';
 
 type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
 
@@ -414,7 +416,21 @@ const SideNav: React.FC<SideNavProps> = ({
       </section>
 
       {/* Learn: the guide hub and the four tracks, with the current track expanded */}
-      <ContentTrackNav onNavigate={closeMobileDrawer} collapsed={collapsed} onExpandSidebar={expandSidebar} idPrefix={`sidenav-${idSuffix}`} />
+      <ContentTrackNav
+        onNavigate={closeMobileDrawer}
+        collapsed={collapsed}
+        onExpandSidebar={expandSidebar}
+        idPrefix={`sidenav-${idSuffix}`}
+        search={(
+          <GuideSearch
+            idPrefix={`sidenav-${idSuffix}`}
+            shortcutEnabled={!isMobile && isGuideSearchShortcutView(activeView)}
+            collapsed={collapsed}
+            onExpandSidebar={expandSidebar}
+            onNavigate={closeMobileDrawer}
+          />
+        )}
+      />
 
       {/* Theme and Auth Controls - Only show on mobile */}
       {isMobile && (

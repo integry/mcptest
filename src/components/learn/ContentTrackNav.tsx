@@ -14,6 +14,8 @@ interface ContentTrackNavProps {
   onExpandSidebar?: () => void;
   /** Keeps element ids unique when the desktop sidebar and the mobile drawer both render. */
   idPrefix?: string;
+  /** Rendered at the top of the group, above the guide hub link. */
+  search?: React.ReactNode;
 }
 
 /**
@@ -21,7 +23,7 @@ interface ContentTrackNavProps {
  * visible. The track that owns the current page is expanded to its articles;
  * the others stay collapsed until toggled. Toggles reset on navigation.
  */
-const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate, collapsed = false, onExpandSidebar, idPrefix = 'sidenav' }) => {
+const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate, collapsed = false, onExpandSidebar, idPrefix = 'sidenav', search }) => {
   const { pathname } = useLocation();
   const activeTrackId = getLearnTrackForPath(pathname)?.id;
   const [overrides, setOverrides] = useState<Partial<Record<string, boolean>>>({});
@@ -45,6 +47,7 @@ const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate, collapsed
   return (
     <section className="sidenav-group content-track-nav" aria-labelledby={`${idPrefix}-learn-heading`}>
       <h2 id={`${idPrefix}-learn-heading`} className="sidenav-section-label">Learn</h2>
+      {search}
       <ul className="sidenav-list">
         <li className="nav-item">
           <NavLink
