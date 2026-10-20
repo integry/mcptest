@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
-import { logEvent } from '../utils/analytics';
+import { trackEvent, type ConnectSource } from '../utils/analytics';
 
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
@@ -16,12 +16,15 @@ import OAuthConfig from './OAuthConfig';
 import { AwaitingConnectionPanel } from './FirstConnectionOnboarding';
 import { LandingHero } from './LandingHero';
 import DeterministicTestPanel from './DeterministicTestPanel';
+import CallHistoryPanel from './CallHistoryPanel';
+import InterfaceChangeStrip from './InterfaceChangeStrip';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
 import { useConnection } from '../hooks/useConnection';
 import { useToolsAndResources } from '../hooks/useToolsAndResources';
 import { useResourceAccess } from '../hooks/useResourceAccess';
+import { usePlaygroundHistory } from '../hooks/usePlaygroundHistory';
 import { useAuth } from '../context/AuthContext';
 
 // Import Utils
@@ -230,6 +233,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setSelectedResourceTemplate,
     prompts,
     setPrompts,
+    discovery,
     selectedPrompt,
     setSelectedPrompt,
     toolParams,
@@ -272,6 +276,24 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry, serverUrl);
 
+  const playgroundHistory = usePlaygroundHistory({
+    serverUrl,
+    isConnected: connectionStatus === 'Connected',
+    tools,
+    resources,
+    resourceTemplates,
+    prompts,
+    discovery,
+    protocolVersion,
+    transportType,
+    selectedTool,
+    toolParams,
+    selectTool: handleSelectTool,
+    setToolParams,
+    // Called after render, once the wrapper below is defined.
+    executeTool: () => handleExecuteToolWrapper(),
+  });
+
   // Initialize tab state and handle auto-connection
   const hasAutoConnected = useRef(false);
   useEffect(() => {
@@ -302,6 +324,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       
       // Use a small timeout to ensure state is properly initialized
       setTimeout(() => {
+        trackEvent('connect_attempt', { source: tab.resultShareData ? 'shared_link' : 'catalog', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
         handleConnect(
           setTools,
           setResources,
@@ -678,6 +701,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       setTimeout(() => {
         console.log('[OAuth] Triggering reconnection after delay...');
         // Trigger reconnection
+        trackEvent('connect_attempt', { source: 'reconnect', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
         handleConnect(
           setTools,
           setResources,
@@ -707,7 +731,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
-    logEvent('access_resource');
+    trackEvent('access_resource');
     
     setIsExecuting(true);
     setExecutionStartTime(Date.now());
@@ -747,9 +771,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const handleConnectWrapper = (
     urlToConnect?: string,
     protocolEraHint?: string,
-    preferredTransportHint?: ConnectionTab['preferredTransportHint']
+    preferredTransportHint?: ConnectionTab['preferredTransportHint'],
+    source: ConnectSource = 'manual'
   ) => {
     const requestedUrl = urlToConnect || serverUrl;
+    trackEvent('connect_attempt', { source, transport_hint: preferredTransportHint ?? getPreferredTransportHint(requestedUrl) ?? 'auto', proxy: tab.useProxy !== false });
     return handleConnect(
       setTools,
       setResources,
@@ -781,7 +807,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       title,
       preferredTransportHint: endpoint.transport,
     });
-    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport);
+    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport, 'quick_pick');
   };
 
   useEffect(() => {
@@ -794,7 +820,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     }
 
     startedBearerAttemptId.current = prerequisiteBearerCredential.attemptId;
-    void handleConnectWrapper(prerequisiteBearerCredential.targetUrl);
+    void handleConnectWrapper(prerequisiteBearerCredential.targetUrl, undefined, undefined, 'reconnect');
     setPrerequisiteBearerCredential((current) => (
       current?.attemptId === prerequisiteBearerCredential.attemptId ? null : current
     ));
@@ -808,8 +834,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setExecutionStartTime(Date.now());
     
     const toolName = selectedTool.name;
-    const result = await handleExecuteTool();
+    const startedAt = Date.now();
+    // History keeps the arguments as sent, so copy and replay match the wire.
+    let sentArguments: Record<string, unknown> | undefined;
+    const result = await handleExecuteTool((args) => { sentArguments = args; });
     setLastResult(result);
+    if (sentArguments) playgroundHistory.recordCall(toolName, sentArguments, result, Date.now() - startedAt);
     
     setIsExecuting(false);
     setExecutionStartTime(null);
@@ -939,13 +969,13 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     if (isConnecting) return;
     setHasStartedFirstConnection(true);
     handleServerUrlChange(url);
-    return handleConnectWrapper(url);
+    return handleConnectWrapper(url, undefined, undefined, 'recent_chip');
   };
 
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
     if (!isConnected) return;
-    logEvent('refresh_capabilities');
+    trackEvent('refresh_capabilities');
     addLogEntry({ type: 'info', data: 'Refreshing all lists...' });
     handleListTools();
     handleListResources();
@@ -1059,7 +1089,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 type: 'info',
                 data: '🔐 OAuth client configured. Continuing secure authorization...'
               });
-              handleConnectWrapper();
+              handleConnectWrapper(undefined, undefined, undefined, 'reconnect');
             } catch (error) {
               console.error('[OAuth Config] Failed to continue auth flow:', error);
               addLogEntry({
@@ -1074,6 +1104,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       )}
 
+      {!showLanding && isConnected && playgroundHistory.interfaceDiff && (
+        <InterfaceChangeStrip
+          diff={playgroundHistory.interfaceDiff}
+          onDismiss={playgroundHistory.dismissInterfaceDiff}
+        />
+      )}
       {!showLanding && (
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
@@ -1092,7 +1128,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                     <RecentServersPanel
                       recentServers={recentServers}
                       setServerUrl={handleServerUrlChange}
-                      handleConnect={handleConnectWrapper}
+                      handleConnect={(url) => handleConnectWrapper(url, undefined, undefined, 'recent_chip')}
                       removeRecentServer={removeRecentServer}
                       isConnected={isConnected}
                       isConnecting={isConnecting}
@@ -1129,6 +1165,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               onRefreshLists={handleRefreshAllLists}
               isConnecting={isConnecting}
               onOpenTestPlan={() => setShowDeterministicTests(true)}
+              shortcutEnabled={isActive}
             />
             </section>
             <section className="workbench-pane workbench-request" aria-label="Request builder">
@@ -1153,6 +1190,20 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 setResourceArgs={setResourceArgs}
                 isExecuting={isExecuting}
                 executionStartTime={executionStartTime}
+                callHistoryCount={playgroundHistory.calls.length}
+                renderCallHistory={(showRequest) => (
+                  <CallHistoryPanel
+                    calls={playgroundHistory.calls}
+                    availableToolNames={new Set(tools.map((tool) => tool.name))}
+                    canRun={isConnected && !isConnecting && !isExecuting}
+                    onReplay={(entry) => {
+                      playgroundHistory.replayCall(entry);
+                      if (entry.argumentsRedacted) showRequest();
+                    }}
+                    onClearServer={playgroundHistory.clearServerHistory}
+                    onClearAll={playgroundHistory.clearAllHistory}
+                  />
+                )}
               />
             </section>
             <section className="workbench-pane workbench-response" aria-label="Server response">

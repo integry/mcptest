@@ -14,7 +14,7 @@ vi.mock('firebase/auth', () => ({
 vi.mock('../src/firebase', () => ({ auth: {} }));
 vi.mock('../src/utils/analytics', async (importOriginal) => ({
   ...(await importOriginal()),
-  logEvent: vi.fn(),
+  trackEvent: vi.fn(),
   logPageView: vi.fn(),
 }));
 
