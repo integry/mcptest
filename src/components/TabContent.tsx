@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
-import { logEvent } from '../utils/analytics';
+import { trackEvent, type ConnectSource } from '../utils/analytics';
 
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
@@ -302,6 +302,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       
       // Use a small timeout to ensure state is properly initialized
       setTimeout(() => {
+        trackEvent('connect_attempt', { source: tab.resultShareData ? 'shared_link' : 'catalog', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
         handleConnect(
           setTools,
           setResources,
@@ -678,6 +679,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       setTimeout(() => {
         console.log('[OAuth] Triggering reconnection after delay...');
         // Trigger reconnection
+        trackEvent('connect_attempt', { source: 'reconnect', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
         handleConnect(
           setTools,
           setResources,
@@ -707,7 +709,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
-    logEvent('access_resource');
+    trackEvent('access_resource');
     
     setIsExecuting(true);
     setExecutionStartTime(Date.now());
@@ -747,9 +749,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const handleConnectWrapper = (
     urlToConnect?: string,
     protocolEraHint?: string,
-    preferredTransportHint?: ConnectionTab['preferredTransportHint']
+    preferredTransportHint?: ConnectionTab['preferredTransportHint'],
+    source: ConnectSource = 'manual'
   ) => {
     const requestedUrl = urlToConnect || serverUrl;
+    trackEvent('connect_attempt', { source, transport_hint: preferredTransportHint ?? getPreferredTransportHint(requestedUrl) ?? 'auto', proxy: tab.useProxy !== false });
     return handleConnect(
       setTools,
       setResources,
@@ -781,7 +785,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       title,
       preferredTransportHint: endpoint.transport,
     });
-    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport);
+    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport, 'quick_pick');
   };
 
   useEffect(() => {
@@ -794,7 +798,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     }
 
     startedBearerAttemptId.current = prerequisiteBearerCredential.attemptId;
-    void handleConnectWrapper(prerequisiteBearerCredential.targetUrl);
+    void handleConnectWrapper(prerequisiteBearerCredential.targetUrl, undefined, undefined, 'reconnect');
     setPrerequisiteBearerCredential((current) => (
       current?.attemptId === prerequisiteBearerCredential.attemptId ? null : current
     ));
@@ -939,13 +943,13 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     if (isConnecting) return;
     setHasStartedFirstConnection(true);
     handleServerUrlChange(url);
-    return handleConnectWrapper(url);
+    return handleConnectWrapper(url, undefined, undefined, 'recent_chip');
   };
 
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
     if (!isConnected) return;
-    logEvent('refresh_capabilities');
+    trackEvent('refresh_capabilities');
     addLogEntry({ type: 'info', data: 'Refreshing all lists...' });
     handleListTools();
     handleListResources();
@@ -1059,7 +1063,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 type: 'info',
                 data: '🔐 OAuth client configured. Continuing secure authorization...'
               });
-              handleConnectWrapper();
+              handleConnectWrapper(undefined, undefined, undefined, 'reconnect');
             } catch (error) {
               console.error('[OAuth Config] Failed to continue auth flow:', error);
               addLogEntry({
@@ -1092,7 +1096,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                     <RecentServersPanel
                       recentServers={recentServers}
                       setServerUrl={handleServerUrlChange}
-                      handleConnect={handleConnectWrapper}
+                      handleConnect={(url) => handleConnectWrapper(url, undefined, undefined, 'recent_chip')}
                       removeRecentServer={removeRecentServer}
                       isConnected={isConnected}
                       isConnecting={isConnecting}
