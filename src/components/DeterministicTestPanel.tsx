@@ -14,6 +14,7 @@ import {
   serializeDeterministicTestPlan,
   validateDeterministicAssertions,
 } from '../utils/deterministicTests';
+import { recordOutputContractResult } from '../utils/outputContract';
 
 interface DeterministicTestPanelProps {
   open: boolean;
@@ -225,8 +226,10 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
         unsafeToolNames: [...discoveredSafety.entries()]
           .filter(([, safety]) => safety.writeCapable || safety.destructive)
           .map(([name]) => name),
+        toolDefinitions: tools,
         signal: controller.signal,
         onResult: result => {
+          if (result.outputContract) recordOutputContractResult(serverUrl, result.outputContract);
           if (runGenerationRef.current === runGeneration) {
             setResults(current => [...current, result]);
           }

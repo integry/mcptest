@@ -5,6 +5,7 @@ import {
   hasParameterValue,
   type CapabilityInputDefinition,
 } from '../utils/capabilityParams';
+import ToolSchemaDetails from './ToolSchemaDetails';
 
 // Use 'any' for now until correct SDK types are confirmed/exported
 type SelectedTool = any;
@@ -346,6 +347,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
           <div id="paramsArea">
             {/* Render parameters/arguments based on selection */}
             {selectedTool && renderInputParams(selectedTool, toolParams, 'tool')}
+            {selectedTool && <ToolSchemaDetails tool={selectedTool} />}
             {selectedPrompt && renderInputParams(selectedPrompt, promptParams, 'prompt')}
             {selectedResourceTemplate && renderResourceTemplateArgs()}
 

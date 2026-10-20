@@ -1,0 +1,42 @@
+.tool-schemas {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.8rem;
+}
+
+.tool-schema-details {
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--card-bg-secondary);
+}
+
+.tool-schema-details summary {
+  padding: 0.42rem 0.62rem;
+  color: var(--text-accent);
+  font-family: var(--font-family-sans-serif);
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.tool-schema-details[open] summary {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tool-schema-details .tool-schema-hint {
+  margin: 0;
+  padding: 0.45rem 0.62rem 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.tool-schema-details .event-data {
+  padding: 0.45rem;
+}
+
+.tool-schema-details pre {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  font-size: 0.74rem;
+}
