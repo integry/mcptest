@@ -591,6 +591,16 @@ function closesFence(line, fence) {
   return Boolean(match) && match[1][0] === fence.marker[0] && match[1].length >= fence.marker.length;
 }
 
+/**
+ * CommonMark HTML block (type 2): a line starting with `<!--` opens a block
+ * that runs through the first line containing `-->`, or to the end of the
+ * document when never closed. The browser renders no HTML, so the fallback
+ * emits nothing for it; its interior lines are never headings.
+ */
+function opensHtmlComment(line) {
+  return /^ {0,3}<!--/.test(line);
+}
+
 function isTableSeparator(line) {
   const cells = line.trim().replace(/^\||\|$/g, '').split('|');
   return cells.length > 1 && cells.every(cell => /^\s*:?-{3,}:?\s*$/.test(cell));
@@ -629,6 +639,14 @@ function renderMarkdown(markdown, context = undefined) {
       }
       index += 1;
       html.push(`<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    if (opensHtmlComment(line)) {
+      while (index < lines.length && !lines[index].includes('-->')) {
+        index += 1;
+      }
+      index += 1;
       continue;
     }
 
@@ -701,6 +719,7 @@ function renderMarkdown(markdown, context = undefined) {
       index < lines.length &&
       lines[index].trim() &&
       !openingFence(lines[index]) &&
+      !opensHtmlComment(lines[index]) &&
       !/^(#{2,6})\s+/.test(lines[index]) &&
       !lines[index].startsWith('>') &&
       !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[index]) &&

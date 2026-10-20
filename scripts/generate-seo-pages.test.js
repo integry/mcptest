@@ -633,6 +633,41 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('<h2');
   });
 
+  it('skips Markdown comment blocks without allocating heading ids for their contents', () => {
+    const markdown = [
+      '## Intro',
+      '',
+      '<!--',
+      '## Draft notes',
+      '-->',
+      '',
+      '## Intro',
+      'Paragraph text',
+      '<!-- ## interrupting comment -->',
+      '',
+      '> <!--',
+      '> ## quoted draft',
+      '> -->',
+      '> ## Quoted',
+      '',
+      '<!-- unterminated',
+      '## never rendered',
+    ].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<h2 id="intro">Intro</h2>');
+    expect(html).toContain('<h2 id="intro-2">Intro</h2>');
+    expect(html).toContain('<p>Paragraph text</p>');
+    expect(html).toContain('<blockquote><h2 id="quoted">Quoted</h2></blockquote>');
+    expect(html).not.toContain('Draft notes');
+    expect(html).not.toContain('interrupting');
+    expect(html).not.toContain('quoted draft');
+    expect(html).not.toContain('never rendered');
+    expect(html).not.toContain('&lt;!--');
+
+    const ids = Array.from(html.matchAll(/<h2 id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
+  });
+
   it('renders the Learn index grouped by track', () => {
     const html = renderLearnIndexHtml(indexHtml, learnIndex, articles);
 
