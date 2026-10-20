@@ -102,7 +102,7 @@ async function launchBrowserWithRetry(browserPath, viewport) {
       return { endpoint: Promise.resolve(endpoint), close: browser.close };
     } catch (error) {
       lastError = error;
-      browser.close();
+      await browser.close();
       if (attempt < LAUNCH_ATTEMPTS) {
         process.stderr.write(`first-paint: Chromium launch attempt ${attempt} failed, retrying\n`);
       }
@@ -129,9 +129,27 @@ function launchBrowserOnce(browserPath, viewport) {
     'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
-  const close = () => {
+  // Chromium keeps writing to its profile for a moment after SIGKILL on slow runners, so
+  // wait for the process to exit before removing the directory, and tolerate leftovers.
+  const exited = new Promise((resolve) => {
+    child.once('exit', resolve);
+    setTimeout(resolve, 5000).unref();
+  });
+  const close = async () => {
     child.kill('SIGKILL');
-    fs.rmSync(userDataDir, { recursive: true, force: true });
+    await exited;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+        return;
+      } catch (error) {
+        if (attempt === 4) {
+          process.stderr.write(`first-paint: could not remove ${userDataDir}: ${error.message}\n`);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      }
+    }
   };
   const endpoint = new Promise((resolvePromise, reject) => {
     let output = '';
@@ -316,7 +334,7 @@ async function measureFirstPaint(options = {}) {
     };
   } finally {
     cdp?.close();
-    browser.close();
+    await browser.close();
     await server.close();
   }
 }
