@@ -32,12 +32,23 @@ const BadgeEmbed: React.FC<BadgeEmbedProps> = ({
   const [copied, setCopied] = useState<keyof BadgeSnippets | null>(null);
   const Heading = titleLevel === 2 ? 'h2' : 'h3';
 
+  const [copyFailed, setCopyFailed] = useState(false);
+
   const copy = async (key: keyof BadgeSnippets) => {
+    // Checked per click: the clipboard API can be absent in insecure contexts or older browsers.
+    const clipboardAvailable = typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function';
+    if (!clipboardAvailable) {
+      setCopied(null);
+      setCopyFailed(true);
+      return;
+    }
     try {
-      await navigator.clipboard?.writeText(snippets[key]);
+      await navigator.clipboard.writeText(snippets[key]);
       setCopied(key);
+      setCopyFailed(false);
     } catch {
       setCopied(null);
+      setCopyFailed(true);
     }
   };
 
@@ -46,6 +57,11 @@ const BadgeEmbed: React.FC<BadgeEmbedProps> = ({
       <div className="badge-embed-heading">
         <Heading id={titleId}>Share and embed</Heading>
         <p>{description}</p>
+        {copyFailed && (
+          <p className="badge-embed-copy-fallback" role="status">
+            Copying is not available in this browser. Select the snippet text and copy it manually.
+          </p>
+        )}
       </div>
       <a className="badge-embed-preview" href={linkUrl} target="_blank" rel="noopener noreferrer">
         <img src={previewSrc} alt={previewAlt} height={20} />

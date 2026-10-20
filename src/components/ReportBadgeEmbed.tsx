@@ -32,7 +32,7 @@ const ReportBadgeEmbed: React.FC<ReportBadgeEmbedProps> = ({ report, oauthTrace 
   return (
     <BadgeEmbed
       titleId="report-badge-embed-title"
-      description={<>Add this badge to your README. It shows this report&apos;s current result and links to the public report for <code className="technical-string technical-string-url">{report.serverUrl}</code>.</>}
+      description={<>Add this badge to your README. It records this report&apos;s result at the time you copy it (catalog badges update with each validation run) and links to the public report for <code className="technical-string technical-string-url">{report.serverUrl}</code>.</>}
       previewSrc={getStaticBadgeUrl(variant, '')}
       previewAlt={getBadgeTitle(variant)}
       linkUrl={getReportUrl(report.serverUrl)}

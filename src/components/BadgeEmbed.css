@@ -66,3 +66,9 @@
   background: var(--card-bg-secondary);
   word-break: break-all;
 }
+
+.badge-embed-copy-fallback {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
