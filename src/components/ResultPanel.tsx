@@ -1,6 +1,6 @@
 import React from 'react';
 import { LogEntry, Space, SpaceCard, SelectedTool, ResourceTemplate } from '../types';
-import McpResponseDisplay from './McpResponseDisplay';
+import ToolResultView from './ToolResultView';
 
 interface ResultPanelProps {
   lastResult: LogEntry | null;
@@ -30,14 +30,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
     <div className={`h-100 d-flex flex-column ${!isConnected ? 'panel-deactivated' : ''}`}>
       <div className="p-3 flex-grow-1 overflow-auto">
         {lastResult ? (
-          <McpResponseDisplay
-            logEntry={lastResult}
-            showTimestamp={false}
-            spacesMode={true}
-            toolName={lastResult.callContext?.name}
-            hideControls={true}
-            forceExpanded={true}
-          />
+          <ToolResultView logEntry={lastResult} />
         ) : (
           <p className="text-muted">The result of the last execution will appear here.</p>
         )}

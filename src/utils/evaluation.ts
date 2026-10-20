@@ -7,6 +7,13 @@ import {
   type ProtocolEra,
 } from '@modelcontextprotocol/client';
 import {
+  OUTPUT_CONTRACT_FINDING_ID,
+  getRecordedOutputContractResults,
+  summarizeOutputContracts,
+  type OutputContractEvidenceV1,
+  type OutputContractResult,
+} from './outputContract';
+import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
@@ -153,6 +160,8 @@ export interface EvaluationReport {
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
   /** Bounded, public-safe definitions returned by MCP discovery methods. */
   capabilityInventory?: CapabilityInventoryV1;
+  /** Output-contract verdicts for tool results observed in this session. */
+  outputContracts?: OutputContractEvidenceV1;
 }
 
 export interface EvaluationAuthorizationContext {
@@ -168,6 +177,11 @@ export interface EvaluationOptions {
    * the same evaluator but omit that browser-only observation from scoring.
    */
   runtime?: 'browser' | 'headless';
+  /**
+   * Output-contract verdicts to include. Defaults to the verdicts recorded for
+   * this server by playground tool calls and deterministic test runs.
+   */
+  outputContractResults?: readonly OutputContractResult[];
 }
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
@@ -946,6 +960,24 @@ const evaluateCapabilities = async (
   };
 };
 
+const outputContractDetail = (evidence: OutputContractEvidenceV1): DetailItem => {
+  const violating = evidence.violatingTools;
+  return {
+    text: violating.length > 0
+      ? `✗ ${violating.length} of ${evidence.checkedToolCount} checked tools broke their declared output contract`
+      : `✓ ${evidence.checkedToolCount} checked ${evidence.checkedToolCount === 1 ? 'tool' : 'tools'} honored the declared output contract`,
+    context: violating.length > 0
+      ? violating.map(tool => `${tool.toolName}: ${tool.violations.map(item => `${item.path} — ${item.message}`).join('; ')}`).join(' | ')
+      : 'Structured results observed in this session validated against each tool outputSchema.',
+    metadata: {
+      method: 'tools/call',
+      ...(violating.length > 0 ? { findingId: OUTPUT_CONTRACT_FINDING_ID } : {}),
+      checkedToolCount: evidence.checkedToolCount,
+      violatingTools: violating.map(tool => tool.toolName),
+    },
+  };
+};
+
 type AuthorizationServerMetadata = NonNullable<
   Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
 >;
@@ -1479,6 +1511,13 @@ export async function evaluateServer(
       report.toolSurfaceAnalysis = capabilityEvaluation.toolSurfaceAnalysis;
     }
     report.capabilityInventory = capabilityEvaluation.capabilityInventory;
+    const outputContracts = summarizeOutputContracts(
+      options.outputContractResults ?? getRecordedOutputContractResults(serverUrl)
+    );
+    if (outputContracts) {
+      report.outputContracts = outputContracts;
+      report.sections.capabilities.details.push(outputContractDetail(outputContracts));
+    }
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';
     }

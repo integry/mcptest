@@ -25,6 +25,8 @@ import { useAuth } from '../context/AuthContext';
 
 // Import Utils
 import { parseUriTemplateArgs } from '../utils/uriUtils';
+import { withoutOutputSchema } from '../utils/outputContract';
+import { createToolResultLogEntry } from '../utils/toolCallResult';
 import {
   normalizeOAuthServerUrl,
   renderOAuthAuthorizationHeader,
@@ -464,23 +466,18 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 const result = await client.callTool({
                   name: tool.name,
                   arguments: params || {},
-                });
+                }, { toolDefinition: withoutOutputSchema(tool) });
                 
                 console.log(`[DEBUG] SDK Client: Tool "${tool.name}" execution result:`, result);
                 
                 // Process and log the result
                 if (result?.content && Array.isArray(result.content)) {
-                  const resultLogEntry: LogEntry = {
-                    type: 'tool_result',
-                    data: result.content,
-                    timestamp: new Date().toLocaleTimeString(),
-                    callContext: {
-                      serverUrl: tab.serverUrl || serverUrl,
-                      type: 'tool',
-                      name: tool.name,
-                      params: params || {}
-                    }
-                  };
+                  const resultLogEntry = createToolResultLogEntry(tool, result, {
+                    serverUrl: tab.serverUrl || serverUrl,
+                    type: 'tool',
+                    name: tool.name,
+                    params: params || {}
+                  });
                   addLogEntry(resultLogEntry);
                   setLastResult(resultLogEntry);
                 } else {

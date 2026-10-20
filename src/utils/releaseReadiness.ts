@@ -16,6 +16,7 @@ import type { ToolSurfaceAnalysisV1, ToolSurfaceFindingV1 } from '../types/toolS
 import type { EvaluationReport } from './evaluation';
 import { resolveEvaluationOutcome } from './evaluation';
 import type { OAuthTraceV1 } from './oauthTrace';
+import { OUTPUT_CONTRACT_FINDING_ID } from './outputContract';
 
 const observed = <T>(
   value: Known<T>,
@@ -564,6 +565,18 @@ export const createReleaseDecision = (
         source: 'Tool surface',
       });
     }
+  }
+  const violatingTools = report.outputContracts?.violatingTools || [];
+  if (violatingTools.length > 0) {
+    const firstViolation = violatingTools[0].violations[0];
+    priorities.push({
+      id: OUTPUT_CONTRACT_FINDING_ID,
+      severity: 'high',
+      title: 'Return structured output that matches the declared output schema',
+      detail: `${violatingTools.map((tool) => tool.toolName).join(', ')} broke ${violatingTools.length === 1 ? 'its' : 'their'} declared outputSchema.${firstViolation ? ` For example, ${firstViolation.path}: ${firstViolation.message}` : ''} MCP clients that enforce output schemas reject these results.`,
+      remediation: 'Make each tool return structuredContent that validates against its outputSchema, or correct the declared schema, then rerun the tool in the playground and regenerate the report.',
+      source: 'Tool surface',
+    });
   }
   const unique = [...new Map(priorities.map((item) => [
     `${item.source}:${item.title}:${item.remediation}`,

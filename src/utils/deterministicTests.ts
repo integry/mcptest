@@ -15,6 +15,12 @@ import type {
 } from '../types/deterministicTests';
 import { DETERMINISTIC_TEST_PLAN_VERSION } from '../types/deterministicTests';
 import { getCapabilityInputSpec } from './capabilityParams';
+import {
+  checkToolOutputContract,
+  validateAgainstOutputSchema,
+  withoutOutputSchema,
+  type OutputContractResult,
+} from './outputContract';
 
 type RecordValue = Record<string, unknown>;
 
@@ -34,7 +40,13 @@ export interface DiscoveredTool {
 export interface DeterministicToolClient {
   callTool(
     request: { name: string; arguments: Record<string, unknown> },
-    options?: { signal?: AbortSignal; timeout?: number; maxTotalTimeout?: number }
+    options?: {
+      signal?: AbortSignal;
+      timeout?: number;
+      maxTotalTimeout?: number;
+      /** Lets the runner validate output itself instead of the SDK rejecting the result. */
+      toolDefinition?: DiscoveredTool;
+    }
   ): Promise<unknown>;
 }
 
@@ -455,53 +467,18 @@ const defaultCase = (
   assertions: DeterministicAssertion[],
   expectedError?: DeterministicErrorType,
   manualFixtureRequired = false,
-  manualAssertionsRequired = false,
 ): DeterministicTestCaseV1 => ({
   id: `tool-${caseIdPrefix(tool.name)}--${kind}`,
   toolName: tool.name,
-  name: `${kind.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join(' ')}${manualFixtureRequired ? ' (manual fixture required)' : ''}${manualAssertionsRequired ? ' (manual assertions required)' : ''}`,
+  name: `${kind.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join(' ')}${manualFixtureRequired ? ' (manual fixture required)' : ''}`,
   kind,
-  selected: !manualFixtureRequired && !manualAssertionsRequired && (kind === 'happy-path' || kind === 'output-shape'),
+  selected: !manualFixtureRequired && (kind === 'happy-path' || kind === 'output-shape'),
   arguments: args,
   assertions,
   ...(expectedError ? { expectedError } : {}),
   timeoutMs: kind === 'timeout' ? 250 : 30_000,
   ...(kind === 'cancellation' ? { cancelAfterMs: 100 } : {}),
 });
-
-const outputSchemaRequiresManualAssertions = (
-  schema: unknown,
-  ancestors = new WeakSet<object>(),
-): boolean => {
-  if (!isRecord(schema) || ancestors.has(schema)) return false;
-  if (['$ref', 'allOf', 'oneOf', 'anyOf'].some(keyword => (
-    Object.prototype.hasOwnProperty.call(schema, keyword)
-  ))) return true;
-
-  ancestors.add(schema);
-  try {
-    const schemaValues = [
-      schema.additionalProperties,
-      schema.contains,
-      schema.else,
-      schema.if,
-      schema.items,
-      schema.not,
-      schema.propertyNames,
-      schema.then,
-      schema.unevaluatedItems,
-      schema.unevaluatedProperties,
-      ...(Array.isArray(schema.prefixItems) ? schema.prefixItems : []),
-    ];
-    const schemaMaps = [schema.dependentSchemas, schema.patternProperties, schema.properties];
-    for (const schemaMap of schemaMaps) {
-      if (isRecord(schemaMap)) schemaValues.push(...Object.values(schemaMap));
-    }
-    return schemaValues.some(value => outputSchemaRequiresManualAssertions(value, ancestors));
-  } finally {
-    ancestors.delete(schema);
-  }
-};
 
 const outputSchemaAssertions = (tool: DiscoveredTool): DeterministicAssertion[] => {
   const schema = tool.outputSchema;
@@ -513,6 +490,7 @@ const outputSchemaAssertions = (tool: DiscoveredTool): DeterministicAssertion[] 
     { path: '$', operator: 'type', value: 'object' },
     { path: '$.content', operator: 'type', value: 'array' },
     { path: '$.structuredContent', operator: 'exists' },
+    { path: '$.structuredContent', operator: 'matches-output-schema' },
   ];
   const structuredContentType = schemaStructuralType(schema);
   if (structuredContentType) {
@@ -580,11 +558,11 @@ export const generateDeterministicTestPlan = (
     const validation = validationArguments(tool);
     const args = generated.arguments;
     const manualFixtureRequired = !generated.valid;
-    const manualOutputAssertionsRequired = outputSchemaRequiresManualAssertions(tool.outputSchema);
     return {
       toolName: tool.name,
       ...(tool.description ? { description: tool.description } : {}),
       safety: inferToolSafety(tool),
+      ...(isRecord(tool.outputSchema) ? { outputSchema: structuredClone(tool.outputSchema) } : {}),
       cases: [
         defaultCase(tool, 'happy-path', args, [{ path: '$.content', operator: 'type', value: 'array' }], undefined, manualFixtureRequired),
         defaultCase(tool, 'validation', validation.arguments, [], 'validation', !validation.invalid),
@@ -598,7 +576,6 @@ export const generateDeterministicTestPlan = (
           outputSchemaAssertions(tool),
           undefined,
           manualFixtureRequired,
-          manualOutputAssertionsRequired,
         ),
         defaultCase(tool, 'cancellation', args, [], 'cancelled', manualFixtureRequired),
       ],
@@ -900,9 +877,41 @@ const jsonDeepEqual = (left: unknown, right: unknown): boolean => {
       && jsonDeepEqual(left[key], right[key]));
 };
 
+const evaluateOutputSchemaAssertion = (
+  response: unknown,
+  assertion: DeterministicAssertion,
+  outputSchema: unknown,
+): AssertionEvidence => {
+  const evidence = (passed: boolean, message: string, extra: Partial<AssertionEvidence> = {}): AssertionEvidence => ({
+    assertion: redactAssertion(assertion),
+    passed,
+    message,
+    ...extra,
+  });
+  if (!isRecord(outputSchema) && typeof outputSchema !== 'boolean') {
+    return evidence(false, `${assertion.path} could not be validated because the tool declares no outputSchema.`);
+  }
+  if (isRecord(response) && response.isError === true) {
+    return evidence(false, `${assertion.path} was not validated because the tool returned an error result.`);
+  }
+  const actual = getPath(response, assertion.path);
+  if (!actual.found) {
+    return evidence(false, `${assertion.path} is missing, but the tool declares an outputSchema.`);
+  }
+  const outcome = validateAgainstOutputSchema(outputSchema, actual.value);
+  if (outcome.valid) return evidence(true, `${assertion.path} validates against the declared outputSchema.`);
+  return evidence(
+    false,
+    `${assertion.path} does not validate against the declared outputSchema: ${outcome.violations
+      .map(violation => `${violation.path} — ${violation.message}`).join('; ')}`,
+    { violations: outcome.violations },
+  );
+};
+
 export const evaluateAssertions = (
   response: unknown,
-  assertions: readonly DeterministicAssertion[]
+  assertions: readonly DeterministicAssertion[],
+  context: { outputSchema?: unknown } = {}
 ): AssertionEvidence[] => assertions.map(assertion => {
   if (pathSegments(assertion.path) === undefined) {
     return {
@@ -910,6 +919,9 @@ export const evaluateAssertions = (
       passed: false,
       message: `${assertion.path} is not a valid structural assertion path.`,
     };
+  }
+  if (assertion.operator === 'matches-output-schema') {
+    return evaluateOutputSchemaAssertion(response, assertion, context.outputSchema);
   }
   const actual = getPath(response, assertion.path);
   let passed = false;
@@ -948,7 +960,13 @@ const unavailableAssertionEvidence = (
 export const runDeterministicCase = async (
   client: DeterministicToolClient,
   testCase: DeterministicTestCaseV1,
-  externalSignal?: AbortSignal
+  externalSignal?: AbortSignal,
+  /**
+   * The tool's definition. A live definition (with inputSchema) lets the runner
+   * validate output itself; an outputSchema-only snapshot still feeds
+   * matches-output-schema assertions.
+   */
+  tool?: DiscoveredTool
 ): Promise<DeterministicCaseResult> => {
   validateDeterministicAssertions(testCase.assertions, testCase.id);
   const started = Date.now();
@@ -967,14 +985,32 @@ export const runDeterministicCase = async (
   let response: unknown;
   let error: NormalizedTestError | undefined;
   let assertionEvidence: AssertionEvidence[] = [];
+  let outputContract: OutputContractResult | undefined;
+  const liveDefinition = tool && (tool.inputSchema !== undefined || tool.input_schema !== undefined) ? tool : undefined;
   try {
     response = await client.callTool(request, {
       signal: controller.signal,
       timeout: testCase.timeoutMs,
       maxTotalTimeout: testCase.timeoutMs,
+      ...(liveDefinition ? { toolDefinition: withoutOutputSchema(liveDefinition) } : {}),
     });
     error = malformedResponseError(response) || responseError(response);
-    assertionEvidence = evaluateAssertions(response, testCase.assertions);
+    assertionEvidence = evaluateAssertions(response, testCase.assertions, { outputSchema: tool?.outputSchema });
+    if (tool?.outputSchema !== undefined && !malformedResponseError(response)) {
+      outputContract = checkToolOutputContract({ name: testCase.toolName, outputSchema: tool.outputSchema }, response);
+      const assertsSchema = testCase.assertions.some(assertion => assertion.operator === 'matches-output-schema');
+      // Without an explicit schema assertion, a broken contract still fails the
+      // case, as it did when the SDK rejected such results.
+      if (!error && !assertsSchema && liveDefinition && outputContract.status === 'fail') {
+        error = {
+          type: 'malformed-response',
+          message: `Structured content does not match the tool's output schema: ${outputContract.violations
+            .map(violation => `${violation.path} — ${violation.message}`).join('; ')}`,
+          retryable: false,
+          identifiers: {},
+        };
+      }
+    }
   } catch (cause) {
     error = normalizeTestError(cause);
     assertionEvidence = unavailableAssertionEvidence(testCase.assertions);
@@ -1001,6 +1037,7 @@ export const runDeterministicCase = async (
     redactedReproducibleCase: redactReproducibleCase(testCase),
     reproducibleCase: structuredClone(testCase),
     startedAt,
+    ...(outputContract ? { outputContract } : {}),
   };
 };
 
@@ -1011,6 +1048,8 @@ export const runDeterministicPlan = async (
     caseIds?: readonly string[];
     confirmedUnsafeToolNames?: readonly string[];
     unsafeToolNames?: readonly string[];
+    /** Live tool definitions; their outputSchema wins over the plan snapshot. */
+    toolDefinitions?: readonly DiscoveredTool[];
     signal?: AbortSignal;
     onResult?: (result: DeterministicCaseResult) => void;
   } = {}
@@ -1058,7 +1097,10 @@ export const runDeterministicPlan = async (
       } else if (options.signal?.aborted) {
         break;
       } else {
-        result = await runDeterministicCase(client, testCase, options.signal);
+        const liveTool = options.toolDefinitions?.find(item => item.name === executionToolName);
+        const toolDefinition = liveTool
+          ?? (tool.outputSchema ? { name: executionToolName, outputSchema: tool.outputSchema } : undefined);
+        result = await runDeterministicCase(client, testCase, options.signal, toolDefinition);
       }
       results.push(result);
       options.onResult?.(result);
@@ -1076,7 +1118,7 @@ export function validateDeterministicAssertions(
   if (!Array.isArray(assertions)) throw new Error('Assertions must be a JSON array.');
   for (const assertion of assertions) {
     if (!isRecord(assertion) || typeof assertion.path !== 'string'
-      || !['exists', 'not-exists', 'type', 'equals', 'length', 'min-length', 'max-length'].includes(String(assertion.operator))) {
+      || !['exists', 'not-exists', 'type', 'equals', 'length', 'min-length', 'max-length', 'matches-output-schema'].includes(String(assertion.operator))) {
       throw new Error(`Case ${caseId} contains a malformed structural assertion.`);
     }
     if (pathSegments(assertion.path) === undefined) {
@@ -1110,6 +1152,9 @@ export function validateDeterministicTestPlan(plan: unknown): asserts plan is De
       || typeof tool.safety.writeCapable !== 'boolean' || typeof tool.safety.destructive !== 'boolean'
       || !Array.isArray(tool.safety.reasons) || !tool.safety.reasons.every(reason => typeof reason === 'string')) {
       throw new Error('Test plan contains a malformed tool entry.');
+    }
+    if (tool.outputSchema !== undefined && !isRecord(tool.outputSchema)) {
+      throw new Error(`Test plan contains a malformed outputSchema for ${tool.toolName}.`);
     }
     for (const testCase of tool.cases) {
       if (!isRecord(testCase) || typeof testCase.id !== 'string' || typeof testCase.toolName !== 'string'

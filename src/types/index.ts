@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
 import type { CatalogAuthType, CatalogRequiredHeader } from './catalog';
 import type { CatalogProtocolEra } from './catalog';
+import type { OutputContractResult } from '../utils/outputContract';
 
 export * from './toolSurfaceAnalysis';
 export * from './deterministicTests';
@@ -23,6 +24,16 @@ export interface LogEntry {
       name: string; // Tool name or Resource URI
       params: Record<string, any>; // Input params/args
   };
+  /** Full tools/call result and its output-contract verdict (tool_result entries only). */
+  toolCall?: ToolCallDetails;
+}
+
+export interface ToolCallDetails {
+  /** The complete CallToolResult, including structuredContent and isError. */
+  result: Record<string, unknown>;
+  /** The outputSchema the tool declared in tools/list, if any. */
+  outputSchema?: unknown;
+  contract: OutputContractResult;
 }
 
 // Infer types from SDK Schemas if they exist
