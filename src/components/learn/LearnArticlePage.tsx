@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { getContentComponent } from '../../content/componentRegistry';
 import type { LearnArticle } from '../../content/learnRegistry';
 import {
@@ -25,12 +25,27 @@ const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
   const outline = useMemo(() => extractOutline(article.content), [article.content]);
   const Embedded = getContentComponent(article.component);
   const articleRef = useRef<HTMLElement>(null);
+  const location = useLocation();
 
   useEffect(() => {
     if (typeof window === 'undefined' || window.location.hash) return;
     const scroller = articleRef.current?.closest<HTMLElement>('.main-content');
     if (scroller) scroller.scrollTop = 0;
   }, [article.slug]);
+
+  // Client-side navigation to `#section` (guide search results) does not
+  // scroll by itself; every navigation has a new key, so repeats scroll too.
+  useEffect(() => {
+    const id = location.hash.slice(1);
+    if (!id) return;
+    let target: HTMLElement | null = null;
+    try {
+      target = document.getElementById(decodeURIComponent(id));
+    } catch {
+      return;
+    }
+    target?.scrollIntoView?.({ block: 'start' });
+  }, [article.slug, location.hash, location.key]);
 
   useEffect(() => trackEvent('guide_view', { slug: article.slug, track: article.track }), [article.slug, article.track]);
 

@@ -1,9 +1,31 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
+const SEARCH_INDEX_PATH = '/learn/search-index.json'
+
+// The build writes dist/learn/search-index.json (scripts/generate-seo-pages.js);
+// the dev server answers the same path from the same builder and articles.
+const learnSearchIndexDevServer = () => ({
+  name: 'learn-search-index-dev-server',
+  apply: 'serve',
+  configureServer(server) {
+    server.middlewares.use(async (request, response, next) => {
+      if (request.url?.split('?')[0] !== SEARCH_INDEX_PATH) return next()
+      try {
+        const { LEARN_ARTICLES } = await server.ssrLoadModule('/src/content/learnRegistry.ts')
+        const { buildSearchIndex, serializeSearchIndex } = await server.ssrLoadModule('/src/content/searchIndex.ts')
+        response.setHeader('Content-Type', 'application/json')
+        response.end(serializeSearchIndex(buildSearchIndex(LEARN_ARTICLES)))
+      } catch (error) {
+        next(error)
+      }
+    })
+  },
+})
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), learnSearchIndexDevServer()],
   build: {
     rollupOptions: {
       output: {
