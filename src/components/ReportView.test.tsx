@@ -631,6 +631,53 @@ describe('ReportView OAuth discovery', () => {
     )).toBe(false);
   });
 
+  it('renders a share and embed section whose badge matches the report result', async () => {
+    const container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+
+    const section = container.querySelector('section[aria-labelledby="report-badge-embed-title"]');
+    expect(section?.querySelector('h3')?.textContent).toBe('Share and embed');
+    const preview = section?.querySelector('img');
+    expect(preview?.getAttribute('src')).toBe('/badge/authorization-required.svg');
+    expect(preview?.getAttribute('alt')).toBe('mcptest.io: auth required');
+    const reportUrl = `https://mcptest.io/report/${encodeURIComponent('https://api.githubcopilot.com/mcp/')}`;
+    expect(section?.querySelector('a')?.getAttribute('href')).toBe(reportUrl);
+    const snippets = Array.from(section?.querySelectorAll('textarea') ?? []).map((field) => field.value);
+    expect(snippets).toEqual([
+      `[![mcptest.io: auth required](https://mcptest.io/badge/authorization-required.svg)](${reportUrl})`,
+      `<a href="${reportUrl}"><img src="https://mcptest.io/badge/authorization-required.svg" alt="mcptest.io: auth required"></a>`,
+      `.. image:: https://mcptest.io/badge/authorization-required.svg\n   :alt: mcptest.io: auth required\n   :target: ${reportUrl}`,
+    ]);
+    expect(Array.from(section?.querySelectorAll('label') ?? []).map((label) => label.textContent))
+      .toEqual(['Markdown', 'HTML', 'reStructuredText']);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    const copyHtml = section?.querySelector<HTMLButtonElement>('button[aria-label="Copy HTML badge snippet"]');
+    await act(async () => copyHtml?.click());
+    expect(writeText).toHaveBeenCalledWith(snippets[1]);
+    expect(copyHtml?.textContent).toContain('Copied');
+  });
+
+  it('shows the blocked badge for a failed evaluation', async () => {
+    evaluationMocks.evaluate.mockResolvedValue({
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      outcome: 'failed',
+      finalScore: 0,
+      sections: {},
+    });
+    const container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+    expect(container.querySelector('#report-badge-embed-title')).not.toBeNull();
+    expect(container.querySelector('.badge-embed-preview img')?.getAttribute('src')).toBe('/badge/blocked.svg');
+  });
+
   it('renders proxy login without target-authorization actions or guidance', async () => {
     evaluationMocks.evaluate.mockResolvedValue({
       serverUrl: 'https://mcp.slack.com/mcp',
@@ -666,6 +713,7 @@ describe('ReportView OAuth discovery', () => {
     expect(container.textContent).not.toContain('Complete server authorization');
     expect(container.textContent).not.toContain('Authorize and run report');
     expect(oauthMocks.begin).not.toHaveBeenCalled();
+    expect(container.querySelector('#report-badge-embed-title')).toBeNull();
   });
 
   it('keeps rendering and surfaces an error when browser storage cannot be acquired', () => {
