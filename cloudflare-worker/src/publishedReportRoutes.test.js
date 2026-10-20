@@ -12,6 +12,10 @@ import {
 import worker from './index.js';
 import { PublishedReports } from './PublishedReports.js';
 import { PUBLISH_RATE_LIMITS, PUBLISHED_REPORT_CACHE_CONTROL } from './publishedReportRoutes.js';
+import {
+  REPORT_REDACTION_STRING_FIXTURES,
+  REPORT_REDACTION_VALUE_FIXTURES,
+} from '../../src/utils/reportRedactionFixtures.ts';
 import { findUnredactedSecret } from './redactionGuard.js';
 import { KNOWN_BADGE_CACHE_CONTROL, UNKNOWN_BADGE_CACHE_CONTROL } from './badges.js';
 
@@ -304,6 +308,21 @@ describe('publishing a report', () => {
     ['a JSON-encoded string nested too deeply to inspect', (artifact) => {
       artifact.sections[0].evidence[0].context = encodeTimes('plain text', 5);
     }],
+    ['a JSON fragment with an escaped bearer separator after a prefix in evidence text', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'response: {"note":"Bearer\\u0020example-access-token"}';
+    }],
+    ['a bearer credential whose separator is a literal JSON escape', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'Retry with Bearer\\u0020example-access-token';
+    }],
+    ['a backslash-escaped JSON credential inside a quoted body', (artifact) => {
+      artifact.sections[0].evidence[0].context = String.raw`body="{\"access_token\":\"escaped-json-secret\"}"`;
+    }],
+    ['a JSON fragment with a sensitive key embedded between prose and a stray quote', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'the server said "no" then {"x-api-key":"plain-key"} and gave up';
+    }],
+    ['a JSON fragment after the canonical reference prefix in evidence metadata', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { referenceUrl: `${CANONICAL_REFERENCE} {"note":"Bearer\\u0020plain-secret"}` };
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);
@@ -315,6 +334,48 @@ describe('publishing a report', () => {
     // Nothing is stored for a rejected publish.
     const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
     expect(index.snapshots).toHaveLength(0);
+  });
+
+  it.each([
+    ...REPORT_REDACTION_STRING_FIXTURES.map((fixture) => [fixture.name, fixture.secrets, (artifact) => {
+      artifact.sections[0].evidence[0].message = fixture.value;
+    }]),
+    ...REPORT_REDACTION_VALUE_FIXTURES.map((fixture) => [fixture.name, fixture.secrets, (artifact) => {
+      artifact.sections[0].evidence[0].metadata = clone(fixture.value);
+    }]),
+  ])('rejects the app redaction fixture %s and stores nothing', async (_name, secrets, poison) => {
+    const artifact = artifactFor(evaluation());
+    poison(artifact);
+    const serialized = JSON.stringify(artifact);
+    expect(secrets.some((secret) => serialized.includes(JSON.stringify(secret).slice(1, -1)))).toBe(true);
+    const response = await publish(artifact);
+    expect(response.status).toBe(422);
+    expect((await response.json()).error).toBe('unredacted_content');
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots).toHaveLength(0);
+  });
+
+  it('stores the artifact through the redaction transform and derives the permalink from the stored form', async () => {
+    // An unknown schema keyword is not a credential, so the guard accepts it; the
+    // app's transform drops it, and the Worker stores what the app would have.
+    const artifact = artifactFor(evaluation());
+    artifact.toolSurfaceAnalysis.toolDefinitions.tools[0].inputSchema['x-internal'] = 'not part of the stored vocabulary';
+    expect(findUnredactedSecret(artifact)).toBeUndefined();
+    const response = await publish(artifact);
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+
+    const stored = await (await request(`/r/${id}`)).json();
+    expect(stored.toolSurfaceAnalysis.toolDefinitions.tools[0].inputSchema['x-internal']).toBeUndefined();
+    expect(stored.toolSurfaceAnalysis.toolDefinitions.status).toBe('partial');
+    expect(JSON.stringify(stored)).not.toContain('not part of the stored vocabulary');
+    expect(validateStored(stored), JSON.stringify(validateStored.errors)).toBe(true);
+    expect(findUnredactedSecret(stored)).toBeUndefined();
+
+    // The stored form is its own fixed point, so republishing it is a duplicate of the same permalink.
+    const republished = await publish(stored);
+    expect(republished.status).toBe(200);
+    expect(await republished.json()).toMatchObject({ id, deduplicated: true });
   });
 
   it('accepts redacted markers the app produces and the schema fields that look sensitive', async () => {
@@ -376,6 +437,38 @@ describe('publishing a report', () => {
       .toEqual({ path: 'note', reason: 'JSON-encoded text is too large to inspect' });
     expect(findUnredactedSecret({ note: '"not json' })).toBeUndefined();
     expect(findUnredactedSecret({ note: '"42"' })).toBeUndefined();
+  });
+
+  it('finds credentials in JSON fragments embedded anywhere in a string and behind JSON escapes', () => {
+    expect(findUnredactedSecret({ note: 'response: {"note":"Bearer\\u0020example-access-token"}' }))
+      .toEqual({ path: 'note', reason: 'contains a Bearer or Basic credential (inside an embedded JSON fragment at note)' });
+    expect(findUnredactedSecret({ note: 'Retry with Bearer\\u0020example-access-token' }))
+      .toEqual({ path: 'note', reason: 'contains a Bearer or Basic credential (after decoding JSON escapes)' });
+    expect(findUnredactedSecret({ note: 'log: [{"headers":{"note":"Bearer\\u0020plain"}}] end' }))
+      .toEqual({ path: 'note', reason: 'contains a Bearer or Basic credential (inside an embedded JSON fragment at 0.headers.note)' });
+    expect(findUnredactedSecret({ note: 'log: [{"headers":{"x-api-key":"plain"}}] end' })).toMatchObject({ path: 'note' });
+    expect(findUnredactedSecret({ note: String.raw`body="{\"access_token\":\"escaped-json-secret\"}"` })).toMatchObject({ path: 'note' });
+    expect(findUnredactedSecret({ note: 'said "no" then {"token":"plain"} done' })).toMatchObject({ path: 'note' });
+    expect(findUnredactedSecret({ note: 'prefix {"nested":"{\\"note\\":\\"Bearer\\u0020plain\\"}"} suffix' })).toMatchObject({ path: 'note' });
+    expect(findUnredactedSecret({ authorizationSetup: { alternativeHeaderTemplate: 'X {"note":"Bearer\\u0020plain-secret"}' } }))
+      .toMatchObject({ path: 'authorizationSetup.alternativeHeaderTemplate' });
+
+    // Redacted fragments, ordinary brackets and ordinary backslashes are accepted.
+    expect(findUnredactedSecret({ note: 'response: {"note":"Bearer [REDACTED]","token":"[REDACTED]"}' })).toBeUndefined();
+    expect(findUnredactedSecret({ note: String.raw`body="{\"access_token\":\"[REDACTED]\"}"` })).toBeUndefined();
+    expect(findUnredactedSecret({ note: '[INFO] started [WARN] {unbalanced [ok] C:\\temp\\new\\file' })).toBeUndefined();
+    expect(findUnredactedSecret({ note: `${'[INFO] '.repeat(5000)}done` })).toBeUndefined();
+    expect(findUnredactedSecret({ note: `${'{a:'.repeat(20)}1${'}'.repeat(20)}` })).toBeUndefined();
+
+    // Decoding is bounded: escapes past the budget and fragments past the parse budget are refused.
+    expect(findUnredactedSecret({ note: `prefix ${encodeTimes('plain text', 4)}` })).toBeUndefined();
+    expect(findUnredactedSecret({ note: `prefix ${encodeTimes('plain text', 6)}` }))
+      .toEqual({ path: 'note', reason: 'JSON escapes are nested too deeply to inspect' });
+    expect(findUnredactedSecret({ note: `prefix ${encodeTimes('Bearer secret-access-token', 4)}` })).toMatchObject({ path: 'note' });
+    expect(findUnredactedSecret({ note: `prefix ${'{"a":'.repeat(40)}x${'}'.repeat(40)}` }))
+      .toEqual({ path: 'note', reason: 'contains too many JSON-shaped fragments to inspect' });
+    expect(findUnredactedSecret({ note: `prefix ${'['.repeat(65)}0${']'.repeat(65)}` }))
+      .toEqual({ path: 'note', reason: 'JSON-encoded text is nested too deeply to inspect' });
   });
 
   it('refuses credentials in nested objects regardless of their key', () => {

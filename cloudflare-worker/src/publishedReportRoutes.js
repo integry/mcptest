@@ -6,7 +6,10 @@
 //   GET    /badge/report/<encoded url>.svg   badge for the latest published snapshot
 //
 // Publishing accepts only the redacted public artifact: the body must validate
-// against public/schemas/report/v2.schema.json and pass the redaction guard.
+// against public/schemas/report/v2.schema.json and pass the redaction guard, and
+// what is stored is the body run through the Worker's port of the app's
+// redaction transform, so an input that slips past the guard is still stored
+// redacted. Identity (content hash, permalink id) is derived from the stored form.
 import reportSchema from '../../public/schemas/report/v2.schema.json';
 import { getBadgeVariantForResult, renderBadgeSvg } from '../../src/utils/badges.ts';
 import {
@@ -23,6 +26,7 @@ import {
 import { KNOWN_BADGE_CACHE_CONTROL, UNKNOWN_BADGE_CACHE_CONTROL } from './badges.js';
 import { compileSchema } from './jsonSchema.js';
 import { findUnredactedSecret } from './redactionGuard.js';
+import { redactReportValue } from './reportRedaction.js';
 
 export const PUBLISH_RATE_LIMITS = {
   host: { limit: 10, windowMs: 60 * 60 * 1000 },
@@ -105,16 +109,16 @@ const publish = async (request, env, url) => {
   if (body.error) {
     return errorResponse(request, 413, 'too_large', `Artifacts larger than ${PUBLISHED_REPORT_MAX_BYTES} bytes are not accepted.`, methods);
   }
-  let artifact;
+  let received;
   try {
-    artifact = JSON.parse(body.text);
+    received = JSON.parse(body.text);
   } catch {
     return errorResponse(request, 400, 'invalid_json', 'The request body is not valid JSON.', methods);
   }
-  if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+  if (!received || typeof received !== 'object' || Array.isArray(received)) {
     return errorResponse(request, 400, 'invalid_json', 'The request body must be a JSON object.', methods);
   }
-  const validation = validateReport(artifact);
+  const validation = validateReport(received);
   if (!validation.valid) {
     return jsonResponse(request, {
       error: 'schema_validation_failed',
@@ -122,11 +126,23 @@ const publish = async (request, env, url) => {
       errors: validation.errors,
     }, 422, methods);
   }
-  const secret = findUnredactedSecret(artifact);
+  const secret = findUnredactedSecret(received);
   if (secret) {
     return jsonResponse(request, {
       error: 'unredacted_content',
       message: `Only the redacted public artifact can be published: ${secret.reason} at ${secret.path}.`,
+    }, 422, methods);
+  }
+  // Store the redacted form even when the guard found nothing. The transform is
+  // the identity on an artifact the app produced; anything it changes was not the
+  // app's output, and must still satisfy the schema to be stored.
+  const artifact = redactReportValue(received);
+  const storedValidation = validateReport(artifact);
+  if (!storedValidation.valid) {
+    return jsonResponse(request, {
+      error: 'schema_validation_failed',
+      message: 'The artifact does not match https://mcptest.io/schemas/report/v2.schema.json once redacted.',
+      errors: storedValidation.errors,
     }, 422, methods);
   }
   const endpoint = normalizePublishedEndpoint(artifact.target.testedEndpoint);

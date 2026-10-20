@@ -1,51 +1,54 @@
 // Rejects any published artifact that still carries credential material.
 //
 // The app redacts before download and before publishing (src/utils/reportArtifact.ts),
-// so a correctly produced artifact never changes when scanned here. This guard is a
-// dependency-free port of the detection half of that redaction: the sensitive-key
-// vocabulary, assignment and URL parameter scanning, Bearer/Basic credentials, JWTs
-// and JSON-shaped strings, plus a few well-known API key shapes. Every rule flags a
-// strict subset of what the app's redaction would rewrite (the key-shape rules are
-// the one deliberate addition), so an artifact the app produced is always accepted
-// and a hand-built one carrying `Authorization: Bearer …`, `?token=…` or a raw
-// key is refused.
+// so a correctly produced artifact never changes when scanned here. This guard is
+// the detection half of that redaction, sharing its vocabulary and patterns with
+// the Worker's port of the transform (cloudflare-worker/src/reportRedaction.js):
+// assignment and URL parameter scanning, Bearer/Basic credentials, JWTs,
+// JSON-shaped strings, JSON fragments embedded anywhere in a string, JSON escape
+// sequences, plus a few well-known API key shapes. Every rule flags a strict
+// subset of what the app's redaction would rewrite (the key-shape rules and the
+// unquoted escape decoding are the deliberate additions), so an artifact the app
+// produced is always accepted and a hand-built one carrying
+// `Authorization: Bearer …`, `?token=…` or a raw key is refused.
+//
+// The guard is the second line: the route stores every artifact through the
+// redaction transform, so even an input that slips past detection is stored
+// redacted.
+import {
+  ASSIGNMENT_START_SOURCE,
+  CANONICAL_REFERENCE_URL_PATTERN,
+  JWT_PATTERN_SOURCE,
+  MAX_JSON_STRING_DECODE_PASSES,
+  MAX_URL_COMPONENT_DECODE_PASSES,
+  REDACTED_VALUE,
+  SCHEME_CREDENTIAL_PATTERN_SOURCE,
+  TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS,
+  URL_IN_TEXT_PATTERN,
+  URL_TRAILING_PUNCTUATION,
+  isAuthorizationPrerequisiteSchemaField,
+  isAuthorizationSetupHeaderTemplateField,
+  isAuthorizationSetupSchemaField,
+  isCapabilityInventoryAuthenticationField,
+  isJsonRpcErrorCode,
+  isSensitiveKey,
+  isSensitiveQueryKey,
+} from './reportRedaction.js';
 
-export const REDACTED_VALUE = '[REDACTED]';
+export { REDACTED_VALUE, isSensitiveKey, isSensitiveQueryKey };
+
 const ENCODED_REDACTED_VALUE = '%5BREDACTED%5D';
-const MAX_URL_COMPONENT_DECODE_PASSES = 4;
 const MAX_URL_SCAN_DEPTH = 4;
-const MAX_JSON_STRING_DECODE_PASSES = 4;
 // Bounds on what a decoded JSON string may expand to before it is scanned. The
 // app never produces anything near them; past them the text cannot be inspected
 // and is refused rather than accepted unseen.
 const MAX_DECODED_JSON_NESTING = 64;
 const MAX_DECODED_JSON_NODES = 100000;
-
-const EXACT_SENSITIVE_KEYS = new Set([
-  'key', 'accesskey', 'subscriptionkey', 'authorization', 'proxyauthorization',
-  'xmcpauthorization', 'cookie', 'setcookie', 'cookies', 'password', 'passwd', 'secret',
-  'secrets', 'clientsecret', 'credential', 'credentials', 'accesstoken', 'refreshtoken',
-  'idtoken', 'jwt', 'idtokenhint', 'clientassertion', 'devicecode', 'usercode', 'apikey',
-  'xapikey', 'authorizationcode', 'authorizationcodes', 'oauthcode', 'oauthcodes', 'code',
-  'token', 'tokens', 'sid', 'sessionid', 'phpsessid', 'connectsid', 'signature', 'sig',
-  'privatekey', 'auth', 'codeverifier', 'state', 'nonce', 'csrf',
-]);
-
-const SENSITIVE_KEY_COMPONENTS = new Set([
-  'auth', 'authorization', 'cookie', 'cookies', 'credential', 'credentials', 'passwd',
-  'password', 'secret', 'secrets', 'token', 'tokens', 'signature',
-]);
-
-const NON_SENSITIVE_COMPOUND_KEYS = new Set(['codechallengemethodssupported', 'estimatedcontexttokens']);
-const WRAPPED_CREDENTIAL_KEY = /(?:api|private)key(?:value|header)$/;
-const SESSION_CREDENTIAL_KEY = /(?:session|sessionid|sessionkey|sessiontoken)s?$/;
-
-const TOOL_INPUT_SCHEMA_REDACTED_VALUE_KEYS = new Set([
-  '$anchor', '$comment', '$dynamicAnchor', '$dynamicRef', '$id', '$recursiveRef', '$ref',
-  '$schema', '$vocabulary', 'const', 'contentEncoding', 'contentMediaType', 'default',
-  'description', 'enum', 'examples', 'exclusiveMaximum', 'exclusiveMinimum', 'format',
-  'maximum', 'minimum', 'multipleOf', 'pattern', 'title',
-]);
+// Characters JSON.parse may be handed while trying the JSON-shaped fragments of
+// one string, as a multiple of the string's length. Every balanced fragment is
+// tried at most once and only when no enclosing fragment parsed, so ordinary
+// text stays far below this; text past it cannot be inspected and is refused.
+const MAX_EMBEDDED_FRAGMENT_PARSE_RATIO = 16;
 
 // Deliberately stricter than the app: raw provider keys are refused wherever they appear.
 const KNOWN_CREDENTIAL_SHAPES = [
@@ -61,53 +64,10 @@ const KNOWN_CREDENTIAL_SHAPES = [
   /\bnpm_[A-Za-z0-9]{36}/,
 ];
 
-const JWT_PATTERN = /(^|[^A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=$|[^A-Za-z0-9_-])/;
-const SCHEME_CREDENTIAL_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/i;
-// A generated reference link: the canonical article plus one heading anchor made of
-// id characters only. Anything else after the prefix (a credential, a second
-// fragment, a query) fails this shape and is scanned like every other string.
-const CANONICAL_REFERENCE_URL_PATTERN = /^https:\/\/mcptest\.io\/learn\/mcp-transport-diagnostics-reference#[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-const canonicalKey = (key) => key.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-
-const keyComponents = (key) => key
-  .trim()
-  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-  .toLowerCase()
-  .split(/[^a-z0-9]+/)
-  .filter(Boolean);
-
-export const isSensitiveKey = (key) => {
-  const canonical = canonicalKey(key);
-  if (NON_SENSITIVE_COMPOUND_KEYS.has(canonical)) return false;
-  const components = keyComponents(key);
-  if (components.some((component) => SENSITIVE_KEY_COMPONENTS.has(component))) return true;
-  return EXACT_SENSITIVE_KEYS.has(canonical)
-    || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical)
-    || WRAPPED_CREDENTIAL_KEY.test(canonical)
-    || SESSION_CREDENTIAL_KEY.test(canonical)
-    || (components.includes('code')
-      && components.some((component) => component === 'authorization' || component === 'oauth'));
-};
-
-const decodeFormComponent = (value) => decodeURIComponent(value.replace(/\+/g, ' '));
-
-export const isSensitiveQueryKey = (key) => {
-  let decoded = key;
-  for (let pass = 0; pass <= MAX_URL_COMPONENT_DECODE_PASSES; pass += 1) {
-    if (isSensitiveKey(decoded)) return true;
-    let next;
-    try {
-      next = decodeFormComponent(decoded);
-    } catch {
-      return true;
-    }
-    if (next === decoded) return false;
-    if (pass === MAX_URL_COMPONENT_DECODE_PASSES) return true;
-    decoded = next;
-  }
-  return true;
-};
+const JWT_PATTERN = new RegExp(JWT_PATTERN_SOURCE);
+const SCHEME_CREDENTIAL_PATTERN = new RegExp(SCHEME_CREDENTIAL_PATTERN_SOURCE, 'i');
+const JSON_ESCAPE_PATTERN = /\\(?:u([0-9A-Fa-f]{4})|(["\\/bfnrt]))/g;
+const JSON_ESCAPE_CHARACTERS = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
 
 const isRedactedMarker = (value) => value === REDACTED_VALUE || value === ENCODED_REDACTED_VALUE;
 
@@ -123,16 +83,9 @@ const isCompletelyRedactedValue = (value) => {
   return marker !== undefined && REDACTED_MARKER_TERMINATOR.test(value.slice(marker.length));
 };
 
-const keyPart = String.raw`[A-Za-z](?:[A-Za-z0-9_+.-]|%[A-Fa-f0-9]{2})*`;
-const compoundKey = `${keyPart}(?:\\s+${keyPart}){0,2}`;
-const ASSIGNMENT_START = new RegExp(
-  `(?:(['"])(${compoundKey})\\1|\\b(${compoundKey})\\b)\\s*([:=])\\s*`,
-  'g'
-);
-
 /** Mirrors the app's assignment scan: a sensitive `key: value` / `key=value` whose value is not redacted. */
 const findUnredactedAssignment = (value) => {
-  const assignmentStart = new RegExp(ASSIGNMENT_START.source, 'g');
+  const assignmentStart = new RegExp(ASSIGNMENT_START_SOURCE, 'g');
   let match;
   while ((match = assignmentStart.exec(value)) !== null) {
     const key = match[2] || match[3];
@@ -194,6 +147,18 @@ const findSecretInUrl = (candidate, depth) => {
   return undefined;
 };
 
+const findSecretInUrls = (value, depth) => {
+  const urlPattern = new RegExp(URL_IN_TEXT_PATTERN.source, 'gi');
+  let match;
+  while ((match = urlPattern.exec(value)) !== null) {
+    const trailing = match[0].match(URL_TRAILING_PUNCTUATION)?.[0] || '';
+    const url = trailing ? match[0].slice(0, -trailing.length) : match[0];
+    const reason = findSecretInUrl(url, depth);
+    if (reason) return reason;
+  }
+  return undefined;
+};
+
 const isStructuredJsonText = (value) => (
   (value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))
 );
@@ -213,15 +178,26 @@ const findDecodedJsonBoundsViolation = (root) => {
   return undefined;
 };
 
+/** Scans a decoded JSON value with the full guard, one decode pass deeper. */
+const findSecretInParsedJson = (parsed, depth) => {
+  if (depth >= MAX_JSON_STRING_DECODE_PASSES) {
+    return { path: formatPath([]), reason: 'JSON-encoded text is nested too deeply to inspect' };
+  }
+  const violation = findDecodedJsonBoundsViolation(parsed);
+  if (violation) return { path: formatPath([]), reason: violation };
+  return findSecretInValue(parsed, undefined, [], depth + 1);
+};
+
 /**
  * A string that is itself JSON (an object, an array or a string literal, possibly
  * string-encoded several times) is decoded and the result is scanned with the full
  * guard, one decode pass per depth level. A decoded string is scanned as text, so a
  * credential hidden behind a JSON escape (`"Bearer\u0020…"`) is still found. Text
  * that is still encoded once the depth budget is spent cannot be inspected and is
- * refused. Returns { path, reason } relative to the decoded value.
+ * refused. Returns undefined for text that is not JSON, otherwise { found } where
+ * found is { path, reason } relative to the decoded value, or undefined.
  */
-const findSecretInJsonShapedText = (value, depth) => {
+const inspectJsonShapedText = (value, depth) => {
   const candidate = value.trim();
   if (!isStructuredJsonText(candidate) && !candidate.startsWith('"')) return undefined;
   let parsed;
@@ -231,21 +207,101 @@ const findSecretInJsonShapedText = (value, depth) => {
     return undefined;
   }
   if (parsed === null || (typeof parsed !== 'object' && typeof parsed !== 'string')) return undefined;
-  if (depth >= MAX_JSON_STRING_DECODE_PASSES) {
-    return { path: formatPath([]), reason: 'JSON-encoded text is nested too deeply to inspect' };
-  }
-  const violation = findDecodedJsonBoundsViolation(parsed);
-  if (violation) return { path: formatPath([]), reason: violation };
-  return findSecretInValue(parsed, undefined, [], depth + 1);
+  return { found: findSecretInParsedJson(parsed, depth) };
 };
 
-/** The reason for a credential found inside JSON-encoded text, or undefined. */
-const findSecretInDecodedJson = (value, depth) => {
-  const found = findSecretInJsonShapedText(value, depth);
-  if (!found) return undefined;
+const describeNestedReason = (found, location) => {
   if (found.reason.endsWith('to inspect')) return found.reason;
-  const location = found.path === formatPath([]) ? '' : ` at ${found.path}`;
-  return `${found.reason} (inside JSON-encoded text${location})`;
+  const at = found.path === formatPath([]) ? '' : ` at ${found.path}`;
+  return `${found.reason} (inside ${location}${at})`;
+};
+
+/**
+ * Start → end (exclusive) of every balanced `{…}` / `[…]` span in one pass. With
+ * quote tracking, brackets inside JSON string literals are ignored; without it,
+ * a stray quote in surrounding prose cannot hide a fragment. A closer that does
+ * not match the innermost opener discards the pending openers.
+ */
+const balancedFragmentSpans = (value, trackQuotes) => {
+  const spans = new Map();
+  const stack = [];
+  let quoted = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (quoted) {
+      if (character === '\\') index += 1;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (trackQuotes && character === '"') {
+      quoted = true;
+    } else if (character === '{' || character === '[') {
+      stack.push([character, index]);
+    } else if (character === '}' || character === ']') {
+      const top = stack[stack.length - 1];
+      if (top && top[0] === (character === '}' ? '{' : '[')) {
+        stack.pop();
+        spans.set(top[1], index + 1);
+      } else {
+        stack.length = 0;
+      }
+    }
+  }
+  return spans;
+};
+
+/**
+ * Finds JSON objects and arrays embedded anywhere in a string (`response: {…}`),
+ * decodes each with the bounded JSON scan and applies the full guard to the
+ * decoded value. Fragments are tried outermost first; the fragments inside one
+ * that parsed are covered by that scan and skipped.
+ */
+const findSecretInEmbeddedJson = (value, depth) => {
+  if (!/[{[]/.test(value)) return undefined;
+  const candidates = new Map();
+  for (const trackQuotes of [true, false]) {
+    for (const [start, end] of balancedFragmentSpans(value, trackQuotes)) candidates.set(`${start}:${end}`, [start, end]);
+  }
+  const spans = [...candidates.values()]
+    .sort(([leftStart, leftEnd], [rightStart, rightEnd]) => leftStart - rightStart || rightEnd - leftEnd);
+  let budget = value.length * MAX_EMBEDDED_FRAGMENT_PARSE_RATIO;
+  let coveredUntil = 0;
+  for (const [start, end] of spans) {
+    if (end <= coveredUntil) continue;
+    const fragment = value.slice(start, end);
+    budget -= fragment.length;
+    if (budget < 0) return 'contains too many JSON-shaped fragments to inspect';
+    let parsed;
+    try {
+      parsed = JSON.parse(fragment);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object') continue;
+    const found = findSecretInParsedJson(parsed, depth);
+    if (found) return describeNestedReason(found, 'an embedded JSON fragment');
+    coveredUntil = end;
+  }
+  return undefined;
+};
+
+const decodeJsonEscapes = (value) => value.replace(JSON_ESCAPE_PATTERN, (_, hex, character) => (
+  hex ? String.fromCharCode(parseInt(hex, 16)) : JSON_ESCAPE_CHARACTERS[character]
+));
+
+/**
+ * A string carrying JSON escape sequences (`Bearer\u0020…`, `{\"token\":…}`) is
+ * decoded one layer at a time, up to the shared decode budget, and each layer is
+ * scanned again with the given scan. Text still escaped past the budget cannot be
+ * inspected and is refused.
+ */
+const findSecretBehindJsonEscapes = (value, depth, scan) => {
+  const decoded = decodeJsonEscapes(value);
+  if (decoded === value) return undefined;
+  if (depth >= MAX_JSON_STRING_DECODE_PASSES) return 'JSON escapes are nested too deeply to inspect';
+  const reason = scan(decoded, depth + 1);
+  if (!reason || reason.endsWith('to inspect')) return reason;
+  return `${reason} (after decoding JSON escapes)`;
 };
 
 /** Credential shapes that are refused wherever they appear, exemptions included. */
@@ -258,40 +314,37 @@ const findCredentialShape = (value) => {
   return undefined;
 };
 
+/**
+ * Credentials reachable only by decoding. Text that is JSON as a whole is fully
+ * decoded by that scan (escapes included), so only text that is not JSON goes on
+ * to the embedded fragment search and the escape decoding; `scan` is applied to
+ * each decoded escape layer.
+ */
+const findSecretInEncodedText = (value, depth, scan) => {
+  const whole = inspectJsonShapedText(value, depth);
+  if (whole) return whole.found ? describeNestedReason(whole.found, 'JSON-encoded text') : undefined;
+  return findSecretInEmbeddedJson(value, depth) || findSecretBehindJsonEscapes(value, depth, scan);
+};
+
 const findSecretInText = (value, depth = 0) => {
   // Unreachable through the bounded URL and JSON scans above; refuse rather than accept unseen.
   if (depth > Math.max(MAX_URL_SCAN_DEPTH, MAX_JSON_STRING_DECODE_PASSES)) return 'text is nested too deeply to inspect';
-  const shape = findCredentialShape(value);
-  if (shape) return shape;
-  const assignment = findUnredactedAssignment(value);
-  if (assignment) return assignment;
-  const urlPattern = /https?:\/\/[^\s<>]+/gi;
-  let match;
-  while ((match = urlPattern.exec(value)) !== null) {
-    const trailing = match[0].match(/["'),.;!?]+$/)?.[0] || '';
-    const url = trailing ? match[0].slice(0, -trailing.length) : match[0];
-    const reason = findSecretInUrl(url, depth);
-    if (reason) return reason;
-  }
-  return findSecretInDecodedJson(value, depth);
+  return findCredentialShape(value)
+    || findUnredactedAssignment(value)
+    || findSecretInUrls(value, depth)
+    || findSecretInEncodedText(value, depth, findSecretInText);
 };
 
-const isAuthorizationPrerequisiteSchemaField = (path) => (
-  path[0] === 'outcome' && path[1] === 'authorizationPrerequisite'
-  && (path.length === 2 || (path.length === 3 && path[2] === 'state'))
+/**
+ * The scan for the two exempt locations: a generated reference link keeps its
+ * heading anchor, which the URL scan would refuse as an unredacted fragment, and
+ * the catalog header template keeps its `token=<PLACEHOLDER>` syntax. Credential
+ * shapes are still refused, including ones hidden behind JSON encoding.
+ */
+const findSecretInExemptText = (value, depth = 0) => (
+  findCredentialShape(value) || findSecretInEncodedText(value, depth, findSecretInExemptText)
 );
-const isAuthorizationSetupSchemaField = (path) => path.length > 0 && path[0] === 'authorizationSetup';
-const isAuthorizationSetupHeaderTemplateField = (path) => (
-  path.length === 2 && path[0] === 'authorizationSetup' && path[1] === 'alternativeHeaderTemplate'
-);
-const isCapabilityInventoryAuthenticationField = (path) => (
-  path.length === 2 && path[0] === 'capabilityInventory' && path[1] === 'authentication'
-);
-const isJsonRpcErrorCode = (value, key, path) => (
-  canonicalKey(key) === 'code'
-  && canonicalKey(path[path.length - 2] || '') === 'error'
-  && Number.isInteger(value)
-);
+
 // The artifact locations the app fills with generated reference links
 // (src/utils/reportArtifact.ts): release priorities and evidence metadata.
 const isReferenceUrlField = (path) => {
@@ -330,11 +383,8 @@ const findSecretInValue = (value, key, path, depth = 0) => {
     }
   }
   if (typeof value === 'string') {
-    // A generated reference link keeps its heading anchor, which the URL scan would
-    // otherwise refuse as an unredacted fragment; credential shapes are still refused,
-    // including ones hidden behind JSON escapes, which only decoding reveals.
     const reason = isCanonicalReferenceUrl(value, path) || isAuthorizationSetupHeaderTemplateField(path)
-      ? findCredentialShape(value) || findSecretInDecodedJson(value, depth)
+      ? findSecretInExemptText(value, depth)
       : findSecretInText(value, depth);
     return reason ? { path: formatPath(path), reason } : undefined;
   }
