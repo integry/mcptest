@@ -48,12 +48,20 @@ sourceLinks:
     url: "https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.31.0"
   - title: "TypeScript SDK 1.32.0"
     url: "https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.32.0"
+  - title: "TypeScript SDK 1.32.1"
+    url: "https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.32.1"
   - title: "Python SDK v2.3.0"
     url: "https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.3.0"
   - title: "Java SDK v2.1.0"
     url: "https://github.com/modelcontextprotocol/java-sdk/releases/tag/v2.1.0"
+  - title: "Java SDK v1.1.5"
+    url: "https://github.com/modelcontextprotocol/java-sdk/releases/tag/v1.1.5"
+  - title: "Java SDK v0.18.5"
+    url: "https://github.com/modelcontextprotocol/java-sdk/releases/tag/v0.18.5"
   - title: "Java SDK v2.2.0-M1"
     url: "https://github.com/modelcontextprotocol/java-sdk/releases/tag/v2.2.0-M1"
+  - title: "Rust SDK rmcp 3.4.1"
+    url: "https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.4.1"
   - title: "Rust SDK rmcp 3.6.0"
     url: "https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.6.0"
   - title: "Rust SDK rmcp 3.5.0"
@@ -66,6 +74,14 @@ sourceLinks:
     url: "https://github.com/modelcontextprotocol/ruby-sdk/releases/tag/v1.6.0"
   - title: "PHP SDK v0.9.0"
     url: "https://github.com/modelcontextprotocol/php-sdk/releases/tag/v0.9.0"
+  - title: "Go SDK releases"
+    url: "https://github.com/modelcontextprotocol/go-sdk/releases"
+  - title: "C# SDK releases"
+    url: "https://github.com/modelcontextprotocol/csharp-sdk/releases"
+  - title: "Kotlin SDK releases"
+    url: "https://github.com/modelcontextprotocol/kotlin-sdk/releases"
+  - title: "Swift SDK releases"
+    url: "https://github.com/modelcontextprotocol/swift-sdk/releases"
   - title: "MCP Inspector releases"
     url: "https://github.com/modelcontextprotocol/inspector/releases"
   - title: "Claude Code changelog"
@@ -123,16 +139,16 @@ The window has no new specification revision. 2026-07-28 is still current, and t
 | SDK | Version (date) | Changes you will notice |
 | --- | --- | --- |
 | TypeScript | [v2.2.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.2.0) (2026-09-28) | `listTools()` and the other list calls without a cursor follow `nextCursor` to the end. Machine-to-machine OAuth providers take `expectedIssuer`; leaving it out is deprecated. `fetchToken()` throws `AuthorizationServerMismatchError` when stored client information belongs to another authorization server. |
-| TypeScript | [v2.3.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.3.0) (2026-10-02), [v2.3.1](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.3.1) (2026-10-05) | `Server.connect()` rejects an instance that is already connected, and a stateless transport handles one request, so create the server per request. HTTP client transports follow redirects only on the same origin unless `redirectPolicy: 'follow'` is set. New opt-in `maxToolInputElements` and `expectedResource` (token audience check); 2.3.1 adds `expectedResource` to `server-legacy`. `allowedOrigins` accepts `<scheme>://*` for browser-extension clients. A large single-event SSE result arrives much faster. |
-| TypeScript 1.x | [1.30.1](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.30.1) (2026-09-23), [1.31.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.31.0) (2026-09-28), [1.32.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.32.0) (2026-10-02) | Backports: request body size limit and batch length bound (1.30.1), OAuth credentials bound to their issuer (1.31.0), same-origin redirects, `maxToolInputElements` and `expectedResource` (1.32.0). 1.32.1 changed only documentation. |
+| TypeScript | [v2.3.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.3.0) (2026-10-02), [v2.3.1](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.3.1) (2026-10-05) | `Server.connect()` rejects an instance that is already connected. A stateless transport handles one request, so a stateless server needs a new server and transport per request. HTTP client transports follow redirects only on the same origin unless `redirectPolicy: 'follow'` is set. New opt-in `maxToolInputElements` and `expectedResource` (token audience check); 2.3.1 adds `expectedResource` to `server-legacy`. `allowedOrigins` accepts `<scheme>://*` for browser-extension clients. A large single-event SSE result arrives much faster. |
+| TypeScript 1.x | [1.30.1](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.30.1) (2026-09-23), [1.31.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.31.0) (2026-09-28), [1.32.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.32.0) (2026-10-02) | Backports: request body size limit and batch length bound (1.30.1), OAuth credentials bound to their issuer (1.31.0), same-origin redirects, `maxToolInputElements` and `expectedResource` (1.32.0). [1.32.1](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.32.1) (2026-10-05) changed only documentation. |
 | Python | [v2.3.0](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.3.0) (2026-10-02) | A tool with an invalid `x-mcp-header` annotation now fails at registration; before, 2026-07-28 clients silently dropped it. On 2025-era connections, empty `_meta` and `params` are no longer sent. New `max_sse_event_size` (default 1 MiB per event). `Client.call_tool` re-lists and retries once after `-32020`. An interactive OAuth login no longer counts toward request timeouts. Requires `httpx2>=2.10.0`. |
-| Java | [v2.1.0](https://github.com/modelcontextprotocol/java-sdk/releases/tag/v2.1.0) (2026-10-16) | Removes the 2024-11-05 protocol from Streamable HTTP. Rejects POST bodies that are not `application/json`. Adds session sweeping and keep-alive, and `extensions` on capabilities (SEP-2133). Patch releases v1.1.5 and v0.18.5 shipped the same day. |
+| Java | [v2.1.0](https://github.com/modelcontextprotocol/java-sdk/releases/tag/v2.1.0) (2026-10-16) | Removes the 2024-11-05 protocol from Streamable HTTP. Rejects POST bodies that are not `application/json`. Adds session sweeping and keep-alive, and `extensions` on capabilities (SEP-2133). Patch releases [v1.1.5](https://github.com/modelcontextprotocol/java-sdk/releases/tag/v1.1.5) and [v0.18.5](https://github.com/modelcontextprotocol/java-sdk/releases/tag/v0.18.5) shipped the same day. |
 | Java | [v2.2.0-M1](https://github.com/modelcontextprotocol/java-sdk/releases/tag/v2.2.0-M1) (2026-10-16, milestone) | A new stateless 2026-07-28 server in `io.modelcontextprotocol.modern`. It does not yet support a modern client, tasks or SEP-2243 custom headers. |
 | Rust (`rmcp`) | [3.4.1](https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.4.1) to [3.6.0](https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.6.0) (2026-09-23 to 2026-10-20) | [3.5.0](https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.5.0) rejects duplicate SEP-2243 headers and matches explicit default ports in the Origin allowlist. [3.5.1](https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.5.1) defaults missing cache hints for 2026-07-28 peers. 3.6.0 follows same-origin 307/308 redirects, answers a session-less non-`initialize` POST with `400`, cancels abandoned client requests and adds initial OAuth scope selection. |
 | Ruby | [v1.6.0](https://github.com/modelcontextprotocol/ruby-sdk/releases/tag/v1.6.0) to [v1.8.0](https://github.com/modelcontextprotocol/ruby-sdk/releases/tag/v1.8.0) (2026-09-21 to 2026-10-16) | 1.6.0 raises an error when Protected Resource Metadata is unreachable instead of falling back to legacy discovery. 1.8.0 adds OAuth 2.1 resource server support to `StreamableHTTPTransport` (JWT or RFC 7662 introspection, RFC 9728 metadata), and its client transports reject server messages without `"jsonrpc": "2.0"`. |
 | PHP | [v0.9.0](https://github.com/modelcontextprotocol/php-sdk/releases/tag/v0.9.0) (2026-10-18) | Breaking: authorization is narrowed to the resource server role, and `structuredContent` is validated against `outputSchema`. stdio serves both protocol eras. CORS preflight passes the authorization middleware, and the default CORS headers allow `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*`. |
 
-The Go, C#, Kotlin and Swift SDKs had no release in the window. The [MCP Inspector](https://github.com/modelcontextprotocol/inspector/releases) shipped 2.8.0 through 2.11.0.
+The [Go](https://github.com/modelcontextprotocol/go-sdk/releases), [C#](https://github.com/modelcontextprotocol/csharp-sdk/releases), [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk/releases) and [Swift](https://github.com/modelcontextprotocol/swift-sdk/releases) SDKs had no release in the window. Their latest releases are Go v1.8.0 (2026-09-14), C# v2.2.0 (2026-08-13), Kotlin 0.15.0 (2026-07-28) and Swift 0.12.1 (2026-05-07). The [MCP Inspector](https://github.com/modelcontextprotocol/inspector/releases) shipped 2.8.0 through 2.11.0.
 
 ## Client changes
 
@@ -167,7 +183,7 @@ Only documented changes that affect remote servers are listed.
 ## What to do about it
 
 - If your server sits behind a redirect to another host or port, publish the final URL. TypeScript SDK 2.3.0 and 1.32.0 clients no longer follow those redirects by default, and Claude Code no longer follows redirects to its connector proxy or Anthropic-hosted servers.
-- If you build on the TypeScript SDK 2.3.0, create the server and the transport per request. A shared instance now fails on its second `connect()`.
+- If you build on the TypeScript SDK 2.3.0, never call `connect()` on a server that is already connected; the second call now fails. With a stateless transport, create the server and the transport per request. With a stateful transport, keep connecting each session's server to its transport once and route that session's requests to the same transport; don't recreate them per request.
 - Test your server on 2026-07-28 now that claude.ai connectors and Devin Desktop negotiate it by default. Check that results carry the fields 2026-07-28 expects, and that every `x-mcp-header` parameter is a plain string, integer or boolean.
 - If tokens need more scope for some tools, answer with an `insufficient_scope` challenge. Claude Code and Cloudflare's server now handle step-up instead of failing.
 - To make your remote server discoverable before connection, read [SEP-2127](https://modelcontextprotocol.io/seps/2127-mcp-server-cards) and consider serving a Server Card at `<your-endpoint>/server-card`.
