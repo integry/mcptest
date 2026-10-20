@@ -76,9 +76,11 @@ interface TabContentProps {
   onUpdateTab: (tabId: string, updates: Partial<ConnectionTab>) => void;
   spaces: any[];
   onAddCardToSpace: (spaceId: string, cardData: any) => void;
+  /** False when a sibling tab already has a server, so this tab is not the empty playground. */
+  landingEligible: boolean;
 }
 
-const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace }) => {
+const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace, landingEligible }) => {
   const { currentUser, loginWithGoogle } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
@@ -920,7 +922,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     && !isAuthFlowActive;
   // The landing stays up while a first-time visitor types into its input, so
   // unlike isFirstConnection it does not depend on the entered URL.
-  const showLanding = recentServers.length === 0
+  const showLanding = landingEligible
+    && recentServers.length === 0
     && !hasStartedFirstConnection
     && isDisconnected
     && !connectionError

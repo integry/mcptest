@@ -18,6 +18,7 @@ vi.mock('../context/AuthContext', () => ({
 vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
 
 import TabContent from './TabContent';
+import { isLandingEligible } from '../utils/landingEligibility';
 import { selectLandingQuickPicks } from './LandingHero';
 import { getCatalogServers } from '../utils/catalogUtils';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
@@ -39,23 +40,31 @@ const newTab: ConnectionTab = {
 
 let root: Root | undefined;
 
-const renderTab = (tab: ConnectionTab) => {
+// Mirrors App: every tab mounts its own TabContent, with eligibility derived from all tabs.
+const renderTabs = (tabs: ConnectionTab[], activeTabId: string) => {
   const container = document.createElement('div');
   const onUpdateTab = vi.fn();
   root = createRoot(container);
   act(() => root!.render(
     <MemoryRouter>
-      <TabContent
-        tab={tab}
-        isActive
-        onUpdateTab={onUpdateTab}
-        spaces={[]}
-        onAddCardToSpace={vi.fn()}
-      />
+      {tabs.map(tab => (
+        <div key={tab.id} data-tab-id={tab.id}>
+          <TabContent
+            tab={tab}
+            isActive={tab.id === activeTabId}
+            onUpdateTab={onUpdateTab}
+            spaces={[]}
+            onAddCardToSpace={vi.fn()}
+            landingEligible={isLandingEligible(tabs, tab.id)}
+          />
+        </div>
+      ))}
     </MemoryRouter>
   ));
   return { container, onUpdateTab };
 };
+
+const renderTab = (tab: ConnectionTab) => renderTabs([tab], tab.id);
 
 const setInputValue = (input: HTMLInputElement, value: string) => {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
@@ -111,6 +120,23 @@ describe('playground landing', () => {
     expect(container.querySelector('.landing')).toBeNull();
     expect(container.querySelector('.connection-console')).not.toBeNull();
     expect(container.querySelector<HTMLInputElement>('#serverUrl')?.value).toBe('https://existing.example/mcp');
+  });
+
+  it('renders the playground unchanged for an empty tab restored beside a server-configured tab', () => {
+    const serverTab: ConnectionTab = { ...newTab, id: 'existing', serverUrl: 'https://existing.example/mcp' };
+    const { container } = renderTabs([serverTab, newTab], newTab.id);
+    const emptyPanel = container.querySelector('[data-tab-id="new-tab"]')!;
+
+    expect(container.querySelector('.landing')).toBeNull();
+    expect(emptyPanel.querySelector('.connection-console')).not.toBeNull();
+    expect(emptyPanel.querySelector('.playground-layout.playground-idle')).not.toBeNull();
+    expect(emptyPanel.querySelector('.suggested-servers-panel')).not.toBeNull();
+  });
+
+  it('keeps the landing for a new empty tab beside another empty tab', () => {
+    const { container } = renderTabs([{ ...newTab, id: 'first' }, newTab], newTab.id);
+
+    expect(container.querySelector('[data-tab-id="new-tab"] .landing')).not.toBeNull();
   });
 
   it('connects quick picks and manual entry through the same connection path', async () => {

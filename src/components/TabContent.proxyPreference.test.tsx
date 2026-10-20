@@ -74,6 +74,7 @@ const renderTab = (tab: ConnectionTab, onUpdateTab = vi.fn()) => {
           onUpdateTab={onUpdateTab}
           spaces={[]}
           onAddCardToSpace={vi.fn()}
+          landingEligible
         />
       </MemoryRouter>
     );
