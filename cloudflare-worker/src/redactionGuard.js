@@ -4,20 +4,24 @@
 // so a correctly produced artifact never changes when scanned here. This guard is
 // the detection half of that redaction, sharing its vocabulary and patterns with
 // the Worker's port of the transform (cloudflare-worker/src/reportRedaction.js):
-// assignment and URL parameter scanning, Bearer/Basic credentials, JWTs,
-// JSON-shaped strings, JSON fragments embedded anywhere in a string, JSON escape
-// sequences, plus a few well-known API key shapes. Every rule flags a strict
-// subset of what the app's redaction would rewrite (the key-shape rules and the
-// unquoted escape decoding are the deliberate additions), so an artifact the app
-// produced is always accepted and a hand-built one carrying
-// `Authorization: Bearer …`, `?token=…` or a raw key is refused.
+// assignment and URL parameter scanning for URLs of any scheme, userinfo in a
+// URL or bare in text, Bearer/Basic credentials, JWTs, JSON-shaped strings, JSON
+// fragments embedded anywhere in a string, JSON escape sequences, plus a few
+// well-known API key shapes. Every rule flags a strict
+// subset of what the app's redaction would rewrite (the key-shape rules, the
+// unquoted escape decoding and the non-http(s) URL and bare userinfo rules are
+// the deliberate additions), so an artifact the app produced is always accepted
+// and a hand-built one carrying `Authorization: Bearer …`, `?token=…`,
+// `ftp://user:password@…` or a raw key is refused.
 //
 // The guard is the second line: the route stores every artifact through the
 // redaction transform, so even an input that slips past detection is stored
 // redacted.
 import {
   ASSIGNMENT_START_SOURCE,
+  BARE_USERINFO_PATTERN_SOURCE,
   CANONICAL_REFERENCE_URL_PATTERN,
+  ENCODED_REDACTED_VALUE,
   JWT_PATTERN_SOURCE,
   MAX_JSON_STRING_DECODE_PASSES,
   MAX_URL_COMPONENT_DECODE_PASSES,
@@ -31,13 +35,13 @@ import {
   isAuthorizationSetupSchemaField,
   isCapabilityInventoryAuthenticationField,
   isJsonRpcErrorCode,
+  isRedactedMarkerText,
   isSensitiveKey,
   isSensitiveQueryKey,
 } from './reportRedaction.js';
 
 export { REDACTED_VALUE, isSensitiveKey, isSensitiveQueryKey };
 
-const ENCODED_REDACTED_VALUE = '%5BREDACTED%5D';
 const MAX_URL_SCAN_DEPTH = 4;
 // Bounds on what a decoded JSON string may expand to before it is scanned. The
 // app never produces anything near them; past them the text cannot be inspected
@@ -69,7 +73,7 @@ const SCHEME_CREDENTIAL_PATTERN = new RegExp(SCHEME_CREDENTIAL_PATTERN_SOURCE, '
 const JSON_ESCAPE_PATTERN = /\\(?:u([0-9A-Fa-f]{4})|(["\\/bfnrt]))/g;
 const JSON_ESCAPE_CHARACTERS = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
 
-const isRedactedMarker = (value) => value === REDACTED_VALUE || value === ENCODED_REDACTED_VALUE;
+const isRedactedMarker = isRedactedMarkerText;
 
 // What may follow a redaction marker for the assignment value to count as fully
 // redacted: nothing, whitespace, a closing quote or bracket, or a delimiter that
@@ -113,9 +117,9 @@ const decodeComponent = (value) => {
   return { ok: false, reason: 'URL component is encoded too deeply' };
 };
 
-// Every URL component is inspected: userinfo and the fragment must be the
-// marker, path segments and query names and values are percent-decoded within
-// the shared bound and scanned as text.
+// Every URL component is inspected whatever the scheme: userinfo and the
+// fragment must be the marker, path segments and query names and values are
+// percent-decoded within the shared bound and scanned as text.
 const findSecretInUrl = (candidate, depth) => {
   if (depth >= MAX_URL_SCAN_DEPTH) return 'URL nested too deeply';
   let url;
@@ -124,7 +128,6 @@ const findSecretInUrl = (candidate, depth) => {
   } catch {
     return undefined;
   }
-  if (!/^https?:$/.test(url.protocol)) return undefined;
   if ((url.username && !isRedactedMarker(url.username)) || (url.password && !isRedactedMarker(url.password))) {
     return 'URL carries credentials';
   }
@@ -165,6 +168,16 @@ const findSecretInUrls = (value, depth) => {
     const url = trailing ? match[0].slice(0, -trailing.length) : match[0];
     const reason = findSecretInUrl(url, depth);
     if (reason) return reason;
+  }
+  return undefined;
+};
+
+/** The bare `user:password@host` shape outside a URL, mirroring the transform's rule. */
+const findBareUserinfoCredential = (value) => {
+  const pattern = new RegExp(BARE_USERINFO_PATTERN_SOURCE, 'g');
+  let match;
+  while ((match = pattern.exec(value)) !== null) {
+    if (!isRedactedMarker(match[3])) return 'userinfo carries a password';
   }
   return undefined;
 };
@@ -342,6 +355,7 @@ const findSecretInText = (value, depth = 0) => {
   return findCredentialShape(value)
     || findUnredactedAssignment(value)
     || findSecretInUrls(value, depth)
+    || findBareUserinfoCredential(value)
     || findSecretInEncodedText(value, depth, findSecretInText);
 };
 

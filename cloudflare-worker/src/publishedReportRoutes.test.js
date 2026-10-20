@@ -346,6 +346,25 @@ describe('publishing a report', () => {
     ['a URL query name encoded past the decode bound', (artifact) => {
       artifact.sections[0].evidence[0].message = `https://example.test/?${Array.from({ length: 6 }).reduce((text) => encodeURIComponent(text), 'access%5Ftoken')}=%5BREDACTED%5D`;
     }],
+    // F9: a userinfo password is a credential in a URL of any scheme and outside a URL.
+    ['a password in the userinfo of an ftp URL', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'ftp://alice:opaquecredential123@files.example/report';
+    }],
+    ['a password in the userinfo of a wss URL', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'Connected to wss://alice:opaquecredential123@relay.example/mcp';
+    }],
+    ['a password in the userinfo of a custom-scheme URL', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'x-mcp+v1://alice:opaquecredential123@broker.example/session';
+    }],
+    ['a password in the userinfo of a URL whose scheme cannot carry one', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'file://alice:opaquecredential123@files.example/report';
+    }],
+    ['a bare user:password@host outside a URL', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { command: 'sftp alice:opaquecredential123@files.example:22' };
+    }],
+    ['a query credential in a wss URL', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'wss://relay.example/mcp?access_token=opaquecredential123';
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);

@@ -8,6 +8,8 @@ import {
 } from '../../src/utils/reportRedactionFixtures.ts';
 
 const enc = encodeURIComponent;
+// `encodeURIComponent` keeps `'`, which ends a bare userinfo password; encode it too.
+const encUserinfo = (text) => enc(text).replace(/'/g, '%27');
 const unicodeEscape = (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`;
 const escapeNonAlphanumerics = (text) => text.replace(/[^A-Za-z0-9]/g, unicodeEscape);
 
@@ -23,6 +25,12 @@ export const CREDENTIAL_EMBEDDINGS = [
   ['a URL path segment', (text) => `https://fuzz.example/${enc(text)}/mcp`],
   ['a URL fragment', (text) => `https://fuzz.example/mcp#${enc(text)}`],
   ['URL userinfo', (text) => `https://${enc(text)}@fuzz.example/mcp`],
+  ['an https URL userinfo password', (text) => `https://alice:${enc(text)}@fuzz.example/mcp`],
+  ['an ftp URL userinfo password', (text) => `ftp://alice:${enc(text)}@fuzz.example/report`],
+  ['a wss URL userinfo password', (text) => `wss://alice:${enc(text)}@fuzz.example/mcp`],
+  ['a custom-scheme URL userinfo password', (text) => `x-mcp+v1://alice:${enc(text)}@fuzz.example/session`],
+  ['a file URL userinfo password', (text) => `file://alice:${encUserinfo(text)}@fuzz.example/report`],
+  ['a bare user:password@host outside a URL', (text) => `sftp alice:${encUserinfo(text)}@fuzz.example:22`],
   ['a JSON-encoded string', (text) => JSON.stringify(text)],
   ['a twice JSON-encoded string', (text) => JSON.stringify(JSON.stringify(text))],
   ['a JSON fragment after a prefix', (text) => `response: ${JSON.stringify({ note: text })} end`],

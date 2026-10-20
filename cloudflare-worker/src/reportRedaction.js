@@ -14,6 +14,12 @@
 // not a redaction marker, and the keyword sanitizer below strips every
 // free-form value from the schemas it would reach.
 //
+// URLs are discovered for any scheme (`ftp://`, `wss://`, a custom scheme) and
+// the bare `user:password@host` shape outside a URL is redacted too; the app
+// discovers only http(s) URLs. A password in either place is credential material
+// whatever the scheme, so the port is stricter than the app here and the guard
+// refuses the app's form as unredacted.
+//
 // On an artifact the app produced the transform is the identity, so published
 // content hashes, permalinks and diffs are unchanged by it.
 
@@ -210,11 +216,7 @@ const redactEncodedUrlComponent = (value, depth, failClosedOnInvalidEncoding = f
       for (let layer = 0; layer < decodedLayers; layer += 1) reencoded = encodeURIComponent(reencoded);
       return reencoded;
     }
-    try {
-      if (/^https?:$/.test(new URL(decoded).protocol)) return value;
-    } catch {
-      // Continue decoding non-URL component values.
-    }
+    if (isAbsoluteUrl(decoded)) return value;
     let next;
     try {
       next = decodeURIComponent(decoded);
@@ -246,7 +248,6 @@ const redactUrl = (value, depth = 0) => {
   } catch {
     return value;
   }
-  if (!/^https?:$/.test(url.protocol)) return value;
   if (url.username) url.username = REDACTED_VALUE;
   if (url.password) url.password = REDACTED_VALUE;
   url.pathname = url.pathname
@@ -269,14 +270,42 @@ const redactUrl = (value, depth = 0) => {
   return url.toString();
 };
 
-export const URL_IN_TEXT_PATTERN = /https?:\/\/[^\s<>]+/gi;
+// Any scheme with an authority (`https://`, `ftp://`, `wss://`, a custom
+// scheme) is a URL whose userinfo, path, query and fragment are inspected.
+export const URL_SCHEME_SOURCE = String.raw`[a-z][a-z0-9+.-]*`;
+export const URL_IN_TEXT_PATTERN = new RegExp(String.raw`\b${URL_SCHEME_SOURCE}://[^\s<>]+`, 'gi');
 export const URL_TRAILING_PUNCTUATION = /["'),.;!?]+$/;
+const ABSOLUTE_URL_PATTERN = new RegExp(String.raw`^${URL_SCHEME_SOURCE}://`, 'i');
+export const ENCODED_REDACTED_VALUE = encodeURIComponent(REDACTED_VALUE);
+
+const isAbsoluteUrl = (value) => {
+  if (!ABSOLUTE_URL_PATTERN.test(value)) return false;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const redactUrlsInText = (value, depth) => value.replace(URL_IN_TEXT_PATTERN, (candidate) => {
   const trailing = candidate.match(URL_TRAILING_PUNCTUATION)?.[0] || '';
   const url = trailing ? candidate.slice(0, -trailing.length) : candidate;
   return `${redactUrl(url, depth)}${trailing}`;
 });
+
+// The `user:password@host` shape outside a URL (`sftp alice:secret@files.example`,
+// a URL whose scheme cannot carry userinfo). The user is kept and the password
+// becomes the marker; a password that is already the marker, plain or
+// percent-encoded as the URL serializer writes it, is left alone. Quotes,
+// brackets, braces, backslashes, slashes and whitespace end the password, so a
+// JSON pair such as `"email":"alice@example.com"` is not a userinfo match.
+export const BARE_USERINFO_PATTERN_SOURCE = String.raw`(^|[^A-Za-z0-9._~%+:@\\-])([A-Za-z0-9._~%+-]+):([^\s@/:"'<>\\\[\]{}]+)@(?=[A-Za-z0-9]|\[[0-9A-Fa-f:.]+\])`;
+export const isRedactedMarkerText = (value) => value === REDACTED_VALUE || value === ENCODED_REDACTED_VALUE;
+
+const redactBareUserinfo = (value) => value.replace(new RegExp(BARE_USERINFO_PATTERN_SOURCE, 'g'), (match, lead, user, password) => (
+  isRedactedMarkerText(password) ? match : `${lead}${user}:${REDACTED_VALUE}@`
+));
 
 export const JWT_PATTERN_SOURCE = String.raw`(^|[^A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=$|[^A-Za-z0-9_-])`;
 export const SCHEME_CREDENTIAL_PATTERN_SOURCE = String.raw`\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+`;
@@ -374,7 +403,7 @@ const redactReportStringAtDepth = (value, urlDepth) => {
   for (let pass = 0; pass < MAX_REDACTION_PASSES; pass += 1) {
     const redactedAssignments = redactSensitiveAssignments(redacted)
       .replace(new RegExp(SCHEME_CREDENTIAL_PATTERN_SOURCE, 'gi'), `$1 ${REDACTED_VALUE}`);
-    const next = redactUrlsInText(redactStandaloneJwtValues(redactedAssignments), urlDepth);
+    const next = redactBareUserinfo(redactUrlsInText(redactStandaloneJwtValues(redactedAssignments), urlDepth));
     if (next === redacted) break;
     redacted = next;
   }

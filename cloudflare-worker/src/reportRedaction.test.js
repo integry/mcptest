@@ -98,6 +98,57 @@ describe('the Worker port of the app redaction', () => {
     expect(redactReportString(overBound)).toBe('https://example.test/?%5BREDACTED%5D=%5BREDACTED%5D');
   });
 
+  it('redacts userinfo passwords in URLs of any scheme and in the bare user:password@host shape', () => {
+    // F9: discovery is not limited to http(s); the password is a credential whatever the scheme.
+    const f9 = 'ftp://alice:opaquecredential123@files.example/report';
+    expect(findUnredactedSecret({ note: f9 })?.reason).toBe('URL carries credentials');
+    expect(appRedactReportString(f9)).toBe(f9);
+    const redacted = redactReportString(f9);
+    expect(redacted).toBe('ftp://%5BREDACTED%5D:%5BREDACTED%5D@files.example/report');
+    expect(findUnredactedSecret({ note: redacted })).toBeUndefined();
+    expect(redactReportString(redacted)).toBe(redacted);
+
+    for (const [text, secret, expected] of [
+      ['wss://alice:ws-userinfo-secret@relay.example/mcp', 'ws-userinfo-secret',
+        'wss://%5BREDACTED%5D:%5BREDACTED%5D@relay.example/mcp'],
+      ['x-mcp+v1://alice:custom-userinfo-secret@broker.example/session?a=1#frag', 'custom-userinfo-secret',
+        'x-mcp+v1://%5BREDACTED%5D:%5BREDACTED%5D@broker.example/session?a=1#[REDACTED]'],
+      ['see "sftp://alice:quoted-userinfo-secret@files.example".', 'quoted-userinfo-secret',
+        'see "sftp://%5BREDACTED%5D:%5BREDACTED%5D@files.example".'],
+      ['file://alice:file-userinfo-secret@files.example/report', 'file-userinfo-secret',
+        'file://alice:[REDACTED]@files.example/report'],
+      ['sftp alice:bare-userinfo-secret@files.example:22', 'bare-userinfo-secret',
+        'sftp alice:[REDACTED]@files.example:22'],
+      ['user alice:bare-ipv6-secret@[::1]/share', 'bare-ipv6-secret', 'user alice:[REDACTED]@[::1]/share'],
+      // The shape is syntactic, so a scheme-prefixed address is redacted as a password too.
+      ['write to mailto:ops@example.com', 'ops@example.com', 'write to mailto:[REDACTED]@example.com'],
+      ['wss://relay.example/mcp?access_token=ws-query-secret', 'ws-query-secret',
+        'wss://relay.example/mcp?access_token=%5BREDACTED%5D'],
+      ['{"note":"ftp://alice:json-userinfo-secret@files.example/ failed"}', 'json-userinfo-secret',
+        '{"note":"ftp://%5BREDACTED%5D:%5BREDACTED%5D@files.example/ failed"}'],
+    ]) {
+      expect(findUnredactedSecret({ note: text }), text).toBeDefined();
+      const output = redactReportString(text);
+      expect(output, text).toBe(expected);
+      expect(output, text).not.toContain(secret);
+      expect(findUnredactedSecret({ note: output }), text).toBeUndefined();
+      expect(redactReportString(output), text).toBe(output);
+    }
+
+    // Shapes that are not userinfo are preserved and accepted.
+    for (const kept of [
+      '{"email":"alice@example.com"}',
+      'Contact: ops@example.com',
+      'wss://relay.example/mcp',
+      'ftp://%5BREDACTED%5D:%5BREDACTED%5D@files.example/report',
+      'alice:[REDACTED]@files.example',
+      'see https://docs.example/path and ops@example.com',
+    ]) {
+      expect(redactReportString(kept), kept).toBe(kept);
+      expect(findUnredactedSecret({ note: kept }), kept).toBeUndefined();
+    }
+  });
+
   it.each(CREDENTIAL_FUZZ_CASES)('stores nothing the guard recognizes for %s', (_name, text, secrets) => {
     // The storage invariant: an artifact the guard accepts after the transform
     // carries none of the fixture secrets, in any encoding the embeddings use.
