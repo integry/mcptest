@@ -83,7 +83,7 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace, landingEligible }) => {
-  const { currentUser, loginWithGoogle } = useAuth();
+  const { currentUser, loading: authLoading, loginWithGoogle } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
@@ -282,9 +282,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     
     const shouldAutoConnect = tab.resultShareData || tab.autoConnect;
 
-    // Auto-connect if this tab requested it and we haven't already
+    // Auto-connect if this tab requested it and we haven't already. Waits for
+    // auth so a proxied connection carries the signed-in user's token.
     if (
       shouldAutoConnect &&
+      !authLoading &&
       tab.serverUrl && 
       connectionStatus === 'Disconnected' && 
       !hasAutoConnected.current
@@ -318,6 +320,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     tab.useProxy,
     tab.id,
     connectionStatus, 
+    authLoading,
     addLogEntry, 
     handleConnect,
     getCatalogProtocolEraHint,

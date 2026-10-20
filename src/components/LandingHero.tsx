@@ -14,37 +14,14 @@ import {
   LANDING_PATHS_LABEL,
   LANDING_REPORT_COVERAGE as REPORT_COVERAGE,
 } from '../content/landingCopy';
+import { selectLandingQuickPicks } from '../utils/landingQuickPicks';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
 import './LandingHero.css';
 
-const QUICK_PICK_LIMIT = 3;
 const RECENT_SERVER_LIMIT = 6;
 
-/**
- * Catalog servers a first-time visitor can connect to with one click: online
- * or unproven (never offline), no credentials of any kind, reachable directly
- * from the browser, and carrying a real publisher logo. Servers tagged as
- * suggested keep their catalog order ahead of the rest.
- */
-export const selectLandingQuickPicks = (
-  servers: CatalogServer[],
-  limit = QUICK_PICK_LIMIT
-): CatalogServer[] => {
-  const eligible = servers.filter((server) => (
-    server.status !== 'offline'
-    && server.authType === 'none'
-    && !server.requiresOAuth
-    && !server.requiredHeaders?.some(({ required }) => required !== false)
-    && server.browserAccess === 'direct'
-    && Boolean(server.browserUrl)
-    && Boolean(server.logoUrl)
-    && server.logoSourceKind !== 'generated-fallback'
-  ));
-  const suggested = eligible.filter((server) => server.tags.includes('suggested'));
-  const others = eligible.filter((server) => !server.tags.includes('suggested'));
-  return [...suggested, ...others].slice(0, limit);
-};
+export { selectLandingQuickPicks };
 
 /** The host a returning user recognises a recent endpoint by; the full URL stays in the tooltip. */
 export const getRecentServerLabel = (url: string): string => {

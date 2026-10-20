@@ -38,6 +38,18 @@ const {
   LANDING_REPORT_COVERAGE,
 } = require('../src/content/landingCopy.ts');
 const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/utils/ogImage.ts');
+const {
+  DASHBOARDS_NAVIGATION,
+  FOOTER_NAVIGATION,
+  LEARN_HUB_NAVIGATION,
+  LEGAL_NAVIGATION,
+  PRIMARY_NAVIGATION,
+  buildLearnTrackNavigation,
+} = require('../src/content/navigationLinks.ts');
+const { createDefaultSpaces, createDefaultTabs } = require('../src/utils/defaultWorkspace.ts');
+const { selectLandingQuickPicks } = require('../src/utils/landingQuickPicks.ts');
+const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.ts');
+const { getSpaceUrl } = require('../src/utils/urlUtils.ts');
 const { writeOgImages } = require('./og/ogImages.js');
 
 const SITE_URL = 'https://mcptest.io';
@@ -916,20 +928,48 @@ function renderLearnIndexHtml(indexHtml, learnIndex, articles) {
   });
 }
 
+const SHELL_FALLBACK_END = '<!-- /seo-shell-fallback -->';
+const SHELL_FALLBACK_PATTERN = /<div id="root">\s*<div class="[^"]*\bseo-shell-fallback\b[\s\S]*?<!-- \/seo-shell-fallback -->\s*<\/div>/;
 const LANDING_FALLBACK_PATTERN = /<div id="root">\s*<section class="landing seo-landing-fallback"[\s\S]*?<\/section>\s*<\/div>/;
 
+function renderQuickPicks(quickPicks) {
+  if (quickPicks.length === 0) return [];
+  return [
+    '    <div class="landing-quick-picks">',
+    '      <span class="landing-quick-picks-label" id="landing-quick-picks-label">Try with</span>',
+    '      <ul aria-labelledby="landing-quick-picks-label">',
+    ...quickPicks.map(server => [
+      `        <li><button type="button" class="landing-quick-pick" data-server-id="${escapeHtml(server.id)}" title="${escapeHtml(getPreferredCatalogEndpoint(server).url)}">`,
+      `<span class="catalog-server-logo landing-quick-pick-logo" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt=""></span>`,
+      `${escapeHtml(server.name)}</button></li>`,
+    ].join('')),
+    '      </ul>',
+    '    </div>',
+  ];
+}
+
 /**
- * Static copy of LandingHero for crawlers: the same strings from
- * src/content/landingCopy.ts in the component's own elements and classes, so
- * the page looks the same before React mounts and replaces the root. The
- * connect form and quick picks are interactive and left to the app.
+ * Static copy of LandingHero: the same strings from src/content/landingCopy.ts
+ * in the component's own elements and classes, including the connect form
+ * and quick picks as inert markup, so the page looks the same before React
+ * mounts and replaces the root.
  */
-function renderLandingFallback(catalogCount) {
+function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle = false } = {}) {
   return [
     '<section class="landing seo-landing-fallback" aria-labelledby="landing-title">',
     '  <div class="landing-hero">',
     `    <h1 id="landing-title" class="landing-title">${escapeHtml(LANDING_HEADLINE)}</h1>`,
     `    <p class="landing-lede">${escapeHtml(LANDING_LEDE)}</p>`,
+    '    <div class="landing-connect">',
+    '      <label for="serverUrl" class="visually-hidden">MCP endpoint URL</label>',
+    '      <input id="serverUrl" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" class="form-control landing-connect-input" placeholder="https://example.com/mcp" value="" readonly>',
+    '      <button id="connectBtn" type="button" class="btn btn-primary landing-connect-button" disabled>Connect</button>',
+    '    </div>',
+    ...renderQuickPicks(quickPicks),
+    // TabContent passes the connection panel as LandingHero's advancedOptions.
+    ...(advancedToggle
+      ? ['    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>Advanced options<span class="landing-advanced-hint">headers, auth, proxy</span></button>']
+      : []),
     '  </div>',
     `  <nav class="landing-paths" aria-label="${escapeHtml(LANDING_PATHS_LABEL)}">`,
     '    <ul>',
@@ -957,22 +997,250 @@ function renderLandingFallback(catalogCount) {
 }
 
 /**
+ * Header as src/components/Header.tsx renders it while auth is loading. The
+ * theme toggle carries both icons; the inline style shows the one matching
+ * the data-theme that public/theme-init.js set before this paints.
+ */
+function renderHeaderFallback({ authEnabled }) {
+  return [
+    '<header class="app-header">',
+    '  <div class="app-header-brand">',
+    '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu"><span class="hamburger"></span></button>',
+    '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo.png" alt="MCP Logo" width="40" height="40"></a>',
+    '    <a href="/" class="app-brand-copy" aria-label="mcptest.io home">',
+    '      <h1 class="app-brand-title">mcptest.io</h1>',
+    '      <p class="app-brand-subtitle d-none d-md-block">Remote MCP Inspector</p>',
+    '    </a>',
+    '  </div>',
+    '  <div class="app-header-actions d-none d-md-flex">',
+    '    <button type="button" class="btn btn-outline-secondary app-theme-toggle" aria-label="Toggle color theme">'
+      + '<i class="theme-toggle-icon bi bi-moon-stars-fill"></i><i class="theme-toggle-icon bi bi-sun-fill"></i></button>',
+    ...(authEnabled
+      ? ['    <button type="button" class="btn btn-sm btn-primary app-auth-placeholder" style="visibility: hidden;" aria-hidden="true" tabindex="-1" disabled>Login with Google</button>']
+      : []),
+    '  </div>',
+    '</header>',
+  ].join('\n');
+}
+
+/** Same inline style SideNav gives a dashboard with no cards to check. */
+const HEALTH_INDICATOR_STYLE = 'display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #6c757d; flex-shrink: 0; vertical-align: middle; position: relative; top: -1px;';
+
+function cardCountLabel(count) {
+  return `${count} ${count === 1 ? 'card' : 'cards'}`;
+}
+
+/**
+ * Desktop sidebar as src/components/SideNav.tsx renders it on the playground
+ * for a visitor with nothing saved and the sidebar expanded: the workspace
+ * and learn groups from src/content/navigationLinks.ts, the default dashboard
+ * from src/utils/defaultWorkspace.ts, and the footer.
+ */
+function renderSideNavFallback({ learnTracks, versionInfo, year }) {
+  const idSuffix = 'desktop';
+  const learnPrefix = `sidenav-${idSuffix}`;
+  const commitDate = new Date(versionInfo.commitDate);
+  const updated = `${commitDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${commitDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const sidenavLink = (item, className, extra = '') => (
+    `<a href="${escapeHtml(item.path)}" class="${className}"${extra}><i class="bi ${escapeHtml(item.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(item.label)}</span></a>`
+  );
+  return [
+    `<nav id="app-sidenav-${idSuffix}" class="app-sidenav d-flex flex-column flex-grow-1" aria-label="Main">`,
+    `  <section class="sidenav-group" aria-labelledby="workspace-nav-heading-${idSuffix}">`,
+    `    <h2 id="workspace-nav-heading-${idSuffix}" class="sidenav-section-label">Workspace</h2>`,
+    '    <ul class="sidenav-list">',
+    ...PRIMARY_NAVIGATION.map(item => {
+      const active = item.path === '/';
+      return `      <li class="nav-item">${sidenavLink(item, `nav-link sidenav-link${active ? ' active' : ''}`, active ? ' aria-current="page"' : '')}</li>`;
+    }),
+    '      <li class="nav-item sidenav-dashboards">',
+    '        <div class="sidenav-group-header">',
+    `          <button type="button" class="nav-link sidenav-link sidenav-group-toggle" aria-expanded="true" aria-controls="sidenav-dashboards-${idSuffix}"><i class="bi ${escapeHtml(DASHBOARDS_NAVIGATION.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(DASHBOARDS_NAVIGATION.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
+    '          <div class="sidenav-group-actions">',
+    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Refresh health status" aria-label="Refresh health status of all dashboards"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>',
+    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Create new dashboard" aria-label="Create new dashboard"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>',
+    '          </div>',
+    '        </div>',
+    `        <div id="sidenav-dashboards-${idSuffix}" class="sidenav-dashboards-body">`,
+    '          <ul class="nav flex-column dashboard-list" role="listbox" aria-label="Dashboards">',
+    ...createDefaultSpaces().map(space => [
+      '            <li class="nav-item" tabindex="-1" role="option" aria-selected="false">',
+      `<a href="${escapeHtml(getSpaceUrl(space.name))}" class="dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center" style="cursor: move; opacity: 1; user-select: none;">`,
+      `<span class="me-2 health-indicator health-indicator-gray" title="No cards to check" style="${HEALTH_INDICATOR_STYLE}"></span>`,
+      `<span class="dashboard-name flex-grow-1 text-truncate" title="${escapeHtml(space.name)}">${escapeHtml(space.name)}</span>`,
+      `<span class="dashboard-card-count">${cardCountLabel(space.cards.length)}</span></a></li>`,
+    ].join('')),
+    '          </ul>',
+    '        </div>',
+    '      </li>',
+    '    </ul>',
+    '  </section>',
+    `  <section class="sidenav-group content-track-nav" aria-labelledby="${learnPrefix}-learn-heading">`,
+    `    <h2 id="${learnPrefix}-learn-heading" class="sidenav-section-label">Learn</h2>`,
+    '    <ul class="sidenav-list">',
+    `      <li class="nav-item">${sidenavLink(LEARN_HUB_NAVIGATION, 'nav-link sidenav-link')}</li>`,
+    ...learnTracks.map(track => [
+      `      <li class="nav-item content-track" data-track="${escapeHtml(track.id)}">`,
+      `<button type="button" class="nav-link sidenav-link sidenav-group-toggle content-track-label" aria-expanded="false" aria-controls="${learnPrefix}-track-${escapeHtml(track.id)}"><i class="bi ${escapeHtml(track.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(track.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
+      `<ul id="${learnPrefix}-track-${escapeHtml(track.id)}" class="sidenav-list sidenav-sublist" aria-label="${escapeHtml(track.label)} guides" hidden>`,
+      ...track.items.map(item => (
+        `<li class="nav-item"><a href="${escapeHtml(item.path)}" class="nav-link sidenav-link sidenav-sublink">${escapeHtml(item.navTitle)}</a></li>`
+      )),
+      '</ul></li>',
+    ].join('')),
+    '    </ul>',
+    '  </section>',
+    '  <div class="sidenav-footer">',
+    '    <ul class="sidenav-footer-links" aria-label="Project links">',
+    ...FOOTER_NAVIGATION.map(link => (
+      `      <li><a href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link">${escapeHtml(link.label)}<span class="visually-hidden"> (opens in a new tab)</span></a></li>`
+    )),
+    '    </ul>',
+    '    <div class="sidenav-legal">',
+    ...LEGAL_NAVIGATION.map(link => (
+      `      <a href="${escapeHtml(link.href)}" class="sidenav-footer-link">${escapeHtml(link.label)}</a>`
+    )),
+    '    </div>',
+    `    <p class="sidenav-build"><span>&copy; ${year} Unchained Development OÜ</span><span>Updated <a href="${escapeHtml(getGithubCommitUrl(versionInfo.commitHash))}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link"><time datetime="${escapeHtml(versionInfo.commitDate)}">${escapeHtml(updated)}</time></a></span></p>`,
+    `    <button type="button" class="sidenav-collapse-toggle" aria-expanded="true" aria-controls="app-sidenav-${idSuffix}" aria-label="Collapse sidebar" title="Collapse sidebar"><i class="bi bi-chevron-double-left" aria-hidden="true"></i><span class="sidenav-label">Collapse</span></button>`,
+    '  </div>',
+    '</nav>',
+  ].join('\n');
+}
+
+/**
+ * The full first frame of the home page: header, sidebar, playground tab
+ * strip and landing, in the elements and classes App.tsx renders for a
+ * first-time visitor. React replaces it in one commit when it mounts.
+ * The mobile drawer is omitted; it is off-screen until opened.
+ */
+function renderShellFallback({
+  catalogCount,
+  quickPicks = [],
+  learnTracks = [],
+  authEnabled = false,
+  versionInfo = VERSION_INFO,
+  year = new Date().getFullYear(),
+}) {
+  const [tab] = createDefaultTabs();
+  return [
+    '<div class="app-shell container-fluid vh-100 d-flex flex-column p-0 seo-shell-fallback">',
+    '<style>',
+    ":root[data-theme='dark'] .seo-shell-fallback .theme-toggle-icon.bi-moon-stars-fill,",
+    ":root:not([data-theme='dark']) .seo-shell-fallback .theme-toggle-icon.bi-sun-fill { display: none; }",
+    '</style>',
+    renderHeaderFallback({ authEnabled }),
+    '<main class="app-workspace flex-grow-1 d-flex overflow-hidden" role="main">',
+    '<div class="desktop-sidebar col-auto p-2 d-flex flex-column">',
+    renderSideNavFallback({ learnTracks, versionInfo, year }),
+    '</div>',
+    '<div class="main-content col overflow-auto p-3 position-relative">',
+    '<div class="view-panel" style="height: 100%;">',
+    '<div class="h-100 d-flex flex-column">',
+    '<div class="playground-tabs-wrapper">',
+    '<div class="playground-tab-strip">',
+    '<div class="nav nav-tabs playground-tabs" role="tablist">',
+    '<div class="nav-item position-relative" role="presentation">'
+      + `<button type="button" class="nav-link active active-tab-override" role="tab" aria-selected="true" title="${escapeHtml(tab.title)}">`
+      + '<span class="me-2 playground-tab-status" style="width: 8px; height: 8px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>'
+      + `<span class="playground-tab-label">${escapeHtml(tab.title)}</span></button></div>`,
+    '<div class="nav-item"><button type="button" class="nav-link playground-tab-new">+ New</button></div>',
+    '</div>',
+    '</div>',
+    '</div>',
+    '<div class="flex-grow-1 position-relative">',
+    '<div class="tab-content-panel" style="height: 100%; position: static; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;">',
+    renderLandingFallback(catalogCount, quickPicks, { advancedToggle: true }),
+    '</div>',
+    '</div>',
+    '</div>',
+    '</div>',
+    '</div>',
+    '</main>',
+    '</div>',
+    SHELL_FALLBACK_END,
+  ].join('\n');
+}
+
+/**
  * dist/index.html is both the home page and the shell every other page is
- * rendered from. Running the generator twice must not copy the landing
+ * rendered from. Running the generator twice must not copy the home page's
  * fallback into other pages, so a previous run's fallback is removed first.
  */
 function stripLandingFallback(indexHtml) {
-  const html = indexHtml.replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>');
+  const html = indexHtml
+    .replace(SHELL_FALLBACK_PATTERN, '<div id="root"></div>')
+    .replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>');
   if (!html.includes('<div id="root"></div>')) {
     throw new Error('dist/index.html has no empty <div id="root"></div>; rebuild with Vite before generating SEO pages.');
   }
   return html;
 }
 
-function renderHomeHtml(indexHtml, homeMetadata, catalogCount) {
+function renderHomeHtml(indexHtml, homeMetadata, catalogCount, shellOptions = {}) {
   return renderStaticPageHtml(indexHtml, '/', homeMetadata, {
-    fallbackHtml: renderLandingFallback(catalogCount),
+    fallbackHtml: renderShellFallback({ catalogCount, ...shellOptions }),
   });
+}
+
+/**
+ * Fonts the first frame paints with: Inter's latin subset for the text, and
+ * the icon font, which is `font-display: block` and moves the sidebar labels
+ * when it arrives.
+ */
+const FIRST_FRAME_FONTS = [
+  { label: 'Inter latin', pattern: /^\/assets\/inter-latin-wght-normal-[\w-]+\.woff2(?:\?[\w=&-]*)?$/ },
+  { label: 'Bootstrap Icons', pattern: /^\/assets\/bootstrap-icons-[\w-]+\.woff2(?:\?[\w=&-]*)?$/ },
+];
+const FONT_PRELOAD_PATTERN = /<link rel="preload" href="[^"]*" as="font"[^>]*>\n\s*/g;
+
+/**
+ * Font URLs exactly as the production stylesheets request them (hash and
+ * query included), so the preload and the @font-face fetch share one request.
+ */
+function findFirstFrameFontAssets(assetsDirectory) {
+  const stylesheets = fs.existsSync(assetsDirectory)
+    ? fs.readdirSync(assetsDirectory).filter(name => name.endsWith('.css'))
+    : [];
+  const urls = new Set(stylesheets.flatMap(name => Array.from(
+    fs.readFileSync(path.join(assetsDirectory, name), 'utf8').matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g),
+    match => match[1]
+  )));
+  return FIRST_FRAME_FONTS.map(({ label, pattern }) => {
+    const matches = [...urls].filter(url => pattern.test(url));
+    if (matches.length !== 1) {
+      throw new Error(`Expected one ${label} woff2 referenced from ${assetsDirectory}/*.css, found ${matches.length ? matches.join(', ') : 'none'}.`);
+    }
+    return matches[0];
+  });
+}
+
+/**
+ * Preloads the first frame's fonts so text paints in Inter rather than
+ * swapping in after a fallback-font frame. Placed before the scripts and
+ * stylesheets so the requests start as soon as the head is parsed;
+ * idempotent across reruns.
+ */
+function addFontPreloads(indexHtml, fontHrefs) {
+  const html = indexHtml.replace(FONT_PRELOAD_PATTERN, '');
+  const tags = fontHrefs.map(href => (
+    `<link rel="preload" href="${escapeHtml(href)}" as="font" type="font/woff2" crossorigin />\n    `
+  )).join('');
+  const anchor = html.search(/<script type="module"|<link rel="stylesheet"/);
+  if (anchor === -1) return html.replace('</head>', `    ${tags}</head>`);
+  return `${html.slice(0, anchor)}${tags}${html.slice(anchor)}`;
+}
+
+/** Reads a VITE_ build flag the way Vite does: process env first, then .env files. */
+function readBuildEnv(name, mode = 'production') {
+  if (process.env[name] !== undefined) return process.env[name];
+  for (const file of [`.env.${mode}.local`, '.env.local', `.env.${mode}`, '.env']) {
+    const envPath = path.join(projectRoot, file);
+    if (!fs.existsSync(envPath)) continue;
+    const match = fs.readFileSync(envPath, 'utf8').match(new RegExp(`^\\s*${name}\\s*=\\s*["']?([^"'\\r\\n#]*)`, 'm'));
+    if (match) return match[1].trim();
+  }
+  return undefined;
 }
 
 function renderCatalogHtml(indexHtml, catalogMetadata) {
@@ -1080,11 +1348,11 @@ function writeArticlePages(indexHtml, learnIndex, articles) {
   }
 }
 
-function writeHomeAndCatalogPages(indexHtml, pageMetadata, catalogCount) {
+function writeHomeAndCatalogPages(indexHtml, pageMetadata, catalogCount, shellOptions) {
   // catalog.html, not catalog/index.html: hosts serve /catalog from it without
   // a trailing-slash redirect, and the app matches /catalog exactly.
   fs.writeFileSync(path.join(distRoot, 'catalog.html'), renderCatalogHtml(indexHtml, pageMetadata.catalog), 'utf8');
-  fs.writeFileSync(indexPath, renderHomeHtml(indexHtml, pageMetadata.home, catalogCount), 'utf8');
+  fs.writeFileSync(indexPath, renderHomeHtml(indexHtml, pageMetadata.home, catalogCount, shellOptions), 'utf8');
 }
 
 function writeLearnFeed(articles, learnIndex) {
@@ -1305,13 +1573,19 @@ async function main() {
     reservedPaths: Object.keys(pageMetadata.docs).map(slug => `/docs/${slug}`),
   });
   const servers = mergeCatalogServers(seeds, validationResults, capabilitySnapshots);
-  const indexHtml = stripLandingFallback(fs.readFileSync(indexPath, 'utf8'));
+  const fontHrefs = findFirstFrameFontAssets(path.join(distRoot, 'assets'));
+  const indexHtml = addFontPreloads(stripLandingFallback(fs.readFileSync(indexPath, 'utf8')), fontHrefs);
+  const shellOptions = {
+    quickPicks: selectLandingQuickPicks(servers),
+    learnTracks: buildLearnTrackNavigation(buildTrackNavigation(articles)),
+    authEnabled: readBuildEnv('VITE_FIREBASE_AUTH_ENABLED') === 'true',
+  };
 
   writeServerPages(indexHtml, servers);
   writeStaticPages(indexHtml, pageMetadata.docs);
   writeArticlePages(indexHtml, learnIndex, articles);
   // Last: overwrites the shell the pages above were rendered from.
-  writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length);
+  writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length, shellOptions);
   writeLearnFeed(articles, learnIndex);
   writeLlmsTxt(articles);
   writeSitemap(servers, articles);
@@ -1338,7 +1612,10 @@ module.exports = {
   renderArticleMarkdown,
   renderCatalogHtml,
   renderHomeHtml,
+  addFontPreloads,
+  findFirstFrameFontAssets,
   renderLandingFallback,
+  renderShellFallback,
   renderLearnArticleHtml,
   renderLearnIndexHtml,
   renderLlmsTxt,

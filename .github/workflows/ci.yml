@@ -44,5 +44,8 @@ jobs:
       - name: Build web app and static pages
         run: npm run build
 
+      - name: First paint of the built home page
+        run: npm run test:first-paint
+
       - name: Build workers (dry run)
         run: npm run build:workers

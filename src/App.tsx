@@ -75,6 +75,7 @@ import {
 } from './utils/oauthTrace';
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
 import { isLandingEligible } from './utils/landingEligibility';
+import { createDefaultSpaces, createDefaultTabs } from './utils/defaultWorkspace';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -229,8 +230,15 @@ export const getLearnPageViewTitle = (path: string) => {
   return isLearnIndexPath(path) ? 'Learn MCP' : 'Guide Not Found';
 };
 
-// Helper function to get the initial theme
+// public/theme-init.js sets data-theme on <html> before the first paint; the
+// app starts from that attribute so the two can never disagree. The fallback
+// repeats the script's logic for environments where it did not run (tests).
 const getInitialTheme = (): 'light' | 'dark' => {
+  const applied = document.documentElement.getAttribute('data-theme');
+  if (applied === 'light' || applied === 'dark') {
+    return applied;
+  }
+
   // 1. Check for a saved theme in localStorage
   const savedTheme = localStorage.getItem('theme');
   if (savedTheme === 'light' || savedTheme === 'dark') {
@@ -311,11 +319,11 @@ declare global {
 }
 
 function App() {
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   // --- State ---
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [spaces, setSpaces] = useState<Space[]>(() => {
-    const loaded = loadSpaces([{ id: 'default', name: 'Default Dashboard', cards: [] }]);
+    const loaded = loadSpaces(createDefaultSpaces());
     console.log('[DEBUG] Initial dashboards loaded from localStorage:', loaded.map(s => ({
       id: s.id,
       name: s.name,
@@ -341,7 +349,7 @@ function App() {
         return parsedTabs;
       }
     }
-    return [{ id: uuidv4(), title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected', useProxy: true }];
+    return createDefaultTabs();
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     // Ensure we always have a valid initial activeTabId
@@ -1265,51 +1273,64 @@ function App() {
     };
   };
 
-  // Preload health checks on page load (cards connect to their own servers)
+  // Preload health checks on page load (cards connect to their own servers).
+  // Whether to run is decided from the URL the page loaded with; the checks
+  // wait for auth to resolve so proxied cards carry the signed-in user's token.
+  const loadHealthCheckPendingRef = useRef<boolean | null>(null);
   useEffect(() => {
-    // Skip health check if we're loading with a result share URL or server URL
-    const path = window.location.pathname;
-    const isResultShareUrl = parseResultShareUrl(path, window.location.search) !== null;
-    const isServerUrl = parseServerUrl(path) !== null;
-    const isOAuthCallback = path === '/oauth/callback';
-    
-    // Check if we just completed OAuth (to prevent health check from interfering)
-    const oauthCompletedTime = sessionStorage.getItem('oauth_completed_time');
-    const recentOAuthCompletion = oauthCompletedTime && (Date.now() - parseInt(oauthCompletedTime) < 30000); // 30 seconds
-    
-    if (isResultShareUrl || isServerUrl || isOAuthCallback || recentOAuthCompletion) {
-      console.log('[Health Check] Skipping auto health check due to:', {
-        deepLinkUrl: isResultShareUrl || isServerUrl,
-        oauthCallback: isOAuthCallback,
-        recentOAuth: recentOAuthCompletion
-      });
-      setHealthCheckLoading(false);
-      return;
-    }
-    
-    const dashboardsWithCards = spaces.filter(space => space.cards.length > 0);
-    console.log('[Health Check] Page loaded, checking for dashboards with cards...', {
-      totalDashboards: spaces.length,
-      dashboardsWithCards: dashboardsWithCards.length,
-      totalCards: spaces.reduce((sum, space) => sum + space.cards.length, 0)
-    });
-    
-    // Run health checks if we have any dashboards with cards
-    if (dashboardsWithCards.length > 0) {
-      console.log('[Health Check] Found dashboards with cards, starting auto health check...');
-      // Add a small delay to ensure component is fully mounted
-      setTimeout(() => {
-        performAllDashboardsHealthCheck().then(() => {
-          console.log('[Health Check] Auto-preload completed successfully');
-        }).catch((error) => {
-          console.error('[Health Check] Auto-preload failed:', error);
+    const shouldRunLoadHealthCheck = () => {
+      // Skip health check if we're loading with a result share URL or server URL
+      const path = window.location.pathname;
+      const isResultShareUrl = parseResultShareUrl(path, window.location.search) !== null;
+      const isServerUrl = parseServerUrl(path) !== null;
+      const isOAuthCallback = path === '/oauth/callback';
+
+      // Check if we just completed OAuth (to prevent health check from interfering)
+      const oauthCompletedTime = sessionStorage.getItem('oauth_completed_time');
+      const recentOAuthCompletion = oauthCompletedTime && (Date.now() - parseInt(oauthCompletedTime) < 30000); // 30 seconds
+
+      if (isResultShareUrl || isServerUrl || isOAuthCallback || recentOAuthCompletion) {
+        console.log('[Health Check] Skipping auto health check due to:', {
+          deepLinkUrl: isResultShareUrl || isServerUrl,
+          oauthCallback: isOAuthCallback,
+          recentOAuth: recentOAuthCompletion
         });
-      }, 2000); // 2 second delay to ensure everything is ready
-    } else {
+        setHealthCheckLoading(false);
+        return false;
+      }
+
+      const dashboardsWithCards = spaces.filter(space => space.cards.length > 0);
+      console.log('[Health Check] Page loaded, checking for dashboards with cards...', {
+        totalDashboards: spaces.length,
+        dashboardsWithCards: dashboardsWithCards.length,
+        totalCards: spaces.reduce((sum, space) => sum + space.cards.length, 0)
+      });
+
+      // Run health checks if we have any dashboards with cards
+      if (dashboardsWithCards.length > 0) {
+        console.log('[Health Check] Found dashboards with cards, starting auto health check...');
+        return true;
+      }
       setHealthCheckLoading(false);
       console.log('[Health Check] No dashboards with cards found, skipping auto health check');
+      return false;
+    };
+
+    if (loadHealthCheckPendingRef.current === null) {
+      loadHealthCheckPendingRef.current = shouldRunLoadHealthCheck();
     }
-  }, []); // Run once on mount
+    if (authLoading || !loadHealthCheckPendingRef.current) return;
+    loadHealthCheckPendingRef.current = false;
+
+    // Add a small delay to ensure component is fully mounted
+    setTimeout(() => {
+      performAllDashboardsHealthCheck().then(() => {
+        console.log('[Health Check] Auto-preload completed successfully');
+      }).catch((error) => {
+        console.error('[Health Check] Auto-preload failed:', error);
+      });
+    }, 2000); // 2 second delay to ensure everything is ready
+  }, [authLoading]); // Once on mount, then again when auth resolves
 
   // --- Add to Dashboard Functionality ---
   const handleAddCardToDashboard = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
@@ -1745,8 +1766,10 @@ function App() {
       }
     };
     
+    // Proxied cards need the signed-in user's token, so wait for auth.
+    if (authLoading) return;
     refreshOAuthCards();
-  }, [spaces.filter(s => s.cards.some((c: any) => c.needsOAuthRefresh)).length]); // Only run when cards need OAuth refresh
+  }, [spaces.filter(s => s.cards.some((c: any) => c.needsOAuthRefresh)).length, authLoading]); // Only run when cards need OAuth refresh
 
   // --- Effect to Auto-Refresh Cards on Dashboard Entry (Sequentially with Retries) ---
   useEffect(() => {
@@ -1782,10 +1805,12 @@ function App() {
       }
     };
 
+    // Proxied cards need the signed-in user's token, so wait for auth.
+    if (authLoading) return;
     refreshCardsSequentially(); // Call the async function
 
-    // Dependencies: Trigger only when view changes or selected space changes.
-  }, [activeView, selectedSpaceId]); // Remove loadedSpaces from dependencies to avoid infinite loop
+    // Dependencies: Trigger only when view changes, selected space changes, or auth resolves.
+  }, [activeView, selectedSpaceId, authLoading]); // Remove loadedSpaces from dependencies to avoid infinite loop
 
 
  // --- Render Logic ---
