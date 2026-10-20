@@ -74,6 +74,8 @@ function createServer() {
   return server;
 }
 
+const ALLOWED_ORIGINS = new Set(['https://mcptest.io', 'https://app.example.com']);
+
 const mcp = createMcpHandler(createServer, {
   route: '/mcp',
   allowedHostnames: ['mcp.example.com'],
@@ -86,14 +88,25 @@ const mcp = createMcpHandler(createServer, {
   },
 });
 
+// corsOptions.origin is a single string, so echo any other allowed origin.
+function withRequestOrigin(request: Request, response: Response): Response {
+  const origin = request.headers.get('Origin');
+  const headers = new Headers(response.headers);
+  headers.append('Vary', 'Origin');
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    headers.set('Access-Control-Allow-Origin', origin);
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
-  fetch(request, env, ctx) {
-    return mcp(request, env, ctx);
+  async fetch(request, env, ctx) {
+    return withRequestOrigin(request, await mcp(request, env, ctx));
   },
 } satisfies ExportedHandler;
 ```
 
-Three defaults matter here. The handler's built-in allowlist covers localhost and the Worker's `workers.dev` hostname, so a custom domain needs `allowedHostnames` and `allowedOriginHostnames` or browser requests are rejected with `403`. The default CORS options expose only `mcp-session-id`, so a browser cannot read `MCP-Protocol-Version`, `WWW-Authenticate`, or `Retry-After` until you set `exposeHeaders`. And each `corsOptions` field replaces its default as a whole string, so restate every header when you change one.
+Four defaults matter here. The handler's built-in allowlist covers localhost and the Worker's `workers.dev` hostname, so a custom domain needs `allowedHostnames` and `allowedOriginHostnames` or browser requests are rejected with `403`. `allowedOriginHostnames` only decides which origins pass validation; `corsOptions.origin` takes one fixed string, which every response, preflights included, sends as `Access-Control-Allow-Origin`. A browser at any other allowed origin rejects that response, so the wrapper replaces the value with the request's `Origin` when it is on the same allowlist and adds `Vary: Origin`. The default CORS options expose only `mcp-session-id`, so a browser cannot read `MCP-Protocol-Version`, `WWW-Authenticate`, or `Retry-After` until you set `exposeHeaders`. And each `corsOptions` field replaces its default as a whole string, so restate every header when you change one.
 
 `McpAgent` is now a feature-frozen path for existing stateful SDK v1 deployments, backed by a Durable Object per session. Use it only to keep such a deployment running.
 
