@@ -12,7 +12,7 @@ import {
   validateArticles,
   type LearnArticle,
 } from './contentModel';
-import { createHeadingIdAllocator, extractOutline, slugifyHeading, splitHeadingAnchor } from './outline';
+import { createHeadingIdAllocator, extractOutline, headingPlainText, slugifyHeading, splitHeadingAnchor } from './outline';
 
 const baseFrontmatter = {
   title: 'Sample article',
@@ -241,6 +241,31 @@ describe('outline extraction', () => {
       { level: 2, text: 'Streaming', id: 'streaming-2' },
       { level: 2, text: 'Another', id: 'streaming-3' },
       { level: 2, text: 'Bad {#Not Valid}', id: 'bad-not-valid' },
+    ]);
+  });
+
+  it('decodes character references and keeps link labels so ids match the parsed heading', () => {
+    expect(headingPlainText('Authentication &amp; permissions')).toBe('Authentication & permissions');
+    expect(headingPlainText('[OAuth](https://example.com)')).toBe('OAuth');
+    expect(headingPlainText('Tools &#38; resources &#x26; prompts')).toBe('Tools & resources & prompts');
+    expect(headingPlainText('Caf&eacute; &nbsp;menu')).toBe('Café \u00a0menu');
+    expect(headingPlainText('Literal &notanentity; stays')).toBe('Literal &notanentity; stays');
+    expect(headingPlainText('Escaped \\&amp; stays')).toBe('Escaped &amp; stays');
+    expect(headingPlainText('Code `&amp;` ``a`b`` stays')).toBe('Code &amp; a`b stays');
+    expect(headingPlainText('![Logo](/logo.png) alt text')).toBe('Logo alt text');
+    expect(headingPlainText('Invalid &#0; &#1114112; references')).toBe('Invalid \uFFFD \uFFFD references');
+
+    const outline = extractOutline([
+      '## Authentication &amp; permissions',
+      '## [OAuth](https://example.com)',
+      '### Tools &#38; resources',
+      '## `&amp;` in code',
+    ].join('\n'));
+    expect(outline).toEqual([
+      { level: 2, text: 'Authentication & permissions', id: 'authentication-permissions' },
+      { level: 2, text: 'OAuth', id: 'oauth' },
+      { level: 3, text: 'Tools & resources', id: 'tools-resources' },
+      { level: 2, text: '&amp; in code', id: 'amp-in-code' },
     ]);
   });
 

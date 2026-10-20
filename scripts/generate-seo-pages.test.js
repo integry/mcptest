@@ -5,6 +5,7 @@ import catalogSeeds from '../src/data/serverCatalog.json';
 import catalogValidation from '../src/data/catalogValidation.json';
 import catalogCapabilities from '../src/data/catalogCapabilities.json';
 import { createCapabilityInventory } from '../src/utils/capabilityInventory';
+import { extractOutline } from '../src/content/outline';
 
 const {
   loadArticles, mergeCatalogServers, renderLearnArticleHtml, renderLearnIndexHtml, renderServerHtml,
@@ -562,6 +563,26 @@ describe('generated page metadata', () => {
     expect(html).toContain('<h2 id="example-2">Example</h2>');
     expect(html).toContain('<h2 id="example-2-2">Example-2</h2>');
     expect(html).toContain('<h2 id="pinned"><code>code</code></h2>');
+  });
+
+  it('prerenders entity and link headings with the ids the outline links to', () => {
+    const markdown = [
+      '## Authentication &amp; permissions',
+      '',
+      '## [OAuth](https://example.com)',
+      '',
+      '### Tools &#38; resources',
+      '',
+      '## `&amp;` in code',
+    ].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<h2 id="authentication-permissions">');
+    expect(html).toContain('<h2 id="oauth"><a href="https://example.com">OAuth</a></h2>');
+    expect(html).toContain('<h3 id="tools-resources">');
+    expect(html).toContain('<h2 id="amp-in-code"><code>&amp;amp;</code> in code</h2>');
+
+    const ids = Array.from(html.matchAll(/<h[23] id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
   });
 
   it('renders the Learn index grouped by track', () => {

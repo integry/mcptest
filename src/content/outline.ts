@@ -4,6 +4,8 @@
  * plain-text slug so anchors agree.
  */
 
+import { decodeNamedCharacterReference } from 'decode-named-character-reference';
+
 export interface OutlineHeading {
   level: 2 | 3;
   text: string;
@@ -57,14 +59,66 @@ export const createHeadingIdAllocator = () => {
   };
 };
 
-/** Strips inline Markdown (code, emphasis, links) down to plain text. */
-export const headingPlainText = (markdown: string) =>
+/** A code span: a backtick run, its literal content, and a closing run of the same length. */
+const CODE_SPAN_PATTERN = /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g;
+
+/** A CommonMark backslash escape of ASCII punctuation, or a character reference such as `&amp;`, `&#38;`, `&#x26;`. */
+const ESCAPE_OR_CHARACTER_REFERENCE_PATTERN = /\\([!-/:-@[-`{-~])|&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z][a-z0-9]{0,30});/gi;
+
+/**
+ * Decodes a numeric character reference the way CommonMark parsers do:
+ * control characters, surrogates, noncharacters, and out-of-range code
+ * points become U+FFFD instead of throwing or leaking into ids.
+ */
+const decodeNumericCharacterReference = (reference: string): string => {
+  const hex = reference[1] === 'x' || reference[1] === 'X';
+  const code = Number.parseInt(reference.slice(hex ? 2 : 1), hex ? 16 : 10);
+  const invalid =
+    code < 9 ||
+    code === 11 ||
+    (code > 13 && code < 32) ||
+    (code > 126 && code < 160) ||
+    (code > 0xd7ff && code < 0xe000) ||
+    (code > 0xfdcf && code < 0xfdf0) ||
+    (code & 0xffff) === 0xffff ||
+    (code & 0xffff) === 0xfffe ||
+    code > 0x10ffff;
+  return invalid ? '\uFFFD' : String.fromCodePoint(code);
+};
+
+/** Decodes one character reference (without `&` and `;`), or returns undefined when Markdown would keep it literal. */
+const decodeCharacterReference = (reference: string): string | undefined => {
+  if (reference[0] === '#') return decodeNumericCharacterReference(reference);
+  const decoded = decodeNamedCharacterReference(reference);
+  return decoded === false ? undefined : decoded;
+};
+
+/** Plain text of a heading fragment outside code spans: links become labels, emphasis markers go, escapes and entities decode. */
+const inlinePlainText = (markdown: string) =>
   markdown
-    .replace(/`([^`]*)`/g, '$1')
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[*_~]+/g, '')
-    .replace(/\\([\\`*_{}[\]()#+\-.!])/g, '$1')
-    .trim();
+    .replace(ESCAPE_OR_CHARACTER_REFERENCE_PATTERN, (match, escaped: string | undefined, reference: string | undefined) =>
+      escaped ?? decodeCharacterReference(reference ?? '') ?? match
+    );
+
+/**
+ * Strips inline Markdown (code, emphasis, links, images) down to the plain
+ * text a Markdown parser would produce, so ids computed from source agree
+ * with ids computed from the parsed tree. Code span contents stay literal and
+ * character references such as `&amp;` decode exactly as they do in the
+ * browser renderer.
+ */
+export const headingPlainText = (markdown: string) => {
+  let text = '';
+  let cursor = 0;
+  for (const match of markdown.matchAll(CODE_SPAN_PATTERN)) {
+    text += inlinePlainText(markdown.slice(cursor, match.index)) + match[2];
+    cursor = match.index + match[0].length;
+  }
+  text += inlinePlainText(markdown.slice(cursor));
+  return text.trim();
+};
 
 /** Extracts h2 and h3 headings from Markdown source, skipping fenced code. */
 export const extractOutline = (markdown: string): OutlineHeading[] => {

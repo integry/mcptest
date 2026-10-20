@@ -192,6 +192,34 @@ describe('Learn article page', () => {
     ]);
   });
 
+  it('gives entity and link headings the same ids the outline links to', () => {
+    const content = [
+      '## Authentication &amp; permissions',
+      'a',
+      '## [OAuth](https://example.com)',
+      'b',
+      '### Tools &#38; resources',
+      'c',
+      '## `&amp;` in code',
+    ].join('\n');
+    const container = render(<ArticleMarkdown content={content} />);
+    const visibleText = (heading: Element) => heading.textContent?.replace(' (opens in a new tab)', '');
+    const headings = Array.from(container.querySelectorAll('h2, h3'), heading => [heading.id, visibleText(heading)]);
+    expect(headings).toEqual([
+      ['authentication-permissions', 'Authentication & permissions'],
+      ['oauth', 'OAuth'],
+      ['tools-resources', 'Tools & resources'],
+      ['amp-in-code', '&amp; in code'],
+    ]);
+
+    const outline = extractOutline(content);
+    expect(outline.map(heading => heading.id)).toEqual(headings.map(([id]) => id));
+    for (const heading of outline) {
+      const rendered = container.querySelector(`h${heading.level}[id="${heading.id}"]`);
+      expect(rendered && visibleText(rendered)).toBe(heading.text);
+    }
+  });
+
   it('links previous and next articles within the track', () => {
     const article = getLearnArticle('mcp-clients-compared')!;
     const { previous, next } = getLearnArticleNeighbors(article);

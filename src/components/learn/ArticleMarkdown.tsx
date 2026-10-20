@@ -28,11 +28,18 @@ interface MarkdownNode {
   type: string;
   depth?: number;
   value?: string;
+  alt?: string | null;
   children?: MarkdownNode[];
   data?: { hProperties?: Record<string, unknown> };
 }
 
+/**
+ * Plain text of a parsed heading. Must agree with `headingPlainText` in
+ * `content/outline.ts`, which derives the same text from Markdown source:
+ * links contribute their label, images their alt text, code its content.
+ */
 const nodeText = (node: MarkdownNode): string => {
+  if (node.type === 'image') return node.alt ?? '';
   if (typeof node.value === 'string') return node.value;
   return (node.children ?? []).map(nodeText).join('');
 };
