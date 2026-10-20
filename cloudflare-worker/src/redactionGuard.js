@@ -15,6 +15,11 @@ const ENCODED_REDACTED_VALUE = '%5BREDACTED%5D';
 const MAX_URL_COMPONENT_DECODE_PASSES = 4;
 const MAX_URL_SCAN_DEPTH = 4;
 const MAX_JSON_STRING_DECODE_PASSES = 4;
+// Bounds on what a decoded JSON string may expand to before it is scanned. The
+// app never produces anything near them; past them the text cannot be inspected
+// and is refused rather than accepted unseen.
+const MAX_DECODED_JSON_NESTING = 64;
+const MAX_DECODED_JSON_NODES = 100000;
 
 const EXACT_SENSITIVE_KEYS = new Set([
   'key', 'accesskey', 'subscriptionkey', 'authorization', 'proxyauthorization',
@@ -193,26 +198,54 @@ const isStructuredJsonText = (value) => (
   (value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))
 );
 
-/** A string that is itself JSON (possibly string-encoded) is scanned as a value. */
-const findSecretInJsonShapedText = (value, depth) => {
-  let candidate = value.trim();
-  for (let pass = 0; pass <= MAX_JSON_STRING_DECODE_PASSES; pass += 1) {
-    const structured = isStructuredJsonText(candidate);
-    if (!structured && !candidate.startsWith('"')) return undefined;
-    let parsed;
-    try {
-      parsed = JSON.parse(candidate);
-    } catch {
-      return undefined;
-    }
-    if (typeof parsed === 'string') {
-      candidate = parsed.trim();
-      continue;
-    }
-    if (!parsed || typeof parsed !== 'object') return undefined;
-    return findSecretInValue(parsed, undefined, [], depth + 1);
+/** Iterative size and nesting check so the recursive scan below never runs unbounded. */
+const findDecodedJsonBoundsViolation = (root) => {
+  const pending = [[root, 1]];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const [node, nesting] = pending.pop();
+    nodes += 1;
+    if (nodes > MAX_DECODED_JSON_NODES) return 'JSON-encoded text is too large to inspect';
+    if (!node || typeof node !== 'object') continue;
+    if (nesting > MAX_DECODED_JSON_NESTING) return 'JSON-encoded text is nested too deeply to inspect';
+    for (const child of Object.values(node)) pending.push([child, nesting + 1]);
   }
   return undefined;
+};
+
+/**
+ * A string that is itself JSON (an object, an array or a string literal, possibly
+ * string-encoded several times) is decoded and the result is scanned with the full
+ * guard, one decode pass per depth level. A decoded string is scanned as text, so a
+ * credential hidden behind a JSON escape (`"Bearer\u0020…"`) is still found. Text
+ * that is still encoded once the depth budget is spent cannot be inspected and is
+ * refused. Returns { path, reason } relative to the decoded value.
+ */
+const findSecretInJsonShapedText = (value, depth) => {
+  const candidate = value.trim();
+  if (!isStructuredJsonText(candidate) && !candidate.startsWith('"')) return undefined;
+  let parsed;
+  try {
+    parsed = JSON.parse(candidate);
+  } catch {
+    return undefined;
+  }
+  if (parsed === null || (typeof parsed !== 'object' && typeof parsed !== 'string')) return undefined;
+  if (depth >= MAX_JSON_STRING_DECODE_PASSES) {
+    return { path: formatPath([]), reason: 'JSON-encoded text is nested too deeply to inspect' };
+  }
+  const violation = findDecodedJsonBoundsViolation(parsed);
+  if (violation) return { path: formatPath([]), reason: violation };
+  return findSecretInValue(parsed, undefined, [], depth + 1);
+};
+
+/** The reason for a credential found inside JSON-encoded text, or undefined. */
+const findSecretInDecodedJson = (value, depth) => {
+  const found = findSecretInJsonShapedText(value, depth);
+  if (!found) return undefined;
+  if (found.reason.endsWith('to inspect')) return found.reason;
+  const location = found.path === formatPath([]) ? '' : ` at ${found.path}`;
+  return `${found.reason} (inside JSON-encoded text${location})`;
 };
 
 /** Credential shapes that are refused wherever they appear, exemptions included. */
@@ -226,7 +259,8 @@ const findCredentialShape = (value) => {
 };
 
 const findSecretInText = (value, depth = 0) => {
-  if (depth > MAX_URL_SCAN_DEPTH) return undefined;
+  // Unreachable through the bounded URL and JSON scans above; refuse rather than accept unseen.
+  if (depth > Math.max(MAX_URL_SCAN_DEPTH, MAX_JSON_STRING_DECODE_PASSES)) return 'text is nested too deeply to inspect';
   const shape = findCredentialShape(value);
   if (shape) return shape;
   const assignment = findUnredactedAssignment(value);
@@ -239,8 +273,7 @@ const findSecretInText = (value, depth = 0) => {
     const reason = findSecretInUrl(url, depth);
     if (reason) return reason;
   }
-  const json = findSecretInJsonShapedText(value, depth);
-  return json ? json.reason : undefined;
+  return findSecretInDecodedJson(value, depth);
 };
 
 const isAuthorizationPrerequisiteSchemaField = (path) => (
@@ -298,9 +331,10 @@ const findSecretInValue = (value, key, path, depth = 0) => {
   }
   if (typeof value === 'string') {
     // A generated reference link keeps its heading anchor, which the URL scan would
-    // otherwise refuse as an unredacted fragment; credential shapes are still refused.
+    // otherwise refuse as an unredacted fragment; credential shapes are still refused,
+    // including ones hidden behind JSON escapes, which only decoding reveals.
     const reason = isCanonicalReferenceUrl(value, path) || isAuthorizationSetupHeaderTemplateField(path)
-      ? findCredentialShape(value)
+      ? findCredentialShape(value) || findSecretInDecodedJson(value, depth)
       : findSecretInText(value, depth);
     return reason ? { path: formatPath(path), reason } : undefined;
   }

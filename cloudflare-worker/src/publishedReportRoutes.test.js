@@ -107,6 +107,7 @@ const failedRun = () => artifactFor(evaluation({
   sections: { protocol: { name: 'Protocol', description: 'Protocol', score: 0, maxScore: 15, status: 'failed', details: [{ text: 'Unreachable' }] } },
 }));
 const CANONICAL_REFERENCE = 'https://mcptest.io/learn/mcp-transport-diagnostics-reference#transport-accept-header-406';
+const encodeTimes = (value, times) => Array.from({ length: times }).reduce((text) => JSON.stringify(text), value);
 const JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
 
 let env;
@@ -294,6 +295,15 @@ describe('publishing a report', () => {
     ['a canonical reference URL under a key the app never writes it to', (artifact) => {
       artifact.sections[0].evidence[0].metadata = { extra: { referenceUrl: `${CANONICAL_REFERENCE}-plain-secret-with-sk-abcdefghijklmnopqrstuvwxyz` } };
     }],
+    ['a JSON-encoded bearer string inside nested evidence metadata', (artifact) => {
+      artifact.sections[0].evidence[0].metadata = { nested: { note: '"Bearer\\u0020example-access-token"' } };
+    }],
+    ['a bearer string JSON-encoded inside a JSON-encoded object', (artifact) => {
+      artifact.sections[0].evidence[0].context = JSON.stringify({ response: '"Bearer\\u0020example-access-token"' });
+    }],
+    ['a JSON-encoded string nested too deeply to inspect', (artifact) => {
+      artifact.sections[0].evidence[0].context = encodeTimes('plain text', 5);
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);
@@ -342,6 +352,30 @@ describe('publishing a report', () => {
     expect(validateStored(artifact), JSON.stringify(validateStored.errors)).toBe(true);
     expect(findUnredactedSecret(artifact)).toBeUndefined();
     expect((await publish(artifact)).status).toBe(201);
+  });
+
+  it('scans decoded JSON strings with the same guard and refuses uninspectable decoding', () => {
+    expect(findUnredactedSecret({ note: '"Bearer\\u0020example-access-token"' }))
+      .toEqual({ path: 'note', reason: 'contains a Bearer or Basic credential (inside JSON-encoded text)' });
+    expect(findUnredactedSecret({ note: JSON.stringify({ headers: { note: '"Bearer\\u0020example-access-token"' } }) }))
+      .toEqual({ path: 'note', reason: 'contains a Bearer or Basic credential (inside JSON-encoded text) (inside JSON-encoded text at headers.note)' });
+    expect(findUnredactedSecret({ note: JSON.stringify({ headers: { 'x-api-key': 'plain' } }) })).toMatchObject({ path: 'note' });
+    expect(findUnredactedSecret({ authorizationSetup: { alternativeHeaderTemplate: '"Bearer\\u0020plain-secret"' } }))
+      .toMatchObject({ path: 'authorizationSetup.alternativeHeaderTemplate' });
+    expect(findUnredactedSecret({ authorizationSetup: { alternativeHeaderTemplate: 'Authorization: Bearer <token>' } })).toBeUndefined();
+
+    expect(findUnredactedSecret({ note: encodeTimes('plain text', 4) })).toBeUndefined();
+    expect(findUnredactedSecret({ note: encodeTimes('Bearer secret-access-token', 4) })).toMatchObject({ path: 'note' });
+    expect(findUnredactedSecret({ note: encodeTimes('plain text', 5) }))
+      .toEqual({ path: 'note', reason: 'JSON-encoded text is nested too deeply to inspect' });
+    expect(findUnredactedSecret({ note: `${'['.repeat(64)}0${']'.repeat(64)}` })).toBeUndefined();
+    expect(findUnredactedSecret({ note: `${'['.repeat(65)}0${']'.repeat(65)}` }))
+      .toEqual({ path: 'note', reason: 'JSON-encoded text is nested too deeply to inspect' });
+    expect(findUnredactedSecret({ note: `[${'0,'.repeat(99998)}0]` })).toBeUndefined();
+    expect(findUnredactedSecret({ note: `[${'0,'.repeat(100000)}0]` }))
+      .toEqual({ path: 'note', reason: 'JSON-encoded text is too large to inspect' });
+    expect(findUnredactedSecret({ note: '"not json' })).toBeUndefined();
+    expect(findUnredactedSecret({ note: '"42"' })).toBeUndefined();
   });
 
   it('refuses credentials in nested objects regardless of their key', () => {
