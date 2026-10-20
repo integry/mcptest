@@ -13,7 +13,8 @@ import {
 import ParamsPanel from './ParamsPanel';
 import OutputPanel from './OutputPanel';
 import OAuthConfig from './OAuthConfig';
-import { AwaitingConnectionPanel, FirstConnectionOnboarding } from './FirstConnectionOnboarding';
+import { AwaitingConnectionPanel } from './FirstConnectionOnboarding';
+import { LandingHero } from './LandingHero';
 import DeterministicTestPanel from './DeterministicTestPanel';
 
 // Import Hooks
@@ -77,9 +78,11 @@ interface TabContentProps {
   onUpdateTab: (tabId: string, updates: Partial<ConnectionTab>) => void;
   spaces: any[];
   onAddCardToSpace: (spaceId: string, cardData: any) => void;
+  /** False when a sibling tab already has a server, so this tab is not the empty playground. */
+  landingEligible: boolean;
 }
 
-const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace }) => {
+const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace, landingEligible }) => {
   const { currentUser, loginWithGoogle } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
@@ -914,7 +917,19 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     && isDisconnected
     && !connectionError
     && !isAuthFlowActive;
-  const showFirstConnectionOnboarding = isFirstConnection && !hasStartedFirstConnection;
+  // The landing stays up while a first-time visitor types into its input, so
+  // unlike isFirstConnection it does not depend on the entered URL.
+  const showLanding = landingEligible
+    && recentServers.length === 0
+    && !hasStartedFirstConnection
+    && isDisconnected
+    && !connectionError
+    && !isAuthFlowActive;
+
+  const handleLandingConnect = (selection?: SuggestedServerSelection) => {
+    setHasStartedFirstConnection(true);
+    return selection ? handleSuggestedServerSelect(selection) : handleConnectWrapper();
+  };
 
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
@@ -941,8 +956,13 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         flexDirection: 'column'
       }}
     >
-      {showFirstConnectionOnboarding ? (
-        <FirstConnectionOnboarding onConnectFirstServer={() => setHasStartedFirstConnection(true)} />
+      {showLanding ? (
+        <LandingHero
+          serverUrl={serverUrl}
+          onServerUrlChange={handleServerUrlChange}
+          onConnect={handleLandingConnect}
+          isConnecting={isConnecting}
+        />
       ) : (
         <ConnectionPanel
             serverUrl={serverUrl}
@@ -1035,16 +1055,16 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       )}
 
+      {!showLanding && (
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
           <div className="w-100 idle-onboarding-layout">
-            {!showFirstConnectionOnboarding && <AwaitingConnectionPanel />}
+            <AwaitingConnectionPanel />
             {isFirstConnection ? (
               <SuggestedServersPanel
                 onServerSelect={handleSuggestedServerSelect}
                 isConnected={isConnected}
                 isConnecting={isConnecting}
-                showOnboardingIntro={showFirstConnectionOnboarding}
               />
             ) : (
               <div className="row g-3">
@@ -1069,7 +1089,6 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 </div>
               </div>
             )}
-            {showFirstConnectionOnboarding && <AwaitingConnectionPanel />}
           </div>
         )}
         {isConnected && (
@@ -1139,6 +1158,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           </>
         )}
       </div>
+      )}
       <DeterministicTestPanel
         open={showDeterministicTests}
         onClose={() => setShowDeterministicTests(false)}
