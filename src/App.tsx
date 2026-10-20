@@ -18,8 +18,9 @@ import Tabs from './components/Tabs'; // New
 import LearnArticlePage from './components/learn/LearnArticlePage';
 import LearnIndex from './components/learn/LearnIndex';
 import LearnNotFound from './components/learn/LearnNotFound';
-import { getDocumentationPage } from './content/docsRegistry';
+import { PAGE_COMPONENTS } from './content/componentRegistry';
 import {
+  getContentPage,
   getLearnArticle,
   getLearnArticleSlugFromPath,
   isLearnIndexPath,
@@ -362,33 +363,32 @@ function App() {
   useMetaTags();
   
   // Derive active view and doc page from location
-  const { activeView, activeDocPage } = useMemo(() => {
+  const { activeView } = useMemo(() => {
     const path = location.pathname;
     console.log('[ActiveView Calculation] Path:', path, 'Spaces count:', spaces.length);
     
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
-      const docPage = path.replace('/docs/', '');
       console.log('[ActiveView] Detected docs view');
-      return { activeView: 'docs' as const, activeDocPage: docPage };
+      return { activeView: 'docs' as const };
     }
 
     if (path === '/learn' || path.startsWith('/learn/')) {
-      return { activeView: 'learn' as const, activeDocPage: null };
+      return { activeView: 'learn' as const };
     }
 
     // Check for report routes
     if (path.startsWith('/report')) {
-      return { activeView: 'report' as const, activeDocPage: null };
+      return { activeView: 'report' as const };
     }
 
     if (getCatalogServerIdFromPath(path)) {
-      return { activeView: 'server-profile' as const, activeDocPage: null };
+      return { activeView: 'server-profile' as const };
     }
 
     // Check for catalog routes
     if (path.startsWith('/catalog')) {
-      return { activeView: 'catalog' as const, activeDocPage: null };
+      return { activeView: 'catalog' as const };
     }
     
     // Check for dashboard routes
@@ -398,19 +398,19 @@ function App() {
       console.log('[ActiveView] Checking slug:', slug, 'Found space:', !!space);
       if (space) {
         console.log('[ActiveView] Detected dashboards view for space:', space.name);
-        return { activeView: 'dashboards' as const, activeDocPage: null };
+        return { activeView: 'dashboards' as const };
       }
       // If we have a slug but no matching space yet (e.g., during OAuth callback when spaces aren't loaded),
       // still treat it as a dashboard view to prevent flashing
       if (spaces.length === 0 || sessionStorage.getItem('oauth_return_view')) {
         console.log('[ActiveView] Dashboard path detected, waiting for spaces to load');
-        return { activeView: 'dashboards' as const, activeDocPage: null };
+        return { activeView: 'dashboards' as const };
       }
     }
     
     // Default to inspector
     console.log('[ActiveView] Defaulting to playground view');
-    return { activeView: 'playground' as const, activeDocPage: null };
+    return { activeView: 'playground' as const };
   }, [location.pathname, spaces]);
 
 
@@ -1794,10 +1794,30 @@ function App() {
   const selectedCatalogServer = selectedCatalogServerId
     ? getCatalogServerById(selectedCatalogServerId)
     : undefined;
-  const selectedDocumentationPage = getDocumentationPage(activeDocPage);
-  const DocumentationComponent = selectedDocumentationPage?.component;
-  const selectedLearnSlug = getLearnArticleSlugFromPath(location.pathname);
-  const selectedLearnArticle = getLearnArticle(selectedLearnSlug);
+  // Markdown articles (/docs/* and /learn/*) and React-only pages resolve from one registry.
+  const selectedContentPage = getContentPage(location.pathname);
+  const SelectedPageComponent = selectedContentPage?.kind === 'page'
+    ? PAGE_COMPONENTS[selectedContentPage.page.component]
+    : undefined;
+  const renderContentView = () => {
+    if (activeView === 'learn' && isLearnIndexPath(location.pathname)) {
+      return <LearnIndex />;
+    }
+    if (selectedContentPage?.kind === 'article') {
+      return <LearnArticlePage article={selectedContentPage.article} />;
+    }
+    if (SelectedPageComponent) {
+      return <SelectedPageComponent />;
+    }
+    if (activeView === 'learn') {
+      return <LearnNotFound />;
+    }
+    return (
+      <div className="alert alert-warning">
+        Documentation page not found. Please select a page from the navigation.
+      </div>
+    );
+  };
 
   // Check if we're on the OAuth callback page
   if (location.pathname === '/oauth/callback') {
@@ -1905,24 +1925,12 @@ function App() {
         {/* Main Panel (Playground, Dashboards, or Docs) - All views kept in DOM */}
         <div className="main-content col overflow-auto p-3 position-relative">
           
-          {/* Documentation View */}
-          <div className={`view-panel ${activeView === 'docs' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            {DocumentationComponent ? <DocumentationComponent /> : (
-              <div className="alert alert-warning">
-                Documentation page not found. Please select a page from the navigation.
-              </div>
-            )}
-          </div>
-
-          {/* Learn View */}
-          <div className={`view-panel ${activeView === 'learn' ? '' : 'd-none'}`} style={{ minHeight: '100%' }}>
-            {isLearnIndexPath(location.pathname) ? (
-              <LearnIndex />
-            ) : selectedLearnArticle ? (
-              <LearnArticlePage article={selectedLearnArticle} />
-            ) : (
-              <LearnNotFound />
-            )}
+          {/* Content View: documentation and Learn articles */}
+          <div
+            className={`view-panel ${activeView === 'docs' || activeView === 'learn' ? '' : 'd-none'}`}
+            style={{ minHeight: '100%' }}
+          >
+            {(activeView === 'docs' || activeView === 'learn') && renderContentView()}
           </div>
 
           {/* Report View */}

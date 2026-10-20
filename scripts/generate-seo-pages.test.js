@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
-import learnData from '../src/data/learnArticles.json';
 import catalogSeeds from '../src/data/serverCatalog.json';
 import catalogValidation from '../src/data/catalogValidation.json';
 import catalogCapabilities from '../src/data/catalogCapabilities.json';
 import { createCapabilityInventory } from '../src/utils/capabilityInventory';
+import { extractOutline } from '../src/content/outline';
 
 const {
-  mergeCatalogServers, renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml,
-  validateCapabilitySnapshots,
+  loadArticles, mergeCatalogServers, renderLearnArticleHtml, renderLearnIndexHtml, renderServerHtml,
+  renderMarkdown, renderSitemap, renderStaticPageHtml, validateCapabilitySnapshots,
 } = seoGenerator;
+const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
+const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
 function catalogServer(url, declaredTransport) {
@@ -492,8 +494,8 @@ describe('generated page metadata', () => {
   });
 
   it('renders indexable Learn article HTML, social metadata, and Article JSON-LD', () => {
-    const article = learnData.articles[0];
-    const html = renderLearnArticleHtml(indexHtml, article, learnData.articles);
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
 
     expect(html).toContain(`<title>${article.title} | mcptest.io</title>`);
     expect(html).toContain(`property="og:type" content="article"`);
@@ -502,9 +504,194 @@ describe('generated page metadata', () => {
     expect(html).toContain('"@type":"Article"');
     expect(html).toContain(`"dateModified":"${article.lastReviewed}"`);
     expect(html).toContain(`data-article-slug="${article.slug}"`);
-    expect(html).toContain('<h2>Coverage and how to read this comparison</h2>');
+    expect(html).toContain('<h2 id="coverage-and-how-to-read-this-comparison">Coverage and how to read this comparison</h2>');
     expect(html).toContain('<table><thead><tr>');
     expect(html).toContain('Sources</h2>');
+    expect(html).toContain('rel="prev" href="/learn/connect-remote-mcp-server"');
+    expect(html).toContain('rel="next" href="/learn/oauth-for-mcp-explained"');
+  });
+
+  it('nests the prerendered article inside a single-column shell so the no-JS layout reads top to bottom', () => {
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
+    const root = new DOMParser().parseFromString(html, 'text/html').getElementById('root');
+
+    const shell = root.querySelector('.reading-shell');
+    expect(shell.classList.contains('reading-shell-single')).toBe(true);
+    expect(shell.classList.contains('reading-article')).toBe(false);
+    expect(Array.from(shell.children, child => child.className)).toEqual(['reading-article']);
+
+    const content = shell.querySelector('.reading-article');
+    expect(content.tagName).toBe('ARTICLE');
+    expect(content.getAttribute('data-article-slug')).toBe(article.slug);
+    expect(Array.from(content.children, child => child.className)).toEqual([
+      'reading-breadcrumb', 'reading-header', 'reading-prose', 'reading-footer',
+    ]);
+    expect(root.querySelector('.reading-outline')).toBeNull();
+  });
+
+  it('renders Markdown documentation pages at their /docs canonical path with frontmatter metadata', () => {
+    const article = articles.find(item => item.slug === 'testing-guide');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
+
+    expect(html).toContain('<title>Testing Guide for Remote MCP Servers | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
+    expect(html).toContain('name="description" content="Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers.');
+    expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
+    expect(html).toContain('<pre><code class="language-bash">curl -i https://your-server.example.com/mcp');
+    expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
+  });
+
+  it('prerenders the fragment ids published by the former React docs page', () => {
+    const article = articles.find(item => item.path === '/docs/remote-vs-local');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
+
+    expect(html).toContain('<h2 id="local-servers">Local servers: stdio</h2>');
+    expect(html).toContain('<h2 id="remote-servers">Remote servers: Streamable HTTP</h2>');
+    expect(html).toContain('<h3 id="stateless-flow">2026 stateless flow</h3>');
+    expect(html).toContain('<h3 id="stateful-flow">2025 stateful flow</h3>');
+    expect(html).toContain('<h3 id="streaming">Streaming and compatibility</h3>');
+    expect(html).toContain('<h2 id="authorization">Authorization</h2>');
+    expect(html).toContain('<h2 id="cors-security">CORS and origin security</h2>');
+    expect(html).toContain('<h2 id="choosing-deployment">Choosing and testing a deployment</h2>');
+    expect(html).not.toContain('{#');
+  });
+
+  it('prerenders unique heading ids when literal headings collide with generated suffixes', () => {
+    const html = renderMarkdown(['## Example', '', '## Example', '', '## Example-2', '', '## `code` {#pinned}'].join('\n'));
+    expect(html).toContain('<h2 id="example">Example</h2>');
+    expect(html).toContain('<h2 id="example-2">Example</h2>');
+    expect(html).toContain('<h2 id="example-2-2">Example-2</h2>');
+    expect(html).toContain('<h2 id="pinned"><code>code</code></h2>');
+  });
+
+  it('prerenders entity and link headings with the ids the outline links to', () => {
+    const markdown = [
+      '## Authentication &amp; permissions',
+      '',
+      '## [OAuth](https://example.com)',
+      '',
+      '### Tools &#38; resources',
+      '',
+      '## `&amp;` in code',
+    ].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<h2 id="authentication-permissions">');
+    expect(html).toContain('<h2 id="oauth"><a href="https://example.com">OAuth</a></h2>');
+    expect(html).toContain('<h3 id="tools-resources">');
+    expect(html).toContain('<h2 id="amp-in-code"><code>&amp;amp;</code> in code</h2>');
+
+    const ids = Array.from(html.matchAll(/<h[23] id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
+  });
+
+  it('prerenders reference-link and quoted headings with the ids the outline links to', () => {
+    const markdown = [
+      '## [OAuth][auth]',
+      '',
+      'Body.',
+      '',
+      '> ### [Dynamic client registration][]',
+      '> quoted body',
+      '',
+      '## [Tokens] {#token-handling}',
+      '',
+      '## [Undefined][missing]',
+      '',
+      '[auth]: https://example.com/oauth',
+      '[dynamic client registration]: https://example.com/dcr',
+      '[tokens]: https://example.com/tokens',
+    ].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<h2 id="oauth">');
+    expect(html).toContain('<blockquote><h3 id="dynamic-client-registration">');
+    expect(html).toContain('<h2 id="token-handling">');
+    expect(html).toContain('<h2 id="undefinedmissing">');
+    expect(html).not.toContain('{#');
+
+    const ids = Array.from(html.matchAll(/<h[23] id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
+  });
+
+  it('renders tilde-fenced code without allocating a heading id inside the fence', () => {
+    const markdown = ['## Example', '', '~~~', '## Example', '~~~', '', '## Example'].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<pre><code>## Example</code></pre>');
+    expect(html).toContain('<h2 id="example">Example</h2>');
+    expect(html).toContain('<h2 id="example-2">Example</h2>');
+    expect(html).not.toContain('example-3');
+
+    const ids = Array.from(html.matchAll(/<h2 id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
+  });
+
+  it('closes a fence only with a matching delimiter of at least the opening length', () => {
+    const markdown = ['~~~~ text', '```', '## not a heading', '~~~', '~~~~', '', '```js', 'const a = `~~~`;', '```'].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<pre><code class="language-text">```\n## not a heading\n~~~</code></pre>');
+    expect(html).toContain('<pre><code class="language-js">const a = `~~~`;</code></pre>');
+    expect(html).not.toContain('<h2');
+  });
+
+  it('skips Markdown comment blocks without allocating heading ids for their contents', () => {
+    const markdown = [
+      '## Intro',
+      '',
+      '<!--',
+      '## Draft notes',
+      '-->',
+      '',
+      '## Intro',
+      'Paragraph text',
+      '<!-- ## interrupting comment -->',
+      '',
+      '> <!--',
+      '> ## quoted draft',
+      '> -->',
+      '> ## Quoted',
+      '',
+      '<!-- unterminated',
+      '## never rendered',
+    ].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<h2 id="intro">Intro</h2>');
+    expect(html).toContain('<h2 id="intro-2">Intro</h2>');
+    expect(html).toContain('<p>Paragraph text</p>');
+    expect(html).toContain('<blockquote><h2 id="quoted">Quoted</h2></blockquote>');
+    expect(html).not.toContain('Draft notes');
+    expect(html).not.toContain('interrupting');
+    expect(html).not.toContain('quoted draft');
+    expect(html).not.toContain('never rendered');
+    expect(html).not.toContain('&lt;!--');
+
+    const ids = Array.from(html.matchAll(/<h2 id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
+  });
+
+  it('renders the Learn index grouped by track', () => {
+    const html = renderLearnIndexHtml(indexHtml, learnIndex, articles);
+
+    expect(html).toContain('<title>Learn MCP | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/learn"');
+    expect(html).toContain('<section class="learn-track" id="track-understand">');
+    expect(html).toContain('<section class="learn-track" id="track-reference">');
+    expect(html).not.toContain('learn-card');
+    for (const article of articles) {
+      expect(html).toContain(`href="${article.path}">${article.title}</a>`);
+    }
+  });
+
+  it('lists every article in the sitemap at its canonical path without .md alternates', () => {
+    const sitemap = renderSitemap([{ id: 'example-server' }], articles, '2026-10-20');
+
+    expect(sitemap).toContain('<loc>https://mcptest.io/learn</loc>');
+    expect(sitemap).toContain('<loc>https://mcptest.io/docs/what-is-mcp</loc>');
+    expect(sitemap).toContain('<loc>https://mcptest.io/servers/example-server/</loc>');
+    for (const article of articles) {
+      expect(sitemap).toContain(`<loc>https://mcptest.io${article.path}</loc>\n    <lastmod>${article.lastReviewed}</lastmod>`);
+    }
+    expect(sitemap).not.toContain('.md</loc>');
+    expect(sitemap).not.toContain('/docs/privacy-policy');
   });
 });
 

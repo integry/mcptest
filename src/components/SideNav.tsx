@@ -5,6 +5,7 @@ import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 import { RESOURCE_NAV_ITEMS } from '../content/resourceNavigation';
+import ContentTrackNav from './learn/ContentTrackNav';
 
 interface SideNavProps {
   activeView: 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
@@ -47,6 +48,9 @@ const SideNav: React.FC<SideNavProps> = ({
   const navigate = useNavigate();
   const { currentUser, loginWithGoogle, logout } = useAuth();
   const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
+  // Content pages (/docs, /learn) get track navigation instead of dashboards + resources.
+  const isContentView = activeView === 'docs' || activeView === 'learn';
+  const closeMobileMenu = () => document.body.classList.remove('menu-open');
 
   useEffect(() => {
     if (focusedDashboardIndex !== null && dashboardListRef.current[focusedDashboardIndex]) {
@@ -249,7 +253,7 @@ const SideNav: React.FC<SideNavProps> = ({
   };
 
   return (
-    <nav className="app-sidenav nav flex-column d-flex flex-grow-1">
+    <nav className={`app-sidenav nav flex-column d-flex flex-grow-1${isContentView ? ' app-sidenav-content' : ''}`}>
       {/* Playground Link */}
       <Link
         to="/"
@@ -277,100 +281,104 @@ const SideNav: React.FC<SideNavProps> = ({
         <i className="bi bi-clipboard2-data me-2"></i> Report
       </Link>
 
-      {/* Dashboards Header */}
-      <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
-        <h6 className="sidenav-section-label mb-0">Dashboards</h6>
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={performAllDashboardsHealthCheck}
-          title="Refresh health status"
-          style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-        >
-          <i className="bi bi-arrow-clockwise"></i>
-        </button>
-      </div>
-
-      {/* List of Dashboards */}
-      <nav aria-label="Dashboards">
-        {spaces.length === 0 ? (
-          <div className="text-muted text-center p-3" style={{ fontStyle: 'italic' }}>
-            Create your first dashboard to get started.
+      {!isContentView && (
+        <>
+          {/* Dashboards Header */}
+          <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
+            <h6 className="sidenav-section-label mb-0">Dashboards</h6>
+            <button
+              className="btn btn-sm btn-outline-secondary"
+              onClick={performAllDashboardsHealthCheck}
+              title="Refresh health status"
+              style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+            >
+              <i className="bi bi-arrow-clockwise"></i>
+            </button>
           </div>
-        ) : (
-          <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox">
-            {spaces.map((space, index) => (
-              <li
-                ref={(el) => { dashboardListRef.current[index] = el; }}
-                className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
-                key={space.id}
-                onDragOver={(e) => handleSpaceDragOver(e, index)}
-                onDragLeave={handleSpaceDragLeave}
-                onDrop={(e) => handleSpaceDrop(e, index)}
-                tabIndex={focusedDashboardIndex === index ? 0 : -1}
-                role="option"
-                aria-selected={selectedSpaceId === space.id && activeView === 'dashboards'}
-                onFocus={() => setFocusedDashboardIndex(index)}
-              >
-                <Link
-                  to={getSpaceUrl(space.name)}
-                  className={`dashboard-link nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active fw-bold' : ''}`}
-                  draggable
-                  onDragStart={(e) => handleSpaceDragStart(e, space.id)}
-                  onDragEnd={handleSpaceDragEnd}
-                  onClick={() => {
-                    handleSelectSpace(space.id);
-                    // Close mobile menu if open
-                    document.body.classList.remove('menu-open');
-                  }}
-                  style={{
-                    cursor: 'move',
-                    opacity: draggedSpaceId === space.id ? 0.5 : 1,
-                    transition: 'opacity 0.2s ease',
-                    userSelect: 'none'
-                  }}
-                >
-                  {renderHealthIndicator(space.id)}
-                  <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
-                  <span
-                    className="dashboard-card-count"
-                    title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
-                    aria-label={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+
+          {/* List of Dashboards */}
+          <nav aria-label="Dashboards">
+            {spaces.length === 0 ? (
+              <div className="text-muted text-center p-3" style={{ fontStyle: 'italic' }}>
+                Create your first dashboard to get started.
+              </div>
+            ) : (
+              <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox">
+                {spaces.map((space, index) => (
+                  <li
+                    ref={(el) => { dashboardListRef.current[index] = el; }}
+                    className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
+                    key={space.id}
+                    onDragOver={(e) => handleSpaceDragOver(e, index)}
+                    onDragLeave={handleSpaceDragLeave}
+                    onDrop={(e) => handleSpaceDrop(e, index)}
+                    tabIndex={focusedDashboardIndex === index ? 0 : -1}
+                    role="option"
+                    aria-selected={selectedSpaceId === space.id && activeView === 'dashboards'}
+                    onFocus={() => setFocusedDashboardIndex(index)}
                   >
-                    {space.cards.length} {space.cards.length === 1 ? 'card' : 'cards'}
-                  </span>
-                </Link>
-            </li>
-          ))}
-          </ul>
-        )}
-      </nav>
+                    <Link
+                      to={getSpaceUrl(space.name)}
+                      className={`dashboard-link nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active fw-bold' : ''}`}
+                      draggable
+                      onDragStart={(e) => handleSpaceDragStart(e, space.id)}
+                      onDragEnd={handleSpaceDragEnd}
+                      onClick={() => {
+                        handleSelectSpace(space.id);
+                        // Close mobile menu if open
+                        document.body.classList.remove('menu-open');
+                      }}
+                      style={{
+                        cursor: 'move',
+                        opacity: draggedSpaceId === space.id ? 0.5 : 1,
+                        transition: 'opacity 0.2s ease',
+                        userSelect: 'none'
+                      }}
+                    >
+                      {renderHealthIndicator(space.id)}
+                      <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
+                      <span
+                        className="dashboard-card-count"
+                        title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                        aria-label={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                      >
+                        {space.cards.length} {space.cards.length === 1 ? 'card' : 'cards'}
+                      </span>
+                    </Link>
+                </li>
+              ))}
+              </ul>
+            )}
+          </nav>
 
-      {/* Create New Dashboard */}
-      <div className="mt-2 ms-3">
-        {showCreateInput ? (
-          <div className="inline-edit-group">
-            <input
-              type="text"
-              className="form-control form-control-sm"
-              placeholder="New dashboard name..."
-              value={newSpaceName}
-              onChange={handleInputChange}
-              onKeyDown={handleInputKeyDown}
-              autoFocus
-            />
-            <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create">
-              <i className="bi bi-check-lg"></i>
-            </button>
-            <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel">
-              <i className="bi bi-x-lg"></i>
-            </button>
+          {/* Create New Dashboard */}
+          <div className="mt-2 ms-3">
+            {showCreateInput ? (
+              <div className="inline-edit-group">
+                <input
+                  type="text"
+                  className="form-control form-control-sm"
+                  placeholder="New dashboard name..."
+                  value={newSpaceName}
+                  onChange={handleInputChange}
+                  onKeyDown={handleInputKeyDown}
+                  autoFocus
+                />
+                <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create">
+                  <i className="bi bi-check-lg"></i>
+                </button>
+                <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel">
+                  <i className="bi bi-x-lg"></i>
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick} aria-label="Create new dashboard">
+                <i className="bi bi-plus-lg me-1"></i> Create New Dashboard
+              </button>
+            )}
           </div>
-        ) : (
-          <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick} aria-label="Create new dashboard">
-            <i className="bi bi-plus-lg me-1"></i> Create New Dashboard
-          </button>
-        )}
-      </div>
+        </>
+      )}
 
       {/* Theme and Auth Controls - Only show on mobile */}
       {isMobile && (
@@ -405,24 +413,28 @@ const SideNav: React.FC<SideNavProps> = ({
         </div>
       )}
 
-      {/* Resources Section */}
-      <section className="sidenav-content-section mt-4" aria-labelledby="resources-nav-heading">
-        <h2 id="resources-nav-heading" className="sidenav-section-label mb-1">Resources</h2>
-        <ul className="nav flex-column sidenav-content-list">
-          {RESOURCE_NAV_ITEMS.map(item => (
-            <li className="nav-item" key={item.path}>
-              <NavLink
-                to={item.path}
-                end={!item.matchDescendants}
-                className="nav-link docs-nav-link py-1"
-                onClick={() => document.body.classList.remove('menu-open')}
-              >
-                <i className={`bi ${item.icon} me-2`} aria-hidden="true"></i> {item.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {/* Content navigation: tracks on content pages, resource hub elsewhere */}
+      {isContentView ? (
+        <ContentTrackNav onNavigate={closeMobileMenu} />
+      ) : (
+        <section className="sidenav-content-section mt-4" aria-labelledby="resources-nav-heading">
+          <h2 id="resources-nav-heading" className="sidenav-section-label mb-1">Resources</h2>
+          <ul className="nav flex-column sidenav-content-list">
+            {RESOURCE_NAV_ITEMS.map(item => (
+              <li className="nav-item" key={item.path}>
+                <NavLink
+                  to={item.path}
+                  end={!item.matchDescendants}
+                  className="nav-link docs-nav-link py-1"
+                  onClick={closeMobileMenu}
+                >
+                  <i className={`bi ${item.icon} me-2`} aria-hidden="true"></i> {item.label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Footer Content */}
       <div className="mt-auto pt-3 border-top small">
