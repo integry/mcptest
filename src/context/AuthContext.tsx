@@ -4,6 +4,7 @@ import { auth } from '../firebase';
 
 interface AuthContextType {
   currentUser: User | null;
+  /** True until Firebase reports the initial auth state; currentUser is null meanwhile. */
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -88,5 +89,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logout,
   };
 
-  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
+  // Children render immediately so the first frame matches the static shell;
+  // consumers that act on the signed-in user wait for `loading` to clear.
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

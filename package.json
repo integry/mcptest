@@ -9,6 +9,7 @@
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
     "test": "vitest run",
+    "test:first-paint": "FIRST_PAINT=1 vitest run scripts/first-paint.test.js",
     "mcptest": "vite-node scripts/mcptest.ts",
     "typecheck": "tsc --noEmit",
     "validate-catalog": "vite-node scripts/run-validate-catalog.ts",

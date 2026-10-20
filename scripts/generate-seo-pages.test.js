@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
@@ -10,7 +13,7 @@ import { extractOutline } from '../src/content/outline';
 const {
   loadArticles, mergeCatalogServers, renderCatalogHtml, renderHomeHtml, renderLearnArticleHtml,
   renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
-  stripLandingFallback, validateCapabilitySnapshots,
+  stripLandingFallback, validateCapabilitySnapshots, addFontPreloads, findFirstFrameFontAssets,
 } = seoGenerator;
 const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
 const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
@@ -488,8 +491,11 @@ describe('generated page metadata', () => {
     expect(html).toContain('property="og:url" content="https://mcptest.io"');
     expect(html).toContain('property="og:image" content="https://mcptest.io/og/home.png"');
     const root = document.getElementById('root');
-    expect(root.querySelector('h1').textContent).toBe('Inspect, debug and evaluate remote MCP servers in your browser');
-    expect(root.querySelector('a[href="/catalog"]').textContent).toContain('Browse 111 public remote MCP servers');
+    expect(root.querySelector('.landing-title').textContent).toBe('Inspect, debug and evaluate remote MCP servers in your browser');
+    expect(root.querySelector('.landing-catalog a[href="/catalog"]').textContent).toContain('Browse 111 public remote MCP servers');
+    // The whole first frame, not just the landing: header and sidebar too.
+    expect(root.querySelector('.seo-shell-fallback .app-header .app-brand-title').textContent).toBe('mcptest.io');
+    expect(root.querySelector('.seo-shell-fallback .desktop-sidebar .app-sidenav a.active').getAttribute('href')).toBe('/');
   });
 
   it('removes a previous landing fallback so rerunning never copies it into other pages', () => {
@@ -498,8 +504,48 @@ describe('generated page metadata', () => {
 
     expect(shell).toContain('<div id="root"></div>');
     expect(shell).not.toContain('landing-title');
+    expect(shell).not.toContain('seo-shell-fallback');
     expect(renderLearnIndexHtml(shell, learnIndex, articles)).not.toContain('seo-landing-fallback');
+    // Output of earlier generator versions (landing only) is removed too.
+    const landingOnly = indexHtml.replace('<div id="root"></div>', '<div id="root">\n<section class="landing seo-landing-fallback"><h1>x</h1></section>\n    </div>');
+    expect(stripLandingFallback(landingOnly)).toBe(indexHtml);
     expect(() => stripLandingFallback('<html><body><div id="root"><p>x</p></div></body></html>')).toThrow('rebuild with Vite');
+  });
+
+  it('preloads the first frame fonts once, ahead of the scripts and stylesheets', () => {
+    const builtHead = '<html><head><title>t</title>\n    <script type="module" crossorigin src="/assets/index.js"></script>\n    <link rel="stylesheet" crossorigin href="/assets/index.css">\n  </head><body><div id="root"></div></body></html>';
+    const hrefs = ['/assets/inter-latin-wght-normal-Dx4kXJAl.woff2', '/assets/bootstrap-icons-mSm7cUeB.woff2'];
+    const html = addFontPreloads(builtHead, hrefs);
+    const tags = hrefs.map(href => `<link rel="preload" href="${href}" as="font" type="font/woff2" crossorigin />`);
+
+    for (const tag of tags) {
+      expect(html.split(tag)).toHaveLength(2);
+      expect(html.indexOf(tag)).toBeLessThan(html.indexOf('type="module"'));
+      expect(html.indexOf(tag)).toBeLessThan(html.indexOf('rel="stylesheet"'));
+    }
+    expect(addFontPreloads(html, hrefs)).toBe(html);
+    // Every prerendered page is rendered from the same shell, so it inherits the preloads.
+    expect(renderLearnIndexHtml(stripLandingFallback(html), learnIndex, articles)).toContain(tags[0]);
+  });
+
+  it('takes the font URLs the built stylesheets request, query string included', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'seo-assets-'));
+    try {
+      expect(() => findFirstFrameFontAssets(directory)).toThrow('Expected one Inter latin woff2');
+      fs.writeFileSync(path.join(directory, 'vendor-x.css'), [
+        '@font-face{font-family:"Inter Variable";src:url(/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2) format("woff2-variations")}',
+        '@font-face{font-family:"Inter Variable";src:url(/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2) format("woff2-variations")}',
+        '@font-face{font-family:"Inter Variable";src:url(/assets/inter-latin-wght-normal-Dx4kXJAl.woff2) format("woff2-variations")}',
+        '@font-face{font-family:bootstrap-icons;src:url(/assets/bootstrap-icons-mSm7cUeB.woff2?e3485313) format("woff2"),url(/assets/bootstrap-icons-BeopsB42.woff?e3485313) format("woff")}',
+      ].join('\n'));
+      fs.writeFileSync(path.join(directory, 'index-x.css'), '.logo{background:url("/assets/inter-latin-wght-normal-Dx4kXJAl.woff2")}');
+      expect(findFirstFrameFontAssets(directory)).toEqual([
+        '/assets/inter-latin-wght-normal-Dx4kXJAl.woff2',
+        '/assets/bootstrap-icons-mSm7cUeB.woff2?e3485313',
+      ]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('renders the catalog page with its own metadata and Open Graph card', () => {

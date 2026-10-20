@@ -5,6 +5,7 @@ import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 import { RESOURCE_NAV_ITEMS } from '../content/resourceNavigation';
+import { PRIMARY_NAV_ITEMS } from '../content/navigation';
 import ContentTrackNav from './learn/ContentTrackNav';
 
 interface SideNavProps {
@@ -57,18 +58,6 @@ const SideNav: React.FC<SideNavProps> = ({
       dashboardListRef.current[focusedDashboardIndex]?.focus();
     }
   }, [focusedDashboardIndex]);
-
-  const handlePlaygroundClick = () => {
-    navigate('/');
-    // Close mobile menu if open
-    document.body.classList.remove('menu-open');
-  };
-
-  const handleCatalogClick = () => {
-    navigate('/catalog');
-    // Close mobile menu if open
-    document.body.classList.remove('menu-open');
-  };
 
   const handleCreateClick = () => {
     setShowCreateInput(true);
@@ -254,32 +243,17 @@ const SideNav: React.FC<SideNavProps> = ({
 
   return (
     <nav className={`app-sidenav nav flex-column d-flex flex-grow-1${isContentView ? ' app-sidenav-content' : ''}`}>
-      {/* Playground Link */}
-      <Link
-        to="/"
-        className={`nav-link ${activeView === 'playground' ? 'active fw-bold' : ''}`}
-        onClick={handlePlaygroundClick}
-      >
-        <i className="bi bi-search me-2"></i> Playground
-      </Link>
-
-      {/* Server Catalog Link */}
-      <Link
-        to="/catalog"
-        className={`nav-link ${activeView === 'catalog' || activeView === 'server-profile' ? 'active fw-bold' : ''}`}
-        onClick={handleCatalogClick}
-      >
-        <i className="bi bi-grid me-2"></i> Server Catalog
-      </Link>
-
-      {/* Report Link */}
-      <Link
-        to="/report"
-        className={`nav-link ${activeView === 'report' ? 'active fw-bold' : ''}`}
-        onClick={() => document.body.classList.remove('menu-open')}
-      >
-        <i className="bi bi-clipboard2-data me-2"></i> Report
-      </Link>
+      {/* Primary links (Playground, Server Catalog, Report) from the shared navigation module */}
+      {PRIMARY_NAV_ITEMS.map(item => (
+        <Link
+          key={item.path}
+          to={item.path}
+          className={`nav-link ${item.activeViews.includes(activeView) ? 'active fw-bold' : ''}`}
+          onClick={closeMobileMenu}
+        >
+          <i className={`bi ${item.icon} me-2`}></i> {item.label}
+        </Link>
+      ))}
 
       {!isContentView && (
         <>
