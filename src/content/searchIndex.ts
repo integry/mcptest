@@ -15,36 +15,20 @@ import {
   type MarkdownNode,
 } from './outline.ts';
 
-export const SEARCH_INDEX_PATH = '/learn/search-index.json';
-export const SEARCH_INDEX_VERSION = 1;
-export const SEARCH_EXCERPT_LENGTH = 200;
-export const SEARCH_INDEX_MAX_BYTES = 300 * 1024;
+export {
+  SEARCH_EXCERPT_LENGTH,
+  SEARCH_INDEX_MAX_BYTES,
+  SEARCH_INDEX_PATH,
+  SEARCH_INDEX_VERSION,
+} from './searchIndexContract.ts';
+export type { SearchIndex, SearchIndexArticle, SearchIndexHeading } from './searchIndexContract.ts';
+import {
+  SEARCH_EXCERPT_LENGTH,
+  SEARCH_INDEX_MAX_BYTES,
+  SEARCH_INDEX_VERSION,
+} from './searchIndexContract.ts';
+import type { SearchIndex, SearchIndexArticle, SearchIndexHeading } from './searchIndexContract.ts';
 
-export interface SearchIndexHeading {
-  level: 2 | 3;
-  text: string;
-  /** The id the rendered heading carries; the result links to `${path}#${id}`. */
-  id: string;
-  /** Plain text of the section up to the next h2/h3, at most the excerpt length. */
-  excerpt: string;
-}
-
-export interface SearchIndexArticle {
-  slug: string;
-  path: string;
-  title: string;
-  summary: string;
-  track: ContentTrackId;
-  level: ContentLevel;
-  /** Plain text before the first h2/h3. */
-  excerpt: string;
-  headings: SearchIndexHeading[];
-}
-
-export interface SearchIndex {
-  version: number;
-  articles: SearchIndexArticle[];
-}
 
 /** Block-level nodes whose text is separated from the next block by a space. */
 const SKIPPED_NODES = new Set(['code', 'html', 'definition', 'footnoteDefinition', 'yaml']);

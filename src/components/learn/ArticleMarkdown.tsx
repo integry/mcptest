@@ -1,28 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import hljs from 'highlight.js/lib/core';
-import bash from 'highlight.js/lib/languages/bash';
-import http from 'highlight.js/lib/languages/http';
-import javascript from 'highlight.js/lib/languages/javascript';
-import json from 'highlight.js/lib/languages/json';
-import typescript from 'highlight.js/lib/languages/typescript';
-import yaml from 'highlight.js/lib/languages/yaml';
+import React, { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { Link } from 'react-router-dom';
 import remarkGfm from 'remark-gfm';
 import { splitAtComponentMarker } from '../../content/contentModel';
 import { extractSegmentHeadingIds, remarkHeadingIds } from '../../content/outline';
-
-hljs.registerLanguage('bash', bash);
-hljs.registerLanguage('sh', bash);
-hljs.registerLanguage('shell', bash);
-hljs.registerLanguage('http', http);
-hljs.registerLanguage('javascript', javascript);
-hljs.registerLanguage('js', javascript);
-hljs.registerLanguage('json', json);
-hljs.registerLanguage('typescript', typescript);
-hljs.registerLanguage('ts', typescript);
-hljs.registerLanguage('yaml', yaml);
-hljs.registerLanguage('yml', yaml);
+import { getHighlighter, loadHighlighter } from './highlighter';
 
 const childText = (children: React.ReactNode): string =>
   React.Children.toArray(children)
@@ -41,9 +23,24 @@ const CodeBlock: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const className = codeElement?.props.className ?? '';
   const language = className.match(/language-([\w-]+)/)?.[1];
   const code = childText(codeElement?.props.children).replace(/\n$/, '');
+  // highlight.js arrives in its own chunk the first time a fenced block with a
+  // language mounts; until then the block renders as plain code.
+  const [highlighter, setHighlighter] = useState(getHighlighter);
+  useEffect(() => {
+    if (highlighter || !language) return undefined;
+    let active = true;
+    loadHighlighter()
+      .then(loaded => {
+        if (active) setHighlighter(() => loaded);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [highlighter, language]);
   const highlighted = useMemo(
-    () => (language && hljs.getLanguage(language) ? hljs.highlight(code, { language }).value : null),
-    [code, language]
+    () => (language && highlighter?.getLanguage(language) ? highlighter.highlight(code, { language }).value : null),
+    [code, language, highlighter]
   );
 
   const copy = async () => {

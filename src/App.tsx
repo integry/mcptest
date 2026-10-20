@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 // Import Analytics helpers
@@ -6,19 +6,25 @@ import { getAnalyticsHost, logPageView, trackEvent } from './utils/analytics';
 
 // Import Components
 import Header from './components/Header';
-import TabContent from './components/TabContent';
 import NotificationPopup from './components/NotificationPopup';
-// Placeholders for new components
-import SideNav from './components/SideNav'; // New
-import DashboardsView from './components/DashboardsView'; // New
-import ReportView from './components/ReportView'; // New
+import SideNav from './components/SideNav';
 import CatalogView from './components/CatalogView';
 import ServerProfileView from './components/ServerProfileView';
-import SubmitServerView from './components/SubmitServerView';
-import Tabs from './components/Tabs'; // New
-import LearnArticlePage from './components/learn/LearnArticlePage';
+import Tabs from './components/Tabs';
 import LearnIndex from './components/learn/LearnIndex';
 import LearnNotFound from './components/learn/LearnNotFound';
+// Route-level code splitting: the inspector, dashboards, reports, submission,
+// article renderer and OAuth screens are separate chunks (see views/deferredViews).
+import {
+  DashboardsView,
+  LearnArticlePage,
+  OAuthCallback,
+  OAuthConfig,
+  ReportView,
+  SubmitServerView,
+  TabContent,
+  ViewFallback,
+} from './views/deferredViews';
 import { PAGE_COMPONENTS } from './content/componentRegistry';
 import {
   getContentPage,
@@ -26,9 +32,6 @@ import {
   getLearnArticleSlugFromPath,
   isLearnIndexPath,
 } from './content/learnRegistry';
-// OAuth callback component
-import OAuthCallback from './components/OAuthCallback';
-import OAuthConfig from './components/OAuthConfig';
 
 // Import Data Sync Hook
 import { useDataSync } from './hooks/useDataSync';
@@ -49,181 +52,22 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
-import {
-  TransportConnectionError,
-  attemptParallelConnections,
-  getObservedAuthenticationChallenge,
-  type ObservedAuthenticationChallenge,
-} from './utils/transportDetection';
-import {
-  getSavedCardConnectionPlan,
-  getSavedResourceUri,
-  SavedResourceCardMigrationError,
-} from './utils/savedCardConnection';
-import {
-  beginOAuthFlow,
-  clearOAuthTokens,
-  getHostedOAuthTokenProxyUrl,
-  getOAuthPrerequisite,
-  isOAuthClientConfigurationRequired,
-  loadOAuthAuthorization,
-  type OAuthPrerequisite,
-} from './utils/oauthFlow';
-import {
-  recordOAuthAuthenticationChallenge,
-  resumePendingAuthenticatedMcpRetry,
-  type PendingAuthenticatedMcpRetry,
-} from './utils/oauthTrace';
+// The MCP SDK, OAuth flow and saved-card helpers load on demand; see utils/savedCardRuntime.
+import type {
+  OAuthPrerequisite,
+  PendingAuthenticatedMcpRetry,
+  SavedCardOAuthChallenge,
+} from './utils/savedCardRuntime';
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
 import { isLandingEligible } from './utils/landingEligibility';
 import { createDefaultSpaces, createDefaultTabs } from './utils/defaultWorkspace';
 
+type SavedCardRuntime = typeof import('./utils/savedCardRuntime');
+const loadSavedCardRuntime = (): Promise<SavedCardRuntime> => import('./utils/savedCardRuntime');
+
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
 const TABS_KEY = 'mcpConnectionTabs'; // New key for tabs
-
-const getAuthenticationHttpStatus = (
-  error: unknown,
-  seen = new Set<object>()
-): 401 | 403 | undefined => {
-  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
-  seen.add(error);
-
-  const value = error as {
-    status?: unknown;
-    statusCode?: unknown;
-    response?: { status?: unknown };
-    cause?: unknown;
-  };
-  const status = [
-    value.status,
-    value.statusCode,
-    value.response?.status,
-  ].find(candidate => candidate === 401 || candidate === 403);
-  if (status === 401 || status === 403) return status;
-
-  if (error instanceof TransportConnectionError) {
-    for (const nestedError of error.errors) {
-      const nestedStatus = getAuthenticationHttpStatus(nestedError, seen);
-      if (nestedStatus) return nestedStatus;
-    }
-  }
-
-  const causeStatus = getAuthenticationHttpStatus(value.cause, seen);
-  if (causeStatus) return causeStatus;
-  return undefined;
-};
-
-export const classifySavedCardAuthenticationFailure = (
-  error: unknown,
-  usesProxy: boolean,
-  observedChallenge?: ObservedAuthenticationChallenge
-): ObservedAuthenticationChallenge | undefined => {
-  const proxiedChallenge = observedChallenge || getObservedAuthenticationChallenge(error);
-  if (proxiedChallenge) return proxiedChallenge;
-
-  // A generic proxied 401/403 has ambiguous provenance. Never turn it into a
-  // target OAuth prompt unless the proxy transport identified the responder.
-  if (usesProxy) return undefined;
-
-  const status = getAuthenticationHttpStatus(error);
-  return status ? { status, source: 'target' } : undefined;
-};
-
-export const resumeSavedCardAuthenticatedMcpRetry = (
-  serverUrl: string,
-  oauthToken: string | undefined,
-  storage: Pick<Storage, 'getItem' | 'setItem'> = sessionStorage,
-  startedAt = Date.now()
-): PendingAuthenticatedMcpRetry | undefined => oauthToken
-  ? resumePendingAuthenticatedMcpRetry({
-      targetUrl: serverUrl,
-      storage,
-      operation: 'saved-card execution',
-      startedAt,
-    })
-  : undefined;
-
-type SavedCardOAuthUser = {
-  getIdToken: () => Promise<string>;
-};
-
-type SavedCardOAuthChallenge = Pick<
-  ObservedAuthenticationChallenge,
-  'resourceMetadataUrl' | 'scope' | 'targetUrl'
->;
-
-export const attachSavedCardOAuthChallenge = <T extends object>(
-  value: T,
-  challenge?: SavedCardOAuthChallenge
-): T & SavedCardOAuthChallenge => {
-  if (challenge?.targetUrl) {
-    Object.defineProperty(value, 'targetUrl', { value: challenge.targetUrl, enumerable: false });
-  }
-  if (challenge?.resourceMetadataUrl) {
-    Object.defineProperty(value, 'resourceMetadataUrl', {
-      value: challenge.resourceMetadataUrl,
-      enumerable: false,
-    });
-  }
-  if (challenge?.scope) {
-    Object.defineProperty(value, 'scope', {
-      value: challenge.scope,
-      enumerable: false,
-    });
-  }
-  return value;
-};
-
-export const beginSavedCardOAuthFlow = async ({
-  serverUrl,
-  challenge,
-  proxyUrl,
-  currentUser,
-  discoveryProxyApplicable,
-  startFlow = beginOAuthFlow,
-}: {
-  serverUrl: string;
-  challenge?: SavedCardOAuthChallenge;
-  proxyUrl?: string;
-  currentUser?: SavedCardOAuthUser | null;
-  discoveryProxyApplicable: boolean;
-  startFlow?: typeof beginOAuthFlow;
-}) => {
-  const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
-  const proxyApplicable = Boolean(
-    (discoveryProxyApplicable && proxyUrl) || tokenProxyUrl
-  );
-  // Optional: a login only lifts the proxy's anonymous limits.
-  const discoveryProxyToken = proxyApplicable && currentUser
-    ? await currentUser.getIdToken()
-    : undefined;
-
-  return startFlow(challenge?.targetUrl || serverUrl, {
-    forceReauthorization: true,
-    ...(challenge?.resourceMetadataUrl
-      ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
-      : {}),
-    ...(challenge?.scope ? { scope: challenge.scope } : {}),
-    ...(discoveryProxyApplicable && proxyUrl
-      ? {
-          discoveryProxy: {
-            url: proxyUrl,
-            authorizationToken: discoveryProxyToken,
-          },
-        }
-      : {}),
-    ...(tokenProxyUrl
-      ? {
-          tokenProxy: {
-            url: tokenProxyUrl,
-            authorizationToken: discoveryProxyToken,
-          },
-        }
-      : {}),
-    deferAuthorizedTraceOutcome: true,
-  });
-};
 
 export const getLearnPageViewTitle = (path: string) => {
   const article = getLearnArticle(getLearnArticleSlugFromPath(path));
@@ -343,6 +187,7 @@ function App() {
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
   const [oauthPrerequisite, setOAuthPrerequisite] = useState<OAuthPrerequisite | null>(null);
   const handledOAuthSuccessRef = useRef(false);
+  const visitedViewsRef = useRef(new Set<string>());
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -1450,6 +1295,7 @@ function App() {
     if (cardIndex === -1) return;
 
     const card = spaces[spaceIndex].cards[cardIndex];
+    const runtime = await loadSavedCardRuntime();
     if (card) {
         trackEvent('execute_card', {
             card_type: card.type
@@ -1460,7 +1306,7 @@ function App() {
     setSpaces(prev => updateCardState(prev, spaceId, cardId, { loading: true, error: null, responseData: null, responseType: null }));
 
     let tempClient: any = null;
-    let activeConnection: Awaited<ReturnType<typeof attemptParallelConnections>> | null = null;
+    let activeConnection: Awaited<ReturnType<SavedCardRuntime['attemptParallelConnections']>> | null = null;
     let lastError: any = null;
     let shouldUseProxy = false; // Move this outside try block to make it accessible in catch block
     let pendingOAuthRetry: PendingAuthenticatedMcpRetry | undefined;
@@ -1471,13 +1317,13 @@ function App() {
         console.log(`[Execute Card ${cardId} Attempt ${attempt}/${MAX_RETRIES}] Starting execution. Card URL: ${card.serverUrl}`);
         lastError = null; // Clear last error on new attempt
         const resourceUri = card.type === 'resource'
-          ? getSavedResourceUri(card.name, card.params)
+          ? runtime.getSavedResourceUri(card.name, card.params)
           : undefined;
 
         // --- Connection and Request Logic ---
         // Use only the exact resource's issuer-bound SDK token.
-        const oauthToken = loadOAuthAuthorization(card.serverUrl)?.accessToken;
-        pendingOAuthRetry = pendingOAuthRetry || resumeSavedCardAuthenticatedMcpRetry(
+        const oauthToken = runtime.loadOAuthAuthorization(card.serverUrl)?.accessToken;
+        pendingOAuthRetry = pendingOAuthRetry || runtime.resumeSavedCardAuthenticatedMcpRetry(
           card.serverUrl,
           oauthToken,
           sessionStorage,
@@ -1491,7 +1337,7 @@ function App() {
         const proxyAuthToken = proxySelected && currentUser
           ? await currentUser.getIdToken()
           : undefined;
-        const connectionPlan = getSavedCardConnectionPlan({
+        const connectionPlan = runtime.getSavedCardConnectionPlan({
           serverUrl: card.serverUrl,
           useProxy: card.useProxy,
           oauthToken,
@@ -1506,7 +1352,7 @@ function App() {
           console.log(`[Execute Card ${cardId}] Using OAuth target authentication`);
         }
 
-        activeConnection = await attemptParallelConnections(
+        activeConnection = await runtime.attemptParallelConnections(
           connectionPlan.connectionUrl,
           undefined,
           connectionPlan.authToken,
@@ -1560,7 +1406,7 @@ function App() {
           // Only a terminal failure may finalize the pending OAuth retry.
           console.error(`[Execute Card ${cardId}] Unrecoverable error or max retries reached.`);
 
-          const authenticationChallenge = classifySavedCardAuthenticationFailure(
+          const authenticationChallenge = runtime.classifySavedCardAuthenticationFailure(
             err,
             shouldUseProxy,
             activeConnection?.takeAuthenticationChallenge()
@@ -1573,7 +1419,7 @@ function App() {
             ...(activeConnection ? { result: activeConnection } : {}),
           });
           if (authenticationChallenge && !finalizedPendingRetry) {
-            const trace = recordOAuthAuthenticationChallenge({
+            const trace = runtime.recordOAuthAuthenticationChallenge({
               targetUrl: isTargetAuthError ? authenticationChallenge.targetUrl || card.serverUrl : card.serverUrl,
               status: authenticationChallenge.status,
               source: authenticationChallenge.source,
@@ -1604,7 +1450,7 @@ function App() {
           });
           
           // Mark error with auth information for UI handling
-          let errorWithAuthInfo = err instanceof SavedResourceCardMigrationError
+          let errorWithAuthInfo = err instanceof runtime.SavedResourceCardMigrationError
             ? errorDetails
             : isProxyAuthError
             ? {
@@ -1633,7 +1479,7 @@ function App() {
             && typeof errorWithAuthInfo === 'object'
             && errorWithAuthInfo
           ) {
-            errorWithAuthInfo = attachSavedCardOAuthChallenge(
+            errorWithAuthInfo = runtime.attachSavedCardOAuthChallenge(
               errorWithAuthInfo,
               authenticationChallenge
             );
@@ -1685,7 +1531,8 @@ function App() {
     const discoveryProxyApplicable = card?.useProxy !== false;
 
     serverUrl = challenge?.targetUrl || serverUrl;
-    clearOAuthTokens(serverUrl);
+    const runtime = await loadSavedCardRuntime();
+    runtime.clearOAuthTokens(serverUrl);
     sessionStorage.setItem('oauth_cards_to_refresh', JSON.stringify([{ spaceId, cardId }]));
     const activeTabs = localStorage.getItem(TABS_KEY);
     if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
@@ -1699,7 +1546,7 @@ function App() {
     }));
 
     try {
-      const result = await beginSavedCardOAuthFlow({
+      const result = await runtime.beginSavedCardOAuthFlow({
         serverUrl,
         challenge,
         proxyUrl,
@@ -1708,8 +1555,8 @@ function App() {
       });
       if (result === 'AUTHORIZED') await handleExecuteCard(spaceId, cardId);
     } catch (error) {
-      const prerequisite = getOAuthPrerequisite(error);
-      if (isOAuthClientConfigurationRequired(error) || prerequisite) {
+      const prerequisite = runtime.getOAuthPrerequisite(error);
+      if (runtime.isOAuthClientConfigurationRequired(error) || prerequisite) {
         sessionStorage.setItem('oauth_pending_reauth', JSON.stringify({
           spaceId,
           cardId,
@@ -1732,7 +1579,8 @@ function App() {
     const refreshOAuthCards = async () => {
       // Add a delay to ensure OAuth tokens are properly stored in sessionStorage
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+      const runtime = await loadSavedCardRuntime();
+
       for (const space of spaces) {
         const cardsNeedingRefresh = space.cards.filter(card => (card as any).needsOAuthRefresh);
         if (cardsNeedingRefresh.length > 0) {
@@ -1740,7 +1588,7 @@ function App() {
           
           // Log OAuth token status for debugging
           for (const card of cardsNeedingRefresh) {
-            const hasToken = !!loadOAuthAuthorization(card.serverUrl);
+            const hasToken = !!runtime.loadOAuthAuthorization(card.serverUrl);
             console.log(`[OAuth Refresh Effect] Card ${card.id} - Server: ${card.serverUrl}, Has OAuth token: ${hasToken}`);
           }
           
@@ -1817,6 +1665,11 @@ function App() {
 
  // --- Render Logic ---
   const selectedSpace = spaces.find(s => s.id === selectedSpaceId);
+  // Views mount the first time they are shown and stay mounted (hidden) after
+  // that, so the playground keeps its connections across navigation while a
+  // guide or catalog page never renders the inspector, dashboards or report.
+  visitedViewsRef.current.add(activeView);
+  const hasVisited = (view: typeof activeView) => visitedViewsRef.current.has(view);
   const selectedCatalogServerId = getCatalogServerIdFromPath(location.pathname);
   const selectedCatalogServer = selectedCatalogServerId
     ? getCatalogServerById(selectedCatalogServerId)
@@ -1834,7 +1687,11 @@ function App() {
       return <LearnIndex />;
     }
     if (selectedContentPage?.kind === 'article') {
-      return <LearnArticlePage article={selectedContentPage.article} />;
+      return (
+        <Suspense fallback={<ViewFallback label="Loading the guide" />}>
+          <LearnArticlePage article={selectedContentPage.article} />
+        </Suspense>
+      );
     }
     if (SelectedPageComponent) {
       return <SelectedPageComponent />;
@@ -1851,7 +1708,11 @@ function App() {
 
   // Check if we're on the OAuth callback page
   if (location.pathname === '/oauth/callback') {
-    return <OAuthCallback />;
+    return (
+      <Suspense fallback={<ViewFallback label="Completing authentication" />}>
+        <OAuthCallback />
+      </Suspense>
+    );
   }
 
   // Handle OAuth provider's install-integration redirect
@@ -1964,90 +1825,92 @@ function App() {
           </div>
 
           {/* Report View */}
-          <div className={`view-panel report-view-panel ${activeView === 'report' ? '' : 'd-none'}`}>
-            <ReportView />
-          </div>
+          {hasVisited('report') && (
+            <div className={`view-panel report-view-panel ${activeView === 'report' ? '' : 'd-none'}`}>
+              <Suspense fallback={<ViewFallback label="Loading the report" />}>
+                <ReportView />
+              </Suspense>
+            </div>
+          )}
 
           {/* Catalog View */}
-          <div className={`view-panel ${activeView === 'catalog' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            <CatalogView onTestServer={handleCatalogTestServer} />
-          </div>
+          {hasVisited('catalog') && (
+            <div className={`view-panel ${activeView === 'catalog' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+              <CatalogView onTestServer={handleCatalogTestServer} />
+            </div>
+          )}
 
           {/* Server Submission View */}
           {activeView === 'submit' && (
             <div className="view-panel">
-              <SubmitServerView initialUrl={connectedTab?.serverUrl} />
+              <Suspense fallback={<ViewFallback label="Loading the submission form" />}>
+                <SubmitServerView initialUrl={connectedTab?.serverUrl} />
+              </Suspense>
             </div>
           )}
 
           {/* Server Profile View */}
-          <div className={`view-panel ${activeView === 'server-profile' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            <ServerProfileView server={selectedCatalogServer} onTestServer={handleCatalogTestServer} />
-          </div>
+          {hasVisited('server-profile') && (
+            <div className={`view-panel ${activeView === 'server-profile' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+              <ServerProfileView server={selectedCatalogServer} onTestServer={handleCatalogTestServer} />
+            </div>
+          )}
 
-          {/* Playground View */}
-          <div className={`view-panel ${activeView === 'playground' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            <div className="h-100 d-flex flex-column">
-              <div className="playground-tabs-wrapper">
-                <Tabs
-                  tabs={tabs}
-                  activeTabId={activeTabId}
-                  onSelectTab={handleSelectTab}
-                  onCloseTab={handleCloseTab}
-                  onNewTab={handleNewTab}
-                />
-              </div>
-              <div className="flex-grow-1 position-relative">
-                {tabs.map(tab => (
-                  <TabContent
-                    key={tab.id}
-                    tab={tab}
-                    isActive={activeTabId === tab.id && activeView === 'playground'}
-                    onUpdateTab={handleUpdateTab}
-                    spaces={spaces}
-                    onAddCardToSpace={handleAddCardToDashboard}
-                    landingEligible={isLandingEligible(tabs, tab.id)}
+          {/* Playground View: TabContent instances stay mounted (hidden) once
+              opened so their connections survive navigation to other views. */}
+          {hasVisited('playground') && (
+            <div className={`view-panel ${activeView === 'playground' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+              <div className="h-100 d-flex flex-column">
+                <div className="playground-tabs-wrapper">
+                  <Tabs
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    onSelectTab={handleSelectTab}
+                    onCloseTab={handleCloseTab}
+                    onNewTab={handleNewTab}
                   />
-                ))}
+                </div>
+                <div className="flex-grow-1 position-relative">
+                  <Suspense fallback={<ViewFallback label="Loading the playground" />}>
+                    {tabs.map(tab => (
+                      <TabContent
+                        key={tab.id}
+                        tab={tab}
+                        isActive={activeTabId === tab.id && activeView === 'playground'}
+                        onUpdateTab={handleUpdateTab}
+                        spaces={spaces}
+                        onAddCardToSpace={handleAddCardToDashboard}
+                        landingEligible={isLandingEligible(tabs, tab.id)}
+                      />
+                    ))}
+                  </Suspense>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Dashboards View */}
-          <div className={`view-panel ${activeView === 'dashboards' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            {selectedSpace ? (
-              <DashboardsView
-                space={selectedSpace}
-                onUpdateSpace={handleUpdateDashboard}
-                onDeleteSpace={handleDeleteDashboard}
-                onUpdateCard={handleUpdateCard}
-                onDeleteCard={handleDeleteCard}
-                onExecuteCard={handleExecuteCard}
-                onMoveCard={handleMoveCard}
-                onAddCard={handleAddCardToSpace}
-                onRefreshSpace={refreshCurrentDashboard}
-                isRefreshing={healthCheckLoading}
-                onReauthorizeCard={handleReauthorizeCard}
-              />
-            ) : (
-              <div className="alert alert-warning">No dashboard selected or available. Create one from the side menu.</div>
-            )}
-          </div>
-
-          {/* Keep TabContent components alive even when not in playground */}
-          {activeView !== 'playground' && (
-            <div className="d-none">
-              {tabs.map(tab => (
-                <TabContent
-                  key={tab.id}
-                  tab={tab}
-                  isActive={false}
-                  onUpdateTab={handleUpdateTab}
-                  spaces={spaces}
-                  onAddCardToSpace={handleAddCardToSpace}
-                  landingEligible={isLandingEligible(tabs, tab.id)}
-                />
-              ))}
+          {hasVisited('dashboards') && (
+            <div className={`view-panel ${activeView === 'dashboards' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+              {selectedSpace ? (
+                <Suspense fallback={<ViewFallback label="Loading the dashboard" />}>
+                  <DashboardsView
+                    space={selectedSpace}
+                    onUpdateSpace={handleUpdateDashboard}
+                    onDeleteSpace={handleDeleteDashboard}
+                    onUpdateCard={handleUpdateCard}
+                    onDeleteCard={handleDeleteCard}
+                    onExecuteCard={handleExecuteCard}
+                    onMoveCard={handleMoveCard}
+                    onAddCard={handleAddCardToSpace}
+                    onRefreshSpace={refreshCurrentDashboard}
+                    isRefreshing={healthCheckLoading}
+                    onReauthorizeCard={handleReauthorizeCard}
+                  />
+                </Suspense>
+              ) : (
+                <div className="alert alert-warning">No dashboard selected or available. Create one from the side menu.</div>
+              )}
             </div>
           )}
 
@@ -2057,6 +1920,7 @@ function App() {
       
       {/* OAuth authorization prerequisite */}
       {needsOAuthConfig && oauthConfigServerUrl && (
+        <Suspense fallback={null}>
         <OAuthConfig 
           serverUrl={oauthConfigServerUrl}
           prerequisite={oauthPrerequisite || undefined}
@@ -2088,6 +1952,7 @@ function App() {
             sessionStorage.removeItem('oauth_pending_reauth');
           }}
         />
+        </Suspense>
       )}
     </div>
   );

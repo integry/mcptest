@@ -61,6 +61,7 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
               key={diagnostic.id}
               className={`transport-diagnostic transport-diagnostic--${modifier}`}
               aria-label={diagnostic.title}
+              data-testid="transport-diagnostic"
             >
               <div className="transport-diagnostic__header">
                 <span className={`badge ${severityBadge(diagnostic)}`}>{severityLabel(diagnostic)}</span>

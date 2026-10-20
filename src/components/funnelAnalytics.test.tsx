@@ -5,8 +5,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 // Assert at the Firebase boundary so redaction and helper-sent events are covered too.
 const firebase = vi.hoisted(() => ({ analytics: { app: 'test' }, logEvent: vi.fn() }));
-vi.mock('../firebase', () => ({ analytics: firebase.analytics }));
-vi.mock('firebase/analytics', () => ({ logEvent: firebase.logEvent }));
+vi.mock('../firebase', () => ({
+  getLoadedFirebase: () => ({ analytics: firebase.analytics, logEvent: firebase.logEvent }),
+  isFirebaseLoading: () => false,
+  onFirebaseLoaded: vi.fn(),
+}));
 
 import { LEARN_ARTICLES } from '../content/learnRegistry';
 import BadgeEmbed from './BadgeEmbed';

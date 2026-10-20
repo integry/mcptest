@@ -21,6 +21,7 @@ import { extractOutline } from '../../content/outline';
 import { LEARN_HUB_NAVIGATION, LEARN_TRACKS, getLearnTrackForPath } from '../../content/navigation';
 import { getDocsMetadata } from '../../utils/pageMetadata';
 import ArticleMarkdown from './ArticleMarkdown';
+import { loadHighlighter } from './highlighter';
 import LearnArticlePage from './LearnArticlePage';
 import LearnIndex from './LearnIndex';
 import LearnNotFound from './LearnNotFound';
@@ -361,7 +362,9 @@ describe('Learn article page', () => {
     expect(firstContainer.querySelector('.reading-pager-next')?.getAttribute('href')).toBe('/docs/remote-vs-local');
   });
 
-  it('highlights fenced code with a copy button and renders blockquotes and internal links', () => {
+  it('highlights fenced code with a copy button and renders blockquotes and internal links', async () => {
+    // The highlighter is a separate chunk; main.tsx preloads it for articles with code.
+    await loadHighlighter();
     const article = getLearnArticle('troubleshooting')!;
     const container = render(<LearnArticlePage article={article} />);
 
