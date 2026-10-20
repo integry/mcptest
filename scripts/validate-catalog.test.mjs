@@ -1042,10 +1042,107 @@ describe('catalog capability pagination and persistence', () => {
     const [result] = await mapWithConcurrency(
       [{ id: 'slow', url: 'https://slow.example/mcp', transport: 'streamable-http', authType: 'none' }],
       1,
-      () => withServerTimeout(() => new Promise(() => {}), 10)
+      () => withServerTimeout((signal) => new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason));
+      }), 10)
     );
 
     expect(result).toMatchObject({ serverId: 'slow', status: 'offline', errorCode: 'timeout' });
     expect(result.message).toBe('Server validation timed out after 10ms');
+  });
+
+  it('aborts a timed-out validation and settles only after it has cleaned up', async () => {
+    let cleanedUp = false;
+    const outcome = withServerTimeout((signal) => new Promise((_, reject) => {
+      signal.addEventListener('abort', () => setTimeout(() => {
+        cleanedUp = true;
+        reject(new Error('aborted probe'));
+      }, 20));
+    }), 10);
+
+    await expect(outcome).rejects.toMatchObject({ code: 'SERVER_TIMEOUT' });
+    expect(cleanedUp).toBe(true);
+  });
+
+  it('stops every probe and discovery request of a server once its deadline expires', async () => {
+    const requests = [];
+    let active = 0;
+    const fetchImpl = (input, init = {}) => {
+      requests.push(String(input instanceof Request ? input.url : input));
+      active += 1;
+      return new Promise((_, reject) => {
+        // Never answers: only the abort signal ends the request.
+        init.signal?.addEventListener('abort', () => {
+          active -= 1;
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        }, { once: true });
+      });
+    };
+    const seed = {
+      id: 'stalled',
+      url: 'https://stalled.example/mcp',
+      transport: 'streamable-http',
+      authType: 'none',
+      listingSource: { kind: 'community' },
+    };
+
+    await expect(withServerTimeout(
+      (signal) => validateSeed(seed, { fetchImpl, timeoutMs: 60_000, signal }),
+      50
+    )).rejects.toMatchObject({ code: 'SERVER_TIMEOUT' });
+    const requestsAtDeadline = requests.length;
+    expect(requestsAtDeadline).toBeGreaterThan(0);
+    expect(active).toBe(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(requests).toHaveLength(requestsAtDeadline);
+    expect(active).toBe(0);
+  });
+
+  it('aborts discovery at the server deadline instead of requesting further pages or methods', async () => {
+    const methods = [];
+    const client = await connectedClient((method) => {
+      methods.push(method);
+      // The first page answers with a cursor; the second page never answers.
+      return methods.length === 1
+        ? { tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }], nextCursor: 'tools-2' }
+        : new Promise(() => {});
+    });
+    const controller = new AbortController();
+    const deadline = Object.assign(new Error('deadline'), { code: 'SERVER_TIMEOUT' });
+    setTimeout(() => controller.abort(deadline), 30);
+    try {
+      await expect(
+        discoverPublicInventory(client, 'https://example.com/mcp', 60_000, controller.signal)
+      ).rejects.toBe(deadline);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(methods).toEqual(['tools/list', 'tools/list']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('keeps timed-out validations inside the concurrency limit until they stop', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const seeds = Array.from({ length: 6 }, (_, index) => ({
+      id: `slow-${index}`, url: `https://slow-${index}.example/mcp`, transport: 'streamable-http', authType: 'none',
+    }));
+
+    const results = await mapWithConcurrency(seeds, 2, () => withServerTimeout(
+      (signal) => new Promise((_, reject) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        signal.addEventListener('abort', () => setTimeout(() => {
+          active -= 1;
+          reject(signal.reason);
+        }, 15));
+      }),
+      10
+    ));
+
+    expect(results.map(({ errorCode }) => errorCode)).toEqual(Array(6).fill('timeout'));
+    expect(maxActive).toBe(2);
+    expect(active).toBe(0);
   });
 });
