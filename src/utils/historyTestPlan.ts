@@ -79,9 +79,10 @@ export const textAssertionForCall = (
   const prefix = stableTextPrefix(entry.resultText.excerpt);
   if (!prefix) return undefined;
   const key = callKey(entry);
+  // A successful repeat without the text block (an image-only answer, say) varied too.
   const varied = siblings.some((other) => other.id !== entry.id && isSuccessfulCall(other) && callKey(other) === key
-    && other.resultText !== undefined
-    && (other.resultText.index !== entry.resultText!.index || !other.resultText.excerpt.includes(prefix)));
+    && (other.resultText === undefined
+      || other.resultText.index !== entry.resultText!.index || !other.resultText.excerpt.includes(prefix)));
   if (varied) return undefined;
   return { path: `$.content[${entry.resultText.index}].text`, operator: 'contains', value: prefix };
 };

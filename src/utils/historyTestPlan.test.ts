@@ -102,6 +102,13 @@ describe('assertions generated from a recorded call', () => {
     expect(assertionsForCall(first, tools[0], [repeat, first]).map((item) => item.operator)).toContain('contains');
   });
 
+  it('drops the content assertion when an identical successful call returned no text block', () => {
+    const text = recorded({ text: 'Chart of rainfall' }, '2026-10-20T10:00:00.000Z');
+    const imageOnly = recorded({ content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }] }, '2026-10-20T10:01:00.000Z');
+    expect(imageOnly.resultText).toBeUndefined();
+    expect(assertionsForCall(text, tools[0], [imageOnly, text]).map((item) => item.operator)).not.toContain('contains');
+  });
+
   it('uses only the first line and requires a meaningful prefix', () => {
     expect(stableTextPrefix('  Heading\nsecond line')).toBe('Heading');
     expect(stableTextPrefix('ok')).toBeUndefined();
@@ -150,6 +157,19 @@ describe('createTestPlanFromHistory', () => {
     ];
     const result = createTestPlanFromHistory(calls, tools, serverUrl);
     expect(result).toMatchObject({ convertedCount: 1, duplicateCount: 1, unavailableCount: 1 });
+  });
+
+  it('generates no text assertion that an image-only repeat of a text call would fail', () => {
+    const imageOnlyResult = { content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }] };
+    const calls = [
+      recorded({ content: imageOnlyResult.content }, '2026-10-20T10:01:00.000Z'),
+      recorded({ text: 'Chart of rainfall' }, '2026-10-20T10:00:00.000Z'),
+    ];
+    const { plan, convertedCount, duplicateCount } = createTestPlanFromHistory(calls, tools, serverUrl);
+    expect({ convertedCount, duplicateCount }).toEqual({ convertedCount: 1, duplicateCount: 1 });
+    const [testCase] = plan.tools[0].cases;
+    expect(testCase.assertions.map((item) => item.operator)).not.toContain('contains');
+    expect(evaluateAssertions(imageOnlyResult, testCase.assertions).every((item) => item.passed)).toBe(true);
   });
 
   it('keeps history redaction and leaves cases with redacted values unselected', () => {
