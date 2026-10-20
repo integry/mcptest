@@ -192,6 +192,7 @@ describe('redaction', () => {
     expect(firebase.logEvent).toHaveBeenCalledWith(firebase.analytics, 'landing_connect', {
       source: 'manual',
       host: 'example.com',
+      page_location: `${window.location.origin}/`,
     });
   });
 
@@ -295,6 +296,7 @@ describe('funnel helpers', () => {
     expect(firebase.logEvent).toHaveBeenCalledWith(firebase.analytics, 'guide_cta_click', {
       slug: 'mcp-glossary',
       destination: 'catalog',
+      page_location: `${window.location.origin}/`,
     });
   });
 
@@ -302,10 +304,45 @@ describe('funnel helpers', () => {
     trackOAuthFlow('start', 'https://unknown.example.com/mcp');
     trackOAuthFlow('success', 'https://mcp.canva.com/mcp');
     trackOAuthFlow('error');
+    const page_location = `${window.location.origin}/`;
     expect(firebase.logEvent.mock.calls.map((call) => call[2])).toEqual([
-      { stage: 'start' },
-      { stage: 'success', provider_policy_id: 'canva' },
-      { stage: 'error' },
+      { stage: 'start', page_location },
+      { stage: 'success', provider_policy_id: 'canva', page_location },
+      { stage: 'error', page_location },
     ]);
+  });
+});
+
+describe('implicit page location', () => {
+  const visit = (url: string) => window.history.pushState({}, '', url);
+
+  afterEach(() => visit('/'));
+
+  it('overrides the document URL with the sanitized route on an endpoint-bearing report', () => {
+    const endpoint = encodeURIComponent('https://user:secret@mcp.example.com/private/mcp?api_key=abc123');
+    visit(`/report/${endpoint}?token=xyz#frag`);
+    trackEvent('report_generated', { result_status: 'ready', score_band: 'A', surface: 'report_page' });
+
+    const [, , params] = firebase.logEvent.mock.calls[0];
+    expect(params.page_location).toBe(`${window.location.origin}/report/[server]`);
+    expect(JSON.stringify(firebase.logEvent.mock.calls)).not.toMatch(/mcp\.example|secret|api_key|token=|frag/);
+  });
+
+  it('drops the authorization code and state on the OAuth callback route', () => {
+    visit('/oauth/callback?code=auth-code-123&state=opaque-state#x');
+    trackOAuthFlow('callback', 'https://mcp.canva.com/mcp');
+
+    expect(firebase.logEvent).toHaveBeenCalledWith(firebase.analytics, 'oauth_flow', {
+      stage: 'callback',
+      provider_policy_id: 'canva',
+      page_location: `${window.location.origin}/oauth/callback`,
+    });
+    expect(JSON.stringify(firebase.logEvent.mock.calls)).not.toMatch(/auth-code|opaque-state|code=/);
+  });
+
+  it('cannot be overridden by an event param', () => {
+    visit('/server/https%3A%2F%2Fmcp.example.com%2Fmcp');
+    trackEvent('theme_changed', { theme_name: 'dark', page_location: 'https://evil.example/?q=1' } as never);
+    expect(firebase.logEvent.mock.calls[0][2].page_location).toBe(`${window.location.origin}/server/[server]`);
   });
 });

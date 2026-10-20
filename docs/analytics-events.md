@@ -29,6 +29,10 @@ the console as `[Analytics Disabled]`.
   `/call/…` paths with `[server]`, and dashboard names with `[space]`. Firebase's automatic
   `page_view` is turned off (`send_page_view: false`), so `logPageView` sends the only page
   views.
+- **Page location on every event.** Without an override, GA4 attaches the full document URL
+  to each event, which on report, server and OAuth callback routes would carry the endpoint,
+  query credentials or the authorization code. `trackEvent` therefore always sets
+  `page_location` to the origin plus the sanitized path, with no query string or fragment.
 - **Do Not Track / Global Privacy Control.** mcptest has no consent banner. If the browser
   sends `navigator.doNotTrack` (`1`/`yes`, including the legacy `msDoNotTrack` and
   `window.doNotTrack`) or `navigator.globalPrivacyControl === true`, Firebase Analytics is

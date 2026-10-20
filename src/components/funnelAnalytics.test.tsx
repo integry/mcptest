@@ -12,9 +12,11 @@ import { LEARN_ARTICLES } from '../content/learnRegistry';
 import BadgeEmbed from './BadgeEmbed';
 import { LandingHero } from './LandingHero';
 import LearnArticlePage from './learn/LearnArticlePage';
+import { sanitizePagePath } from '../utils/analytics';
 
 const expectSent = (name: string, params: Record<string, unknown> = {}) => {
-  expect(firebase.logEvent).toHaveBeenCalledWith(firebase.analytics, name, params);
+  const page_location = window.location.origin + sanitizePagePath(window.location.pathname);
+  expect(firebase.logEvent).toHaveBeenCalledWith(firebase.analytics, name, { ...params, page_location });
 };
 
 beforeAll(() => {

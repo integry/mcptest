@@ -181,7 +181,9 @@ export function trackEvent<K extends AnalyticsEventName>(name: K, ...args: Analy
   const params = redactAnalyticsParams(args[0] as Record<string, unknown> | undefined);
   try {
     if (analytics) {
-      firebaseLogEvent(analytics, name as string, params);
+      // gtag otherwise attaches the full document URL, which on report, server and
+      // OAuth callback routes carries the endpoint, query credentials or auth codes.
+      firebaseLogEvent(analytics, name as string, { ...params, page_location: getSanitizedPageLocation() });
     } else {
       // Fallback for local development or if Firebase fails to initialize
       console.log(`[Analytics Disabled] Event: ${name}`, params);
@@ -261,6 +263,12 @@ const sanitizePagePath = (path: string): string => {
   return path
     .replace(/^\/space\/[^/]+/, '/space/[space]')
     .replace(/^\/(server|report|call)\/.*$/, '/$1/[server]');
+};
+
+/** The current page URL as analytics may see it: sanitized path, no query or fragment. */
+const getSanitizedPageLocation = (): string => {
+  if (typeof window === 'undefined') return '';
+  return window.location.origin + sanitizePagePath(window.location.pathname);
 };
 
 /**
