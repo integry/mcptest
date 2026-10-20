@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
+import { trackEvent } from '../utils/analytics';
 import {
   formatCatalogAuth,
   formatCatalogTimestamp,
@@ -74,7 +75,11 @@ const alternativeAuthLabel = (server: CatalogServer) => {
   return alternatives.length ? `Also supports ${alternatives.join(' and ')}` : authEvidenceNote(server);
 };
 
-const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer }) => {
+const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer: openInPlayground }) => {
+  const onTestServer = (selected: CatalogServer) => {
+    trackEvent('catalog_open_server', { server_id: selected.id, surface: 'profile' });
+    openInPlayground(selected);
+  };
   if (!server) {
     return (
       <div className="server-profile-empty card">
@@ -302,6 +307,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             previewAlt={getBadgeTitle(catalogBadgeVariant)}
             linkUrl={getServerProfileUrl(server.id)}
             snippets={createCatalogBadgeSnippets(server.id)}
+            analyticsSurface="server_profile"
           />
         </div>
       </section>

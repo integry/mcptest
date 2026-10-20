@@ -30,6 +30,12 @@ const PrivacyPolicy: React.FC = () => {
           <p>
             Like most website operators, mcptest.io may collect non-personally-identifying information of the sort that web browsers and servers typically make available, such as the browser type, language preference, referring site, and the date and time of each visitor request. Our purpose in collecting non-personally identifying information is to better understand how our visitors use the website.
           </p>
+          <p>
+            We also record product events, such as viewing a guide, starting a connection, generating a report or copying a badge, to learn which pages lead to a working connection. These events carry the server's host name at most. They never include full endpoint URLs, query strings, headers, tokens, credentials or anything you type.
+          </p>
+          <p>
+            <strong>Do Not Track and Global Privacy Control are honored.</strong> If your browser sends either signal, mcptest.io does not load analytics and sends no page views or product events.
+          </p>
         </div>
       </div>
       

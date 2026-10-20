@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { getAnalyticsHost, trackEvent } from '../utils/analytics';
 import { getCatalogServers } from '../utils/catalogUtils';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import type { CatalogServer } from '../types/catalog';
@@ -74,8 +75,12 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   const showRecent = recent.length > 0 && Boolean(onConnectRecent);
   const advancedOpen = showAdvanced && Boolean(advancedOptions);
 
+  // Once per landing shown; a returning user is one with recent endpoints.
+  useEffect(() => trackEvent('landing_view', { variant: showRecent ? 'returning' : 'new' }), []);
+
   const handleManualConnect = () => {
     if (!canConnect) return;
+    trackEvent('landing_connect', { source: 'manual', host: getAnalyticsHost(serverUrl) });
     onConnect();
   };
 
@@ -139,7 +144,10 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                         data-recent-url={url}
                         title={url}
                         disabled={isConnecting}
-                        onClick={() => onConnectRecent?.(url)}
+                        onClick={() => {
+                          trackEvent('landing_connect', { source: 'recent_chip', host: getAnalyticsHost(url) });
+                          onConnectRecent?.(url);
+                        }}
                       >
                         <i className="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i>
                         <span className="landing-recent-host">{getRecentServerLabel(url)}</span>
@@ -174,7 +182,10 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                           data-server-id={server.id}
                           title={endpoint.url}
                           disabled={isConnecting}
-                          onClick={() => onConnect({ endpoint, protocolEra: server.protocolEra })}
+                          onClick={() => {
+                            trackEvent('landing_connect', { source: 'quick_pick', host: getAnalyticsHost(endpoint.url) });
+                            onConnect({ endpoint, protocolEra: server.protocolEra });
+                          }}
                         >
                           <CatalogServerLogo
                             name={server.name}
@@ -198,7 +209,10 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             className="landing-advanced-toggle"
             aria-expanded={advancedOpen}
             aria-controls={advancedOpen ? 'landing-advanced-panel' : undefined}
-            onClick={() => setShowAdvanced((open) => !open)}
+            onClick={() => {
+              if (!advancedOpen) trackEvent('advanced_options_open');
+              setShowAdvanced((open) => !open);
+            }}
           >
             <i className="bi bi-gear" aria-hidden="true"></i>
             {advancedOpen ? 'Simple connect' : 'Advanced options'}

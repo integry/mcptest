@@ -1,5 +1,6 @@
 import React, { useId, useState } from 'react';
 import { useCatalog } from '../hooks/useCatalog';
+import { trackEvent } from '../utils/analytics';
 import {
   CATALOG_CATEGORY_ALL,
   type CatalogServer,
@@ -230,7 +231,10 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
                 <li key={server.id} className="catalog-server-list-item">
                   <CatalogServerCard
                     server={server}
-                    onTest={onTestServer}
+                    onTest={(selected) => {
+                      trackEvent('catalog_open_server', { server_id: selected.id, surface: 'list' });
+                      onTestServer(selected);
+                    }}
                     onCategorySelect={setCategory}
                   />
                 </li>
