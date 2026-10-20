@@ -13,7 +13,7 @@ export type CallOutputVerdict = 'pass' | 'fail';
 export interface CallHistoryEntry {
   id: string;
   toolName: string;
-  /** Arguments as entered, after report-snapshot redaction. */
+  /** Arguments as sent on the wire (normalized), after report-snapshot redaction. */
   arguments: Record<string, unknown>;
   /** True when redaction replaced at least one argument value. */
   argumentsRedacted: boolean;

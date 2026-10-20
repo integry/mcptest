@@ -116,6 +116,32 @@ export const createInterfaceSnapshot = (input: LiveInterfaceInput): InterfaceSna
   };
 };
 
+export type InterfaceSection = 'tools' | 'resources' | 'resourceTemplates' | 'prompts';
+export const INTERFACE_SECTIONS: readonly InterfaceSection[] = ['tools', 'resources', 'resourceTemplates', 'prompts'];
+
+/**
+ * Keeps only the sections whose discovery completed. Unconfirmed sections carry
+ * over from a playground baseline, so the stored snapshot does not forget them
+ * and the diff sees no change; a report baseline's sections are not carried,
+ * because they lack titles and output schemas a playground snapshot compares.
+ */
+export const confirmedInterfaceSnapshot = (
+  observed: InterfaceSnapshot,
+  confirmed: ReadonlySet<InterfaceSection>,
+  baseline?: InterfaceSnapshot
+): InterfaceSnapshot => {
+  const carried = baseline?.source === 'playground' ? baseline : undefined;
+  const snapshot: InterfaceSnapshot = { ...observed };
+  for (const section of INTERFACE_SECTIONS) {
+    if (confirmed.has(section)) continue;
+    const previous = carried?.[section];
+    if (previous === undefined) delete snapshot[section];
+    else (snapshot as unknown as Record<InterfaceSection, unknown>)[section] = previous;
+  }
+  if (!confirmed.has('tools')) snapshot.outputSchemasObserved = carried?.outputSchemasObserved ?? false;
+  return snapshot;
+};
+
 const completeNames = <T extends { name: string }>(
   section: CapabilityInventorySectionV1<T> | undefined
 ): string[] | undefined => (

@@ -7,7 +7,7 @@ import ParamsPanel from './ParamsPanel';
 import { createCallHistoryEntry, type CallHistoryEntry } from '../utils/callHistory';
 import { createInterfaceSnapshot } from '../utils/interfaceSnapshot';
 import { diffInterfaceSnapshots } from '../utils/reportDiff';
-import { INTERFACE_SNAPSHOT_SETTLE_MS, usePlaygroundHistory } from '../hooks/usePlaygroundHistory';
+import { usePlaygroundHistory } from '../hooks/usePlaygroundHistory';
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -198,6 +198,9 @@ describe('InterfaceChangeStrip', () => {
 describe('usePlaygroundHistory', () => {
   type FakeTool = { name: string; inputSchema: Record<string, unknown> };
   const tools: FakeTool[] = [{ name: 'weather', inputSchema: { type: 'object', properties: { city: { type: 'string' } } } }];
+  // Stable like hook state, so the snapshot effect runs once per change.
+  const none: unknown[] = [];
+  const complete = { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' } as const;
 
   const Harness: React.FC<{
     execute: (params: Record<string, unknown>) => void;
@@ -210,9 +213,10 @@ describe('usePlaygroundHistory', () => {
       serverUrl: 'https://mcp.example.com/mcp',
       isConnected: true,
       tools: toolList,
-      resources: [],
-      resourceTemplates: [],
-      prompts: [],
+      resources: none,
+      resourceTemplates: none,
+      prompts: none,
+      discovery: complete,
       selectedTool,
       toolParams,
       selectTool: (tool) => { setSelectedTool(tool); setToolParams({}); },
@@ -250,11 +254,9 @@ describe('usePlaygroundHistory', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it('diffs against the previous visit once the lists settle', () => {
-    vi.useFakeTimers();
+  it('diffs against the previous visit once the lists complete', () => {
     let api!: ReturnType<typeof usePlaygroundHistory>;
     mount(<Harness execute={vi.fn()} onReady={(value) => { api = value; }} />);
-    act(() => { vi.advanceTimersByTime(INTERFACE_SNAPSHOT_SETTLE_MS); });
     expect(api.interfaceDiff).toBeNull();
     act(() => root!.unmount());
 
@@ -266,7 +268,6 @@ describe('usePlaygroundHistory', () => {
         toolList={[...tools, { name: 'forecast', inputSchema: { type: 'object', properties: {} } }]}
       />
     ));
-    act(() => { vi.advanceTimersByTime(INTERFACE_SNAPSHOT_SETTLE_MS); });
     expect(api.interfaceDiff?.changes.map((change) => change.title)).toEqual(['Tool added: forecast']);
 
     act(() => api.dismissInterfaceDiff());

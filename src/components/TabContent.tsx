@@ -233,6 +233,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setSelectedResourceTemplate,
     prompts,
     setPrompts,
+    discovery,
     selectedPrompt,
     setSelectedPrompt,
     toolParams,
@@ -282,6 +283,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     resources,
     resourceTemplates,
     prompts,
+    discovery,
     protocolVersion,
     transportType,
     selectedTool,
@@ -829,9 +831,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     
     const toolName = selectedTool.name;
     const startedAt = Date.now();
-    const result = await handleExecuteTool();
+    // History keeps the arguments as sent, so copy and replay match the wire.
+    let sentArguments: Record<string, unknown> | undefined;
+    const result = await handleExecuteTool((args) => { sentArguments = args; });
     setLastResult(result);
-    playgroundHistory.recordCall(toolName, toolParams, result, Date.now() - startedAt);
+    if (sentArguments) playgroundHistory.recordCall(toolName, sentArguments, result, Date.now() - startedAt);
     
     setIsExecuting(false);
     setExecutionStartTime(null);

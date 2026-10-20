@@ -10,14 +10,14 @@ import {
   type CallHistoryEntry,
 } from '../utils/callHistory';
 import {
+  confirmedInterfaceSnapshot,
   createInterfaceSnapshot,
+  INTERFACE_SECTIONS,
   loadPreviousInterfaceSnapshot,
   storeInterfaceSnapshot,
 } from '../utils/interfaceSnapshot';
 import { diffInterfaceSnapshots, type InterfaceDiff } from '../utils/reportDiff';
-
-/** Lists arrive one request at a time; wait for them to settle before snapshotting. */
-export const INTERFACE_SNAPSHOT_SETTLE_MS = 800;
+import type { DiscoveryStatus } from './useToolsAndResources';
 
 interface PlaygroundHistoryInput {
   serverUrl: string;
@@ -26,6 +26,8 @@ interface PlaygroundHistoryInput {
   resources: readonly unknown[];
   resourceTemplates: readonly unknown[];
   prompts: readonly unknown[];
+  /** Outcome of each list request; only `complete` lists prove membership. */
+  discovery: DiscoveryStatus;
   protocolVersion?: string | null;
   transportType?: string | null;
   selectedTool: { name?: string } | null;
@@ -44,6 +46,7 @@ export const usePlaygroundHistory = ({
   resources,
   resourceTemplates,
   prompts,
+  discovery,
   protocolVersion,
   transportType,
   selectedTool,
@@ -118,18 +121,18 @@ export const usePlaygroundHistory = ({
     if (baselineRef.current?.key !== serverUrl) {
       baselineRef.current = { key: serverUrl, snapshot: loadPreviousInterfaceSnapshot(serverUrl) };
     }
-    // Nothing listed yet: storing now would record an empty server.
-    if (tools.length + resources.length + resourceTemplates.length + prompts.length === 0) return;
-    const timer = window.setTimeout(() => {
-      const current = createInterfaceSnapshot({
-        tools, resources, resourceTemplates, prompts, protocolVersion, transport: transportType,
-      });
-      const baseline = baselineRef.current?.snapshot;
-      setInterfaceDiff(baseline ? diffInterfaceSnapshots(baseline, current) : null);
-      storeInterfaceSnapshot(serverUrl, current);
-    }, INTERFACE_SNAPSHOT_SETTLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [isConnected, serverUrl, tools, resources, resourceTemplates, prompts, protocolVersion, transportType]);
+    // Snapshot only once every list request has finished, from the lists that
+    // completed; a failed or paginated list cannot prove what was removed.
+    if (INTERFACE_SECTIONS.some((section) => discovery[section] === 'idle' || discovery[section] === 'loading')) return;
+    const confirmed = new Set(INTERFACE_SECTIONS.filter((section) => discovery[section] === 'complete'));
+    if (confirmed.size === 0) return;
+    const baseline = baselineRef.current?.snapshot;
+    const current = confirmedInterfaceSnapshot(createInterfaceSnapshot({
+      tools, resources, resourceTemplates, prompts, protocolVersion, transport: transportType,
+    }), confirmed, baseline);
+    setInterfaceDiff(baseline ? diffInterfaceSnapshots(baseline, current) : null);
+    storeInterfaceSnapshot(serverUrl, current);
+  }, [isConnected, serverUrl, tools, resources, resourceTemplates, prompts, discovery, protocolVersion, transportType]);
 
   // Dismissal lasts for this connection; list refreshes keep the diff current underneath.
   const dismissInterfaceDiff = useCallback(() => setDiffDismissed(true), []);
