@@ -12,6 +12,8 @@ const {
 const { z } = require('zod');
 
 const REQUEST_TIMEOUT_MS = 12_000;
+// Upper bound for every probe, variant and discovery page of one catalog server.
+const SERVER_TIMEOUT_MS = 120_000;
 const CONCURRENCY = 4;
 const CLIENT_NAME = 'mcptest-catalog-validator';
 const rawDiscoveryPageSchema = z.unknown();
@@ -864,6 +866,19 @@ async function validateSeed(
   return result;
 }
 
+function withServerTimeout(run, timeoutMs = SERVER_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(Object.assign(
+      new Error(`Server validation timed out after ${timeoutMs}ms`),
+      { code: 'SERVER_TIMEOUT' }
+    )), timeoutMs);
+    Promise.resolve().then(run).then(
+      value => { clearTimeout(timeout); resolve(value); },
+      error => { clearTimeout(timeout); reject(error); }
+    );
+  });
+}
+
 async function mapWithConcurrency(values, concurrency, worker) {
   const results = new Array(values.length);
   let nextIndex = 0;
@@ -885,7 +900,7 @@ async function mapWithConcurrency(values, concurrency, worker) {
           requiresOAuth: authType === 'oauth',
           protocolEra: 'unknown',
           checkedAt: new Date().toISOString(),
-          errorCode: 'validator_error',
+          errorCode: error && error.code === 'SERVER_TIMEOUT' ? 'timeout' : 'validator_error',
           message: error && error.message ? error.message : String(error),
         };
       }
@@ -918,21 +933,94 @@ async function validateCapabilitySnapshots(snapshots) {
   ]));
 }
 
+const VALIDATION_KEY_ORDER = [
+  'serverId',
+  'status',
+  'transport',
+  'authType',
+  'requiresOAuth',
+  'protocolEra',
+  'checkedAt',
+  'message',
+  'validatedUrl',
+  'protocolVersion',
+  'authorizationServers',
+  'errorCode',
+];
+
+// Emits validation fields in one fixed order so reruns only diff on observed changes.
+function orderValidationResult(result) {
+  const known = VALIDATION_KEY_ORDER.filter((key) => result[key] !== undefined);
+  const extra = Object.keys(result)
+    .filter((key) => !VALIDATION_KEY_ORDER.includes(key) && result[key] !== undefined)
+    .sort();
+  return Object.fromEntries([...known, ...extra].map((key) => [key, result[key]]));
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function withoutField(value, field) {
+  const { [field]: _omitted, ...rest } = value || {};
+  return canonicalJson(rest);
+}
+
+// Keeps the previous checkedAt when nothing observable about a server changed.
+function stabilizeValidationResults(previous, results) {
+  const previousById = new Map(
+    (Array.isArray(previous) ? previous : []).map((entry) => [entry.serverId, entry])
+  );
+  return results.map((result) => {
+    const ordered = orderValidationResult(result);
+    const prior = previousById.get(ordered.serverId);
+    if (!prior || typeof prior.checkedAt !== 'string') return ordered;
+    return withoutField(prior, 'checkedAt') === withoutField(ordered, 'checkedAt')
+      ? { ...ordered, checkedAt: prior.checkedAt }
+      : ordered;
+  });
+}
+
+// Keeps the previous snapshot (and its observedAt) when the inventory is otherwise identical.
+function stabilizeCapabilitySnapshots(previous, next) {
+  return Object.fromEntries(Object.entries(next).map(([serverId, inventory]) => {
+    const prior = previous?.[serverId];
+    return [
+      serverId,
+      prior && withoutField(prior, 'observedAt') === withoutField(inventory, 'observedAt')
+        ? prior
+        : inventory,
+    ];
+  }));
+}
+
+function readJsonFile(filePath, fallback) {
+  return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, 'utf8')) : fallback;
+}
+
 async function writeResults(
   results,
   paths = { validation: outputPath, capabilities: capabilitiesPath }
 ) {
-  const validationResults = results.map(({ capabilityInventory, ...result }) => result);
+  const validationResults = stabilizeValidationResults(
+    readJsonFile(paths.validation, []),
+    results.map(({ capabilityInventory, ...result }) => result)
+  );
   const activeServerIds = new Set(results.map(({ serverId }) => serverId));
-  const previous = fs.existsSync(paths.capabilities)
-    ? JSON.parse(fs.readFileSync(paths.capabilities, 'utf8'))
-    : {};
+  const previous = readJsonFile(paths.capabilities, {});
   // Validate the complete merged file before either durable output is replaced.
-  const capabilities = await validateCapabilitySnapshots(
+  const capabilities = stabilizeCapabilitySnapshots(previous, await validateCapabilitySnapshots(
     Object.fromEntries(Object.entries(mergeCapabilitySnapshots(previous, results)).filter(
       ([serverId]) => activeServerIds.has(serverId)
     ))
-  );
+  ));
   const validationJson = `${JSON.stringify(validationResults, null, 2)}\n`;
   const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;
   fs.writeFileSync(paths.validation, validationJson, 'utf-8');
@@ -952,7 +1040,7 @@ async function main() {
   console.log(`Validating ${seeds.length} catalog servers with concurrency ${CONCURRENCY}...`);
 
   const results = await mapWithConcurrency(seeds, CONCURRENCY, async (seed) => {
-    const result = await validateSeed(seed);
+    const result = await withServerTimeout(() => validateSeed(seed));
     console.log(
       `${seed.id}: ${result.status}, ${result.transport}, ${result.protocolEra}, ${result.authType} - ${result.message}`
     );
@@ -982,9 +1070,13 @@ module.exports = {
   probeStreamableEndpoint,
   requestDiscoveryPage,
   main,
+  mapWithConcurrency,
+  stabilizeCapabilitySnapshots,
+  stabilizeValidationResults,
   validateCapabilitySnapshots,
   validateCatalogSeed,
   validateCatalogSeeds,
   validateSeed,
+  withServerTimeout,
   writeResults,
 };

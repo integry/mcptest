@@ -12,12 +12,14 @@ const {
   detectedAuthType,
   discoverPublicInventory,
   endpointVariants,
+  mapWithConcurrency,
   mergeCapabilitySnapshots,
   paginateDiscovery,
   probeSseEndpoint,
   probeStreamableEndpoint,
   validateCatalogSeed,
   validateSeed,
+  withServerTimeout,
   writeResults,
 } = validator;
 
@@ -958,5 +960,76 @@ describe('catalog capability pagination and persistence', () => {
     expect(first.tools.retainedCount + first.tools.omittedCount).toBe(100);
     expect(Object.values(first).filter((value) => value?.status === 'partial').length).toBeGreaterThan(0);
     expect({ ...second, observedAt: first.observedAt }).toEqual(first);
+  });
+
+  it('keeps timestamps and key order stable when a rerun observes nothing new', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-stable-'));
+    const capabilities = path.join(directory, 'catalogCapabilities.json');
+    const validation = path.join(directory, 'catalogValidation.json');
+    const section = { status: 'unsupported', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] };
+    const inventory = (observedAt, tools) => ({
+      version: 1,
+      observedAt,
+      provenance: { testedEndpoint: 'https://stable.example/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: { status: 'complete', observedCount: tools.length, retainedCount: tools.length, omittedCount: 0, paginationComplete: true, items: tools.map((name) => ({ name })) },
+      resources: section,
+      resourceTemplates: section,
+      prompts: section,
+    });
+    const result = (checkedAt, overrides = {}) => ({
+      // Deliberately out of canonical order, as the validator_error path builds it.
+      message: 'Negotiated stateful MCP',
+      checkedAt,
+      serverId: 'stable',
+      errorCode: undefined,
+      status: 'online',
+      transport: 'streamable-http',
+      authType: 'none',
+      requiresOAuth: false,
+      protocolEra: 'stateful',
+      ...overrides,
+    });
+    try {
+      await writeResults(
+        [{ ...result('2026-10-13T00:00:00.000Z'), capabilityInventory: inventory('2026-10-13T00:00:00.000Z', ['ping']) }],
+        { capabilities, validation }
+      );
+      const firstValidation = fs.readFileSync(validation, 'utf8');
+      const firstCapabilities = fs.readFileSync(capabilities, 'utf8');
+      expect(Object.keys(JSON.parse(firstValidation)[0])).toEqual([
+        'serverId', 'status', 'transport', 'authType', 'requiresOAuth', 'protocolEra', 'checkedAt', 'message',
+      ]);
+
+      await writeResults(
+        [{ ...result('2026-10-20T00:00:00.000Z'), capabilityInventory: inventory('2026-10-20T00:00:00.000Z', ['ping']) }],
+        { capabilities, validation }
+      );
+      expect(fs.readFileSync(validation, 'utf8')).toBe(firstValidation);
+      expect(fs.readFileSync(capabilities, 'utf8')).toBe(firstCapabilities);
+
+      await writeResults(
+        [{
+          ...result('2026-10-27T00:00:00.000Z', { protocolVersion: '2025-11-25' }),
+          capabilityInventory: inventory('2026-10-27T00:00:00.000Z', ['ping', 'search']),
+        }],
+        { capabilities, validation }
+      );
+      expect(JSON.parse(fs.readFileSync(validation, 'utf8'))[0].checkedAt).toBe('2026-10-27T00:00:00.000Z');
+      expect(JSON.parse(fs.readFileSync(capabilities, 'utf8')).stable.observedAt).toBe('2026-10-27T00:00:00.000Z');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('records a per-server timeout as an offline timeout result', async () => {
+    const [result] = await mapWithConcurrency(
+      [{ id: 'slow', url: 'https://slow.example/mcp', transport: 'streamable-http', authType: 'none' }],
+      1,
+      () => withServerTimeout(() => new Promise(() => {}), 10)
+    );
+
+    expect(result).toMatchObject({ serverId: 'slow', status: 'offline', errorCode: 'timeout' });
+    expect(result.message).toBe('Server validation timed out after 10ms');
   });
 });
