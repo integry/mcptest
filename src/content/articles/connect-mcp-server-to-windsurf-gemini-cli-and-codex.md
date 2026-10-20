@@ -11,6 +11,7 @@ lastReviewed: "2026-10-20"
 relatedSlugs:
   - connect-remote-mcp-server
   - mcp-clients-compared
+  - mcp-client-support-matrix
   - connect-mcp-server-to-chatgpt
   - remote-mcp-server-401-unauthorized
 sourceLinks:
