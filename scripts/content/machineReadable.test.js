@@ -63,6 +63,14 @@ describe('Node article loader', () => {
     const reserved = writeFixture({ 'contact.md': SAMPLE.replace('order: 1', 'order: 1\npath: /docs/contact') });
     expect(() => loadArticles({ directory: reserved, reservedPaths: ['/docs/contact'] })).toThrow(/reserved page/);
   });
+
+  it('rejects path overrides that would shadow the Learn index or leave the content namespaces', () => {
+    const learnIndex = writeFixture({ 'index.md': SAMPLE.replace('order: 1', 'order: 1\npath: /learn') });
+    expect(() => loadArticles({ directory: learnIndex })).toThrow(/reuses path \/learn already owned by \(reserved page\)/);
+
+    const outside = writeFixture({ 'example.md': SAMPLE.replace('order: 1', 'order: 1\npath: /catalog/example') });
+    expect(() => loadArticles({ directory: outside })).toThrow(/invalid path: \/catalog\/example/);
+  });
 });
 
 describe('raw Markdown output', () => {

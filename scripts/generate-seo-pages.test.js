@@ -510,6 +510,25 @@ describe('generated page metadata', () => {
     expect(html).toContain('rel="next" href="/learn/oauth-for-mcp-explained"');
   });
 
+  it('nests the prerendered article inside a single-column shell so the no-JS layout reads top to bottom', () => {
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
+    const root = new DOMParser().parseFromString(html, 'text/html').getElementById('root');
+
+    const shell = root.querySelector('.reading-shell');
+    expect(shell.classList.contains('reading-shell-single')).toBe(true);
+    expect(shell.classList.contains('reading-article')).toBe(false);
+    expect(Array.from(shell.children, child => child.className)).toEqual(['reading-article']);
+
+    const content = shell.querySelector('.reading-article');
+    expect(content.tagName).toBe('ARTICLE');
+    expect(content.getAttribute('data-article-slug')).toBe(article.slug);
+    expect(Array.from(content.children, child => child.className)).toEqual([
+      'reading-breadcrumb', 'reading-header', 'reading-prose', 'reading-footer',
+    ]);
+    expect(root.querySelector('.reading-outline')).toBeNull();
+  });
+
   it('renders Markdown documentation pages at their /docs canonical path with frontmatter metadata', () => {
     const article = articles.find(item => item.slug === 'testing-guide');
     const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);

@@ -101,7 +101,15 @@ export interface TrackNavigation extends ContentTrack {
 
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const REVIEW_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-export const PATH_PATTERN = /^\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
+/**
+ * Article paths must be one slug directly under a namespace the application
+ * routes to the content view (`/docs/<slug>` or `/learn/<slug>`). Paths outside
+ * these namespaces never reach the content view, and bare namespaces or deeper
+ * nesting are not article destinations.
+ */
+export const PATH_PATTERN = /^\/(?:docs|learn)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Non-article destinations inside the content namespaces that no article may claim. */
+export const CONTENT_RESERVED_PATHS: readonly string[] = ['/learn', '/docs'];
 
 const TRACK_IDS = new Set<string>(CONTENT_TRACKS.map(track => track.id));
 const LEVEL_IDS = new Set<string>(CONTENT_LEVELS);
@@ -207,7 +215,7 @@ export const validateArticles = (
   const slugs = new Set<string>();
   const paths = new Map<string, string>();
   const orders = new Map<string, string>();
-  for (const reserved of options.reservedPaths ?? []) {
+  for (const reserved of [...CONTENT_RESERVED_PATHS, ...(options.reservedPaths ?? [])]) {
     paths.set(reserved, '(reserved page)');
   }
 
@@ -245,12 +253,14 @@ export const validateArticles = (
         `Learn articles ${orders.get(orderKey)} and ${article.slug} share order ${article.order} in the ${article.track} track.`
       );
     }
-    if (!PATH_PATTERN.test(article.path)) {
-      throw new Error(`Learn article ${article.slug} has an invalid path: ${article.path}`);
-    }
     if (paths.has(article.path)) {
       throw new Error(
         `Learn article ${article.slug} reuses path ${article.path} already owned by ${paths.get(article.path)}.`
+      );
+    }
+    if (!PATH_PATTERN.test(article.path)) {
+      throw new Error(
+        `Learn article ${article.slug} has an invalid path: ${article.path}. Use /docs/<slug> or /learn/<slug>.`
       );
     }
     if (article.component && !knownComponents.has(article.component)) {

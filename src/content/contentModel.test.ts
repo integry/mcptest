@@ -101,6 +101,12 @@ describe('validateArticles', () => {
     ],
     ['invalid path', [article({ slug: 'a', path: 'docs/a' })], /invalid path/],
     ['invalid path characters', [article({ slug: 'a', path: '/docs/A b' })], /invalid path/],
+    ['path outside the content namespaces', [article({ slug: 'a', path: '/catalog/example' })], /invalid path/],
+    ['top-level path', [article({ slug: 'a', path: '/example' })], /invalid path/],
+    ['nested path inside a namespace', [article({ slug: 'a', path: '/learn/nested/example' })], /invalid path/],
+    ['trailing slash', [article({ slug: 'a', path: '/learn/example/' })], /invalid path/],
+    ['Learn index path', [article({ slug: 'a', path: '/learn' })], /reuses path \/learn already owned by \(reserved page\)/],
+    ['bare docs namespace', [article({ slug: 'a', path: '/docs' })], /reuses path \/docs already owned by \(reserved page\)/],
     [
       'duplicate path',
       [article({ slug: 'a', path: '/docs/same' }), article({ slug: 'b', order: 2, path: '/docs/same' })],
@@ -119,6 +125,15 @@ describe('validateArticles', () => {
   it('allows the same order in different tracks', () => {
     expect(() =>
       validateArticles([article({ slug: 'a', track: 'use', order: 1 }), article({ slug: 'b', track: 'build', order: 1 })])
+    ).not.toThrow();
+  });
+
+  it('accepts one slug directly under /learn or /docs', () => {
+    expect(() =>
+      validateArticles([
+        article({ slug: 'a', order: 1, path: '/learn/custom-slug' }),
+        article({ slug: 'b', order: 2, path: '/docs/custom-slug' }),
+      ])
     ).not.toThrow();
   });
 

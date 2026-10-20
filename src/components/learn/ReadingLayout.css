@@ -462,7 +462,9 @@
     grid-template-columns: minmax(0, var(--reading-measure)) 13rem;
   }
 
-  .reading-shell-index {
+  /* Shells without an outline column (index, prerendered fallback) stay single-column. */
+  .reading-shell-index,
+  .reading-shell-single {
     grid-template-columns: minmax(0, var(--reading-measure));
   }
 

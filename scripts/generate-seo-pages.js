@@ -714,27 +714,31 @@ function renderLearnArticleFallback(article, articles) {
   const related = getRelatedLearnArticles(article, articles);
   const { previous, next } = getTrackNeighbors(article, articles);
   const pager = [];
-  if (previous) pager.push(`      <a class="reading-pager-link reading-pager-previous" rel="prev" href="${escapeHtml(previous.path)}">Previous: ${escapeHtml(previous.title)}</a>`);
-  if (next) pager.push(`      <a class="reading-pager-link reading-pager-next" rel="next" href="${escapeHtml(next.path)}">Next: ${escapeHtml(next.title)}</a>`);
+  if (previous) pager.push(`        <a class="reading-pager-link reading-pager-previous" rel="prev" href="${escapeHtml(previous.path)}">Previous: ${escapeHtml(previous.title)}</a>`);
+  if (next) pager.push(`        <a class="reading-pager-link reading-pager-next" rel="next" href="${escapeHtml(next.path)}">Next: ${escapeHtml(next.title)}</a>`);
+  // Mirror LearnArticlePage: a shell wrapping one article. The fallback emits
+  // no outline column, so the shell stays single-column at every width.
   return [
-    `<article class="reading-shell reading-article seo-learn-fallback" data-article-slug="${escapeHtml(article.slug)}">`,
-    `  <nav class="reading-breadcrumb" aria-label="Breadcrumb"><a href="/learn">Learn</a><span>/</span><span aria-current="page">${escapeHtml(article.title)}</span></nav>`,
-    '  <header class="reading-header">',
-    `    <h1>${escapeHtml(article.title)}</h1>`,
-    `    <p class="reading-summary">${escapeHtml(article.summary)}</p>`,
-    `    <p class="reading-meta">${escapeHtml(CONTENT_LEVEL_LABELS[article.level])} · ${article.readingTimeMinutes} min read · Last reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
-    '  </header>',
-    `  <div class="reading-prose">${renderMarkdown(getArticleBodyMarkdown(article))}</div>`,
-    '  <footer class="reading-footer">',
-    ...(pager.length ? ['    <nav class="reading-pager" aria-label="Track navigation">', ...pager, '    </nav>'] : []),
-    '    <section class="reading-related"><h2>Related guides</h2><ul>',
-    ...related.map(item => `      <li><a href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a></li>`),
-    '    </ul></section>',
-    '    <section class="reading-sources"><h2>Sources</h2><ul>',
-    ...article.sourceLinks.map(source => `      <li><a href="${escapeHtml(source.url)}">${escapeHtml(source.title)}</a></li>`),
-    '    </ul></section>',
-    '  </footer>',
-    '</article>',
+    '<div class="reading-shell reading-shell-single seo-learn-fallback">',
+    `  <article class="reading-article" data-article-slug="${escapeHtml(article.slug)}">`,
+    `    <nav class="reading-breadcrumb" aria-label="Breadcrumb"><a href="/learn">Learn</a><span>/</span><span aria-current="page">${escapeHtml(article.title)}</span></nav>`,
+    '    <header class="reading-header">',
+    `      <h1>${escapeHtml(article.title)}</h1>`,
+    `      <p class="reading-summary">${escapeHtml(article.summary)}</p>`,
+    `      <p class="reading-meta">${escapeHtml(CONTENT_LEVEL_LABELS[article.level])} · ${article.readingTimeMinutes} min read · Last reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
+    '    </header>',
+    `    <div class="reading-prose">${renderMarkdown(getArticleBodyMarkdown(article))}</div>`,
+    '    <footer class="reading-footer">',
+    ...(pager.length ? ['      <nav class="reading-pager" aria-label="Track navigation">', ...pager, '      </nav>'] : []),
+    '      <section class="reading-related"><h2>Related guides</h2><ul>',
+    ...related.map(item => `        <li><a href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a></li>`),
+    '      </ul></section>',
+    '      <section class="reading-sources"><h2>Sources</h2><ul>',
+    ...article.sourceLinks.map(source => `        <li><a href="${escapeHtml(source.url)}">${escapeHtml(source.title)}</a></li>`),
+    '      </ul></section>',
+    '    </footer>',
+    '  </article>',
+    '</div>',
   ].join('\n');
 }
 
