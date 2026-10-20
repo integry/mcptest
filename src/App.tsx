@@ -14,6 +14,7 @@ import DashboardsView from './components/DashboardsView'; // New
 import ReportView from './components/ReportView'; // New
 import CatalogView from './components/CatalogView';
 import ServerProfileView from './components/ServerProfileView';
+import SubmitServerView from './components/SubmitServerView';
 import Tabs from './components/Tabs'; // New
 import LearnArticlePage from './components/learn/LearnArticlePage';
 import LearnIndex from './components/learn/LearnIndex';
@@ -255,8 +256,11 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' => {
   const path = window.location.pathname;
+  if (path === '/submit') {
+    return 'submit';
+  }
   if (path.startsWith('/docs/')) {
     return 'docs';
   }
@@ -383,6 +387,10 @@ function App() {
 
     if (path === '/learn' || path.startsWith('/learn/')) {
       return { activeView: 'learn' as const };
+    }
+
+    if (path === '/submit') {
+      return { activeView: 'submit' as const };
     }
 
     // Check for report routes
@@ -512,6 +520,11 @@ function App() {
     if (path.startsWith('/catalog')) {
       pageTitle = 'Server Catalog';
       logPageView(path, pageTitle);
+      return;
+    }
+
+    if (path === '/submit') {
+      logPageView(path, 'Submit a server');
       return;
     }
     
@@ -1819,6 +1832,9 @@ function App() {
   const selectedCatalogServer = selectedCatalogServerId
     ? getCatalogServerById(selectedCatalogServerId)
     : undefined;
+  // The submission page belongs to the catalog in the sidebar and prefills from the live connection.
+  const sideNavView = activeView === 'submit' ? 'catalog' : activeView;
+  const connectedTab = tabs.find(tab => tab.id === activeTabId && tab.connectionStatus === 'Connected');
   // Markdown articles (/docs/* and /learn/*) and React-only pages resolve from one registry.
   const selectedContentPage = getContentPage(location.pathname);
   const SelectedPageComponent = selectedContentPage?.kind === 'page'
@@ -1912,7 +1928,7 @@ function App() {
           ×
         </button>
         <SideNav
-          activeView={activeView}
+          activeView={sideNavView}
           spaces={spaces}
           selectedSpaceId={selectedSpaceId}
           handleSelectSpace={handleSelectDashboard}
@@ -1934,7 +1950,7 @@ function App() {
         {/* Desktop Side Navigation */}
         <div className="desktop-sidebar col-auto p-2 d-flex flex-column">
           <SideNav
-            activeView={activeView}
+            activeView={sideNavView}
             spaces={spaces}
             selectedSpaceId={selectedSpaceId}
             handleSelectSpace={handleSelectDashboard}
@@ -1967,6 +1983,13 @@ function App() {
           <div className={`view-panel ${activeView === 'catalog' ? '' : 'd-none'}`} style={{ height: '100%' }}>
             <CatalogView onTestServer={handleCatalogTestServer} />
           </div>
+
+          {/* Server Submission View */}
+          {activeView === 'submit' && (
+            <div className="view-panel">
+              <SubmitServerView initialUrl={connectedTab?.serverUrl} />
+            </div>
+          )}
 
           {/* Server Profile View */}
           <div className={`view-panel ${activeView === 'server-profile' ? '' : 'd-none'}`} style={{ height: '100%' }}>

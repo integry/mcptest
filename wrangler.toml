@@ -4,23 +4,34 @@ compatibility_date = "2025-07-30"
 
 # The state API stays on workers.dev; the public catalog badge route is also
 # mounted on the site so README embeds use https://mcptest.io/badge/server/<id>.svg.
+# Catalog submissions from the /submit page are posted same-origin.
 workers_dev = true
 routes = [
-  { pattern = "mcptest.io/badge/server/*", zone_name = "mcptest.io" }
+  { pattern = "mcptest.io/badge/server/*", zone_name = "mcptest.io" },
+  { pattern = "mcptest.io/api/catalog/submissions", zone_name = "mcptest.io" }
 ]
 
 [vars]
 # Replace with your actual Firebase project ID
 FIREBASE_PROJECT_ID = "mcptest-a530d"
+# Catalog submissions dispatch to this repository. Secrets (wrangler secret put):
+# GITHUB_DISPATCH_TOKEN (required for submissions) and TURNSTILE_SECRET (optional).
+GITHUB_DISPATCH_REPOSITORY = "integry/mcptest"
 
 [durable_objects]
 bindings = [
-  { name = "USER_STATE", class_name = "UserState" }
+  { name = "USER_STATE", class_name = "UserState" },
+  # Per-IP and per-host counters for POST /api/catalog/submissions.
+  { name = "SUBMISSION_RATE_LIMITER", class_name = "SubmissionRateLimiter" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UserState"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SubmissionRateLimiter"]
 
 [observability.logs]
 enabled = true

@@ -1,0 +1,111 @@
+name: Catalog submission
+
+# Triggered by the Worker route POST /api/catalog/submissions (cloudflare-worker/src/submissions.js)
+# after it validated a submission from https://mcptest.io/submit. Adds the entry,
+# re-validates the endpoint from the runner and opens a pull request for a maintainer.
+# The pull request is a draft when a runner-side check fails.
+on:
+  repository_dispatch:
+    types: [catalog-submission]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-submission-${{ github.event.client_payload.submission_id }}
+  cancel-in-progress: false
+
+jobs:
+  submission:
+    name: Add the submitted server
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The payload is untrusted input: it only reaches the scripts as a file, never
+      # through expression interpolation into a shell command.
+      - name: Save the submission payload
+        env:
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: printf '%s' "$PAYLOAD" > "$RUNNER_TEMP/submission.json"
+
+      - name: Add the catalog entry
+        id: apply
+        run: |
+          npm run --silent apply-catalog-submission -- apply \
+            --payload "$RUNNER_TEMP/submission.json" \
+            --state "$RUNNER_TEMP/submission-state.json"
+
+      # Failures are recorded and reported in a draft pull request instead of stopping the run.
+      - name: Validate the endpoint from the runner
+        id: validate
+        continue-on-error: true
+        shell: bash
+        env:
+          SERVER_ID: ${{ steps.apply.outputs.id }}
+        run: npm run validate-catalog -- --only "$SERVER_ID" 2>&1 | tee "$RUNNER_TEMP/validate.log"
+
+      - name: Validate catalog assets
+        id: assets
+        continue-on-error: true
+        shell: bash
+        run: npm run validate-catalog-assets 2>&1 | tee "$RUNNER_TEMP/assets.log"
+
+      - name: Write the pull request body
+        id: report
+        env:
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+          ASSETS_OUTCOME: ${{ steps.assets.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          npm run --silent apply-catalog-submission -- report \
+            --payload "$RUNNER_TEMP/submission.json" \
+            --state "$RUNNER_TEMP/submission-state.json" \
+            --validation-outcome "$VALIDATION_OUTCOME" \
+            --validation-log "$RUNNER_TEMP/validate.log" \
+            --assets-outcome "$ASSETS_OUTCOME" \
+            --assets-log "$RUNNER_TEMP/assets.log" \
+            --run-url "$RUN_URL" \
+            --output "$RUNNER_TEMP/pr-body.md"
+
+      - name: Open the submission pull request
+        id: pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: submissions/${{ steps.apply.outputs.id }}
+          base: ${{ github.event.repository.default_branch }}
+          add-paths: |
+            src/data/serverCatalog.json
+            src/data/catalogValidation.json
+            src/data/catalogCapabilities.json
+            src/utils/catalogUtils.test.ts
+            public/server-logos/${{ steps.apply.outputs.id }}.*
+          commit-message: 'Add ${{ steps.apply.outputs.id }} to the catalog (community submission)'
+          title: ${{ steps.report.outputs.title }}
+          body-path: ${{ runner.temp }}/pr-body.md
+          labels: catalog-submission
+          draft: ${{ steps.report.outputs.draft }}
+
+      - name: Report result
+        env:
+          SERVER_ID: ${{ steps.apply.outputs.id }}
+          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
+          DRAFT: ${{ steps.report.outputs.draft }}
+        run: |
+          echo "Submission for $SERVER_ID: $PR_URL (draft: $DRAFT)" | tee -a "$GITHUB_STEP_SUMMARY"

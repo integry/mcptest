@@ -1,6 +1,102 @@
 # Submitting a server to the catalog
 
-The public catalog at `/catalog` and the pages under `/servers/<id>` are built from `src/data/serverCatalog.json`. To add your remote MCP server, open a pull request against `master` that changes the files listed below.
+The public catalog at `/catalog` and the pages under `/servers/<id>` are built from `src/data/serverCatalog.json`. There are two ways to add your remote MCP server:
+
+1. **Submit it from the app** at [mcptest.io/submit](https://mcptest.io/submit). You need no GitHub account and no local checkout. This is the recommended path.
+2. **Open a pull request yourself.** This path is described under [Manual pull request](#manual-pull-request) and suits listings that need fields the form does not offer, such as `requiredHeaders`, `alternativeEndpoints` or an `oauthRegistration` block.
+
+Both paths end in a pull request that a maintainer reviews and merges, so the catalog stays reviewable as code. The [eligibility rules](#eligibility) apply to both.
+
+## Submit from the app
+
+### What you do
+
+1. Open [mcptest.io/submit](https://mcptest.io/submit), or choose **Submit a server** at the bottom of the sidebar. If the playground is connected to a server, its endpoint is already filled in.
+2. Choose **Check endpoint**. Your browser probes the endpoint with the same transport negotiation the playground uses. If the browser cannot read the response because of CORS, the check is repeated through the mcptest CORS proxy. The result shows:
+   - whether the endpoint is reachable;
+   - the transport (Streamable HTTP or legacy SSE) and the negotiated protocol version;
+   - the authentication challenge, if any: OAuth (protected resource metadata), bearer token, or an unspecified 401;
+   - whether the browser can read the server directly or needs the proxy (browser CORS);
+   - the number of tools listed without credentials.
+
+   **Submit for review** stays disabled until the check has run on the current URL and the endpoint either completed an MCP handshake or answered with an authentication challenge. If you edit the URL, run the check again.
+3. Fill in the display name, a one or two sentence description, the category, and the homepage URL. Choose a logo statement:
+   - **No logo**: a monogram is generated.
+   - **From the publisher's official brand asset page** or **From Simple Icons**: also give the logo URL. For Simple Icons, link the icon in a pinned release, for example `https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/<slug>.svg`.
+4. Optionally leave a contact email so a maintainer can reach you. It is never written to the catalog, stored by mcptest.io, or returned by the API. It is passed to the workflow and appears in the pull request description, which is public on GitHub.
+5. Confirm that you are authorized to list the server, and choose **Submit for review**. If the deployment has a human check (Cloudflare Turnstile), complete it first.
+
+The page then shows a submission id and the proposed catalog id. The check result is attached to the submission as evidence.
+
+### What happens next
+
+1. The Worker route `POST /api/catalog/submissions` validates the submission against the [JSON Schema](../public/schemas/catalog-submission/v1.schema.json) (published at `https://mcptest.io/schemas/catalog-submission/v1.schema.json`). It also rejects:
+   - URLs that are not HTTPS, or that contain credentials, a query string or a fragment;
+   - IP literals, single-label hosts and private or reserved names such as `localhost`, `*.local`, `*.internal` or `*.home.arpa`;
+   - endpoints that the catalog already lists. The URL is normalized before the comparison (lowercase host, no `www.`, no trailing slash, and no final `/mcp` or `/sse`);
+   - more than 10 submissions per client address, or more than 5 per endpoint host, in 24 hours.
+2. The Worker triggers the `catalog-submission` [`repository_dispatch`](https://docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event) event with the submission as the payload.
+3. The [`Catalog submission`](../.github/workflows/catalog-submission.yml) workflow runs `npm ci` on Node 22, then:
+   1. `scripts/apply-catalog-submission.ts` (through `npm run apply-catalog-submission -- apply`) re-validates the payload with the same schema and appends the entry to `serverCatalog.json`. The id is derived from the endpoint host (`https://mcp.acme.dev/mcp` becomes `acme`, with `-2` appended if `acme` is taken). The entry gets `listingSource: { "kind": "community-submission" }` and transport and auth taken from the browser evidence. A licensed logo is downloaded to `public/server-logos/<id>.svg` or `.png` with its license note. A logo that cannot be downloaded or fails the asset rules, or a submission without one, gets a generated monogram (`generated-fallback`). The script also updates the catalog size in `src/utils/catalogUtils.test.ts`.
+   2. `npm run validate-catalog -- --only <id>` probes the new server from the runner and merges its result into `catalogValidation.json` and `catalogCapabilities.json`. The command fails unless the server is `online`.
+   3. `npm run validate-catalog-assets` checks the logo and provenance fields.
+   4. The `report` step aligns the entry's transport and auth type with what the runner observed and writes the pull request body. The body contains the submitter's description, the browser-side evidence, the runner-side validation result with its log, the contact email, and a checklist for the maintainer.
+   5. A pull request is opened from the branch `submissions/<id>` with the label `catalog-submission`. If either runner check failed, the pull request is opened as a **draft** that shows the failure.
+
+Usually the pull request appears a few minutes after you submit. A second submission for the same id updates the same branch and pull request.
+
+### Reviewing a submission pull request
+
+Work through the checklist in the pull request body. In particular:
+
+- The browser evidence was produced on the submitter's machine and is only a hint. The runner result is authoritative. Do not merge a draft whose runner validation failed; ask the submitter to fix the endpoint, or close the pull request.
+- Check that the endpoint belongs to the named publisher and that the homepage documents it. If the publisher runs the listing, change `listingSource` to `{ "kind": "publisher", "url": "<official docs URL>" }`.
+- Edit the description, tags, id or category on the branch if needed. If you rename the id, rename the logo file and update `catalogValidation.json` and `catalogCapabilities.json` as well.
+- For OAuth servers, add an `oauthRegistration` block when the registration requirements are known.
+- Pull requests created with the workflow's `GITHUB_TOKEN` do not trigger the `CI` workflow. Close and reopen the pull request, or push a commit to the branch, to run CI before you merge.
+
+### Configuration for maintainers
+
+The submission route runs in the state Worker (`cloudflare-worker/src/submissions.js`), which is also mounted at `mcptest.io/api/catalog/submissions`, so the form posts to the same origin.
+
+| Setting | Where | Required | Purpose |
+| --- | --- | --- | --- |
+| `GITHUB_DISPATCH_TOKEN` | Worker secret | Yes | A fine-grained personal access token limited to `integry/mcptest` with **Contents: Read and write**, which `POST /repos/{owner}/{repo}/dispatches` requires. A classic token needs the `public_repo` scope. Without it the route answers `503 submissions_not_configured`. |
+| `TURNSTILE_SECRET` | Worker secret | No | Enables the human check. When it is set, every submission must carry a valid Turnstile token, verified with `siteverify`. When it is not set, the check is skipped. |
+| `VITE_TURNSTILE_SITE_KEY` | App build environment | With `TURNSTILE_SECRET` | The site key of the same Turnstile widget. The form renders the widget only when this is set. Set both or neither. |
+| `GITHUB_DISPATCH_REPOSITORY` | Worker var (`wrangler.toml`) | No | Repository that receives the dispatch. Defaults to `integry/mcptest`. |
+| `SUBMISSION_RATE_LIMITER` | Durable Object binding (`wrangler.toml`) | Yes | Per-address and per-host counters. Created by the `v2` migration on the next deploy. Only timestamps are stored, under a SHA-256 hash of the client address or the endpoint host. |
+| `VITE_CATALOG_SUBMISSION_URL` | App build environment | No | Overrides the same-origin `/api/catalog/submissions`, for example during local development against a deployed Worker. |
+
+```bash
+cd cloudflare-worker
+npx wrangler secret put GITHUB_DISPATCH_TOKEN
+npx wrangler secret put TURNSTILE_SECRET   # optional
+npx wrangler deploy
+```
+
+The workflow itself uses only the repository's `GITHUB_TOKEN`, with `contents: write` and `pull-requests: write`. The repository setting **Allow GitHub Actions to create and approve pull requests** must be enabled, as it is for the revalidation workflow.
+
+To run the workflow without the app, send the dispatch yourself:
+
+```bash
+jq '{event_type: "catalog-submission", client_payload: .}' scripts/fixtures/catalog-submission/payload.json \
+  | gh api repos/integry/mcptest/dispatches --input -
+```
+
+To run its steps locally on a scratch copy of the repository:
+
+```bash
+npm run apply-catalog-submission -- apply --payload scripts/fixtures/catalog-submission/payload.json --state /tmp/state.json
+npm run validate-catalog -- --only acme-weather
+npm run validate-catalog-assets
+npm run apply-catalog-submission -- report --payload scripts/fixtures/catalog-submission/payload.json \
+  --state /tmp/state.json --validation-outcome failure --assets-outcome success --output /tmp/pr-body.md
+```
+
+## Manual pull request
+
+To list a server by hand, open a pull request against `master` that changes the files listed below.
 
 ## Eligibility
 
@@ -15,7 +111,7 @@ The public catalog at `/catalog` and the pages under `/servers/<id>` are built f
    - `id`: a lowercase kebab-case slug. It is used in `/servers/<id>` and as the logo filename.
    - `name`, `url`, `category`, `tags`, `transport` (`streamable-http` or `legacy-sse`).
    - `description`: one or two factual sentences for a developer deciding whether to connect. Say what data or actions the server exposes and what authentication it needs. Do not use marketing copy.
-   - `listingSource`: `{ "kind": "publisher", "url": "<official docs URL>" }`. Use `mcp-registry` together with `registryUrl`, `registryName`, and `registryVersion` when the official MCP Registry is the source. Use `community` only for listings that the publisher does not run.
+   - `listingSource`: `{ "kind": "publisher", "url": "<official docs URL>" }`. Use `mcp-registry` together with `registryUrl`, `registryName`, and `registryVersion` when the official MCP Registry is the source. Use `community` only for listings that the publisher does not run. `community-submission` is set by the in-app submission workflow; do not use it by hand.
    - `requiresOAuth` and `authType` (`none`, `oauth`, `bearer-token`, `api-token`, `api-key`). Record what validation observes, not only what the docs say.
    - For OAuth servers, an `oauthRegistration` block. Use `"mode": "unknown"` with `evidenceUrl` and `reviewedAt` unless you have tested the registration flow against hosted mcptest.
    - Optional fields: `requiredHeaders` (header templates with exactly one `<PLACEHOLDER>` and never a real credential), `alternativeAuthTypes`, `alternativeEndpoints`, `exactEndpointOnly` (set this when the documented URL is an origin root or a non-standard path that must not be rewritten to `/mcp` or `/sse`), `caveats`, `homepageUrl`, and `sourceUrl`.
@@ -30,6 +126,7 @@ Run these commands locally before you open the pull request:
 
 ```bash
 npm run validate-catalog         # probes every endpoint and rewrites the validation and capability snapshots
+                                 # (add -- --only <id> to probe one server and keep every other stored result)
 npm run validate-catalog-assets  # checks logo files and provenance fields
 npm test
 npm run typecheck

@@ -1,5 +1,6 @@
 import { UserState } from "./UserState";
 import { handleBadgeRequest } from "./badges";
+import { handleSubmissionRequest, SubmissionRateLimiter } from "./submissions";
 
 // Firebase public keys URL
 const FIREBASE_PUBLIC_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
@@ -13,6 +14,8 @@ export default {
     // Public catalog badges are served before authentication and never reach the Durable Object.
     const badgeResponse = handleBadgeRequest(request);
     if (badgeResponse) return badgeResponse;
+    const submissionResponse = await handleSubmissionRequest(request, env);
+    if (submissionResponse) return submissionResponse;
 
     // CORS headers
     const corsHeaders = {
@@ -331,4 +334,4 @@ function extractPublicKeyFromCertificate(certDer) {
 }
 
 // Export the Durable Object class
-export { UserState };
+export { UserState, SubmissionRateLimiter };

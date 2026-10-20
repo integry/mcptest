@@ -16,6 +16,7 @@
     "import-catalog-capabilities": "vite-node scripts/import-catalog-capabilities.ts",
     "validate-catalog-assets": "node scripts/validate-catalog-assets.js",
     "summarize-catalog-diff": "vite-node scripts/run-summarize-catalog-diff.ts",
+    "apply-catalog-submission": "vite-node scripts/run-apply-catalog-submission.ts",
     "generate-badges": "vite-node scripts/generate-badges.ts",
     "build:workers": "npm --prefix cors-proxy-worker run build && npm --prefix cloudflare-worker run build",
     "prebuild": "node scripts/generate-version.js && node scripts/validate-catalog-assets.js && node scripts/validate-oauth-client-metadata.mjs",
