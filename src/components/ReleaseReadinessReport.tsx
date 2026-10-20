@@ -21,6 +21,7 @@ import {
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
 import { documentedEvidenceIdFor, hasReference } from '../utils/referenceLinks';
+import { trackEvent } from '../utils/analytics';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import AuthorizationSetup from './AuthorizationSetup';
@@ -193,6 +194,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
       toolSurfaceAnalysis: toolSurface,
       oauthTrace,
     }));
+    trackEvent('report_shared', { method: format });
   };
 
   return (

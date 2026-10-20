@@ -20,7 +20,7 @@ vi.mock('firebase/auth', () => ({
 vi.mock('./firebase', () => ({ auth: {} }));
 vi.mock('./utils/analytics', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./utils/analytics')>();
-  return { ...actual, logEvent: vi.fn(), logPageView: vi.fn() };
+  return { ...actual, trackEvent: vi.fn(), logPageView: vi.fn() };
 });
 
 import App from './App';
