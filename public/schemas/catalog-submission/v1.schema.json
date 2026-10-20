@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcptest.io/schemas/catalog-submission/v1.schema.json",
+  "title": "mcptest catalog submission v1",
+  "description": "Body of POST /api/catalog/submissions. The Worker also rejects endpoints with credentials, query strings, IP literals or private host names, and endpoints already in the catalog; those rules are not expressible here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "url",
+    "name",
+    "description",
+    "category",
+    "homepageUrl",
+    "logoLicense",
+    "authorized",
+    "evidence"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://mcptest.io/schemas/catalog-submission/v1.schema.json"
+    },
+    "url": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Remote MCP endpoint (Streamable HTTP or legacy SSE)."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60,
+      "pattern": "^[^\\u0000-\\u001f\\u007f<>]*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 300,
+      "pattern": "^[^\\u0000-\\u001f\\u007f<>]*$",
+      "description": "One or two factual sentences: what the server exposes and how it authenticates."
+    },
+    "category": {
+      "enum": [
+        "AI Infrastructure",
+        "Analytics",
+        "Automation",
+        "Cloud",
+        "Communication",
+        "CRM",
+        "Databases",
+        "Design",
+        "Developer Tools",
+        "Documentation",
+        "Finance",
+        "Marketplace",
+        "Observability",
+        "Payments",
+        "Productivity",
+        "Project Management",
+        "Search",
+        "Security"
+      ]
+    },
+    "homepageUrl": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "logoLicense": {
+      "enum": [
+        "official-brand",
+        "simple-icons",
+        "none"
+      ],
+      "description": "Where the optional logo comes from. none uses a generated monogram."
+    },
+    "logoUrl": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "contactEmail": {
+      "type": "string",
+      "maxLength": 254,
+      "format": "email",
+      "description": "Shown to the maintainer in the pull request body. Never written to the catalog or returned by the API."
+    },
+    "authorized": {
+      "const": true,
+      "description": "The submitter confirms they are authorized to list this server."
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "turnstileToken": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "logoLicense": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "logoUrl"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "logoUrl"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Browser-side probe result. The workflow repeats the check on the runner.",
+      "required": [
+        "checkedAt",
+        "endpointUrl",
+        "outcome",
+        "authChallenge",
+        "browserAccess",
+        "detail"
+      ],
+      "properties": {
+        "checkedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "endpointUrl": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 2048,
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "outcome": {
+          "enum": [
+            "mcp",
+            "auth-challenge"
+          ],
+          "description": "Only endpoints that completed an MCP handshake or answered with an authentication challenge can be submitted."
+        },
+        "validatedUrl": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 2048,
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "transport": {
+          "enum": [
+            "streamable-http",
+            "legacy-sse"
+          ]
+        },
+        "protocolVersion": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^[0-9A-Za-z.-]+$"
+        },
+        "protocolEra": {
+          "enum": [
+            "stateless",
+            "stateful"
+          ]
+        },
+        "authChallenge": {
+          "enum": [
+            "none",
+            "oauth",
+            "bearer",
+            "unspecified"
+          ]
+        },
+        "authStatus": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "browserAccess": {
+          "enum": [
+            "direct",
+            "proxy-required",
+            "unknown"
+          ]
+        },
+        "toolCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "mcp"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "authChallenge": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "transport"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "auth-challenge"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "authChallenge": {
+                "enum": [
+                  "oauth",
+                  "bearer",
+                  "unspecified"
+                ]
+              },
+              "authStatus": {
+                "enum": [
+                  401,
+                  403
+                ]
+              }
+            },
+            "required": [
+              "authStatus"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { vi, describe, expect, it } from 'vitest';
 import {
   redactReportString as appRedactReportString,
   redactReportValue as appRedactReportValue,
@@ -10,6 +10,7 @@ import {
 import { findUnredactedSecret } from './redactionGuard.js';
 import { CREDENTIAL_FUZZ_CASES, findEmbeddedSecret } from './redactionFuzzCases.js';
 import {
+
   INSPECTION_BUDGET_MAX_SCANNED_CHARACTERS,
   InspectionBudgetExceededError,
   REDACTED_VALUE,
@@ -19,6 +20,9 @@ import {
   redactReportValue,
   withInspectionBudget,
 } from './reportRedaction.js';
+
+// The budget-bound scans do real work on large fixtures; a cold CI runner exceeds vitest's 5 s default.
+vi.setConfig({ testTimeout: 60_000 });
 
 const containsSecret = (output, secrets) => secrets.find((secret) => output.includes(secret));
 
