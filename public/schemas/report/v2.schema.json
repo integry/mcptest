@@ -209,7 +209,12 @@
               "title": { "type": "string", "minLength": 1 },
               "detail": { "type": "string" },
               "remediation": { "type": "string", "minLength": 1 },
-              "source": { "enum": ["Host compatibility", "Tool surface", "Evaluation"] }
+              "source": { "enum": ["Host compatibility", "Tool surface", "Evaluation"] },
+              "referenceUrl": {
+                "type": "string",
+                "format": "uri",
+                "description": "Optional. Canonical mcptest.io reference section for this id, present when the id is documented."
+              }
             }
           }
         }

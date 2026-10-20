@@ -1,0 +1,103 @@
+{
+  "connect-remote-mcp-server": [
+    "before-you-connect",
+    "path-a-an-authless-endpoint",
+    "path-b-oauth-protected-access",
+    "fixed-api-keys-and-headers",
+    "diagnose-the-first-failure",
+    "validate-before-normal-use"
+  ],
+  "designing-production-mcp-server": [
+    "design-the-capability-boundary-first",
+    "tool-names-descriptions-and-schemas",
+    "control-context-and-token-cost",
+    "idempotency-and-writes",
+    "stateless-protocol-versus-application-state",
+    "authentication-and-tenant-isolation",
+    "logging-and-tracing",
+    "rate-limits-and-load-shedding",
+    "failure-handling-contract",
+    "production-readiness-gate"
+  ],
+  "mcp-clients-compared": [
+    "coverage-and-how-to-read-this-comparison",
+    "important-product-boundaries",
+    "transport-and-authentication-choices",
+    "capabilities-are-more-than-tools",
+    "a-practical-selection-rule"
+  ],
+  "mcp-server-trust-checklist": [
+    "trust-is-a-chain-not-a-badge",
+    "1-publisher-and-distribution",
+    "2-code-runtime-and-hosting",
+    "3-requested-permissions",
+    "4-authentication-and-token-handling",
+    "5-tool-surface-and-write-behavior",
+    "6-client-controls-and-prompt-injection-exposure",
+    "7-logging-privacy-and-incident-response",
+    "8-testing-evidence",
+    "decision-record"
+  ],
+  "oauth-for-mcp-explained": [
+    "the-actors",
+    "the-sequence-step-by-step",
+    "1-mcp-request-and-401-challenge",
+    "2-protected-resource-metadata",
+    "3-authorization-server-metadata",
+    "4-establish-client-identity",
+    "5-authorization-code-plus-pkce",
+    "6-token-exchange",
+    "7-authenticated-mcp-request",
+    "when-manual-client-credentials-are-actually-needed",
+    "failure-map"
+  ],
+  "remote-vs-local": [
+    "local-servers",
+    "remote-servers",
+    "stateless-flow",
+    "stateful-flow",
+    "streaming",
+    "authorization",
+    "cors-security",
+    "choosing-deployment"
+  ],
+  "should-you-build-mcp-server": [
+    "start-with-the-distribution-problem",
+    "compare-the-options",
+    "signals-that-justify-mcp",
+    "cross-client-reuse-is-real",
+    "user-authorization-belongs-at-the-integration-boundary",
+    "runtime-discovery-improves-the-experience",
+    "the-server-has-a-focused-boundary",
+    "signals-to-choose-something-simpler",
+    "the-decision-worksheet"
+  ],
+  "testing-guide": [
+    "start-with-the-exact-endpoint",
+    "interactive-testing-in-the-playground",
+    "capabilities",
+    "authentication",
+    "command-line-check-stateless-2026",
+    "command-line-check-stateful-2025",
+    "failure-and-production-checks"
+  ],
+  "troubleshooting": [
+    "the-endpoint-cannot-be-reached",
+    "2026-discovery-or-requests-fail",
+    "2025-initialization-or-sessions-fail",
+    "works-in-curl-fails-in-a-browser",
+    "http-status-decoder",
+    "sse-responses-hang-or-arrive-all-at-once",
+    "oauth-discovery-or-token-exchange-fails",
+    "json-rpc-and-capability-errors",
+    "still-stuck"
+  ],
+  "what-is-mcp": [
+    "what-a-server-exposes",
+    "two-protocol-eras",
+    "stateless-requests-in-2026",
+    "stateful-compatibility-through-2025",
+    "protocol-versions",
+    "where-to-go-next"
+  ]
+}

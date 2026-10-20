@@ -58,6 +58,13 @@ generated from the same in-memory report object. Browser-only CORS evidence is
 explicitly left unknown in a headless run and is not added to the headless
 score; the CLI never claims that a Node connection proves browser access.
 
+Diagnostic ids documented in the
+[transport diagnostics reference](https://mcptest.io/learn/mcp-transport-diagnostics-reference)
+link to their section: Markdown renders each id as a link, and JSON adds an
+optional `referenceUrl` next to the id in `releaseDecision.priorities` and in
+`transportDiagnostic` evidence metadata. The field is a backward-compatible
+addition to the v2 schema.
+
 Browser OAuth is intentionally non-interactive. If a target challenges for
 authorization and no supplied bearer token or API key completes the request,
 the command still writes an `authorization-required` report and exits 2. It

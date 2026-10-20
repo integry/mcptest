@@ -125,6 +125,80 @@ describe('ReleaseReadinessReport', () => {
     expect(container.textContent).not.toContain('grade');
   });
 
+  it('links a documented priority id to its reference section and leaves other priorities unlinked', () => {
+    const report: EvaluationReport = {
+      serverUrl: 'https://tools.example/mcp',
+      outcome: 'scored',
+      finalScore: 10,
+      sections: {
+        protocol: {
+          name: 'Protocol',
+          description: 'Protocol checks',
+          score: 10,
+          maxScore: 10,
+          details: [{ text: '✓ Connected' }],
+        },
+      },
+      outputContracts: {
+        checkedToolCount: 1,
+        passingTools: [],
+        violatingTools: [{
+          toolName: 'weather',
+          violations: [{ path: 'structuredContent.city', message: 'Expected string but got number.' }],
+          omittedViolationCount: 0,
+        }],
+      },
+    };
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(
+      <ReleaseReadinessReport report={report} expandedItems={new Set()} onToggleItem={() => undefined} />
+    );
+
+    const priorities = [...container.querySelectorAll('.release-priority')];
+    const contract = priorities.find((item) => item.textContent?.includes('declared output schema'));
+    const link = contract?.querySelector<HTMLAnchorElement>('.release-priority-meta a');
+    expect(link?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#tool-output-contract-violation');
+    expect(link?.textContent).toBe('tool.output-contract-violation Learn more');
+    for (const item of priorities.filter((entry) => entry !== contract)) {
+      expect(item.querySelector('.release-priority-meta a')).toBeNull();
+    }
+  });
+
+  it('links an expanded transport diagnostic to its reference section', () => {
+    const report: EvaluationReport = {
+      serverUrl: 'https://tools.example/mcp',
+      outcome: 'scored',
+      finalScore: 10,
+      sections: {
+        transport: {
+          name: 'Transport',
+          description: 'Transport checks',
+          score: 10,
+          maxScore: 10,
+          details: [{
+            text: '⚠ Server does not offer a GET event stream (HTTP 405) (transport.get-stream-405)',
+            context: 'Optional stream refused.',
+            metadata: { transportDiagnostic: { id: 'transport.get-stream-405' } },
+          }],
+        },
+      },
+    };
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(
+      <ReleaseReadinessReport
+        report={report}
+        expandedItems={new Set(['protocol-transport-0'])}
+        onToggleItem={() => undefined}
+      />
+    );
+
+    const link = container.querySelector<HTMLAnchorElement>('#protocol-transport-0-body a');
+    expect(link?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#transport-get-stream-405');
+    expect(container.querySelector('.protocol-evidence button a')).toBeNull();
+  });
+
   it('labels an expected OAuth challenge as a step instead of an error', () => {
     const markup = renderToStaticMarkup(
       <ReleaseReadinessReport
