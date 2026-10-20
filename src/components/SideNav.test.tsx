@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import SideNav from './SideNav';
+import { TRACK_NAVIGATION } from '../content/learnRegistry';
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
@@ -154,8 +155,12 @@ describe('SideNav dashboard rows', () => {
       Array.from(container.querySelectorAll('.content-track-label'), (label) => label.textContent)
     ).toEqual(['Understand', 'Use', 'Build', 'Reference']);
     const hrefs = Array.from(container.querySelectorAll('.content-track-nav a'), link => link.getAttribute('href'));
-    const expectedHrefs = [
+    expect(hrefs).toEqual([
       '/learn',
+      ...TRACK_NAVIGATION.flatMap(track => track.items.map(item => item.path)),
+    ]);
+    // Pre-existing guides keep their relative sidebar order as new articles are added.
+    const preExisting = [
       '/docs/what-is-mcp',
       '/docs/remote-vs-local',
       '/learn/should-you-build-mcp-server',
@@ -167,8 +172,7 @@ describe('SideNav dashboard rows', () => {
       '/learn/mcp-server-trust-checklist',
       '/docs/troubleshooting',
     ];
-    // Other articles may be added to any track; the known pages keep their order.
-    expect(hrefs.filter(href => href !== null && expectedHrefs.includes(href))).toEqual(expectedHrefs);
+    expect(hrefs.filter(href => preExisting.includes(href as string))).toEqual(preExisting);
     expect(container.querySelector('a[href="/learn/mcp-clients-compared"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/learn"]')?.classList).not.toContain('active');
     expect(container.querySelector('a[href="/docs/what-is-mcp"]')?.textContent).toBe('What is MCP?');
