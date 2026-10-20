@@ -2,6 +2,13 @@ name = "mcptest-io"
 main = "cloudflare-worker/src/index.js"
 compatibility_date = "2025-07-30"
 
+# The state API stays on workers.dev; the public catalog badge route is also
+# mounted on the site so README embeds use https://mcptest.io/badge/server/<id>.svg.
+workers_dev = true
+routes = [
+  { pattern = "mcptest.io/badge/server/*", zone_name = "mcptest.io" }
+]
+
 [vars]
 # Replace with your actual Firebase project ID
 FIREBASE_PROJECT_ID = "mcptest-a530d"

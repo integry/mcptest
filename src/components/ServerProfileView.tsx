@@ -13,6 +13,14 @@ import ClientSetup from './ClientSetup';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import { createAuthorizationGuidance } from '../utils/authorizationGuidance';
 import AuthorizationSetup from './AuthorizationSetup';
+import BadgeEmbed from './BadgeEmbed';
+import {
+  createCatalogBadgeSnippets,
+  getBadgeTitle,
+  getCatalogBadgeVariant,
+  getServerProfileUrl,
+  getStaticBadgeUrl,
+} from '../utils/badges';
 
 interface ServerProfileViewProps {
   server?: CatalogServer;
@@ -91,6 +99,8 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       : 'server-status-unknown';
   const preferredEndpoint = getPreferredCatalogEndpoint(server);
   const authorizationGuidance = createAuthorizationGuidance(server);
+  // Servers without a recorded validation run get the neutral badge, as the worker serves.
+  const catalogBadgeVariant = getCatalogBadgeVariant(server.checkedAt ? server : undefined);
 
   return (
     <article className="server-profile">
@@ -282,6 +292,20 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       <AuthorizationSetup guidance={authorizationGuidance} />
 
       <ClientSetup server={server} />
+
+      <section className="card server-profile-section">
+        <div className="card-body">
+          <BadgeEmbed
+            titleId="server-badge-embed-title"
+            titleLevel={2}
+            description={<>Maintain {server.name}? Embed this badge in your README. It follows the latest catalog validation result and links to this server profile.</>}
+            previewSrc={getStaticBadgeUrl(catalogBadgeVariant, '')}
+            previewAlt={getBadgeTitle(catalogBadgeVariant)}
+            linkUrl={getServerProfileUrl(server.id)}
+            snippets={createCatalogBadgeSnippets(server.id)}
+          />
+        </div>
+      </section>
 
       {server.capabilityInventory && (
         <section className="card server-profile-section" aria-labelledby="server-capabilities-title">

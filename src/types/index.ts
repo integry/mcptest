@@ -6,6 +6,7 @@ import type { OutputContractResult } from '../utils/outputContract';
 
 export * from './toolSurfaceAnalysis';
 export * from './deterministicTests';
+export * from './transportDiagnostics';
 
 // Define interfaces for state clarity
 export interface LogEntry {
