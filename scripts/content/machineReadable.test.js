@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CONTENT_TRACKS } from '../../src/content/contentModel.ts';
-import { loadArticles } from './loadArticles.js';
+import { ARTICLES_DIR, loadArticles } from './loadArticles.js';
 import { articleMarkdownPath, renderArticleMarkdown, renderLlmsTxt } from './machineReadable.js';
 
 const SAMPLE = `---
@@ -37,7 +37,7 @@ const writeFixture = files => {
 describe('Node article loader', () => {
   it('loads and validates the real article directory in reading order', () => {
     const articles = loadArticles({ reservedPaths: ['/docs/contact'] });
-    const markdownFiles = readdirSync(join(process.cwd(), 'src/content/articles')).filter(name => name.endsWith('.md'));
+    const markdownFiles = readdirSync(ARTICLES_DIR).filter(file => file.endsWith('.md'));
     expect(articles).toHaveLength(markdownFiles.length);
     expect(articles[0].path).toBe('/docs/what-is-mcp');
     expect(articles.map(article => article.slug)).toContain('mcp-clients-compared');
