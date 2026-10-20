@@ -1000,10 +1000,13 @@ export const runDeterministicCase = async (
     // result, so callers can drop verdicts recorded against a removed schema.
     if (tool && !malformedResponseError(response)) {
       outputContract = checkToolOutputContract({ name: testCase.toolName, outputSchema: tool.outputSchema }, response);
-      const assertsSchema = testCase.assertions.some(assertion => assertion.operator === 'matches-output-schema');
-      // Without an explicit schema assertion, a broken contract still fails the
-      // case, as it did when the SDK rejected such results.
-      if (!error && !assertsSchema && liveDefinition && outputContract.status === 'fail') {
+      // Only a schema assertion on the root structured output checks the same
+      // value as the contract; one at a nested path does not. Without it, a
+      // broken contract still fails the case, as it did when the SDK rejected
+      // such results.
+      const assertsRootSchema = testCase.assertions.some(assertion => assertion.operator === 'matches-output-schema'
+        && pathSegments(assertion.path)?.length === 1 && pathSegments(assertion.path)?.[0] === 'structuredContent');
+      if (!error && !assertsRootSchema && liveDefinition && outputContract.status === 'fail') {
         error = {
           type: 'malformed-response',
           message: `Structured content does not match the tool's output schema: ${outputContract.violations

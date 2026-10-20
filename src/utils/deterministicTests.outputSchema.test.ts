@@ -120,6 +120,41 @@ describe('matches-output-schema assertion', () => {
     expect(result.error?.message).toMatch(/returned no structuredContent/);
   });
 
+  it('fails a broken live contract even when a schema assertion on a nested path passes', async () => {
+    const callTool = vi.fn().mockResolvedValue({
+      content: [],
+      structuredContent: { total: 'wrong', payload: { total: 1, items: ['a'] } },
+    });
+
+    const result = await runDeterministicCase(
+      { callTool },
+      schemaCase([{ path: '$.structuredContent.payload', operator: 'matches-output-schema' }]),
+      undefined,
+      liveTool,
+    );
+
+    expect(result.assertions[0].passed).toBe(true);
+    expect(result.outputContract).toMatchObject({ status: 'fail' });
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({ type: 'malformed-response' });
+    expect(result.error?.message).toMatch(/structuredContent\.total — Expected integer but got string/);
+  });
+
+  it('treats a bracketed root schema assertion like the dotted one', async () => {
+    const callTool = vi.fn().mockResolvedValue({ content: [], structuredContent: { total: 'many' } });
+
+    const result = await runDeterministicCase(
+      { callTool },
+      schemaCase([{ path: '$["structuredContent"]', operator: 'matches-output-schema' }]),
+      undefined,
+      liveTool,
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBeUndefined();
+    expect(result.assertions[0].passed).toBe(false);
+  });
+
   it('prefers live definitions over the plan snapshot when running a plan', async () => {
     const plan = generateDeterministicTestPlan([liveTool], 'https://example.test', '2026-10-20T00:00:00.000Z');
     const outputShape = plan.tools[0].cases.find(item => item.kind === 'output-shape')!;
