@@ -1,0 +1,57 @@
+/* --- Report: run the saved test plan for this endpoint --- */
+.saved-plan-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--card-bg);
+}
+
+.saved-plan-run-text {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.saved-plan-run h5 {
+  margin: 0 0 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.saved-plan-run p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.saved-plan-run-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.saved-plan-run-confirm .form-check-input {
+  flex: 0 0 auto;
+  margin: 0.15rem 0 0;
+}
+
+@media (max-width: 767.98px) {
+  .saved-plan-run .btn,
+  .saved-plan-run-confirm {
+    min-height: 2.75rem;
+  }
+
+  .saved-plan-run .btn {
+    width: 100%;
+  }
+}

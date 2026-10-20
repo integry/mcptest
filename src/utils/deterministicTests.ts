@@ -131,7 +131,7 @@ const containsAction = (text: string, actions: Set<string>): boolean => {
   return [...actions].some(action => actionForms(action).some(form => tokens.includes(form)));
 };
 
-const caseIdPrefix = (value: string): string => (
+export const caseIdPrefix = (value: string): string => (
   [...value].map(character => character.codePointAt(0)?.toString(16)).join('-') || 'empty'
 );
 
@@ -844,8 +844,9 @@ const isSensitiveAssertionPath = (path: string): boolean => (
   pathSegments(path)?.some(segment => typeof segment === 'string' && isSensitiveKey(segment)) === true
 );
 
-const redactAssertion = (assertion: DeterministicAssertion): DeterministicAssertion => {
-  if (assertion.operator === 'equals' && isSensitiveAssertionPath(assertion.path)) {
+export const redactDeterministicAssertion = (assertion: DeterministicAssertion): DeterministicAssertion => {
+  if ((assertion.operator === 'equals' || assertion.operator === 'not-equals' || assertion.operator === 'contains')
+    && isSensitiveAssertionPath(assertion.path)) {
     return { ...assertion, value: '[REDACTED]' };
   }
   return redactTestData(assertion) as DeterministicAssertion;
@@ -853,7 +854,7 @@ const redactAssertion = (assertion: DeterministicAssertion): DeterministicAssert
 
 const redactReproducibleCase = (testCase: DeterministicTestCaseV1): DeterministicTestCaseV1 => ({
   ...redactTestData(testCase) as DeterministicTestCaseV1,
-  assertions: testCase.assertions.map(redactAssertion),
+  assertions: testCase.assertions.map(redactDeterministicAssertion),
 });
 
 const valueType = (value: unknown): StructuralValueType => {
@@ -883,7 +884,7 @@ const evaluateOutputSchemaAssertion = (
   outputSchema: unknown,
 ): AssertionEvidence => {
   const evidence = (passed: boolean, message: string, extra: Partial<AssertionEvidence> = {}): AssertionEvidence => ({
-    assertion: redactAssertion(assertion),
+    assertion: redactDeterministicAssertion(assertion),
     passed,
     message,
     ...extra,
@@ -915,7 +916,7 @@ export const evaluateAssertions = (
 ): AssertionEvidence[] => assertions.map(assertion => {
   if (pathSegments(assertion.path) === undefined) {
     return {
-      assertion: redactAssertion(assertion),
+      assertion: redactDeterministicAssertion(assertion),
       passed: false,
       message: `${assertion.path} is not a valid structural assertion path.`,
     };
@@ -929,6 +930,8 @@ export const evaluateAssertions = (
   else if (assertion.operator === 'not-exists') passed = !actual.found;
   else if (assertion.operator === 'type') passed = actual.found && valueType(actual.value) === assertion.value;
   else if (assertion.operator === 'equals') passed = actual.found && jsonDeepEqual(actual.value, assertion.value);
+  else if (assertion.operator === 'not-equals') passed = !actual.found || !jsonDeepEqual(actual.value, assertion.value);
+  else if (assertion.operator === 'contains') passed = typeof actual.value === 'string' && actual.value.includes(assertion.value);
   else {
     const length = typeof actual.value === 'string' || Array.isArray(actual.value)
       ? actual.value.length
@@ -938,7 +941,7 @@ export const evaluateAssertions = (
     if (assertion.operator === 'max-length') passed = length !== undefined && length <= assertion.value;
   }
   return {
-    assertion: redactAssertion(assertion),
+    assertion: redactDeterministicAssertion(assertion),
     passed,
     ...(actual.found ? {
       actual: isSensitiveAssertionPath(assertion.path) ? '[REDACTED]' : redactTestData(actual.value),
@@ -952,7 +955,7 @@ export const evaluateAssertions = (
 const unavailableAssertionEvidence = (
   assertions: readonly DeterministicAssertion[]
 ): AssertionEvidence[] => assertions.map(assertion => ({
-  assertion: redactAssertion(assertion),
+  assertion: redactDeterministicAssertion(assertion),
   passed: false,
   message: `${assertion.path} could not be evaluated because the tool did not return a response.`,
 }));
@@ -1123,7 +1126,7 @@ export function validateDeterministicAssertions(
   if (!Array.isArray(assertions)) throw new Error('Assertions must be a JSON array.');
   for (const assertion of assertions) {
     if (!isRecord(assertion) || typeof assertion.path !== 'string'
-      || !['exists', 'not-exists', 'type', 'equals', 'length', 'min-length', 'max-length', 'matches-output-schema'].includes(String(assertion.operator))) {
+      || !['exists', 'not-exists', 'type', 'equals', 'not-equals', 'contains', 'length', 'min-length', 'max-length', 'matches-output-schema'].includes(String(assertion.operator))) {
       throw new Error(`Case ${caseId} contains a malformed structural assertion.`);
     }
     if (pathSegments(assertion.path) === undefined) {
@@ -1132,8 +1135,12 @@ export function validateDeterministicAssertions(
     if (assertion.operator === 'type' && !['array', 'object', 'string', 'number', 'boolean', 'null'].includes(String(assertion.value))) {
       throw new Error(`Case ${caseId} contains an invalid type assertion.`);
     }
-    if (assertion.operator === 'equals' && !Object.prototype.hasOwnProperty.call(assertion, 'value')) {
-      throw new Error(`Case ${caseId} contains an equals assertion without a value.`);
+    if ((assertion.operator === 'equals' || assertion.operator === 'not-equals')
+      && !Object.prototype.hasOwnProperty.call(assertion, 'value')) {
+      throw new Error(`Case ${caseId} contains an ${assertion.operator} assertion without a value.`);
+    }
+    if (assertion.operator === 'contains' && (typeof assertion.value !== 'string' || assertion.value.length === 0)) {
+      throw new Error(`Case ${caseId} contains a contains assertion without a non-empty string value.`);
     }
     if (['length', 'min-length', 'max-length'].includes(String(assertion.operator))
       && (typeof assertion.value !== 'number' || !Number.isFinite(assertion.value) || assertion.value < 0)) {

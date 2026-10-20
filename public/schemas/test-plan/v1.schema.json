@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcptest.io/schemas/test-plan/v1.schema.json",
+  "title": "mcptest deterministic test plan v1",
+  "description": "A deterministic MCP tool test plan as exported and imported by the mcptest playground.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "serverUrl", "generatedAt", "tools"],
+  "properties": {
+    "$schema": { "const": "https://mcptest.io/schemas/test-plan/v1.schema.json" },
+    "version": { "const": "1.0.0" },
+    "name": { "type": "string" },
+    "serverUrl": { "type": "string" },
+    "generatedAt": { "type": "string" },
+    "tools": { "type": "array", "items": { "$ref": "#/$defs/tool" } }
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolName", "safety", "cases"],
+      "properties": {
+        "toolName": { "type": "string" },
+        "description": { "type": "string" },
+        "safety": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["writeCapable", "destructive", "reasons"],
+          "properties": {
+            "writeCapable": { "type": "boolean" },
+            "destructive": { "type": "boolean" },
+            "reasons": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "outputSchema": { "type": "object" },
+        "cases": { "type": "array", "items": { "$ref": "#/$defs/case" } }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "toolName", "name", "kind", "selected", "arguments", "assertions", "timeoutMs"],
+      "properties": {
+        "id": { "type": "string" },
+        "toolName": { "type": "string", "description": "Must equal the containing tool's toolName." },
+        "name": { "type": "string" },
+        "kind": {
+          "enum": ["happy-path", "validation", "empty-result", "upstream-error", "timeout", "output-shape", "cancellation"]
+        },
+        "selected": { "type": "boolean" },
+        "arguments": { "type": "object" },
+        "assertions": { "type": "array", "items": { "$ref": "#/$defs/assertion" } },
+        "expectedError": {
+          "enum": ["authorization", "validation", "missing-resource", "upstream", "timeout", "cancelled", "malformed-response", "unknown"]
+        },
+        "timeoutMs": { "type": "number", "exclusiveMinimum": 0 },
+        "cancelAfterMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^\\$",
+      "description": "A structural path such as $.content[0].text or $.structuredContent[\"key\"]."
+    },
+    "assertion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "operator"],
+          "properties": {
+            "path": { "$ref": "#/$defs/path" },
+            "operator": { "enum": ["exists", "not-exists", "matches-output-schema"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "operator", "value"],
+          "properties": {
+            "path": { "$ref": "#/$defs/path" },
+            "operator": { "const": "type" },
+            "value": { "enum": ["array", "object", "string", "number", "boolean", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "operator", "value"],
+          "properties": {
+            "path": { "$ref": "#/$defs/path" },
+            "operator": { "enum": ["equals", "not-equals"] },
+            "value": true
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "operator", "value"],
+          "properties": {
+            "path": { "$ref": "#/$defs/path" },
+            "operator": { "const": "contains" },
+            "value": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "operator", "value"],
+          "properties": {
+            "path": { "$ref": "#/$defs/path" },
+            "operator": { "enum": ["length", "min-length", "max-length"] },
+            "value": { "type": "number", "minimum": 0 }
+          }
+        }
+      ]
+    }
+  }
+}
