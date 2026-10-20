@@ -20,6 +20,10 @@ import { findUnredactedSecret } from './redactionGuard.js';
 import { CREDENTIAL_FUZZ_CASES, findEmbeddedSecret } from './redactionFuzzCases.js';
 import { KNOWN_BADGE_CACHE_CONTROL, UNKNOWN_BADGE_CACHE_CONTROL } from './badges.js';
 
+// Every publish now runs the full redaction transform plus two detector passes, which a
+// cold CI runner cannot finish inside vitest's 5 s default for the multi-publish cases.
+vi.setConfig({ testTimeout: 120_000 });
+
 // The publish route stores only what the guard accepts after the transform. No
 // real input reaches that branch (the transform neutralizes everything the guard
 // recognizes), so one test swaps the transform for one that leaves a credential.
