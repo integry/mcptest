@@ -569,6 +569,28 @@ function renderInlineMarkdown(value) {
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 }
 
+const FENCE_PATTERN = /^(`{3,}|~{3,})(.*)$/;
+
+/**
+ * Parses a CommonMark fenced-code opener: three or more backticks or tildes
+ * followed by an optional info string. A backtick info string may not contain
+ * backticks, so a line such as ``` ``code`` ``` stays inline.
+ */
+function openingFence(line) {
+  const match = line.match(FENCE_PATTERN);
+  if (!match) return null;
+  const marker = match[1];
+  const info = match[2].trim();
+  if (marker[0] === '`' && info.includes('`')) return null;
+  return { marker, info };
+}
+
+/** A closing fence repeats the opener's character at least as many times, with nothing else on the line. */
+function closesFence(line, fence) {
+  const match = line.match(/^(`{3,}|~{3,})\s*$/);
+  return Boolean(match) && match[1][0] === fence.marker[0] && match[1].length >= fence.marker.length;
+}
+
 function isTableSeparator(line) {
   const cells = line.trim().replace(/^\||\|$/g, '').split('|');
   return cells.length > 1 && cells.every(cell => /^\s*:?-{3,}:?\s*$/.test(cell));
@@ -596,11 +618,12 @@ function renderMarkdown(markdown, context = undefined) {
       continue;
     }
 
-    if (line.startsWith('```')) {
-      const language = line.slice(3).trim();
+    const fence = openingFence(line);
+    if (fence) {
+      const language = fence.info.split(/\s+/)[0];
       const code = [];
       index += 1;
-      while (index < lines.length && !lines[index].startsWith('```')) {
+      while (index < lines.length && !closesFence(lines[index], fence)) {
         code.push(lines[index]);
         index += 1;
       }
@@ -677,7 +700,7 @@ function renderMarkdown(markdown, context = undefined) {
     while (
       index < lines.length &&
       lines[index].trim() &&
-      !lines[index].startsWith('```') &&
+      !openingFence(lines[index]) &&
       !/^(#{2,6})\s+/.test(lines[index]) &&
       !lines[index].startsWith('>') &&
       !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[index]) &&

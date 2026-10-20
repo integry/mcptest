@@ -10,7 +10,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import { Link } from 'react-router-dom';
 import remarkGfm from 'remark-gfm';
 import { splitAtComponentMarker } from '../../content/contentModel';
-import { createHeadingIdAllocator, remarkHeadingIds } from '../../content/outline';
+import { extractSegmentHeadingIds, remarkHeadingIds } from '../../content/outline';
 
 hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('sh', bash);
@@ -109,9 +109,17 @@ interface ArticleMarkdownProps {
 }
 
 const ArticleMarkdown: React.FC<ArticleMarkdownProps> = ({ content, embedded }) => {
-  const allocate = createHeadingIdAllocator();
-  const segments = splitAtComponentMarker(content);
-  const plugins = [remarkGfm, remarkHeadingIds(allocate)];
+  // Heading ids are precomputed per segment so each Markdown processing run is
+  // deterministic: StrictMode re-invoking ReactMarkdown with the same plugins
+  // must not allocate `-2` suffixes the outline never links to.
+  const { segments, plugins } = useMemo(() => {
+    const segments = splitAtComponentMarker(content);
+    const headingIds = extractSegmentHeadingIds(content);
+    return {
+      segments,
+      plugins: segments.map((_segment, index) => [remarkGfm, remarkHeadingIds(headingIds[index] ?? [])]),
+    };
+  }, [content]);
 
   return (
     <>
@@ -119,7 +127,7 @@ const ArticleMarkdown: React.FC<ArticleMarkdownProps> = ({ content, embedded }) 
         <React.Fragment key={index}>
           {index > 0 && embedded}
           {segment.markdown && (
-            <ReactMarkdown remarkPlugins={plugins} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={plugins[index]} components={markdownComponents}>
               {segment.markdown}
             </ReactMarkdown>
           )}

@@ -134,12 +134,23 @@ export const assignHeadingIds = (tree: MarkdownNode, allocate: HeadingIdAllocato
 };
 
 /**
- * Remark plugin that assigns stable ids to headings so the in-page outline
- * (built from the same parsed tree with the same allocator rules) can link to
- * them. A heading may pin its id with a trailing `{#anchor}`.
+ * Remark plugin that stamps precomputed ids onto the headings of one
+ * component-marker segment, in document order, and strips their explicit
+ * `{#anchor}` suffixes. The ids come from `extractSegmentHeadingIds`, so every
+ * processing run of the same Markdown (React StrictMode runs the renderer
+ * twice per render) yields the same ids the outline links to.
  */
-export const remarkHeadingIds = (allocate: HeadingIdAllocator) => () => (tree: MarkdownNode) => {
-  assignHeadingIds(tree, allocate);
+export const remarkHeadingIds = (ids: readonly string[]) => () => (tree: MarkdownNode) => {
+  let next = 0;
+  assignHeadingIds(tree, text => ids[next++] ?? slugifyHeading(text));
+};
+
+/** `extractHeadings` grouped by component-marker segment. */
+const extractSegmentHeadings = (markdown: string): ParsedHeading[][] => {
+  const allocate = createHeadingIdAllocator();
+  return splitAtComponentMarker(markdown).map(segment =>
+    segment.markdown ? assignHeadingIds(parseMarkdown(segment.markdown), allocate, segment.line) : []
+  );
 };
 
 /**
@@ -147,12 +158,16 @@ export const remarkHeadingIds = (allocate: HeadingIdAllocator) => () => (tree: M
  * browser renders it: one document per component-marker segment, ids
  * allocated across the whole body.
  */
-export const extractHeadings = (markdown: string): ParsedHeading[] => {
-  const allocate = createHeadingIdAllocator();
-  return splitAtComponentMarker(markdown).flatMap(segment =>
-    segment.markdown ? assignHeadingIds(parseMarkdown(segment.markdown), allocate, segment.line) : []
-  );
-};
+export const extractHeadings = (markdown: string): ParsedHeading[] =>
+  extractSegmentHeadings(markdown).flat();
+
+/**
+ * The heading ids of each component-marker segment, in document order, for
+ * `remarkHeadingIds`. Computed once per article body so repeated Markdown
+ * processing never re-allocates (and suffixes) an id.
+ */
+export const extractSegmentHeadingIds = (markdown: string): string[][] =>
+  extractSegmentHeadings(markdown).map(headings => headings.map(heading => heading.id));
 
 /** The h2 and h3 entries of the reading outline, with the ids the rendered headings carry. */
 export const extractOutline = (markdown: string): OutlineHeading[] =>

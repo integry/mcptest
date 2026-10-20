@@ -613,8 +613,24 @@ describe('generated page metadata', () => {
     expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
   });
 
-  it('refuses to prerender a heading the Markdown parser does not recognise', () => {
-    expect(() => renderMarkdown(['~~~', '## inside a tilde fence', '~~~'].join('\n'))).toThrow(/line 2/);
+  it('renders tilde-fenced code without allocating a heading id inside the fence', () => {
+    const markdown = ['## Example', '', '~~~', '## Example', '~~~', '', '## Example'].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<pre><code>## Example</code></pre>');
+    expect(html).toContain('<h2 id="example">Example</h2>');
+    expect(html).toContain('<h2 id="example-2">Example</h2>');
+    expect(html).not.toContain('example-3');
+
+    const ids = Array.from(html.matchAll(/<h2 id="([^"]+)">/g), match => match[1]);
+    expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
+  });
+
+  it('closes a fence only with a matching delimiter of at least the opening length', () => {
+    const markdown = ['~~~~ text', '```', '## not a heading', '~~~', '~~~~', '', '```js', 'const a = `~~~`;', '```'].join('\n');
+    const html = renderMarkdown(markdown);
+    expect(html).toContain('<pre><code class="language-text">```\n## not a heading\n~~~</code></pre>');
+    expect(html).toContain('<pre><code class="language-js">const a = `~~~`;</code></pre>');
+    expect(html).not.toContain('<h2');
   });
 
   it('renders the Learn index grouped by track', () => {

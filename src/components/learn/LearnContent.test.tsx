@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { CONTENT_COMPONENTS, PAGE_COMPONENTS } from '../../content/componentRegistry';
 import { COMPONENT_MARKER, CONTENT_COMPONENT_NAMES } from '../../content/contentModel';
 import {
@@ -28,6 +29,25 @@ const render = (node: React.ReactNode) => {
     <MemoryRouter>{node}</MemoryRouter>
   );
   return container;
+};
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const mountedRoots: Array<ReturnType<typeof createRoot>> = [];
+afterEach(() => {
+  mountedRoots.splice(0).forEach(root => act(() => root.unmount()));
+});
+
+/** Client render under the application's StrictMode entry point, which invokes renderers twice. */
+const renderStrict = (node: React.ReactNode) => {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  mountedRoots.push(root);
+  act(() => root.render(
+    <React.StrictMode>
+      <MemoryRouter>{node}</MemoryRouter>
+    </React.StrictMode>
+  ));
+  return { container, root };
 };
 
 /** Every URL that existed before the Markdown migration, with the title it must still render. */
@@ -190,6 +210,42 @@ describe('Learn article page', () => {
       ['example-2-2', 'Example-2'],
       ['pinned', 'code'],
     ]);
+  });
+
+  it('keeps heading ids stable under StrictMode double rendering and re-renders', () => {
+    const content = [
+      '## The actors',
+      'a',
+      '## Example',
+      'b',
+      COMPONENT_MARKER,
+      '',
+      '## Example',
+      'c',
+      '## Example-2 {#pinned}',
+    ].join('\n');
+    const expected = extractOutline(content).map(heading => heading.id);
+    expect(expected).toEqual(['the-actors', 'example', 'example-2', 'pinned']);
+
+    const { container, root } = renderStrict(<ArticleMarkdown content={content} embedded={<p id="demo">demo</p>} />);
+    const ids = () => Array.from(container.querySelectorAll('h2'), heading => heading.id);
+    expect(ids()).toEqual(expected);
+    expect(container.querySelector('#demo')?.previousElementSibling?.textContent).toBe('b');
+
+    act(() => root.render(
+      <React.StrictMode>
+        <MemoryRouter>
+          <ArticleMarkdown content={content} embedded={<p id="demo">demo again</p>} />
+        </MemoryRouter>
+      </React.StrictMode>
+    ));
+    expect(ids()).toEqual(expected);
+
+    const outline = renderStrict(<LearnArticlePage article={{ ...LEARN_ARTICLES[0], content }} />).container;
+    expect(Array.from(outline.querySelectorAll('.reading-prose h2'), heading => heading.id)).toEqual(expected);
+    expect(Array.from(outline.querySelectorAll('.reading-outline a'), link => link.getAttribute('href'))).toEqual(
+      expected.map(id => `#${id}`)
+    );
   });
 
   it('gives entity and link headings the same ids the outline links to', () => {
