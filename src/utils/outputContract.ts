@@ -45,13 +45,88 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
-const draftForSchema = (schema: unknown): SchemaDraft => {
+// Keywords and formats each dialect added. cfworker evaluates every keyword it
+// knows whatever draft it is given, so newer ones are removed from schemas that
+// declare an older dialect, where they are unknown and constrain nothing.
+const KEYWORDS_ADDED = {
+  '06': ['const', 'contains', 'propertyNames'],
+  '07': ['if', 'then', 'else'],
+  '2019-09': [
+    'dependentRequired', 'dependentSchemas', 'unevaluatedProperties', 'unevaluatedItems',
+    'minContains', 'maxContains', '$recursiveRef', '$recursiveAnchor',
+  ],
+  '2020-12': ['prefixItems'],
+} as const;
+
+const FORMATS_ADDED = {
+  '06': ['uri-reference', 'uri-template', 'json-pointer'],
+  '07': ['date', 'time', 'regex', 'relative-json-pointer'],
+  '2019-09': ['duration', 'uuid'],
+  '2020-12': [],
+} as const;
+
+type LaterDialect = keyof typeof KEYWORDS_ADDED;
+
+interface SchemaDialect {
+  draft: SchemaDraft;
+  /** Dialects newer than the declared one, whose additions must not be evaluated. */
+  newerDialects: readonly LaterDialect[];
+}
+
+const dialectForSchema = (schema: unknown): SchemaDialect => {
   const declared = isRecord(schema) && typeof schema.$schema === 'string' ? schema.$schema : '';
-  if (/draft-04/.test(declared)) return '4';
-  if (/draft-0[67]/.test(declared)) return '7';
-  if (/2019-09/.test(declared)) return '2019-09';
+  if (/draft-04/.test(declared)) return { draft: '4', newerDialects: ['06', '07', '2019-09', '2020-12'] };
+  // cfworker has no draft-06 mode. Draft-07 differs from it only by the
+  // keywords and formats removed below.
+  if (/draft-06/.test(declared)) return { draft: '7', newerDialects: ['07', '2019-09', '2020-12'] };
+  if (/draft-07/.test(declared)) return { draft: '7', newerDialects: ['2019-09', '2020-12'] };
+  if (/2019-09/.test(declared)) return { draft: '2019-09', newerDialects: ['2020-12'] };
   // MCP defaults to JSON Schema 2020-12 when no dialect is declared.
-  return '2020-12';
+  return { draft: '2020-12', newerDialects: [] };
+};
+
+const SCHEMA_ARRAY_KEYWORDS = new Set(['items', 'prefixItems', 'allOf', 'anyOf', 'oneOf']);
+const SCHEMA_MAP_KEYWORDS = new Set([
+  'definitions', '$defs', 'properties', 'patternProperties', 'dependencies', 'dependentSchemas',
+]);
+// Object-valued keywords that hold data rather than subschemas.
+const VALUE_KEYWORDS = new Set(['const', 'enum', 'default', 'examples', '$vocabulary', 'dependentRequired']);
+
+const withoutKeywords = (
+  schema: unknown,
+  keywords: ReadonlySet<string>,
+  formats: ReadonlySet<string>
+): unknown => {
+  if (!isRecord(schema)) return schema;
+  const strip = (subschema: unknown) => withoutKeywords(subschema, keywords, formats);
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (keywords.has(key)) continue;
+    if (key === 'format' && typeof value === 'string' && formats.has(value)) continue;
+    if (VALUE_KEYWORDS.has(key)) {
+      result[key] = value;
+    } else if (Array.isArray(value)) {
+      result[key] = SCHEMA_ARRAY_KEYWORDS.has(key) ? value.map(strip) : value;
+    } else if (SCHEMA_MAP_KEYWORDS.has(key) && isRecord(value)) {
+      result[key] = Object.fromEntries(Object.entries(value).map(([name, subschema]) => [name, strip(subschema)]));
+    } else {
+      // Like cfworker, treat other object values as subschemas a $ref may target.
+      result[key] = strip(value);
+    }
+  }
+  return result;
+};
+
+/** Returns the schema as the declared dialect reads it, plus the cfworker draft to use. */
+const schemaForDeclaredDialect = (schema: Record<string, unknown> | boolean): {
+  schema: Record<string, unknown> | boolean;
+  draft: SchemaDraft;
+} => {
+  const { draft, newerDialects } = dialectForSchema(schema);
+  if (newerDialects.length === 0) return { schema, draft };
+  const keywords = new Set<string>(newerDialects.flatMap(dialect => KEYWORDS_ADDED[dialect]));
+  const formats = new Set<string>(newerDialects.flatMap(dialect => FORMATS_ADDED[dialect]));
+  return { schema: withoutKeywords(schema, keywords, formats) as Record<string, unknown>, draft };
 };
 
 const decodePointerSegment = (segment: string): string => {
@@ -170,7 +245,8 @@ export const validateAgainstOutputSchema = (schema: unknown, value: unknown): Sc
     };
   }
   try {
-    const result = new Validator(schema as Record<string, unknown>, draftForSchema(schema), false).validate(value);
+    const dialect = schemaForDeclaredDialect(schema);
+    const result = new Validator(dialect.schema as Record<string, unknown>, dialect.draft, false).validate(value);
     if (result.valid) return { valid: true, violations: [] };
     const violations = toViolations(result.errors);
     return {

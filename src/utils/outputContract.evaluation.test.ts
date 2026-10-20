@@ -151,6 +151,25 @@ describe('output contract evidence in evaluation runs', () => {
     expect(decision.priorities.map(item => item.id)).not.toContain('tool.output-contract-violation');
   });
 
+  it('does not block release on draft-07 keywords inside a declared draft-06 schema', async () => {
+    const draft06 = {
+      $schema: 'http://json-schema.org/draft-06/schema#',
+      type: 'object',
+      if: { required: ['x'] },
+      then: { required: ['y'] },
+    };
+    createToolResultLogEntry({ name: 'legacy', outputSchema: draft06 }, { content: [], structuredContent: { x: 1 } }, {
+      serverUrl, type: 'tool', name: 'legacy', params: {},
+    });
+    expect(getRecordedOutputContractResults(serverUrl)).toMatchObject([{ toolName: 'legacy', status: 'pass' }]);
+
+    const report = await evaluateServer(serverUrl, '', vi.fn(), null, undefined, undefined, { runtime: 'headless' });
+
+    expect(report.outputContracts).toMatchObject({ passingTools: ['legacy'], violatingTools: [] });
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+    expect(decision.priorities.map(item => item.id)).not.toContain('tool.output-contract-violation');
+  });
+
   it('adds no output-contract evidence when no tool results were checked', async () => {
     const report = await evaluateServer(serverUrl, '', vi.fn(), null, undefined, undefined, { runtime: 'headless' });
 

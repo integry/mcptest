@@ -138,6 +138,74 @@ describe('output contract validation', () => {
     ]);
   });
 
+  it('ignores draft-07 conditionals in a schema that declares draft-06', () => {
+    const conditional = {
+      type: 'object',
+      if: { required: ['x'] },
+      then: { required: ['y'] },
+    };
+    const draft06 = { $schema: 'http://json-schema.org/draft-06/schema#', ...conditional };
+
+    expect(checkToolOutputContract({ name: 'draft06', outputSchema: draft06 }, callResult({ x: 1 })))
+      .toMatchObject({ status: 'pass', violations: [] });
+    // Draft-07 still applies them.
+    const draft07 = { $schema: 'http://json-schema.org/draft-07/schema#', ...conditional };
+    const draft07Contract = checkToolOutputContract({ name: 'draft07', outputSchema: draft07 }, callResult({ x: 1 }));
+    expect(draft07Contract.status).toBe('fail');
+    expect(draft07Contract.violations).toContainEqual({
+      path: 'structuredContent.y', message: 'Required property "y" is missing.',
+    });
+  });
+
+  it('removes newer keywords from nested subschemas and keeps properties that share their names', () => {
+    const outcome = validateAgainstOutputSchema({
+      $schema: 'http://json-schema.org/draft-06/schema#',
+      type: 'object',
+      properties: {
+        if: { type: 'string' },
+        nested: { $ref: '#/definitions/conditional' },
+        list: { type: 'array', items: [{ if: { type: 'number' }, then: { minimum: 10 } }] },
+      },
+      required: ['if'],
+      definitions: { conditional: { if: { required: ['a'] }, then: { required: ['b'] } } },
+    }, { if: 'kept', nested: { a: 1 }, list: [1] });
+
+    expect(outcome).toEqual({ valid: true, violations: [] });
+    expect(validateAgainstOutputSchema({
+      $schema: 'http://json-schema.org/draft-06/schema#',
+      type: 'object',
+      properties: { if: { type: 'string' } },
+      required: ['if'],
+    }, { if: 1 }).violations).toEqual([
+      { path: 'structuredContent.if', message: 'Expected string but got number.' },
+    ]);
+  });
+
+  it.each([
+    ['draft-04 const', { $schema: 'http://json-schema.org/draft-04/schema#', const: 1 }, 2],
+    ['draft-04 conditionals', {
+      $schema: 'http://json-schema.org/draft-04/schema#', if: { required: ['x'] }, then: { required: ['y'] },
+    }, { x: 1 }],
+    ['draft-06 date format', { $schema: 'http://json-schema.org/draft-06/schema#', format: 'date' }, 'soon'],
+    ['draft-07 unevaluatedProperties', {
+      $schema: 'http://json-schema.org/draft-07/schema#', properties: { a: {} }, unevaluatedProperties: false,
+    }, { a: 1, b: 2 }],
+    ['draft-07 dependentRequired', {
+      $schema: 'http://json-schema.org/draft-07/schema#', dependentRequired: { a: ['b'] },
+    }, { a: 1 }],
+    ['2019-09 prefixItems', {
+      $schema: 'https://json-schema.org/draft/2019-09/schema', prefixItems: [{ type: 'string' }],
+    }, [1]],
+  ])('does not enforce keywords newer than the declared dialect: %s', (_label, schema, value) => {
+    expect(validateAgainstOutputSchema(schema, value)).toEqual({ valid: true, violations: [] });
+  });
+
+  it('still enforces those keywords when no dialect is declared', () => {
+    expect(validateAgainstOutputSchema({ if: { required: ['x'] }, then: { required: ['y'] } }, { x: 1 }).valid)
+      .toBe(false);
+    expect(validateAgainstOutputSchema({ const: 1 }, 2).valid).toBe(false);
+  });
+
   it('removes only the outputSchema from a tool definition', () => {
     const tool = { name: 'x', inputSchema: { type: 'object' }, outputSchema: { type: 'object' } };
 
