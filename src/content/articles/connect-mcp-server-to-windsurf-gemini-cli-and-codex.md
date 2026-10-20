@@ -43,6 +43,10 @@ All three clients connect to remote Streamable HTTP servers directly. None of th
 
 For the checks to run on an endpoint before you configure any client, see [How to connect to a remote MCP server](/learn/connect-remote-mcp-server). For the wider client comparison, see [MCP clients compared](/learn/mcp-clients-compared).
 
+### Verified compatibility
+
+<!-- compat-matrix clients="windsurf,gemini-cli,codex-cli" limitations="true" -->
+
 ## Windsurf (Devin Desktop)
 
 Windsurf has been renamed Devin Desktop, and `docs.windsurf.com` now redirects to `docs.devin.ai`. The MCP setup below applies to the Cascade agent, which the documentation now calls legacy; new conversations start in Devin Local, which reads `.devin/mcp_config.json` in the project or the same user file.

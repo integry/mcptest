@@ -8,6 +8,11 @@ This Cloudflare Worker provides data persistence for the MCP Test application us
 - Validates Firebase JWT tokens from the Authorization header
 - Provides GET endpoint to retrieve user data
 - Provides POST endpoint to update user data
+- Serves public catalog badges (`/badge/server/<id>.svg`) without authentication
+- Stores anonymously published, redacted report artifacts (`POST /r`, `GET /r/<id>`,
+  `DELETE /r/<id>`, `GET /r/endpoint/<encoded endpoint>`) in the `PublishedReports`
+  Durable Object and serves live badges for them (`/badge/report/<encoded endpoint>.svg`).
+  See `../CLOUDFLARE_DEPLOYMENT.md` for the validation rules, rate limits and removal flow.
 
 ## Catalog submissions
 

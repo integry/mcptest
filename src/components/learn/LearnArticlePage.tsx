@@ -9,6 +9,7 @@ import {
   getTrack,
 } from '../../content/learnRegistry';
 import { extractOutline } from '../../content/outline';
+import { trackEvent, trackGuideLinkClick } from '../../utils/analytics';
 import ArticleMarkdown from './ArticleMarkdown';
 import { formatReviewedDate } from './articleFormatting';
 import './ReadingLayout.css';
@@ -31,9 +32,11 @@ const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
     if (scroller) scroller.scrollTop = 0;
   }, [article.slug]);
 
+  useEffect(() => trackEvent('guide_view', { slug: article.slug, track: article.track }), [article.slug, article.track]);
+
   return (
     <div className="reading-shell">
-      <article className="reading-article" aria-labelledby="reading-title" ref={articleRef}>
+      <article className="reading-article" aria-labelledby="reading-title" ref={articleRef} onClick={trackGuideLinkClick(article.slug)}>
         <nav className="reading-breadcrumb" aria-label="Breadcrumb">
           <Link to="/learn">Learn</Link>
           <span aria-hidden="true">/</span>

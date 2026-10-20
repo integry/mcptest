@@ -40,6 +40,10 @@ The **MCP: Add Server** flow now labels the VS Code format destinations as depre
 
 For the general checks on an endpoint before you configure it, see [How to connect to a remote MCP server](/learn/connect-remote-mcp-server).
 
+## Compatibility at a glance
+
+<!-- compat-matrix clients="vscode-copilot" limitations="true" -->
+
 ## Add a remote HTTP server
 
 ### With the guided command

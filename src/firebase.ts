@@ -1,6 +1,7 @@
 import { initializeApp, FirebaseApp } from "firebase/app";
-import { getAnalytics, Analytics } from "firebase/analytics";
+import { initializeAnalytics, Analytics } from "firebase/analytics";
 import { getAuth, Auth } from "firebase/auth";
+import { isAnalyticsAllowed } from "./utils/privacySignals";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -42,9 +43,10 @@ if (isAuthEnabled) {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       
-      // Ensure we are in a browser environment before getting analytics
-      if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
-        analytics = getAnalytics(app);
+      // Browser only, and never when Do Not Track or Global Privacy Control is
+      // set. Page views are sent by logPageView with endpoint URLs redacted.
+      if (isAnalyticsAllowed() && firebaseConfig.measurementId) {
+        analytics = initializeAnalytics(app, { config: { send_page_view: false } });
       }
       
       console.log('Firebase initialized successfully for project:', firebaseConfig.projectId);

@@ -31,6 +31,10 @@ Until recently, ChatGPT guides said to turn on **Developer mode** under the Apps
 
 This guide reflects OpenAI's documentation reviewed on 20 October 2026. ChatGPT only connects to remote servers. A server that runs only on your laptop needs a public HTTPS endpoint or OpenAI's Secure MCP Tunnel. For general endpoint checks, see [How to connect to a remote MCP server](/learn/connect-remote-mcp-server).
 
+## Compatibility at a glance
+
+<!-- compat-matrix clients="chatgpt" limitations="true" -->
+
 ## Why the option is missing for many users
 
 The most common question about ChatGPT and MCP is why **Add custom MCP server** does not appear. Availability depends on your plan and your role, not on a hidden setting:

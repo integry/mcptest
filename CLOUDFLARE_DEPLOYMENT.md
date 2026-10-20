@@ -125,7 +125,45 @@ This guide explains how to deploy the MCPTest State API and CORS Proxy to Cloudf
 The `wrangler.toml` file in the root directory is configured to:
 - Point to the worker code in `cloudflare-worker/src/index.js`
 - Set up the UserState Durable Object binding
+- Set up the PublishedReports Durable Object binding (see below)
 - Configure the Firebase project ID variable
+- Mount the public routes `mcptest.io/badge/server/*`, `mcptest.io/badge/report/*`, `mcptest.io/r` and `mcptest.io/r/*` on the site
+
+`cloudflare-worker/wrangler.toml` declares the same worker for deployments run from that directory; keep both files in sync.
+
+### Published report permalinks
+
+Report pages can publish the redacted public report artifact (the same JSON as the "Download JSON" action) to the main worker. Publishing is anonymous; nothing is tied to a Firebase account.
+
+**Bindings and secrets a maintainer must create before deploy**
+
+| Binding | Type | Purpose |
+| --- | --- | --- |
+| `USER_STATE` | Durable Object, class `UserState` | Existing authenticated state API |
+| `PUBLISHED_REPORTS` | Durable Object, class `PublishedReports` | Published report snapshots (one instance per endpoint) and publish rate-limit counters (one instance per address and per endpoint host) |
+
+Both bindings are declared in `wrangler.toml`; the `v2` migration creates the `PublishedReports` class (SQLite-backed). No KV namespace and no secrets are required: removal tokens are random per snapshot and only their SHA-256 hashes are stored. The app needs `VITE_CLOUDFLARE_WORKER_URL` pointing at the deployed worker; without it the "Published history" panel and the "Publish report" button are hidden.
+
+**Routes** (served before authentication, never touching `UserState`)
+
+| Route | Behaviour |
+| --- | --- |
+| `POST /r` | Publish an artifact. Body: the redacted JSON artifact, at most 512 KiB (`413 too_large` for a larger declared length, or as soon as a streamed body passes the limit; the rest is not read). Validated against `public/schemas/report/v2.schema.json` and refused (`422 unredacted_content`) if it carries `Authorization` headers, Bearer/Basic credentials, JWTs, sensitive `key=value` assignments or URL parameters, or well-known API key shapes. The redaction scans share one inspection budget per request; an artifact that exhausts it is refused (`422 uninspectable_content`) before any rate-limit work. Only public `http(s)` endpoints are accepted (no loopback, IP literals or `.local` hosts). Rate limited to 10 publishes per hour per endpoint host and 30 per hour per client address (`429` with `Retry-After`). Returns `201` with `{ id, url, reportUrl, badgeUrl, endpoint, entry, removalToken }`; identical runs (same content hash, ignoring `generatedAt` and `timings`) return `200` with `deduplicated: true` and no new token. |
+| `GET /r/<id>` | The stored artifact as JSON with `X-Robots-Tag: noindex, nofollow`, cached for 5 minutes, CORS `*`. |
+| `GET /r/endpoint/<encoded endpoint>` | Index of the newest 20 snapshots for the endpoint (id, timestamps, content hash, result summary). |
+| `DELETE /r/<id>` | Removal; requires the `X-Removal-Token` header. `204` on success, `403` for a wrong token, `404` when gone. |
+| `GET /badge/report/<encoded endpoint>.svg` | Badge for the latest published snapshot, cached for one hour; the neutral badge (cached 5 minutes) when nothing is published. `GET /badge/server/<id>.svg` is unchanged. |
+
+**Removal flow**
+
+1. Publishing shows the removal token once on the report page. The app also keeps it in the browser's `localStorage` (`mcpPublishedReportRemovalTokensV1`) so the same browser shows a "Remove" button next to the snapshot; the token is never sent anywhere except the delete request.
+2. To remove a snapshot from any client, send the token with the id from the permalink:
+   ```bash
+   curl -X DELETE "https://mcptest.io/r/<id>" -H "X-Removal-Token: <token>"
+   ```
+3. A lost token cannot be recovered. Publishing the identical run again does not issue a new token; publishing a changed run creates a new snapshot with its own token. Endpoint owners without a token can ask a maintainer, who can delete the `endpoint:<key>` instance's data with `wrangler` (the key is the first segment of the snapshot id).
+
+Published reports are user-generated and are not prerendered or indexed; the `/report/<endpoint>` app route stays indexable only for catalog endpoints as before.
 
 ### CORS Proxy Configuration
 The `cors-proxy-worker/wrangler.toml` file is configured to:

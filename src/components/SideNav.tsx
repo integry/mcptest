@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
+import { trackEvent } from '../utils/analytics';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -495,7 +496,10 @@ const SideNav: React.FC<SideNavProps> = ({
           <button
             type="button"
             className="sidenav-collapse-toggle"
-            onClick={toggleCollapsed}
+            onClick={() => {
+              trackEvent('sidebar_collapse', { collapsed: !collapsed });
+              toggleCollapsed();
+            }}
             aria-expanded={!collapsed}
             aria-controls={`app-sidenav-${idSuffix}`}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
