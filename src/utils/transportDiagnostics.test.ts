@@ -240,6 +240,29 @@ describe('transport.target-rate-limited-429', () => {
     });
   });
 
+  it('keeps the 429 diagnostic without a deadline when Retry-After exceeds the Date range', () => {
+    for (const retryAfter of ['9999999999999999', '9'.repeat(128)]) {
+      const requests = [request({
+        status: 429,
+        retryAfter,
+        rateLimitRetry: { action: 'not-retried', waitMs: Number(retryAfter) * 1000, reason: 'too long' },
+      })];
+      const diagnostics = detectedTransportDiagnostics(collectTransportDiagnostics([{ route: 'direct', requests }]));
+      expect(diagnostics).toEqual([expect.objectContaining({
+        id: 'transport.target-rate-limited-429',
+        status: 'detected',
+        severity: 'error',
+        retryAfterSeconds: Number(retryAfter),
+      })]);
+      expect(diagnostics[0].retryAt).toBeUndefined();
+      expect(transportDiagnosticPriority(diagnostics[0])).toMatchObject({ severity: 'high' });
+      expect(transportDiagnosticReportDetail(diagnostics[0]).text).toContain('HTTP 429');
+      // A representable deadline still wins over the unrepresentable one when merging.
+      const [bounded] = detectTransportDiagnostics([request({ status: 429, retryAfter: '30' })], 'direct');
+      expect(mergeTransportDiagnostics([diagnostics[0], bounded])[0].retryAt).toBe('2026-10-20T00:00:30.000Z');
+    }
+  });
+
   it('says when Retry-After was not readable', () => {
     const [diagnostic] = detectTransportDiagnostics([request({ status: 429 })], 'direct');
     expect(diagnostic.retryAfterSeconds).toBeUndefined();
@@ -308,6 +331,45 @@ describe('transport.cors-expose-headers-missing', () => {
       expect(detectedTransportDiagnostics(diagnostics)).toEqual([]);
       expect(transportDiagnosticPriority(diagnostics[0])).toBeUndefined();
       expect(transportDiagnosticReportDetail(diagnostics[0]).text).toContain('Possible, not confirmed');
+    }
+  });
+
+  it('only suspects hidden headers when a sessionless tool rejects a session-named parameter', () => {
+    for (const targetError of [
+      { code: -32602, message: 'Missing required parameter session_id' },
+      { message: 'Invalid params: session_id is required' },
+      { message: 'Unknown session-token argument' },
+      { message: 'Missing session: please log in to the dashboard first' },
+      { code: 'invalid_session_parameter', message: 'Bad Request' },
+    ]) {
+      const requests = [
+        request({ crossOrigin: true, readableResponseHeaders: [] }),
+        request({ mcpMethod: 'notifications/initialized', status: 202, responseContentType: undefined }),
+        request({ mcpMethod: 'tools/call', status: 400, outcome: 'failed', targetError }),
+      ];
+      const diagnostics = collectTransportDiagnostics([{ route: 'direct', requests }]);
+      expect(diagnostics).toEqual([expect.objectContaining({
+        id: 'transport.cors-expose-headers-missing',
+        status: 'suspected',
+        severity: 'warning',
+      })]);
+      expect(detectedTransportDiagnostics(diagnostics)).toEqual([]);
+      expect(transportDiagnosticPriority(diagnostics[0])).toBeUndefined();
+    }
+  });
+
+  it('confirms with transport session rejections as the MCP SDKs word them', () => {
+    for (const targetError of [
+      { message: 'Bad Request: Mcp-Session-Id header is required' },
+      { message: 'Bad Request: Missing session ID' },
+      { code: -32001, message: 'Session not found' },
+      { code: 'session_not_found', message: 'Not Found' },
+    ]) {
+      const [diagnostic] = detectTransportDiagnostics([
+        request({ crossOrigin: true, readableResponseHeaders: [] }),
+        request({ mcpMethod: 'tools/list', status: 404, outcome: 'failed', targetError }),
+      ], 'direct');
+      expect(diagnostic).toMatchObject({ status: 'detected', severity: 'error' });
     }
   });
 

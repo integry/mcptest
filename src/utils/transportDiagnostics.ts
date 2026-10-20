@@ -170,6 +170,20 @@ export const parseRetryAfter = (
   return Math.max(0, Math.ceil((date - now) / 1000));
 };
 
+// ECMAScript Date range: 8.64e15 ms either side of the epoch.
+const MAX_DATE_MS = 8.64e15;
+
+/**
+ * The ISO deadline for a Retry-After wait, or undefined when the target asked
+ * for a wait that no Date can represent.
+ */
+const retryDeadline = (receivedAt: number, retryAfterSeconds: number): string | undefined => {
+  const deadline = receivedAt + retryAfterSeconds * 1000;
+  return Number.isFinite(deadline) && Math.abs(deadline) <= MAX_DATE_MS
+    ? new Date(deadline).toISOString()
+    : undefined;
+};
+
 const mediaTypeEssence = (value: string | undefined): string | undefined => (
   value?.split(';', 1)[0].trim().toLowerCase() || undefined
 );
@@ -192,14 +206,35 @@ const sessionHeaderReadable = (request: ObservedTransportRequest): boolean => (
   request.readableResponseHeaders?.includes('mcp-session-id') === true
 );
 
+// Transport session rejections as worded by the MCP SDKs and common servers:
+// "No valid session ID provided", "Mcp-Session-Id header is required",
+// "Missing session ID", "Session not found". A bare "session" (often a login
+// session) or a session-named parameter is not evidence of either.
+const TRANSPORT_SESSION_REJECTION = [
+  /\bmcp-session-id\b/i,
+  /\b(?:no|missing|invalid|unknown|expired)\s+(?:valid\s+)?session\s+id\b/i,
+  /\bsession\s+(?:id\s+)?(?:was\s+)?not\s+found\b/i,
+  /\bsession\s+id\s+(?:is\s+)?(?:required|missing|invalid|expired|unknown|not\s+provided)\b/i,
+];
+
+// String error codes such as "session_not_found" or "SESSION_EXPIRED".
+const SESSION_REJECTION_CODE = /^(?:mcp[_-])?session[_-](?:not[_-]found|required|missing|invalid|expired|unknown)$/i;
+
+// Parameter validation that merely names a session-like argument, such as
+// "Missing required parameter session_id", is an application error.
+const PARAMETER_VALIDATION = /\b(?:param(?:eter)?s?|argument|arguments|field|property)\b|(?<!mcp-)\bsession[_-]\w/i;
+
 /**
- * True when the target's own error detail says a session was missing or
- * unknown. A bare 400 or 404 does not establish that: sessionless servers
- * reject unrelated requests the same way.
+ * True when the target's own error detail says the MCP transport session was
+ * missing or unknown. A bare 400 or 404 does not establish that, nor does an
+ * error that only mentions a session: sessionless servers reject unrelated
+ * requests, including tool calls with session-named parameters, the same way.
  */
 const rejectsSession = (request: ObservedTransportRequest): boolean => {
   const detail = request.targetError;
-  return detail !== undefined && /session/i.test(`${detail.code ?? ''} ${detail.message}`);
+  if (!detail || PARAMETER_VALIDATION.test(detail.message)) return false;
+  return SESSION_REJECTION_CODE.test(String(detail.code ?? ''))
+    || TRANSPORT_SESSION_REJECTION.some((pattern) => pattern.test(detail.message));
 };
 
 /** When the target's response arrived, falling back to when it was sent. */
@@ -323,16 +358,17 @@ export const detectTransportDiagnostics = (
         && later.candidateUrl === request.candidateUrl
         && isSuccess(later.status)
       ));
+      // The successful retry already satisfied this wait; no cooldown remains.
+      const retryAt = retryAfterSeconds === undefined || recovered
+        ? undefined
+        : retryDeadline(receivedAt, retryAfterSeconds);
       diagnostics.push(createDiagnostic(
         'transport.target-rate-limited-429',
         recovered ? 'warning' : 'error',
         [toEvidence(request, route, rateLimitObservation(request, retryAfterSeconds))],
         retryAfterSeconds === undefined
           ? {}
-          : recovered
-            // The successful retry already satisfied this wait; no cooldown remains.
-            ? { retryAfterSeconds }
-            : { retryAfterSeconds, retryAt: new Date(receivedAt + retryAfterSeconds * 1000).toISOString() }
+          : { retryAfterSeconds, ...(retryAt ? { retryAt } : {}) }
       ));
     } else if (isSuccess(status) && status !== 202 && status !== 204) {
       const essence = mediaTypeEssence(request.responseContentType);

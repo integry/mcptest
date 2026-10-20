@@ -113,6 +113,56 @@ describe('evaluation transport diagnostics', () => {
     expect(decision.priorities.map(({ id }) => id)).not.toContain('transport.cors-expose-headers-missing');
   });
 
+  it('does not block release when a sessionless tool rejects a session-named parameter', async () => {
+    const failure = Object.assign(new Error('Error POSTing to endpoint: HTTP 400'), { status: 400 });
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([failure], [{
+      candidateUrl: ENDPOINT,
+      transportType: 'streamable-http',
+      error: failure,
+      observedRequests: [
+        observed({ readableResponseHeaders: [] }),
+        observed({
+          mcpMethod: 'tools/call',
+          status: 400,
+          outcome: 'failed',
+          targetError: { code: -32602, message: 'Missing required parameter session_id' },
+        }),
+      ],
+    }]));
+
+    const report = await evaluateServer(ENDPOINT, undefined, vi.fn());
+
+    expect(transportDiagnosticsFromSections(report.sections)).toEqual([
+      expect.objectContaining({ id: 'transport.cors-expose-headers-missing', status: 'suspected' }),
+    ]);
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+    expect(decision.priorities.map(({ id }) => id)).not.toContain('transport.cors-expose-headers-missing');
+  });
+
+  it('still returns the failed report when the target sends an unrepresentable Retry-After', async () => {
+    const failure = Object.assign(new Error('Error POSTing to endpoint: HTTP 429'), { status: 429 });
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([failure], [{
+      candidateUrl: ENDPOINT,
+      transportType: 'streamable-http',
+      error: failure,
+      observedRequests: [
+        observed({
+          status: 429,
+          outcome: 'failed',
+          retryAfter: '9999999999999999',
+          rateLimitRetry: { action: 'not-retried', waitMs: 9999999999999999000, reason: 'too long' },
+        }),
+      ],
+    }]));
+
+    const report = await evaluateServer(ENDPOINT, undefined, vi.fn());
+
+    expect(report.outcome).toBe('failed');
+    const [diagnostic] = transportDiagnosticsFromSections(report.sections);
+    expect(diagnostic).toMatchObject({ id: 'transport.target-rate-limited-429', status: 'detected', retryAfterSeconds: 9999999999999999 });
+    expect(diagnostic.retryAt).toBeUndefined();
+  });
+
   it('reports a GET 405 warning and an explicit "not checked" Expose-Headers note through the proxy', async () => {
     const unreadable = new TypeError('Failed to fetch');
     connectionMocks.attempt
