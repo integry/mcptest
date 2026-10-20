@@ -66,7 +66,12 @@ describe('evaluation transport diagnostics', () => {
       error: failure,
       observedRequests: [
         observed({ readableResponseHeaders: [] }),
-        observed({ mcpMethod: 'notifications/initialized', status: 400, outcome: 'failed' }),
+        observed({
+          mcpMethod: 'notifications/initialized',
+          status: 400,
+          outcome: 'failed',
+          targetError: { message: 'Bad Request: No valid session ID provided' },
+        }),
       ],
     }]));
 
@@ -80,6 +85,32 @@ describe('evaluation transport diagnostics', () => {
     expect(decision.priorities.map(({ id }) => id)).toContain('transport.cors-expose-headers-missing');
     // The diagnostic is evidence only; it does not change the scoring contract.
     expect(report.sections.transport.status).toBe('skipped');
+  });
+
+  it('does not block release when a sessionless server fails with an unrelated 400', async () => {
+    const failure = Object.assign(new Error('Error POSTing to endpoint: HTTP 400'), { status: 400 });
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([failure], [{
+      candidateUrl: ENDPOINT,
+      transportType: 'streamable-http',
+      error: failure,
+      observedRequests: [
+        observed({ readableResponseHeaders: [] }),
+        observed({
+          mcpMethod: 'tools/list',
+          status: 400,
+          outcome: 'failed',
+          targetError: { code: -32600, message: 'Invalid Request' },
+        }),
+      ],
+    }]));
+
+    const report = await evaluateServer(ENDPOINT, undefined, vi.fn());
+
+    expect(transportDiagnosticsFromSections(report.sections)).toEqual([
+      expect.objectContaining({ id: 'transport.cors-expose-headers-missing', status: 'suspected' }),
+    ]);
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+    expect(decision.priorities.map(({ id }) => id)).not.toContain('transport.cors-expose-headers-missing');
   });
 
   it('reports a GET 405 warning and an explicit "not checked" Expose-Headers note through the proxy', async () => {

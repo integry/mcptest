@@ -21,6 +21,11 @@
   border-left-color: var(--warning-color);
 }
 
+.transport-diagnostic--suspected {
+  border-left-color: var(--secondary-color);
+  border-left-style: dashed;
+}
+
 .transport-diagnostic--not-checked {
   border-left-color: var(--secondary-color);
 }

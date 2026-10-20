@@ -238,13 +238,15 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const rateLimit = transportDiagnostics.find((diagnostic) => (
     diagnostic.id === 'transport.target-rate-limited-429'
     && diagnostic.status === 'detected'
-    && diagnostic.retryAfterSeconds !== undefined
+    && diagnostic.retryAt !== undefined
   ));
-  const retryAtMs = rateLimit?.retryAfterSeconds !== undefined
-    ? errorDetails.timestamp.getTime() + rateLimit.retryAfterSeconds * 1000
-    : undefined;
+  // The deadline is absolute, taken when the 429 arrived; the error timestamp
+  // comes later and must not restart the wait.
+  const parsedRetryAt = rateLimit?.retryAt ? Date.parse(rateLimit.retryAt) : Number.NaN;
+  const retryAtMs = Number.isNaN(parsedRetryAt) ? undefined : parsedRetryAt;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    setNow(Date.now());
     if (retryAtMs === undefined || retryAtMs <= Date.now()) return undefined;
     const intervalId = setInterval(() => {
       const current = Date.now();

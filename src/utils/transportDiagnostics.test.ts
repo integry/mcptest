@@ -9,6 +9,7 @@ import {
   TRANSPORT_DIAGNOSTIC_DEFINITIONS,
   collectTransportDiagnostics,
   detectTransportDiagnostics,
+  detectedTransportDiagnostics,
   mergeTransportDiagnostics,
   parseRetryAfter,
   transportDiagnosticReportDetail,
@@ -197,6 +198,48 @@ describe('transport.target-rate-limited-429', () => {
     expect(diagnostic.retryAfterSeconds).toBe(120);
   });
 
+  it('anchors the retry deadline to when the 429 arrived', () => {
+    const [seconds] = detectTransportDiagnostics([
+      request({ status: 429, retryAfter: '30', durationMs: 1500 }),
+    ], 'direct');
+    expect(seconds.retryAt).toBe('2026-10-20T00:00:31.500Z');
+
+    const [date] = detectTransportDiagnostics([
+      request({ status: 429, retryAfter: 'Tue, 20 Oct 2026 00:02:00 GMT' }),
+    ], 'direct');
+    expect(date.retryAt).toBe('2026-10-20T00:02:00.000Z');
+  });
+
+  it('leaves no retry deadline when the automatic retry already honored the wait', () => {
+    const [diagnostic] = detectTransportDiagnostics([
+      request({ status: 429, retryAfter: '1', rateLimitRetry: { action: 'retried', waitMs: 1000 } }),
+      request({ status: 200, automaticRetry: { reason: 'target-rate-limit', waitMs: 1000 } }),
+      request({ mcpMethod: 'tools/list', status: 406 }),
+    ], 'direct');
+    expect(diagnostic).toMatchObject({ id: 'transport.target-rate-limited-429', severity: 'warning', retryAfterSeconds: 1 });
+    expect(diagnostic.retryAt).toBeUndefined();
+  });
+
+  it('keeps the latest outstanding deadline, with its own wait, when merging', () => {
+    const [recovered] = detectTransportDiagnostics([
+      request({ status: 429, retryAfter: '2', startedAt: '2026-10-20T00:00:20.000Z', rateLimitRetry: { action: 'retried', waitMs: 2000 } }),
+      request({ status: 200, startedAt: '2026-10-20T00:00:22.000Z', automaticRetry: { reason: 'target-rate-limit', waitMs: 2000 } }),
+    ], 'direct');
+    const [longEarly] = detectTransportDiagnostics([
+      request({ status: 429, retryAfter: '60', startedAt: '2026-10-20T00:00:00.000Z' }),
+    ], 'direct');
+    const [shortLate] = detectTransportDiagnostics([
+      request({ status: 429, retryAfter: '30', startedAt: '2026-10-20T00:00:40.000Z' }),
+    ], 'direct');
+
+    const [merged] = mergeTransportDiagnostics([recovered, longEarly, shortLate]);
+    expect(merged).toMatchObject({ retryAt: '2026-10-20T00:01:10.000Z', retryAfterSeconds: 30 });
+    expect(mergeTransportDiagnostics([shortLate, longEarly])[0]).toMatchObject({
+      retryAt: '2026-10-20T00:01:10.000Z',
+      retryAfterSeconds: 30,
+    });
+  });
+
   it('says when Retry-After was not readable', () => {
     const [diagnostic] = detectTransportDiagnostics([request({ status: 429 })], 'direct');
     expect(diagnostic.retryAfterSeconds).toBeUndefined();
@@ -243,6 +286,50 @@ describe('transport.cors-expose-headers-missing', () => {
     expect(diagnostic.evidence).toHaveLength(2);
     expect(diagnostic.evidence[0].observation).toContain('could not read Mcp-Session-Id or MCP-Protocol-Version');
     expect(diagnostic.evidence[1]).toMatchObject({ mcpMethod: 'tools/list', status: 400 });
+  });
+
+  it('only suspects hidden headers when a sessionless server later fails for another reason', () => {
+    for (const unrelated of [
+      request({ mcpMethod: 'tools/call', status: 400, outcome: 'failed', targetError: { code: -32602, message: 'Invalid params: missing "name"' } }),
+      request({ mcpMethod: 'tools/list', status: 404, outcome: 'failed', responseContentType: 'text/html' }),
+    ]) {
+      const requests = [
+        request({ crossOrigin: true, readableResponseHeaders: [] }),
+        request({ mcpMethod: 'notifications/initialized', status: 202, responseContentType: undefined }),
+        unrelated,
+      ];
+      const diagnostics = collectTransportDiagnostics([{ route: 'direct', requests }]);
+      expect(diagnostics).toEqual([expect.objectContaining({
+        id: 'transport.cors-expose-headers-missing',
+        status: 'suspected',
+        severity: 'warning',
+        unconfirmedReason: expect.stringContaining('does not use sessions'),
+      })]);
+      expect(detectedTransportDiagnostics(diagnostics)).toEqual([]);
+      expect(transportDiagnosticPriority(diagnostics[0])).toBeUndefined();
+      expect(transportDiagnosticReportDetail(diagnostics[0]).text).toContain('Possible, not confirmed');
+    }
+  });
+
+  it('confirms with a session-specific rejection even after an unrelated failure', () => {
+    const [diagnostic] = detectTransportDiagnostics([
+      request({ crossOrigin: true, readableResponseHeaders: [] }),
+      request({ mcpMethod: 'tools/list', status: 404, outcome: 'failed' }),
+      request({ mcpMethod: 'tools/list', status: 400, outcome: 'failed', targetError: { message: 'Session not found' } }),
+    ], 'direct');
+    expect(diagnostic).toMatchObject({ status: 'detected', severity: 'error' });
+    expect(diagnostic.evidence[1].observation).toContain('Session not found');
+  });
+
+  it('prefers a confirmed detection over a suspicion when merging', () => {
+    const [suspected] = detectTransportDiagnostics([
+      request({ crossOrigin: true, readableResponseHeaders: [] }),
+      request({ mcpMethod: 'tools/list', status: 400, outcome: 'failed' }),
+    ], 'direct');
+    const [detected] = detectTransportDiagnostics(statefulFailure(), 'direct');
+    expect(mergeTransportDiagnostics([suspected, detected])[0]).toMatchObject({ status: 'detected', severity: 'error' });
+    expect(mergeTransportDiagnostics([detected, suspected])[0]).toMatchObject({ status: 'detected', severity: 'error' });
+    expect(mergeTransportDiagnostics([detected, suspected])[0].evidence).toHaveLength(2);
   });
 
   it('passes when the browser could read Mcp-Session-Id', () => {

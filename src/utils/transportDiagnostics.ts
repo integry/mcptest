@@ -192,6 +192,22 @@ const sessionHeaderReadable = (request: ObservedTransportRequest): boolean => (
   request.readableResponseHeaders?.includes('mcp-session-id') === true
 );
 
+/**
+ * True when the target's own error detail says a session was missing or
+ * unknown. A bare 400 or 404 does not establish that: sessionless servers
+ * reject unrelated requests the same way.
+ */
+const rejectsSession = (request: ObservedTransportRequest): boolean => {
+  const detail = request.targetError;
+  return detail !== undefined && /session/i.test(`${detail.code ?? ''} ${detail.message}`);
+};
+
+/** When the target's response arrived, falling back to when it was sent. */
+const responseReceivedAt = (request: ObservedTransportRequest): number | undefined => {
+  const startedAt = request.startedAt ? Date.parse(request.startedAt) : Number.NaN;
+  return Number.isNaN(startedAt) ? undefined : startedAt + (request.durationMs ?? 0);
+};
+
 const requestDescription = (request: ObservedTransportRequest): string => (
   `${request.method}${request.mcpMethod ? ` ${request.mcpMethod}` : ''}`
 );
@@ -225,7 +241,7 @@ const createDiagnostic = (
   id: TransportDiagnosticId,
   severity: TransportDiagnosticSeverity,
   evidence: TransportDiagnosticEvidence[],
-  extra: Pick<TransportDiagnostic, 'retryAfterSeconds' | 'notCheckedReason'> & {
+  extra: Pick<TransportDiagnostic, 'retryAfterSeconds' | 'retryAt' | 'unconfirmedReason' | 'notCheckedReason'> & {
     status?: TransportDiagnostic['status'];
   } = {}
 ): TransportDiagnostic => {
@@ -239,6 +255,8 @@ const createDiagnostic = (
     evidence,
     remediation: definition.remediation,
     ...(extra.retryAfterSeconds !== undefined ? { retryAfterSeconds: extra.retryAfterSeconds } : {}),
+    ...(extra.retryAt ? { retryAt: extra.retryAt } : {}),
+    ...(extra.unconfirmedReason ? { unconfirmedReason: extra.unconfirmedReason } : {}),
     ...(extra.notCheckedReason ? { notCheckedReason: extra.notCheckedReason } : {}),
   };
 };
@@ -296,8 +314,10 @@ export const detectTransportDiagnostics = (
         [toEvidence(request, route, `The MCP server answered ${requestDescription(request)} with HTTP 415 for Content-Type: ${request.requestContentType || '(unknown)'}.`)]
       ));
     } else if (status === 429) {
-      const now = request.startedAt ? Date.parse(request.startedAt) : Date.now();
-      const retryAfterSeconds = parseRetryAfter(request.retryAfter, Number.isNaN(now) ? Date.now() : now);
+      // The deadline is anchored to when the response arrived, so time already
+      // spent retrying or negotiating other candidates counts toward the wait.
+      const receivedAt = responseReceivedAt(request) ?? Date.now();
+      const retryAfterSeconds = parseRetryAfter(request.retryAfter, receivedAt);
       const recovered = request.rateLimitRetry?.action === 'retried' && requests.slice(index + 1).some((later) => (
         later.automaticRetry?.reason === 'target-rate-limit'
         && later.candidateUrl === request.candidateUrl
@@ -307,7 +327,12 @@ export const detectTransportDiagnostics = (
         'transport.target-rate-limited-429',
         recovered ? 'warning' : 'error',
         [toEvidence(request, route, rateLimitObservation(request, retryAfterSeconds))],
-        retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}
+        retryAfterSeconds === undefined
+          ? {}
+          : recovered
+            // The successful retry already satisfied this wait; no cooldown remains.
+            ? { retryAfterSeconds }
+            : { retryAfterSeconds, retryAt: new Date(receivedAt + retryAfterSeconds * 1000).toISOString() }
       ));
     } else if (isSuccess(status) && status !== 202 && status !== 204) {
       const essence = mediaTypeEssence(request.responseContentType);
@@ -338,6 +363,8 @@ export const detectTransportDiagnostics = (
 
     // A readable, cross-origin initialize without a readable session id,
     // followed by a session rejection, means the id was issued but not exposed.
+    // A later 400 or 404 that does not say a session was missing is only
+    // consistent with that: a sessionless server never sends the header.
     if (
       route === 'direct'
       && request.method === 'POST'
@@ -347,7 +374,7 @@ export const detectTransportDiagnostics = (
       && isSuccess(status)
       && !sessionHeaderReadable(request)
     ) {
-      const rejected = requests.slice(index + 1).find((later) => (
+      const rejections = requests.slice(index + 1).filter((later) => (
         later.candidateUrl === request.candidateUrl
         && later.transportType === request.transportType
         && later.mcpMethod !== 'initialize'
@@ -355,15 +382,31 @@ export const detectTransportDiagnostics = (
         && (later.status === 400 || later.status === 404)
         && !later.requestHeaders?.some((header) => header.toLowerCase() === 'mcp-session-id')
       ));
+      const confirmed = rejections.find(rejectsSession);
+      const rejected = confirmed ?? rejections[0];
       if (rejected) {
-        diagnostics.push(createDiagnostic(
-          'transport.cors-expose-headers-missing',
-          'error',
-          [
-            toEvidence(request, route, `initialize succeeded with HTTP ${status}, but the browser could not read Mcp-Session-Id${request.readableResponseHeaders?.includes('mcp-protocol-version') ? '' : ' or MCP-Protocol-Version'} on the response.`),
-            toEvidence(rejected, route, `The next request, ${requestDescription(rejected)}, was sent without a session id and rejected with HTTP ${rejected.status}.`),
-          ]
-        ));
+        const initializeEvidence = toEvidence(request, route, `initialize succeeded with HTTP ${status}, but the browser could not read Mcp-Session-Id${request.readableResponseHeaders?.includes('mcp-protocol-version') ? '' : ' or MCP-Protocol-Version'} on the response.`);
+        diagnostics.push(confirmed
+          ? createDiagnostic(
+            'transport.cors-expose-headers-missing',
+            'error',
+            [
+              initializeEvidence,
+              toEvidence(confirmed, route, `A later request, ${requestDescription(confirmed)}, was sent without a session id and rejected with HTTP ${confirmed.status}: "${confirmed.targetError?.message}".`),
+            ]
+          )
+          : createDiagnostic(
+            'transport.cors-expose-headers-missing',
+            'warning',
+            [
+              initializeEvidence,
+              toEvidence(rejected, route, `A later request, ${requestDescription(rejected)}, was sent without a session id and answered HTTP ${rejected.status}, but the response did not say a session was missing.`),
+            ],
+            {
+              status: 'suspected',
+              unconfirmedReason: `Not confirmed. A server that does not use sessions also sends no Mcp-Session-Id, so the HTTP ${rejected.status} may be an unrelated error rather than a rejected session. Check Access-Control-Expose-Headers only if this server issues session ids.`,
+            }
+          ));
       }
     }
   }
@@ -372,19 +415,28 @@ export const detectTransportDiagnostics = (
 };
 
 const severityRank: Record<TransportDiagnosticSeverity, number> = { error: 0, warning: 1, info: 2 };
+const statusRank: Record<TransportDiagnostic['status'], number> = { detected: 0, suspected: 1, 'not-checked': 2 };
 
-/** Combines diagnostics with the same id into one, keeping the strongest severity. */
+const deadlineMs = (diagnostic: TransportDiagnostic): number | undefined => {
+  const value = diagnostic.retryAt ? Date.parse(diagnostic.retryAt) : Number.NaN;
+  return Number.isNaN(value) ? undefined : value;
+};
+
+/**
+ * Combines diagnostics with the same id into one, keeping the strongest status
+ * and severity, and the latest outstanding retry deadline.
+ */
 export const mergeTransportDiagnostics = (
   diagnostics: readonly TransportDiagnostic[]
 ): TransportDiagnostic[] => {
   const merged = new Map<TransportDiagnosticId, TransportDiagnostic>();
   for (const diagnostic of diagnostics) {
     const existing = merged.get(diagnostic.id);
-    if (!existing || (existing.status === 'not-checked' && diagnostic.status === 'detected')) {
+    if (!existing || statusRank[diagnostic.status] < statusRank[existing.status]) {
       merged.set(diagnostic.id, { ...diagnostic, evidence: [...diagnostic.evidence] });
       continue;
     }
-    if (diagnostic.status === 'not-checked') continue;
+    if (statusRank[diagnostic.status] > statusRank[existing.status] || diagnostic.status === 'not-checked') continue;
     const evidenceKeys = new Set(existing.evidence.map((item) => JSON.stringify(item)));
     for (const item of diagnostic.evidence) {
       const key = JSON.stringify(item);
@@ -395,7 +447,13 @@ export const mergeTransportDiagnostics = (
     if (severityRank[diagnostic.severity] < severityRank[existing.severity]) {
       existing.severity = diagnostic.severity;
     }
-    if (diagnostic.retryAfterSeconds !== undefined) {
+    const deadline = deadlineMs(diagnostic);
+    const existingDeadline = deadlineMs(existing);
+    if (deadline !== undefined && (existingDeadline === undefined || deadline > existingDeadline)) {
+      // The wait shown alongside a deadline is the one that produced it.
+      existing.retryAt = diagnostic.retryAt;
+      existing.retryAfterSeconds = diagnostic.retryAfterSeconds;
+    } else if (existingDeadline === undefined && diagnostic.retryAfterSeconds !== undefined) {
       existing.retryAfterSeconds = Math.max(existing.retryAfterSeconds ?? 0, diagnostic.retryAfterSeconds);
     }
   }
@@ -508,6 +566,7 @@ export const formatRetryWait = (seconds: number): string => {
 
 const reportIcon = (diagnostic: TransportDiagnostic): string => {
   if (diagnostic.status === 'not-checked') return 'ℹ';
+  if (diagnostic.status === 'suspected') return '?';
   return diagnostic.severity === 'error' ? '✗' : diagnostic.severity === 'warning' ? '⚠' : 'ℹ';
 };
 
@@ -522,10 +581,14 @@ export const transportDiagnosticReportDetail = (diagnostic: TransportDiagnostic)
 } => ({
   text: diagnostic.status === 'not-checked'
     ? `${reportIcon(diagnostic)} Check not performed: ${diagnostic.title} (${diagnostic.id})`
-    : `${reportIcon(diagnostic)} ${diagnostic.title} (${diagnostic.id})`,
+    : diagnostic.status === 'suspected'
+      ? `${reportIcon(diagnostic)} Possible, not confirmed: ${diagnostic.title} (${diagnostic.id})`
+      : `${reportIcon(diagnostic)} ${diagnostic.title} (${diagnostic.id})`,
   context: diagnostic.status === 'not-checked'
     ? diagnostic.notCheckedReason || diagnostic.explanation
-    : diagnostic.explanation,
+    : diagnostic.status === 'suspected' && diagnostic.unconfirmedReason
+      ? `${diagnostic.unconfirmedReason} ${diagnostic.explanation}`
+      : diagnostic.explanation,
   metadata: { transportDiagnostic: diagnostic },
 });
 
@@ -534,7 +597,7 @@ const isDiagnosticRecord = (value: unknown): value is TransportDiagnostic => {
   const record = value as Record<string, unknown>;
   return typeof record.id === 'string'
     && record.id in TRANSPORT_DIAGNOSTIC_DEFINITIONS
-    && (record.status === 'detected' || record.status === 'not-checked')
+    && (record.status === 'detected' || record.status === 'suspected' || record.status === 'not-checked')
     && (record.severity === 'error' || record.severity === 'warning' || record.severity === 'info');
 };
 

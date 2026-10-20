@@ -16,11 +16,13 @@ interface TransportDiagnosticsPanelProps {
 
 const severityLabel = (diagnostic: TransportDiagnostic): string => {
   if (diagnostic.status === 'not-checked') return 'Not checked';
+  if (diagnostic.status === 'suspected') return 'Possible';
   return diagnostic.severity === 'error' ? 'Error' : diagnostic.severity === 'warning' ? 'Warning' : 'Info';
 };
 
 const severityBadge = (diagnostic: TransportDiagnostic): string => {
   if (diagnostic.status === 'not-checked') return 'bg-secondary';
+  if (diagnostic.status === 'suspected') return 'bg-light text-dark border';
   return diagnostic.severity === 'error' ? 'bg-danger' : diagnostic.severity === 'warning' ? 'bg-warning text-dark' : 'bg-info text-dark';
 };
 
@@ -47,7 +49,7 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
       <strong>Transport diagnostics</strong>
       <div className="transport-diagnostics mt-2">
         {diagnostics.map((diagnostic) => {
-          const modifier = diagnostic.status === 'not-checked' ? 'not-checked' : diagnostic.severity;
+          const modifier = diagnostic.status === 'detected' ? diagnostic.severity : diagnostic.status;
           const rateLimited = diagnostic.id === 'transport.target-rate-limited-429'
             && diagnostic.status === 'detected';
           return (
@@ -66,6 +68,9 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
                 <p className="small mb-0">{diagnostic.notCheckedReason}</p>
               ) : (
                 <>
+                  {diagnostic.status === 'suspected' && diagnostic.unconfirmedReason && (
+                    <p className="small mb-2 fw-semibold">{diagnostic.unconfirmedReason}</p>
+                  )}
                   <p className="small mb-2">{diagnostic.explanation}</p>
                   {rateLimited && (
                     <p className="small mb-2">

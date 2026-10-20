@@ -19,11 +19,13 @@ export type TransportDiagnosticId = typeof TRANSPORT_DIAGNOSTIC_IDS[number];
 export type TransportDiagnosticSeverity = 'error' | 'warning' | 'info';
 
 /**
- * `detected` means the observed responses prove the problem. `not-checked`
- * means mcptest could not perform the check and says why; it is not a finding
- * against the server.
+ * `detected` means the observed responses prove the problem. `suspected` means
+ * the responses are consistent with the problem but do not prove it, so it is
+ * shown as a possibility and never blocks release. `not-checked` means mcptest
+ * could not perform the check and says why; neither is a finding against the
+ * server.
  */
-export type TransportDiagnosticStatus = 'detected' | 'not-checked';
+export type TransportDiagnosticStatus = 'detected' | 'suspected' | 'not-checked';
 
 export type TransportDiagnosticRoute = 'direct' | 'proxy';
 
@@ -67,6 +69,14 @@ export interface TransportDiagnostic {
   remediation: TransportDiagnosticRemediation;
   /** Wait requested by the target, for rate-limit diagnostics. */
   retryAfterSeconds?: number;
+  /**
+   * Absolute time (ISO 8601) the target asked clients to wait until, derived
+   * when its response arrived. Absent when the wait was already honored by a
+   * successful automatic retry.
+   */
+  retryAt?: string;
+  /** What a `suspected` diagnostic could not confirm. */
+  unconfirmedReason?: string;
   /** Why a `not-checked` diagnostic could not be evaluated. */
   notCheckedReason?: string;
 }

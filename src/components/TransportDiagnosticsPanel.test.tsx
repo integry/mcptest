@@ -137,6 +137,78 @@ describe('ConnectionErrorCard transport diagnostics', () => {
     expect(container.textContent).toContain('You can retry now.');
   });
 
+  it('counts down from the 429 arrival, not from the later error timestamp', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-20T00:00:04.000Z'));
+    const container = render({
+      timestamp: new Date('2026-10-20T00:00:04.000Z'),
+      attempts: [],
+      transportDiagnostics: collectTransportDiagnostics([{
+        route: 'direct',
+        requests: [request({
+          status: 429,
+          retryAfter: '10',
+          durationMs: 500,
+          rateLimitRetry: { action: 'not-retried', waitMs: 10_000, reason: 'too long' },
+        })],
+      }]),
+    }, { onRetry: vi.fn() });
+
+    const button = () => Array.from(container.querySelectorAll('button'))
+      .find((element) => /Retry/.test(element.textContent || '')) as HTMLButtonElement;
+    expect(button().textContent).toBe('Retry in 7 seconds');
+
+    act(() => {
+      vi.advanceTimersByTime(6000);
+    });
+    expect(button().textContent).toBe('Retry in 1 second');
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(button().disabled).toBe(false);
+  });
+
+  it('imposes no cooldown when the automatic retry already satisfied the rate limit', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-20T00:00:03.000Z'));
+    const container = render({
+      timestamp: new Date('2026-10-20T00:00:03.000Z'),
+      attempts: [],
+      transportDiagnostics: collectTransportDiagnostics([{
+        route: 'direct',
+        requests: [
+          request({ status: 429, retryAfter: '2', rateLimitRetry: { action: 'retried', waitMs: 2000 } }),
+          request({ status: 200, startedAt: '2026-10-20T00:00:02.000Z', outcome: 'succeeded', automaticRetry: { reason: 'target-rate-limit', waitMs: 2000 } }),
+          request({ mcpMethod: 'tools/list', status: 500, startedAt: '2026-10-20T00:00:02.500Z' }),
+        ],
+      }]),
+    }, { onRetry: vi.fn() });
+
+    const button = Array.from(container.querySelectorAll('button'))
+      .find((element) => /Retry/.test(element.textContent || '')) as HTMLButtonElement;
+    expect(button.textContent).toBe('Retry connection');
+    expect(button.disabled).toBe(false);
+  });
+
+  it('presents a hidden session header as unconfirmed after an unrelated failure', () => {
+    const container = render({
+      attempts: [],
+      transportDiagnostics: collectTransportDiagnostics([{
+        route: 'direct',
+        requests: [
+          request({ status: 200, outcome: 'succeeded', responseContentType: 'application/json', readableResponseHeaders: [] }),
+          request({ mcpMethod: 'tools/list', status: 404 }),
+        ],
+      }]),
+    });
+
+    expect(container.querySelector('.transport-diagnostic--suspected')).not.toBeNull();
+    expect(container.textContent).toContain('Possible');
+    expect(container.textContent).toContain('does not use sessions');
+    expect(container.querySelector('h6.alert-heading')?.textContent).toBe('MCP server connection failed');
+  });
+
   it('says the Expose-Headers check was not performed through the proxy', () => {
     const container = render({
       attempts: [],
