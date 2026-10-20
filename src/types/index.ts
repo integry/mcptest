@@ -5,6 +5,7 @@ import type { CatalogProtocolEra } from './catalog';
 
 export * from './toolSurfaceAnalysis';
 export * from './deterministicTests';
+export * from './transportDiagnostics';
 
 // Define interfaces for state clarity
 export interface LogEntry {
