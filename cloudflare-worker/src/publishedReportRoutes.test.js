@@ -17,7 +17,20 @@ import {
   REPORT_REDACTION_VALUE_FIXTURES,
 } from '../../src/utils/reportRedactionFixtures.ts';
 import { findUnredactedSecret } from './redactionGuard.js';
+import { CREDENTIAL_FUZZ_CASES, findEmbeddedSecret } from './redactionFuzzCases.js';
 import { KNOWN_BADGE_CACHE_CONTROL, UNKNOWN_BADGE_CACHE_CONTROL } from './badges.js';
+
+// The publish route stores only what the guard accepts after the transform. No
+// real input reaches that branch (the transform neutralizes everything the guard
+// recognizes), so one test swaps the transform for one that leaves a credential.
+const transform = vi.hoisted(() => ({ override: undefined }));
+vi.mock('./reportRedaction.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    redactReportValue: (value, key) => (transform.override ? transform.override(value, key) : actual.redactReportValue(value, key)),
+  };
+});
 
 // In-memory stand-in for a Durable Object namespace: one PublishedReports instance per name.
 class MemoryStorage {
@@ -136,6 +149,7 @@ const validateStored = ajv.compile(reportSchema);
 
 afterEach(() => {
   vi.useRealTimers();
+  transform.override = undefined;
 });
 
 beforeEach(() => {
@@ -323,6 +337,15 @@ describe('publishing a report', () => {
     ['a JSON fragment after the canonical reference prefix in evidence metadata', (artifact) => {
       artifact.sections[0].evidence[0].metadata = { referenceUrl: `${CANONICAL_REFERENCE} {"note":"Bearer\\u0020plain-secret"}` };
     }],
+    ['a credential assignment encoded into a URL query name whose value is the marker', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'https://example.test/?access_token%3Dopaquecredential123=%5BREDACTED%5D';
+    }],
+    ['a bearer credential encoded into a URL query name', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'https://example.test/?Bearer%20opaque-name-value77=1';
+    }],
+    ['a URL query name encoded past the decode bound', (artifact) => {
+      artifact.sections[0].evidence[0].message = `https://example.test/?${Array.from({ length: 6 }).reduce((text) => encodeURIComponent(text), 'access%5Ftoken')}=%5BREDACTED%5D`;
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);
@@ -353,6 +376,49 @@ describe('publishing a report', () => {
     expect((await response.json()).error).toBe('unredacted_content');
     const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
     expect(index.snapshots).toHaveLength(0);
+  });
+
+  it('stores only artifacts that pass the guard after the transform, for every fixture in every embedding', async () => {
+    // Each case gets its own host so accepted cases never trip the host rate limit.
+    for (const [index, [name, text, secrets]] of CREDENTIAL_FUZZ_CASES.entries()) {
+      const endpoint = `https://fuzz-${index}.example/mcp`;
+      const artifact = clone(baseArtifact);
+      artifact.target.testedEndpoint = endpoint;
+      artifact.sections[0].evidence[0].message = text;
+      const response = await publish(artifact);
+      expect([201, 422], `${name}: ${response.status}`).toContain(response.status);
+      const index_ = await (await request(`/r/endpoint/${encodeURIComponent(endpoint)}`)).json();
+      if (response.status === 422) {
+        expect((await response.json()).error, name).toBe('unredacted_content');
+        expect(index_.snapshots, name).toHaveLength(0);
+        continue;
+      }
+      const { id } = await response.json();
+      const stored = await (await request(`/r/${id}`)).json();
+      expect(findEmbeddedSecret(JSON.stringify(stored), secrets), name).toBeUndefined();
+      expect(findUnredactedSecret(stored), name).toBeUndefined();
+      expect(validateStored(stored), name).toBe(true);
+    }
+  }, 60000);
+
+  it('refuses to store an artifact the guard still recognizes after the transform', async () => {
+    const artifact = artifactFor(evaluation());
+    expect(findUnredactedSecret(artifact)).toBeUndefined();
+    transform.override = (value) => {
+      const leaked = clone(value);
+      leaked.sections[0].evidence[0].message = 'Retry with Bearer transform-left-this';
+      return leaked;
+    };
+    const response = await publish(artifact);
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error).toBe('unredacted_content');
+    expect(body.message).toContain('once redacted: contains a Bearer or Basic credential at sections.0.evidence.0.message');
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots).toHaveLength(0);
+
+    transform.override = undefined;
+    expect((await publish(artifact)).status).toBe(201);
   });
 
   it('stores the artifact through the redaction transform and derives the permalink from the stored form', async () => {

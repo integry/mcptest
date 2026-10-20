@@ -8,6 +8,7 @@ import {
   REPORT_REDACTION_VALUE_FIXTURES,
 } from '../../src/utils/reportRedactionFixtures.ts';
 import { findUnredactedSecret } from './redactionGuard.js';
+import { CREDENTIAL_FUZZ_CASES, findEmbeddedSecret } from './redactionFuzzCases.js';
 import { REDACTED_VALUE, redactReportString, redactReportValue } from './reportRedaction.js';
 
 const containsSecret = (output, secrets) => secrets.find((secret) => output.includes(secret));
@@ -18,9 +19,19 @@ describe('the Worker port of the app redaction', () => {
     (_name, { value, secrets }) => {
       const expected = appRedactReportString(value);
       expect(containsSecret(expected, secrets), `app output: ${expected}`).toBeUndefined();
-      expect(redactReportString(value)).toBe(expected);
-      // Redaction is idempotent, so the app's own output is stored unchanged.
-      expect(redactReportString(expected)).toBe(expected);
+      const redacted = redactReportString(value);
+      if (findUnredactedSecret({ note: expected }) === undefined) {
+        expect(redacted).toBe(expected);
+        // Redaction is idempotent, so the app's own output is stored unchanged.
+        expect(redactReportString(expected)).toBe(expected);
+      } else {
+        // The port is stricter than the app only where the guard refuses the
+        // app's output (a URL query name it cannot inspect): the stored form
+        // must then pass the guard and be its own fixed point.
+        expect(containsSecret(redacted, secrets)).toBeUndefined();
+        expect(findUnredactedSecret({ note: redacted })).toBeUndefined();
+        expect(redactReportString(redacted)).toBe(redacted);
+      }
     }
   );
 
@@ -47,6 +58,57 @@ describe('the Worker port of the app redaction', () => {
       const redacted = redactReportValue(value);
       expect(containsSecret(JSON.stringify(redacted), secrets), name).toBeUndefined();
       expect(findUnredactedSecret(redacted), name).toBeUndefined();
+    }
+  });
+
+  it('redacts a credential carried by a URL query name to the marker', () => {
+    // F8: the encoded name holds the credential while the value is already the marker.
+    const f8 = 'https://example.test/?access_token%3Dopaquecredential123=%5BREDACTED%5D';
+    const redacted = redactReportString(f8);
+    expect(redacted).toBe('https://example.test/?%5BREDACTED%5D=%5BREDACTED%5D');
+    expect(redacted).not.toContain('opaquecredential123');
+    expect(findUnredactedSecret({ note: redacted })).toBeUndefined();
+    expect(redactReportString(redacted)).toBe(redacted);
+
+    for (const [name, secret] of [
+      ['https://example.test/?Bearer%20name-bearer-secret=1', 'name-bearer-secret'],
+      ['https://example.test/?%22token%22%3A%22name-json-secret%22=1', 'name-json-secret'],
+      ['https://example.test/?access_token%253Dname-double-secret=x', 'name-double-secret'],
+      ['see {"url":"https://example.test/?client_secret%3Dname-fragment-secret=%5BREDACTED%5D"}', 'name-fragment-secret'],
+    ]) {
+      const output = redactReportString(name);
+      expect(output, name).not.toContain(secret);
+      expect(findUnredactedSecret({ note: output }), name).toBeUndefined();
+    }
+
+    // Names that carry no credential are preserved exactly as the app preserves them.
+    for (const kept of [
+      'https://example.test/?access_token=%5BREDACTED%5D&page=2',
+      'https://example.test/?access%5Ftoken=%5BREDACTED%5D&q=plain',
+      'https://example.test/?redirect_uri=https%3A%2F%2Fapp.example%2Fcb&scope=read',
+    ]) {
+      expect(redactReportString(kept), kept).toBe(appRedactReportString(kept));
+      expect(redactReportString(kept), kept).not.toContain(REDACTED_VALUE.repeat(2));
+    }
+    expect(redactReportString('https://example.test/?access_token=%5BREDACTED%5D&page=2'))
+      .toBe('https://example.test/?access_token=%5BREDACTED%5D&page=2');
+
+    // A name encoded past the decode bound cannot be inspected and becomes the marker too.
+    const overBound = `https://example.test/?${Array.from({ length: 6 }).reduce((text) => encodeURIComponent(text), 'access_token=over-bound-name-secret')}=1`;
+    expect(redactReportString(overBound)).toBe('https://example.test/?%5BREDACTED%5D=%5BREDACTED%5D');
+  });
+
+  it.each(CREDENTIAL_FUZZ_CASES)('stores nothing the guard recognizes for %s', (_name, text, secrets) => {
+    // The storage invariant: an artifact the guard accepts after the transform
+    // carries none of the fixture secrets, in any encoding the embeddings use.
+    for (const artifact of [{ note: text }, { [text]: 'value' }]) {
+      const redacted = redactReportValue(artifact);
+      const stored = JSON.stringify(redacted);
+      if (findUnredactedSecret(redacted) === undefined) {
+        expect(findEmbeddedSecret(stored, secrets), stored).toBeUndefined();
+      }
+      // The guard must refuse the raw input or the transform must have neutralized it.
+      expect(findUnredactedSecret(artifact) !== undefined || findEmbeddedSecret(stored, secrets) === undefined).toBe(true);
     }
   });
 

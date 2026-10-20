@@ -229,6 +229,15 @@ const redactEncodedUrlComponent = (value, depth, failClosedOnInvalidEncoding = f
   return REDACTED_VALUE;
 };
 
+// A query name is scannable text like any other URL component: percent-decoded
+// within the shared bound and run through the string redaction, so a credential
+// hidden in the name (`?access_token%3Dsecret=[REDACTED]`, `?Bearer%20secret=1`)
+// is found. Such a name becomes the marker rather than being preserved, and so
+// does a name that cannot be decoded within the bound, as path segments and
+// query values already do. This is the one place the port is stricter than the
+// app, which preserves the name; the guard refuses the app's form as unredacted.
+const queryNameCarriesCredential = (name, depth) => redactEncodedUrlComponent(name, depth, true) !== name;
+
 const redactUrl = (value, depth = 0) => {
   if (depth >= MAX_URL_REDACTION_DEPTH) return REDACTED_VALUE;
   let url;
@@ -246,6 +255,10 @@ const redactUrl = (value, depth = 0) => {
     .join('/');
   const redactedSearchParams = new URLSearchParams();
   for (const [key, queryValue] of [...url.searchParams.entries()]) {
+    if (queryNameCarriesCredential(key, depth + 1)) {
+      redactedSearchParams.append(REDACTED_VALUE, REDACTED_VALUE);
+      continue;
+    }
     redactedSearchParams.append(
       key,
       isSensitiveQueryKey(key) ? REDACTED_VALUE : redactEncodedUrlComponent(queryValue, depth + 1)

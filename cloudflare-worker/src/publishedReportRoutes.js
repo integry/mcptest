@@ -9,7 +9,9 @@
 // against public/schemas/report/v2.schema.json and pass the redaction guard, and
 // what is stored is the body run through the Worker's port of the app's
 // redaction transform, so an input that slips past the guard is still stored
-// redacted. Identity (content hash, permalink id) is derived from the stored form.
+// redacted. The transformed artifact is then scanned by the guard again and is
+// stored only when that scan finds nothing, so a stored artifact always passes
+// the guard. Identity (content hash, permalink id) is derived from the stored form.
 import reportSchema from '../../public/schemas/report/v2.schema.json';
 import { getBadgeVariantForResult, renderBadgeSvg } from '../../src/utils/badges.ts';
 import {
@@ -137,6 +139,15 @@ const publish = async (request, env, url) => {
   // the identity on an artifact the app produced; anything it changes was not the
   // app's output, and must still satisfy the schema to be stored.
   const artifact = redactReportValue(received);
+  // Fail closed: the stored artifact must itself pass the guard. If the transform
+  // left anything the guard still recognizes, nothing is stored.
+  const residual = findUnredactedSecret(artifact);
+  if (residual) {
+    return jsonResponse(request, {
+      error: 'unredacted_content',
+      message: `The artifact still carries credential material once redacted: ${residual.reason} at ${residual.path}.`,
+    }, 422, methods);
+  }
   const storedValidation = validateReport(artifact);
   if (!storedValidation.valid) {
     return jsonResponse(request, {

@@ -113,6 +113,9 @@ const decodeComponent = (value) => {
   return { ok: false, reason: 'URL component is encoded too deeply' };
 };
 
+// Every URL component is inspected: userinfo and the fragment must be the
+// marker, path segments and query names and values are percent-decoded within
+// the shared bound and scanned as text.
 const findSecretInUrl = (candidate, depth) => {
   if (depth >= MAX_URL_SCAN_DEPTH) return 'URL nested too deeply';
   let url;
@@ -135,6 +138,13 @@ const findSecretInUrl = (candidate, depth) => {
     if (nested) return nested;
   }
   for (const [key, queryValue] of url.searchParams.entries()) {
+    // The name is scannable text before it is a classification: a credential
+    // hidden in it (`?access_token%3Dsecret=[REDACTED]`) is refused even when
+    // the value is a complete marker.
+    const decodedKey = decodeComponent(key);
+    if (!decodedKey.ok) return decodedKey.reason;
+    const nameReason = findSecretInText(decodedKey.value, depth + 1);
+    if (nameReason) return `query parameter name ${nameReason}`;
     if (isSensitiveQueryKey(key)) {
       if (!isRedactedMarker(queryValue)) return `query parameter "${key}" is not redacted`;
       continue;
