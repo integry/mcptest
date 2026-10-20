@@ -1,0 +1,86 @@
+.tool-result-view {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.tool-result-error,
+.output-contract {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-left-width: 3px;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.tool-result-error,
+.output-contract--pass,
+.output-contract--neutral,
+.output-contract-heading {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+}
+
+.tool-result-error {
+  border-left-color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 8%, transparent);
+}
+
+.output-contract--pass {
+  border-left-color: var(--success-color);
+  background: color-mix(in srgb, var(--success-color) 7%, transparent);
+}
+
+.output-contract--pass i {
+  color: var(--success-color);
+}
+
+.output-contract--fail {
+  border-left-color: var(--danger-color);
+  background: color-mix(in srgb, var(--danger-color) 7%, transparent);
+}
+
+.output-contract--fail .output-contract-heading i {
+  color: var(--danger-color);
+}
+
+.output-contract--neutral {
+  border-left-color: var(--secondary-color);
+  color: var(--text-muted);
+}
+
+.output-contract-violations {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.45rem 0 0;
+  padding-left: 1.4rem;
+}
+
+.output-contract-violations li code {
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.3rem;
+  background: var(--card-bg-secondary);
+  color: var(--text-color);
+  font-family: var(--font-family-mono);
+  font-size: 0.74rem;
+  word-break: break-all;
+}
+
+.output-contract-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.tool-result-view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tool-result-view-switch .btn {
+  padding: 0.18rem 0.6rem;
+  font-size: 0.78rem;
+}

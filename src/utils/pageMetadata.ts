@@ -1,4 +1,5 @@
 import pageMetadata from '../data/pageMetadata.json';
+import { getContentPage, getLearnArticleMetadata } from '../content/learnRegistry';
 
 export interface PageMetadata {
   title: string;
@@ -7,15 +8,19 @@ export interface PageMetadata {
 
 export const HOME_METADATA: PageMetadata = pageMetadata.home;
 
+/** Metadata for React-only documentation pages; article metadata lives in frontmatter. */
 export const DOCS_METADATA: Readonly<Record<string, PageMetadata>> = pageMetadata.docs;
 
-export const getDocsMetadata = (pathname: string): PageMetadata | undefined => {
-  const match = pathname.match(/^\/docs\/([^/]+)\/?$/);
-  if (!match) return undefined;
-
-  try {
-    return DOCS_METADATA[decodeURIComponent(match[1])];
-  } catch {
-    return undefined;
+/** Title and description for any registered content page, Markdown or React. */
+export const getContentPageMetadata = (pathname: string): PageMetadata | undefined => {
+  const page = getContentPage(pathname);
+  if (!page) return undefined;
+  if (page.kind === 'article') {
+    const { title, description } = getLearnArticleMetadata(page.article);
+    return { title, description };
   }
+  return { title: page.page.metaTitle, description: page.page.metaDescription };
 };
+
+export const getDocsMetadata = (pathname: string): PageMetadata | undefined =>
+  /^\/docs\/[^/]+\/?$/.test(pathname) ? getContentPageMetadata(pathname) : undefined;

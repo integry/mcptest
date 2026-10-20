@@ -7,6 +7,21 @@ const {
   getPreferredCatalogEndpoint,
 } = require('../src/utils/clientSetup.ts');
 const { createAuthorizationGuidance } = require('../src/utils/authorizationGuidance.ts');
+const {
+  CONTENT_LEVEL_LABELS,
+  buildTrackNavigation,
+  getArticleBodyMarkdown,
+  getArticleMetaDescription,
+  getArticleMetaTitle,
+  getTrackNeighbors,
+} = require('../src/content/contentModel.ts');
+const { extractHeadings, splitHeadingAnchor } = require('../src/content/outline.ts');
+const { loadArticles } = require('./content/loadArticles.js');
+const {
+  articleMarkdownPath,
+  renderArticleMarkdown,
+  renderLlmsTxt,
+} = require('./content/machineReadable.js');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -16,7 +31,7 @@ const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
 const validationPath = path.join(projectRoot, 'src', 'data', 'catalogValidation.json');
 const capabilitiesPath = path.join(projectRoot, 'src', 'data', 'catalogCapabilities.json');
 const pageMetadataPath = path.join(projectRoot, 'src', 'data', 'pageMetadata.json');
-const learnArticlesPath = path.join(projectRoot, 'src', 'data', 'learnArticles.json');
+const DEFAULT_LEARN_INDEX = { title: 'Learn MCP' };
 const STANDALONE_CREDENTIAL = /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}|sk-(?:proj-)?[A-Za-z0-9_-]{20,255}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox(?:b|p|a|r|s)-[A-Za-z0-9-]{20,255}|npm_[A-Za-z0-9]{20,255}|glpat-[A-Za-z0-9_-]{20,255}|hf_[A-Za-z0-9]{20,255})(?![A-Za-z0-9])/g;
 
 function containsStandaloneCredential(value) {
@@ -581,14 +596,56 @@ function renderInlineMarkdown(value) {
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 }
 
+const FENCE_PATTERN = /^(`{3,}|~{3,})(.*)$/;
+
+/**
+ * Parses a CommonMark fenced-code opener: three or more backticks or tildes
+ * followed by an optional info string. A backtick info string may not contain
+ * backticks, so a line such as ``` ``code`` ``` stays inline.
+ */
+function openingFence(line) {
+  const match = line.match(FENCE_PATTERN);
+  if (!match) return null;
+  const marker = match[1];
+  const info = match[2].trim();
+  if (marker[0] === '`' && info.includes('`')) return null;
+  return { marker, info };
+}
+
+/** A closing fence repeats the opener's character at least as many times, with nothing else on the line. */
+function closesFence(line, fence) {
+  const match = line.match(/^(`{3,}|~{3,})\s*$/);
+  return Boolean(match) && match[1][0] === fence.marker[0] && match[1].length >= fence.marker.length;
+}
+
+/**
+ * CommonMark HTML block (type 2): a line starting with `<!--` opens a block
+ * that runs through the first line containing `-->`, or to the end of the
+ * document when never closed. The browser renders no HTML, so the fallback
+ * emits nothing for it; its interior lines are never headings.
+ */
+function opensHtmlComment(line) {
+  return /^ {0,3}<!--/.test(line);
+}
+
 function isTableSeparator(line) {
   const cells = line.trim().replace(/^\||\|$/g, '').split('|');
   return cells.length > 1 && cells.every(cell => /^\s*:?-{3,}:?\s*$/.test(cell));
 }
 
-function renderMarkdown(markdown) {
+/**
+ * Heading ids come from the parsed Markdown tree (`extractHeadings`), keyed
+ * by source line, so the fallback HTML carries exactly the ids the browser
+ * outline links to. `context` carries that map through blockquote recursion
+ * together with the line offset of the nested slice.
+ */
+function renderMarkdown(markdown, context = undefined) {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const html = [];
+  const { headingIdsByLine, lineOffset } = context || {
+    headingIdsByLine: new Map(extractHeadings(markdown).map(heading => [heading.line, heading.id])),
+    lineOffset: 0,
+  };
   let index = 0;
 
   while (index < lines.length) {
@@ -598,11 +655,12 @@ function renderMarkdown(markdown) {
       continue;
     }
 
-    if (line.startsWith('```')) {
-      const language = line.slice(3).trim();
+    const fence = openingFence(line);
+    if (fence) {
+      const language = fence.info.split(/\s+/)[0];
       const code = [];
       index += 1;
-      while (index < lines.length && !lines[index].startsWith('```')) {
+      while (index < lines.length && !closesFence(lines[index], fence)) {
         code.push(lines[index]);
         index += 1;
       }
@@ -611,11 +669,37 @@ function renderMarkdown(markdown) {
       continue;
     }
 
+    if (opensHtmlComment(line)) {
+      while (index < lines.length && !lines[index].includes('-->')) {
+        index += 1;
+      }
+      index += 1;
+      continue;
+    }
+
     const heading = line.match(/^(#{2,6})\s+(.+)$/);
     if (heading) {
       const level = heading[1].length;
-      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      const { text } = splitHeadingAnchor(heading[2]);
+      const id = headingIdsByLine.get(lineOffset + index);
+      if (id === undefined) {
+        throw new Error(
+          `Prerenderer treated line ${lineOffset + index + 1} as a heading but the Markdown parser did not: ${line}`
+        );
+      }
+      html.push(`<h${level} id="${escapeHtml(id)}">${renderInlineMarkdown(text)}</h${level}>`);
       index += 1;
+      continue;
+    }
+
+    if (line.startsWith('>')) {
+      const quoted = [];
+      const quoteStart = index;
+      while (index < lines.length && lines[index].startsWith('>')) {
+        quoted.push(lines[index].replace(/^>\s?/, ''));
+        index += 1;
+      }
+      html.push(`<blockquote>${renderMarkdown(quoted.join('\n'), { headingIdsByLine, lineOffset: lineOffset + quoteStart })}</blockquote>`);
       continue;
     }
 
@@ -661,8 +745,10 @@ function renderMarkdown(markdown) {
     while (
       index < lines.length &&
       lines[index].trim() &&
-      !lines[index].startsWith('```') &&
+      !openingFence(lines[index]) &&
+      !opensHtmlComment(lines[index]) &&
       !/^(#{2,6})\s+/.test(lines[index]) &&
+      !lines[index].startsWith('>') &&
       !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[index]) &&
       !(lines[index].includes('|') && index + 1 < lines.length && isTableSeparator(lines[index + 1]))
     ) {
@@ -680,22 +766,29 @@ function getRelatedLearnArticles(article, articles) {
   return article.relatedSlugs.map(slug => bySlug.get(slug)).filter(Boolean);
 }
 
-function renderLearnIndexFallback(learnData) {
+function renderLearnIndexFallback(learnIndex, articles) {
+  const tracks = buildTrackNavigation(articles);
   return [
-    '<main class="learn-page learn-index seo-learn-fallback">',
-    '  <header class="learn-hero">',
-    '    <p class="learn-kicker">Guides</p>',
-    `    <h1>${escapeHtml(learnData.index.title)}</h1>`,
-    `    <p>${escapeHtml(learnData.index.summary)}</p>`,
-    '  </header>',
-    '  <div class="learn-grid">',
-    ...learnData.articles.map(article => [
-      '    <article class="learn-card">',
-      `      <p>${escapeHtml(article.category)} · ${article.readingTimeMinutes} min read</p>`,
-      `      <h2><a href="/learn/${escapeHtml(article.slug)}">${escapeHtml(article.title)}</a></h2>`,
-      `      <p>${escapeHtml(article.summary)}</p>`,
-      `      <p>Reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
-      '    </article>',
+    '<main class="reading-shell reading-shell-index seo-learn-fallback">',
+    '  <div class="reading-article learn-index">',
+    '    <header class="reading-header">',
+    `      <h1>${escapeHtml(learnIndex.title)}</h1>`,
+    `      <p class="reading-summary">${escapeHtml(learnIndex.summary)}</p>`,
+    '    </header>',
+    ...tracks.map(track => [
+      `    <section class="learn-track" id="track-${escapeHtml(track.id)}">`,
+      `      <h2>${escapeHtml(track.label)}</h2>`,
+      `      <p class="learn-track-description">${escapeHtml(track.description)}</p>`,
+      '      <ol class="learn-track-list">',
+      ...track.items.map(item => [
+        '        <li class="learn-track-item">',
+        `          <a class="learn-track-item-title" href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a>`,
+        `          <p class="learn-track-item-summary">${escapeHtml(item.summary)}</p>`,
+        `          <p class="learn-track-item-meta">${item.readingTimeMinutes} min read · ${escapeHtml(CONTENT_LEVEL_LABELS[item.level])}</p>`,
+        '        </li>',
+      ].join('\n')),
+      '      </ol>',
+      '    </section>',
     ].join('\n')),
     '  </div>',
     '</main>',
@@ -704,30 +797,38 @@ function renderLearnIndexFallback(learnData) {
 
 function renderLearnArticleFallback(article, articles) {
   const related = getRelatedLearnArticles(article, articles);
+  const { previous, next } = getTrackNeighbors(article, articles);
+  const pager = [];
+  if (previous) pager.push(`        <a class="reading-pager-link reading-pager-previous" rel="prev" href="${escapeHtml(previous.path)}">Previous: ${escapeHtml(previous.title)}</a>`);
+  if (next) pager.push(`        <a class="reading-pager-link reading-pager-next" rel="next" href="${escapeHtml(next.path)}">Next: ${escapeHtml(next.title)}</a>`);
+  // Mirror LearnArticlePage: a shell wrapping one article. The fallback emits
+  // no outline column, so the shell stays single-column at every width.
   return [
-    `<article class="learn-page learn-article seo-learn-fallback" data-article-slug="${escapeHtml(article.slug)}">`,
-    `  <nav class="learn-breadcrumb" aria-label="Breadcrumb"><a href="/learn">Learn</a><span>/</span><span aria-current="page">${escapeHtml(article.title)}</span></nav>`,
-    '  <header class="learn-article-header">',
-    `    <p class="learn-kicker">${escapeHtml(article.category)}</p>`,
-    `    <h1>${escapeHtml(article.title)}</h1>`,
-    `    <p>${escapeHtml(article.summary)}</p>`,
-    `    <p>${article.readingTimeMinutes} min read · Last reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
-    '  </header>',
-    `  <div class="learn-markdown">${renderMarkdown(article.content)}</div>`,
-    '  <footer class="learn-article-footer">',
-    '    <section><h2>Sources</h2><ul>',
-    ...article.sourceLinks.map(source => `      <li><a href="${escapeHtml(source.url)}">${escapeHtml(source.title)}</a></li>`),
-    '    </ul></section>',
-    '    <section><h2>Related guides</h2><ul>',
-    ...related.map(item => `      <li><a href="/learn/${escapeHtml(item.slug)}">${escapeHtml(item.title)}</a></li>`),
-    '    </ul></section>',
-    '  </footer>',
-    '</article>',
+    '<div class="reading-shell reading-shell-single seo-learn-fallback">',
+    `  <article class="reading-article" data-article-slug="${escapeHtml(article.slug)}">`,
+    `    <nav class="reading-breadcrumb" aria-label="Breadcrumb"><a href="/learn">Learn</a><span>/</span><span aria-current="page">${escapeHtml(article.title)}</span></nav>`,
+    '    <header class="reading-header">',
+    `      <h1>${escapeHtml(article.title)}</h1>`,
+    `      <p class="reading-summary">${escapeHtml(article.summary)}</p>`,
+    `      <p class="reading-meta">${escapeHtml(CONTENT_LEVEL_LABELS[article.level])} · ${article.readingTimeMinutes} min read · Last reviewed <time datetime="${escapeHtml(article.lastReviewed)}">${escapeHtml(article.lastReviewed)}</time></p>`,
+    '    </header>',
+    `    <div class="reading-prose">${renderMarkdown(getArticleBodyMarkdown(article))}</div>`,
+    '    <footer class="reading-footer">',
+    ...(pager.length ? ['      <nav class="reading-pager" aria-label="Track navigation">', ...pager, '      </nav>'] : []),
+    '      <section class="reading-related"><h2>Related guides</h2><ul>',
+    ...related.map(item => `        <li><a href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a></li>`),
+    '      </ul></section>',
+    '      <section class="reading-sources"><h2>Sources</h2><ul>',
+    ...article.sourceLinks.map(source => `        <li><a href="${escapeHtml(source.url)}">${escapeHtml(source.title)}</a></li>`),
+    '      </ul></section>',
+    '    </footer>',
+    '  </article>',
+    '</div>',
   ].join('\n');
 }
 
-function getLearnArticleStructuredData(article) {
-  const canonicalUrl = `${SITE_URL}/learn/${article.slug}`;
+function getLearnArticleStructuredData(article, learnIndex) {
+  const canonicalUrl = `${SITE_URL}${article.path}`;
   return {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -745,18 +846,27 @@ function getLearnArticleStructuredData(article) {
       logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` },
     },
     citation: article.sourceLinks.map(({ url }) => url),
-    isPartOf: { '@type': 'CollectionPage', name: 'Learn MCP', url: `${SITE_URL}/learn` },
+    isPartOf: { '@type': 'CollectionPage', name: learnIndex.title, url: `${SITE_URL}/learn` },
   };
 }
 
-function renderLearnArticleHtml(indexHtml, article, articles) {
-  return renderStaticPageHtml(indexHtml, `/learn/${article.slug}`, {
-    title: `${article.title} | mcptest.io`,
-    description: article.summary,
+function renderLearnArticleHtml(indexHtml, article, articles, learnIndex = DEFAULT_LEARN_INDEX) {
+  return renderStaticPageHtml(indexHtml, article.path, {
+    title: getArticleMetaTitle(article),
+    description: getArticleMetaDescription(article),
   }, {
     type: 'article',
-    structuredData: getLearnArticleStructuredData(article),
+    structuredData: getLearnArticleStructuredData(article, learnIndex),
     fallbackHtml: renderLearnArticleFallback(article, articles),
+  });
+}
+
+function renderLearnIndexHtml(indexHtml, learnIndex, articles) {
+  return renderStaticPageHtml(indexHtml, '/learn', {
+    title: `${learnIndex.title} | mcptest.io`,
+    description: learnIndex.description,
+  }, {
+    fallbackHtml: renderLearnIndexFallback(learnIndex, articles),
   });
 }
 
@@ -772,6 +882,7 @@ function writeServerPages(indexHtml, servers) {
   }
 }
 
+/** React-only documentation pages (privacy, terms, contact) keep their metadata in pageMetadata.json. */
 function writeStaticPages(indexHtml, docsMetadata) {
   for (const [slug, metadata] of Object.entries(docsMetadata)) {
     const pathname = `/docs/${slug}`;
@@ -785,47 +896,46 @@ function writeStaticPages(indexHtml, docsMetadata) {
   }
 }
 
-function writeLearnPages(indexHtml, learnData) {
+function distPathFor(pathname) {
+  const resolved = path.join(distRoot, ...pathname.split('/').filter(Boolean));
+  if (!resolved.startsWith(distRoot + path.sep)) {
+    throw new Error(`Refusing to write outside dist: ${pathname}`);
+  }
+  return resolved;
+}
+
+/** Prerendered HTML plus raw Markdown for every article, at its canonical path. */
+function writeArticlePages(indexHtml, learnIndex, articles) {
   const learnDirectory = path.join(distRoot, 'learn');
   fs.mkdirSync(learnDirectory, { recursive: true });
   fs.writeFileSync(
     path.join(learnDirectory, 'index.html'),
-    renderStaticPageHtml(indexHtml, '/learn', {
-      title: `${learnData.index.title} | mcptest.io`,
-      description: learnData.index.description,
-    }, {
-      fallbackHtml: renderLearnIndexFallback(learnData),
-    }),
+    renderLearnIndexHtml(indexHtml, learnIndex, articles),
     'utf8'
   );
 
-  for (const article of learnData.articles) {
-    const outputDirectory = path.join(learnDirectory, article.slug);
+  for (const article of articles) {
+    const outputDirectory = distPathFor(article.path);
     fs.mkdirSync(outputDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(outputDirectory, 'index.html'),
-      renderLearnArticleHtml(indexHtml, article, learnData.articles),
+      renderLearnArticleHtml(indexHtml, article, articles, learnIndex),
       'utf8'
     );
+    fs.writeFileSync(distPathFor(articleMarkdownPath(article)), renderArticleMarkdown(article), 'utf8');
   }
 }
 
-function writeSitemap(servers, learnData) {
-  const staticPaths = [
-    '/',
-    '/catalog',
-    '/report',
-    '/docs/what-is-mcp',
-    '/docs/remote-vs-local',
-    '/docs/testing-guide',
-    '/docs/troubleshooting',
-    '/learn',
-  ];
-  const lastModified = new Date().toISOString().slice(0, 10);
+function writeLlmsTxt(articles) {
+  fs.writeFileSync(path.join(distRoot, 'llms.txt'), renderLlmsTxt(articles), 'utf8');
+}
+
+function renderSitemap(servers, articles, lastModified = new Date().toISOString().slice(0, 10)) {
+  const staticPaths = ['/', '/catalog', '/report', '/learn'];
   const paths = [
     ...staticPaths.map(pathname => ({ pathname, lastModified })),
-    ...learnData.articles.map(article => ({
-      pathname: `/learn/${article.slug}`,
+    ...articles.map(article => ({
+      pathname: article.path,
       lastModified: article.lastReviewed,
     })),
     ...servers.map(server => ({ pathname: serverPath(server.id), lastModified })),
@@ -836,15 +946,17 @@ function writeSitemap(servers, learnData) {
     `    <lastmod>${entryLastModified}</lastmod>`,
     '  </url>',
   ].join('\n'));
-  const sitemap = [
+  return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...entries,
     '</urlset>',
     '',
   ].join('\n');
+}
 
-  fs.writeFileSync(path.join(distRoot, 'sitemap.xml'), sitemap, 'utf8');
+function writeSitemap(servers, articles) {
+  fs.writeFileSync(path.join(distRoot, 'sitemap.xml'), renderSitemap(servers, articles), 'utf8');
   fs.writeFileSync(
     path.join(distRoot, 'robots.txt'),
     `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`,
@@ -996,43 +1108,9 @@ function validateCapabilitySnapshots(snapshots, seeds) {
   }
 }
 
-function validateLearnArticles(learnData) {
-  if (!learnData.index?.title || !learnData.index?.description || !learnData.index?.summary) {
+function validateLearnIndex(learnIndex) {
+  if (!learnIndex?.title || !learnIndex?.description || !learnIndex?.summary) {
     throw new Error('Learn SEO generation requires complete index metadata.');
-  }
-  const slugs = new Set();
-  for (const article of learnData.articles || []) {
-    const required = [
-      article.title,
-      article.summary,
-      article.slug,
-      article.category,
-      article.readingTimeMinutes,
-      article.lastReviewed,
-      article.content,
-      article.relatedSlugs,
-      article.sourceLinks,
-    ];
-    if (required.some(value => value === undefined || value === null || value === '')) {
-      throw new Error(`Learn SEO generation requires complete article metadata: ${JSON.stringify(article)}`);
-    }
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug) || slugs.has(article.slug)) {
-      throw new Error(`Learn article slug must be unique and safe: ${article.slug}`);
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(article.lastReviewed)) {
-      throw new Error(`Learn article last-reviewed date is invalid: ${article.slug}`);
-    }
-    if (!Array.isArray(article.sourceLinks) || article.sourceLinks.length === 0) {
-      throw new Error(`Learn article requires source links: ${article.slug}`);
-    }
-    slugs.add(article.slug);
-  }
-  for (const article of learnData.articles) {
-    for (const relatedSlug of article.relatedSlugs) {
-      if (!slugs.has(relatedSlug)) {
-        throw new Error(`Learn article ${article.slug} references unknown article ${relatedSlug}.`);
-      }
-    }
   }
 }
 
@@ -1045,19 +1123,23 @@ function main() {
   const validationResults = JSON.parse(fs.readFileSync(validationPath, 'utf8'));
   const capabilitySnapshots = JSON.parse(fs.readFileSync(capabilitiesPath, 'utf8'));
   const pageMetadata = JSON.parse(fs.readFileSync(pageMetadataPath, 'utf8'));
-  const learnData = JSON.parse(fs.readFileSync(learnArticlesPath, 'utf8'));
+  const learnIndex = pageMetadata.learn;
   validateInputs(seeds);
   validateCapabilitySnapshots(capabilitySnapshots, seeds);
-  validateLearnArticles(learnData);
+  validateLearnIndex(learnIndex);
+  const articles = loadArticles({
+    reservedPaths: Object.keys(pageMetadata.docs).map(slug => `/docs/${slug}`),
+  });
   const servers = mergeCatalogServers(seeds, validationResults, capabilitySnapshots);
   const indexHtml = fs.readFileSync(indexPath, 'utf8');
 
   writeServerPages(indexHtml, servers);
   writeStaticPages(indexHtml, pageMetadata.docs);
-  writeLearnPages(indexHtml, learnData);
-  writeSitemap(servers, learnData);
+  writeArticlePages(indexHtml, learnIndex, articles);
+  writeLlmsTxt(articles);
+  writeSitemap(servers, articles);
 
-  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${learnData.articles.length} Learn articles, sitemap.xml, and robots.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), llms.txt, sitemap.xml, and robots.txt.`);
 }
 
 if (require.main === module || process.argv[1] === __filename) {
@@ -1065,14 +1147,19 @@ if (require.main === module || process.argv[1] === __filename) {
 }
 
 module.exports = {
+  loadArticles,
   mergeCatalogServers,
-  renderServerHtml,
-  renderStaticPageHtml,
+  renderArticleMarkdown,
   renderLearnArticleHtml,
+  renderLearnIndexHtml,
+  renderLlmsTxt,
   renderMarkdown,
+  renderServerHtml,
   renderServerLogo,
   renderClientSetups,
   renderAuthorizationSetup,
+  renderSitemap,
+  renderStaticPageHtml,
   serverPath,
   transportLabel,
   validateCapabilitySnapshots,

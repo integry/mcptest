@@ -3,23 +3,12 @@
     "title": "Test Remote MCP Servers | MCP Inspector Online | mcptest.io",
     "description": "Inspect, debug and evaluate remote MCP servers in your browser. An MCP inspector online: test remote MCP server protocol negotiation, OAuth 2.1, CORS and tool contracts, then share a report."
   },
+  "learn": {
+    "title": "Learn MCP",
+    "description": "Practical, source-backed guides for choosing MCP clients, connecting remote servers, understanding OAuth, and operating trustworthy production MCP systems.",
+    "summary": "Evergreen guides for evaluating, connecting, building, and operating Model Context Protocol integrations."
+  },
   "docs": {
-    "what-is-mcp": {
-      "title": "What Is the Model Context Protocol? | mcptest.io",
-      "description": "Understand MCP tools, resources, prompts, transports, and protocol lifecycles. A developer introduction to local and remote Model Context Protocol servers."
-    },
-    "remote-vs-local": {
-      "title": "Remote vs. Local MCP Servers | mcptest.io",
-      "description": "Compare stdio and Streamable HTTP MCP servers. Learn how local and remote transports handle sessions, authentication, deployment, and compatibility."
-    },
-    "testing-guide": {
-      "title": "Testing Guide for Remote MCP Servers | mcptest.io",
-      "description": "Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers. A step-by-step developer guide for validating stateless and stateful flows."
-    },
-    "troubleshooting": {
-      "title": "Troubleshooting MCP Server Errors | mcptest.io",
-      "description": "Fix common Model Context Protocol connection issues. A technical guide to resolving CORS, session state errors, 404s, and routing metadata failures."
-    },
     "privacy-policy": {
       "title": "Privacy Policy | mcptest.io",
       "description": "Read the mcptest.io privacy policy, including how server connections, test history, local browser storage, and website analytics are handled."

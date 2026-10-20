@@ -2371,6 +2371,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     for (const priority of value.releaseDecision.priorities) {
       lines.push(
         `- [${priority.severity}] ${markdownInline(priority.title)} (${markdownInline(priority.source)})`,
+        `  - Id: ${markdownInline(priority.id)}`,
         `  - ${markdownInline(priority.detail)}`,
         `  - Remediation: ${markdownInline(priority.remediation)}`
       );

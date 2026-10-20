@@ -1,50 +1,44 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-  LEARN_ARTICLES,
+  CONTENT_LEVEL_LABELS,
   LEARN_INDEX_METADATA,
-  getRelatedLearnArticles,
+  TRACK_NAVIGATION,
 } from '../../content/learnRegistry';
-import { formatReviewedDate } from './articleFormatting';
+import './ReadingLayout.css';
 
 const LearnIndex: React.FC = () => (
-  <div className="learn-page learn-index">
-    <header className="learn-hero">
-      <p className="learn-kicker">Guides</p>
-      <h1>{LEARN_INDEX_METADATA.title}</h1>
-      <p>{LEARN_INDEX_METADATA.summary}</p>
-    </header>
+  <div className="reading-shell reading-shell-index">
+    <div className="reading-article learn-index" aria-labelledby="learn-index-title">
+      <header className="reading-header">
+        <h1 id="learn-index-title">{LEARN_INDEX_METADATA.title}</h1>
+        <p className="reading-summary">{LEARN_INDEX_METADATA.summary}</p>
+      </header>
 
-    <div className="learn-grid" role="list">
-      {LEARN_ARTICLES.map(article => {
-        const related = getRelatedLearnArticles(article);
-        return (
-          <article className="learn-card" key={article.slug} role="listitem">
-            <div className="learn-card-meta">
-              <span>{article.category}</span>
-              <span>{article.readingTimeMinutes} min read</span>
-            </div>
-            <h2>
-              <Link to={`/learn/${article.slug}`}>{article.title}</Link>
-            </h2>
-            <p>{article.summary}</p>
-            <p className="learn-reviewed">
-              Reviewed <time dateTime={article.lastReviewed}>{formatReviewedDate(article.lastReviewed)}</time>
-            </p>
-            {related.length > 0 && (
-              <div className="learn-card-related" aria-label={`Related to ${article.title}`}>
-                <span>Related:</span>{' '}
-                {related.map((item, index) => (
-                  <React.Fragment key={item.slug}>
-                    {index > 0 && <span aria-hidden="true"> · </span>}
-                    <Link to={`/learn/${item.slug}`}>{item.title}</Link>
-                  </React.Fragment>
-                ))}
-              </div>
-            )}
-          </article>
-        );
-      })}
+      {TRACK_NAVIGATION.map(track => (
+        <section
+          className="learn-track"
+          id={`track-${track.id}`}
+          key={track.id}
+          aria-labelledby={`track-${track.id}-title`}
+        >
+          <h2 id={`track-${track.id}-title`}>{track.label}</h2>
+          <p className="learn-track-description">{track.description}</p>
+          <ol className="learn-track-list">
+            {track.items.map(item => (
+              <li className="learn-track-item" key={item.slug}>
+                <Link className="learn-track-item-title" to={item.path}>{item.title}</Link>
+                <p className="learn-track-item-summary">{item.summary}</p>
+                <p className="learn-track-item-meta">
+                  <span>{item.readingTimeMinutes} min read</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{CONTENT_LEVEL_LABELS[item.level]}</span>
+                </p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
     </div>
   </div>
 );

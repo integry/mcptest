@@ -2,11 +2,11 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getCatalogServerById } from '../utils/catalogUtils';
 import { getCatalogServerIdFromPath, getCatalogServerSeo, SITE_URL } from '../utils/catalogSeo';
-import { getDocsMetadata, HOME_METADATA } from '../utils/pageMetadata';
+import { HOME_METADATA } from '../utils/pageMetadata';
 import { parseResultShareUrl } from '../utils/urlUtils';
 import {
   LEARN_INDEX_METADATA,
-  getLearnArticleFromPath,
+  getContentPage,
   getLearnArticleMetadata,
   isLearnIndexPath,
 } from '../content/learnRegistry';
@@ -99,8 +99,7 @@ export const useMetaTags = () => {
     const resultData = parseResultShareUrl(location.pathname, location.search);
     const serverId = getCatalogServerIdFromPath(location.pathname);
     const catalogServer = serverId ? getCatalogServerById(serverId) : undefined;
-    const docsMetadata = getDocsMetadata(location.pathname);
-    const learnArticle = getLearnArticleFromPath(location.pathname);
+    const contentPage = getContentPage(location.pathname);
 
     if (catalogServer) {
       applyMetadata(getCatalogServerSeo(catalogServer));
@@ -111,8 +110,14 @@ export const useMetaTags = () => {
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });
-    } else if (learnArticle) {
-      applyMetadata(getLearnArticleMetadata(learnArticle));
+    } else if (contentPage?.kind === 'article') {
+      applyMetadata(getLearnArticleMetadata(contentPage.article));
+    } else if (contentPage?.kind === 'page') {
+      applyMetadata({
+        title: contentPage.page.metaTitle,
+        description: contentPage.page.metaDescription,
+        canonicalUrl: `${SITE_URL}${contentPage.page.path}`,
+      });
     } else if (isLearnIndexPath(location.pathname)) {
       applyMetadata({
         title: `${LEARN_INDEX_METADATA.title} | mcptest.io`,
@@ -138,11 +143,6 @@ export const useMetaTags = () => {
         type: 'article',
       });
 
-    } else if (docsMetadata) {
-      applyMetadata({
-        ...docsMetadata,
-        canonicalUrl: `${SITE_URL}${location.pathname.replace(/\/$/, '')}`,
-      });
     } else if (location.pathname.startsWith('/docs/')) {
       applyMetadata({
         title: 'Documentation Not Found | mcptest.io',

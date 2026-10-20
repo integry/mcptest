@@ -1,4 +1,4 @@
-import React, { useId, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import {
   generateHttpCurlCommand,
   generateBearerHttpCurlCommand,
@@ -7,6 +7,9 @@ import {
   type ConnectionErrorDetails,
   type DiagnosticTransportEvidence,
 } from '../utils/connectionDiagnostics';
+import type { TransportDiagnostic } from '../types/transportDiagnostics';
+import { detectedTransportDiagnostics, formatRetryWait } from '../utils/transportDiagnostics';
+import TransportDiagnosticsPanel from './TransportDiagnosticsPanel';
 
 interface ConnectionErrorCardProps {
   errorDetails: ConnectionErrorDetails;
@@ -38,7 +41,15 @@ const attemptResult = (attempt: ConnectionAttemptFact): string => {
         : ''}${attempt.targetError.message}`
       : '';
     const intermediate = attempt.failureKind === 'success' ? ' — readable intermediate response' : '';
-    return `HTTP ${attempt.status}${owner}${intermediate}${detail}`;
+    const retried = attempt.automaticRetry
+      ? ` — automatic retry after ${formatRetryWait(Math.ceil(attempt.automaticRetry.waitMs / 1000))}`
+      : '';
+    const rateLimit = attempt.rateLimitRetry?.action === 'retried'
+      ? ' — retried once'
+      : attempt.rateLimitRetry?.reason
+        ? ` — not retried: ${attempt.rateLimitRetry.reason}`
+        : '';
+    return `HTTP ${attempt.status}${owner}${intermediate}${retried}${rateLimit}${detail}`;
   }
   switch (attempt.failureKind) {
     case 'browser-unreadable': return 'Browser response unreadable';
@@ -95,6 +106,19 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
       heading: 'mcptest proxy authentication required',
       summary: 'The proxy rejected an invalid or expired mcptest login before it could inspect the target. Sign in again, or sign out to use the proxy anonymously. This is not a target OAuth response.',
       alertClass: 'alert-warning border-warning',
+    };
+  }
+
+  const transportError = detectedTransportDiagnostics(errorDetails.transportDiagnostics)
+    .find(({ severity }) => severity === 'error');
+  if (transportError) {
+    const rateLimited = transportError.id === 'transport.target-rate-limited-429';
+    const status = transportError.evidence[0]?.status;
+    return {
+      badge: rateLimited ? 'Rate limited' : status !== undefined ? `HTTP ${status}` : 'Transport',
+      heading: transportError.title,
+      summary: transportError.evidence[0]?.observation || transportError.explanation,
+      alertClass: rateLimited ? 'alert-warning border-warning' : 'alert-danger border-danger',
     };
   }
 
@@ -208,6 +232,36 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const headingId = useId();
   const attempts = errorDetails.attempts || [];
   const diagnosis = useMemo(() => diagnose(errorDetails), [errorDetails]);
+  const transportDiagnostics: readonly TransportDiagnostic[] = errorDetails.transportDiagnostics || [];
+  const hasTransportFinding = detectedTransportDiagnostics(transportDiagnostics)
+    .some(({ severity }) => severity === 'error');
+  const rateLimit = transportDiagnostics.find((diagnostic) => (
+    diagnostic.id === 'transport.target-rate-limited-429'
+    && diagnostic.status === 'detected'
+    && (diagnostic.retryAt !== undefined || diagnostic.retryAtUnrepresentable)
+  ));
+  // A wait whose deadline no Date can hold has not elapsed and never will here.
+  const retryUnavailable = rateLimit?.retryAtUnrepresentable === true;
+  // The deadline is absolute, taken when the 429 arrived; the error timestamp
+  // comes later and must not restart the wait.
+  const parsedRetryAt = rateLimit?.retryAt ? Date.parse(rateLimit.retryAt) : Number.NaN;
+  const retryAtMs = Number.isNaN(parsedRetryAt) ? undefined : parsedRetryAt;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    if (retryAtMs === undefined || retryAtMs <= Date.now()) return undefined;
+    const intervalId = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= retryAtMs) clearInterval(intervalId);
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, [retryAtMs]);
+  const retryRemainingSeconds = retryAtMs !== undefined
+    ? Math.max(0, Math.ceil((retryAtMs - now) / 1000))
+    : undefined;
+  const retryCountingDown = retryRemainingSeconds !== undefined && retryRemainingSeconds > 0;
+  const retryWaiting = retryUnavailable || retryCountingDown;
   const transportEvidence = inferTransportEvidence(errorDetails.transportEvidence, attempts);
   const showHttpProbe = transportEvidence !== 'legacy-sse';
   const showSseProbe = transportEvidence !== 'streamable-http';
@@ -261,6 +315,13 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
           {errorDetails.originalServerUrl && errorDetails.originalServerUrl !== errorDetails.serverUrl && (
             <p><strong>Entered URL:</strong> <code>{errorDetails.originalServerUrl}</code></p>
           )}
+          <TransportDiagnosticsPanel
+            diagnostics={transportDiagnostics}
+            retryRemainingSeconds={retryRemainingSeconds}
+            retryUnavailable={retryUnavailable}
+            retryAt={retryAtMs !== undefined ? new Date(retryAtMs) : undefined}
+          />
+
           {attempts.length > 0 && (
             <div className="mb-3">
               <strong>Connection attempts</strong>
@@ -310,7 +371,10 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
               {browserBlocked && !showProxyOption && (
                 <li>Use the exact terminal probe below or configure a trusted backend proxy to inspect the response outside the browser.</li>
               )}
-              {!oauthFailed && !browserBlocked && attempts.some(({ failureKind }) => failureKind === 'http') && (
+              {hasTransportFinding && (
+                <li>Apply the transport fix described above on the MCP server, then retry the connection.</li>
+              )}
+              {!oauthFailed && !browserBlocked && !hasTransportFinding && attempts.some(({ failureKind }) => failureKind === 'http') && (
                 <li>Verify that the publisher&apos;s exact MCP endpoint path matches the readable HTTP response.</li>
               )}
               {!browserBlocked && attempts.some(({ failureKind }) => failureKind === 'timeout') && (
@@ -391,7 +455,17 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
 
       {(onRetry || (browserBlocked && !useProxy && onRetryWithProxy)) && (
         <div className="d-flex flex-wrap gap-2 mt-3">
-          {onRetry && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onRetry}>{oauthFailed ? 'Retry OAuth authorization' : 'Retry connection'}</button>}
+          {onRetry && (
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onRetry} disabled={!oauthFailed && retryWaiting}>
+              {oauthFailed
+                ? 'Retry OAuth authorization'
+                : retryUnavailable
+                  ? 'Retry unavailable'
+                  : retryCountingDown
+                    ? `Retry in ${formatRetryWait(retryRemainingSeconds)}`
+                    : 'Retry connection'}
+            </button>
+          )}
           {browserBlocked && !useProxy && onRetryWithProxy && (
             <button type="button" className="btn btn-primary btn-sm" onClick={onRetryWithProxy}>Enable proxy and retry</button>
           )}
