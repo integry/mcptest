@@ -1,0 +1,68 @@
+/* Share and embed panel: badge preview with copyable README snippets. */
+.badge-embed {
+  min-width: 0;
+  margin-top: 1rem;
+  padding: clamp(1rem, 3vw, 1.35rem);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+}
+
+.server-profile-section .badge-embed {
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.badge-embed-heading h2,
+.badge-embed-heading h3 {
+  margin-bottom: 0.35rem;
+  font-size: 1.1rem;
+}
+
+.badge-embed-heading p {
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+}
+
+.badge-embed-preview {
+  display: inline-flex;
+  margin-bottom: 1rem;
+  line-height: 0;
+}
+
+.badge-embed-preview img {
+  height: 20px;
+  width: auto;
+}
+
+.badge-embed-snippets {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+.badge-embed-snippet {
+  min-width: 0;
+}
+
+.badge-embed-snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.badge-embed-snippet-header label {
+  font-weight: 600;
+}
+
+.badge-embed-code {
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  resize: vertical;
+  background: var(--card-bg-secondary);
+  word-break: break-all;
+}

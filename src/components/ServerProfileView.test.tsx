@@ -82,4 +82,31 @@ describe('ServerProfileView capability inventory', () => {
     expect(markup).not.toContain('rounded-pill');
     expect(markup).not.toContain('dangerouslySetInnerHTML');
   });
+
+  it('offers catalog badge snippets that use the worker badge endpoint', () => {
+    const context7 = getCatalogServerById('context7');
+    expect(context7).toBeDefined();
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(
+      <MemoryRouter><ServerProfileView server={context7!} onTestServer={vi.fn()} /></MemoryRouter>
+    );
+
+    const section = container.querySelector('section[aria-labelledby="server-badge-embed-title"]');
+    expect(section?.querySelector('h2')?.textContent).toBe('Share and embed');
+    expect(section?.querySelector('img')?.getAttribute('src')).toBe('/badge/ready.svg');
+    expect(Array.from(section?.querySelectorAll('textarea') ?? []).map((field) => field.textContent)).toEqual([
+      '[![Tested on mcptest.io](https://mcptest.io/badge/server/context7.svg)](https://mcptest.io/servers/context7/)',
+      '<a href="https://mcptest.io/servers/context7/"><img src="https://mcptest.io/badge/server/context7.svg" alt="Tested on mcptest.io"></a>',
+      '.. image:: https://mcptest.io/badge/server/context7.svg\n   :alt: Tested on mcptest.io\n   :target: https://mcptest.io/servers/context7/',
+    ]);
+  });
+
+  it('previews the authorization-required badge for an OAuth catalog server', () => {
+    const github = getCatalogServerById('github');
+    const markup = renderToStaticMarkup(
+      <MemoryRouter><ServerProfileView server={github!} onTestServer={vi.fn()} /></MemoryRouter>
+    );
+    expect(markup).toContain('src="/badge/authorization-required.svg"');
+    expect(markup).toContain('https://mcptest.io/badge/server/github.svg');
+  });
 });
