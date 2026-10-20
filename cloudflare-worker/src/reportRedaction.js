@@ -671,33 +671,91 @@ const redactUrlsInText = (value, depth) => spliceMatches(value, findUrlsInText(v
 // may itself contain colons and everything between that colon and the `@` is
 // redacted. The user is kept and the password becomes the marker; a password
 // that is already the marker, plain or percent-encoded as the URL serializer
-// writes it, is left alone. The one colon that never splits a run is the JSON
-// pair separator `":"`, so `{"email":"alice@example.com"}` is not a userinfo
-// match while a credential inside a JSON string (`{"url":"alice:secret@host"}`)
-// still is. The scan visits every character once, so a long run without an `@`
-// costs nothing more than its length. The host after the `@` starts with any
-// character that is not a run boundary: an ASCII label, a bracketed IPv6
-// address, a punycode label or an internationalized label (`éxample.com`),
-// and the password between the colon and the `@` is likewise any run of
-// non-boundary characters, so neither side is restricted to ASCII.
+// writes it, is left alone. The scan visits every character once, so a long
+// run without an `@` costs nothing more than its length. The host after the
+// `@` starts with any character that is not a run boundary: an ASCII label, a
+// bracketed IPv6 address, a punycode label or an internationalized label
+// (`éxample.com`), and the password between the colon and the `@` is likewise
+// any run of non-boundary characters, so neither side is restricted to ASCII.
+//
+// The one text the raw scan does not read is established JSON: a balanced
+// `{…}` / `[…]` span that JSON.parse accepts. Its pair separators are syntax,
+// not userinfo colons (`{"email":"alice@example.com"}` is an address field),
+// and its string values are scanned separately, decoded, by the same rule
+// (`{"url":"alice:secret@host"}` is still a credential). A `":"` outside such a
+// span earns no exception: `alice":"secret@files.example` is a user named
+// `alice"` with the password `"secret` and is found like any other run.
 const USERINFO_RUN_BOUNDARY = /[\s/@]/;
 const USERINFO_HOST_START = /[^\s/@]/y;
 
+/**
+ * The outermost balanced spans of `value` that parse as JSON, as
+ * `[start, end)` pairs in order. The parse work is bounded like the embedded
+ * fragment scan; past the bound no further span is established, so the raw
+ * scan reads the rest of the text as prose rather than trust it unparsed.
+ */
+const establishedJsonSpans = (value) => {
+  if (!/[{[]/.test(value)) return [];
+  const spans = [...balancedFragmentSpans(value, true)]
+    .sort(([leftStart, leftEnd], [rightStart, rightEnd]) => leftStart - rightStart || rightEnd - leftEnd);
+  const established = [];
+  let budget = value.length * MAX_EMBEDDED_FRAGMENT_PARSE_RATIO;
+  let coveredUntil = 0;
+  for (const [start, end] of spans) {
+    if (start < coveredUntil) continue;
+    const fragment = value.slice(start, end);
+    budget -= fragment.length;
+    if (budget < 0) break;
+    chargeScannedCharacters(fragment.length);
+    chargeCandidates();
+    let parsed;
+    try {
+      parsed = JSON.parse(fragment);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object') continue;
+    established.push([start, end]);
+    coveredUntil = end;
+  }
+  return established;
+};
+
 const firstUserinfoColon = (value, runStart, at) => {
   for (let index = runStart + 1; index < at - 1; index += 1) {
-    if (value[index] !== ':') continue;
-    if (value[index - 1] === '"' && value[index + 1] === '"') continue;
-    return index;
+    if (value[index] === ':') return index;
   }
   return -1;
 };
 
-/** Every `user:password@host` password in `value` as `{ start, end, password }` spans, in order. */
-export const findUserinfoPasswords = (value) => {
+/**
+ * Scans `value` for userinfo: `passwords` are the raw `{ start, end, password }`
+ * spans of every `user:password@host` run outside established JSON, in order;
+ * `jsonStrings` are the string literals inside established JSON as
+ * `{ start, end, decoded }`, for the caller to scan decoded, separately.
+ */
+export const scanUserinfo = (value) => {
   chargeScannedCharacters(value.length);
-  const spans = [];
+  const passwords = [];
+  const jsonStrings = [];
+  const jsonSpans = establishedJsonSpans(value);
+  let nextJsonSpan = 0;
   let runStart = 0;
   for (let index = 0; index < value.length; index += 1) {
+    const jsonSpan = jsonSpans[nextJsonSpan];
+    if (jsonSpan && index === jsonSpan[0]) {
+      // Established JSON is one opaque boundary for the raw scan; its string
+      // literals are collected for the decoded scan instead.
+      const [start, end] = jsonSpan;
+      for (const literal of value.slice(start, end).matchAll(JSON_STRING_LITERAL_PATTERN)) {
+        chargeCandidates();
+        jsonStrings.push({ start: start + literal.index, end: start + literal.index + literal[0].length, decoded: JSON.parse(literal[0]) });
+      }
+      index = end - 1;
+      runStart = end;
+      nextJsonSpan += 1;
+      continue;
+    }
     const character = value[index];
     if (!USERINFO_RUN_BOUNDARY.test(character)) continue;
     if (character === '@') {
@@ -705,18 +763,34 @@ export const findUserinfoPasswords = (value) => {
       USERINFO_HOST_START.lastIndex = index + 1;
       if (colon !== -1 && USERINFO_HOST_START.test(value)) {
         chargeCandidates();
-        spans.push({ start: colon + 1, end: index, password: value.slice(colon + 1, index) });
+        passwords.push({ start: colon + 1, end: index, password: value.slice(colon + 1, index) });
       }
     }
     runStart = index + 1;
   }
-  return spans;
+  return { passwords, jsonStrings };
 };
+
+/** Every `user:password@host` password in `value` outside established JSON as `{ start, end, password }` spans, in order. */
+export const findUserinfoPasswords = (value) => scanUserinfo(value).passwords;
 export const isRedactedMarkerText = (value) => value === REDACTED_VALUE || value === ENCODED_REDACTED_VALUE;
 
-const redactBareUserinfo = (value) => spliceMatches(value, findUserinfoPasswords(value)
-  .filter(({ password }) => !isRedactedMarkerText(password))
-  .map(({ start, end }) => ({ start, end, replacement: REDACTED_VALUE })));
+const redactBareUserinfo = (value, depth = 0) => {
+  const { passwords, jsonStrings } = scanUserinfo(value);
+  const matches = passwords
+    .filter(({ password }) => !isRedactedMarkerText(password))
+    .map(({ start, end }) => ({ start, end, replacement: REDACTED_VALUE }));
+  // A string value of established JSON is scanned decoded and, when it
+  // changes, written back encoded; past the decode bound it is left for the
+  // guard, which refuses what it cannot inspect.
+  if (depth < MAX_JSON_STRING_DECODE_PASSES) {
+    for (const { start, end, decoded } of jsonStrings) {
+      const redacted = redactBareUserinfo(decoded, depth + 1);
+      if (redacted !== decoded) matches.push({ start, end, replacement: JSON.stringify(redacted) });
+    }
+  }
+  return spliceMatches(value, matches.sort((left, right) => left.start - right.start));
+};
 
 export const JWT_PATTERN_SOURCE = String.raw`(^|[^A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=$|[^A-Za-z0-9_-])`;
 export const SCHEME_CREDENTIAL_PATTERN_SOURCE = String.raw`\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+`;

@@ -393,6 +393,13 @@ describe('publishing a report', () => {
     ['a Unicode password before an internationalized host', (artifact) => {
       artifact.sections[0].evidence[0].message = 'mailto:alice:пароль-opaquecredential123@пример.рф';
     }],
+    // F17: a quoted colon outside established JSON is no pair separator.
+    ['a quoted user:password@host run outside JSON', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'sftp alice":"opaquecredential123@files.example';
+    }],
+    ['a password in a string value of an embedded JSON object', (artifact) => {
+      artifact.sections[0].evidence[0].message = 'response: {"url":"alice:opaquecredential123@files.example"} end';
+    }],
   ])('rejects %s even when the schema is satisfied', async (_name, poison) => {
     const artifact = artifactFor(evaluation());
     poison(artifact);
@@ -404,6 +411,20 @@ describe('publishing a report', () => {
     // Nothing is stored for a rejected publish.
     const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
     expect(index.snapshots).toHaveLength(0);
+  });
+
+  it('publishes evidence carrying an ordinary JSON email field unchanged', async () => {
+    // F17 control: the `":"` of an established JSON pair is syntax, so an
+    // address field is neither a userinfo password nor a reason to refuse.
+    const artifact = artifactFor(evaluation());
+    artifact.sections[0].evidence[0].message = 'response: {"contact":{"email":"ops@files.example"},"email":"alice@example.com"} end';
+    artifact.sections[0].evidence[0].metadata = { command: 'sftp alice@files.example' };
+    const response = await publish(artifact);
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+    const stored = await (await request(`/r/${id}`)).json();
+    expect(stored.sections[0].evidence[0].message).toBe(artifact.sections[0].evidence[0].message);
+    expect(stored.sections[0].evidence[0].metadata).toEqual(artifact.sections[0].evidence[0].metadata);
   });
 
   it.each([

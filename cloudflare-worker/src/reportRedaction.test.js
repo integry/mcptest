@@ -283,6 +283,62 @@ describe('the Worker port of the app redaction', () => {
     expect(findUnredactedSecret({ note: 'https://éxample.com/mcp' })).toBeUndefined();
   });
 
+  it('redacts a quoted userinfo run outside established JSON while keeping JSON email fields', () => {
+    // F17: `":"` is a pair separator only inside a span that parses as JSON;
+    // elsewhere it is two ordinary characters, so this run has the user
+    // `alice"` and the password `"opaquecredential123`.
+    const f17 = 'sftp alice":"opaquecredential123@files.example';
+    expect(findUnredactedSecret({ note: f17 })?.reason).toBe('userinfo carries a password');
+    const redacted = redactReportString(f17);
+    expect(redacted).toBe('sftp alice":[REDACTED]@files.example');
+    expect(redacted).not.toContain('opaquecredential123');
+    expect(findUnredactedSecret({ note: redacted })).toBeUndefined();
+    expect(redactReportString(redacted)).toBe(redacted);
+
+    for (const [text, secret, expected] of [
+      // Unbalanced or unparseable JSON-looking text earns no exception either.
+      ['"alice":"unterminated-pair-secret@files.example', 'unterminated-pair-secret',
+        '"alice":[REDACTED]@files.example'],
+      ['{"alice":"unclosed-object-secret@files.example', 'unclosed-object-secret',
+        '{"alice":[REDACTED]@files.example'],
+      ['{alice":"bare-key-secret@files.example}', 'bare-key-secret', '{alice":[REDACTED]@files.example}'],
+      ['alice,"x":"comma-key-secret@files.example', 'comma-key-secret', 'alice,"x":[REDACTED]@files.example'],
+      // The string values of established JSON are scanned decoded, at every depth.
+      ['{"url":"alice:json-value-secret@files.example"}', 'json-value-secret', '{"url":"alice:[REDACTED]@files.example"}'],
+      // A key is scanned too; the fragment transform then redacts the value under the rewritten key.
+      ['{"alice:json-key-secret@files.example":1}', 'json-key-secret', '{"alice:[REDACTED]@files.example":"[REDACTED]"}'],
+      ['{"note":"{\\"url\\":\\"alice:nested-json-secret@files.example\\"}"}', 'nested-json-secret',
+        '{"note":"{\\"url\\":\\"alice:[REDACTED]@files.example\\"}"}'],
+      ['{"note":"alice\\u003aescaped-colon-secret@files.example"}', 'escaped-colon-secret',
+        '{"note":"alice:[REDACTED]@files.example"}'],
+      // Established JSON is a boundary for the runs around it, not a shelter.
+      ['seen {"a":1} alice:after-json-secret@files.example', 'after-json-secret',
+        'seen {"a":1} alice:[REDACTED]@files.example'],
+      ['alice:before-json-secret@{"a":1}', 'before-json-secret', 'alice:[REDACTED]@{"a":1}'],
+    ]) {
+      expect(findUnredactedSecret({ note: text }), text).toBeDefined();
+      const output = redactReportString(text);
+      expect(output, text).toBe(expected);
+      expect(output, text).not.toContain(secret);
+      expect(findUnredactedSecret({ note: output }), text).toBeUndefined();
+      expect(redactReportString(output), text).toBe(output);
+    }
+
+    // Ordinary JSON email fields, nested or embedded in prose, are preserved and accepted.
+    for (const kept of [
+      '{"email":"alice@example.com"}',
+      '{"a":"x","b":"alice@example.com"}',
+      '{"cc":["alice@example.com"],"contact":{"email":"ops@example.com"}}',
+      '{"note":"{\\"email\\":\\"alice@example.com\\"}"}',
+      'response: {"contact":"ops@example.com"} end',
+      '[{"email":"alice@example.com"}]',
+      'sftp alice@files.example',
+    ]) {
+      expect(redactReportString(kept), kept).toBe(kept);
+      expect(findUnredactedSecret({ note: kept }), kept).toBeUndefined();
+    }
+  });
+
 
   it.each(CREDENTIAL_FUZZ_CASES)('stores nothing the guard recognizes for %s', (_name, text, secrets) => {
     // The storage invariant: an artifact the guard accepts after the transform

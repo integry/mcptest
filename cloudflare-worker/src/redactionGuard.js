@@ -35,7 +35,6 @@ import {
   chargeScannedCharacters,
   findAssignmentStarts,
   findUrlsInText,
-  findUserinfoPasswords,
   isAuthorizationPrerequisiteSchemaField,
   isAuthorizationSetupHeaderTemplateField,
   isAuthorizationSetupSchemaField,
@@ -44,6 +43,7 @@ import {
   isRedactedMarkerText,
   isSensitiveKey,
   isSensitiveQueryKey,
+  scanUserinfo,
   splitTrailingUrlPunctuation,
   underInspectionBudget,
 } from './reportRedaction.js';
@@ -179,13 +179,21 @@ const findSecretInUrls = (value, depth) => {
 /**
  * The `user:password@host` shape anywhere in text, mirroring the transform's
  * rule: it needs no `://` and no particular preceding character, so a
- * scheme-prefixed form such as `https:alice:secret@host` is found as well.
+ * scheme-prefixed form such as `https:alice:secret@host` is found as well. The
+ * raw scan exempts only established JSON, whose string values are scanned
+ * decoded, separately, by the same rule; a quoted colon outside established
+ * JSON (`alice":"secret@host`) splits a run like any other.
  */
-const findBareUserinfoCredential = (value) => (
-  findUserinfoPasswords(value).some(({ password }) => !isRedactedMarker(password))
-    ? 'userinfo carries a password'
-    : undefined
-);
+const findBareUserinfoCredential = (value, depth = 0) => {
+  const { passwords, jsonStrings } = scanUserinfo(value);
+  if (passwords.some(({ password }) => !isRedactedMarker(password))) return 'userinfo carries a password';
+  for (const { decoded } of jsonStrings) {
+    if (depth >= MAX_JSON_STRING_DECODE_PASSES) return 'JSON string values are nested too deeply to inspect';
+    const reason = findBareUserinfoCredential(decoded, depth + 1);
+    if (reason) return reason;
+  }
+  return undefined;
+};
 
 const isStructuredJsonText = (value) => (
   (value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))
