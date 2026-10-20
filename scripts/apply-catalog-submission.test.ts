@@ -12,6 +12,7 @@ import {
   reconcileWithValidation,
   renderPullRequest,
   resolveLogoDownloadUrl,
+  submissionBranch,
   type CatalogSubmissionPayload,
   type SubmissionPaths,
 } from './apply-catalog-submission';
@@ -104,7 +105,7 @@ describe('apply-catalog-submission', () => {
 
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://raw.githubusercontent.com/simple-icons/simple-icons/16.35.0/icons/acme.svg',
-      expect.objectContaining({ redirect: 'follow' })
+      expect.objectContaining({ redirect: 'manual' })
     );
     expect(entry).toMatchObject({
       logoUrl: '/server-logos/acme-weather.svg',
@@ -114,6 +115,58 @@ describe('apply-catalog-submission', () => {
     });
     expect(fs.readFileSync(path.join(paths.logos, 'acme-weather.svg'), 'utf8')).toBe(VALID_SVG);
     expect(assetValidator.validateCatalogAssets([entry], { publicRoot: path.join(root, 'public') })).toEqual([]);
+  });
+
+  const redirect = (location: string, status = 302) => new Response(null, { status, headers: { location } });
+
+  it.each([
+    ['plain HTTP', 'http://acme-weather.dev/logo.svg', /Logo redirect must use HTTPS/],
+    ['a loopback address', 'https://127.0.0.1:8080/', /Logo redirect must use a public host name/],
+    ['plain-HTTP loopback', 'http://127.0.0.1:8080/', /Logo redirect must use HTTPS/],
+    ['localhost', 'https://localhost/logo.svg', /Logo redirect must use a public host name/],
+    ['an internal name', 'https://assets.corp.internal/logo.svg', /Logo redirect must use a public host name/],
+    ['credentials', 'https://user:secret@cdn.acme-weather.dev/logo.svg', /Logo redirect must not contain credentials/],
+  ])('never requests a logo redirect to %s', async (_label, location, reason) => {
+    const payload = fixture();
+    payload.submission.logoLicense = 'official-brand';
+    payload.submission.logoUrl = 'https://acme-weather.dev/brand/logo.svg';
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(redirect('https://cdn.acme-weather.dev/logo.svg', 301))
+      .mockResolvedValueOnce(redirect(location))
+      .mockRejectedValue(new Error('the disallowed hop must not be requested'));
+
+    const { entry, logo } = await applySubmission(payload, { paths, today: '2026-10-20', fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      'https://acme-weather.dev/brand/logo.svg',
+      'https://cdn.acme-weather.dev/logo.svg',
+    ]);
+    for (const [, init] of fetchImpl.mock.calls) expect(init).toMatchObject({ redirect: 'manual' });
+    expect(entry.logoSourceKind).toBe('generated-fallback');
+    expect(logo.fallbackReason).toMatch(reason);
+  });
+
+  it('follows checked HTTPS redirects, including relative ones, and stops after the limit', async () => {
+    const payload = fixture();
+    payload.submission.logoLicense = 'official-brand';
+    payload.submission.logoUrl = 'https://acme-weather.dev/brand/logo.svg';
+    const followed = vi.fn()
+      .mockResolvedValueOnce(redirect('/brand/v2/logo.svg', 307))
+      .mockResolvedValueOnce(new Response(VALID_SVG, { headers: { 'content-type': 'image/svg+xml' } }));
+    const { entry } = await applySubmission(payload, { paths, today: '2026-10-20', fetchImpl: followed as unknown as typeof fetch });
+    expect(followed.mock.calls.map(([url]) => url)).toEqual([
+      'https://acme-weather.dev/brand/logo.svg',
+      'https://acme-weather.dev/brand/v2/logo.svg',
+    ]);
+    expect(entry).toMatchObject({ logoSourceKind: 'official-brand', logoSourceUrl: 'https://acme-weather.dev/brand/logo.svg' });
+
+    fs.rmSync(paths.logos, { recursive: true });
+    fs.mkdirSync(paths.logos, { recursive: true });
+    fs.writeFileSync(paths.catalog, `${JSON.stringify(seedsBefore, null, 2)}\n`);
+    const loop = vi.fn(async (url: string) => redirect(`${url}x`));
+    const { logo } = await applySubmission(payload, { paths, today: '2026-10-20', fetchImpl: loop as unknown as typeof fetch });
+    expect(loop).toHaveBeenCalledTimes(4);
+    expect(logo.fallbackReason).toMatch(/redirected more than 3 times/);
   });
 
   it.each([
@@ -137,6 +190,33 @@ describe('apply-catalog-submission', () => {
     expect(logo.fallbackReason).toMatch(reason);
     expect(fs.readdirSync(paths.logos)).toEqual(['acme-weather.svg']);
     expect(assetValidator.validateCatalogAssets([entry], { publicRoot: path.join(root, 'public') })).toEqual([]);
+  });
+
+  it('gives two submissions that derive the same catalog id their own branches', async () => {
+    const first = fixture();
+    const second = fixture();
+    second.submission_id = '9d4c2b1a-7e6f-4a3b-8c2d-1e0f9a8b7c6d';
+    second.submission.url = 'https://mcp.acme-weather.dev/tenant-b/mcp';
+    second.evidence = { ...second.evidence, endpointUrl: second.submission.url, validatedUrl: second.submission.url };
+
+    // Each workflow run checks out the default branch, so neither sees the other's entry.
+    const a = await applySubmission(first, { paths, today: '2026-10-20', fetchImpl: noFetch as unknown as typeof fetch });
+    fs.writeFileSync(paths.catalog, `${JSON.stringify(seedsBefore, null, 2)}\n`);
+    fs.rmSync(path.join(paths.logos, `${a.id}.svg`));
+    const b = await applySubmission(second, { paths, today: '2026-10-20', fetchImpl: noFetch as unknown as typeof fetch });
+
+    expect(a.id).toBe('acme-weather');
+    expect(b.id).toBe('acme-weather');
+    expect(a.branch).toBe(`submissions/${first.submission_id}`);
+    expect(b.branch).toBe(`submissions/${second.submission_id}`);
+    expect(a.branch).not.toBe(b.branch);
+  });
+
+  it('only builds branch names from a Worker submission id', () => {
+    expect(submissionBranch('9d4c2b1a-7e6f-4a3b-8c2d-1e0f9a8b7c6d')).toBe('submissions/9d4c2b1a-7e6f-4a3b-8c2d-1e0f9a8b7c6d');
+    for (const value of ['acme', '../master', '9d4c2b1a-7e6f-4a3b-8c2d-1e0f9a8b7c6d\nx', '']) {
+      expect(() => submissionBranch(value)).toThrow(/submission_id/);
+    }
   });
 
   it('maps an OAuth challenge to an OAuth entry and suffixes a colliding id', async () => {

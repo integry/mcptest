@@ -30,8 +30,14 @@ tag = "v1"
 new_classes = ["UserState"]
 
 [[migrations]]
-tag = "v2"
+# v3, not v2: #385 adds the v2 migration and must merge first.
+tag = "v3"
 new_sqlite_classes = ["SubmissionRateLimiter"]
 
 [observability.logs]
 enabled = true
+
+[alias]
+# The submissions route bundles src/utils/catalogSubmissionSchema.ts from the app tree,
+# so bare imports there resolve against the app, not this package. Point them here.
+"@cfworker/json-schema" = "./node_modules/@cfworker/json-schema/dist/esm/index.js"

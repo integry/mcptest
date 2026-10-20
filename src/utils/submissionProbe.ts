@@ -6,7 +6,6 @@
  */
 import { discoverOAuthProtectedResourceMetadata } from '@modelcontextprotocol/client';
 import type { CatalogSubmissionAuthChallenge, CatalogSubmissionEvidence } from './catalogSubmission';
-import { isAuthenticationFailure } from './catalogLiveness';
 import { requestCapabilityDiscoveryPage } from './mcpClient';
 import {
   attemptParallelConnections,
@@ -59,15 +58,15 @@ const countTools = async (connection: Connection): Promise<number | undefined> =
 };
 
 const classifyChallenge = async (
-  challenge: ObservedAuthenticationChallenge | undefined,
+  challenge: ObservedAuthenticationChallenge,
   endpointUrl: string,
   deps: SubmissionProbeDependencies
 ): Promise<CatalogSubmissionAuthChallenge> => {
-  const header = challenge?.responseHeaders?.['www-authenticate'] || '';
-  if (challenge?.resourceMetadataUrl || /resource_metadata=/i.test(header)) return 'oauth';
+  const header = challenge.responseHeaders?.['www-authenticate'] || '';
+  if (challenge.resourceMetadataUrl || /resource_metadata=/i.test(header)) return 'oauth';
   // A bare Bearer challenge may still advertise OAuth through RFC 9728 discovery.
   try {
-    if (await deps.discoverResourceMetadata(challenge?.targetUrl || endpointUrl)) return 'oauth';
+    if (await deps.discoverResourceMetadata(challenge.targetUrl || endpointUrl)) return 'oauth';
   } catch {
     // Discovery is best effort; CORS or a 404 leaves the challenge as observed.
   }
@@ -105,23 +104,24 @@ const challengeEvidence = async (
   proxied: boolean,
   deps: SubmissionProbeDependencies
 ): Promise<CatalogSubmissionEvidence | undefined> => {
+  // Only an HTTP 401/403 the target itself returned counts. Error text that merely
+  // mentions "Forbidden" or "authentication required" is an unsuccessful check.
   const challenge = getObservedAuthenticationChallenge(error);
-  if (challenge && challenge.source !== 'target') return undefined;
-  if (!challenge && !isAuthenticationFailure(error)) return undefined;
+  if (!challenge || challenge.source !== 'target') return undefined;
   // A 403 without WWW-Authenticate is usually a firewall or bot block, not an auth challenge.
-  if (challenge?.status === 403 && !challenge.responseHeaders?.['www-authenticate']) return undefined;
+  if (challenge.status === 403 && !challenge.responseHeaders?.['www-authenticate']) return undefined;
 
   const authChallenge = await classifyChallenge(challenge, endpointUrl, deps);
-  const validatedUrl = challenge?.targetUrl;
+  const validatedUrl = challenge.targetUrl;
   return {
     checkedAt: new Date().toISOString(),
     endpointUrl,
     outcome: 'auth-challenge',
     ...(validatedUrl && /^https:/.test(validatedUrl) ? { validatedUrl } : {}),
     authChallenge,
-    ...(challenge?.status ? { authStatus: challenge.status } : {}),
+    authStatus: challenge.status,
     browserAccess: proxied ? 'proxy-required' : 'direct',
-    detail: `The endpoint answered with ${challenge?.status ? `HTTP ${challenge.status} and ` : ''}${
+    detail: `The endpoint answered with HTTP ${challenge.status} and ${
       authChallenge === 'oauth' ? 'an OAuth challenge' : authChallenge === 'bearer' ? 'a bearer-token challenge' : 'an authentication challenge'
     }${proxied ? ' through the mcptest CORS proxy' : ''}, so the protected server is reachable. Tools are listed after authorization.`,
   };
