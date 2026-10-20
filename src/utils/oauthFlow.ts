@@ -1898,6 +1898,8 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
     if (!expectedState || !actualState || expectedState !== actualState) {
       throw new OAuthStateMismatchError();
     }
+    // A legacy single-flow state is consumed by the same callback paths.
+    this.callbackFlowState = actualState;
   }
 
   /** Removes the validated callback's single-use flow record. */
@@ -2394,9 +2396,17 @@ export class BrowserOAuthProvider implements OAuthClientProvider {
 
   private discardFlow(flowState: string): void {
     const state = this.readState();
-    if (state.pendingFlows?.[flowState]) {
-      const { [flowState]: _discarded, ...pendingFlows } = state.pendingFlows;
-      this.writeState({ ...state, pendingFlows });
+    const ownsLegacyFields = state.expectedState === flowState;
+    if (state.pendingFlows?.[flowState] || ownsLegacyFields) {
+      const { [flowState]: _discarded, ...pendingFlows } = state.pendingFlows || {};
+      const next: PersistedOAuthState = { ...state, pendingFlows };
+      // The legacy single-flow fields mirror the latest flow; once that flow
+      // is discarded they must not keep its state and verifier usable.
+      if (ownsLegacyFields) {
+        delete next.expectedState;
+        delete next.codeVerifier;
+      }
+      this.writeState(next);
     }
     this.storage.removeItem(flowIndexKey(flowState));
   }

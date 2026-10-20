@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BrowserOAuthProvider,
   OAUTH_CLIENT_METADATA_URL,
+  OAuthAuthorizationResponseError,
   OAuthStateMismatchError,
   beginOAuthFlow,
   completeOAuthFlow,
@@ -140,6 +141,76 @@ describe('concurrent authorization flows (inspector#2726)', () => {
       fetchFn,
     })).rejects.toBeInstanceOf(OAuthStateMismatchError);
     expect(tokenRequests).toHaveLength(2);
+  });
+
+  it('keeps an expired callback unusable when it is submitted again', async () => {
+    const tokenRequests: TokenRequest[] = [];
+    const fetchFn = sharedIssuerFetch(tokenRequests);
+    const authorizationUrl = await startFlow(SERVER_ONE, fetchFn);
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 31 * 60 * 1000);
+    try {
+      for (const code of ['code-expired', 'code-expired-again']) {
+        await expect(completeOAuthFlow(callbackFor(authorizationUrl, code), {
+          redirectUrl: CALLBACK,
+          fetchFn,
+        })).rejects.toBeInstanceOf(OAuthStateMismatchError);
+      }
+    } finally {
+      clock.mockRestore();
+    }
+    expect(tokenRequests).toHaveLength(0);
+  });
+
+  it('consumes a validated error callback so its state cannot be replayed', async () => {
+    const tokenRequests: TokenRequest[] = [];
+    const fetchFn = sharedIssuerFetch(tokenRequests);
+    const otherUrl = await startFlow(SERVER_TWO, fetchFn);
+    const authorizationUrl = await startFlow(SERVER_ONE, fetchFn);
+    const state = authorizationUrl.searchParams.get('state');
+
+    await expect(completeOAuthFlow(`${CALLBACK}?error=access_denied&state=${state}`, {
+      redirectUrl: CALLBACK,
+      fetchFn,
+    })).rejects.toBeInstanceOf(OAuthAuthorizationResponseError);
+    await expect(completeOAuthFlow(callbackFor(authorizationUrl, 'code-replayed'), {
+      redirectUrl: CALLBACK,
+      fetchFn,
+    })).rejects.toBeInstanceOf(OAuthStateMismatchError);
+    expect(tokenRequests).toHaveLength(0);
+
+    // The other pending flow keeps its own state and verifier.
+    await expect(completeOAuthFlow(callbackFor(otherUrl, 'code-other'), {
+      redirectUrl: CALLBACK,
+      fetchFn,
+    })).resolves.toMatchObject({ serverUrl: SERVER_TWO });
+    expect(await s256(tokenRequests[0].body.get('code_verifier')!))
+      .toBe(otherUrl.searchParams.get('code_challenge'));
+  });
+
+  it('consumes a legacy single-flow state after a validated error callback', async () => {
+    const tokenRequests: TokenRequest[] = [];
+    const fetchFn = sharedIssuerFetch(tokenRequests);
+    const authorizationUrl = await startFlow(SERVER_ONE, fetchFn);
+    const state = authorizationUrl.searchParams.get('state')!;
+    // Simulate storage written before per-flow records existed.
+    for (const key of Object.keys(localStorage)) {
+      const value = localStorage.getItem(key)!;
+      if (!value.includes('"pendingFlows"')) continue;
+      const { pendingFlows: _pendingFlows, ...legacy } = JSON.parse(value);
+      expect(legacy.expectedState).toBe(state);
+      localStorage.setItem(key, JSON.stringify(legacy));
+    }
+
+    await expect(completeOAuthFlow(`${CALLBACK}?error=access_denied&state=${state}`, {
+      redirectUrl: CALLBACK,
+      fetchFn,
+    })).rejects.toBeInstanceOf(OAuthAuthorizationResponseError);
+    await expect(completeOAuthFlow(callbackFor(authorizationUrl, 'code-replayed'), {
+      redirectUrl: CALLBACK,
+      fetchFn,
+    })).rejects.toBeInstanceOf(OAuthStateMismatchError);
+    expect(tokenRequests).toHaveLength(0);
   });
 });
 
