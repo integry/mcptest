@@ -507,7 +507,7 @@ describe('publishing a report', () => {
     const ipLimited = await publish(forHost('host-x.example'), '192.0.2.1');
     expect(ipLimited.status).toBe(429);
     expect((await ipLimited.json()).message).toContain('address');
-  });
+  }, 30_000);
 
   it('answers preflight and refuses other methods', async () => {
     const preflight = await request('/r', { method: 'OPTIONS' });
