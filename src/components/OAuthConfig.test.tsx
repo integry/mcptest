@@ -224,3 +224,91 @@ describe('OAuth authorization prerequisite panel', () => {
     expect(view.querySelector('a')).toBeNull();
   });
 });
+
+describe('OAuth hardening prerequisites', () => {
+  const renderWithCallbacks = (prerequisite: OAuthPrerequisite, onConfigured = vi.fn()) => {
+    container = document.createElement('div');
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        <OAuthConfig
+          serverUrl={prerequisite.serverUrl}
+          prerequisite={prerequisite}
+          onConfigured={onConfigured}
+          onCancel={vi.fn()}
+        />
+      );
+    });
+    return container;
+  };
+
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+
+  const base = {
+    serverUrl: 'https://metadata-less.example/mcp',
+    providerName: 'metadata-less.example',
+    requiredScopes: [],
+    pkceS256: false,
+    publicClientSecretSupported: 'unknown' as const,
+  };
+
+  it('prompts an explicit re-authorization after a rejected refresh', () => {
+    const onConfigured = vi.fn();
+    const view = renderWithCallbacks({
+      ...base,
+      kind: 'reauthorization_required',
+      explanation: 'The MCP server rejected the stored access token. The authorization server rejected the refresh token (HTTP 400 invalid_grant).',
+      canConfigureClient: false,
+    }, onConfigured);
+
+    expect(view.querySelector('#oauth-config-title')?.textContent)
+      .toBe('Authorize metadata-less.example again');
+    expect(view.textContent).toContain('invalid_grant');
+    expect(view.querySelector('#clientId')).toBeNull();
+    const button = Array.from(view.querySelectorAll('button'))
+      .find((element) => element.textContent === 'Authorize again');
+    act(() => button?.click());
+    expect(onConfigured).toHaveBeenCalledOnce();
+  });
+
+  it('collects authorization and token endpoint overrides with a public client ID only', () => {
+    const onConfigured = vi.fn();
+    const view = renderWithCallbacks({
+      ...base,
+      kind: 'authorization_metadata_unavailable',
+      explanation: 'metadata-less.example publishes no OAuth authorization-server metadata.',
+      canConfigureClient: true,
+    }, onConfigured);
+
+    expect(view.querySelector('#clientSecret')).toBeNull();
+    expect(view.querySelector('input[type="password"]')).toBeNull();
+    typeInto(view.querySelector<HTMLInputElement>('#authorizationEndpoint')!, 'https://login.metadata-less.example/authorize');
+    typeInto(view.querySelector<HTMLInputElement>('#tokenEndpoint')!, 'https://login.metadata-less.example/token');
+    typeInto(view.querySelector<HTMLInputElement>('#clientId')!, 'public-client');
+    const save = Array.from(view.querySelectorAll('button'))
+      .find((element) => element.textContent?.includes('Save and continue'));
+    act(() => save?.click());
+
+    expect(onConfigured).toHaveBeenCalledOnce();
+    expect(JSON.stringify(Object.entries(sessionStorage))).toContain('https://login.metadata-less.example/token');
+  });
+
+  it('shows explicit private-network guidance when the target is internal', () => {
+    const view = renderWithCallbacks({
+      ...base,
+      serverUrl: 'https://192.168.1.20:8443/mcp',
+      kind: 'discovery_blocked_invalid',
+      explanation: 'The browser did not receive a readable HTTP response.',
+      canConfigureClient: false,
+      privateNetworkGuidance: 'The MCP server 192.168.1.20:8443 is a private-network address.',
+    });
+
+    expect(view.querySelector('[role="note"]')?.textContent)
+      .toContain('192.168.1.20:8443 is a private-network address');
+  });
+});

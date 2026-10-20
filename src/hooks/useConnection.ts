@@ -19,6 +19,8 @@ import {
   getProxyLimitPrerequisite,
   isOAuthClientConfigurationRequired,
   loadOAuthAuthorization,
+  OAuthForbiddenError,
+  planOAuthChallengeResponse,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import {
@@ -624,10 +626,21 @@ export const useConnection = (
           // A pending authenticated retry suppresses recursive discovery, but
           // terminalization belongs to the outer connection-attempt boundary.
           const suppressOAuthDiscovery = oauthRetryPending;
+          const challengePlan = challenge?.source === 'target' && !hasExplicitTargetCredential
+            ? planOAuthChallengeResponse({
+                status: challenge.status,
+                wwwAuthenticate: challenge.responseHeaders?.['www-authenticate'],
+                sentAccessToken: Boolean(latestAccessToken),
+                refreshable: Boolean(
+                  latestAccessToken && loadOAuthAuthorization(targetUrl)?.refreshable
+                ),
+              })
+            : undefined;
           const shouldDiscoverOAuth = challenge?.source === 'target'
             && !attemptedAutomaticOAuth
             && !suppressOAuthDiscovery
-            && !hasExplicitTargetCredential;
+            && !hasExplicitTargetCredential
+            && challengePlan?.kind !== 'forbidden';
 
           // The proxy's own caller limit is never a target/server error.
           const proxyLimit = getProxyCallerLimit(error);
@@ -686,6 +699,11 @@ export const useConnection = (
               addLogEntry({ type: 'warning', data: prerequisite.explanation });
               return;
             }
+            if (challengePlan?.kind === 'forbidden' && !suppressOAuthDiscovery) {
+              // Surface the 403 once with its explanation; never re-authorize.
+              oauthTrace?.terminal('failed', challengePlan.explanation);
+              throw new OAuthForbiddenError(challengePlan.explanation, { cause: error });
+            }
             if (!suppressOAuthDiscovery) oauthTrace?.terminal(
               'failed',
               challenge?.source === 'proxy'
@@ -719,7 +737,11 @@ export const useConnection = (
               ? await currentUser.getIdToken()
               : undefined;
             const result = await beginOAuthFlow(targetUrl, {
-              ...(latestAccessToken ? { forceReauthorization: true } : {}),
+              ...(challengePlan?.kind === 'refresh'
+                ? { refreshOnly: true }
+                : challengePlan?.kind === 'step_up'
+                  ? { stepUp: true }
+                  : latestAccessToken ? { forceReauthorization: true } : {}),
               ...(challenge.resourceMetadataUrl
                 ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
                 : {}),
