@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { getDocsMetadata, HOME_METADATA } from './pageMetadata';
 
 describe('page metadata', () => {
-  it('uses the branded homepage title and specific playground description', () => {
-    expect(HOME_METADATA.title).toBe('mcptest.io | The Remote MCP Server Playground');
-    expect(HOME_METADATA.description).toContain('tools, resources, prompts, and live responses');
+  it('matches the landing hero and targets remote MCP testing searches', () => {
+    expect(HOME_METADATA.title).toBe('Test Remote MCP Servers | MCP Inspector Online | mcptest.io');
+    expect(HOME_METADATA.title.toLowerCase()).toContain('test remote mcp server');
+    expect(HOME_METADATA.title.toLowerCase()).toContain('mcp inspector online');
+    expect(HOME_METADATA.description).toContain('Inspect, debug and evaluate remote MCP servers in your browser');
   });
 
   it('returns custom metadata for documentation routes', () => {
