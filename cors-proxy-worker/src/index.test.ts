@@ -1,7 +1,8 @@
+/// <reference types="node" />
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import proxyWorker, {
   ANONYMOUS_MAX_RESPONSE_BYTES,
   HostedOAuthBroker,
@@ -222,6 +223,10 @@ describe('proxy target credential forwarding', () => {
   });
 
   it('keeps the sanitized header set across same-origin redirects', async () => {
+    // Vitest's jsdom Request shim spreads `init`, which drops the method and
+    // headers when `init` is itself a Request. Use the runtime Request it wraps.
+    vi.stubGlobal('Request', Object.getPrototypeOf(Request));
+    onTestFinished(() => { vi.unstubAllGlobals(); });
     const requests: Request[] = [];
     await fetchTargetRequest(new Request('https://example.com/mcp', {
       method: 'POST',
