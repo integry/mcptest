@@ -40,7 +40,11 @@ callback URIs, limitations and configuration surfaces) lives in
 - `profiles.ts` builds each host profile's transports, auth schemes,
   registration modes, exact callback URIs, supported and ignored capabilities,
   and assumption sources from the entry whose `hostProfileId` matches. The
-  profile version is `<entry verifiedOn>.1`.
+  profile version is a digest of the generated rules and assumptions, so any
+  change to a value the engine uses produces a new version. Verification dates
+  are left out of the digest: they are freshness, shown separately as the
+  entry's `verifiedOn`, and re-checking a cell without changing it keeps the
+  version.
 - The `<!-- compat-matrix clients="..." -->` directive in Learn articles is
   expanded into a Markdown table when the article is created
   (`src/content/compatMatrix.ts`), so the React page, the prerendered HTML and
@@ -54,6 +58,15 @@ subset of accounts), `unsupported`, `bridge-required` and `unknown` are all
 treated as not available, so a capability the host does not document becomes a
 caveat rather than an assumed pass. Callback patterns with a variable port are
 kept in the cell `note` and are not used for exact-match redirect checks.
+
+Each `oauthCallbacks` value is a list of `{ "uri", "use", "runtimes"? }`.
+`use` is `required` when the client always uses the URI on its runtimes, and
+`conditional` when it uses it only in some connection modes (say which in the
+note). `runtimes` (`desktop`, `web`, `agents`, `cli`) limits a URI to the
+surfaces that use it. A profile compares only the callbacks of the runtime it
+models and requires every one of them under an exact-match policy; if any of
+them is conditional, the exact-match check stays unknown, because the engine
+does not observe which callback the connection uses.
 
 What stays in `profiles.ts` is modeling rather than client fact: accepted
 protocol eras, session behavior, whether stateful servers get a scaling caveat,
@@ -72,7 +85,10 @@ specification.
 ## Updating a client cell
 
 Every cell is `{ "value", "source", "verifiedOn", "note"? }`. Limitations and
-configuration surfaces are `{ "text", "source", "verifiedOn" }`.
+configuration surfaces are `{ "text", "source", "verifiedOn" }`. The required
+cells and the value type of each are listed in `CLIENT_CELL_PATHS`
+(`src/data/clientCompatibility.ts`); a missing cell, source or date, or a value
+of the wrong type, fails validation.
 
 1. Open the cell's `source` page (or the client's current official
    documentation if the page moved) and read what it states today.
@@ -105,12 +121,14 @@ additional modeling assumption on every profile, reviewed on 2026-08-11.
 - **ChatGPT** (`chatgpt`): ChatGPT custom MCP servers and connectors, not the
   separately configurable OpenAI API hosted MCP tool. Stateful Streamable HTTP
   is accepted with an operational caveat because hosted, horizontally scaled
-  use requires durable session routing.
+  use requires durable session routing. Its stable callback applies only when
+  issuer identification is met, so exact-match redirect checks stay unknown.
 - **Claude** (`claude-ai`): claude.ai custom connectors; Claude Desktop uses
   the same connectors. The documented hosted callback is
   `https://claude.ai/api/mcp/auth_callback`.
-- **Cursor** (`cursor`): modeled as a local public OAuth client with loopback
-  callbacks and PKCE.
+- **Cursor** (`cursor`): modeled as the desktop app, a local public OAuth
+  client with its loopback callback and PKCE. The hosted callback of Cursor on
+  the web and Cursor agents is not used for this profile.
 - **VS Code/Copilot** (`vscode-copilot`): the desktop OAuth client is modeled
   with loopback callbacks.
 - **Generic MCP SDK** (`generic-sdk`): what a configurable client on the

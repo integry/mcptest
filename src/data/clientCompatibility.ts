@@ -44,6 +44,22 @@ export interface ClientSourceLink {
   url: string;
 }
 
+/** Client runtime a callback belongs to, for clients whose desktop and hosted surfaces differ. */
+export type ClientRuntime = 'desktop' | 'web' | 'agents' | 'cli';
+
+export interface OAuthCallback {
+  uri: string;
+  /**
+   * `required`: the client always uses this URI on its runtimes, so a server
+   * registers every required URI. `conditional`: the client uses it only in
+   * some connection modes (the note says which), so registering it neither
+   * proves nor rules out compatibility.
+   */
+  use: 'required' | 'conditional';
+  /** Runtimes that use this URI; omitted when every runtime of the client does. */
+  runtimes?: readonly ClientRuntime[];
+}
+
 export type CapabilityName =
   | 'tools'
   | 'resources'
@@ -82,7 +98,7 @@ export interface ClientCompatibilityEntry {
     none: SourcedCell<SupportLevel>;
   };
   /** Exact OAuth redirect URIs the client uses. Patterns with a variable port are notes, not values. */
-  oauthCallbacks: SourcedCell<readonly string[]>;
+  oauthCallbacks: SourcedCell<readonly OAuthCallback[]>;
   headers: {
     custom: SourcedCell<SupportLevel>;
     /** Headers the client requires the server or its network path to accept. */
@@ -104,39 +120,61 @@ export const CLIENT_COMPAT_MAX_AGE_DAYS = 90;
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const SUPPORT_LEVELS = new Set(['supported', 'limited', 'unsupported', 'bridge-required', 'unknown']);
+const CALLBACK_USES = new Set(['required', 'conditional']);
+const CLIENT_RUNTIMES = new Set(['desktop', 'web', 'agents', 'cli']);
+const CONFIGURATION_KINDS = new Set(['ui', 'file', 'cli']);
 export const CAPABILITY_NAMES: readonly CapabilityName[] = [
   'tools', 'resources', 'prompts', 'resourceSubscriptions', 'sampling', 'elicitation', 'tasks',
 ];
 
-const isCell = (value: unknown): value is SourcedCell<unknown> => (
-  Boolean(value)
-  && typeof value === 'object'
-  && 'value' in (value as Record<string, unknown>)
-  && 'source' in (value as Record<string, unknown>)
+type CellKind = 'support' | 'text' | 'text-list' | 'callbacks';
+
+/**
+ * Every sourced cell an entry must have, with the kind of value it holds.
+ * Validation and traversal both start from this list, so a cell that loses
+ * its `source` or `value` is reported rather than skipped.
+ */
+export const CLIENT_CELL_PATHS: ReadonlyArray<readonly [path: string, kind: CellKind]> = [
+  ['version', 'text'],
+  ['transports.streamableHttp', 'support'],
+  ['transports.legacySse', 'support'],
+  ['transports.stdio', 'support'],
+  ['protocolVersions', 'text-list'],
+  ['auth.oauthDcr', 'support'],
+  ['auth.preRegisteredClient', 'support'],
+  ['auth.cimd', 'support'],
+  ['auth.bearerToken', 'support'],
+  ['auth.apiKeyHeader', 'support'],
+  ['auth.none', 'support'],
+  ['oauthCallbacks', 'callbacks'],
+  ['headers.custom', 'support'],
+  ['headers.required', 'text-list'],
+  ['privateHosts', 'support'],
+  ...CAPABILITY_NAMES.map((name) => [`capabilities.${name}`, 'support'] as const),
+];
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 );
 
+const readPath = (value: unknown, path: string): unknown => path.split('.').reduce<unknown>(
+  (current, key) => (isRecord(current) ? current[key] : undefined),
+  value
+);
+
+const textItems = (entry: ClientCompatibilityEntry) => (['limitations', 'configuration'] as const).flatMap((key) => {
+  const items: unknown = entry[key];
+  return Array.isArray(items) ? items.map((item, index) => ({ path: `${key}[${index}]`, item: item as unknown })) : [];
+});
+
 /** Every sourced cell in an entry with a dotted path, for validation and freshness checks. */
-export const listCells = (entry: ClientCompatibilityEntry): Array<{ path: string; cell: SourcedCell<unknown> | SourcedText }> => {
-  const cells: Array<{ path: string; cell: SourcedCell<unknown> | SourcedText }> = [];
-  const visit = (value: unknown, path: string) => {
-    if (isCell(value)) {
-      cells.push({ path, cell: value });
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item, index) => {
-        if (item && typeof item === 'object' && 'text' in item) cells.push({ path: `${path}[${index}]`, cell: item as SourcedText });
-      });
-      return;
-    }
-    if (value && typeof value === 'object') {
-      for (const [key, child] of Object.entries(value)) visit(child, path ? `${path}.${key}` : key);
-    }
-  };
-  const { version, transports, protocolVersions, auth, oauthCallbacks, headers, privateHosts, capabilities, limitations, configuration } = entry;
-  visit({ version, transports, protocolVersions, auth, oauthCallbacks, headers, privateHosts, capabilities, limitations, configuration }, '');
-  return cells;
-};
+export const listCells = (entry: ClientCompatibilityEntry): Array<{ path: string; cell: SourcedCell<unknown> | SourcedText }> => [
+  ...CLIENT_CELL_PATHS.flatMap(([path]) => {
+    const cell = readPath(entry, path);
+    return isRecord(cell) ? [{ path, cell: cell as unknown as SourcedCell<unknown> }] : [];
+  }),
+  ...textItems(entry).flatMap(({ path, item }) => (isRecord(item) ? [{ path, cell: item as unknown as SourcedText }] : [])),
+];
 
 const isHttpsUrl = (value: unknown): boolean => {
   if (typeof value !== 'string') return false;
@@ -147,43 +185,130 @@ const isHttpsUrl = (value: unknown): boolean => {
   }
 };
 
+const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
+
+const isStringList = (value: unknown): boolean => Array.isArray(value) && value.every(isNonEmptyString);
+
+const isAbsoluteUrl = (value: unknown): boolean => {
+  if (!isNonEmptyString(value)) return false;
+  try {
+    return ['https:', 'http:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+};
+
+const callbackProblems = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return ['must be a list of callbacks'];
+  return value.flatMap((callback, index) => {
+    if (!isRecord(callback)) return [`[${index}] must be an object`];
+    const problems: string[] = [];
+    if (!isAbsoluteUrl(callback.uri)) problems.push(`[${index}].uri must be an absolute http(s) URL`);
+    if (!CALLBACK_USES.has(callback.use as string)) problems.push(`[${index}].use must be required or conditional`);
+    if (callback.runtimes !== undefined && !(
+      Array.isArray(callback.runtimes)
+      && callback.runtimes.length > 0
+      && callback.runtimes.every((runtime) => CLIENT_RUNTIMES.has(runtime as string))
+    )) {
+      problems.push(`[${index}].runtimes must list ${[...CLIENT_RUNTIMES].join(', ')}`);
+    }
+    return problems;
+  });
+};
+
+const valueProblem = (kind: CellKind, value: unknown): string | undefined => {
+  if (kind === 'support') return SUPPORT_LEVELS.has(value as string) ? undefined : `has invalid support level ${String(value)}`;
+  if (value === 'unknown') return undefined;
+  if (kind === 'text') return isNonEmptyString(value) ? undefined : 'must be a string or unknown';
+  if (kind === 'text-list') return isStringList(value) ? undefined : 'must be a list of strings or unknown';
+  const problems = callbackProblems(value);
+  return problems.length > 0 ? problems.join('; ') : undefined;
+};
+
+/** Required fields, cells and field-specific value types of one entry. */
+const entryShapeProblems = (entry: Record<string, unknown>, where: (path: string) => string): string[] => {
+  const problems: string[] = [];
+  for (const key of ['id', 'name', 'vendor'] as const) {
+    if (!isNonEmptyString(entry[key])) problems.push(`${where(key)} must be a non-empty string.`);
+  }
+  for (const key of ['hostProfileId', 'guidePath'] as const) {
+    if (entry[key] !== undefined && !isNonEmptyString(entry[key])) problems.push(`${where(key)} must be a non-empty string.`);
+  }
+  if (!isHttpsUrl(entry.documentationUrl)) problems.push(`${where('documentationUrl')} must be an https URL.`);
+  if (typeof entry.verifiedOn !== 'string' || !DATE_PATTERN.test(entry.verifiedOn)) problems.push(`${where('verifiedOn')} must be YYYY-MM-DD.`);
+  if (!Array.isArray(entry.sources) || !entry.sources.every((link) => isRecord(link) && isNonEmptyString(link.title) && isHttpsUrl(link.url))) {
+    problems.push(`${where('sources')} must list { title, url } with https URLs.`);
+  }
+  for (const [path, kind] of CLIENT_CELL_PATHS) {
+    const cell = readPath(entry, path);
+    if (!isRecord(cell)) {
+      problems.push(`${where(path)} is missing.`);
+      continue;
+    }
+    if (!('value' in cell)) problems.push(`${where(path)} has no value.`);
+    else {
+      const problem = valueProblem(kind, cell.value);
+      if (problem) problems.push(`${where(path)} ${problem}.`);
+    }
+    if (cell.note !== undefined && typeof cell.note !== 'string') problems.push(`${where(path)}.note must be a string.`);
+  }
+  for (const key of ['limitations', 'configuration'] as const) {
+    const items = entry[key];
+    if (!Array.isArray(items)) {
+      problems.push(`${where(key)} must be a list.`);
+      continue;
+    }
+    items.forEach((item, index) => {
+      const path = `${key}[${index}]`;
+      if (!isRecord(item)) problems.push(`${where(path)} must be an object.`);
+      else {
+        if (!isNonEmptyString(item.text)) problems.push(`${where(path)}.text must be a non-empty string.`);
+        if (key === 'configuration' && !CONFIGURATION_KINDS.has(item.kind as string)) {
+          problems.push(`${where(path)}.kind must be ui, file or cli.`);
+        }
+      }
+    });
+  }
+  return problems;
+};
+
 /** Structural problems in the data set; empty when the data is valid. */
-export const validateClientCompatibility = (data: ClientCompatibilityData): string[] => {
+export const validateClientCompatibility = (data: unknown): string[] => {
+  if (!isRecord(data) || data.schemaVersion !== 1 || !Array.isArray(data.clients)) {
+    return ['Client compatibility data must be { schemaVersion: 1, clients: [...] }.'];
+  }
   const problems: string[] = [];
   const ids = new Set<string>();
-  for (const entry of data.clients) {
-    const where = (path: string) => `${entry.id}${path ? `.${path}` : ''}`;
-    if (ids.has(entry.id)) problems.push(`Duplicate client id ${entry.id}.`);
-    ids.add(entry.id);
-    if (!isHttpsUrl(entry.documentationUrl)) problems.push(`${where('documentationUrl')} must be an https URL.`);
-    if (!DATE_PATTERN.test(entry.verifiedOn)) problems.push(`${where('verifiedOn')} must be YYYY-MM-DD.`);
+  data.clients.forEach((raw: unknown, index) => {
+    if (!isRecord(raw)) {
+      problems.push(`clients[${index}] must be an object.`);
+      return;
+    }
+    const id = isNonEmptyString(raw.id) ? raw.id : `clients[${index}]`;
+    const where = (path: string) => `${id}${path ? `.${path}` : ''}`;
+    if (ids.has(id)) problems.push(`Duplicate client id ${id}.`);
+    ids.add(id);
+    problems.push(...entryShapeProblems(raw, where));
+
+    const entry = raw as unknown as ClientCompatibilityEntry;
     const cells = listCells(entry);
     for (const { path, cell } of cells) {
       if (!isHttpsUrl(cell.source)) problems.push(`${where(path)} needs an https source URL.`);
-      if (!DATE_PATTERN.test(cell.verifiedOn)) problems.push(`${where(path)} needs verifiedOn as YYYY-MM-DD.`);
-      if ('value' in cell) {
-        const value = cell.value;
-        const isSupportCell = /^(transports|auth|capabilities)\.|^(headers\.custom|privateHosts)$/.test(path);
-        if (isSupportCell && !SUPPORT_LEVELS.has(value as string)) {
-          problems.push(`${where(path)} has invalid support level ${String(value)}.`);
-        }
-        if (value !== 'unknown' && !isSupportCell && !(typeof value === 'string' || Array.isArray(value))) {
-          problems.push(`${where(path)} has an invalid value.`);
-        }
+      if (typeof cell.verifiedOn !== 'string' || !DATE_PATTERN.test(cell.verifiedOn)) {
+        problems.push(`${where(path)} needs verifiedOn as YYYY-MM-DD.`);
       }
     }
-    const oldest = cells.map(({ cell }) => cell.verifiedOn).sort()[0];
+    const oldest = cells.map(({ cell }) => cell.verifiedOn).filter((date) => typeof date === 'string').sort()[0];
     if (oldest && oldest !== entry.verifiedOn) {
       problems.push(`${where('verifiedOn')} is ${entry.verifiedOn} but its oldest cell was verified on ${oldest}.`);
     }
-    for (const capability of CAPABILITY_NAMES) {
-      if (!entry.capabilities[capability]) problems.push(`${where(`capabilities.${capability}`)} is missing.`);
-    }
-    const sourceUrls = new Set(entry.sources.map(({ url }) => url));
+    const sourceUrls = new Set(Array.isArray(entry.sources) ? entry.sources.map((link) => link?.url) : []);
     for (const { path, cell } of cells) {
-      if (!sourceUrls.has(cell.source)) problems.push(`${where(path)} cites ${cell.source}, which is not listed in sources.`);
+      if (isHttpsUrl(cell.source) && !sourceUrls.has(cell.source)) {
+        problems.push(`${where(path)} cites ${cell.source}, which is not listed in sources.`);
+      }
     }
-  }
+  });
   return problems;
 };
 
@@ -202,12 +327,13 @@ export const findStaleClientCompatibilityCells = (
   }));
 };
 
-export const CLIENT_COMPATIBILITY = rawData as unknown as ClientCompatibilityData;
-
-const problems = validateClientCompatibility(CLIENT_COMPATIBILITY);
+// The JSON import is untyped at runtime, so validate it before anything reads it.
+const problems = validateClientCompatibility(rawData);
 if (problems.length > 0) {
   throw new Error(`clientCompatibility.json is invalid:\n${problems.join('\n')}`);
 }
+
+export const CLIENT_COMPATIBILITY = rawData as unknown as ClientCompatibilityData;
 
 export const CLIENT_COMPATIBILITY_IDS: readonly string[] = CLIENT_COMPATIBILITY.clients.map(({ id }) => id);
 

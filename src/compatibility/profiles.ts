@@ -20,6 +20,8 @@ import {
   listCells,
   type CapabilityName,
   type ClientCompatibilityEntry,
+  type ClientRuntime,
+  type OAuthCallback,
   type SourcedCell,
   type SupportLevel,
 } from '../data/clientCompatibility.ts';
@@ -60,7 +62,7 @@ const observed = (fact: CompatibilityFactPath, value: string | boolean): Compati
 
 function condition(
   fact: CompatibilityFactPath,
-  operator: 'one-of' | 'contains-any',
+  operator: 'one-of' | 'contains-any' | 'contains-all',
   value: readonly (string | boolean)[]
 ): CompatibilityConditionV1 {
   return { fact, operator, value } as CompatibilityConditionV1;
@@ -78,7 +80,12 @@ interface ProfileConstraints {
   authSchemes: readonly AuthorizationScheme[];
   oauthRegistrationModes: readonly OAuthRegistrationMode[];
   callbackKind: 'hosted-https' | 'loopback' | 'flexible';
+  /** Runtime the profile models, for clients whose callbacks differ by runtime. */
+  runtime?: ClientRuntime;
+  /** Every exact URI the modeled runtime always uses; empty when none is established. */
   callbackUris: readonly string[];
+  /** The runtime's callback depends on connection details the engine does not observe. */
+  callbacksConditional: boolean;
   supportedCapabilities: readonly CapabilityName[];
   ignoredCapabilities: readonly CapabilityName[];
   browserCors: 'irrelevant' | 'runtime-dependent';
@@ -344,7 +351,7 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
         observed('authorization.oauth.dynamicRedirectRegistration', true),
         condition('authorization.oauth.redirectPolicy', 'one-of', callbackPolicies),
         ...(profile.callbackUris.length > 0
-          ? [condition('authorization.oauth.registeredRedirectUris', 'contains-any', profile.callbackUris)]
+          ? [condition('authorization.oauth.registeredRedirectUris', 'contains-all', profile.callbackUris)]
           : [])
       ),
       onPass: result('pass', 'OAuth redirect constraints are compatible', `The authorization server can accept ${profile.name}'s callback style.`),
@@ -355,7 +362,7 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
         remediation(
           'authorization-server-change',
           profile.callbackUris.length > 0
-            ? `Register an exact callback URI: ${profile.callbackUris.join(' or ')}.`
+            ? `Register ${profile.callbackUris.length > 1 ? 'every' : 'the exact'} callback URI: ${profile.callbackUris.join(' and ')}.`
             : `Allow ${profile.callbackKind} redirect URIs supplied during client registration.`,
           MCP_AUTH_SPEC
         )
@@ -363,14 +370,18 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       onUnknown: result(
         'unknown',
         'OAuth redirect compatibility is unknown',
-        profile.callbackUris.length === 0
-          ? `No verified ${profile.name} callback URI is available to compare with the authorization server's exact-match policy.`
-          : 'The available redirect evidence does not establish whether the authorization server accepts the host callback URI.',
+        profile.callbacksConditional
+          ? `${profile.name}'s callback URI depends on how the server is connected, so it cannot be compared with the authorization server's exact-match policy.`
+          : profile.callbackUris.length === 0
+            ? `No verified ${profile.name} callback URI is available to compare with the authorization server's exact-match policy.`
+            : 'The available redirect evidence does not establish whether the authorization server accepts the host callback URI.',
         remediation(
           'observation-needed',
-          profile.callbackUris.length === 0
-            ? `Verify ${profile.name}'s exact callback URI and compare it with the registered redirect URIs.`
-            : 'Record accepted redirect URI classes or the exact registered callbacks.'
+          profile.callbacksConditional
+            ? `Compare the callback URI ${profile.name} shows for this server with the registered redirect URIs.`
+            : profile.callbackUris.length === 0
+              ? `Verify ${profile.name}'s exact callback URI and compare it with the registered redirect URIs.`
+              : 'Record accepted redirect URI classes or the exact registered callbacks.'
         )
       ),
       evidenceFacts: [
@@ -516,9 +527,16 @@ const cellLabels: Record<string, string> = {
   'capabilities.tasks': 'tasks',
 };
 
+const describeCallback = ({ uri, use, runtimes }: OAuthCallback): string => {
+  const qualifiers = [...(runtimes ?? []), ...(use === 'conditional' ? ['conditional'] : [])];
+  return qualifiers.length > 0 ? `${uri} (${qualifiers.join(', ')})` : uri;
+};
+
 const describeCell = (path: string, cell: SourcedCell<unknown>): string => {
   const label = cellLabels[path] ?? path;
-  const value = Array.isArray(cell.value) ? cell.value.join(', ') : String(cell.value);
+  const value = Array.isArray(cell.value)
+    ? cell.value.map((item) => (typeof item === 'string' ? item : describeCallback(item as OAuthCallback))).join(', ')
+    : String(cell.value);
   return `${label}: ${value}`;
 };
 
@@ -544,9 +562,23 @@ const clientAssumptions = (entry: ClientCompatibilityEntry): HostAssumptionSourc
   });
 };
 
+/**
+ * The callbacks the modeled runtime uses. Callbacks of another runtime are
+ * dropped; a conditional callback leaves the exact URI undetermined.
+ */
+const selectCallbacks = (entry: ClientCompatibilityEntry, runtime: ClientRuntime | undefined) => {
+  if (entry.oauthCallbacks.value === 'unknown') return { callbackUris: [], callbacksConditional: false };
+  const applicable = entry.oauthCallbacks.value.filter(({ runtimes }) => {
+    if (!runtimes) return true;
+    if (!runtime) throw new Error(`${entry.id} callbacks are runtime-specific; its host profile must name a runtime.`);
+    return runtimes.includes(runtime);
+  });
+  if (applicable.some(({ use }) => use === 'conditional')) return { callbackUris: [], callbacksConditional: true };
+  return { callbackUris: applicable.map(({ uri }) => uri), callbacksConditional: false };
+};
+
 /** Profile constraints that describe the client itself, read from clientCompatibility.json. */
-const fromClientData = (hostId: HostId) => {
-  const entry = getClientCompatibilityForHost(hostId);
+const fromClientData = (entry: ClientCompatibilityEntry, runtime: ClientRuntime | undefined) => {
   const transports: TransportKind[] = [];
   if (supported(entry.transports.streamableHttp)) transports.push('streamable-http');
   if (supported(entry.transports.legacySse)) transports.push('legacy-sse');
@@ -564,13 +596,12 @@ const fromClientData = (hostId: HostId) => {
   if (supported(entry.auth.apiKeyHeader)) authSchemes.push('api-key');
 
   return {
-    entry,
     assumptions: clientAssumptions(entry),
     transports,
     authSchemes,
     oauthRegistrationModes,
     // Only exact URIs are usable for exact-match redirect checks.
-    callbackUris: entry.oauthCallbacks.value === 'unknown' ? [] : entry.oauthCallbacks.value,
+    ...selectCallbacks(entry, runtime),
     supportedCapabilities: CAPABILITY_NAMES.filter((name) => supported(entry.capabilities[name])),
     ignoredCapabilities: CAPABILITY_NAMES.filter((name) => !supported(entry.capabilities[name])),
   };
@@ -597,81 +628,110 @@ export const HOST_IDS = Object.freeze([
   'generic-sdk',
 ] as const satisfies readonly HostId[]);
 
+type ProfileModel = Omit<
+  ProfileConstraints,
+  'id' | 'assumptions' | 'transports' | 'authSchemes' | 'oauthRegistrationModes' | 'callbackUris' | 'callbacksConditional' | 'supportedCapabilities' | 'ignoredCapabilities'
+> & { authNotes: string };
+
 /**
  * Client facts (transports, credentials, registration, callbacks, consumed
  * capabilities and their sources) come from clientCompatibility.json. What
- * stays here is modeling: protocol eras, session handling, callback style and
- * whether browser CORS matters for the host.
+ * stays here is modeling: protocol eras, session handling, callback style,
+ * the runtime a profile describes and whether browser CORS matters for the host.
  */
-const withClientData = (
-  hostId: HostId,
-  profile: Omit<ProfileConstraints, 'id' | 'assumptions' | 'transports' | 'authSchemes' | 'oauthRegistrationModes' | 'callbackUris' | 'supportedCapabilities' | 'ignoredCapabilities'>,
-  authNotes: string
-): ProfileConstraints & { verifiedOn: string } => {
-  const { entry, assumptions, ...client } = fromClientData(hostId);
-  return {
-    id: hostId,
-    ...profile,
-    ...client,
-    assumptions: [...assumptions, mcpAuthAssumption(authNotes)],
-    verifiedOn: entry.verifiedOn,
-  };
-};
-
-const constraints: ReadonlyArray<ProfileConstraints & { verifiedOn: string }> = [
-  withClientData('chatgpt', {
+const models: Readonly<Record<HostId, ProfileModel>> = {
+  chatgpt: {
     name: 'ChatGPT',
     description: 'ChatGPT custom remote MCP apps/connectors.',
     ...common,
     statefulIsCaveat: true,
     callbackKind: 'hosted-https',
     browserCors: 'irrelevant',
-  }, 'Discovery, PKCE, registration, and redirect requirements.'),
-  withClientData('claude', {
+    authNotes: 'Discovery, PKCE, registration, and redirect requirements.',
+  },
+  claude: {
     name: 'Claude',
     description: 'Claude web and desktop remote custom connectors.',
     ...common,
     callbackKind: 'hosted-https',
     browserCors: 'irrelevant',
-  }, 'Discovery, PKCE, registration, and redirect requirements.'),
-  withClientData('cursor', {
+    authNotes: 'Discovery, PKCE, registration, and redirect requirements.',
+  },
+  cursor: {
     name: 'Cursor',
     description: 'Cursor IDE remote MCP clients.',
     ...common,
     callbackKind: 'loopback',
+    runtime: 'desktop',
     browserCors: 'irrelevant',
-  }, 'Local public clients use PKCE and loopback redirect URIs.'),
-  withClientData('vscode-copilot', {
+    authNotes: 'Local public clients use PKCE and loopback redirect URIs.',
+  },
+  'vscode-copilot': {
     name: 'VS Code/Copilot',
     description: 'VS Code MCP support used by GitHub Copilot chat.',
     ...common,
     callbackKind: 'loopback',
+    runtime: 'desktop',
     browserCors: 'irrelevant',
-  }, 'Local public clients use PKCE and loopback redirect URIs.'),
-  withClientData('generic-sdk', {
+    authNotes: 'Local public clients use PKCE and loopback redirect URIs.',
+  },
+  'generic-sdk': {
     name: 'Generic MCP SDK',
     description: 'A configurable client built on a current MCP SDK.',
     ...common,
     callbackKind: 'flexible',
     browserCors: 'runtime-dependent',
-  }, 'Generic clients can select any standardized registration and redirect strategy.'),
-];
+    authNotes: 'Generic clients can select any standardized registration and redirect strategy.',
+  },
+};
+
+/** FNV-1a over the text, as eight hex digits. */
+const fnv1a = (text: string, seed: number): string => {
+  let hash = seed;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+};
+
+/**
+ * Digest of everything that decides an assessment: the rules and the
+ * assumptions they cite. Verification dates are freshness, not identity, so
+ * re-checking a cell without changing it keeps the version.
+ */
+const contentVersion = (profile: Omit<HostProfileV1, 'profileVersion'>): string => {
+  const text = JSON.stringify({
+    ...profile,
+    assumptions: profile.assumptions.map(({ accessedOn: _accessedOn, ...assumption }) => assumption),
+  });
+  return `${fnv1a(text, 0x811c9dc5)}${fnv1a(text, 0x050c5d1f)}`;
+};
+
+/** Host profile for `hostId` built from a client compatibility entry. */
+export const buildHostProfile = (hostId: HostId, entry: ClientCompatibilityEntry): HostProfileV1 => {
+  const { authNotes, ...model } = models[hostId];
+  const { assumptions, ...client } = fromClientData(entry, model.runtime);
+  const constraints: ProfileConstraints = {
+    id: hostId,
+    ...model,
+    ...client,
+    assumptions: [...assumptions, mcpAuthAssumption(authNotes)],
+  };
+  const profile = {
+    schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
+    id: hostId,
+    name: constraints.name,
+    description: constraints.description,
+    assumptions: constraints.assumptions,
+    rules: makeRules(constraints),
+  };
+  // A stored assessment keeps this version, which changes whenever the rules
+  // or the assumptions behind them change.
+  return Object.freeze({ ...profile, profileVersion: contentVersion(profile) });
+};
 
 export const HOST_PROFILES: Readonly<Record<HostId, HostProfileV1>> = Object.freeze(
-  Object.fromEntries(constraints.map((profile) => [
-    profile.id,
-    Object.freeze({
-      schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
-      // The profile version follows the client data it was built from, so a
-      // stored assessment records which verified assumptions it used.
-      profileVersion: `${profile.verifiedOn}.1`,
-      id: profile.id,
-      name: profile.name,
-      description: profile.description,
-      assumptions: profile.assumptions,
-      rules: makeRules(profile),
-    }),
-  ])) as Record<HostId, HostProfileV1>
+  Object.fromEntries(HOST_IDS.map((id) => [id, buildHostProfile(id, getClientCompatibilityForHost(id))])) as Record<HostId, HostProfileV1>
 );
 
 export const HOST_PROFILE_LIST: readonly HostProfileV1[] = Object.freeze(

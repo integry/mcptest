@@ -249,7 +249,7 @@ describe('host compatibility evaluator', () => {
     expect(assessHostCompatibility(facts, 'generic-sdk').status).toBe('compatible');
   });
 
-  it.each(['chatgpt', 'cursor', 'vscode-copilot'] as const)(
+  it.each(['cursor', 'vscode-copilot'] as const)(
     'fails an exact-match redirect policy that registers none of the documented %s callbacks',
     (profileId) => {
       const facts = cloneFacts(oauthProtectedServerFixture);
@@ -272,7 +272,7 @@ describe('host compatibility evaluator', () => {
     }
   );
 
-  it.each(['generic-sdk'] as const)(
+  it.each(['chatgpt', 'generic-sdk'] as const)(
     'returns unknown for an exact-match redirect policy when %s has no verified callback URI',
     (profileId) => {
       const facts = cloneFacts(oauthProtectedServerFixture);
@@ -295,6 +295,53 @@ describe('host compatibility evaluator', () => {
       expect(assessment.findings.some(({ outcome }) => outcome === 'fail')).toBe(false);
     }
   );
+
+  const exactMatchFacts = (registered: string[]) => {
+    const facts = cloneFacts(oauthProtectedServerFixture);
+    facts.authorization.oauth.dynamicRedirectRegistration = observedFact(
+      false,
+      'Redirects cannot be added during registration.'
+    );
+    facts.authorization.oauth.redirectPolicy = observedFact(
+      'exact-match',
+      'Only pre-registered exact callback URIs are accepted.'
+    );
+    facts.authorization.oauth.registeredRedirectUris = observedFact(registered, 'The registered callbacks were listed.');
+    return facts;
+  };
+  const redirectOutcome = (facts: ObservedServerFactsV1, profileId: 'chatgpt' | 'cursor' | 'vscode-copilot') => (
+    assessHostCompatibility(facts, profileId).findings.find(({ ruleId }) => ruleId === 'authorization.oauth.redirects')?.outcome
+  );
+
+  it.each([
+    ['the callback-specific URI', 'https://chatgpt.com/connector/oauth/example-id'],
+    ['only the stable URI', 'https://chatgpt.com/connector_platform_oauth_redirect'],
+  ])('keeps ChatGPT exact-match redirects unknown when %s is registered', (_label, uri) => {
+    // Which of the two ChatGPT uses depends on issuer identification, which is not observed.
+    const assessment = assessHostCompatibility(exactMatchFacts([uri]), 'chatgpt');
+
+    expect(assessment.status).toBe('unknown');
+    expect(assessment.findings).toContainEqual(expect.objectContaining({
+      ruleId: 'authorization.oauth.redirects',
+      outcome: 'unknown',
+    }));
+  });
+
+  it('checks the Cursor desktop callback, not the hosted Cursor callback', () => {
+    expect(redirectOutcome(exactMatchFacts(['https://www.cursor.com/agents/mcp/oauth/callback']), 'cursor')).toBe('fail');
+    expect(assessHostCompatibility(exactMatchFacts(['https://www.cursor.com/agents/mcp/oauth/callback']), 'cursor').status)
+      .toBe('incompatible');
+    expect(redirectOutcome(exactMatchFacts(['http://localhost:8787/callback']), 'cursor')).toBe('pass');
+  });
+
+  it('requires both VS Code callbacks under an exact-match policy', () => {
+    expect(redirectOutcome(exactMatchFacts(['http://127.0.0.1:33418']), 'vscode-copilot')).toBe('fail');
+    expect(redirectOutcome(exactMatchFacts(['https://vscode.dev/redirect']), 'vscode-copilot')).toBe('fail');
+    expect(redirectOutcome(
+      exactMatchFacts(['http://127.0.0.1:33418', 'https://vscode.dev/redirect']),
+      'vscode-copilot'
+    )).toBe('pass');
+  });
 
   it('passes an exact-match redirect policy when the verified callback URI is registered', () => {
     const facts = cloneFacts(oauthProtectedServerFixture);

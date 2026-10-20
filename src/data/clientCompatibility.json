@@ -118,7 +118,10 @@
       },
       "oauthCallbacks": {
         "value": [
-          "https://claude.ai/api/mcp/auth_callback"
+          {
+            "uri": "https://claude.ai/api/mcp/auth_callback",
+            "use": "required"
+          }
         ],
         "source": "https://claude.com/docs/connectors/building/authentication",
         "verifiedOn": "2026-10-20",
@@ -377,7 +380,10 @@
       },
       "oauthCallbacks": {
         "value": [
-          "https://claude.ai/api/mcp/auth_callback"
+          {
+            "uri": "https://claude.ai/api/mcp/auth_callback",
+            "use": "required"
+          }
         ],
         "source": "https://claude.com/docs/connectors/building/authentication",
         "verifiedOn": "2026-10-20",
@@ -777,7 +783,10 @@
       },
       "oauthCallbacks": {
         "value": [
-          "https://chatgpt.com/connector_platform_oauth_redirect"
+          {
+            "uri": "https://chatgpt.com/connector_platform_oauth_redirect",
+            "use": "conditional"
+          }
         ],
         "source": "https://developers.openai.com/apps-sdk/build/auth",
         "verifiedOn": "2026-10-20",
@@ -974,7 +983,10 @@
       },
       "oauthCallbacks": {
         "value": [
-          "http://127.0.0.1/callback"
+          {
+            "uri": "http://127.0.0.1/callback",
+            "use": "conditional"
+          }
         ],
         "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
         "verifiedOn": "2026-10-20",
@@ -1162,8 +1174,21 @@
       },
       "oauthCallbacks": {
         "value": [
-          "http://localhost:8787/callback",
-          "https://www.cursor.com/agents/mcp/oauth/callback"
+          {
+            "uri": "http://localhost:8787/callback",
+            "use": "required",
+            "runtimes": [
+              "desktop"
+            ]
+          },
+          {
+            "uri": "https://www.cursor.com/agents/mcp/oauth/callback",
+            "use": "required",
+            "runtimes": [
+              "web",
+              "agents"
+            ]
+          }
         ],
         "source": "https://cursor.com/docs/context/mcp",
         "verifiedOn": "2026-10-20",
@@ -1375,8 +1400,14 @@
       },
       "oauthCallbacks": {
         "value": [
-          "http://127.0.0.1:33418",
-          "https://vscode.dev/redirect"
+          {
+            "uri": "http://127.0.0.1:33418",
+            "use": "required"
+          },
+          {
+            "uri": "https://vscode.dev/redirect",
+            "use": "required"
+          }
         ],
         "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
         "verifiedOn": "2026-10-20",

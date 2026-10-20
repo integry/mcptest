@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOST_IDS, HOST_PROFILES } from '../compatibility';
+import { HOST_IDS, HOST_PROFILES, buildHostProfile } from '../compatibility';
 import {
   CLIENT_COMPATIBILITY,
   CLIENT_COMPATIBILITY_IDS,
@@ -53,6 +53,58 @@ describe('client compatibility data', () => {
     ]));
   });
 
+  it('reports a cell that lost its source instead of skipping it', () => {
+    const data = clone();
+    const entry = data.clients.find(({ id }) => id === 'cursor') as unknown as Record<string, any>;
+    delete entry.transports.streamableHttp.source;
+
+    expect(validateClientCompatibility(data)).toContain('cursor.transports.streamableHttp needs an https source URL.');
+  });
+
+  it('reports a missing required cell or a cell without a verification date', () => {
+    const data = clone();
+    const entry = data.clients.find(({ id }) => id === 'cursor') as unknown as Record<string, any>;
+    delete entry.transports.legacySse;
+    delete entry.auth.cimd.verifiedOn;
+
+    expect(validateClientCompatibility(data)).toEqual(expect.arrayContaining([
+      'cursor.transports.legacySse is missing.',
+      'cursor.auth.cimd needs verifiedOn as YYYY-MM-DD.',
+    ]));
+  });
+
+  it('checks each cell value against its field type', () => {
+    const data = clone();
+    const entry = data.clients.find(({ id }) => id === 'cursor') as unknown as Record<string, any>;
+    entry.protocolVersions.value = '2025-11-25';
+    entry.version.value = ['1.0'];
+    entry.headers.required.value = [42];
+    entry.oauthCallbacks.value = ['http://localhost:8787/callback'];
+
+    expect(validateClientCompatibility(data)).toEqual(expect.arrayContaining([
+      'cursor.protocolVersions must be a list of strings or unknown.',
+      'cursor.version must be a string or unknown.',
+      'cursor.headers.required must be a list of strings or unknown.',
+      expect.stringContaining('cursor.oauthCallbacks [0] must be an object'),
+    ]));
+  });
+
+  it('rejects callbacks with an unknown use or runtime', () => {
+    const data = clone();
+    const entry = data.clients.find(({ id }) => id === 'cursor') as unknown as Record<string, any>;
+    entry.oauthCallbacks.value = [{ uri: 'http://localhost:8787/callback', use: 'sometimes', runtimes: ['phone'] }];
+
+    const [problem] = validateClientCompatibility(data);
+
+    expect(problem).toContain('[0].use must be required or conditional');
+    expect(problem).toContain('[0].runtimes must list');
+  });
+
+  it('rejects data that is not a client list', () => {
+    expect(validateClientCompatibility({ schemaVersion: 2, clients: [] })).toHaveLength(1);
+    expect(validateClientCompatibility(null)).toHaveLength(1);
+  });
+
   it('finds cells verified more than 90 days before the given day', () => {
     const data = clone();
     const entry = data.clients[0] as unknown as Record<string, any>;
@@ -74,7 +126,7 @@ describe('host profiles built from client data', () => {
     const redirects = HOST_PROFILES.claude.rules.find(({ id }) => id === 'authorization.oauth.redirects');
     const callbacks = getClientCompatibilityForHost('claude').oauthCallbacks.value;
 
-    expect(callbacks).toEqual(['https://claude.ai/api/mcp/auth_callback']);
+    expect(callbacks).toEqual([{ uri: 'https://claude.ai/api/mcp/auth_callback', use: 'required' }]);
     expect(redirects?.onFail.remediation?.action).toContain('https://claude.ai/api/mcp/auth_callback');
   });
 
@@ -85,7 +137,6 @@ describe('host profiles built from client data', () => {
       const sourceUrls = new Set(entry.sources.map(({ url }) => url));
       const clientAssumptions = profile.assumptions.filter(({ id }) => id !== 'mcp-auth');
 
-      expect(profile.profileVersion).toBe(`${entry.verifiedOn}.1`);
       expect(clientAssumptions.length).toBeGreaterThan(0);
       for (const assumption of clientAssumptions) {
         expect(sourceUrls.has(assumption.url), `${hostId} ${assumption.url}`).toBe(true);
@@ -93,6 +144,25 @@ describe('host profiles built from client data', () => {
         expect(assumption.notes.startsWith(`${entry.name}:`)).toBe(true);
       }
     }
+  });
+
+  it('versions a profile by its rules and assumptions, not by verification dates', () => {
+    const entry = getClientCompatibilityForHost('cursor');
+    expect(buildHostProfile('cursor', entry)).toEqual(HOST_PROFILES.cursor);
+    expect(new Set(HOST_IDS.map((id) => HOST_PROFILES[id].profileVersion)).size).toBe(HOST_IDS.length);
+
+    // The documented update: one cell changes on a later day, the entry date stays the oldest.
+    const changed = structuredClone(entry) as unknown as Record<string, any>;
+    changed.auth.cimd = { ...changed.auth.cimd, value: 'supported', verifiedOn: '2026-11-02' };
+    const changedProfile = buildHostProfile('cursor', changed as never);
+    expect(changed.verifiedOn).toBe(entry.verifiedOn);
+    expect(changedProfile.rules).not.toEqual(HOST_PROFILES.cursor.rules);
+    expect(changedProfile.profileVersion).not.toBe(HOST_PROFILES.cursor.profileVersion);
+
+    // Re-checking a cell without changing it is freshness, not a new profile.
+    const rechecked = structuredClone(entry) as unknown as Record<string, any>;
+    rechecked.auth.cimd = { ...rechecked.auth.cimd, verifiedOn: '2026-11-02' };
+    expect(buildHostProfile('cursor', rechecked as never).profileVersion).toBe(HOST_PROFILES.cursor.profileVersion);
   });
 
   it('does not rely on limited or unknown support', () => {
