@@ -217,6 +217,18 @@ describe('recorded contract results', () => {
     expect(getRecordedOutputContractResults('https://other.example/mcp')).toEqual([]);
   });
 
+  it('forgets only the tool whose schema was removed and keeps verdicts across error results', () => {
+    const otherTool = { ...weatherTool, name: 'get_forecast' };
+    recordOutputContractResult('https://mcp.example.com/mcp', checkToolOutputContract(weatherTool, callResult({ city: 1 })));
+    recordOutputContractResult('https://mcp.example.com/mcp', checkToolOutputContract(otherTool, callResult({ city: 1 })));
+    recordOutputContractResult('https://mcp.example.com/mcp', checkToolOutputContract(otherTool, { content: [], isError: true }));
+    recordOutputContractResult('mcp.example.com/mcp', checkToolOutputContract({ name: 'get_weather' }, callResult({ city: 1 })));
+
+    expect(getRecordedOutputContractResults('https://mcp.example.com/mcp')).toMatchObject([
+      { toolName: 'get_forecast', status: 'fail' },
+    ]);
+  });
+
   it('summarizes passing and violating tools for the evaluator', () => {
     const summary = summarizeOutputContracts([
       checkToolOutputContract(weatherTool, callResult({ city: 'Oslo', temperature: 1 })),

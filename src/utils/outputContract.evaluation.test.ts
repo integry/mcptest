@@ -11,8 +11,10 @@ import { evaluateServer } from './evaluation';
 import {
   checkToolOutputContract,
   clearRecordedOutputContractResults,
+  getRecordedOutputContractResults,
   recordOutputContractResult,
 } from './outputContract';
+import { createToolResultLogEntry } from './toolCallResult';
 import { createCompatibilityMatrix, createReleaseDecision } from './releaseReadiness';
 
 const createClient = () => {
@@ -84,6 +86,27 @@ describe('output contract evidence in evaluation runs', () => {
     expect(finding).toMatchObject({ severity: 'high', source: 'Tool surface' });
     expect(finding?.detail).toContain('count_items');
     expect(finding?.detail).toContain('structuredContent.count: Expected number but got string.');
+  });
+
+  it('drops a recorded violation once the tool stops declaring an output schema', async () => {
+    const failing = { content: [], structuredContent: { count: 'three' } };
+    createToolResultLogEntry({ name: 'count_items', outputSchema: schema }, failing, {
+      serverUrl, type: 'tool', name: 'count_items', params: {},
+    });
+    expect(getRecordedOutputContractResults(serverUrl)).toMatchObject([{ toolName: 'count_items', status: 'fail' }]);
+
+    // The server removed the schema; the refreshed definition no longer carries it.
+    const entry = createToolResultLogEntry({ name: 'count_items' }, failing, {
+      serverUrl: 'contract.example/mcp', type: 'tool', name: 'count_items', params: {},
+    });
+    expect(entry.toolCall?.contract.status).toBe('no-schema');
+    expect(getRecordedOutputContractResults(serverUrl)).toEqual([]);
+
+    const report = await evaluateServer(serverUrl, '', vi.fn(), null, undefined, undefined, { runtime: 'headless' });
+
+    expect(report.outputContracts).toBeUndefined();
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+    expect(decision.priorities.map(item => item.id)).not.toContain('tool.output-contract-violation');
   });
 
   it('accepts explicit contract results and omits the finding when every tool passes', async () => {

@@ -244,10 +244,20 @@ export const normalizeContractServerUrl = (value: string): string => {
   }
 };
 
-/** Remembers the latest verdict per tool so a later evaluation run can report it. */
+/**
+ * Remembers the latest verdict per tool so a later evaluation run can report it.
+ * A `no-schema` result means the tool no longer declares a contract, so any
+ * earlier verdict against a removed schema is dropped rather than kept.
+ */
 export const recordOutputContractResult = (serverUrl: string, result: OutputContractResult): void => {
-  if (!serverUrl || result.status === 'no-schema' || result.status === 'not-checked') return;
+  if (!serverUrl || result.status === 'not-checked') return;
   const key = normalizeContractServerUrl(serverUrl);
+  if (result.status === 'no-schema') {
+    const existing = recordedResults.get(key);
+    existing?.delete(result.toolName);
+    if (existing?.size === 0) recordedResults.delete(key);
+    return;
+  }
   const byTool = recordedResults.get(key) ?? new Map<string, OutputContractResult>();
   byTool.set(result.toolName, result);
   recordedResults.set(key, byTool);
