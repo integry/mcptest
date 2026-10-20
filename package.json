@@ -10,6 +10,9 @@
     "dev": "vite",
     "test": "vitest run",
     "test:first-paint": "FIRST_PAINT=1 vitest run scripts/first-paint.test.js",
+    "test:e2e": "playwright test",
+    "test:lighthouse": "lhci autorun --config=lighthouserc.cjs",
+    "test:lighthouse:mobile": "lhci collect --config=lighthouserc.mobile.cjs && lhci upload --config=lighthouserc.mobile.cjs",
     "mcptest": "vite-node scripts/mcptest.ts",
     "typecheck": "tsc --noEmit",
     "validate-catalog": "vite-node scripts/run-validate-catalog.ts",
@@ -48,6 +51,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.64.1",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.0.0",

@@ -170,6 +170,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             {protocolEra && (
               <span
                 className={`badge ${protocolEra === 'modern' ? 'bg-dark' : 'bg-secondary'}`}
+                data-testid="connection-protocol-era"
                 title={protocolVersion ? `Negotiated MCP ${protocolVersion}` : `Negotiated MCP ${protocolEra} protocol`}
               >
                 {protocolEra === 'modern' ? 'Stateless' : 'Stateful'}
