@@ -154,7 +154,8 @@ describe('SideNav dashboard rows', () => {
       Array.from(container.querySelectorAll('.content-track-label'), (label) => label.textContent)
     ).toEqual(['Understand', 'Use', 'Build', 'Reference']);
     const hrefs = Array.from(container.querySelectorAll('.content-track-nav a'), link => link.getAttribute('href'));
-    expect(hrefs).toEqual([
+    // Articles added later may slot in anywhere; the original pages keep their relative order.
+    const originalHrefs = [
       '/learn',
       '/docs/what-is-mcp',
       '/docs/remote-vs-local',
@@ -166,7 +167,9 @@ describe('SideNav dashboard rows', () => {
       '/learn/designing-production-mcp-server',
       '/learn/mcp-server-trust-checklist',
       '/docs/troubleshooting',
-    ]);
+    ];
+    expect(hrefs[0]).toBe('/learn');
+    expect(hrefs.filter((href) => originalHrefs.includes(href ?? ''))).toEqual(originalHrefs);
     expect(container.querySelector('a[href="/learn/mcp-clients-compared"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/learn"]')?.classList).not.toContain('active');
     expect(container.querySelector('a[href="/docs/what-is-mcp"]')?.textContent).toBe('What is MCP?');

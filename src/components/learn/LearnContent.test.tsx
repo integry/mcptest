@@ -1,4 +1,6 @@
 import React, { act } from 'react';
+import { readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
@@ -66,7 +68,8 @@ const PRE_EXISTING_PAGES = [
 
 describe('content registry', () => {
   it('loads every Markdown article and resolves it by slug and canonical path', () => {
-    expect(LEARN_ARTICLES).toHaveLength(10);
+    const files = readdirSync(resolve('src/content/articles')).filter(name => name.endsWith('.md'));
+    expect(LEARN_ARTICLES).toHaveLength(files.length);
     for (const article of LEARN_ARTICLES) {
       expect(getLearnArticle(article.slug)).toBe(article);
       expect(getLearnArticleFromPath(article.path)).toBe(article);
