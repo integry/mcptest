@@ -205,6 +205,49 @@ describe('evaluation transport diagnostics', () => {
     ]);
   });
 
+  it('does not block release when only the optional GET stream is rate limited', async () => {
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client: createClient(),
+      url: ENDPOINT,
+      transportType: 'streamable-http',
+      protocolEra: 'stateful',
+      protocolVersion: '2025-11-25',
+      observedRequests: [
+        observed({ readableResponseHeaders: ['mcp-session-id', 'mcp-protocol-version'] }),
+        observed({ mcpMethod: 'notifications/initialized', status: 202, responseContentType: undefined }),
+        observed({
+          method: 'GET',
+          mcpMethod: undefined,
+          status: 429,
+          outcome: 'failed',
+          responseContentType: undefined,
+          retryAfter: '120',
+          rateLimitRetry: { action: 'not-retried', waitMs: 120_000, reason: 'too long' },
+        }),
+        observed({ mcpMethod: 'tools/list' }),
+      ],
+    });
+
+    const report = await evaluateServer(ENDPOINT, undefined, vi.fn());
+
+    expect(report.outcome).toBe('scored');
+    expect(transportDiagnosticsFromSections(report.sections)).toEqual([
+      expect.objectContaining({
+        id: 'transport.target-rate-limited-429',
+        status: 'detected',
+        severity: 'warning',
+        retryAfterSeconds: 120,
+        retryAt: '2026-10-20T00:02:00.000Z',
+      }),
+    ]);
+    const decision = createReleaseDecision(report, createCompatibilityMatrix(report));
+    const transportPriorities = decision.priorities.filter(({ id }) => id.startsWith('transport.'));
+    expect(transportPriorities).toEqual([
+      expect.objectContaining({ id: 'transport.target-rate-limited-429', severity: 'medium' }),
+    ]);
+    expect(transportPriorities.some(({ severity }) => severity === 'high')).toBe(false);
+  });
+
   it('records a readable session header as passing browser evidence', async () => {
     connectionMocks.attempt.mockResolvedValueOnce({
       client: createClient(),

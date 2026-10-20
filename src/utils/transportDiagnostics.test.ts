@@ -173,6 +173,15 @@ describe('transport.unsupported-media-type-415', () => {
     expect(diagnostic.evidence[0].observation).toContain('Content-Type: application/json');
   });
 
+  it('keeps a 415 on the optional GET stream a warning, but not on the legacy SSE endpoint', () => {
+    expect(ids([
+      request({ method: 'GET', mcpMethod: undefined, status: 415, requestContentType: undefined }),
+    ])).toEqual([{ id: 'transport.unsupported-media-type-415', severity: 'warning' }]);
+    expect(ids([
+      request({ method: 'GET', mcpMethod: undefined, status: 415, requestContentType: undefined, transportType: 'legacy-sse' }),
+    ])).toEqual([{ id: 'transport.unsupported-media-type-415', severity: 'error' }]);
+  });
+
   it('ignores a proxy-produced 415', () => {
     expect(ids([proxied({ status: 415, responseSource: 'proxy' })], 'proxy')).toEqual([]);
   });
@@ -274,6 +283,57 @@ describe('transport.target-rate-limited-429', () => {
       request({ status: 429, retryAfter: '1', rateLimitRetry: { action: 'retried', waitMs: 1000 } }),
       request({ status: 200, automaticRetry: { reason: 'target-rate-limit', waitMs: 1000 } }),
     ])).toEqual([{ id: 'transport.target-rate-limited-429', severity: 'warning' }]);
+  });
+
+  it('keeps an unretried 429 on the optional GET stream a warning with its retry evidence', () => {
+    const diagnostics = collectTransportDiagnostics([{
+      route: 'direct',
+      requests: [
+        request({ crossOrigin: true, readableResponseHeaders: ['mcp-session-id'] }),
+        request({ mcpMethod: 'notifications/initialized', status: 202, responseContentType: undefined }),
+        request({
+          method: 'GET',
+          mcpMethod: undefined,
+          status: 429,
+          retryAfter: '120',
+          responseContentType: undefined,
+          rateLimitRetry: { action: 'not-retried', waitMs: 120_000, reason: 'too long' },
+        }),
+        request({ mcpMethod: 'tools/list' }),
+      ],
+    }]);
+    expect(diagnostics).toEqual([expect.objectContaining({
+      id: 'transport.target-rate-limited-429',
+      status: 'detected',
+      severity: 'warning',
+      retryAfterSeconds: 120,
+      retryAt: '2026-10-20T00:02:00.000Z',
+    })]);
+    expect(diagnostics[0].evidence[0].observation).toContain('Not retried automatically: too long');
+    expect(transportDiagnosticPriority(diagnostics[0])).toMatchObject({ severity: 'medium' });
+  });
+
+  it('keeps an unretried 429 on the legacy SSE stream an error', () => {
+    expect(ids([request({
+      method: 'GET',
+      mcpMethod: undefined,
+      status: 429,
+      transportType: 'legacy-sse',
+      rateLimitRetry: { action: 'not-retried', waitMs: 120_000, reason: 'too long' },
+    })])).toEqual([{ id: 'transport.target-rate-limited-429', severity: 'error' }]);
+  });
+
+  it('keeps the error when a required POST is also rate limited', () => {
+    const diagnostics = collectTransportDiagnostics([{
+      route: 'direct',
+      requests: [
+        request({ crossOrigin: true, readableResponseHeaders: ['mcp-session-id'] }),
+        request({ method: 'GET', mcpMethod: undefined, status: 429, retryAfter: '120', responseContentType: undefined }),
+        request({ mcpMethod: 'tools/list', status: 429, retryAfter: '120' }),
+      ],
+    }]);
+    expect(diagnostics).toEqual([expect.objectContaining({ id: 'transport.target-rate-limited-429', severity: 'error' })]);
+    expect(diagnostics[0].evidence).toHaveLength(2);
   });
 
   it('never treats the mcptest proxy caller limit as a target 429', () => {

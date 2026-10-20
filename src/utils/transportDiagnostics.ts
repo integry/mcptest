@@ -345,7 +345,7 @@ export const detectTransportDiagnostics = (
     } else if (status === 415) {
       diagnostics.push(createDiagnostic(
         'transport.unsupported-media-type-415',
-        'error',
+        streamableGet ? 'warning' : 'error',
         [toEvidence(request, route, `The MCP server answered ${requestDescription(request)} with HTTP 415 for Content-Type: ${request.requestContentType || '(unknown)'}.`)]
       ));
     } else if (status === 429) {
@@ -362,9 +362,11 @@ export const detectTransportDiagnostics = (
       const retryAt = retryAfterSeconds === undefined || recovered
         ? undefined
         : retryDeadline(receivedAt, retryAfterSeconds);
+      // The GET stream is optional, so its limit never blocks the connection;
+      // the wait is still reported so the user knows when to retry.
       diagnostics.push(createDiagnostic(
         'transport.target-rate-limited-429',
-        recovered ? 'warning' : 'error',
+        recovered || streamableGet ? 'warning' : 'error',
         [toEvidence(request, route, rateLimitObservation(request, retryAfterSeconds))],
         retryAfterSeconds === undefined
           ? {}
