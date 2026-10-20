@@ -134,7 +134,8 @@ export function renderDigestIssue({ target, now, articles, template, brief }) {
   const window = digestWindow(target);
   const slug = digestSlug(target);
   const title = issueTitle(target);
-  if (window.end > now.toISOString().slice(0, 10)) {
+  // The window includes its whole last day, so it closes at the next UTC midnight.
+  if (window.end >= now.toISOString().slice(0, 10)) {
     throw new Error(`The ${formatMonth(target)} window ends on ${window.end} and has not closed yet`);
   }
   if (articles.some((article) => article.slug === slug)) {

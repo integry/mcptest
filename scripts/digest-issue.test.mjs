@@ -17,7 +17,20 @@ import {
 
 const template = fs.readFileSync('.github/digest-issue-template.md', 'utf8');
 const docs = fs.readFileSync('docs/monthly-digest.md', 'utf8');
-const articles = readArticles('src/content/articles');
+// Fixed articles as they were when the October 2026 digest was the latest, so the
+// historical assertions keep passing after later digests are merged.
+const writeArticles = (files) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'digest-articles-'));
+  for (const [slug, frontmatter] of Object.entries(files)) {
+    fs.writeFileSync(path.join(dir, `${slug}.md`), `---\ntitle: "${slug}"\n${frontmatter}\n---\n\nBody\n`);
+  }
+  return dir;
+};
+const articlesDir = writeArticles({
+  'mcp-protocol-versions-explained': 'track: reference\norder: 10',
+  'mcp-changes-2026-10': 'track: reference\norder: 60',
+});
+const articles = readArticles(articlesDir);
 const digest = (year, month, order) => ({ slug: `mcp-changes-${year}-${String(month).padStart(2, '0')}`, track: 'reference', order, month: { year, month } });
 const render = (month, now, list = articles) => renderDigestIssue({
   target: parseMonth(month),
@@ -51,8 +64,15 @@ describe('digest window', () => {
 });
 
 describe('digest order', () => {
-  it('reads the October 2026 digest from the articles', () => {
-    expect(articles.find((article) => article.slug === 'mcp-changes-2026-10')).toMatchObject({ track: 'reference', order: 60, month: { year: 2026, month: 10 } });
+  it('reads the October 2026 digest from the repository articles', () => {
+    const live = readArticles('src/content/articles');
+    expect(live.find((article) => article.slug === 'mcp-changes-2026-10')).toMatchObject({ track: 'reference', order: 60, month: { year: 2026, month: 10 } });
+    const latest = live.filter((article) => article.month).sort((a, b) => (a.month.year - b.month.year) * 12 + a.month.month - b.month.month).at(-1);
+    const next = latest.month.month === 12 ? { year: latest.month.year + 1, month: 1 } : { year: latest.month.year, month: latest.month.month + 1 };
+    expect(nextDigestOrder(live, next)).toEqual({ order: latest.order + 1, previousSlug: latest.slug });
+  });
+
+  it('gives November 2026 order 61 after the October digest', () => {
     expect(nextDigestOrder(articles, { year: 2026, month: 11 })).toEqual({ order: 61, previousSlug: 'mcp-changes-2026-10' });
   });
 
@@ -112,7 +132,9 @@ describe('issue body', () => {
 
   it('refuses a month whose window has not closed', () => {
     expect(() => render('2026-11', '2026-11-19T23:00:00Z')).toThrow(/has not closed yet/);
-    expect(render('2026-11', '2026-11-20T00:00:00Z').order).toBe(61);
+    expect(() => render('2026-11', '2026-11-20T00:00:00Z')).toThrow(/has not closed yet/);
+    expect(() => render('2026-11', '2026-11-20T23:59:59.999Z')).toThrow(/has not closed yet/);
+    expect(render('2026-11', '2026-11-21T00:00:00Z').order).toBe(61);
   });
 });
 
@@ -134,12 +156,29 @@ describe('command line', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'digest-issue-'));
     const output = path.join(dir, 'body.md');
     const githubOutput = path.join(dir, 'github-output');
-    execFileSync(process.execPath, ['scripts/digest-issue.mjs', '--now', '2026-12-02T06:00:00Z', '--output', output], {
+    execFileSync(process.execPath, ['scripts/digest-issue.mjs', '--articles', articlesDir, '--now', '2026-12-02T06:00:00Z', '--output', output], {
       env: { ...process.env, GITHUB_OUTPUT: githubOutput },
     });
     expect(fs.readFileSync(output, 'utf8')).toBe(render('2026-11', '2026-12-02T06:00:00Z').body);
     expect(fs.readFileSync(githubOutput, 'utf8')).toBe(
       'title=Monthly digest: What changed in MCP, November 2026\nslug=mcp-changes-2026-11\nskip=false\n'
+    );
+  });
+
+  it('skips without writing a body once the article exists', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'digest-issue-'));
+    const output = path.join(dir, 'body.md');
+    const githubOutput = path.join(dir, 'github-output');
+    const withNovember = writeArticles({
+      'mcp-changes-2026-10': 'track: reference\norder: 60',
+      'mcp-changes-2026-11': 'track: reference\norder: 61',
+    });
+    execFileSync(process.execPath, ['scripts/digest-issue.mjs', '--articles', withNovember, '--now', '2026-12-02T06:00:00Z', '--output', output], {
+      env: { ...process.env, GITHUB_OUTPUT: githubOutput },
+    });
+    expect(fs.existsSync(output)).toBe(false);
+    expect(fs.readFileSync(githubOutput, 'utf8')).toBe(
+      'title=Monthly digest: What changed in MCP, November 2026\nslug=mcp-changes-2026-11\nskip=true\n'
     );
   });
 
