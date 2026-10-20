@@ -16,6 +16,7 @@ import {
   renderBadgeSvg,
 } from './badges';
 import type { ReleaseReadinessStatus } from './releaseReadiness';
+import { readStylesheet } from '../styles/readStylesheet';
 
 describe('badge selection by result', () => {
   it.each<[ReleaseReadinessStatus, string]>([
@@ -38,7 +39,7 @@ describe('badge selection by result', () => {
   });
 
   it('uses the semantic design-token colors', () => {
-    const css = readFileSync(resolve('src/index.css'), 'utf8');
+    const css = readStylesheet('tokens');
     const token = (name: string) => css.match(new RegExp(`--${name}: (#[0-9a-f]{6});`))?.[1];
     expect(BADGE_DEFINITIONS.ready.color).toBe(token('success-color'));
     expect(BADGE_DEFINITIONS.blocked.color).toBe(token('danger-color'));

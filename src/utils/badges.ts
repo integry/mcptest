@@ -13,7 +13,7 @@ export type BadgeVariant = ReleaseReadinessStatus | 'neutral';
 interface BadgeDefinition {
   label: string;
   message: string;
-  /** Right-hand segment color, taken from the light-theme semantic tokens in src/index.css. */
+  /** Right-hand segment color, taken from the light-theme semantic tokens in src/styles/tokens.css. */
   color: string;
   /** File name under public/badge/. */
   file: string;

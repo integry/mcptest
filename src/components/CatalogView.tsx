@@ -194,17 +194,17 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
               </button>
             </section>
           ) : (
-            <div className="row g-3">
+            <ul className="catalog-server-list" aria-label="Catalog servers">
               {filteredServers.map((server) => (
-                <div key={server.id} className="col-12 col-md-6 catalog-result-column">
+                <li key={server.id} className="catalog-server-list-item">
                   <CatalogServerCard
                     server={server}
                     onTest={onTestServer}
                     onCategorySelect={setCategory}
                   />
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       </div>

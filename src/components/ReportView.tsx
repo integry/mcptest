@@ -635,11 +635,11 @@ const ReportView: React.FC = () => {
       </div>
 
       {testedServers.length > 0 && (
-        <div className="card mb-3">
-          <div className="card-header">
-            <h5 className="mb-0">Previously Tested Servers</h5>
+        <section className="report-section mb-3" aria-labelledby="report-history-servers-title">
+          <div className="report-section-heading">
+            <h5 id="report-history-servers-title" className="mb-0">Previously Tested Servers</h5>
           </div>
-          <div className="card-body">
+          <div className="report-section-body">
             <div className="list-group">
               {testedServers.map((server) => (
                 <div
@@ -673,7 +673,7 @@ const ReportView: React.FC = () => {
               ))}
             </div>
           </div>
-        </div>
+        </section>
       )}
 
       {isRunning && (
@@ -705,12 +705,12 @@ const ReportView: React.FC = () => {
       )}
 
       {progress.length > 0 && !report && !reportError && (
-        <div className="card mb-3">
-          <div className="card-header">Progress</div>
+        <section className="report-section mb-3" aria-label="Progress">
+          <div className="report-section-heading">Progress</div>
           <ul className="list-group list-group-flush">
             {progress.map((p, i) => <li key={i} className="list-group-item">{p}</li>)}
           </ul>
-        </div>
+        </section>
       )}
 
       {!isRunning && !report && progress.length === 0 && !reportError && (
@@ -728,11 +728,11 @@ const ReportView: React.FC = () => {
       )}
 
       {report && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h4 className="report-target-title mb-0">Report for: {report.serverUrl}</h4>
+        <section className="report-section mb-4" aria-labelledby="report-target-title">
+          <div className="report-section-heading">
+            <h4 id="report-target-title" className="report-target-title mb-0">Report for: {report.serverUrl}</h4>
           </div>
-          <div className="card-body">
+          <div className="report-section-body">
             <ReleaseReadinessReport
               report={report}
               oauthTrace={oauthTrace}
@@ -943,7 +943,7 @@ const ReportView: React.FC = () => {
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
 
           </div>
-        </div>
+        </section>
       )}
       <ReportHistory
         endpoint={report?.serverUrl}
