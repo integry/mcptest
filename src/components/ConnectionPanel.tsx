@@ -90,7 +90,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   });
   const [showUserInfoModal, setShowUserInfoModal] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   const requiresCatalogCredential = catalogAuthType === 'api-key' || catalogAuthType === 'bearer-token';
   const connectionStatusClass = isConnected
     ? 'success'
@@ -357,9 +357,11 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                       </label>
                     </div>
                     <small id="proxyFallbackHelp" className="text-muted d-block mt-1">
-                      {currentUser
-                        ? 'Signed in: the proxy uses your higher per-account limits.'
-                        : 'No sign-in needed. Anonymous proxy use is rate limited; sign in with Google to lift the limit.'}
+                      {authLoading
+                        ? 'Anonymous proxy use is rate limited; signed-in accounts get higher limits.'
+                        : currentUser
+                          ? 'Signed in: the proxy uses your higher per-account limits.'
+                          : 'No sign-in needed. Anonymous proxy use is rate limited; sign in with Google to lift the limit.'}
                     </small>
                   </div>
                 )}

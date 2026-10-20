@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDebouncedCallback } from 'use-debounce';
 import { Space, ConnectionTab } from '../types';
+import { createDefaultSpaces, createDefaultTabs } from '../utils/defaultWorkspace';
 
 const SPACES_KEY = 'mcpSpaces';
 const TABS_KEY = 'mcpConnectionTabs';
@@ -126,8 +127,8 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
         
         if (!hasExistingData) {
           // Only set defaults if there's no existing data in localStorage
-          setSpaces([{ id: 'default', name: 'My first dashboard', cards: [] }]);
-          setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
+          setSpaces(createDefaultSpaces());
+          setTabs(createDefaultTabs());
         }
       }
     }
