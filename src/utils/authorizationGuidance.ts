@@ -232,3 +232,76 @@ export const createAuthorizationGuidance = (
 };
 
 export const createUnknownAuthorizationGuidance = unknownGuidance;
+
+export type PrivateNetworkHostKind = 'loopback' | 'private' | 'link-local' | 'local-name';
+
+const LOCAL_ONLY_SUFFIXES = ['.local', '.internal', '.lan', '.home.arpa', '.intranet', '.corp'];
+
+const ipv4Octets = (host: string): number[] | undefined => {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return undefined;
+  const octets = host.split('.').map(Number);
+  return octets.every((octet) => octet <= 255) ? octets : undefined;
+};
+
+/** Classifies hosts a public HTTPS page can only reach under browser private-network rules. */
+export const classifyPrivateNetworkHost = (url: string): PrivateNetworkHostKind | undefined => {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  } catch {
+    return undefined;
+  }
+  if (!host) return undefined;
+  if (host === 'localhost' || host.endsWith('.localhost') || host === '::1') return 'loopback';
+  const octets = ipv4Octets(host);
+  if (octets) {
+    const [a, b] = octets;
+    if (a === 127) return 'loopback';
+    if (a === 169 && b === 254) return 'link-local';
+    if (
+      a === 0
+      || a === 10
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+      || (a === 100 && b >= 64 && b <= 127)
+    ) return 'private';
+    return undefined;
+  }
+  if (host.includes(':')) {
+    if (/^fe[89ab]/.test(host)) return 'link-local';
+    if (/^f[cd]/.test(host)) return 'private';
+    return undefined;
+  }
+  if (!host.includes('.') || LOCAL_ONLY_SUFFIXES.some((suffix) => host.endsWith(suffix))) {
+    return 'local-name';
+  }
+  return undefined;
+};
+
+const PRIVATE_NETWORK_LABELS: Record<PrivateNetworkHostKind, string> = {
+  loopback: 'a loopback address on your own machine',
+  private: 'a private-network address',
+  'link-local': 'a link-local address',
+  'local-name': 'a local-only host name that public DNS cannot resolve',
+};
+
+/**
+ * Explains, accurately and without workarounds, why browser OAuth to a private
+ * target depends on the browser's own network protections.
+ */
+export const getPrivateNetworkOAuthGuidance = (
+  serverUrl: string,
+  issuer?: string
+): string | undefined => {
+  const candidates: Array<{ url: string; role: string }> = [
+    { url: serverUrl, role: 'The MCP server' },
+    ...(issuer ? [{ url: issuer, role: 'The authorization server' }] : []),
+  ];
+  for (const { url, role } of candidates) {
+    const kind = classifyPrivateNetworkHost(url);
+    if (!kind) continue;
+    const host = new URL(url).host;
+    return `${role} ${host} is ${PRIVATE_NETWORK_LABELS[kind]}. mcptest.io runs OAuth in this browser tab, so the browser's protections apply to every discovery and token request: an https:// page cannot call plain http:// endpoints (mixed content, except localhost), Chromium-based browsers apply Private/Local Network Access rules that require the server to answer the CORS preflight and may ask for your permission, and the server must allow https://mcptest.io in its CORS headers. The hosted mcptest proxy and token relay only reach public HTTPS hosts, so they cannot reach this address. Serve the MCP server and its authorization server over HTTPS with CORS for https://mcptest.io from a network this browser can reach, or use a locally run client; mcptest does not bypass these browser protections.`;
+  }
+  return undefined;
+};

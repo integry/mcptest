@@ -73,6 +73,7 @@ import {
   type PendingAuthenticatedMcpRetry,
 } from './utils/oauthTrace';
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
+import { isLandingEligible } from './utils/landingEligibility';
 
 // Constants for localStorage keys
 const SPACES_KEY = 'mcpSpaces'; // New key for dashboards
@@ -1960,6 +1961,7 @@ function App() {
                     onUpdateTab={handleUpdateTab}
                     spaces={spaces}
                     onAddCardToSpace={handleAddCardToDashboard}
+                    landingEligible={isLandingEligible(tabs, tab.id)}
                   />
                 ))}
               </div>
@@ -1998,6 +2000,7 @@ function App() {
                   onUpdateTab={handleUpdateTab}
                   spaces={spaces}
                   onAddCardToSpace={handleAddCardToSpace}
+                  landingEligible={isLandingEligible(tabs, tab.id)}
                 />
               ))}
             </div>

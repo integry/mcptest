@@ -86,6 +86,8 @@ export type OAuthTraceTerminalStatus =
   | 'proxy_limit_reached'
   | 'transient_discovery_failure'
   | 'discovery_blocked_invalid'
+  | 'authorization_metadata_unavailable'
+  | 'reauthorization_required'
   /** @deprecated retained for traces written before provider outcome classification. */
   | 'manual_client_required'
   | 'failed'
@@ -658,6 +660,8 @@ export class OAuthFlightRecorder {
             || status === 'pre_registered_client_required'
             || status === 'provider_approval_required'
             || status === 'operator_client_not_configured'
+            || status === 'authorization_metadata_unavailable'
+            || status === 'reauthorization_required'
             ? 'required'
             : status === 'cancelled'
               ? 'cancelled'

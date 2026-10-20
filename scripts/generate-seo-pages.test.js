@@ -507,3 +507,29 @@ describe('generated page metadata', () => {
     expect(html).toContain('Sources</h2>');
   });
 });
+
+describe('generated server profile badge embed', () => {
+  it('renders escaped catalog badge snippets that use the worker badge endpoint', () => {
+    const [server] = mergeCatalogServers(
+      catalogSeeds.filter((seed) => seed.id === 'context7'),
+      catalogValidation,
+      catalogCapabilities
+    );
+    const html = renderServerHtml(indexHtml, server);
+    expect(html).toContain('<h2 id="server-badge-embed-title">Share and embed</h2>');
+    expect(html).toContain('<img src="/badge/ready.svg" alt="mcptest.io: ready" height="20">');
+    expect(html).toContain(
+      '[![Tested on mcptest.io](https://mcptest.io/badge/server/context7.svg)](https://mcptest.io/servers/context7/)'
+    );
+    expect(html).toContain(
+      '&lt;a href=&quot;https://mcptest.io/servers/context7/&quot;&gt;&lt;img src=&quot;https://mcptest.io/badge/server/context7.svg&quot;'
+    );
+    expect(html).toContain('.. image:: https://mcptest.io/badge/server/context7.svg\n   :alt: Tested on mcptest.io\n   :target: https://mcptest.io/servers/context7/');
+  });
+
+  it('previews the neutral badge for a server without a validation run', () => {
+    const html = renderServerHtml(indexHtml, catalogServer('https://example.com/mcp', 'streamable-http'));
+    expect(html).toContain('<img src="/badge/mcptest.svg" alt="tested on: mcptest.io" height="20">');
+    expect(html).toContain('https://mcptest.io/badge/server/example-server.svg');
+  });
+});

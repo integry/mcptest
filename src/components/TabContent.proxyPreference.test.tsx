@@ -82,6 +82,7 @@ const renderTab = (tab: ConnectionTab, onUpdateTab = vi.fn()) => {
           onUpdateTab={onUpdateTab}
           spaces={[]}
           onAddCardToSpace={vi.fn()}
+          landingEligible
         />
       </MemoryRouter>
     );
@@ -109,12 +110,7 @@ const renderNewTab = (useProxy = true) => {
 };
 
 const connectToSlack = async (container: HTMLElement, endpoint = 'https://mcp.slack.com/mcp') => {
-  const firstConnectionButton = Array.from(container.querySelectorAll('button')).find(
-    (button) => button.textContent?.includes('Connect your first server')
-  );
-  expect(firstConnectionButton).toBeDefined();
-
-  act(() => firstConnectionButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  expect(container.querySelector('.landing')).not.toBeNull();
 
   const input = container.querySelector<HTMLInputElement>('#serverUrl');
   expect(input).not.toBeNull();
@@ -383,10 +379,6 @@ describe('endpoint-scoped preferred transport hints', () => {
 
   it('uses definitive Streamable HTTP evidence for a suggested /sse endpoint', async () => {
     const view = renderNewTab(false);
-    const firstConnectionButton = Array.from(view.container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Connect your first server')
-    );
-    act(() => firstConnectionButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
     const suggestedServerButton = Array.from(view.container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('CoinGecko')

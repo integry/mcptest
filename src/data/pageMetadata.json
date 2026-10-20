@@ -1,7 +1,7 @@
 {
   "home": {
-    "title": "mcptest.io | The Remote MCP Server Playground",
-    "description": "The easiest way to inspect, debug, and negotiate with remote MCP servers. Connect an endpoint to explore its tools, resources, prompts, and live responses."
+    "title": "Test Remote MCP Servers | MCP Inspector Online | mcptest.io",
+    "description": "Inspect, debug and evaluate remote MCP servers in your browser. An MCP inspector online: test remote MCP server protocol negotiation, OAuth 2.1, CORS and tool contracts, then share a report."
   },
   "docs": {
     "what-is-mcp": {

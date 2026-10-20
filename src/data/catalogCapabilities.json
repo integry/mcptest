@@ -1,7 +1,259 @@
 {
+  "astro-docs": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:04.569Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.docs.astro.build/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "search_astro_docs",
+          "description": "Search the official Astro framework docs",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Search query",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "aws-knowledge": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:03.472Z",
+    "provenance": {
+      "testedEndpoint": "https://knowledge-mcp.global.api.aws/",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 5,
+      "retainedCount": 5,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "aws___get_regional_availability",
+          "description": "AWS resource availability per region. - Max 10 regions; multi-region needs `filters`; single-region supports `next_token`. - Status: isAvailableIn | isNotAvailableIn | isPlannedIn | Not Found. - Response key: products | service_apis | cfn_resources. Not for region counts/docs/vague queries -- use `search_documentation` / `list_regions`. Filter values must EXACTLY match AWS's catalog names; guessed, partial, or pluralized names are rejected (\"values in filter parameter do not exist\"). If unsure of the exact name, first call once for a single region with resource_type set and NO filters to list",
+          "input": [
+            {
+              "name": "filters",
+              "type": "array",
+              "description": "Use exact AWS product or sub-feature name. - product: 'Amazon Bedrock' (service), or sub-features like 'Comprehend Auto Scaling', 'Latency-Based Routing', 'PrivateLink Support'. When the user names a specific sub-feature, filter on the sub-feature -- do NOT generalize to the parent service ('Amazon Comprehend'); that returns availability for the wrong scope. - api: 'SdkServiceId+Operation' (e.g. 'CloudFormation+CreateStack', 'IAM+GetSSHPublicKey') or 'SdkServiceId' (e.g. 'EC2'). Use a literal '+' between service and operation -- not space, colon, or hyphen. - cfn: 'AWS::EC2::Instance', 'AWS::L",
+              "required": false
+            },
+            {
+              "name": "next_token",
+              "type": "string",
+              "description": "Pagination token. Single-region, no filters only.",
+              "required": false
+            },
+            {
+              "name": "region",
+              "type": "string",
+              "description": "Unused; use `regions`.",
+              "required": false
+            },
+            {
+              "name": "regions",
+              "type": "array",
+              "description": "AWS region codes (max 10). Multi-region requires `filters`; single-region supports `next_token`.",
+              "required": false
+            },
+            {
+              "name": "resource_type",
+              "type": "string",
+              "description": "Required: 'product' | 'api' | 'cfn'.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "aws___list_regions",
+          "description": "Retrieve a list of all AWS regions."
+        },
+        {
+          "name": "aws___read_documentation",
+          "description": "Fetch full AWS doc pages as markdown. `search_documentation` already returns verbatim page chunks, so don't re-read a URL whose chunk you already have to \"confirm\" or \"round out\" an answer -- the chunk is the real page text; treat it as authoritative. Reading the full page is justified ONLY when the chunks genuinely lack the content: - an enumeration or aggregation (\"list all X\", \"how many X\") needs the complete set and the chunks show only part of it; - no search result is on-topic after refining the query, and a known doc URL would have the answer. Otherwise, answer from the chunks. Use exac",
+          "input": [
+            {
+              "name": "requests",
+              "type": "array",
+              "description": "List of `{url, max_length?, start_index?}`. Batch 2-5.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "aws___retrieve_skill",
+          "description": "Retrieve an AWS skill (workflows, references). Returns SKILL.md, or `file` if given. Call `search_documentation` FIRST and copy `skill_name` verbatim -- it is an opaque registry ID. Never guess or fabricate `skill_name` or `file`.",
+          "input": [
+            {
+              "name": "file",
+              "type": "string",
+              "description": "Optional file path within the skill, copied as cited (e.g. `references/architecture.md`). Don't add or strip a `references/` prefix. Omit for SKILL.md.",
+              "required": false
+            },
+            {
+              "name": "skill_name",
+              "type": "string",
+              "description": "Required. Exact `skill_name` from a search_documentation result, copied verbatim. Do not invent or modify.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "aws___search_documentation",
+          "description": "AWS docs search. Each result's `context` is verbatim page text -- a real chunk of the actual page, not a short snippet -- and usually already contains the answer, so answer directly from it. Use `read_documentation` only when the chunks genuinely lack the needed detail. Pick ONE topic. Add a 2nd ONLY if query genuinely spans domains. Extra topics dilute ranking. - reference_documentation -- API/SDK/CLI specs, config params - current_awareness -- new/released/announced - troubleshooting -- errors, \"how to fix\" (NOT for conceptual/feature questions) - amplify_docs -- Amplify (+ language) - cdk_d",
+          "input": [
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of results to return (default 4).",
+              "required": false
+            },
+            {
+              "name": "search_phrase",
+              "type": "string",
+              "description": "Keywords; preserve exact error strings and all task terms verbatim.",
+              "required": true
+            },
+            {
+              "name": "topics",
+              "type": "array",
+              "description": "Up to 3 from: reference_documentation, current_awareness, troubleshooting, amplify_docs, cdk_docs, cdk_constructs, cloudformation, agent_skills, strands_docs, general. Default [\"general\"].",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "cloudflare-docs": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:02.655Z",
+    "provenance": {
+      "testedEndpoint": "https://docs.mcp.cloudflare.com/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "migrate_pages_to_workers_guide",
+          "description": "ALWAYS read this guide before migrating Pages projects to Workers."
+        },
+        {
+          "name": "search_cloudflare_documentation",
+          "description": "Search the Cloudflare documentation. This tool should be used to answer any question about Cloudflare products or features, including: - Workers, Pages, R2, Images, Stream, D1, Durable Objects, KV, Workflows, Hyperdrive, Queues - AI Search, Workers AI, Vectorize, AI Gateway, Browser Run - Zero Trust, Access, Tunnel, Gateway, Browser Isolation, WARP, DDOS, Magic Transit, Magic WAN - CDN, Cache, DNS, Zaraz, Argo, Rulesets, Terraform, Account and Billing Results are returned as semantically similar chunks to the query.",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "workers-prompt-full",
+          "description": "Detailed prompt for generating Cloudflare Workers code (and other developer platform products) from [REDACTED URI]"
+        }
+      ]
+    }
+  },
   "coingecko": {
     "version": 1,
-    "observedAt": "2026-08-18T11:34:54.575Z",
+    "observedAt": "2026-10-20T00:27:53.675Z",
     "provenance": {
       "testedEndpoint": "https://mcp.api.coingecko.com/mcp",
       "route": "direct"
@@ -85,7 +337,7 @@
   },
   "context7": {
     "version": 1,
-    "observedAt": "2026-08-18T11:34:54.294Z",
+    "observedAt": "2026-10-20T00:27:53.792Z",
     "provenance": {
       "testedEndpoint": "https://mcp.context7.com/mcp",
       "route": "direct"
@@ -100,12 +352,18 @@
       "items": [
         {
           "name": "query-docs",
-          "description": "Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework. You must call 'Resolve Context7 Library ID' tool first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query. Do not call this tool more than 3 times per question.",
+          "description": "Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework. You must call 'Resolve Context7 Library ID' tool first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query. Do not call this tool more than 3 times per question. If you know the programming language the user is working in, pass it as `language` so the results match their setup.",
           "input": [
+            {
+              "name": "language",
+              "type": "string",
+              "description": "Programming language the user is writing code in, such as 'Python', 'TypeScript', 'Go', or 'C#'. Ranks code examples in that language first. Leave it out when the language is unknown or does not apply.",
+              "required": false
+            },
             {
               "name": "libraryId",
               "type": "string",
-              "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'.",
+              "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v16.2.9') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'.",
               "required": true
             },
             {
@@ -163,22 +421,22 @@
   },
   "deepwiki": {
     "version": 1,
-    "observedAt": "2026-08-18T11:34:56.684Z",
+    "observedAt": "2026-10-20T00:28:01.764Z",
     "provenance": {
       "testedEndpoint": "https://mcp.deepwiki.com/mcp",
       "route": "direct"
     },
     "authentication": "unauthenticated",
     "tools": {
-      "status": "complete",
+      "status": "partial",
       "observedCount": 3,
       "retainedCount": 3,
       "omittedCount": 0,
       "paginationComplete": true,
       "items": [
         {
-          "name": "ask_question",
-          "description": "Ask any question about a GitHub repository and get an AI-powered, context-grounded response.",
+          "name": "ask_wiki_question",
+          "description": "Ask any question about a GitHub repository's codebase and get an AI-powered answer grounded in its DeepWiki.",
           "input": [
             {
               "name": "question",
@@ -244,9 +502,1184 @@
       "items": []
     }
   },
+  "exa": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:09.764Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.exa.ai/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "web_fetch_exa",
+          "description": "Read a webpage's full content as clean markdown. Use after web_search_exa when highlights are insufficient or to read any URL. Best for: Extracting full content from known URLs. Batch multiple URLs in one call. Returns: Clean text content and metadata from the page(s).",
+          "input": [
+            {
+              "name": "maxCharacters",
+              "type": "number",
+              "description": "Maximum characters to extract per page (default: 3000)",
+              "required": false
+            },
+            {
+              "name": "urls",
+              "type": "array",
+              "description": "URLs to read. Batch multiple URLs in one call.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "web_search_exa",
+          "description": "Search the web for any topic and get clean, ready-to-use content. Best for: Finding current information, news, facts, people, companies, or answering questions about any topic. Returns: Clean text content from top search results. Query tips: describe the ideal page, not keywords. \"blog post comparing React and Vue performance\" not \"React vs Vue\". Use category:people / category:company to search through Linkedin profiles / companies respectively. If highlights are insufficient, follow up with web_fetch_exa on the best URLs.",
+          "input": [
+            {
+              "name": "numResults",
+              "type": "number",
+              "description": "Number of search results to return (default: 10).",
+              "required": false
+            },
+            {
+              "name": "objective",
+              "type": "string",
+              "description": "Goal for this search turn; say which documents should rank first, which should be excluded, and what specific facts or figures to pull from them.",
+              "required": true
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Natural language search query. Should be a semantically rich description of the ideal page, not just keywords. Optionally include category:<type> (company, people) to focus results — e.g. 'category:people John Doe software engineer'.",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "tools_list",
+          "description": "List of available Exa tools and their descriptions",
+          "mimeType": "application/json"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "web_search_help",
+          "description": "Get help with web search using Exa"
+        }
+      ]
+    }
+  },
+  "gitbook-docs": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:07.987Z",
+    "provenance": {
+      "testedEndpoint": "https://gitbook.com/docs/~gitbook/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 4,
+      "retainedCount": 4,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "askQuestion",
+          "description": "Ask a natural-language question about GitBook Documentation and get a synthesized answer, with links to the source pages. Prefer this over `searchDocumentation` when you want a direct answer to a question rather than a list of matching pages; use `searchDocumentation`/`getPage` when you need to browse or read full pages yourself.",
+          "input": [
+            {
+              "name": "goal",
+              "type": "string",
+              "description": "The broader end goal you are ultimately trying to accomplish (as/on behalf of the user). Used to tailor the answer to be most useful for your goal. Optional.",
+              "required": false
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "description": "The natural-language question to answer about GitBook Documentation.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "getPage",
+          "description": "Fetch the full markdown content of a specific documentation page from GitBook Documentation. Use this when you have a page URL and want to read its content. Accepts full URLs (e.g. [REDACTED URI] Since `searchDocumentation` returns partial content, use `getPage` to retrieve the complete page when you need more details. The content includes links you can follow to navigate to related pages.",
+          "input": [
+            {
+              "name": "url",
+              "type": "string",
+              "description": "The URL of the page to fetch",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "searchDocumentation",
+          "description": "Search across the documentation to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about GitBook Documentation, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages.",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "sendFeedback",
+          "description": "Report an issue in the documentation of GitBook Documentation so the team can fix it. Use it whenever, while helping a user, you come across content that is outdated, contradictory, missing information, or otherwise unhelpful. Also use it when the user themselves reports a problem with the docs, even if you could not verify it yourself. If it's your own observation, do a quick sanity check that the issue is real before reporting — no need to exhaustively re-read the page. Send one call per distinct issue and do not report the same issue twice in a conversation. Do not use this tool to confirm",
+          "input": [
+            {
+              "name": "content",
+              "type": "string",
+              "description": "Explain the issue in full, as if writing to a documentation maintainer who never saw this conversation. Describe what is wrong, where on the page it appears (quote the exact sentence or section title when possible), what the user was trying to do, and, when relevant, what the correct or expected information should be. Write a few clear, specific sentences in English. Never include personal or confidential information from the conversation. Up to 2048 characters.",
+              "required": true
+            },
+            {
+              "name": "goal",
+              "type": "string",
+              "description": "The broader end goal you were ultimately trying to accomplish (as/on behalf of the user) when you hit this issue. Gives the team the context you were working towards. Optional.",
+              "required": false
+            },
+            {
+              "name": "pageUrl",
+              "type": "string",
+              "description": "The full URL of the page the issue is about (e.g. [REDACTED URI] so the finding is linked to the exact page.",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "gitmcp": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:07.361Z",
+    "provenance": {
+      "testedEndpoint": "https://gitmcp.io/docs",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 5,
+      "retainedCount": 5,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "fetch_generic_documentation",
+          "description": "Fetch documentation for any GitHub repository by providing owner and project name",
+          "input": [
+            {
+              "name": "owner",
+              "type": "string",
+              "description": "The GitHub repository owner (username or organization)",
+              "required": true
+            },
+            {
+              "name": "repo",
+              "type": "string",
+              "description": "The GitHub repository name",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "fetch_generic_url_content",
+          "description": "Generic tool to fetch content from any absolute URL, respecting robots.txt rules. Use this to retrieve referenced urls (absolute urls) that were mentioned in previously fetched documentation.",
+          "input": [
+            {
+              "name": "url",
+              "type": "string",
+              "description": "The URL of the document or page to fetch",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "match_common_libs_owner_repo_mapping",
+          "description": "Match a library name to an owner/repo. Don't use it if you have an owner and repo already. Use this first if only a library name was provided. If found - you can use owner and repo to call other tools. If not found - try to use the library name directly in other tools.",
+          "input": [
+            {
+              "name": "library",
+              "type": "string",
+              "description": "The name of the library to try and match to an owner/repo.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "search_generic_code",
+          "description": "Search for code in any GitHub repository by providing owner, project name, and search query. Returns matching files. Supports pagination with 30 results per page.",
+          "input": [
+            {
+              "name": "owner",
+              "type": "string",
+              "description": "The GitHub repository owner (username or organization)",
+              "required": true
+            },
+            {
+              "name": "page",
+              "type": "number",
+              "description": "Page number to retrieve (starting from 1). Each page contains 30 results.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The search query to find relevant code files",
+              "required": true
+            },
+            {
+              "name": "repo",
+              "type": "string",
+              "description": "The GitHub repository name",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "search_generic_documentation",
+          "description": "Semantically search in documentation for any GitHub repository by providing owner, project name, and search query. Useful for specific queries.",
+          "input": [
+            {
+              "name": "owner",
+              "type": "string",
+              "description": "The GitHub repository owner (username or organization)",
+              "required": true
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The search query to find relevant documentation",
+              "required": true
+            },
+            {
+              "name": "repo",
+              "type": "string",
+              "description": "The GitHub repository name",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "google-bigquery": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:14.109Z",
+    "provenance": {
+      "testedEndpoint": "https://bigquery.googleapis.com/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 9,
+      "retainedCount": 9,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "cancel_job",
+          "description": "Cancel a running BigQuery job. Use this tool to cancel a query job that is currently executing (i.e. returned `job_complete: false` with a `job_id` from `execute_sql` or `execute_sql_readonly`). Specify the `job_id` to abort.",
+          "input": [
+            {
+              "name": "jobId",
+              "type": "string",
+              "description": "Required. Job ID of the job to cancel.",
+              "required": true
+            },
+            {
+              "name": "location",
+              "type": "string",
+              "description": "Required. The geographic location of the job.",
+              "required": true
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project ID of the job to cancel.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "execute_sql",
+          "description": "Run a SQL query in the project and return the result. Prefer the `execute_sql_readonly` tool if possible. This tool can execute any query that bigquery supports including: * SQL Queries (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, etc.) * AI/ML functions like `AI.FORECAST`, `AI.KEY_DRIVERS`, `ML.EVALUATE`, `ML.PREDICT` * Any other query that bigquery supports. Example Queries: ```sql -- Insert data into a table. INSERT INTO `my_project.my_dataset`.my_table (name, age) VALUES ('Alice', 30); -- Create a table. CREATE TABLE `my_project.my_dataset`.my_table ( name STRING, age INT64); -- DELE",
+          "input": [
+            {
+              "name": "dryRun",
+              "type": "boolean",
+              "description": "Optional. If set to true, BigQuery doesn't run the job. Instead, if the query is valid, BigQuery returns statistics about the job such as how many bytes would be processed. If the query is invalid, an error returns. The default value is false.",
+              "required": false
+            },
+            {
+              "name": "jobTimeoutMs",
+              "type": "string",
+              "description": "Optional. Optional: Job timeout in milliseconds. If this time limit is exceeded, BigQuery will attempt to stop the query job.",
+              "required": false
+            },
+            {
+              "name": "labels",
+              "type": "object",
+              "description": "Optional. The labels associated with this query. Labels can be used to organize and group query jobs. Label keys and values can be no longer than 63 characters, can only contain lowercase letters, numeric characters, underscores and dashes. International characters are allowed. Label keys must start with a letter and each label in the map must have a different key.",
+              "required": false
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project that will be used for query execution and billing.",
+              "required": true
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Required. The query to execute in the form of a GoogleSQL query.",
+              "required": true
+            },
+            {
+              "name": "timeoutMs",
+              "type": "integer",
+              "description": "Optional. Optional: Specifies the maximum amount of time, in milliseconds, that the client is willing to wait for the query to complete. By default, this limit is 20 seconds (20,000 milliseconds).",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "execute_sql_readonly",
+          "description": "Run a read-only SQL query in the project and return the result. Prefer this tool over `execute_sql` if possible. This tool is restricted to only `SELECT` statements. `INSERT`, `UPDATE`, and `DELETE` statements and stored procedures aren't allowed. If the query doesn't include a `SELECT` statement, an error is returned. For information on creating queries, see the [GoogleSQL documentation]([REDACTED URI] IMPORTANT: For predictive and analytical tasks (forecasting, anomaly detection, key driver / root cause analysis, classification, c",
+          "input": [
+            {
+              "name": "dryRun",
+              "type": "boolean",
+              "description": "Optional. If set to true, BigQuery doesn't run the job. Instead, if the query is valid, BigQuery returns statistics about the job such as how many bytes would be processed. If the query is invalid, an error returns. The default value is false.",
+              "required": false
+            },
+            {
+              "name": "jobTimeoutMs",
+              "type": "string",
+              "description": "Optional. Optional: Job timeout in milliseconds. If this time limit is exceeded, BigQuery will attempt to stop the query job.",
+              "required": false
+            },
+            {
+              "name": "labels",
+              "type": "object",
+              "description": "Optional. The labels associated with this query. Labels can be used to organize and group query jobs. Label keys and values can be no longer than 63 characters, can only contain lowercase letters, numeric characters, underscores and dashes. International characters are allowed. Label keys must start with a letter and each label in the map must have a different key.",
+              "required": false
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project that will be used for query execution and billing.",
+              "required": true
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Required. The query to execute in the form of a GoogleSQL query.",
+              "required": true
+            },
+            {
+              "name": "timeoutMs",
+              "type": "integer",
+              "description": "Optional. Optional: Specifies the maximum amount of time, in milliseconds, that the client is willing to wait for the query to complete. By default, this limit is 20 seconds (20,000 milliseconds).",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "get_dataset_info",
+          "description": "Get metadata information about a BigQuery dataset or BigLake namespace.",
+          "input": [
+            {
+              "name": "datasetId",
+              "type": "string",
+              "description": "Required. Dataset ID of the dataset request.",
+              "required": true
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project ID of the dataset request.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "get_job",
+          "description": "Get information and status about a BigQuery job. Use this tool to check the status, statistics, or configuration of a job using its `job_id`.",
+          "input": [
+            {
+              "name": "jobId",
+              "type": "string",
+              "description": "Required. Job ID of the requested job.",
+              "required": true
+            },
+            {
+              "name": "location",
+              "type": "string",
+              "description": "Required. The geographic location of the job.",
+              "required": true
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project ID of the requested job.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "get_query_results",
+          "description": "Get the results of a BigQuery SQL query job. Use this tool ONLY when: 1. A previous `execute_sql` or `execute_sql_readonly` call returned `job_complete: false` with a `job_id` (poll with this tool until `job_complete: true`), OR 2. You need to paginate through additional rows using `page_token` or `start_index` for a previously completed job. Do NOT call this tool if the query already returned `job_complete: true` with all rows. Supports pagination. Use `max_results` to limit results and `page_token` to retrieve the next page of results.",
+          "input": [
+            {
+              "name": "jobId",
+              "type": "string",
+              "description": "Required. Job ID of the query job.",
+              "required": true
+            },
+            {
+              "name": "location",
+              "type": "string",
+              "description": "Required. The geographic location of the job.",
+              "required": true
+            },
+            {
+              "name": "maxResults",
+              "type": "integer",
+              "description": "Optional. Maximum number of results to read.",
+              "required": false
+            },
+            {
+              "name": "pageToken",
+              "type": "string",
+              "description": "Optional. Page token, returned by a previous call, to request the next page of results.",
+              "required": false
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project ID of the query job.",
+              "required": true
+            },
+            {
+              "name": "startIndex",
+              "type": "string",
+              "description": "Optional. Zero-based index of the starting row.",
+              "required": false
+            },
+            {
+              "name": "timeoutMs",
+              "type": "integer",
+              "description": "Optional. Specifies the maximum amount of time, in milliseconds, that the client is willing to wait for the query to complete.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "get_table_info",
+          "description": "Get metadata information about a BigQuery table or BigLake table.",
+          "input": [
+            {
+              "name": "datasetId",
+              "type": "string",
+              "description": "Required. Dataset ID of the table request.",
+              "required": true
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project ID of the table request.",
+              "required": true
+            },
+            {
+              "name": "tableId",
+              "type": "string",
+              "description": "Required. Table ID of the table request.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "list_dataset_ids",
+          "description": "List BigQuery dataset IDs and BigLake namespaces in a Google Cloud project. Supports pagination. Use `page_size` to limit results and `page_token` to retrieve next page.",
+          "input": [
+            {
+              "name": "pageSize",
+              "type": "integer",
+              "description": "Optional. The maximum number of results to return in a single response page. If unset, the default page size of 5000 is used.",
+              "required": false
+            },
+            {
+              "name": "pageToken",
+              "type": "string",
+              "description": "Optional. Page token, returned by a previous call, to request the next page of results.",
+              "required": false
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project ID of the dataset request.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "list_table_ids",
+          "description": "List table ids in a BigQuery dataset or BigLake namespace. Supports pagination. Use `page_size` to limit results and `page_token` to retrieve next page.",
+          "input": [
+            {
+              "name": "datasetId",
+              "type": "string",
+              "description": "Required. Dataset ID of the table request.",
+              "required": true
+            },
+            {
+              "name": "pageSize",
+              "type": "integer",
+              "description": "Optional. The maximum number of results to return in a single response page. If unset, the default page size of 5000 is used.",
+              "required": false
+            },
+            {
+              "name": "pageToken",
+              "type": "string",
+              "description": "Optional. Page token, returned by a previous call, to request the next page of results.",
+              "required": false
+            },
+            {
+              "name": "projectId",
+              "type": "string",
+              "description": "Required. Project ID of the table request.",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "google-developer-knowledge": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:05.481Z",
+    "provenance": {
+      "testedEndpoint": "https://developerknowledge.googleapis.com/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "answer_query",
+          "description": "Use answer_query to get a grounded, synthesized conceptual answer to a high-level question about Google developer products. For exact code samples, CLI flags, specific error messages, or full document walkthroughs, prefer `search_documents` followed by `get_documents` instead. This tool has limited quota. This tool will synthesize information from the corpus to generate an answer to the query. answer_query grounds answers using the same corpus as search_documents. This tool returns the generated answer_text and a list of document names (references) used to generate the answer. Always cite the",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Required. The query to answer.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "get_documents",
+          "description": "Use this tool to retrieve the full content of a single document or up to 20 documents in a single call. The document names should be obtained from either the `parent` field of results from a call to the `search_documents` tool or the `references` field returned by the `answer_query` tool. Set the `names` parameter to a list of document names (`documents/...`), and cite the authoritative source documents used in your final response.",
+          "input": [
+            {
+              "name": "names",
+              "type": "array",
+              "description": "Required. The names of the documents to retrieve, as returned by the `parent` field of `search_documents` results or the `references` field of `answer_query`. A maximum of 20 documents can be retrieved in one call. The documents are returned in the same order as the `names` in the request. Format: `documents/{uri_without_scheme}` Example: `documents/docs.cloud.google.com/storage/docs/creating-buckets`",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "search_documents",
+          "description": "Use this tool to find documentation about Google developer products. The documents contain official APIs, code snippets, release notes, best practices, guides, debugging info, and more. It covers the following products and domains: * ADK: adk.dev * Android: developer.android.com * Apigee: docs.apigee.com * Chrome: developer.chrome.com * Dart: dart.dev * Firebase: firebase.google.com * Flutter: docs.flutter.dev * Fuchsia: fuchsia.dev * Gemini CLI: geminicli.com * Genkit: genkit.dev * Go: go.dev * Google AI: ai.google.dev * Google Antigravity: antigravity.google * Google Cloud: cloud.google.com",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Required. The raw query string provided by the user, such as \"How to create a Cloud Storage bucket?\".",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "grep": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:11.847Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.grep.app/",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "searchGitHub",
+          "description": "Find real-world code examples from over a million public GitHub repositories to help answer programming questions. **IMPORTANT: This tool searches for literal code patterns (like grep), not keywords. Search for actual code that would appear in files:** - ✅ Good: 'useState(', 'import React from', 'async function', '(?s)try {.*await' - ❌ Bad: 'react tutorial', 'best practices', 'how to use' **When to use this tool:** - When implementing unfamiliar APIs or libraries and need to see real usage patterns - When unsure about correct syntax, parameters, or configuration for a specific library - When l",
+          "input": [
+            {
+              "name": "language",
+              "type": "array",
+              "description": "Filter by programming language. Examples: ['TypeScript', 'TSX'], ['JavaScript'], ['Python'], ['Java'], ['C#'], ['Markdown'], ['YAML']",
+              "required": false
+            },
+            {
+              "name": "matchCase",
+              "type": "boolean",
+              "description": "Whether the search should be case sensitive",
+              "required": false
+            },
+            {
+              "name": "matchWholeWords",
+              "type": "boolean",
+              "description": "Whether to match whole words only",
+              "required": false
+            },
+            {
+              "name": "path",
+              "type": "string",
+              "description": "Filter by file path. Examples: 'src/components/Button.tsx', 'README.md'. Can match partial paths, for example '/route.ts' will find route.ts files at any level.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The literal code pattern to search for (e.g., 'useState(', 'export function'). Use actual code that would appear in files, not keywords or questions.",
+              "required": true
+            },
+            {
+              "name": "repo",
+              "type": "string",
+              "description": "Filter by repository. Examples: 'facebook/react', 'microsoft/vscode', 'vercel/ai'. Can match partial names, for example 'vercel/' will find repositories in the vercel org.",
+              "required": false
+            },
+            {
+              "name": "useRegexp",
+              "type": "boolean",
+              "description": "Whether to interpret the query as a regular expression",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "jina": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:08.862Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.jina.ai/v1",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 12,
+      "retainedCount": 12,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "capture_screenshot_url",
+          "description": "Screenshot a page as base64 JPEG. Use when the page must be seen rather than read.",
+          "input": [
+            {
+              "name": "firstScreenOnly",
+              "type": "boolean",
+              "description": "Capture only the first screen instead of the full page. Faster.",
+              "required": false
+            },
+            {
+              "name": "return_url",
+              "type": "boolean",
+              "description": "Return URLs instead of base64 images.",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "deduplicate_strings",
+          "description": "Select the top-k semantically distinct strings from a list, dropping near-duplicates.",
+          "input": [
+            {
+              "name": "k",
+              "type": "integer",
+              "description": "How many to keep. Omit to pick k automatically from diminishing returns.",
+              "required": false
+            },
+            {
+              "name": "strings",
+              "type": "array",
+              "description": "Strings to deduplicate, up to 1000.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "extract_pdf",
+          "description": "Extract figures, tables and equations from a PDF as images, by arXiv id or URL.",
+          "input": [
+            {
+              "name": "id",
+              "type": "string",
+              "description": "arXiv id, e.g. '2301.12345'. Give id or url.",
+              "required": false
+            },
+            {
+              "name": "max_edge",
+              "type": "number",
+              "description": "Longest image edge in pixels, default 1024.",
+              "required": false
+            },
+            {
+              "name": "type",
+              "type": "string",
+              "description": "Comma-separated types to keep: figure, table, equation. Default all.",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "description": "PDF URL. Give id or url.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "guess_datetime_url",
+          "description": "Guess when a page was published or last updated, with a confidence score. Checks HTTP headers, metadata, Schema.org, visible dates, feeds and sitemaps.",
+          "input": [
+            {
+              "name": "url",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "primer",
+          "description": "Current time, user location and network environment for the session. Use before answering anything time- or location-dependent."
+        },
+        {
+          "name": "read_url",
+          "description": "Fetch a URL (page or PDF) as clean markdown. Pass `question` to get only the passages answering it instead of the whole page - far cheaper than reading the full body into context.",
+          "input": [
+            {
+              "name": "chunk_size",
+              "type": "integer",
+              "description": "Passage size in words, default 100. Larger gives more surrounding context, smaller pinpoints the answer. Comparable across scripts. Needs `question`.",
+              "required": false
+            },
+            {
+              "name": "ocr",
+              "type": "boolean",
+              "description": "Read the rendered page as an image with jina-ocr-v1 instead of its HTML. Use for scanned documents and PDFs whose text is not in the markup, and to keep formulas and table structure. Parses ONE page per call, page 1 unless `page` says otherwise, and costs about 40x the tokens per page, so leave off unless the HTML path has failed you.",
+              "required": false
+            },
+            {
+              "name": "page",
+              "type": "integer",
+              "description": "Which page the OCR pass should parse, 1-based. Needs `ocr`; the HTML path returns the whole document at once.",
+              "required": false
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "description": "Return only the passages answering this question, instead of the full body. Omit for the whole page.",
+              "required": false
+            },
+            {
+              "name": "topk",
+              "type": "integer",
+              "description": "Passages to return, default 1. Needs `question`.",
+              "required": false
+            },
+            {
+              "name": "url",
+              "description": "Page or PDF URL, or up to 5 URLs to read in parallel.",
+              "required": true
+            },
+            {
+              "name": "withAllImages",
+              "type": "boolean",
+              "description": "Also return every image on the page.",
+              "required": false
+            },
+            {
+              "name": "withAllLinks",
+              "type": "boolean",
+              "description": "Also return every link on the page.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "search_arxiv",
+          "description": "Search arXiv preprints (physics, maths, CS, quantitative biology and finance).",
+          "input": [
+            {
+              "name": "num",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "query",
+              "required": true
+            },
+            {
+              "name": "tbs",
+              "type": "string",
+              "description": "Age limit: qdr:h, qdr:d, qdr:w, qdr:m, qdr:y (hour to year).",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "search_images",
+          "description": "Search the web for images. Returns base64 JPEGs by default.",
+          "input": [
+            {
+              "name": "gl",
+              "type": "string",
+              "description": "Country code, e.g. 'de'.",
+              "required": false
+            },
+            {
+              "name": "hl",
+              "type": "string",
+              "description": "Language code, e.g. 'zh-cn'.",
+              "required": false
+            },
+            {
+              "name": "location",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "num",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "return_url",
+              "type": "boolean",
+              "description": "Return URLs and metadata instead of base64 images.",
+              "required": false
+            },
+            {
+              "name": "tbs",
+              "type": "string",
+              "description": "Age limit: qdr:h, qdr:d, qdr:w, qdr:m, qdr:y (hour to year).",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "search_jina_blog",
+          "description": "Search Jina AI's news and blog at jina.ai/news: product announcements, model releases, technical write-ups.",
+          "input": [
+            {
+              "name": "num",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "query",
+              "required": true
+            },
+            {
+              "name": "tbs",
+              "type": "string",
+              "description": "Age limit: qdr:h, qdr:d, qdr:w, qdr:m, qdr:y (hour to year).",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "search_ssrn",
+          "description": "Search SSRN working papers (social science, economics, law, finance, management).",
+          "input": [
+            {
+              "name": "num",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "query",
+              "required": true
+            },
+            {
+              "name": "tbs",
+              "type": "string",
+              "description": "Age limit: qdr:h, qdr:d, qdr:w, qdr:m, qdr:y (hour to year).",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "search_web",
+          "description": "Search the web. Returns titles, URLs and search-engine snippets.",
+          "input": [
+            {
+              "name": "gl",
+              "type": "string",
+              "description": "Country code, e.g. 'de'.",
+              "required": false
+            },
+            {
+              "name": "hl",
+              "type": "string",
+              "description": "Language code, e.g. 'zh-cn'.",
+              "required": false
+            },
+            {
+              "name": "location",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "num",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "query",
+              "required": true
+            },
+            {
+              "name": "tbs",
+              "type": "string",
+              "description": "Age limit: qdr:h, qdr:d, qdr:w, qdr:m, qdr:y (hour to year).",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "sort_by_relevance",
+          "description": "Rerank documents by relevance to a query, using Jina Reranker.",
+          "input": [
+            {
+              "name": "documents",
+              "type": "array",
+              "description": "Documents to rank, up to 1024.",
+              "required": true
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "top_n",
+              "type": "integer",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "mdn": {
     "version": 1,
-    "observedAt": "2026-08-18T11:34:58.965Z",
+    "observedAt": "2026-10-20T00:27:57.301Z",
     "provenance": {
       "testedEndpoint": "https://mcp.mdn.mozilla.net/",
       "route": "direct"
@@ -322,9 +1755,1029 @@
       "items": []
     }
   },
+  "microsoft-learn": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:04.301Z",
+    "provenance": {
+      "testedEndpoint": "https://learn.microsoft.com/api/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "microsoft_code_sample_search",
+          "description": "Search for code snippets and examples in official Microsoft Learn documentation. This tool retrieves relevant code samples from Microsoft documentation pages providing developers with practical implementation examples and best practices for Microsoft/Azure products and services related coding tasks. This tool will help you use the **LATEST OFFICIAL** code snippets to empower coding capabilities. ## When to Use This Tool - When you are going to provide sample Microsoft/Azure related code snippets in your answers. - When you are **generating any Microsoft/Azure related code**. ## Usage Pattern I",
+          "input": [
+            {
+              "name": "language",
+              "type": "string",
+              "description": "Optional parameter specifying the programming language of code snippets to retrieve. Can significantly improve search quality if provided. Eligible values: csharp javascript typescript python powershell azurecli al sql java kusto cpp go rust ruby php",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "a descriptive query, SDK name, method name or code snippet related to Microsoft/Azure products, services, platforms, developer tools, frameworks, APIs or SDKs",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "microsoft_docs_fetch",
+          "description": "Fetch and convert a Microsoft Learn documentation webpage to markdown format. This tool retrieves the latest complete content of Microsoft documentation webpages including Azure, .NET, Microsoft 365, and other Microsoft technologies. ## When to Use This Tool - When search results provide incomplete information or truncated content - When you need complete step-by-step procedures or tutorials - When you need troubleshooting sections, prerequisites, or detailed explanations - When search results reference a specific page that seems highly relevant - For comprehensive guides that require full con",
+          "input": [
+            {
+              "name": "url",
+              "type": "string",
+              "description": "URL of the Microsoft documentation page to read",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "microsoft_docs_search",
+          "description": "Search official Microsoft/Azure documentation to find the most relevant and trustworthy content for a user's query. This tool returns up to 10 high-quality content chunks (each max 500 tokens), extracted from Microsoft Learn and other official sources. Each result includes the article title, URL, and a self-contained content excerpt optimized for fast retrieval and reasoning. Always use this tool to quickly ground your answers in accurate, first-party Microsoft/Azure knowledge. ## Follow-up Pattern To ensure completeness, use microsoft_docs_fetch when high-value pages are identified by search.",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "a query or topic about Microsoft/Azure products, services, platforms, developer tools, frameworks, or APIs",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "nuxt": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:05.654Z",
+    "provenance": {
+      "testedEndpoint": "https://nuxt.com/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 12,
+      "retainedCount": 12,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get-blog-post",
+          "description": "Retrieves the full content of a specific Nuxt blog post. WHEN TO USE: Use this tool when you know the EXACT path to a blog post. Common scenarios: - User asks for a specific post: \"Get the blog post about Nuxt 4\" → /blog/v4 - You found a relevant post from list_blog_posts and want the full content - The current page context is a /blog/... path WHEN NOT TO USE: If you don't know the exact path and need to search/discover, use list_blog_posts first. Never call this tool twice for the same path — one call returns the full post. EXAMPLES: \"/blog/v4\", \"/blog/nuxt3\", \"/blog/nuxt-on-the-edge\"",
+          "input": [
+            {
+              "name": "path",
+              "type": "string",
+              "description": "The path to the blog post (e.g., /blog/v4)",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "get-changelog",
+          "description": "Retrieves the latest releases from Nuxt core and official modules (changelog). WHEN TO USE: Use this tool when users ask about: - \"What's new in Nuxt?\" - latest releases and changes - \"What changed in Nuxt UI v3?\" - specific module updates - \"Show me recent bug fixes\" - browse recent changelogs - \"What version of nuxt/content was just released?\" - check latest versions - \"Changelog for Nuxt\" - general changelog queries Covers repositories: nuxt/nuxt, nuxt/ui, nuxt/content, nuxt/image, nuxt/fonts, nuxt/devtools, nuxt/scripts, nuxt/eslint, nuxt/icon, nuxt/hints, nuxt/test-utils, nuxt-content/nux",
+          "input": [
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of releases to return (default: 5, max: 20)",
+              "required": false
+            },
+            {
+              "name": "repo",
+              "type": "string",
+              "description": "Filter by repository (e.g., \"nuxt/ui\", \"nuxt/nuxt\"). If omitted, returns releases from all repos.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "get-deploy-provider",
+          "description": "Retrieves detailed deployment instructions and setup guide for a specific hosting provider. WHEN TO USE: Use this tool when you know EXACTLY which provider the user wants. Common scenarios: - User asks for a specific provider: \"How do I deploy to Vercel?\" → /deploy/vercel - User mentions a known platform: \"Cloudflare deployment\" → /deploy/cloudflare - You found a relevant provider from list_deploy_providers and want full details WHEN NOT TO USE: If the user is asking about options or comparing providers, use list_deploy_providers first. EXAMPLES: \"/deploy/vercel\", \"/deploy/cloudflare\", \"/deplo",
+          "input": [
+            {
+              "name": "path",
+              "type": "string",
+              "description": "The path to the deploy provider (e.g., /deploy/vercel)",
+              "required": true
+            },
+            {
+              "name": "sections",
+              "type": "array",
+              "description": "Specific h2 section titles to return. If omitted, returns full content.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "get-documentation-page",
+          "description": "Retrieves the full content and details of a specific Nuxt documentation page. WHEN TO USE: Use this tool when you know the EXACT path to a documentation page. Common use cases: - User asks for a specific page: \"Show me the introduction page\" → /docs/4.x/getting-started/introduction - User asks about a known topic with a dedicated page - You found a relevant path from list_documentation_pages and want the full content WHEN NOT TO USE: If you don't know the exact path and need to search/explore, use list_documentation_pages first. COMMON PAGES (Nuxt 4.x): Getting Started: - \"/docs/4.x/getting-st",
+          "input": [
+            {
+              "name": "path",
+              "type": "string",
+              "description": "The path to the documentation page (e.g., /docs/4.x/getting-started/introduction)",
+              "required": true
+            },
+            {
+              "name": "sections",
+              "type": "array",
+              "description": "Specific h2 section titles to return (e.g., [\"Usage\", \"API\"]). If omitted, returns full documentation.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "get-getting-started-guide",
+          "description": "Retrieves the official \"Getting Started\" introduction page for a given Nuxt major version. WHEN TO USE: When the user wants a high-level overview / setup guide for Nuxt without specifying a precise documentation page. WHEN NOT TO USE: For a specific page outside the introduction, prefer get_documentation_page.",
+          "input": [
+            {
+              "name": "sections",
+              "type": "array",
+              "description": "Specific h2 section titles to return. If omitted, returns full guide.",
+              "required": false
+            },
+            {
+              "name": "version",
+              "type": "string",
+              "description": "Nuxt major version",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "get-module",
+          "description": "Retrieves complete details about a specific Nuxt module including README, compatibility, maintainers, and stats. WHEN TO USE: Use this tool when you know the EXACT module identifier. Common scenarios: - User asks for a specific module: \"Get details about @nuxt/ui\" - User mentions a known module: \"Show me nuxt-icon module\" - You found a relevant module from list_modules and want full details - You need to check Nuxt 4 compatibility for a specific module WHEN NOT TO USE: If you don't know the exact module identifier and need to search/discover modules, use list_modules first. PARAMETER: slug (re",
+          "input": [
+            {
+              "name": "slug",
+              "type": "string",
+              "description": "The unique module identifier, exactly as shown in list_modules (e.g., \"@nuxt/ui\", \"@nuxtjs/i18n\", \"nuxt-icon\")",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "get-nuxter",
+          "description": "Retrieves the contributions of one Nuxter (a contributor to the Nuxt ecosystem) by GitHub username: rank, score, merged PRs, issues, comments and reactions, for all time or one period. WHEN TO USE: Use this tool when the user asks about a specific contributor. Common scenarios: - \"How many PRs did danielroe merge?\" - username: \"danielroe\" - \"What is atinux's rank in 2024?\" - username: \"atinux\", period: \"2024\" - \"How active was pi0 in the last 30 days?\" - username: \"pi0\", period: \"30d\" - The current page is /nuxters/<username> - use that username (and its ?period= if present) WHEN NOT TO USE: T",
+          "input": [
+            {
+              "name": "period",
+              "type": "string",
+              "description": "\"all\" (default), \"30d\", \"12m\", or a year from 2016 such as \"2024\"",
+              "required": false
+            },
+            {
+              "name": "username",
+              "type": "string",
+              "description": "GitHub username, case-insensitive (e.g., \"danielroe\")",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "list-blog-posts",
+          "description": "Lists all Nuxt blog posts with metadata including titles, dates, categories, tags, and descriptions. WHEN TO USE: Use this tool when you need to DISCOVER or SEARCH for blog posts. Common scenarios: - \"What are the latest announcements?\" - browse recent posts - \"Has there been any post about X feature?\" - search by topic - \"Show me performance improvements\" - find relevant posts by topic - \"What's new in Nuxt?\" - explore recent updates WHEN NOT TO USE: If you already know the exact blog post path (e.g., \"/blog/v4\"), use get_blog_post directly. OUTPUT: Returns list of posts with title, descripti"
+        },
+        {
+          "name": "list-deploy-providers",
+          "description": "Lists all deployment providers and hosting platforms for Nuxt applications with their features and capabilities. WHEN TO USE: Use this tool when you need to DISCOVER or COMPARE deployment options. Common scenarios: - \"What deployment platforms are available?\" - browse all options - \"I need edge functions support\" - compare features across providers - \"Show me platforms with free tiers\" - search for specific features - \"What are my deployment options?\" - general exploration WHEN NOT TO USE: If you know the exact provider (e.g., \"Vercel\", \"Cloudflare\"), you can use get_deploy_provider directly w"
+        },
+        {
+          "name": "list-documentation-pages",
+          "description": "Lists Nuxt documentation pages, optionally filtered by search term. WHEN TO USE: When you need to find documentation about a topic but don't know the exact page path. WHEN NOT TO USE: If you already know the page path, use get_documentation_page directly. TIPS: Always pass a search term to narrow results — avoids dumping the entire catalog.",
+          "input": [
+            {
+              "name": "search",
+              "type": "string",
+              "description": "Filter pages by keyword (matches title, path, and description). Strongly recommended to avoid large results.",
+              "required": false
+            },
+            {
+              "name": "version",
+              "type": "string",
+              "description": "Documentation version to fetch",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "list-modules",
+          "description": "Lists all available Nuxt modules with optional filtering and sorting capabilities. WHEN TO USE: Use this tool when you need to DISCOVER or SEARCH for modules. Common scenarios: - \"I need an authentication module\" - search by category or keyword - \"What UI libraries are available?\" - filter by category - \"Show me popular image optimization modules\" - filter + sort by downloads - \"Find a module for X feature\" - general exploration PARAMETERS: - search: Filter by name, description, or npm package name - category: Filter by exact category name (e.g., \"Security\", \"UI\", \"Database\", \"CMS\", \"SEO\") — u",
+          "input": [
+            {
+              "name": "category",
+              "type": "string",
+              "description": "Filter by exact category name (e.g., \"Security\", \"UI\", \"Database\", \"CMS\", \"SEO\"). Auth modules use category \"Security\", not \"auth\". Prefer search for keyword discovery.",
+              "required": false
+            },
+            {
+              "name": "includeStats",
+              "type": "boolean",
+              "description": "Include full per-module stats. Defaults to true when sort is publishedAt or createdAt.",
+              "required": false
+            },
+            {
+              "name": "order",
+              "type": "string",
+              "description": "Sort order (ascending or descending)",
+              "required": false
+            },
+            {
+              "name": "search",
+              "type": "string",
+              "description": "Search term to filter modules by name, description, or npm package name",
+              "required": false
+            },
+            {
+              "name": "sort",
+              "type": "string",
+              "description": "Sort modules by downloads, stars, published date, or created date",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "list-nuxters",
+          "description": "Lists the Nuxters (contributors to the Nuxt ecosystem) ranked by score for a period, or searches them by username. WHEN TO USE: Use this tool to rank, compare or find contributors. Common scenarios: - \"Who are the top Nuxt contributors?\" - period: \"all\" - \"Who contributed the most in 2024?\" - period: \"2024\" - \"Who is most active right now?\" - period: \"30d\" - \"How many people contributed to Nuxt last year?\" - period: \"12m\" (see totals) - \"Is there a Nuxter called dan…?\" - search: \"dan\" - The current page is /nuxters - use its ?period= if present WHEN NOT TO USE: For the full stats of one known",
+          "input": [
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Number of entries, 1 to 50 (default 10)",
+              "required": false
+            },
+            {
+              "name": "offset",
+              "type": "integer",
+              "description": "Entries to skip, for the next pages (ignored with search)",
+              "required": false
+            },
+            {
+              "name": "period",
+              "type": "string",
+              "description": "\"all\" (default), \"30d\", \"12m\", or a year from 2016 such as \"2024\"",
+              "required": false
+            },
+            {
+              "name": "search",
+              "type": "string",
+              "description": "Part of a GitHub username to search for",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "nuxt-blog-posts",
+          "title": "Nuxt Blog Posts",
+          "description": "Complete list of Nuxt blog posts including releases, tutorials, and announcements"
+        },
+        {
+          "name": "nuxt-deploy-providers",
+          "title": "Nuxt Deploy Providers",
+          "description": "Complete list of deployment providers and hosting platforms for Nuxt applications"
+        },
+        {
+          "name": "nuxt-documentation-pages",
+          "title": "Nuxt Documentation Pages",
+          "description": "Complete list of available Nuxt documentation pages across v3.x, v4.x, and v5.x"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "deployment-guide",
+          "description": "Get deployment instructions for a specific hosting provider",
+          "arguments": [
+            {
+              "name": "provider",
+              "description": "Hosting provider name (e.g. \"Vercel\", \"Netlify\", \"AWS\", \"Cloudflare\")",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "find-documentation-for-topic",
+          "description": "Find the best Nuxt documentation for a specific topic or feature",
+          "arguments": [
+            {
+              "name": "topic",
+              "description": "Describe what you want to learn about (e.g., \"server-side rendering\", \"data fetching\", \"routing\")",
+              "required": true
+            },
+            {
+              "name": "version",
+              "description": "Documentation version to search (defaults to 4.x)",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "migration-help",
+          "description": "Get help with migrating between Nuxt versions",
+          "arguments": [
+            {
+              "name": "fromVersion",
+              "description": "Current Nuxt version (e.g., \"2\", \"3.x\")",
+              "required": true
+            },
+            {
+              "name": "toVersion",
+              "description": "Target Nuxt version (e.g., \"3.x\", \"4.x\")",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "svelte": {
+    "version": 1,
+    "observedAt": "2026-10-20T00:28:05.699Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.svelte.dev/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 4,
+      "retainedCount": 4,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get-documentation",
+          "description": "Retrieves full documentation content for Svelte 5 or SvelteKit sections. Supports flexible search by title (e.g., \"$state\", \"routing\") or file path (e.g., \"cli/overview\"). Can accept a single section name or an array of sections. Before running this, make sure to analyze the users query, as well as the output from list-sections (which should be called first). Then ask for ALL relevant sections the user might require. For example, if the user asks to build anything interactive, you will need to fetch all relevant runes, and so on. Before calling this tool, try to implement Svelte components usi",
+          "input": [
+            {
+              "name": "section",
+              "description": "The section name(s) to retrieve. Can search by title (e.g., \"$state\", \"load functions\") or file path (e.g., \"cli/overview\"). Supports single string and array of strings",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "list-sections",
+          "description": "Lists all available Svelte 5 and SvelteKit documentation sections in a structured format. Each section includes a \"use_cases\" field that describes WHEN this documentation would be useful. You should carefully analyze the use_cases field to determine which sections are relevant for the user's query. The use_cases contain comma-separated keywords describing project types (e.g., \"e-commerce\", \"blog\"), features (e.g., \"authentication\", \"forms\"), components (e.g., \"slider\", \"modal\"), development stages (e.g., \"deployment\", \"testing\"), or \"always\" for fundamental concepts. Match these use_cases agai"
+        },
+        {
+          "name": "playground-link",
+          "description": "Generates a Playground link given a Svelte code snippet. Once you have the final version of the code you want to send to the user, ALWAYS ask the user if it wants a playground link to allow it to quickly check the code in the playground before calling this tool. NEVER use this tool if you have written the component to a file in the user project. The playground accept multiple files so if are importing from other files just include them all at the root level.",
+          "input": [
+            {
+              "name": "files",
+              "type": "object",
+              "description": "An object where all the keys are the filenames (with extensions) and the values are the file content. For example: { 'Component.svelte': '<script>...</script>', 'utils.js': 'export function ...' }. The playground accept multiple files so if are importing from other files just include them all at the root level.",
+              "required": true
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "description": "The name of the Playground, it should reflect the user task",
+              "required": true
+            },
+            {
+              "name": "tailwind",
+              "type": "boolean",
+              "description": "If the code requires Tailwind CSS to work...only send true if it it's using tailwind classes in the code",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "svelte-autofixer",
+          "description": "Given a svelte component or module returns a list of suggestions to fix any issues it has. This tool MUST be used whenever the user is asking to write svelte code before sending the code back to the user",
+          "input": [
+            {
+              "name": "async",
+              "type": "boolean",
+              "description": "If true the code is an async component/module and might use await in the markup or top-level awaits in the script tag. If possible check the svelte.config.js/svelte.config.ts to check if the option is enabled otherwise asks the user if they prefer using it or not. You can only use this option if the version is 5.",
+              "required": false
+            },
+            {
+              "name": "code",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "desired_svelte_version",
+              "description": "The desired svelte version as a full semver string (e.g. \"5.16.0\", the major MUST be 4 or 5)...you MUST read this from the package.json of the user project (or from the installed node_modules/svelte/package.json) since some suggestions are only enabled for newer versions. If you can't find it use some hint from the wording (if the user asks for runes it wants version 5) and pass only the major. Default to 5 in case of doubt.",
+              "required": true
+            },
+            {
+              "name": "filename",
+              "type": "string",
+              "description": "The filename of the component if available, it MUST be only the Component name with .svelte or .svelte.ts extension and not the entire path.",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 204,
+      "retainedCount": 100,
+      "omittedCount": 104,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "ai/claude-plugin",
+          "title": "Claude Code",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/cli",
+          "title": "CLI",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/codex-plugin",
+          "title": "Codex CLI",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/copilot-plugin",
+          "title": "GitHub Copilot CLI",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/cursor-plugin",
+          "title": "Cursor",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/instructions",
+          "title": "AGENTS.md",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/local-setup",
+          "title": "Local setup",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/mcp",
+          "title": "Overview",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/opencode-plugin",
+          "title": "OpenCode",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/overview",
+          "title": "Overview",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/prompts",
+          "title": "Prompts",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/remote-setup",
+          "title": "Remote setup",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/resources",
+          "title": "Resources",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/skills",
+          "title": "Overview",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/subagent",
+          "title": "Overview",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "ai/tools",
+          "title": "Tools",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/ai-tools",
+          "title": "ai-tools",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/better-auth",
+          "title": "better-auth",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/community",
+          "title": "[create your own]",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/drizzle",
+          "title": "drizzle",
+          "description": "database setup, sql queries, orm integration, data modeling, postgresql, mysql, sqlite, server-side data access, database migrations, type-safe queries"
+        },
+        {
+          "name": "cli/enhanced-img",
+          "title": "enhanced-img",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/eslint",
+          "title": "eslint",
+          "description": "code quality, linting, error detection, project setup, code standards, team collaboration, typescript projects"
+        },
+        {
+          "name": "cli/experimental",
+          "title": "experimental",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/faq",
+          "title": "Frequently asked questions",
+          "description": "project setup, initializing new svelte projects, troubleshooting cli installation, package manager configuration"
+        },
+        {
+          "name": "cli/mdsvex",
+          "title": "mdsvex",
+          "description": "blog, content sites, markdown rendering, documentation sites, technical writing, cms integration, article pages"
+        },
+        {
+          "name": "cli/overview",
+          "title": "Overview",
+          "description": "project setup, creating new svelte apps, scaffolding, cli tools, initializing projects"
+        },
+        {
+          "name": "cli/paraglide",
+          "title": "paraglide",
+          "description": "internationalization, multi-language sites, i18n, translation, localization, language switching, global apps, multilingual content"
+        },
+        {
+          "name": "cli/playwright",
+          "title": "playwright",
+          "description": "browser testing, e2e testing, integration testing, test automation, quality assurance, ci/cd pipelines, testing user flows"
+        },
+        {
+          "name": "cli/prettier",
+          "title": "prettier",
+          "description": "code formatting, project setup, code style consistency, team collaboration, linting configuration"
+        },
+        {
+          "name": "cli/storybook",
+          "title": "storybook",
+          "description": "component development, design systems, ui library, isolated component testing, documentation, visual testing, component showcase"
+        },
+        {
+          "name": "cli/sv",
+          "title": "sv",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/sv-add",
+          "title": "sv add",
+          "description": "project setup, adding features to existing projects, integrating tools, testing setup, styling setup, authentication, database setup, deployment adapters"
+        },
+        {
+          "name": "cli/sv-check",
+          "title": "sv check",
+          "description": "code quality, ci/cd pipelines, error checking, typescript projects, pre-commit hooks, finding unused css, accessibility auditing, production builds"
+        },
+        {
+          "name": "cli/sv-create",
+          "title": "sv create",
+          "description": "project setup, starting new sveltekit app, initializing project, creating from playground, choosing project template"
+        },
+        {
+          "name": "cli/sv-migrate",
+          "title": "sv migrate",
+          "description": "migration, upgrading svelte versions, upgrading sveltekit versions, modernizing codebase, svelte 3 to 4, svelte 4 to 5, sveltekit 1 to 2, adopting runes, refactoring deprecated apis"
+        },
+        {
+          "name": "cli/sv-utils",
+          "title": "sv-utils",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "cli/sveltekit-adapter",
+          "title": "sveltekit-adapter",
+          "description": "deployment, production builds, hosting setup, choosing deployment platform, configuring adapters, static site generation, node server, vercel, cloudflare, netlify"
+        },
+        {
+          "name": "cli/tailwind",
+          "title": "tailwindcss",
+          "description": "project setup, styling, css framework, rapid prototyping, utility-first css, design systems, responsive design, adding tailwind to svelte"
+        },
+        {
+          "name": "cli/vitest",
+          "title": "vitest",
+          "description": "testing, unit tests, component testing, test setup, quality assurance, ci/cd pipelines, test-driven development"
+        },
+        {
+          "name": "kit/@sveltejs-kit",
+          "title": "@sveltejs/kit",
+          "description": "forms, form actions, server-side validation, form submission, error handling, redirects, json responses, http errors, server utilities"
+        },
+        {
+          "name": "kit/@sveltejs-kit-adapter",
+          "title": "@sveltejs/kit/adapter",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/@sveltejs-kit-env",
+          "title": "@sveltejs/kit/env",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/@sveltejs-kit-hooks",
+          "title": "@sveltejs/kit/hooks",
+          "description": "middleware, request processing, authentication chains, logging, multiple hooks, request/response transformation"
+        },
+        {
+          "name": "kit/@sveltejs-kit-node",
+          "title": "@sveltejs/kit/node",
+          "description": "node.js adapter, custom server setup, http integration, streaming files, node deployment, server-side rendering with node"
+        },
+        {
+          "name": "kit/@sveltejs-kit-params",
+          "title": "@sveltejs/kit/params",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/@sveltejs-kit-vite",
+          "title": "@sveltejs/kit/vite",
+          "description": "project setup, vite configuration, initial sveltekit setup, build tooling"
+        },
+        {
+          "name": "kit/$app-env",
+          "title": "$app/env",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/$app-env-private",
+          "title": "$app/env/private",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/$app-env-public",
+          "title": "$app/env/public",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/$app-environment",
+          "title": "$app/environment",
+          "description": "always, conditional logic, client-side code, server-side code, build-time logic, prerendering, development vs production, environment detection"
+        },
+        {
+          "name": "kit/$app-forms",
+          "title": "$app/forms",
+          "description": "forms, user input, data submission, progressive enhancement, custom form handling, form validation"
+        },
+        {
+          "name": "kit/$app-manifest",
+          "title": "$app/manifest",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/$app-navigation",
+          "title": "$app/navigation",
+          "description": "routing, navigation, multi-page apps, programmatic navigation, data reloading, preloading, shallow routing, navigation lifecycle, scroll handling, view transitions"
+        },
+        {
+          "name": "kit/$app-paths",
+          "title": "$app/paths",
+          "description": "static assets, images, fonts, public files, base path configuration, subdirectory deployment, cdn setup, asset urls, links, navigation"
+        },
+        {
+          "name": "kit/$app-server",
+          "title": "$app/server",
+          "description": "remote functions, server-side logic, data fetching, form handling, api endpoints, client-server communication, prerendering, file reading, batch queries"
+        },
+        {
+          "name": "kit/$app-service-worker",
+          "title": "$app/service-worker",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/$app-state",
+          "title": "$app/state",
+          "description": "routing, navigation, multi-page apps, loading states, url parameters, form handling, error states, version updates, page metadata, shallow routing"
+        },
+        {
+          "name": "kit/$app-stores",
+          "title": "$app/stores",
+          "description": "legacy projects, sveltekit pre-2.12, migration from stores to runes, maintaining older codebases, accessing page data, navigation state, app version updates"
+        },
+        {
+          "name": "kit/$app-tsconfig",
+          "title": "$app/tsconfig",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/$app-tsconfig-service-worker",
+          "title": "$app/tsconfig/service-worker",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/$app-types",
+          "title": "$app/types",
+          "description": "routing, navigation, type safety, route parameters, dynamic routes, link generation, pathname validation, multi-page apps"
+        },
+        {
+          "name": "kit/$env-dynamic-private",
+          "title": "$env/dynamic/private",
+          "description": "api keys, secrets management, server-side config, environment variables, backend logic, deployment-specific settings, private data handling"
+        },
+        {
+          "name": "kit/$env-dynamic-public",
+          "title": "$env/dynamic/public",
+          "description": "environment variables, client-side config, runtime configuration, public api keys, deployment-specific settings, multi-environment apps"
+        },
+        {
+          "name": "kit/$env-static-private",
+          "title": "$env/static/private",
+          "description": "server-side api keys, backend secrets, database credentials, private configuration, build-time optimization, server endpoints, authentication tokens"
+        },
+        {
+          "name": "kit/$env-static-public",
+          "title": "$env/static/public",
+          "description": "environment variables, public config, client-side data, api endpoints, build-time configuration, public constants"
+        },
+        {
+          "name": "kit/$lib",
+          "title": "#lib",
+          "description": "project setup, component organization, importing shared components, reusable ui elements, code structure"
+        },
+        {
+          "name": "kit/$service-worker",
+          "title": "$service-worker",
+          "description": "offline support, pwa, service workers, caching strategies, progressive web apps, offline-first apps"
+        },
+        {
+          "name": "kit/accessibility",
+          "title": "Accessibility",
+          "description": "always, any sveltekit project, screen reader support, keyboard navigation, multi-page apps, client-side routing, internationalization, multilingual sites"
+        },
+        {
+          "name": "kit/adapter-auto",
+          "title": "Zero-config deployments",
+          "description": "deployment, production builds, hosting setup, choosing deployment platform, ci/cd configuration"
+        },
+        {
+          "name": "kit/adapter-bun",
+          "title": "Bun servers",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/adapter-cloudflare",
+          "title": "Cloudflare",
+          "description": "deployment, cloudflare workers, cloudflare pages, hosting setup, production builds, serverless deployment, edge computing"
+        },
+        {
+          "name": "kit/adapter-cloudflare-workers",
+          "title": "Cloudflare Workers",
+          "description": "deploying to cloudflare workers, cloudflare workers sites deployment, legacy cloudflare adapter, wrangler configuration, cloudflare platform bindings"
+        },
+        {
+          "name": "kit/adapter-netlify",
+          "title": "Netlify",
+          "description": "deployment, netlify hosting, production builds, serverless functions, edge functions, static site hosting"
+        },
+        {
+          "name": "kit/adapter-node",
+          "title": "Node servers",
+          "description": "deployment, production builds, node.js hosting, custom server setup, environment configuration, reverse proxy setup, docker deployment, systemd services"
+        },
+        {
+          "name": "kit/adapter-static",
+          "title": "Static site generation",
+          "description": "static site generation, ssg, prerendering, deployment, github pages, spa mode, blogs, documentation sites, marketing sites"
+        },
+        {
+          "name": "kit/adapter-vercel",
+          "title": "Vercel",
+          "description": "deployment, vercel hosting, production builds, serverless functions, edge functions, isr, image optimization, environment variables"
+        },
+        {
+          "name": "kit/adapters",
+          "title": "Adapters",
+          "description": "deployment, production builds, hosting setup, choosing deployment platform, configuring adapters"
+        },
+        {
+          "name": "kit/additional-resources",
+          "title": "Additional resources",
+          "description": "troubleshooting, getting help, finding examples, learning sveltekit, project templates, common issues, community support"
+        },
+        {
+          "name": "kit/advanced-routing",
+          "title": "Advanced routing",
+          "description": "advanced routing, dynamic routes, file viewers, nested paths, custom 404 pages, url validation, route parameters, multi-level navigation"
+        },
+        {
+          "name": "kit/auth",
+          "title": "Auth",
+          "description": "authentication, login systems, user management, session handling, jwt tokens, protected routes, user credentials, authorization checks"
+        },
+        {
+          "name": "kit/building-your-app",
+          "title": "Building your app",
+          "description": "production builds, deployment preparation, build process optimization, adapter configuration, preview before deployment"
+        },
+        {
+          "name": "kit/cli",
+          "title": "Command Line Interface",
+          "description": "project setup, typescript configuration, generated types, ./$types imports, initial project configuration"
+        },
+        {
+          "name": "kit/creating-a-project",
+          "title": "Creating a project",
+          "description": "project setup, starting new sveltekit app, initial development environment, first-time sveltekit users, scaffolding projects"
+        },
+        {
+          "name": "kit/debugging",
+          "title": "Breakpoint Debugging",
+          "description": "debugging, breakpoints, development workflow, troubleshooting issues, vscode setup, ide configuration, inspecting code execution"
+        },
+        {
+          "name": "kit/environment-variables",
+          "title": "Environment variables",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/errors",
+          "title": "Errors",
+          "description": "error handling, custom error pages, 404 pages, api error responses, production error logging, error tracking, type-safe errors"
+        },
+        {
+          "name": "kit/faq",
+          "title": "Frequently asked questions",
+          "description": "troubleshooting package imports, library compatibility issues, client-side code execution, external api integration, middleware setup, database configuration, view transitions, yarn configuration"
+        },
+        {
+          "name": "kit/form-actions",
+          "title": "Form actions",
+          "description": "forms, user input, data submission, authentication, login systems, user registration, progressive enhancement, validation errors"
+        },
+        {
+          "name": "kit/glossary",
+          "title": "Glossary",
+          "description": "rendering strategies, performance optimization, deployment configuration, seo requirements, static sites, spas, server-side rendering, prerendering, edge deployment, pwa development"
+        },
+        {
+          "name": "kit/hooks",
+          "title": "Hooks",
+          "description": "authentication, logging, error tracking, request interception, api proxying, custom routing, internationalization, database initialization, middleware logic, session management"
+        },
+        {
+          "name": "kit/icons",
+          "title": "Icons",
+          "description": "icons, ui components, styling, css frameworks, tailwind, unocss, performance optimization, dependency management"
+        },
+        {
+          "name": "kit/images",
+          "title": "Images",
+          "description": "image optimization, responsive images, performance, hero images, product photos, galleries, cms integration, cdn setup, asset management"
+        },
+        {
+          "name": "kit/integrations",
+          "title": "Integrations",
+          "description": "project setup, css preprocessors, postcss, scss, sass, less, stylus, typescript setup, adding integrations, tailwind, testing, auth, linting, formatting"
+        },
+        {
+          "name": "kit/introduction",
+          "title": "Introduction",
+          "description": "learning sveltekit, project setup, understanding framework basics, choosing between svelte and sveltekit, getting started with full-stack apps"
+        },
+        {
+          "name": "kit/link-options",
+          "title": "Link options",
+          "description": "routing, navigation, multi-page apps, performance optimization, link preloading, forms with get method, search functionality, focus management, scroll behavior"
+        },
+        {
+          "name": "kit/load",
+          "title": "Loading data",
+          "description": "data fetching, api calls, database queries, dynamic routes, page initialization, loading states, authentication checks, ssr data, form data, content rendering"
+        },
+        {
+          "name": "kit/migrating",
+          "title": "Migrating from Sapper",
+          "description": "migrating from sapper, upgrading legacy projects, sapper to sveltekit conversion, project modernization"
+        },
+        {
+          "name": "kit/migrating-to-sveltekit-2",
+          "title": "Migrating to SvelteKit v2",
+          "description": "migration, upgrading from sveltekit 1 to 2, breaking changes, version updates"
+        },
+        {
+          "name": "kit/migrating-to-sveltekit-3",
+          "title": "Migrating to SvelteKit v3",
+          "description": "use title and path to estimate use case"
+        },
+        {
+          "name": "kit/observability",
+          "title": "Observability",
+          "description": "performance monitoring, debugging, observability, tracing requests, production diagnostics, analyzing slow requests, finding bottlenecks, monitoring server-side operations"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "Svelte-Doc-Section",
+          "title": "A single documentation section",
+          "description": "A single documentation section"
+        }
+      ]
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "svelte-task",
+          "description": "Use this Prompt to ask for any svelte related task. It will automatically instruct the LLM on how to best use the autofixer and how to query for documentation pages.",
+          "arguments": [
+            {
+              "name": "task",
+              "description": "The task to be performed",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  },
   "yahoo-finance": {
     "version": 1,
-    "observedAt": "2026-08-18T11:34:59.613Z",
+    "observedAt": "2026-10-20T00:27:57.371Z",
     "provenance": {
       "testedEndpoint": "https://gateway.mcpservers.org/yahoo-finance/mcp",
       "route": "direct"

@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
   getOAuthCallbackUrl,
   loadManualOAuthClient,
+  loadManualOAuthEndpoints,
   saveManualOAuthClient,
+  saveManualOAuthEndpoints,
   type OAuthPrerequisite,
 } from '../utils/oauthFlow';
 import { beginHostedOAuthFlow } from '../utils/hostedOAuth';
@@ -31,6 +33,8 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   onSignIn,
 }) => {
   const [clientId, setClientId] = useState('');
+  const [authorizationEndpoint, setAuthorizationEndpoint] = useState('');
+  const [tokenEndpoint, setTokenEndpoint] = useState('');
   const [bearerToken, setBearerToken] = useState('');
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [isStartingHosted, setIsStartingHosted] = useState(false);
@@ -48,7 +52,15 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
   const canConfigureClient = !isProxyAuthenticationPrerequisite
     && catalogAllowsBrowserClient
     && (prerequisite?.canConfigureClient ?? true);
-  const title = prerequisite?.registrationValidationErrors?.length
+  const isReauthorization = prerequisite?.kind === 'reauthorization_required';
+  // Endpoint overrides are offered only after discovery proved the
+  // authorization server publishes no metadata.
+  const needsEndpoints = prerequisite?.kind === 'authorization_metadata_unavailable';
+  const title = isReauthorization
+    ? `Authorize ${prerequisite.providerName} again`
+    : needsEndpoints
+      ? `${prerequisite.providerName} publishes no OAuth metadata`
+    : prerequisite?.registrationValidationErrors?.length
     ? `${prerequisite.providerName} registration metadata needs correction`
     : prerequisite?.kind === 'provider_approval_required'
     ? `${prerequisite.providerName} approval is required`
@@ -73,11 +85,18 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
 
   useEffect(() => {
     setClientId('');
+    setAuthorizationEndpoint('');
+    setTokenEndpoint('');
 
     // Only load credentials bound to the authorization server discovered for this resource.
     const storedClient = loadManualOAuthClient(serverUrl);
     if (storedClient) {
       setClientId(storedClient.clientId);
+    }
+    const storedEndpoints = loadManualOAuthEndpoints(serverUrl);
+    if (storedEndpoints) {
+      setAuthorizationEndpoint(storedEndpoints.authorizationEndpoint);
+      setTokenEndpoint(storedEndpoints.tokenEndpoint);
     }
   }, [serverUrl]);
 
@@ -88,7 +107,11 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
     }
     
     try {
-      saveManualOAuthClient(serverUrl, clientId);
+      if (needsEndpoints) {
+        saveManualOAuthEndpoints(serverUrl, { authorizationEndpoint, tokenEndpoint }, clientId);
+      } else {
+        saveManualOAuthClient(serverUrl, clientId);
+      }
       setConfigurationError(null);
       onConfigured();
     } catch (error) {
@@ -140,8 +163,24 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
             ? 'The mcptest CORS proxy returned its own HTTP 429 caller-limit response. The MCP server did not return this error; retry later or sign in to raise the limit.'
             : prerequisite?.kind === 'proxy_authentication_required'
             ? 'mcptest.io opened this prerequisite only after the proxy returned its own authentication response. Target OAuth discovery has not started.'
+            : isReauthorization
+            ? 'The rejected tokens were cleared. Authorizing again opens the provider sign-in page and then retries the connection once.'
             : 'mcptest.io connected without credentials first and only opened this panel after the MCP target returned an HTTP authentication challenge.'}
         </p>
+
+        {isReauthorization && (
+          <div className="mb-4">
+            <button type="button" className="btn btn-primary" onClick={onConfigured}>
+              Authorize again
+            </button>
+          </div>
+        )}
+
+        {prerequisite?.privateNetworkGuidance && (
+          <div className="alert alert-warning" role="note">
+            {prerequisite.privateNetworkGuidance}
+          </div>
+        )}
 
         {!isProxyAuthenticationPrerequisite && (
           <AuthorizationSetup guidance={authorizationGuidance} currentCatalogContext compact />
@@ -255,7 +294,7 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
           </div>
         ) : null}
 
-        {prerequisite && prerequisite.kind !== 'proxy_authentication_required' && (
+        {prerequisite && prerequisite.kind !== 'proxy_authentication_required' && !isReauthorization && (
           <div className="oauth-prerequisite-details mb-4">
             <p className="mb-2"><strong>Redirect URI:</strong> <code>{callbackUrl}</code></p>
             <p className="mb-2">
@@ -332,6 +371,40 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
               clients must be configured by the operator instead.
             </p>
 
+            {needsEndpoints && (
+              <>
+                <p className="text-muted">
+                  Enter the authorization and token endpoints from the provider&apos;s documentation.
+                  They are used only for this MCP resource, with PKCE S256 and the resource
+                  indicator, and token requests go directly from this browser.
+                </p>
+                <div className="mb-3">
+                  <label htmlFor="authorizationEndpoint" className="form-label">Authorization endpoint</label>
+                  <input
+                    type="url"
+                    className="form-control font-monospace"
+                    id="authorizationEndpoint"
+                    value={authorizationEndpoint}
+                    onChange={(e) => setAuthorizationEndpoint(e.target.value)}
+                    placeholder="https://auth.example.com/oauth/authorize"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="mb-3">
+                  <label htmlFor="tokenEndpoint" className="form-label">Token endpoint</label>
+                  <input
+                    type="url"
+                    className="form-control font-monospace"
+                    id="tokenEndpoint"
+                    value={tokenEndpoint}
+                    onChange={(e) => setTokenEndpoint(e.target.value)}
+                    placeholder="https://auth.example.com/oauth/token"
+                    autoComplete="off"
+                  />
+                </div>
+              </>
+            )}
+
             <div className="mb-3">
               <label htmlFor="clientId" className="form-label">OAuth Client ID</label>
               <input
@@ -350,7 +423,12 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
               never accepted or persisted by this browser flow.
             </p>
 
-            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!clientId}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={!clientId || (needsEndpoints && (!authorizationEndpoint || !tokenEndpoint))}
+            >
               Save and continue
             </button>
           </>

@@ -1,4 +1,5 @@
 import { UserState } from "./UserState";
+import { handleBadgeRequest } from "./badges";
 
 // Firebase public keys URL
 const FIREBASE_PUBLIC_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
@@ -9,6 +10,10 @@ let publicKeysCacheExpiry = 0;
 
 export default {
   async fetch(request, env, ctx) {
+    // Public catalog badges are served before authentication and never reach the Durable Object.
+    const badgeResponse = handleBadgeRequest(request);
+    if (badgeResponse) return badgeResponse;
+
     // CORS headers
     const corsHeaders = {
       "Access-Control-Allow-Origin": "https://mcptest.io",
