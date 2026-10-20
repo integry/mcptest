@@ -65,21 +65,34 @@ Mcp-Method: tools/list
 
 Remove any `Accept` check you wrote yourself. Exact string comparisons, such as `accept === 'application/json, text/event-stream'`, reject valid headers with a different order, spacing, or quality values. The SDK transports already enforce the rule.
 
-If you must serve a client you cannot change, widen a one-sided header before the SDK sees it, and only on `POST`. The response format is still chosen by the server. In Express:
+Fix the client wherever you can. Rewriting the `Accept` header on its own is not a fix: the SDK then accepts the request but may still answer with a format the client never asked for. A client that sends only `Accept: application/json` gets an SSE body it cannot parse, and the failure just moves from the `406` to the response parser.
+
+If you must serve a client you cannot change, change both sides together. Send each one-sided client to a handler pinned to the format it accepts, and widen the header only for that pinned handler, so it passes the SDK's 2025 `Accept` check. In TypeScript with Express:
 
 ```typescript
-app.post('/mcp', (req, _res, next) => {
-  const accept = req.headers.accept ?? '';
-  if (!accept.includes('application/json') || !accept.includes('text/event-stream')) {
-    req.headers.accept = 'application/json, text/event-stream';
-  }
-  next();
-});
+const handlers = {
+  both: toNodeHandler(createMcpHandler(buildServer)),
+  json: toNodeHandler(createMcpHandler(buildServer, { responseMode: 'json' })),
+  sse: toNodeHandler(createMcpHandler(buildServer, { responseMode: 'sse' })),
+};
 
-app.all('/mcp', (req, res) => void node(req, res, req.body));
+function acceptedFormat(accept: string): 'both' | 'json' | 'sse' {
+  const json = /application\/json/i.test(accept);
+  const sse = /text\/event-stream/i.test(accept);
+  if (json && sse) return 'both';
+  return sse ? 'sse' : 'json';
+}
+
+app.all('/mcp', (req, res) => {
+  const format = req.method === 'POST' ? acceptedFormat(req.headers.accept ?? '') : 'both';
+  if (format !== 'both') req.headers.accept = 'application/json, text/event-stream';
+  void handlers[format](req, res, req.body);
+});
 ```
 
-In Python, as ASGI middleware around the MCP app:
+A header that names neither type, such as `*/*` or no header at all, gets the JSON handler, because every client can parse a single JSON object. Clients routed to the JSON handler do not receive progress notifications during a call. That is the cost of serving them.
+
+The Python SDK has no per-request response mode, so the adapter has to pin JSON for the whole app. Widen only headers that lack `text/event-stream`, and leave SSE-only headers unchanged so the SDK still answers them with `406` instead of a JSON body they cannot read:
 
 ```python
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -87,22 +100,24 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 BOTH = b"application/json, text/event-stream"
 
 
-class WidenAccept:
+class WidenJsonOnlyAccept:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and scope["method"] == "POST":
-            headers = [(k, v) for k, v in scope["headers"] if k != b"accept"]
-            accept = dict(scope["headers"]).get(b"accept", b"")
-            if b"application/json" not in accept or b"text/event-stream" not in accept:
-                accept = BOTH
-            scope = {**scope, "headers": [*headers, (b"accept", accept)]}
+            accept = dict(scope["headers"]).get(b"accept", b"").lower()
+            if b"text/event-stream" not in accept:
+                headers = [(k, v) for k, v in scope["headers"] if k != b"accept"]
+                scope = {**scope, "headers": [*headers, (b"accept", BOTH)]}
         await self.app(scope, receive, send)
 
 
-app = WidenAccept(mcp.streamable_http_app())
+# json_response=True is what makes the widening safe: every POST is answered with application/json.
+app = WidenJsonOnlyAccept(mcp.streamable_http_app(json_response=True))
 ```
+
+Never put either wrapper in front of a handler that can still choose SSE for a client that did not ask for it.
 
 Also check what sits in front of the server. API gateways and WAF rules that do their own content negotiation can answer `406` before the request reaches your code. mcptest only raises `transport.accept-header-406` for responses attributable to the target, and its evidence records the exact `Accept` value that was sent.
 
