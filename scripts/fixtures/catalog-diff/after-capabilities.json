@@ -1,0 +1,143 @@
+{
+  "alpha": {
+    "version": 1,
+    "observedAt": "2026-10-20T03:00:00.000Z",
+    "provenance": {
+      "testedEndpoint": "https://alpha.example/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "fetch"
+        },
+        {
+          "name": "search"
+        },
+        {
+          "name": "summarize"
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "bravo": {
+    "version": 1,
+    "observedAt": "2026-10-20T03:00:00.000Z",
+    "provenance": {
+      "testedEndpoint": "https://bravo.example/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "lookup"
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "foxtrot": {
+    "version": 1,
+    "observedAt": "2026-10-13T03:00:00.000Z",
+    "provenance": {
+      "testedEndpoint": "https://foxtrot.example/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "ping"
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  }
+}

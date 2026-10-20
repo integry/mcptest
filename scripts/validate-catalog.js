@@ -12,6 +12,8 @@ const {
 const { z } = require('zod');
 
 const REQUEST_TIMEOUT_MS = 12_000;
+// Upper bound for every probe, variant and discovery page of one catalog server.
+const SERVER_TIMEOUT_MS = 120_000;
 const CONCURRENCY = 4;
 const CLIENT_NAME = 'mcptest-catalog-validator';
 const rawDiscoveryPageSchema = z.unknown();
@@ -26,23 +28,51 @@ function canonicalInventory() {
   return canonicalInventoryPromise;
 }
 
-function requestDiscoveryPage(client, method, cursor) {
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw signal.reason;
+}
+
+// Settles as soon as the server deadline aborts, without waiting for the SDK to notice.
+function untilAborted(promise, signal) {
+  if (!signal) return promise;
+  promise.catch(() => {});
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+function withAbortSignal(init = {}, signal) {
+  if (!signal) return init;
+  return {
+    ...init,
+    signal: init.signal ? AbortSignal.any([init.signal, signal]) : signal,
+  };
+}
+
+function requestDiscoveryPage(client, method, cursor, signal) {
   return client.request({
     method,
     ...(cursor === undefined ? {} : { params: { cursor } }),
-  }, rawDiscoveryPageSchema);
+  }, rawDiscoveryPageSchema, signal ? { signal } : undefined);
 }
 
-async function paginateDiscovery(client, category, method, timeoutMs) {
+async function paginateDiscovery(client, category, method, timeoutMs, signal) {
   let values = [];
   let cursor;
   let successfulPages = 0;
   const seen = new Set();
   try {
     for (let pageNumber = 0; pageNumber < 64; pageNumber += 1) {
-      const page = await withDiscoveryTimeout(
-        () => requestDiscoveryPage(client, method, cursor), timeoutMs
-      );
+      throwIfAborted(signal);
+      const page = await untilAborted(withDiscoveryTimeout(
+        () => requestDiscoveryPage(client, method, cursor, signal), timeoutMs
+      ), signal);
       if (!page || !Array.isArray(page[category])) throw new Error('Malformed discovery page');
       successfulPages += 1;
       values.push(...page[category]);
@@ -58,6 +88,7 @@ async function paginateDiscovery(client, category, method, timeoutMs) {
     }
     throw new Error('Discovery page limit reached');
   } catch (error) {
+    throwIfAborted(signal);
     if (successfulPages === 0 && error
         && (error.code === -32601 || /method not found/i.test(error.message || ''))) {
       return { status: 'unsupported', values: [], paginationComplete: true };
@@ -83,7 +114,7 @@ function withDiscoveryTimeout(run, timeoutMs) {
   });
 }
 
-async function discoverPublicInventory(client, endpoint, timeoutMs) {
+async function discoverPublicInventory(client, endpoint, timeoutMs, signal) {
   const calls = {
     tools: 'tools/list',
     resources: 'resources/list',
@@ -92,7 +123,7 @@ async function discoverPublicInventory(client, endpoint, timeoutMs) {
   };
   const discovered = {};
   for (const [category, method] of Object.entries(calls)) {
-    discovered[category] = await paginateDiscovery(client, category, method, timeoutMs);
+    discovered[category] = await paginateDiscovery(client, category, method, timeoutMs, signal);
   }
   // Never replace a durable snapshot when any method or page failed.
   if (Object.values(discovered).some(({ status }) => status === 'partial' || status === 'unavailable')) return undefined;
@@ -524,12 +555,13 @@ function isAuthStatus(status) {
 
 async function probeStreamableEndpoint(
   endpoint,
-  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS, signal } = {}
 ) {
   const responses = [];
   let resourceMetadataUrl;
   const observingFetch = async (input, init) => {
-    const response = await fetchImpl(input, init);
+    throwIfAborted(signal);
+    const response = await fetchImpl(input, withAbortSignal(init, signal));
     responses.push({
       status: response.status,
       contentType: response.headers.get('content-type') || '',
@@ -555,10 +587,13 @@ async function probeStreamableEndpoint(
   });
 
   try {
-    await client.connect(transport, { timeout: timeoutMs });
+    throwIfAborted(signal);
+    await untilAborted(client.connect(transport, { timeout: timeoutMs, signal }), signal);
     const era = client.getProtocolEra();
     const protocolVersion = client.getNegotiatedProtocolVersion();
-    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
+    const capabilityInventory = await discoverPublicInventory(
+      client, endpoint.url, timeoutMs, signal
+    );
 
     return {
       ...endpoint,
@@ -605,12 +640,15 @@ async function probeStreamableEndpoint(
 
 async function probeSseEndpoint(
   endpoint,
-  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS, signal } = {}
 ) {
   const responses = [];
   let resourceMetadataUrl;
   const observingFetch = async (input, init) => {
-    const result = await fetchWithTimeout(input, init, fetchImpl, timeoutMs);
+    throwIfAborted(signal);
+    const result = await fetchWithTimeout(
+      input, withAbortSignal(init, signal), fetchImpl, timeoutMs
+    );
     if (!result.ok) {
       const error = new Error(result.message);
       error.code = result.errorCode === 'timeout' ? 'REQUEST_TIMEOUT' : result.errorCode;
@@ -638,8 +676,9 @@ async function probeSseEndpoint(
   let connectionTimeout;
 
   try {
-    await Promise.race([
-      client.connect(transport, { timeout: timeoutMs }),
+    throwIfAborted(signal);
+    await untilAborted(Promise.race([
+      client.connect(transport, { timeout: timeoutMs, signal }),
       new Promise((_, reject) => {
         connectionTimeout = setTimeout(() => {
           const error = new Error(`Legacy SSE connection timed out after ${timeoutMs}ms`);
@@ -647,10 +686,12 @@ async function probeSseEndpoint(
           reject(error);
         }, timeoutMs);
       }),
-    ]);
+    ]), signal);
 
     const protocolVersion = client.getNegotiatedProtocolVersion();
-    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
+    const capabilityInventory = await discoverPublicInventory(
+      client, endpoint.url, timeoutMs, signal
+    );
     return {
       ...endpoint,
       reachable: true,
@@ -703,10 +744,19 @@ async function probeEndpoint(endpoint, options) {
 
 async function discoverAuthorizationEvidence(
   serverUrl,
-  { protocolVersion, resourceMetadataUrl, fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  {
+    protocolVersion,
+    resourceMetadataUrl,
+    fetchImpl = fetch,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    signal,
+  } = {}
 ) {
   const metadataFetch = async (input, init) => {
-    const result = await fetchWithTimeout(input, init, fetchImpl, timeoutMs);
+    throwIfAborted(signal);
+    const result = await fetchWithTimeout(
+      input, withAbortSignal(init, signal), fetchImpl, timeoutMs
+    );
     if (!result.ok) {
       const error = new Error(result.message);
       error.code = result.errorCode;
@@ -716,11 +766,11 @@ async function discoverAuthorizationEvidence(
   };
 
   try {
-    const metadata = await discoverOAuthProtectedResourceMetadata(
+    const metadata = await untilAborted(discoverOAuthProtectedResourceMetadata(
       serverUrl,
       { protocolVersion, resourceMetadataUrl },
       metadataFetch
-    );
+    ), signal);
     const authorizationServers = Array.isArray(metadata?.authorization_servers)
       ? metadata.authorization_servers
       : [];
@@ -808,7 +858,7 @@ function errorCodeForStatus(status, probes) {
 
 async function validateSeed(
   seed,
-  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS, signal } = {}
 ) {
   validateCatalogSeed(seed);
   const probes = [];
@@ -816,10 +866,13 @@ async function validateSeed(
 
   for (const endpoint of endpointVariants(seed)) {
     if (validatedTransports.has(endpoint.transport)) continue;
-    const probe = await probeEndpoint(endpoint, { fetchImpl, timeoutMs });
+    // A probe swallows its own errors, so the deadline is checked before each next one.
+    throwIfAborted(signal);
+    const probe = await probeEndpoint(endpoint, { fetchImpl, timeoutMs, signal });
     probes.push(probe);
     if (probe.alive && !probe.authChallenge) validatedTransports.add(endpoint.transport);
   }
+  throwIfAborted(signal);
 
   const status = detectedStatus(probes);
   const transport = detectedTransport(probes);
@@ -834,8 +887,10 @@ async function validateSeed(
       resourceMetadataUrl: authProbe?.resourceMetadataUrl,
       fetchImpl,
       timeoutMs,
+      signal,
     }
   );
+  throwIfAborted(signal);
   const authType = detectedAuthType(seed, probes, authorizationEvidence);
   const errorCode = errorCodeForStatus(status, probes);
   const result = {
@@ -864,6 +919,27 @@ async function validateSeed(
   return result;
 }
 
+// Aborts `run(signal)` at the deadline and settles only once it has stopped, so a
+// timed-out server keeps its concurrency slot until its probes are cleaned up.
+async function withServerTimeout(run, timeoutMs = SERVER_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const deadline = Object.assign(
+    new Error(`Server validation timed out after ${timeoutMs}ms`),
+    { code: 'SERVER_TIMEOUT' }
+  );
+  const timeout = setTimeout(() => controller.abort(deadline), timeoutMs);
+  try {
+    const value = await run(controller.signal);
+    if (controller.signal.aborted) throw deadline;
+    return value;
+  } catch (error) {
+    if (controller.signal.aborted) throw deadline;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function mapWithConcurrency(values, concurrency, worker) {
   const results = new Array(values.length);
   let nextIndex = 0;
@@ -885,7 +961,7 @@ async function mapWithConcurrency(values, concurrency, worker) {
           requiresOAuth: authType === 'oauth',
           protocolEra: 'unknown',
           checkedAt: new Date().toISOString(),
-          errorCode: 'validator_error',
+          errorCode: error && error.code === 'SERVER_TIMEOUT' ? 'timeout' : 'validator_error',
           message: error && error.message ? error.message : String(error),
         };
       }
@@ -918,15 +994,44 @@ async function validateCapabilitySnapshots(snapshots) {
   ]));
 }
 
+const VALIDATION_KEY_ORDER = [
+  'serverId',
+  'status',
+  'transport',
+  'authType',
+  'requiresOAuth',
+  'protocolEra',
+  'checkedAt',
+  'message',
+  'validatedUrl',
+  'protocolVersion',
+  'authorizationServers',
+  'errorCode',
+];
+
+// Emits validation fields in one fixed order so reruns diff only on observed values.
+function orderValidationResult(result) {
+  const known = VALIDATION_KEY_ORDER.filter((key) => result[key] !== undefined);
+  const extra = Object.keys(result)
+    .filter((key) => !VALIDATION_KEY_ORDER.includes(key) && result[key] !== undefined)
+    .sort();
+  return Object.fromEntries([...known, ...extra].map((key) => [key, result[key]]));
+}
+
+function readJsonFile(filePath, fallback) {
+  return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, 'utf8')) : fallback;
+}
+
 async function writeResults(
   results,
   paths = { validation: outputPath, capabilities: capabilitiesPath }
 ) {
-  const validationResults = results.map(({ capabilityInventory, ...result }) => result);
+  // Every result was observed in this run, so its checkedAt is kept as observed.
+  const validationResults = results.map(
+    ({ capabilityInventory, ...result }) => orderValidationResult(result)
+  );
   const activeServerIds = new Set(results.map(({ serverId }) => serverId));
-  const previous = fs.existsSync(paths.capabilities)
-    ? JSON.parse(fs.readFileSync(paths.capabilities, 'utf8'))
-    : {};
+  const previous = readJsonFile(paths.capabilities, {});
   // Validate the complete merged file before either durable output is replaced.
   const capabilities = await validateCapabilitySnapshots(
     Object.fromEntries(Object.entries(mergeCapabilitySnapshots(previous, results)).filter(
@@ -952,7 +1057,7 @@ async function main() {
   console.log(`Validating ${seeds.length} catalog servers with concurrency ${CONCURRENCY}...`);
 
   const results = await mapWithConcurrency(seeds, CONCURRENCY, async (seed) => {
-    const result = await validateSeed(seed);
+    const result = await withServerTimeout((signal) => validateSeed(seed, { signal }));
     console.log(
       `${seed.id}: ${result.status}, ${result.transport}, ${result.protocolEra}, ${result.authType} - ${result.message}`
     );
@@ -982,9 +1087,11 @@ module.exports = {
   probeStreamableEndpoint,
   requestDiscoveryPage,
   main,
+  mapWithConcurrency,
   validateCapabilitySnapshots,
   validateCatalogSeed,
   validateCatalogSeeds,
   validateSeed,
+  withServerTimeout,
   writeResults,
 };
