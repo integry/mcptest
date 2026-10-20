@@ -38,7 +38,7 @@ let container: HTMLDivElement;
 const snapshot = () => ({
   header: Boolean(container.querySelector('.app-header')),
   sidebarLinks: Array.from(
-    container.querySelectorAll('.desktop-sidebar .app-sidenav > a.nav-link'),
+    container.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:first-child .sidenav-list > .nav-item > a.nav-link'),
     link => link.textContent?.trim()
   ),
   dashboards: Array.from(
@@ -83,7 +83,7 @@ describe('App first render', () => {
     const whileLoading = snapshot();
     expect(whileLoading).toEqual({
       header: true,
-      sidebarLinks: ['Playground', 'Server Catalog', 'Report'],
+      sidebarLinks: ['Playground', 'Catalog', 'Reports'],
       dashboards: ['My first dashboard'],
       tabs: ['New Connection'],
       landing: 'Inspect, debug and evaluate remote MCP servers in your browser',

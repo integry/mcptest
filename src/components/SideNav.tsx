@@ -1,15 +1,23 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
-import { RESOURCE_NAV_ITEMS } from '../content/resourceNavigation';
-import { PRIMARY_NAV_ITEMS } from '../content/navigation';
+import {
+  DASHBOARDS_NAVIGATION,
+  FOOTER_NAVIGATION,
+  LEGAL_NAVIGATION,
+  PRIMARY_NAVIGATION,
+} from '../content/navigation';
+import { useSidebarCollapsed } from '../hooks/useSidebarCollapsed';
+import { closeMobileDrawer, useMobileDrawer } from '../hooks/useMobileDrawer';
 import ContentTrackNav from './learn/ContentTrackNav';
 
+type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
+
 interface SideNavProps {
-  activeView: 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
+  activeView: ActiveView;
   spaces: Space[];
   selectedSpaceId: string | null;
   handleSelectSpace: (id: string) => void;
@@ -23,6 +31,13 @@ interface SideNavProps {
   onToggleTheme?: () => void;
   isMobile?: boolean;
 }
+
+/** Which views light up each primary link; the catalog owns server profiles too. */
+const PRIMARY_ACTIVE_VIEWS: Record<string, ActiveView[]> = {
+  '/': ['playground'],
+  '/catalog': ['catalog', 'server-profile'],
+  '/report': ['report'],
+};
 
 const SideNav: React.FC<SideNavProps> = ({
   activeView,
@@ -41,17 +56,21 @@ const SideNav: React.FC<SideNavProps> = ({
 }) => {
   const [newSpaceName, setNewSpaceName] = React.useState('');
   const [showCreateInput, setShowCreateInput] = React.useState(false);
+  const [dashboardsOpen, setDashboardsOpen] = React.useState(true);
   const [draggedSpaceId, setDraggedSpaceId] = React.useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
   const [focusedDashboardIndex, setFocusedDashboardIndex] = useState<number | null>(null);
   const dashboardListRef = useRef<(HTMLLIElement | null)[]>([]);
+  const navRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const { currentUser, loginWithGoogle, logout } = useAuth();
   const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
-  // Content pages (/docs, /learn) get track navigation instead of dashboards + resources.
-  const isContentView = activeView === 'docs' || activeView === 'learn';
-  const closeMobileMenu = () => document.body.classList.remove('menu-open');
+  const [collapsed, toggleCollapsed, expandSidebar] = useSidebarCollapsed(!isMobile);
+  useMobileDrawer(isMobile, navRef);
+  const idSuffix = isMobile ? 'mobile' : 'desktop';
+  const dashboardsListId = `sidenav-dashboards-${idSuffix}`;
+  const dashboardsExpanded = dashboardsOpen && !collapsed;
 
   useEffect(() => {
     if (focusedDashboardIndex !== null && dashboardListRef.current[focusedDashboardIndex]) {
@@ -59,7 +78,17 @@ const SideNav: React.FC<SideNavProps> = ({
     }
   }, [focusedDashboardIndex]);
 
+  const handleDashboardsToggle = () => {
+    if (collapsed) {
+      expandSidebar();
+      setDashboardsOpen(true);
+      return;
+    }
+    setDashboardsOpen(open => !open);
+  };
+
   const handleCreateClick = () => {
+    setDashboardsOpen(true);
     setShowCreateInput(true);
   };
 
@@ -103,7 +132,7 @@ const SideNav: React.FC<SideNavProps> = ({
       if (space) {
         navigate(getSpaceUrl(space.name));
         handleSelectSpace(space.id);
-        document.body.classList.remove('menu-open');
+        closeMobileDrawer();
       }
     }
   };
@@ -116,7 +145,7 @@ const SideNav: React.FC<SideNavProps> = ({
 
   const handleSpaceDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    
+
     // Check if this is a card being dragged (from the data format)
     try {
       const dragData = e.dataTransfer.getData('text/plain');
@@ -130,7 +159,7 @@ const SideNav: React.FC<SideNavProps> = ({
     } catch {
       // Not JSON, likely a space drag - continue with space reordering
     }
-    
+
     // This is a space being dragged for reordering
     e.dataTransfer.dropEffect = 'move';
     setDragOverIndex(index);
@@ -145,7 +174,7 @@ const SideNav: React.FC<SideNavProps> = ({
     e.preventDefault();
     setDragOverIndex(null);
     setCardDropTargetSpaceId(null);
-    
+
     // Check if this is a card being dropped
     try {
       const dragData = e.dataTransfer.getData('text/plain');
@@ -155,7 +184,7 @@ const SideNav: React.FC<SideNavProps> = ({
         const targetSpaceId = spaces[dropIndex].id;
         const sourceSpaceId = parsedData.sourceSpaceId;
         const cardId = parsedData.cardId;
-        
+
         // Don't move if dropping on the same space
         if (targetSpaceId !== sourceSpaceId) {
           onMoveCard(sourceSpaceId, targetSpaceId, cardId);
@@ -165,18 +194,18 @@ const SideNav: React.FC<SideNavProps> = ({
     } catch {
       // Not JSON, continue with space reordering
     }
-    
+
     // This is a space reordering
     if (!draggedSpaceId) return;
-    
+
     const draggedIndex = spaces.findIndex(space => space.id === draggedSpaceId);
     if (draggedIndex === -1 || draggedIndex === dropIndex) return;
-    
+
     // Reorder the spaces array
     const newSpaces = [...spaces];
     const [draggedSpace] = newSpaces.splice(draggedIndex, 1);
     newSpaces.splice(dropIndex, 0, draggedSpace);
-    
+
     // Update the dashboards order
     handleReorderDashboards(newSpaces);
     setDraggedSpaceId(null);
@@ -191,14 +220,14 @@ const SideNav: React.FC<SideNavProps> = ({
   const renderHealthIndicator = (spaceId: string) => {
     const status = getSpaceHealthStatus(spaceId);
     const color = getSpaceHealthColor(spaceId);
-    
+
     if (status.loading) {
       return (
-        <div 
-          className="spinner-border spinner-border-sm me-2" 
-          style={{ 
-            width: '12px', 
-            height: '12px', 
+        <div
+          className="spinner-border spinner-border-sm me-2"
+          style={{
+            width: '12px',
+            height: '12px',
             color: '#6c757d',
             verticalAlign: 'middle',
             position: 'relative',
@@ -213,7 +242,7 @@ const SideNav: React.FC<SideNavProps> = ({
 
     const colorMap = {
       green: '#28a745',
-      orange: '#fd7e14', 
+      orange: '#fd7e14',
       red: '#dc3545',
       gray: '#6c757d'
     };
@@ -241,136 +270,169 @@ const SideNav: React.FC<SideNavProps> = ({
     );
   };
 
+  const buildDate = new Date(VERSION_INFO.commitDate);
+
   return (
-    <nav className={`app-sidenav nav flex-column d-flex flex-grow-1${isContentView ? ' app-sidenav-content' : ''}`}>
-      {/* Primary links (Playground, Server Catalog, Report) from the shared navigation module */}
-      {PRIMARY_NAV_ITEMS.map(item => (
-        <Link
-          key={item.path}
-          to={item.path}
-          className={`nav-link ${item.activeViews.includes(activeView) ? 'active fw-bold' : ''}`}
-          onClick={closeMobileMenu}
-        >
-          <i className={`bi ${item.icon} me-2`}></i> {item.label}
-        </Link>
-      ))}
+    <nav
+      ref={navRef}
+      id={`app-sidenav-${idSuffix}`}
+      className={`app-sidenav d-flex flex-column flex-grow-1${collapsed ? ' app-sidenav--collapsed' : ''}`}
+      aria-label="Main"
+    >
+      {/* Workspace: app destinations plus the collapsible dashboards group */}
+      <section className="sidenav-group" aria-labelledby={`workspace-nav-heading-${idSuffix}`}>
+        <h2 id={`workspace-nav-heading-${idSuffix}`} className="sidenav-section-label">Workspace</h2>
+        <ul className="sidenav-list">
+          {PRIMARY_NAVIGATION.map(item => {
+            const isActive = (PRIMARY_ACTIVE_VIEWS[item.path] ?? []).includes(activeView);
+            return (
+              <li className="nav-item" key={item.path}>
+                <Link
+                  to={item.path}
+                  className={`nav-link sidenav-link${isActive ? ' active' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
+                  onClick={closeMobileDrawer}
+                  title={collapsed ? item.label : undefined}
+                >
+                  <i className={`bi ${item.icon} sidenav-icon`} aria-hidden="true"></i>
+                  <span className="sidenav-label">{item.label}</span>
+                </Link>
+              </li>
+            );
+          })}
 
-      {!isContentView && (
-        <>
-          {/* Dashboards Header */}
-          <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
-            <h6 className="sidenav-section-label mb-0">Dashboards</h6>
-            <button
-              className="btn btn-sm btn-outline-secondary"
-              onClick={performAllDashboardsHealthCheck}
-              title="Refresh health status"
-              style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-            >
-              <i className="bi bi-arrow-clockwise"></i>
-            </button>
-          </div>
-
-          {/* List of Dashboards */}
-          <nav aria-label="Dashboards">
-            {spaces.length === 0 ? (
-              <div className="text-muted text-center p-3" style={{ fontStyle: 'italic' }}>
-                Create your first dashboard to get started.
-              </div>
-            ) : (
-              <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox">
-                {spaces.map((space, index) => (
-                  <li
-                    ref={(el) => { dashboardListRef.current[index] = el; }}
-                    className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
-                    key={space.id}
-                    onDragOver={(e) => handleSpaceDragOver(e, index)}
-                    onDragLeave={handleSpaceDragLeave}
-                    onDrop={(e) => handleSpaceDrop(e, index)}
-                    tabIndex={focusedDashboardIndex === index ? 0 : -1}
-                    role="option"
-                    aria-selected={selectedSpaceId === space.id && activeView === 'dashboards'}
-                    onFocus={() => setFocusedDashboardIndex(index)}
-                  >
-                    <Link
-                      to={getSpaceUrl(space.name)}
-                      className={`dashboard-link nav-link py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active fw-bold' : ''}`}
-                      draggable
-                      onDragStart={(e) => handleSpaceDragStart(e, space.id)}
-                      onDragEnd={handleSpaceDragEnd}
-                      onClick={() => {
-                        handleSelectSpace(space.id);
-                        // Close mobile menu if open
-                        document.body.classList.remove('menu-open');
-                      }}
-                      style={{
-                        cursor: 'move',
-                        opacity: draggedSpaceId === space.id ? 0.5 : 1,
-                        transition: 'opacity 0.2s ease',
-                        userSelect: 'none'
-                      }}
-                    >
-                      {renderHealthIndicator(space.id)}
-                      <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
-                      <span
-                        className="dashboard-card-count"
-                        title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
-                        aria-label={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
-                      >
-                        {space.cards.length} {space.cards.length === 1 ? 'card' : 'cards'}
-                      </span>
-                    </Link>
-                </li>
-              ))}
-              </ul>
-            )}
-          </nav>
-
-          {/* Create New Dashboard */}
-          <div className="mt-2 ms-3">
-            {showCreateInput ? (
-              <div className="inline-edit-group">
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  placeholder="New dashboard name..."
-                  value={newSpaceName}
-                  onChange={handleInputChange}
-                  onKeyDown={handleInputKeyDown}
-                  autoFocus
-                />
-                <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create">
-                  <i className="bi bi-check-lg"></i>
-                </button>
-                <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel">
-                  <i className="bi bi-x-lg"></i>
-                </button>
-              </div>
-            ) : (
-              <button className="btn btn-sm btn-outline-primary w-100" onClick={handleCreateClick} aria-label="Create new dashboard">
-                <i className="bi bi-plus-lg me-1"></i> Create New Dashboard
+          <li className="nav-item sidenav-dashboards">
+            <div className="sidenav-group-header">
+              <button
+                type="button"
+                className={`nav-link sidenav-link sidenav-group-toggle${activeView === 'dashboards' ? ' active' : ''}`}
+                aria-expanded={dashboardsExpanded}
+                aria-controls={dashboardsListId}
+                onClick={handleDashboardsToggle}
+                title={collapsed ? DASHBOARDS_NAVIGATION.label : undefined}
+              >
+                <i className={`bi ${DASHBOARDS_NAVIGATION.icon} sidenav-icon`} aria-hidden="true"></i>
+                <span className="sidenav-label">{DASHBOARDS_NAVIGATION.label}</span>
+                <i className="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i>
               </button>
-            )}
-          </div>
-        </>
-      )}
+              <div className="sidenav-group-actions">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost sidenav-action"
+                  onClick={performAllDashboardsHealthCheck}
+                  title="Refresh health status"
+                  aria-label="Refresh health status of all dashboards"
+                >
+                  <i className="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost sidenav-action"
+                  onClick={handleCreateClick}
+                  title="Create new dashboard"
+                  aria-label="Create new dashboard"
+                >
+                  <i className="bi bi-plus-lg" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+
+            <div id={dashboardsListId} className="sidenav-dashboards-body" hidden={!dashboardsExpanded}>
+              {spaces.length === 0 && !showCreateInput ? (
+                <p className="sidenav-empty-hint">Create a dashboard to pin saved connections.</p>
+              ) : (
+                <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox" aria-label="Dashboards">
+                  {spaces.map((space, index) => (
+                    <li
+                      ref={(el) => { dashboardListRef.current[index] = el; }}
+                      className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
+                      key={space.id}
+                      onDragOver={(e) => handleSpaceDragOver(e, index)}
+                      onDragLeave={handleSpaceDragLeave}
+                      onDrop={(e) => handleSpaceDrop(e, index)}
+                      tabIndex={focusedDashboardIndex === index ? 0 : -1}
+                      role="option"
+                      aria-selected={selectedSpaceId === space.id && activeView === 'dashboards'}
+                      onFocus={() => setFocusedDashboardIndex(index)}
+                    >
+                      <Link
+                        to={getSpaceUrl(space.name)}
+                        className={`dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active' : ''}`}
+                        draggable
+                        onDragStart={(e) => handleSpaceDragStart(e, space.id)}
+                        onDragEnd={handleSpaceDragEnd}
+                        onClick={() => {
+                          handleSelectSpace(space.id);
+                          closeMobileDrawer();
+                        }}
+                        style={{
+                          cursor: 'move',
+                          opacity: draggedSpaceId === space.id ? 0.5 : 1,
+                          transition: 'opacity 0.2s ease',
+                          userSelect: 'none'
+                        }}
+                      >
+                        {renderHealthIndicator(space.id)}
+                        <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
+                        <span
+                          className="dashboard-card-count"
+                          title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                          aria-label={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                        >
+                          {space.cards.length} {space.cards.length === 1 ? 'card' : 'cards'}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {showCreateInput && (
+                <div className="inline-edit-group sidenav-create">
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    placeholder="New dashboard name..."
+                    aria-label="New dashboard name"
+                    value={newSpaceName}
+                    onChange={handleInputChange}
+                    onKeyDown={handleInputKeyDown}
+                    autoFocus
+                  />
+                  <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create">
+                    <i className="bi bi-check-lg"></i>
+                  </button>
+                  <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel">
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                </div>
+              )}
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      {/* Learn: the guide hub and the four tracks, with the current track expanded */}
+      <ContentTrackNav onNavigate={closeMobileDrawer} collapsed={collapsed} onExpandSidebar={expandSidebar} idPrefix={`sidenav-${idSuffix}`} />
 
       {/* Theme and Auth Controls - Only show on mobile */}
       {isMobile && (
-        <div className="mt-4 px-3">
-          <div className="d-flex align-items-center justify-content-between mb-3">
+        <div className="sidenav-mobile-controls">
+          <div className="d-flex align-items-center justify-content-between">
             <span className="text-muted">Theme</span>
             <button
+              type="button"
               onClick={onToggleTheme}
-              className="btn btn-outline-secondary btn-sm"
-              style={{ padding: '0.5rem 0.75rem', fontSize: '1.25rem', lineHeight: 1, border: 'none' }}
+              className="btn btn-ghost sidenav-theme-toggle"
               title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
-              <i className={`bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`}></i>
+              <i className={`bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`} aria-hidden="true"></i>
             </button>
           </div>
-          
+
           {authEnabled && (
-            <div className="pb-3 border-bottom">
+            <div className="pt-3">
               {currentUser ? (
                 <div className="d-flex flex-column align-items-center">
                   <div className="d-flex align-items-center mb-2">
@@ -387,58 +449,56 @@ const SideNav: React.FC<SideNavProps> = ({
         </div>
       )}
 
-      {/* Content navigation: tracks on content pages, resource hub elsewhere */}
-      {isContentView ? (
-        <ContentTrackNav onNavigate={closeMobileMenu} />
-      ) : (
-        <section className="sidenav-content-section mt-4" aria-labelledby="resources-nav-heading">
-          <h2 id="resources-nav-heading" className="sidenav-section-label mb-1">Resources</h2>
-          <ul className="nav flex-column sidenav-content-list">
-            {RESOURCE_NAV_ITEMS.map(item => (
-              <li className="nav-item" key={item.path}>
-                <NavLink
-                  to={item.path}
-                  end={!item.matchDescendants}
-                  className="nav-link docs-nav-link py-1"
-                  onClick={closeMobileMenu}
-                >
-                  <i className={`bi ${item.icon} me-2`} aria-hidden="true"></i> {item.label}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Footer Content */}
-      <div className="mt-auto pt-3 border-top small">
-        <div className="px-2 text-center">
-          <p className="text-muted mb-1">
-            Copyright {new Date().getFullYear()} <Link to="/docs/contact" className="text-muted">Unchained Development OÜ</Link>.
-          </p>
-          <div className="mb-2">
-            <Link to="/docs/contact" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
-              Contact
+      {/* Footer: project links, legal links and the build, in quieter type */}
+      <div className="sidenav-footer">
+        <ul className="sidenav-footer-links" aria-label="Project links">
+          {FOOTER_NAVIGATION.map(link => (
+            <li key={link.href}>
+              <a href={link.href} target="_blank" rel="noopener noreferrer" className="sidenav-footer-link">
+                {link.label}
+                <span className="visually-hidden"> (opens in a new tab)</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div className="sidenav-legal">
+          {LEGAL_NAVIGATION.map(link => (
+            <Link key={link.href} to={link.href} className="sidenav-footer-link" onClick={closeMobileDrawer}>
+              {link.label}
             </Link>
-            <Link to="/docs/privacy-policy" className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
-              Privacy
-            </Link>
-            <Link to="/docs/terms-of-service" className="text-muted" style={{ fontSize: '0.8rem' }}>
-              Terms
-            </Link>
-          </div>
-          <div className="text-muted" style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-            <div>Updated: <a 
-                href={getGithubCommitUrl(VERSION_INFO.commitHash)} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-muted"
-                style={{ opacity: 0.7 }}
-              >
-                {new Date(VERSION_INFO.commitDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {new Date(VERSION_INFO.commitDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-              </a></div>
-          </div>
+          ))}
         </div>
+        <p className="sidenav-build">
+          <span>&copy; {new Date().getFullYear()} Unchained Development OÜ</span>
+          <span>
+            Updated{' '}
+            <a
+              href={getGithubCommitUrl(VERSION_INFO.commitHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="sidenav-footer-link"
+            >
+              <time dateTime={VERSION_INFO.commitDate}>
+                {buildDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
+                {buildDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </time>
+            </a>
+          </span>
+        </p>
+        {!isMobile && (
+          <button
+            type="button"
+            className="sidenav-collapse-toggle"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-controls={`app-sidenav-${idSuffix}`}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <i className={`bi ${collapsed ? 'bi-chevron-double-right' : 'bi-chevron-double-left'}`} aria-hidden="true"></i>
+            <span className="sidenav-label">Collapse</span>
+          </button>
+        )}
       </div>
     </nav>
   );

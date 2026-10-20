@@ -1,38 +1,100 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { TRACK_NAVIGATION } from '../../content/learnRegistry';
+import React, { useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import {
+  LEARN_HUB_NAVIGATION,
+  LEARN_TRACKS,
+  getLearnTrackForPath,
+} from '../../content/navigation';
 import './ContentTrackNav.css';
 
 interface ContentTrackNavProps {
   onNavigate?: () => void;
+  /** Icon-only sidebar: labels are hidden and opening a track expands the sidebar first. */
+  collapsed?: boolean;
+  onExpandSidebar?: () => void;
+  /** Keeps element ids unique when the desktop sidebar and the mobile drawer both render. */
+  idPrefix?: string;
 }
 
-/** Sidebar navigation for content pages: every track with its articles in order. */
-const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate }) => (
-  <section className="sidenav-content-section content-track-nav mt-3" aria-labelledby="learn-nav-heading">
-    <h2 id="learn-nav-heading" className="sidenav-section-label mb-1">Learn</h2>
-    <ul className="nav flex-column sidenav-content-list">
-      <li className="nav-item">
-        <NavLink to="/learn" end className="nav-link docs-nav-link py-1" onClick={onNavigate}>
-          <i className="bi bi-journals me-2" aria-hidden="true"></i> All guides
-        </NavLink>
-      </li>
-    </ul>
-    {TRACK_NAVIGATION.map(track => (
-      <div className="content-track" key={track.id}>
-        <h3 className="content-track-label" id={`sidenav-track-${track.id}`}>{track.label}</h3>
-        <ul className="nav flex-column sidenav-content-list" aria-labelledby={`sidenav-track-${track.id}`}>
-          {track.items.map(item => (
-            <li className="nav-item" key={item.slug}>
-              <NavLink to={item.path} end className="nav-link docs-nav-link py-1" onClick={onNavigate}>
-                {item.navTitle}
-              </NavLink>
+/**
+ * The sidebar's Learn group: the guide hub plus the four tracks, always
+ * visible. The track that owns the current page is expanded to its articles;
+ * the others stay collapsed until toggled. Toggles reset on navigation.
+ */
+const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate, collapsed = false, onExpandSidebar, idPrefix = 'sidenav' }) => {
+  const { pathname } = useLocation();
+  const activeTrackId = getLearnTrackForPath(pathname)?.id;
+  const [overrides, setOverrides] = useState<Partial<Record<string, boolean>>>({});
+
+  useEffect(() => {
+    setOverrides({});
+  }, [pathname]);
+
+  const isExpanded = (trackId: string) => !collapsed && (overrides[trackId] ?? trackId === activeTrackId);
+
+  const toggleTrack = (trackId: string) => {
+    if (collapsed) {
+      onExpandSidebar?.();
+      // Open only the chosen track, even if another one owns the current page.
+      setOverrides(activeTrackId ? { [activeTrackId]: false, [trackId]: true } : { [trackId]: true });
+      return;
+    }
+    setOverrides(current => ({ ...current, [trackId]: !isExpanded(trackId) }));
+  };
+
+  return (
+    <section className="sidenav-group content-track-nav" aria-labelledby={`${idPrefix}-learn-heading`}>
+      <h2 id={`${idPrefix}-learn-heading`} className="sidenav-section-label">Learn</h2>
+      <ul className="sidenav-list">
+        <li className="nav-item">
+          <NavLink
+            to={LEARN_HUB_NAVIGATION.path}
+            end
+            className="nav-link sidenav-link"
+            onClick={onNavigate}
+            title={collapsed ? LEARN_HUB_NAVIGATION.label : undefined}
+          >
+            <i className={`bi ${LEARN_HUB_NAVIGATION.icon} sidenav-icon`} aria-hidden="true"></i>
+            <span className="sidenav-label">{LEARN_HUB_NAVIGATION.label}</span>
+          </NavLink>
+        </li>
+        {LEARN_TRACKS.map(track => {
+          const expanded = isExpanded(track.id);
+          const listId = `${idPrefix}-track-${track.id}`;
+          return (
+            <li className="nav-item content-track" key={track.id} data-track={track.id}>
+              <button
+                type="button"
+                className={`nav-link sidenav-link sidenav-group-toggle content-track-label${track.id === activeTrackId ? ' is-current' : ''}`}
+                aria-expanded={expanded}
+                aria-controls={listId}
+                onClick={() => toggleTrack(track.id)}
+                title={collapsed ? track.label : undefined}
+              >
+                <i className={`bi ${track.icon} sidenav-icon`} aria-hidden="true"></i>
+                <span className="sidenav-label">{track.label}</span>
+                <i className="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i>
+              </button>
+              <ul
+                id={listId}
+                className="sidenav-list sidenav-sublist"
+                aria-label={`${track.label} guides`}
+                hidden={!expanded}
+              >
+                {track.items.map(item => (
+                  <li className="nav-item" key={item.slug}>
+                    <NavLink to={item.path} end className="nav-link sidenav-link sidenav-sublink" onClick={onNavigate}>
+                      {item.navTitle}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
             </li>
-          ))}
-        </ul>
-      </div>
-    ))}
-  </section>
-);
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
 
 export default ContentTrackNav;

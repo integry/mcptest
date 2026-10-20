@@ -38,7 +38,14 @@ const {
   LANDING_REPORT_COVERAGE,
 } = require('../src/content/landingCopy.ts');
 const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/utils/ogImage.ts');
-const { PRIMARY_NAV_ITEMS, buildResourceNavigation } = require('../src/content/navigation.ts');
+const {
+  DASHBOARDS_NAVIGATION,
+  FOOTER_NAVIGATION,
+  LEARN_HUB_NAVIGATION,
+  LEGAL_NAVIGATION,
+  PRIMARY_NAVIGATION,
+  buildLearnTrackNavigation,
+} = require('../src/content/navigationLinks.ts');
 const { createDefaultSpaces, createDefaultTabs } = require('../src/utils/defaultWorkspace.ts');
 const { selectLandingQuickPicks } = require('../src/utils/landingQuickPicks.ts');
 const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.ts');
@@ -947,7 +954,7 @@ function renderQuickPicks(quickPicks) {
  * and quick picks as inert markup, so the page looks the same before React
  * mounts and replaces the root.
  */
-function renderLandingFallback(catalogCount, quickPicks = []) {
+function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle = false } = {}) {
   return [
     '<section class="landing seo-landing-fallback" aria-labelledby="landing-title">',
     '  <div class="landing-hero">',
@@ -959,6 +966,10 @@ function renderLandingFallback(catalogCount, quickPicks = []) {
     '      <button id="connectBtn" type="button" class="btn btn-primary landing-connect-button" disabled>Connect</button>',
     '    </div>',
     ...renderQuickPicks(quickPicks),
+    // TabContent passes the connection panel as LandingHero's advancedOptions.
+    ...(advancedToggle
+      ? ['    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>Advanced options<span class="landing-advanced-hint">headers, auth, proxy</span></button>']
+      : []),
     '  </div>',
     `  <nav class="landing-paths" aria-label="${escapeHtml(LANDING_PATHS_LABEL)}">`,
     '    <ul>',
@@ -1021,51 +1032,77 @@ function cardCountLabel(count) {
 
 /**
  * Desktop sidebar as src/components/SideNav.tsx renders it on the playground
- * for a visitor with nothing saved: links from src/content/navigation.ts,
- * the default dashboard from src/utils/defaultWorkspace.ts, and the footer.
+ * for a visitor with nothing saved and the sidebar expanded: the workspace
+ * and learn groups from src/content/navigationLinks.ts, the default dashboard
+ * from src/utils/defaultWorkspace.ts, and the footer.
  */
-function renderSideNavFallback({ resourceItems, versionInfo, year }) {
+function renderSideNavFallback({ learnTracks, versionInfo, year }) {
+  const idSuffix = 'desktop';
+  const learnPrefix = `sidenav-${idSuffix}`;
   const commitDate = new Date(versionInfo.commitDate);
   const updated = `${commitDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${commitDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const sidenavLink = (item, className, extra = '') => (
+    `<a href="${escapeHtml(item.path)}" class="${className}"${extra}><i class="bi ${escapeHtml(item.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(item.label)}</span></a>`
+  );
   return [
-    '<nav class="app-sidenav nav flex-column d-flex flex-grow-1">',
-    ...PRIMARY_NAV_ITEMS.map(item => (
-      `  <a href="${escapeHtml(item.path)}" class="nav-link${item.activeViews.includes('playground') ? ' active fw-bold' : ''}"><i class="bi ${escapeHtml(item.icon)} me-2"></i> ${escapeHtml(item.label)}</a>`
-    )),
-    '  <div class="d-flex justify-content-between align-items-center mt-3 mb-1">',
-    '    <h6 class="sidenav-section-label mb-0">Dashboards</h6>',
-    '    <button type="button" class="btn btn-sm btn-outline-secondary" title="Refresh health status" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"><i class="bi bi-arrow-clockwise"></i></button>',
-    '  </div>',
-    '  <nav aria-label="Dashboards">',
-    '    <ul class="nav flex-column dashboard-list" role="listbox">',
+    `<nav id="app-sidenav-${idSuffix}" class="app-sidenav d-flex flex-column flex-grow-1" aria-label="Main">`,
+    `  <section class="sidenav-group" aria-labelledby="workspace-nav-heading-${idSuffix}">`,
+    `    <h2 id="workspace-nav-heading-${idSuffix}" class="sidenav-section-label">Workspace</h2>`,
+    '    <ul class="sidenav-list">',
+    ...PRIMARY_NAVIGATION.map(item => {
+      const active = item.path === '/';
+      return `      <li class="nav-item">${sidenavLink(item, `nav-link sidenav-link${active ? ' active' : ''}`, active ? ' aria-current="page"' : '')}</li>`;
+    }),
+    '      <li class="nav-item sidenav-dashboards">',
+    '        <div class="sidenav-group-header">',
+    `          <button type="button" class="nav-link sidenav-link sidenav-group-toggle" aria-expanded="true" aria-controls="sidenav-dashboards-${idSuffix}"><i class="bi ${escapeHtml(DASHBOARDS_NAVIGATION.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(DASHBOARDS_NAVIGATION.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
+    '          <div class="sidenav-group-actions">',
+    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Refresh health status" aria-label="Refresh health status of all dashboards"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>',
+    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Create new dashboard" aria-label="Create new dashboard"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>',
+    '          </div>',
+    '        </div>',
+    `        <div id="sidenav-dashboards-${idSuffix}" class="sidenav-dashboards-body">`,
+    '          <ul class="nav flex-column dashboard-list" role="listbox" aria-label="Dashboards">',
     ...createDefaultSpaces().map(space => [
-      '      <li class="nav-item" tabindex="-1" role="option" aria-selected="false">',
-      `<a href="${escapeHtml(getSpaceUrl(space.name))}" class="dashboard-link nav-link py-1 d-flex align-items-center" style="cursor: move; opacity: 1; user-select: none;">`,
+      '            <li class="nav-item" tabindex="-1" role="option" aria-selected="false">',
+      `<a href="${escapeHtml(getSpaceUrl(space.name))}" class="dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center" style="cursor: move; opacity: 1; user-select: none;">`,
       `<span class="me-2 health-indicator health-indicator-gray" title="No cards to check" style="${HEALTH_INDICATOR_STYLE}"></span>`,
       `<span class="dashboard-name flex-grow-1 text-truncate" title="${escapeHtml(space.name)}">${escapeHtml(space.name)}</span>`,
       `<span class="dashboard-card-count">${cardCountLabel(space.cards.length)}</span></a></li>`,
     ].join('')),
-    '    </ul>',
-    '  </nav>',
-    '  <div class="mt-2 ms-3">',
-    '    <button type="button" class="btn btn-sm btn-outline-primary w-100" aria-label="Create new dashboard"><i class="bi bi-plus-lg me-1"></i> Create New Dashboard</button>',
-    '  </div>',
-    '  <section class="sidenav-content-section mt-4" aria-labelledby="resources-nav-heading">',
-    '    <h2 id="resources-nav-heading" class="sidenav-section-label mb-1">Resources</h2>',
-    '    <ul class="nav flex-column sidenav-content-list">',
-    ...resourceItems.map(item => (
-      `      <li class="nav-item"><a href="${escapeHtml(item.path)}" class="nav-link docs-nav-link py-1"><i class="bi ${escapeHtml(item.icon)} me-2" aria-hidden="true"></i> ${escapeHtml(item.label)}</a></li>`
-    )),
+    '          </ul>',
+    '        </div>',
+    '      </li>',
     '    </ul>',
     '  </section>',
-    '  <div class="mt-auto pt-3 border-top small">',
-    '    <div class="px-2 text-center">',
-    `      <p class="text-muted mb-1">Copyright ${year} <a href="/docs/contact" class="text-muted">Unchained Development OÜ</a>.</p>`,
-    '      <div class="mb-2">',
-    '        <a href="/docs/contact" class="text-muted me-2" style="font-size: 0.8rem;">Contact</a><a href="/docs/privacy-policy" class="text-muted me-2" style="font-size: 0.8rem;">Privacy</a><a href="/docs/terms-of-service" class="text-muted" style="font-size: 0.8rem;">Terms</a>',
-    '      </div>',
-    `      <div class="text-muted" style="font-size: 0.75rem; opacity: 0.7;"><div>Updated: <a href="${escapeHtml(getGithubCommitUrl(versionInfo.commitHash))}" target="_blank" rel="noopener noreferrer" class="text-muted" style="opacity: 0.7;">${escapeHtml(updated)}</a></div></div>`,
+    `  <section class="sidenav-group content-track-nav" aria-labelledby="${learnPrefix}-learn-heading">`,
+    `    <h2 id="${learnPrefix}-learn-heading" class="sidenav-section-label">Learn</h2>`,
+    '    <ul class="sidenav-list">',
+    `      <li class="nav-item">${sidenavLink(LEARN_HUB_NAVIGATION, 'nav-link sidenav-link')}</li>`,
+    ...learnTracks.map(track => [
+      `      <li class="nav-item content-track" data-track="${escapeHtml(track.id)}">`,
+      `<button type="button" class="nav-link sidenav-link sidenav-group-toggle content-track-label" aria-expanded="false" aria-controls="${learnPrefix}-track-${escapeHtml(track.id)}"><i class="bi ${escapeHtml(track.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(track.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
+      `<ul id="${learnPrefix}-track-${escapeHtml(track.id)}" class="sidenav-list sidenav-sublist" aria-label="${escapeHtml(track.label)} guides" hidden>`,
+      ...track.items.map(item => (
+        `<li class="nav-item"><a href="${escapeHtml(item.path)}" class="nav-link sidenav-link sidenav-sublink">${escapeHtml(item.navTitle)}</a></li>`
+      )),
+      '</ul></li>',
+    ].join('')),
+    '    </ul>',
+    '  </section>',
+    '  <div class="sidenav-footer">',
+    '    <ul class="sidenav-footer-links" aria-label="Project links">',
+    ...FOOTER_NAVIGATION.map(link => (
+      `      <li><a href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link">${escapeHtml(link.label)}<span class="visually-hidden"> (opens in a new tab)</span></a></li>`
+    )),
+    '    </ul>',
+    '    <div class="sidenav-legal">',
+    ...LEGAL_NAVIGATION.map(link => (
+      `      <a href="${escapeHtml(link.href)}" class="sidenav-footer-link">${escapeHtml(link.label)}</a>`
+    )),
     '    </div>',
+    `    <p class="sidenav-build"><span>&copy; ${year} Unchained Development OÜ</span><span>Updated <a href="${escapeHtml(getGithubCommitUrl(versionInfo.commitHash))}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link"><time datetime="${escapeHtml(versionInfo.commitDate)}">${escapeHtml(updated)}</time></a></span></p>`,
+    `    <button type="button" class="sidenav-collapse-toggle" aria-expanded="true" aria-controls="app-sidenav-${idSuffix}" aria-label="Collapse sidebar" title="Collapse sidebar"><i class="bi bi-chevron-double-left" aria-hidden="true"></i><span class="sidenav-label">Collapse</span></button>`,
     '  </div>',
     '</nav>',
   ].join('\n');
@@ -1080,7 +1117,7 @@ function renderSideNavFallback({ resourceItems, versionInfo, year }) {
 function renderShellFallback({
   catalogCount,
   quickPicks = [],
-  resourceItems = [],
+  learnTracks = [],
   authEnabled = false,
   versionInfo = VERSION_INFO,
   year = new Date().getFullYear(),
@@ -1095,23 +1132,25 @@ function renderShellFallback({
     renderHeaderFallback({ authEnabled }),
     '<main class="app-workspace flex-grow-1 d-flex overflow-hidden" role="main">',
     '<div class="desktop-sidebar col-auto p-2 d-flex flex-column">',
-    renderSideNavFallback({ resourceItems, versionInfo, year }),
+    renderSideNavFallback({ learnTracks, versionInfo, year }),
     '</div>',
     '<div class="main-content col overflow-auto p-3 position-relative">',
     '<div class="view-panel" style="height: 100%;">',
     '<div class="h-100 d-flex flex-column">',
     '<div class="playground-tabs-wrapper">',
-    '<div class="nav nav-tabs" role="tablist">',
+    '<div class="playground-tab-strip">',
+    '<div class="nav nav-tabs playground-tabs" role="tablist">',
     '<div class="nav-item position-relative" role="presentation">'
-      + '<button type="button" class="nav-link active active-tab-override" role="tab" aria-selected="true">'
-      + '<span class="me-2" style="width: 8px; height: 8px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>'
-      + `${escapeHtml(tab.title)}</button></div>`,
-    '<div class="nav-item"><button type="button" class="nav-link">+ New</button></div>',
+      + `<button type="button" class="nav-link active active-tab-override" role="tab" aria-selected="true" title="${escapeHtml(tab.title)}">`
+      + '<span class="me-2 playground-tab-status" style="width: 8px; height: 8px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>'
+      + `<span class="playground-tab-label">${escapeHtml(tab.title)}</span></button></div>`,
+    '<div class="nav-item"><button type="button" class="nav-link playground-tab-new">+ New</button></div>',
+    '</div>',
     '</div>',
     '</div>',
     '<div class="flex-grow-1 position-relative">',
     '<div class="tab-content-panel" style="height: 100%; position: static; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;">',
-    renderLandingFallback(catalogCount, quickPicks),
+    renderLandingFallback(catalogCount, quickPicks, { advancedToggle: true }),
     '</div>',
     '</div>',
     '</div>',
@@ -1538,7 +1577,7 @@ async function main() {
   const indexHtml = addFontPreloads(stripLandingFallback(fs.readFileSync(indexPath, 'utf8')), fontHrefs);
   const shellOptions = {
     quickPicks: selectLandingQuickPicks(servers),
-    resourceItems: buildResourceNavigation(buildTrackNavigation(articles)),
+    learnTracks: buildLearnTrackNavigation(buildTrackNavigation(articles)),
     authEnabled: readBuildEnv('VITE_FIREBASE_AUTH_ENABLED') === 'true',
   };
 

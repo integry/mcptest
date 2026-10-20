@@ -104,14 +104,76 @@ describe('playground landing', () => {
     expect(container.querySelector<HTMLInputElement>('#serverUrl')?.value).toBe('https://example.com/mcp');
   });
 
-  it('renders the playground unchanged for returning users with recent connections', () => {
-    localStorage.setItem('mcpRecentServers', JSON.stringify(['https://returning.example/mcp']));
+  it('renders the landing for returning users with their recent servers as chips', () => {
+    localStorage.setItem('mcpRecentServers', JSON.stringify([
+      'https://returning.example/mcp',
+      'https://second.example:8443/sse',
+    ]));
     const { container } = renderTab(newTab);
 
+    expect(container.querySelector('.landing.landing--returning')).not.toBeNull();
+    expect(container.querySelector('.connection-console')).toBeNull();
+    expect(container.querySelector('.playground-layout')).toBeNull();
+    expect(container.querySelector('.awaiting-connection-panel')).toBeNull();
+    expect(container.querySelector('.suggested-servers-panel')).toBeNull();
+    // Recent servers replace the catalog quick picks; the audience rows and coverage stay.
+    expect(container.querySelector('[data-server-id]')).toBeNull();
+    const chips = Array.from(container.querySelectorAll<HTMLButtonElement>('.landing-recent-connect'));
+    expect(chips.map(chip => chip.textContent?.trim())).toEqual(['returning.example', 'second.example:8443']);
+    expect(chips.map(chip => chip.title)).toEqual(['https://returning.example/mcp', 'https://second.example:8443/sse']);
+    expect(container.querySelectorAll('.landing-path')).toHaveLength(3);
+    expect(container.querySelector('.landing-coverage')).not.toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('.landing-advanced-toggle')?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('reconnects a recent server chip through the connection path and removes chips in place', async () => {
+    localStorage.setItem('mcpRecentServers', JSON.stringify([
+      'https://returning.example/mcp',
+      'https://second.example/mcp',
+    ]));
+    const { container } = renderTab(newTab);
+
+    await act(async () => {
+      container.querySelector('[aria-label="Remove https://second.example/mcp from recent connections"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(Array.from(container.querySelectorAll('.landing-recent-connect'), chip => chip.getAttribute('data-recent-url')))
+      .toEqual(['https://returning.example/mcp']);
+    const stored: Array<string | { url: string }> = JSON.parse(localStorage.getItem('mcpRecentServers') ?? '[]');
+    expect(stored.map(entry => (typeof entry === 'string' ? entry : entry.url))).toEqual(['https://returning.example/mcp']);
+    expect(container.querySelector('.landing')).not.toBeNull();
+
+    await act(async () => {
+      container.querySelector('[data-recent-url="https://returning.example/mcp"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe('https://returning.example/mcp');
     expect(container.querySelector('.landing')).toBeNull();
     expect(container.querySelector('.connection-console')).not.toBeNull();
-    expect(container.querySelector('.playground-layout.playground-idle')).not.toBeNull();
-    expect(container.querySelector('.recent-servers-panel, .awaiting-connection-panel')).not.toBeNull();
+    expect(container.querySelector<HTMLInputElement>('#serverUrl')?.value).toBe('https://returning.example/mcp');
+  });
+
+  it('opens the full connection panel in place from Advanced options without leaving the landing', () => {
+    localStorage.setItem('mcpRecentServers', JSON.stringify(['https://returning.example/mcp']));
+    const { container } = renderTab(newTab);
+    const toggle = container.querySelector<HTMLButtonElement>('.landing-advanced-toggle')!;
+
+    act(() => toggle.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.landing .landing-advanced .connection-console')).not.toBeNull();
+    expect(container.querySelector('.landing .connection-advanced')).not.toBeNull();
+    expect(container.querySelector('.landing-connect')).toBeNull();
+    expect(container.querySelectorAll('#serverUrl')).toHaveLength(1);
+    expect(container.querySelector('.landing-paths')).not.toBeNull();
+
+    act(() => setInputValue(container.querySelector<HTMLInputElement>('#serverUrl')!, 'https://typed.example/mcp'));
+    act(() => toggle.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('.connection-console')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('.landing-connect #serverUrl')?.value).toBe('https://typed.example/mcp');
   });
 
   it('renders the playground unchanged for a tab that already has a server', () => {

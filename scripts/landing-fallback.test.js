@@ -21,8 +21,7 @@ vi.mock('../src/utils/analytics', async (importOriginal) => ({
 import App from '../src/App';
 import { AuthProvider } from '../src/context/AuthContext';
 import { LandingHero, selectLandingQuickPicks } from '../src/components/LandingHero';
-import { RESOURCE_NAV_ITEMS } from '../src/content/resourceNavigation';
-import { PRIMARY_NAV_ITEMS } from '../src/content/navigation';
+import { LEARN_HUB_NAVIGATION, LEARN_TRACKS, PRIMARY_NAVIGATION } from '../src/content/navigation';
 import * as landingCopy from '../src/content/landingCopy';
 import { getCatalogServers } from '../src/utils/catalogUtils';
 import seoGenerator from './generate-seo-pages.js';
@@ -147,7 +146,7 @@ const renderAppFirstFrame = () => parse(renderToStaticMarkup(React.createElement
 const renderShell = (authEnabled) => parse(renderShellFallback({
   catalogCount,
   quickPicks: selectLandingQuickPicks(getCatalogServers()),
-  resourceItems: RESOURCE_NAV_ITEMS,
+  learnTracks: LEARN_TRACKS,
   authEnabled,
 })).querySelector('.app-shell');
 
@@ -170,18 +169,23 @@ describe('static first frame (header, sidebar, playground landing)', () => {
 
   it('builds the sidebar links from the shared navigation module', () => {
     const shell = renderShell(false);
-    const sidebarLinks = Array.from(shell.querySelectorAll('.desktop-sidebar .app-sidenav > a.nav-link'), link => ({
-      path: link.getAttribute('href'),
-      label: text(link),
-      active: link.classList.contains('active'),
-    }));
-    expect(sidebarLinks).toEqual(PRIMARY_NAV_ITEMS.map(item => ({
+    const sidebarLinks = Array.from(
+      shell.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:first-child .sidenav-list > .nav-item > a.nav-link'),
+      link => ({
+        path: link.getAttribute('href'),
+        label: text(link),
+        active: link.classList.contains('active'),
+      })
+    );
+    expect(sidebarLinks).toEqual(PRIMARY_NAVIGATION.map(item => ({
       path: item.path,
       label: item.label,
-      active: item.activeViews.includes('playground'),
+      active: item.path === '/',
     })));
-    expect(Array.from(shell.querySelectorAll('.sidenav-content-list a'), link => link.getAttribute('href')))
-      .toEqual(RESOURCE_NAV_ITEMS.map(item => item.path));
+    expect(shell.querySelector('.content-track-nav .sidenav-list > .nav-item > a').getAttribute('href'))
+      .toBe(LEARN_HUB_NAVIGATION.path);
+    expect(Array.from(shell.querySelectorAll('.content-track-nav .sidenav-sublink'), link => link.getAttribute('href')))
+      .toEqual(LEARN_TRACKS.flatMap(track => track.items.map(item => item.path)));
   });
 
   it('renders the landing connect form and quick picks as inert markup', () => {

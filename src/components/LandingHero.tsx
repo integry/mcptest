@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { getCatalogServers } from '../utils/catalogUtils';
@@ -19,7 +19,19 @@ import { CatalogServerLogo } from './CatalogServerLogo';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
 import './LandingHero.css';
 
+const RECENT_SERVER_LIMIT = 6;
+
 export { selectLandingQuickPicks };
+
+/** The host a returning user recognises a recent endpoint by; the full URL stays in the tooltip. */
+export const getRecentServerLabel = (url: string): string => {
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    return parsed.host || url;
+  } catch {
+    return url;
+  }
+};
 
 export interface LandingHeroProps {
   serverUrl: string;
@@ -32,6 +44,16 @@ export interface LandingHeroProps {
   isConnecting: boolean;
   quickPicks?: CatalogServer[];
   catalogCount?: number;
+  /** A returning user's recent endpoints; when present they replace the catalog quick picks. */
+  recentServers?: readonly string[];
+  /** One-click reconnect for a recent endpoint, through the same connection path. */
+  onConnectRecent?: (serverUrl: string) => void;
+  onRemoveRecentServer?: (serverUrl: string) => void;
+  /**
+   * The full connection panel (headers, auth, proxy). When provided, an
+   * "Advanced options" disclosure swaps it in for the simple connect row.
+   */
+  advancedOptions?: React.ReactNode;
 }
 
 export const LandingHero: React.FC<LandingHeroProps> = ({
@@ -41,8 +63,16 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   isConnecting,
   quickPicks = selectLandingQuickPicks(getCatalogServers()),
   catalogCount = getCatalogServers().length,
+  recentServers = [],
+  onConnectRecent,
+  onRemoveRecentServer,
+  advancedOptions,
 }) => {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const canConnect = Boolean(serverUrl.trim()) && !isConnecting;
+  const recent = recentServers.slice(0, RECENT_SERVER_LIMIT);
+  const showRecent = recent.length > 0 && Boolean(onConnectRecent);
+  const advancedOpen = showAdvanced && Boolean(advancedOptions);
 
   const handleManualConnect = () => {
     if (!canConnect) return;
@@ -50,7 +80,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   };
 
   return (
-    <section className="landing" aria-labelledby="landing-title">
+    <section className={`landing${showRecent ? ' landing--returning' : ''}`} aria-labelledby="landing-title">
       <div className="landing-hero">
         <h1 id="landing-title" className="landing-title">
           {LANDING_HEADLINE}
@@ -59,66 +89,123 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
           {LANDING_LEDE}
         </p>
 
-        <div className="landing-connect">
-          <label htmlFor="serverUrl" className="visually-hidden">MCP endpoint URL</label>
-          <input
-            id="serverUrl"
-            type="text"
-            inputMode="url"
-            autoComplete="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            className="form-control landing-connect-input"
-            placeholder="https://example.com/mcp"
-            value={serverUrl}
-            onChange={(event) => onServerUrlChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                handleManualConnect();
-              }
-            }}
-            disabled={isConnecting}
-          />
-          <button
-            id="connectBtn"
-            type="button"
-            className="btn btn-primary landing-connect-button"
-            onClick={handleManualConnect}
-            disabled={!canConnect}
-          >
-            Connect
-          </button>
-        </div>
-
-        {quickPicks.length > 0 && (
-          <div className="landing-quick-picks">
-            <span className="landing-quick-picks-label" id="landing-quick-picks-label">Try with</span>
-            <ul aria-labelledby="landing-quick-picks-label">
-              {quickPicks.map((server) => {
-                const endpoint = getPreferredCatalogEndpoint(server);
-                return (
-                  <li key={server.id}>
-                    <button
-                      type="button"
-                      className="landing-quick-pick"
-                      data-server-id={server.id}
-                      title={endpoint.url}
-                      disabled={isConnecting}
-                      onClick={() => onConnect({ endpoint, protocolEra: server.protocolEra })}
-                    >
-                      <CatalogServerLogo
-                        name={server.name}
-                        logoUrl={server.logoUrl}
-                        className="landing-quick-pick-logo"
-                      />
-                      {server.name}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+        {advancedOpen ? (
+          <div className="landing-advanced" id="landing-advanced-panel">
+            {advancedOptions}
           </div>
+        ) : (
+          <>
+            <div className="landing-connect">
+              <label htmlFor="serverUrl" className="visually-hidden">MCP endpoint URL</label>
+              <input
+                id="serverUrl"
+                type="text"
+                inputMode="url"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                className="form-control landing-connect-input"
+                placeholder="https://example.com/mcp"
+                value={serverUrl}
+                onChange={(event) => onServerUrlChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleManualConnect();
+                  }
+                }}
+                disabled={isConnecting}
+              />
+              <button
+                id="connectBtn"
+                type="button"
+                className="btn btn-primary landing-connect-button"
+                onClick={handleManualConnect}
+                disabled={!canConnect}
+              >
+                Connect
+              </button>
+            </div>
+
+            {showRecent ? (
+              <div className="landing-quick-picks landing-recent">
+                <span className="landing-quick-picks-label" id="landing-recent-label">Recent</span>
+                <ul aria-labelledby="landing-recent-label">
+                  {recent.map((url) => (
+                    <li key={url} className="landing-recent-item">
+                      <button
+                        type="button"
+                        className="landing-quick-pick landing-recent-connect"
+                        data-recent-url={url}
+                        title={url}
+                        disabled={isConnecting}
+                        onClick={() => onConnectRecent?.(url)}
+                      >
+                        <i className="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i>
+                        <span className="landing-recent-host">{getRecentServerLabel(url)}</span>
+                      </button>
+                      {onRemoveRecentServer && (
+                        <button
+                          type="button"
+                          className="landing-recent-remove"
+                          onClick={() => onRemoveRecentServer(url)}
+                          disabled={isConnecting}
+                          title={`Remove ${url} from recent connections`}
+                          aria-label={`Remove ${url} from recent connections`}
+                        >
+                          <i className="bi bi-x-lg" aria-hidden="true"></i>
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : quickPicks.length > 0 && (
+              <div className="landing-quick-picks">
+                <span className="landing-quick-picks-label" id="landing-quick-picks-label">Try with</span>
+                <ul aria-labelledby="landing-quick-picks-label">
+                  {quickPicks.map((server) => {
+                    const endpoint = getPreferredCatalogEndpoint(server);
+                    return (
+                      <li key={server.id}>
+                        <button
+                          type="button"
+                          className="landing-quick-pick"
+                          data-server-id={server.id}
+                          title={endpoint.url}
+                          disabled={isConnecting}
+                          onClick={() => onConnect({ endpoint, protocolEra: server.protocolEra })}
+                        >
+                          <CatalogServerLogo
+                            name={server.name}
+                            logoUrl={server.logoUrl}
+                            className="landing-quick-pick-logo"
+                          />
+                          {server.name}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+
+        {advancedOptions && (
+          <button
+            type="button"
+            className="landing-advanced-toggle"
+            aria-expanded={advancedOpen}
+            aria-controls={advancedOpen ? 'landing-advanced-panel' : undefined}
+            onClick={() => setShowAdvanced((open) => !open)}
+          >
+            <i className="bi bi-gear" aria-hidden="true"></i>
+            {advancedOpen ? 'Simple connect' : 'Advanced options'}
+            <span className="landing-advanced-hint">
+              {advancedOpen ? '' : 'headers, auth, proxy'}
+            </span>
+          </button>
         )}
       </div>
 

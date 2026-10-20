@@ -146,4 +146,49 @@ describe('CatalogView', () => {
     expect(activeCategoryRule).toMatch(/color:\s*var\(--primary-hover\);/);
     expect(activeCategoryRule).toMatch(/font-weight:\s*500;/);
   });
+
+  it('folds the three selects into a Filters disclosure that counts the active filters', () => {
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(<CatalogView onTestServer={vi.fn()} />);
+    });
+
+    const filters = container.querySelector<HTMLElement>('.catalog-filters')!;
+    const toggle = filters.querySelector<HTMLButtonElement>('.catalog-filters-toggle')!;
+    const fields = filters.querySelector<HTMLElement>('.catalog-filter-fields')!;
+
+    // Search stays first and outside the disclosure.
+    expect(filters.firstElementChild?.classList).toContain('catalog-search-field');
+    expect(fields.contains(filters.querySelector('.catalog-search-field'))).toBe(false);
+    expect(fields.querySelectorAll('select')).toHaveLength(3);
+    expect(toggle.textContent).toContain('Filters');
+    // Mocked state: auth "oauth", category "Developer tools", sort "name" are all non-default.
+    expect(toggle.querySelector('.catalog-filters-count')?.textContent).toBe('3');
+    expect(fields.dataset.activeFilters).toBe('3');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe(fields.id);
+    expect(fields.classList).not.toContain('is-open');
+
+    act(() => {
+      toggle.click();
+    });
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(fields.classList).toContain('is-open');
+
+    // Desktop keeps the grid: the wrapper is transparent and the toggle hidden until the phone breakpoint.
+    const catalogCss = readStylesheet();
+    expect(catalogCss).toMatch(/\.catalog-filter-fields\s*\{\s*display:\s*contents;\s*\}/);
+    expect(catalogCss).toMatch(/\.catalog-filters-toggle\s*\{\s*display:\s*none;\s*\}/);
+    const phone = catalogCss.slice(catalogCss.indexOf('@media (max-width: 768px)'));
+    expect(phone).toMatch(/\.catalog-filters-toggle\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*2\.75rem;/);
+    expect(phone).toMatch(/\.catalog-filter-fields\s*\{\s*display:\s*none;\s*\}/);
+    expect(phone).toMatch(/\.catalog-filter-fields\.is-open\s*\{[^}]*display:\s*grid;/);
+
+    act(() => {
+      root.unmount();
+    });
+  });
 });

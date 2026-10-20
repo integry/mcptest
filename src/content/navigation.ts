@@ -1,53 +1,25 @@
 /**
- * Sidebar navigation shared by SideNav and the static shell that
- * scripts/generate-seo-pages.js writes into dist/index.html, so the first
- * frame and the mounted app list the same links. The generator loads this
- * file with Node's built-in TypeScript support: keep runtime imports out of it.
+ * Single source for the sidebar's links. SideNav renders these groups, and
+ * the static first-paint fallback mirrors the same data (from
+ * ./navigationLinks, which has no runtime imports) so both agree.
+ *
+ * Three groups: the workspace (app destinations), learn (the guide hub plus
+ * the four tracks derived from the content registry) and a quiet footer.
  */
-import type { TrackNavigation } from './contentModel';
+import { TRACK_NAVIGATION } from './learnRegistry';
+import { buildLearnTrackNavigation } from './navigationLinks';
+import type { LearnTrackNavigation } from './navigationLinks';
 
-export type SideNavView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile';
+export * from './navigationLinks';
 
-export interface PrimaryNavItem {
-  label: string;
-  path: string;
-  icon: string;
-  /** Views in which the link is highlighted as the current section. */
-  activeViews: readonly SideNavView[];
-}
+/** The four tracks (Understand, Use, Build, Reference) with their articles in reading order. */
+export const LEARN_TRACKS: readonly LearnTrackNavigation[] = buildLearnTrackNavigation(TRACK_NAVIGATION);
 
-/** Top-level app destinations, listed first in the sidebar on every view. */
-export const PRIMARY_NAV_ITEMS: readonly PrimaryNavItem[] = [
-  { label: 'Playground', path: '/', icon: 'bi-search', activeViews: ['playground'] },
-  { label: 'Server Catalog', path: '/catalog', icon: 'bi-grid', activeViews: ['catalog', 'server-profile'] },
-  { label: 'Report', path: '/report', icon: 'bi-clipboard2-data', activeViews: ['report'] },
-];
-
-export interface ResourceNavigationItem {
-  label: string;
-  path: string;
-  icon: string;
-  matchDescendants?: boolean;
-}
-
-/**
- * High-level destinations shown in the sidebar on app views (playground,
- * catalog, report, dashboards). Generated from the learn tracks: the first
- * "Understand" article, the guide hub, and the first "Reference" article.
- */
-export const buildResourceNavigation = (
-  tracks: readonly TrackNavigation[]
-): ResourceNavigationItem[] => {
-  const firstOf = (id: TrackNavigation['id']) => tracks.find(track => track.id === id)?.items[0];
-  const understand = firstOf('understand');
-  const reference = firstOf('reference');
-  const items: ResourceNavigationItem[] = [];
-  if (understand) {
-    items.push({ label: understand.navTitle, path: understand.path, icon: 'bi-info-circle' });
-  }
-  items.push({ label: 'Guides & Tutorials', path: '/learn', icon: 'bi-journals', matchDescendants: true });
-  if (reference) {
-    items.push({ label: reference.navTitle, path: reference.path, icon: 'bi-wrench' });
-  }
-  return items;
+/** Finds the track that owns a content page, so the sidebar can expand it. */
+export const getLearnTrackForPath = (
+  pathname: string,
+  tracks: readonly LearnTrackNavigation[] = LEARN_TRACKS
+): LearnTrackNavigation | undefined => {
+  const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  return tracks.find(track => track.items.some(item => item.path === normalized));
 };
