@@ -1,0 +1,282 @@
+/* First-run landing shown in the empty playground. Styling relies on the
+   shared design tokens so light and dark themes both apply automatically. */
+.landing {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 7vw, 4.5rem) 1rem 3rem;
+  color: var(--text-color);
+  min-width: 0;
+}
+
+.landing-hero {
+  padding-bottom: 2.5rem;
+}
+
+.landing-title {
+  margin: 0 0 1rem;
+  font-size: clamp(1.85rem, 5vw, 2.75rem);
+  font-weight: 650;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  color: var(--text-color);
+  text-wrap: balance;
+}
+
+.landing-lede {
+  margin: 0 0 2rem;
+  max-width: 38rem;
+  font-size: 1.075rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.landing-connect {
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.landing-connect-input.form-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 3rem;
+  padding: 0 1rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.95rem;
+  color: var(--text-color);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--button-radius);
+}
+
+.landing-connect-input.form-control:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.landing-connect-button.btn {
+  flex: 0 0 auto;
+  height: 3rem;
+  padding: 0 1.4rem;
+  font-weight: 600;
+  border-radius: var(--button-radius);
+}
+
+.landing-quick-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.landing-quick-picks-label {
+  color: var(--text-muted);
+}
+
+.landing-quick-picks ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-quick-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.7rem 0.3rem 0.4rem;
+  font: inherit;
+  color: var(--text-color);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--button-radius);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.landing-quick-pick:hover:not(:disabled),
+.landing-quick-pick:focus-visible {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.landing-quick-pick:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.landing-quick-pick:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.landing-quick-pick-logo {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 0.3rem;
+  font-size: 0.6rem;
+}
+
+.landing-quick-pick-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Publisher marks are drawn for light backgrounds; keep them legible in dark. */
+:root[data-theme='dark'] .landing-quick-pick-logo:not(.catalog-server-logo--fallback) {
+  background: #f7fffc;
+  padding: 0.1rem;
+}
+
+/* Audience paths: inline rows separated by hairlines rather than cards. */
+.landing-paths ul,
+.landing-coverage ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-paths {
+  border-top: 1px solid var(--border-color);
+}
+
+.landing-paths li {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.landing-path {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) auto;
+  gap: 0.25rem 1.5rem;
+  align-items: baseline;
+  padding: 1rem 0.25rem;
+  color: var(--text-color);
+  text-decoration: none;
+}
+
+.landing-path-title {
+  font-weight: 600;
+}
+
+.landing-path-description {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.landing-path-arrow {
+  color: var(--text-muted);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.landing-path:hover .landing-path-title,
+.landing-path:focus-visible .landing-path-title,
+.landing-path:hover .landing-path-arrow,
+.landing-path:focus-visible .landing-path-arrow {
+  color: var(--primary-color);
+}
+
+.landing-path:hover .landing-path-arrow,
+.landing-path:focus-visible .landing-path-arrow {
+  transform: translateX(3px);
+}
+
+.landing-path:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--button-radius-sm);
+}
+
+.landing-coverage {
+  padding: 2rem 0 1.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.landing-coverage-title {
+  margin: 0 0 0.9rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-color);
+}
+
+.landing-coverage ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 0.55rem 1.5rem;
+}
+
+.landing-coverage li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.95rem;
+  color: var(--text-accent);
+}
+
+.landing-coverage li .bi {
+  flex: 0 0 auto;
+  color: var(--primary-color);
+}
+
+.landing-catalog {
+  margin: 1.5rem 0 0;
+  font-size: 0.95rem;
+}
+
+.landing-catalog a {
+  color: var(--primary-color);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.landing-catalog a:hover,
+.landing-catalog a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 575.98px) {
+  .landing-connect {
+    flex-direction: column;
+  }
+
+  .landing-connect-button.btn {
+    width: 100%;
+  }
+
+  .landing-path {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .landing-path-description {
+    grid-column: 1 / 2;
+    grid-row: 2;
+  }
+
+  .landing-path-arrow {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-quick-pick,
+  .landing-path-arrow {
+    transition: none;
+  }
+
+  .landing-path:hover .landing-path-arrow,
+  .landing-path:focus-visible .landing-path-arrow {
+    transform: none;
+  }
+}
