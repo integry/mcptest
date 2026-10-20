@@ -1,11 +1,17 @@
-import React from 'react';
-import ReactMarkdown from 'react-markdown';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import remarkBreaks from 'remark-breaks';
-import remarkGfm from 'remark-gfm';
+import { getContentComponent } from '../../content/componentRegistry';
 import type { LearnArticle } from '../../content/learnRegistry';
-import { getRelatedLearnArticles } from '../../content/learnRegistry';
+import {
+  CONTENT_LEVEL_LABELS,
+  getLearnArticleNeighbors,
+  getRelatedLearnArticles,
+  getTrack,
+} from '../../content/learnRegistry';
+import { extractOutline } from '../../content/outline';
+import ArticleMarkdown from './ArticleMarkdown';
 import { formatReviewedDate } from './articleFormatting';
+import './ReadingLayout.css';
 
 interface LearnArticlePageProps {
   article: LearnArticle;
@@ -13,79 +19,121 @@ interface LearnArticlePageProps {
 
 const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
   const related = getRelatedLearnArticles(article);
+  const { previous, next } = getLearnArticleNeighbors(article);
+  const track = getTrack(article.track);
+  const outline = extractOutline(article.content);
+  const Embedded = getContentComponent(article.component);
+  const articleRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.hash) return;
+    const scroller = articleRef.current?.closest<HTMLElement>('.main-content');
+    if (scroller) scroller.scrollTop = 0;
+  }, [article.slug]);
 
   return (
-    <article className="learn-page learn-article">
-      <nav className="learn-breadcrumb" aria-label="Breadcrumb">
-        <Link to="/learn">Learn</Link>
-        <span aria-hidden="true">/</span>
-        <span aria-current="page">{article.title}</span>
-      </nav>
+    <div className="reading-shell">
+      <article className="reading-article" aria-labelledby="reading-title" ref={articleRef}>
+        <nav className="reading-breadcrumb" aria-label="Breadcrumb">
+          <Link to="/learn">Learn</Link>
+          <span aria-hidden="true">/</span>
+          {track && (
+            <>
+              <Link to={`/learn#track-${track.id}`}>{track.label}</Link>
+              <span aria-hidden="true">/</span>
+            </>
+          )}
+          <span aria-current="page">{article.title}</span>
+        </nav>
 
-      <header className="learn-article-header">
-        <p className="learn-kicker">{article.category}</p>
-        <h1>{article.title}</h1>
-        <p className="learn-article-summary">{article.summary}</p>
-        <dl className="learn-article-meta">
-          <div>
-            <dt>Reading time</dt>
-            <dd>{article.readingTimeMinutes} minutes</dd>
-          </div>
-          <div>
-            <dt>Last reviewed</dt>
-            <dd><time dateTime={article.lastReviewed}>{formatReviewedDate(article.lastReviewed)}</time></dd>
-          </div>
-        </dl>
-      </header>
+        <header className="reading-header">
+          <h1 id="reading-title">{article.title}</h1>
+          <p className="reading-summary">{article.summary}</p>
+          <p className="reading-meta">
+            <span>{CONTENT_LEVEL_LABELS[article.level]}</span>
+            <span aria-hidden="true">·</span>
+            <span>{article.readingTimeMinutes} min read</span>
+            <span aria-hidden="true">·</span>
+            <span>
+              Last reviewed <time dateTime={article.lastReviewed}>{formatReviewedDate(article.lastReviewed)}</time>
+            </span>
+          </p>
+        </header>
 
-      <div className="learn-markdown">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkBreaks]}
-          components={{
-            a: ({ href = '', children, ...props }) => {
-              if (href.startsWith('/')) {
-                return <Link to={href}>{children}</Link>;
-              }
-              return (
-                <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-                  {children}
-                  <span className="visually-hidden"> (opens in a new tab)</span>
-                </a>
-              );
-            },
-          }}
-        >
-          {article.content}
-        </ReactMarkdown>
-      </div>
+        <div className="reading-prose">
+          <ArticleMarkdown
+            content={article.content}
+            embedded={Embedded ? <div className="reading-embed"><Embedded /></div> : undefined}
+          />
+        </div>
 
-      <footer className="learn-article-footer">
-        <section aria-labelledby="article-sources-heading">
-          <h2 id="article-sources-heading">Sources</h2>
-          <ul>
-            {article.sourceLinks.map(source => (
-              <li key={source.url}>
-                <a href={source.url} target="_blank" rel="noopener noreferrer">
-                  {source.title}
-                  <span className="visually-hidden"> (opens in a new tab)</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <footer className="reading-footer">
+          {(previous || next) && (
+            <nav className="reading-pager" aria-label={track ? `${track.label} track` : 'Track'}>
+              {previous ? (
+                <Link className="reading-pager-link reading-pager-previous" to={previous.path} rel="prev">
+                  <span className="reading-pager-label">Previous</span>
+                  <span className="reading-pager-title">{previous.title}</span>
+                </Link>
+              ) : <span />}
+              {next ? (
+                <Link className="reading-pager-link reading-pager-next" to={next.path} rel="next">
+                  <span className="reading-pager-label">Next</span>
+                  <span className="reading-pager-title">{next.title}</span>
+                </Link>
+              ) : <span />}
+            </nav>
+          )}
 
-        <section aria-labelledby="related-guides-heading">
-          <h2 id="related-guides-heading">Related guides</h2>
-          <ul>
-            {related.map(item => (
-              <li key={item.slug}>
-                <Link to={`/learn/${item.slug}`}>{item.title}</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </footer>
-    </article>
+          {related.length > 0 && (
+            <section className="reading-related" aria-labelledby="related-guides-heading">
+              <h2 id="related-guides-heading">Related guides</h2>
+              <ul>
+                {related.map(item => (
+                  <li key={item.slug}>
+                    <Link to={item.path}>{item.title}</Link>
+                    <span className="reading-related-summary">{item.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section className="reading-sources" aria-labelledby="article-sources-heading">
+            <h2 id="article-sources-heading">Sources</h2>
+            <ul>
+              {article.sourceLinks.map(source => (
+                <li key={source.url}>
+                  <a href={source.url} target="_blank" rel="noopener noreferrer">
+                    {source.title}
+                    <span className="visually-hidden"> (opens in a new tab)</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <p className="reading-reviewed">
+            Last reviewed <time dateTime={article.lastReviewed}>{formatReviewedDate(article.lastReviewed)}</time>
+          </p>
+        </footer>
+      </article>
+
+      {outline.length > 0 && (
+        <aside className="reading-outline" aria-labelledby="reading-outline-title">
+          <p className="reading-outline-title" id="reading-outline-title">On this page</p>
+          <nav aria-labelledby="reading-outline-title">
+            <ol>
+              {outline.map(heading => (
+                <li key={heading.id} className={heading.level === 3 ? 'reading-outline-sub' : undefined}>
+                  <a href={`#${heading.id}`}>{heading.text}</a>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        </aside>
+      )}
+    </div>
   );
 };
 

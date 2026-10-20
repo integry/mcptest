@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
-import learnData from '../src/data/learnArticles.json';
 import catalogSeeds from '../src/data/serverCatalog.json';
 import catalogValidation from '../src/data/catalogValidation.json';
 import catalogCapabilities from '../src/data/catalogCapabilities.json';
 import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 
 const {
-  mergeCatalogServers, renderLearnArticleHtml, renderServerHtml, renderStaticPageHtml,
-  validateCapabilitySnapshots,
+  loadArticles, mergeCatalogServers, renderLearnArticleHtml, renderLearnIndexHtml, renderServerHtml,
+  renderSitemap, renderStaticPageHtml, validateCapabilitySnapshots,
 } = seoGenerator;
+const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
+const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
 const indexHtml = '<html><head><title>mcptest.io</title></head><body><div id="root"></div></body></html>';
 
 function catalogServer(url, declaredTransport) {
@@ -492,8 +493,8 @@ describe('generated page metadata', () => {
   });
 
   it('renders indexable Learn article HTML, social metadata, and Article JSON-LD', () => {
-    const article = learnData.articles[0];
-    const html = renderLearnArticleHtml(indexHtml, article, learnData.articles);
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
 
     expect(html).toContain(`<title>${article.title} | mcptest.io</title>`);
     expect(html).toContain(`property="og:type" content="article"`);
@@ -502,8 +503,48 @@ describe('generated page metadata', () => {
     expect(html).toContain('"@type":"Article"');
     expect(html).toContain(`"dateModified":"${article.lastReviewed}"`);
     expect(html).toContain(`data-article-slug="${article.slug}"`);
-    expect(html).toContain('<h2>Coverage and how to read this comparison</h2>');
+    expect(html).toContain('<h2 id="coverage-and-how-to-read-this-comparison">Coverage and how to read this comparison</h2>');
     expect(html).toContain('<table><thead><tr>');
     expect(html).toContain('Sources</h2>');
+    expect(html).toContain('rel="prev" href="/learn/connect-remote-mcp-server"');
+    expect(html).toContain('rel="next" href="/learn/oauth-for-mcp-explained"');
+  });
+
+  it('renders Markdown documentation pages at their /docs canonical path with frontmatter metadata', () => {
+    const article = articles.find(item => item.slug === 'testing-guide');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
+
+    expect(html).toContain('<title>Testing Guide for Remote MCP Servers | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
+    expect(html).toContain('name="description" content="Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers.');
+    expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
+    expect(html).toContain('<pre><code class="language-bash">curl -i https://your-server.example.com/mcp');
+    expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
+  });
+
+  it('renders the Learn index grouped by track', () => {
+    const html = renderLearnIndexHtml(indexHtml, learnIndex, articles);
+
+    expect(html).toContain('<title>Learn MCP | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/learn"');
+    expect(html).toContain('<section class="learn-track" id="track-understand">');
+    expect(html).toContain('<section class="learn-track" id="track-reference">');
+    expect(html).not.toContain('learn-card');
+    for (const article of articles) {
+      expect(html).toContain(`href="${article.path}">${article.title}</a>`);
+    }
+  });
+
+  it('lists every article in the sitemap at its canonical path without .md alternates', () => {
+    const sitemap = renderSitemap([{ id: 'example-server' }], articles, '2026-10-20');
+
+    expect(sitemap).toContain('<loc>https://mcptest.io/learn</loc>');
+    expect(sitemap).toContain('<loc>https://mcptest.io/docs/what-is-mcp</loc>');
+    expect(sitemap).toContain('<loc>https://mcptest.io/servers/example-server/</loc>');
+    for (const article of articles) {
+      expect(sitemap).toContain(`<loc>https://mcptest.io${article.path}</loc>\n    <lastmod>${article.lastReviewed}</lastmod>`);
+    }
+    expect(sitemap).not.toContain('.md</loc>');
+    expect(sitemap).not.toContain('/docs/privacy-policy');
   });
 });

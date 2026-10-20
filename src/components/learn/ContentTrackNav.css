@@ -1,0 +1,25 @@
+/* --- Sidebar track navigation shown on content pages --- */
+
+/* Bootstrap's .nav wraps flex items; a long track list must scroll, not spill into a second column. */
+.app-sidenav-content {
+  flex-wrap: nowrap;
+}
+
+.content-track {
+  margin-top: 0.75rem;
+}
+
+.content-track-label {
+  margin: 0 0 0.15rem;
+  padding: 0.25rem 0.875rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.content-track-nav .docs-nav-link {
+  white-space: normal;
+  line-height: 1.35;
+}
