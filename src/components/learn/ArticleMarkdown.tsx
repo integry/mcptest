@@ -10,7 +10,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import { Link } from 'react-router-dom';
 import remarkGfm from 'remark-gfm';
 import { COMPONENT_MARKER } from '../../content/contentModel';
-import { createHeadingIdAllocator } from '../../content/outline';
+import { createHeadingIdAllocator, splitHeadingAnchor } from '../../content/outline';
 
 hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('sh', bash);
@@ -37,14 +37,32 @@ const nodeText = (node: MarkdownNode): string => {
   return (node.children ?? []).map(nodeText).join('');
 };
 
+/** Removes a trailing `{#anchor}` from the heading's last text node and returns it. */
+const takeHeadingAnchor = (node: MarkdownNode): string | undefined => {
+  const children = node.children ?? [];
+  const last = children[children.length - 1];
+  if (!last || typeof last.value !== 'string') return undefined;
+  const { text, anchor } = splitHeadingAnchor(last.value);
+  if (!anchor) return undefined;
+  if (text) {
+    last.value = text;
+  } else {
+    children.pop();
+  }
+  return anchor;
+};
+
 /**
  * Remark plugin that assigns stable ids to headings so the in-page outline
  * (built from the Markdown source with the same slug rules) can link to them.
+ * A heading may pin its id with a trailing `{#anchor}`.
  */
-export const remarkHeadingIds = (allocate: (text: string) => string) => () => (tree: MarkdownNode) => {
+export const remarkHeadingIds = (allocate: (text: string, anchor?: string) => string) => () => (tree: MarkdownNode) => {
   const visit = (node: MarkdownNode) => {
     if (node.type === 'heading') {
-      node.data = { ...(node.data ?? {}), hProperties: { ...(node.data?.hProperties ?? {}), id: allocate(nodeText(node)) } };
+      const anchor = takeHeadingAnchor(node);
+      const id = allocate(nodeText(node).trim(), anchor);
+      node.data = { ...(node.data ?? {}), hProperties: { ...(node.data?.hProperties ?? {}), id } };
     }
     node.children?.forEach(visit);
   };

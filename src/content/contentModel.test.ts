@@ -12,7 +12,7 @@ import {
   validateArticles,
   type LearnArticle,
 } from './contentModel';
-import { extractOutline, slugifyHeading } from './outline';
+import { createHeadingIdAllocator, extractOutline, slugifyHeading, splitHeadingAnchor } from './outline';
 
 const baseFrontmatter = {
   title: 'Sample article',
@@ -118,6 +118,8 @@ describe('validateArticles', () => {
       [article({ slug: 'a', content: `Intro\n\n${COMPONENT_MARKER}\n\nMore` })],
       /component marker but declares no component/,
     ],
+    ['invalid heading anchor', [article({ slug: 'a', content: '## Title {#Bad Anchor}' })], /invalid heading anchor/],
+    ['uppercase heading anchor', [article({ slug: 'a', content: '## Title {#Local}' })], /invalid heading anchor \{#Local\}/],
   ])('rejects %s', (_label, articles, message) => {
     expect(() => validateArticles(articles)).toThrow(message);
   });
@@ -208,6 +210,37 @@ describe('outline extraction', () => {
       { level: 2, text: 'The actors', id: 'the-actors' },
       { level: 3, text: 'tools/call and bold', id: 'toolscall-and-bold' },
       { level: 2, text: 'The actors', id: 'the-actors-2' },
+    ]);
+  });
+
+  it('never reuses an id when a literal heading matches a generated suffix', () => {
+    const allocate = createHeadingIdAllocator();
+    expect(['Example', 'Example', 'Example-2', 'Example', 'Example-3', 'Example 2'].map(text => allocate(text))).toEqual([
+      'example', 'example-2', 'example-2-2', 'example-3', 'example-3-2', 'example-2-3',
+    ]);
+
+    const outline = extractOutline(['## Example', '## Example', '## Example-2'].join('\n'));
+    expect(outline.map(heading => heading.id)).toEqual(['example', 'example-2', 'example-2-2']);
+    expect(new Set(outline.map(heading => heading.id)).size).toBe(outline.length);
+  });
+
+  it('pins heading ids with an explicit {#anchor} and keeps the anchor out of the text', () => {
+    expect(splitHeadingAnchor('Local servers: stdio {#local-servers}')).toEqual({ text: 'Local servers: stdio', anchor: 'local-servers' });
+    expect(splitHeadingAnchor('Plain heading')).toEqual({ text: 'Plain heading' });
+
+    const outline = extractOutline([
+      '## Local servers: stdio {#local-servers}',
+      '### Streaming and compatibility {#streaming}',
+      '## Streaming',
+      '## Another {#streaming}',
+      '## Bad {#Not Valid}',
+    ].join('\n'));
+    expect(outline).toEqual([
+      { level: 2, text: 'Local servers: stdio', id: 'local-servers' },
+      { level: 3, text: 'Streaming and compatibility', id: 'streaming' },
+      { level: 2, text: 'Streaming', id: 'streaming-2' },
+      { level: 2, text: 'Another', id: 'streaming-3' },
+      { level: 2, text: 'Bad {#Not Valid}', id: 'bad-not-valid' },
     ]);
   });
 

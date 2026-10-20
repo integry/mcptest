@@ -17,6 +17,7 @@ import {
 import { extractOutline } from '../../content/outline';
 import { RESOURCE_NAV_ITEMS } from '../../content/resourceNavigation';
 import { getDocsMetadata } from '../../utils/pageMetadata';
+import ArticleMarkdown from './ArticleMarkdown';
 import LearnArticlePage from './LearnArticlePage';
 import LearnIndex from './LearnIndex';
 import LearnNotFound from './LearnNotFound';
@@ -154,6 +155,41 @@ describe('Learn article page', () => {
     });
     expect(container.querySelectorAll('.reading-related a')).toHaveLength(article.relatedSlugs.length);
     expect(container.querySelector('.learn-kicker')).toBeNull();
+  });
+
+  it('keeps the fragment ids published by the former React docs page', () => {
+    const article = getLearnArticleFromPath('/docs/remote-vs-local')!;
+    const container = render(<LearnArticlePage article={article} />);
+
+    const legacy: Array<[string, string, string]> = [
+      ['h2', 'local-servers', 'Local servers: stdio'],
+      ['h2', 'remote-servers', 'Remote servers: Streamable HTTP'],
+      ['h3', 'stateless-flow', '2026 stateless flow'],
+      ['h3', 'stateful-flow', '2025 stateful flow'],
+      ['h3', 'streaming', 'Streaming and compatibility'],
+      ['h2', 'authorization', 'Authorization'],
+      ['h2', 'cors-security', 'CORS and origin security'],
+      ['h2', 'choosing-deployment', 'Choosing and testing a deployment'],
+    ];
+    for (const [tag, id, text] of legacy) {
+      expect(container.querySelector(`.reading-prose ${tag}[id="${id}"]`)?.textContent).toBe(text);
+    }
+    expect(container.querySelector('.reading-prose')?.textContent).not.toContain('{#');
+    const outlineLinks = Array.from(container.querySelectorAll('.reading-outline a'), link => link.getAttribute('href'));
+    expect(outlineLinks).toEqual(legacy.map(([, id]) => `#${id}`));
+  });
+
+  it('renders unique heading ids when literal headings collide with generated suffixes', () => {
+    const container = render(
+      <ArticleMarkdown content={['## Example', 'a', '## Example', 'b', '## Example-2', 'c', '## `code` {#pinned}'].join('\n')} />
+    );
+    const headings = Array.from(container.querySelectorAll('h2'), heading => [heading.id, heading.textContent]);
+    expect(headings).toEqual([
+      ['example', 'Example'],
+      ['example-2', 'Example'],
+      ['example-2-2', 'Example-2'],
+      ['pinned', 'code'],
+    ]);
   });
 
   it('links previous and next articles within the track', () => {

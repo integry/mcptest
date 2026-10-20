@@ -8,7 +8,7 @@ import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 
 const {
   loadArticles, mergeCatalogServers, renderLearnArticleHtml, renderLearnIndexHtml, renderServerHtml,
-  renderSitemap, renderStaticPageHtml, validateCapabilitySnapshots,
+  renderMarkdown, renderSitemap, renderStaticPageHtml, validateCapabilitySnapshots,
 } = seoGenerator;
 const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
 const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
@@ -539,6 +539,29 @@ describe('generated page metadata', () => {
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
     expect(html).toContain('<pre><code class="language-bash">curl -i https://your-server.example.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
+  });
+
+  it('prerenders the fragment ids published by the former React docs page', () => {
+    const article = articles.find(item => item.path === '/docs/remote-vs-local');
+    const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
+
+    expect(html).toContain('<h2 id="local-servers">Local servers: stdio</h2>');
+    expect(html).toContain('<h2 id="remote-servers">Remote servers: Streamable HTTP</h2>');
+    expect(html).toContain('<h3 id="stateless-flow">2026 stateless flow</h3>');
+    expect(html).toContain('<h3 id="stateful-flow">2025 stateful flow</h3>');
+    expect(html).toContain('<h3 id="streaming">Streaming and compatibility</h3>');
+    expect(html).toContain('<h2 id="authorization">Authorization</h2>');
+    expect(html).toContain('<h2 id="cors-security">CORS and origin security</h2>');
+    expect(html).toContain('<h2 id="choosing-deployment">Choosing and testing a deployment</h2>');
+    expect(html).not.toContain('{#');
+  });
+
+  it('prerenders unique heading ids when literal headings collide with generated suffixes', () => {
+    const html = renderMarkdown(['## Example', '', '## Example', '', '## Example-2', '', '## `code` {#pinned}'].join('\n'));
+    expect(html).toContain('<h2 id="example">Example</h2>');
+    expect(html).toContain('<h2 id="example-2">Example</h2>');
+    expect(html).toContain('<h2 id="example-2-2">Example-2</h2>');
+    expect(html).toContain('<h2 id="pinned"><code>code</code></h2>');
   });
 
   it('renders the Learn index grouped by track', () => {

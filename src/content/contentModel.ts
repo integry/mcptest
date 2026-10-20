@@ -4,6 +4,8 @@
  * tests, and the Node build script alike.
  */
 
+import { HEADING_ANCHOR_ID_PATTERN } from './outline.ts';
+
 export const SITE_NAME = 'mcptest.io';
 export const SITE_URL = 'https://mcptest.io';
 
@@ -268,6 +270,13 @@ export const validateArticles = (
     }
     if (!article.component && article.content.includes(COMPONENT_MARKER)) {
       throw new Error(`Learn article ${article.slug} contains a component marker but declares no component.`);
+    }
+    for (const anchor of article.content.match(/\{#[^}]*\}\s*$/gm) ?? []) {
+      if (!HEADING_ANCHOR_ID_PATTERN.test(anchor.replace(/^\{#|\}\s*$/g, ''))) {
+        throw new Error(
+          `Learn article ${article.slug} has an invalid heading anchor ${anchor.trim()}; use lowercase letters, digits, and hyphens.`
+        );
+      }
     }
     slugs.add(article.slug);
     paths.set(article.path, article.slug);

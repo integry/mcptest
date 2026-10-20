@@ -15,7 +15,7 @@ const {
   getArticleMetaTitle,
   getTrackNeighbors,
 } = require('../src/content/contentModel.ts');
-const { createHeadingIdAllocator } = require('../src/content/outline.ts');
+const { createHeadingIdAllocator, splitHeadingAnchor } = require('../src/content/outline.ts');
 const { loadArticles } = require('./content/loadArticles.js');
 const {
   articleMarkdownPath,
@@ -603,8 +603,9 @@ function renderMarkdown(markdown) {
     const heading = line.match(/^(#{2,6})\s+(.+)$/);
     if (heading) {
       const level = heading[1].length;
-      const id = allocateHeadingId(heading[2].replace(/`/g, '').replace(/\*\*/g, ''));
-      html.push(`<h${level} id="${escapeHtml(id)}">${renderInlineMarkdown(heading[2])}</h${level}>`);
+      const { text, anchor } = splitHeadingAnchor(heading[2]);
+      const id = allocateHeadingId(text.replace(/`/g, '').replace(/\*\*/g, ''), anchor);
+      html.push(`<h${level} id="${escapeHtml(id)}">${renderInlineMarkdown(text)}</h${level}>`);
       index += 1;
       continue;
     }
