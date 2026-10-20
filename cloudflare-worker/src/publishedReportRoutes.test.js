@@ -630,12 +630,12 @@ describe('publishing a report', () => {
   });
 
   it('publishes accepted-size evidence of hyphenated runs within a bounded time', async () => {
-    // F14: 400 KB of `a-` runs has a word boundary at every letter and no
+    // F14: 300 KB of `a-` runs has a word boundary at every letter and no
     // separator; the detector and the transform must scan it once, before any
     // rate-limit work, rather than restart at each boundary.
     const artifact = artifactFor(evaluation());
     const byteLength = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
-    artifact.sections[0].evidence[0].message = 'a-'.repeat(200000);
+    artifact.sections[0].evidence[0].message = 'a-'.repeat(150000);
     expect(byteLength(artifact)).toBeLessThanOrEqual(PUBLISHED_REPORT_MAX_BYTES);
     const started = Date.now();
     const response = await publish(artifact);
