@@ -44,23 +44,31 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
     setFade((current) => (current.start === next.start && current.end === next.end ? current : next));
   }, []);
 
+  // Connection updates swap short placeholder titles for longer server titles
+  // without changing tab IDs or count, so overflow is keyed on the labels too.
+  const labelsKey = tabs.map((tab) => tab.title).join('\u0000');
+
   useEffect(() => {
     updateFade();
     const strip = stripRef.current;
     if (!strip || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(updateFade);
+    // The strip's own box is constrained by the available width; the items
+    // inside it are what grow when a label widens, so observe both.
     observer.observe(strip);
+    strip.querySelectorAll<HTMLElement>('.nav-item').forEach((item) => observer.observe(item));
     return () => observer.disconnect();
-  }, [updateFade, tabs.length]);
+  }, [updateFade, tabs.length, labelsKey]);
 
-  // Keep the active tab in view when it changes or a tab is added.
+  // Keep the active tab in view when it changes, a tab is added, or a label
+  // change pushes it past the edge of the strip.
   useEffect(() => {
     const active = stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
     if (active && typeof active.scrollIntoView === 'function') {
       active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
     updateFade();
-  }, [activeTabId, tabs.length, updateFade]);
+  }, [activeTabId, tabs.length, labelsKey, updateFade]);
 
   if (tabs.length === 0) {
     return null; // Don't render tabs if there are none
