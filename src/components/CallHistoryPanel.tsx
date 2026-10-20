@@ -4,6 +4,7 @@ import {
   toJsonRpcRequest,
   type CallHistoryEntry,
 } from '../utils/callHistory';
+import { isSuccessfulCall } from '../utils/historyTestPlan';
 import './CallHistoryPanel.css';
 
 interface CallHistoryPanelProps {
@@ -14,6 +15,8 @@ interface CallHistoryPanelProps {
   onReplay: (entry: CallHistoryEntry) => void;
   onClearServer: () => void;
   onClearAll: () => void;
+  /** Converts the selected calls (ids, oldest last as listed) into a test plan. */
+  onCreateTestPlan?: (callIds: string[]) => void;
 }
 
 const argumentPreview = (args: Record<string, unknown>): string => {
@@ -50,9 +53,12 @@ const CallHistoryPanel: React.FC<CallHistoryPanelProps> = ({
   onReplay,
   onClearServer,
   onClearAll,
+  onCreateTestPlan,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copyFailedId, setCopyFailedId] = useState<string | null>(null);
+  // Tracks opt-outs so calls recorded later start selected, as the default is "all successful".
+  const [deselectedIds, setDeselectedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     if (!copiedId) return;
@@ -67,6 +73,14 @@ const CallHistoryPanel: React.FC<CallHistoryPanelProps> = ({
   };
 
   const failures = calls.filter((call) => call.isError || call.outputVerdict === 'fail').length;
+  const selectableIds = calls.filter((call) => isSuccessfulCall(call) && availableToolNames.has(call.toolName)).map((call) => call.id);
+  const selectedIds = selectableIds.filter((id) => !deselectedIds.has(id));
+  const toggleSelected = (id: string, selected: boolean) => setDeselectedIds((current) => {
+    const next = new Set(current);
+    if (selected) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 
   return (
     <section className="call-history" aria-labelledby="call-history-title">
@@ -89,9 +103,27 @@ const CallHistoryPanel: React.FC<CallHistoryPanelProps> = ({
               : entry.argumentsRedacted
                 ? 'Redacted values are not replayed; review the arguments, then run'
                 : `Run ${entry.toolName} again with these arguments`;
+            const selectable = isSuccessfulCall(entry) && available;
             return (
               <li key={entry.id} className={`call-history-item ${entry.isError ? 'call-history-item--error' : ''}`}>
                 <div className="call-history-row">
+                  {onCreateTestPlan && (
+                    <label
+                      className="call-history-select"
+                      title={selectable
+                        ? 'Include this call in a test plan'
+                        : available ? 'Only successful calls become test cases' : 'This server no longer lists this tool'}
+                    >
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={selectable && !deselectedIds.has(entry.id)}
+                        disabled={!selectable}
+                        onChange={(event) => toggleSelected(entry.id, event.target.checked)}
+                        aria-label={`Include this ${entry.toolName} call in a test plan`}
+                      />
+                    </label>
+                  )}
                   <span className="call-history-tool">{entry.toolName}</span>
                   <span className={`call-history-status ${entry.isError ? 'is-error' : 'is-ok'}`}>
                     <i className={`bi ${entry.isError ? 'bi-x-circle' : 'bi-check-circle'}`} aria-hidden="true"></i>
@@ -141,6 +173,25 @@ const CallHistoryPanel: React.FC<CallHistoryPanelProps> = ({
             );
           })}
         </ol>
+      )}
+
+      {onCreateTestPlan && calls.length > 0 && (
+        <div className="call-history-plan">
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => onCreateTestPlan(selectedIds)}
+            disabled={selectedIds.length === 0}
+          >
+            <i className="bi bi-clipboard-check" aria-hidden="true"></i>
+            Create test plan from history
+          </button>
+          <span className="call-history-plan-count">
+            {selectedIds.length === 0
+              ? 'Select at least one successful call.'
+              : `${selectedIds.length} of ${selectableIds.length} successful ${selectableIds.length === 1 ? 'call' : 'calls'} selected`}
+          </span>
+        </div>
       )}
 
       <div className="call-history-footer">

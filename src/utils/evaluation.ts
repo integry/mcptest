@@ -15,6 +15,13 @@ import {
 } from './outputContract';
 import { callHistoryCounts, type CallHistoryCounts } from './callHistory';
 import {
+  latestSavedPlanRun,
+  runSavedTestPlan,
+  type SavedPlanRunCounts,
+  type SavedTestPlanV1,
+} from './savedTestPlans';
+import type { DiscoveredTool } from './deterministicTests';
+import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
@@ -194,6 +201,20 @@ export interface EvaluationOptions {
    * stored history for the server; contents are never included.
    */
   playgroundCallCounts?: CallHistoryCounts;
+  /**
+   * A saved deterministic plan to run on the evaluation's own connection. Only
+   * its pass/fail counts reach the report.
+   */
+  savedPlan?: Pick<SavedTestPlanV1, 'id' | 'plan'> & {
+    /** The endpoint the plan is saved under, when it differs from the evaluated URL. */
+    endpoint?: string;
+    confirmedUnsafeToolNames?: readonly string[];
+  };
+  /**
+   * Saved-plan run counts to include when no plan runs. Defaults to the newest
+   * run stored for this server in this browser; `null` includes none.
+   */
+  savedPlanRunCounts?: SavedPlanRunCounts | null;
 }
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
@@ -666,6 +687,8 @@ interface CapabilityEvaluation {
   targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
   capabilityInventory: CapabilityInventoryV1;
+  /** Raw tools/list entries for running a saved plan; never copied into the report. */
+  tools: DiscoveredTool[];
 }
 
 const DISCOVERY_PAGE_LIMIT = 64;
@@ -960,6 +983,11 @@ const evaluateCapabilities = async (
   return {
     section,
     targetAuthenticationFailures,
+    tools: Array.isArray(discovered.tools)
+      ? discovered.tools.filter((tool): tool is DiscoveredTool => (
+        Boolean(tool) && typeof tool === 'object' && typeof (tool as { name?: unknown }).name === 'string'
+      ))
+      : [],
     capabilityInventory: createCapabilityInventory({
       testedEndpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
       route: connection.usedProxy ? 'authenticated-proxy' : 'direct',
@@ -1005,6 +1033,25 @@ const playgroundCallDetail = (counts: CallHistoryCounts): DetailItem => ({
   metadata: {
     playgroundCalls: counts.calls,
     playgroundCallFailures: counts.failures,
+  },
+});
+
+// Counts only, and no `method`, like the playground call evidence.
+const savedPlanDetail = (counts: SavedPlanRunCounts, ranInThisReport: boolean): DetailItem => ({
+  text: `ℹ Saved test plan: ${counts.passed} passed, ${counts.failed} failed`
+    + `${counts.blocked > 0 ? `, ${counts.blocked} blocked` : ''}${counts.cancelled > 0 ? `, ${counts.cancelled} cancelled` : ''}`,
+  context: `${ranInThisReport
+    ? 'Ran the saved deterministic test plan for this endpoint during this report.'
+    : `Last run of a saved deterministic test plan for this endpoint (${counts.source}, ${counts.ranAt}).`
+  } Case arguments and results are not included.${counts.blocked > 0
+    ? ' Blocked cases target write-capable tools that were not confirmed.'
+    : ''}`,
+  metadata: {
+    savedPlanCases: counts.total,
+    savedPlanPassed: counts.passed,
+    savedPlanFailed: counts.failed,
+    savedPlanBlocked: counts.blocked,
+    savedPlanCancelled: counts.cancelled,
   },
 });
 
@@ -1585,6 +1632,24 @@ export async function evaluateServer(
       ?? (runtime === 'browser' ? callHistoryCounts(serverUrl) : { calls: 0, failures: 0 });
     if (playgroundCalls.calls > 0) {
       report.sections.capabilities.details.push(playgroundCallDetail(playgroundCalls));
+    }
+    let savedPlanRun: SavedPlanRunCounts | undefined;
+    if (options.savedPlan) {
+      onProgress('Running the saved test plan...');
+      try {
+        savedPlanRun = await runSavedTestPlan(connection.client, options.savedPlan.endpoint ?? serverUrl, options.savedPlan, capabilityEvaluation.tools, {
+          source: 'report',
+          confirmedUnsafeToolNames: options.savedPlan.confirmedUnsafeToolNames,
+        });
+      } catch (error) {
+        onProgress(`The saved test plan could not run: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const storedPlanRun = options.savedPlanRunCounts !== undefined
+      ? options.savedPlanRunCounts ?? undefined
+      : runtime === 'browser' ? latestSavedPlanRun(serverUrl) : undefined;
+    if (savedPlanRun || storedPlanRun) {
+      report.sections.capabilities.details.push(savedPlanDetail((savedPlanRun ?? storedPlanRun)!, Boolean(savedPlanRun)));
     }
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';

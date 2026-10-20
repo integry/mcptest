@@ -17,6 +17,8 @@ import { AwaitingConnectionPanel } from './FirstConnectionOnboarding';
 import { LandingHero } from './LandingHero';
 import DeterministicTestPanel from './DeterministicTestPanel';
 import CallHistoryPanel from './CallHistoryPanel';
+import { createTestPlanFromHistory } from '../utils/historyTestPlan';
+import type { DeterministicTestPlanV1 } from '../types/deterministicTests';
 import InterfaceChangeStrip from './InterfaceChangeStrip';
 
 // Import Hooks
@@ -136,6 +138,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionStartTime, setExecutionStartTime] = useState<number | null>(null);
   const [showDeterministicTests, setShowDeterministicTests] = useState(false);
+  const [historyTestPlan, setHistoryTestPlan] = useState<{ plan: DeterministicTestPlanV1; notice: string } | null>(null);
 
   // Custom Hooks for this tab
   const {
@@ -1164,7 +1167,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               connectionStatus={connectionStatus}
               onRefreshLists={handleRefreshAllLists}
               isConnecting={isConnecting}
-              onOpenTestPlan={() => setShowDeterministicTests(true)}
+              onOpenTestPlan={() => {
+                setHistoryTestPlan(null);
+                setShowDeterministicTests(true);
+              }}
               shortcutEnabled={isActive}
             />
             </section>
@@ -1202,6 +1208,21 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                     }}
                     onClearServer={playgroundHistory.clearServerHistory}
                     onClearAll={playgroundHistory.clearAllHistory}
+                    onCreateTestPlan={(callIds) => {
+                      const converted = createTestPlanFromHistory(playgroundHistory.calls, tools, tab.serverUrl || serverUrl, { callIds });
+                      const skipped = [
+                        converted.duplicateCount > 0 ? `${converted.duplicateCount} repeated` : '',
+                        converted.unavailableCount > 0 ? `${converted.unavailableCount} for tools no longer listed` : '',
+                      ].filter(Boolean).join(', ');
+                      setHistoryTestPlan({
+                        plan: converted.plan,
+                        notice: `Created ${converted.convertedCount} ${converted.convertedCount === 1 ? 'case' : 'cases'} from call history`
+                          + `${skipped ? ` (skipped ${skipped})` : ''}.`
+                          + `${converted.redactedCount > 0 ? ` ${converted.redactedCount} with redacted arguments are unselected; edit them before running.` : ''}`
+                          + ' Review the assertions, then save the plan to run it again later.',
+                      });
+                      setShowDeterministicTests(true);
+                    }}
                   />
                 )}
               />
@@ -1231,7 +1252,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       )}
       <DeterministicTestPanel
         open={showDeterministicTests}
-        onClose={() => setShowDeterministicTests(false)}
+        onClose={() => {
+          setShowDeterministicTests(false);
+          setHistoryTestPlan(null);
+        }}
+        initialPlan={historyTestPlan?.plan ?? null}
+        initialNotice={historyTestPlan?.notice}
         tools={tools}
         client={client}
         serverUrl={tab.serverUrl || serverUrl}

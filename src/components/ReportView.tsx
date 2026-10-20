@@ -7,6 +7,8 @@ import ReleaseReadinessReport from './ReleaseReadinessReport';
 import ReportHistory from './ReportHistory';
 import ReportBadgeEmbed from './ReportBadgeEmbed';
 import PublishedReportHistory from './PublishedReportHistory';
+import SavedPlanRunAction, { type SavedPlanRunRequest } from './SavedPlanRunAction';
+import { loadSavedTestPlans } from '../utils/savedTestPlans';
 import {
   beginOAuthFlow,
   getHostedOAuthTokenProxyUrl,
@@ -23,6 +25,7 @@ import {
   isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
   type EvaluationAuthorizationContext,
+  type EvaluationOptions,
   type EvaluationReport,
 } from '../utils/evaluation';
 import {
@@ -155,6 +158,44 @@ export const getOAuthTraceForEvaluation = (
     )));
 };
 
+// The pending saved-plan run, when it belongs to the endpoint being retried.
+const savedPlanOptionsFor = (
+  pending: SavedPlanRunRequest | null,
+  endpoint: string | undefined
+): EvaluationOptions | undefined => (
+  pending && pending.endpoint === endpoint ? { savedPlan: pending } : undefined
+);
+
+// What an OAuth redirect keeps of a pending saved-plan run: references only,
+// the plan itself is reloaded from this browser's saved plans on return.
+const savedPlanReturnContext = (pending: SavedPlanRunRequest | null, endpoint: string) => (
+  pending && pending.endpoint === endpoint
+    ? {
+        savedPlanRequest: {
+          id: pending.id,
+          endpoint: pending.endpoint,
+          confirmedUnsafeToolNames: pending.confirmedUnsafeToolNames,
+        },
+      }
+    : {}
+);
+
+const restoreSavedPlanRequest = (value: unknown, endpoint: string): SavedPlanRunRequest | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const { id, endpoint: savedEndpoint, confirmedUnsafeToolNames } = value as Record<string, unknown>;
+  if (typeof id !== 'string' || savedEndpoint !== endpoint) return undefined;
+  const saved = loadSavedTestPlans(endpoint).find((entry) => entry.id === id);
+  if (!saved) return undefined;
+  return {
+    id,
+    endpoint,
+    plan: saved.plan,
+    confirmedUnsafeToolNames: Array.isArray(confirmedUnsafeToolNames)
+      ? confirmedUnsafeToolNames.filter((name): name is string => typeof name === 'string')
+      : [],
+  };
+};
+
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -206,6 +247,9 @@ const ReportView: React.FC = () => {
   const [reportRunnerReady, setReportRunnerReady] = useState(false);
   const isRunningRef = useRef(false);
   const hasProcessedOAuthReturn = useRef(false);
+  // A saved-plan run waiting on target authorization. Authorization retries for
+  // the same endpoint carry it, so the authorized run still executes the plan.
+  const pendingSavedPlanRef = useRef<SavedPlanRunRequest | null>(null);
   const oauthChallengeRef = useRef<{
     authenticationUrl: string;
     resourceMetadataUrl?: string;
@@ -217,7 +261,8 @@ const ReportView: React.FC = () => {
     urlToTest: string,
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext,
-    displayUrl?: string
+    displayUrl?: string,
+    evaluationOptions?: EvaluationOptions
   ) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
@@ -249,6 +294,7 @@ const ReportView: React.FC = () => {
       if (!authLoading && !hasInitialized && handleRunReportRef.current) {
         const state = location.state as { fromOAuthReturn?: boolean; authorizedServerUrl?: string } | null;
         let evaluationUrl = decodedUrl;
+        let evaluationOptions: EvaluationOptions | undefined;
         if (state?.fromOAuthReturn && !hasProcessedOAuthReturn.current) {
           try {
             const saved = JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null');
@@ -257,6 +303,11 @@ const ReportView: React.FC = () => {
               && typeof state.authorizedServerUrl === 'string'
               && saved.serverUrl === state.authorizedServerUrl) {
               evaluationUrl = state.authorizedServerUrl;
+              const savedPlan = restoreSavedPlanRequest(saved.savedPlanRequest, decodedUrl);
+              if (savedPlan) {
+                pendingSavedPlanRef.current = savedPlan;
+                evaluationOptions = { savedPlan };
+              }
               hasProcessedOAuthReturn.current = true;
               sessionStorage.removeItem('oauth_return_view');
               sessionStorage.removeItem('oauth_completed_time');
@@ -266,7 +317,7 @@ const ReportView: React.FC = () => {
           }
         }
         setHasInitialized(true);
-        void handleRunReportRef.current(evaluationUrl, undefined, undefined, decodedUrl);
+        void handleRunReportRef.current(evaluationUrl, undefined, undefined, decodedUrl, evaluationOptions);
       }
     }
   }, [urlParam, authLoading, hasInitialized, serverUrl, reportRunnerReady, location.state]);
@@ -328,7 +379,8 @@ const ReportView: React.FC = () => {
     urlToTest: string,
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext,
-    displayUrl = urlToTest
+    displayUrl = urlToTest,
+    evaluationOptions?: EvaluationOptions
   ) => {
     if (isRunning || isRunningRef.current) {
       console.log('[ReportView] Report already running, skipping');
@@ -337,6 +389,7 @@ const ReportView: React.FC = () => {
 
     setIsRunning(true);
     isRunningRef.current = true;
+    if (!evaluationOptions?.savedPlan) pendingSavedPlanRef.current = null;
     setOAuthError(null);
     setReportError(null);
     if (!targetHeaders) {
@@ -373,7 +426,8 @@ const ReportView: React.FC = () => {
         onProgress,
         oauthAccessToken,
         targetHeaders,
-        authorizationContext
+        authorizationContext,
+        ...(evaluationOptions ? [evaluationOptions] : [])
       );
       if (displayUrl !== urlToTest) {
         reportData.authenticationUrl ||= urlToTest;
@@ -405,6 +459,9 @@ const ReportView: React.FC = () => {
       }
       
       addOrUpdateServer(reportData);
+      if (resolveEvaluationOutcome(reportData) !== 'authorization-required' || isProxyAuthenticationRequired(reportData)) {
+        pendingSavedPlanRef.current = null;
+      }
       
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
         if (isProxyAuthenticationRequired(reportData)) {
@@ -438,6 +495,7 @@ const ReportView: React.FC = () => {
       setProgress(prev => [...prev, `Error: ${message}`]);
       setReportError(message);
       setReport(null);
+      pendingSavedPlanRef.current = null;
     } finally {
       setIsRunning(false);
       isRunningRef.current = false;
@@ -457,6 +515,7 @@ const ReportView: React.FC = () => {
       activeView: 'report',
       serverUrl: authenticationUrl,
       reportInputUrl: report?.serverUrl || authenticationUrl,
+      ...savedPlanReturnContext(pendingSavedPlanRef.current, report?.serverUrl || authenticationUrl),
       timestamp: Date.now()
     }));
 
@@ -496,7 +555,13 @@ const ReportView: React.FC = () => {
       if (result === 'AUTHORIZED') {
         trackOAuthFlow('success', authenticationUrl);
         sessionStorage.removeItem('oauth_return_view');
-        await handleRunReportRef.current?.(authenticationUrl, undefined, undefined, report?.serverUrl);
+        await handleRunReportRef.current?.(
+          authenticationUrl,
+          undefined,
+          undefined,
+          report?.serverUrl,
+          savedPlanOptionsFor(pendingSavedPlanRef.current, report?.serverUrl || authenticationUrl)
+        );
       }
     } catch (error) {
       const prerequisite = getOAuthPrerequisite(error);
@@ -520,6 +585,7 @@ const ReportView: React.FC = () => {
       activeView: 'report',
       serverUrl: authenticationUrl,
       reportInputUrl: report?.serverUrl || authenticationUrl,
+      ...savedPlanReturnContext(pendingSavedPlanRef.current, report?.serverUrl || authenticationUrl),
       timestamp: Date.now()
     }));
 
@@ -632,7 +698,8 @@ const ReportView: React.FC = () => {
           provenance: 'direct_target',
         },
       },
-      report.serverUrl
+      report.serverUrl,
+      savedPlanOptionsFor(pendingSavedPlanRef.current, report.serverUrl)
     );
   };
 
@@ -964,6 +1031,16 @@ const ReportView: React.FC = () => {
                 publishedEndpoint={liveBadgeEndpoint}
               />
             )}
+            {!reportRequiresAuthorization && !reportRequiresProxyAuthentication && (
+              <SavedPlanRunAction
+                endpoint={report.serverUrl}
+                disabled={isRunning}
+                onRun={(savedPlan) => {
+                  pendingSavedPlanRef.current = savedPlan;
+                  void handleRunReport(report.authenticationUrl || report.serverUrl, undefined, undefined, report.serverUrl, { savedPlan });
+                }}
+              />
+            )}
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
 
           </div>
@@ -1022,7 +1099,8 @@ const ReportView: React.FC = () => {
                 ),
               },
               undefined,
-              report?.serverUrl
+              report?.serverUrl,
+              savedPlanOptionsFor(pendingSavedPlanRef.current, report?.serverUrl || configuredServerUrl)
             );
           } : undefined}
           onConfigured={async () => {

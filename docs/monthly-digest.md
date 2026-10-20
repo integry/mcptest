@@ -6,7 +6,7 @@ One post per month that lists what changed in the MCP specification, the officia
 
 - Path: `src/content/articles/mcp-changes-YYYY-MM.md`, for example `mcp-changes-2026-11.md`. The page is served at `/learn/mcp-changes-YYYY-MM`.
 - Track `reference`, level `practitioner`, category `Monthly digest`.
-- `order` 60 to 99 is reserved for digests, one per month, ascending: October 2026 is 60, November 2026 is 61, and so on. Use the previous digest's order plus one.
+- `order` 60 to 99 is reserved for digests, one per month, ascending: October 2026 is 60, November 2026 is 61, and so on. Use the previous digest's order plus the number of months since it, which is the order given in the digest issue.
 - Window: from the 20th of the previous month to the 20th of the publication month, inclusive. Set `lastReviewed` to the publication date. The RSS feed uses `lastReviewed` as the item date.
 - Add only the new article. Do not edit earlier digests or other articles, components, styles, scripts or data. Earlier digests stay as published.
 
@@ -65,3 +65,12 @@ If a section has nothing verifiable, write "No documented changes in this window
 - Give release dates as `YYYY-MM-DD` and versions exactly as tagged.
 - Plain, factual language. No marketing words, no predictions, no ranking of vendors.
 - Run `npm test`, `npm run typecheck` and `npm run build`. Check that `dist/learn/mcp-changes-YYYY-MM/index.html` exists and that the page appears in `dist/llms.txt` and `dist/learn/feed.xml`.
+
+## How it runs
+
+- `.github/workflows/monthly-digest.yml` runs on the 2nd of each month at 06:00 UTC and opens one issue titled "Monthly digest: What changed in MCP, <Month YYYY>" with the `AI` label. The agent that picks up `AI` issues writes the article and opens a pull request; a maintainer reviews and merges it.
+- By default the issue covers the previous calendar month: the run on 2026-12-02 asks for `mcp-changes-2026-11`, window 2026-10-20 to 2026-11-20. To open an issue by hand, run the workflow from the Actions tab and set `month` (`YYYY-MM`); a month whose window has not closed yet is refused (the window closes at midnight UTC after its last day, so November 2026 can be opened from 2026-11-21).
+- `scripts/digest-issue.mjs` renders the body from `.github/digest-issue-template.md`: the window dates, the slug, the `order`, the previous digest for `relatedSlugs`, and this brief without this section. Preview it with `node scripts/digest-issue.mjs --month 2026-11`; add `--now 2026-12-02` to preview a month whose window has not closed yet.
+- `order` is the latest digest's order plus the months since it, so it stays ascending while an earlier issue is still open. The script refuses a month that is not after the latest digest or an order outside 60 to 99.
+- Nothing is opened when the article already exists or an open or closed issue has the same title. To redo a month, delete or rename the old issue and run the workflow again.
+- Edit this file to change the brief; the next issue copies it. Edit the template to change the per-month instructions.

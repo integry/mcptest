@@ -104,7 +104,8 @@ const takeHeadingAnchor = (node: MarkdownNode): string | undefined => {
   const { text, anchor } = splitHeadingAnchor(last.value);
   if (!anchor) return undefined;
   if (text) {
-    last.value = text;
+    // Keep the space that separates this text from inline markup before it.
+    last.value = `${last.value.match(/^\s*/)?.[0] ?? ''}${text}`;
   } else {
     children.pop();
   }
