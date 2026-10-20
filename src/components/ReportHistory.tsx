@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { diffPublicReports, type ReportDiffChange } from '../utils/reportDiff';
+import { diffPublicReports } from '../utils/reportDiff';
+import ReportDiffChanges from './ReportDiffChanges';
 import {
   REPORT_SNAPSHOT_RETENTION_PER_ENDPOINT,
   REPORT_SNAPSHOT_RETENTION_TOTAL,
@@ -14,19 +15,6 @@ interface ReportHistoryProps {
   onDeleteAll: () => void;
   onExportAll: () => void;
 }
-
-const classificationLabel = (change: ReportDiffChange): string => {
-  if (change.breaking && change.classification === 'removal') return 'Breaking removal';
-  const labels: Record<ReportDiffChange['classification'], string> = {
-    breaking: 'Breaking',
-    removal: 'Removal',
-    risk: 'Risk change',
-    unknown: 'Unknown',
-    addition: 'Addition',
-    change: 'Changed',
-  };
-  return labels[change.classification];
-};
 
 const snapshotResult = (snapshot: ReportSnapshotV1): string => {
   if (!snapshot.report.score) {
@@ -76,9 +64,6 @@ const ReportHistory: React.FC<ReportHistoryProps> = ({
           {endpointSnapshots.map((snapshot, index) => {
             const previous = endpointSnapshots[index + 1];
             const diff = previous ? diffPublicReports(previous.report, snapshot.report) : undefined;
-            const importantCount = diff?.changes.filter((change) => (
-              change.breaking || change.classification === 'risk' || change.classification === 'unknown'
-            )).length || 0;
             return (
               <li className="report-history-item" key={snapshot.id}>
                 <div className="report-history-item-heading">
@@ -98,44 +83,8 @@ const ReportHistory: React.FC<ReportHistoryProps> = ({
 
                 {!diff ? (
                   <p className="report-history-baseline">First retained snapshot; there is no earlier baseline to compare.</p>
-                ) : diff.changes.length === 0 ? (
-                  <div className="report-diff-empty">
-                    <i className="bi bi-check-circle" aria-hidden="true"></i>
-                    No semantic drift from the previous snapshot.
-                  </div>
                 ) : (
-                  <details className="report-diff" open={index === 0}>
-                    <summary>
-                      {diff.hasBreakingChanges
-                        ? `${diff.changes.filter((change) => change.breaking).length} breaking changes`
-                        : importantCount > 0
-                          ? `${importantCount} changes need review`
-                          : `${diff.changes.length} compatible or cosmetic changes`}
-                    </summary>
-                    <div className="report-diff-summary" aria-label="Diff counts">
-                      {Object.entries(diff.counts)
-                        .filter(([, count]) => count > 0)
-                        .map(([classification, count]) => (
-                          <span className={`report-diff-count report-diff-${classification}`} key={classification}>
-                            {count} {classification === 'risk' ? 'risk changes' : classification}
-                          </span>
-                        ))}
-                    </div>
-                    <ul className="report-diff-list">
-                      {diff.changes.map((change) => (
-                        <li
-                          className={`report-diff-change report-diff-change-${change.classification}${change.breaking ? ' report-diff-change-breaking' : ''}`}
-                          key={`${change.category}:${change.path}:${change.title}`}
-                        >
-                          <div>
-                            <span>{classificationLabel(change)} · {change.category}</span>
-                            <h5>{change.title}</h5>
-                          </div>
-                          <p>{change.detail}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
+                  <ReportDiffChanges diff={diff} collapsible={{ open: index === 0 }} />
                 )}
               </li>
             );

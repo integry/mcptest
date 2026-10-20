@@ -1,5 +1,7 @@
 import { UserState } from "./UserState";
+import { PublishedReports } from "./PublishedReports";
 import { handleBadgeRequest } from "./badges";
+import { handlePublishedReportRequest } from "./publishedReportRoutes";
 import { handleSubmissionRequest, SubmissionRateLimiter } from "./submissions";
 
 // Firebase public keys URL
@@ -14,6 +16,9 @@ export default {
     // Public catalog badges are served before authentication and never reach the Durable Object.
     const badgeResponse = handleBadgeRequest(request);
     if (badgeResponse) return badgeResponse;
+    // Published report permalinks and their badges are anonymous as well.
+    const publishedResponse = await handlePublishedReportRequest(request, env);
+    if (publishedResponse) return publishedResponse;
     const submissionResponse = await handleSubmissionRequest(request, env);
     if (submissionResponse) return submissionResponse;
 
@@ -333,5 +338,5 @@ function extractPublicKeyFromCertificate(certDer) {
   return certDer.slice(spki.pos, spki.pos + spki.totalBytes);
 }
 
-// Export the Durable Object class
-export { UserState, SubmissionRateLimiter };
+// Export the Durable Object classes
+export { UserState, PublishedReports, SubmissionRateLimiter };

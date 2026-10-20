@@ -85,7 +85,33 @@ function serveDist(distDir) {
   });
 }
 
+const LAUNCH_TIMEOUT_MS = Number(process.env.FIRST_PAINT_LAUNCH_TIMEOUT_MS) || 60000;
+const LAUNCH_ATTEMPTS = 2;
+
 function launchBrowser(browserPath, viewport) {
+  return launchBrowserOnce(browserPath, viewport);
+}
+
+/** Launches Chromium, retrying once when the first attempt never reaches "DevTools listening". */
+async function launchBrowserWithRetry(browserPath, viewport) {
+  let lastError;
+  for (let attempt = 1; attempt <= LAUNCH_ATTEMPTS; attempt += 1) {
+    const browser = launchBrowserOnce(browserPath, viewport);
+    try {
+      const endpoint = await browser.endpoint;
+      return { endpoint: Promise.resolve(endpoint), close: browser.close };
+    } catch (error) {
+      lastError = error;
+      browser.close();
+      if (attempt < LAUNCH_ATTEMPTS) {
+        process.stderr.write(`first-paint: Chromium launch attempt ${attempt} failed, retrying\n`);
+      }
+    }
+  }
+  throw lastError;
+}
+
+function launchBrowserOnce(browserPath, viewport) {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'first-paint-'));
   const child = spawn(browserPath, [
     '--headless=new',
@@ -109,7 +135,8 @@ function launchBrowser(browserPath, viewport) {
   };
   const endpoint = new Promise((resolvePromise, reject) => {
     let output = '';
-    const timer = setTimeout(() => reject(new Error(`Chromium did not start: ${output}`)), 20000);
+    // Cold starts on shared CI runners can take well over 20 s before DevTools is listening.
+    const timer = setTimeout(() => reject(new Error(`Chromium did not start: ${output}`)), LAUNCH_TIMEOUT_MS);
     child.stderr.on('data', (chunk) => {
       output += chunk;
       const match = output.match(/DevTools listening on (ws:\/\/\S+)/);
@@ -217,7 +244,7 @@ async function measureFirstPaint(options = {}) {
   if (!fs.existsSync(indexFile)) throw new Error(`${indexFile} is missing; run npm run build first.`);
 
   const server = await serveDist(settings.distDir);
-  const browser = launchBrowser(browserPath, settings.viewport);
+  const browser = await launchBrowserWithRetry(browserPath, settings.viewport);
   let cdp;
   try {
     cdp = await connect(await browser.endpoint);

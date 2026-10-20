@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import type { EvaluationReport } from '../utils/evaluation';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
 import { createCapabilityInventory } from '../utils/capabilityInventory';
+import { HOST_IDS } from '../compatibility';
+import { getClientCompatibilityForHost } from '../data/clientCompatibility';
 
 const authorizationReport: EvaluationReport = {
   serverUrl: 'https://oauth.example/mcp',
@@ -123,6 +125,30 @@ describe('ReleaseReadinessReport', () => {
     expect(container.textContent).toContain('Tool surface, context, and risk');
     expect(container.textContent).not.toContain('Final Score');
     expect(container.textContent).not.toContain('grade');
+  });
+
+  it('cites the client data behind every host compatibility verdict', () => {
+    const markup = renderToStaticMarkup(
+      <ReleaseReadinessReport
+        report={authorizationReport}
+        expandedItems={new Set()}
+        onToggleItem={() => undefined}
+      />
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+    const citations = [...container.querySelectorAll('.compatibility-citation')];
+
+    expect(citations).toHaveLength(HOST_IDS.length);
+    HOST_IDS.forEach((hostId, index) => {
+      const client = getClientCompatibilityForHost(hostId);
+      const link = citations[index].querySelector('a');
+      expect(link?.getAttribute('href')).toBe(client.documentationUrl);
+      expect(link?.textContent).toBe(client.name);
+      expect(citations[index].textContent).toContain(`verified ${client.verifiedOn}`);
+    });
+    expect(citations[HOST_IDS.indexOf('vscode-copilot')].textContent)
+      .toBe('Client data: VS Code with GitHub Copilot 1.142, verified 2026-10-20');
   });
 
   it('links a documented priority id to its reference section and leaves other priorities unlinked', () => {

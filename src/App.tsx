@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 
 // Import Analytics helpers
-import { logPageView, logEvent } from './utils/analytics';
+import { getAnalyticsHost, logPageView, trackEvent } from './utils/analytics';
 
 // Import Components
 import Header from './components/Header';
@@ -444,7 +444,7 @@ function App() {
 
     // Save the current theme to localStorage
     localStorage.setItem('theme', theme);
-    logEvent('theme_changed', { theme_name: theme });
+    trackEvent('theme_changed', { theme_name: theme });
   }, [theme]);
 
   // Save spaces whenever they change
@@ -585,7 +585,7 @@ function App() {
 
   // Server URL and result share handlers
   const handleServerUrlConnection = (serverUrl: string, transportMethod?: string) => {
-    logEvent('server_url_connection', { serverUrl, transportMethod });
+    trackEvent('server_url_connection', { host: getAnalyticsHost(serverUrl), transport_method: transportMethod });
     const preferredTransport = transportMethod === 'mcp'
       ? 'streamable-http'
       : transportMethod === 'sse'
@@ -625,11 +625,7 @@ function App() {
     name: string;
     params?: Record<string, any>;
   }) => {
-    logEvent('result_share_connection', { 
-      serverUrl: resultData.serverUrl, 
-      type: resultData.type, 
-      name: resultData.name 
-    });
+    trackEvent('result_share_connection', { host: getAnalyticsHost(resultData.serverUrl), type: resultData.type });
     
     // Find or create a tab for this server
     let targetTab = tabs.find(tab => tab.serverUrl === resultData.serverUrl);
@@ -668,7 +664,7 @@ function App() {
 
   // Tab handler functions
   const handleNewTab = () => {
-    logEvent('create_tab');
+    trackEvent('create_tab');
     const newTab: ConnectionTab = {
       id: uuidv4(),
       title: 'New Connection',
@@ -681,13 +677,6 @@ function App() {
   };
 
   const handleCatalogTestServer = useCallback((server: CatalogServer) => {
-    logEvent('catalog_test_server', {
-      server_id: server.id,
-      requires_oauth: server.requiresOAuth,
-      auth_type: server.authType,
-      protocol_era: server.protocolEra,
-    });
-
     const preferredEndpoint = getPreferredCatalogEndpoint(server);
     const newTab: ConnectionTab = {
       id: uuidv4(),
@@ -708,12 +697,12 @@ function App() {
   }, [navigate]);
 
   const handleSelectTab = (id: string) => {
-    logEvent('select_tab');
+    trackEvent('select_tab');
     setActiveTabId(id);
   };
 
   const handleCloseTab = (id: string) => {
-    logEvent('close_tab', { tab_count: tabs.length > 1 ? tabs.length - 1 : 1 });
+    trackEvent('close_tab', { tab_count: tabs.length > 1 ? tabs.length - 1 : 1 });
     const newTabs = tabs.filter(tab => tab.id !== id);
     
     // Ensure at least one tab always exists
@@ -1120,7 +1109,7 @@ function App() {
 
   // --- Dashboard Management Functions ---
   const handleCreateDashboard = (name: string) => {
-    logEvent('create_dashboard');
+    trackEvent('create_dashboard');
     const newDashboard: Space = { id: Date.now().toString(), name, cards: [] };
     setSpaces(prev => [...prev, newDashboard]);
     setSelectedSpaceId(newDashboard.id); // Select the new dashboard
@@ -1134,7 +1123,7 @@ function App() {
 
   // --- Dashboard Management Functions ---
   const handleCreateSpace = (name: string) => {
-    logEvent('create_space');
+    trackEvent('create_space');
     const newSpace: Space = { id: Date.now().toString(), name, cards: [] };
     setSpaces(prev => [...prev, newSpace]);
     setSelectedSpaceId(newSpace.id); // Select the new space
@@ -1144,14 +1133,14 @@ function App() {
   const handleSelectDashboard = (id: string) => {
     const space = spaces.find(s => s.id === id);
     if (space) {
-      logEvent('select_dashboard');
+      trackEvent('select_dashboard');
       setSelectedSpaceId(id);
       navigate(getSpaceUrl(space.name));
     }
   };
 
   const handleUpdateDashboard = (id: string, updatedData: Partial<Omit<Space, 'id'>>) => {
-    logEvent('update_dashboard', { updated_keys: Object.keys(updatedData).join(',') });
+    trackEvent('update_dashboard', { updated_keys: Object.keys(updatedData).join(',') });
     setSpaces(prev => prev.map(space => {
       if (space.id === id) {
         const updatedSpace = { ...space, ...updatedData };
@@ -1166,7 +1155,7 @@ function App() {
   };
 
   const handleDeleteDashboard = (id: string) => {
-    logEvent('delete_dashboard');
+    trackEvent('delete_dashboard');
     const deletedSpace = spaces.find(s => s.id === id);
     setSpaces(prev => prev.filter(space => space.id !== id));
     
@@ -1186,13 +1175,13 @@ function App() {
   };
 
   const handleReorderDashboards = (reorderedDashboards: Space[]) => {
-    logEvent('reorder_dashboards');
+    trackEvent('reorder_dashboards');
     setSpaces(reorderedDashboards);
   };
 
   // --- Dashboard Health Check Functions ---
   const performAllDashboardsHealthCheck = async () => {
-    logEvent('health_check_all_dashboards', { dashboard_count: spaces.length });
+    trackEvent('health_check_all_dashboards', { dashboard_count: spaces.length });
     console.log('[Health Check] Starting health check for all dashboards...');
     setHealthCheckLoading(true);
     
@@ -1221,7 +1210,7 @@ function App() {
     if (activeView === 'dashboards' && selectedSpaceId) {
       const currentSpace = spaces.find(s => s.id === selectedSpaceId);
       if (currentSpace && currentSpace.cards.length > 0) {
-        logEvent('refresh_current_dashboard', { dashboard_id: selectedSpaceId });
+        trackEvent('refresh_current_dashboard');
         console.log(`[Refresh] Manually refreshing space "${currentSpace.name}"`);
         setHealthCheckLoading(true);
         
@@ -1347,7 +1336,7 @@ function App() {
 
   // --- Add to Dashboard Functionality ---
   const handleAddCardToDashboard = (spaceId: string, cardData: Omit<Space['cards'][0], 'id'>) => {
-      logEvent('add_card_to_dashboard', { 
+      trackEvent('add_card_to_dashboard', { 
           card_type: cardData.type
       });
       const newCard = { ...cardData, id: Date.now().toString() };
@@ -1363,7 +1352,7 @@ function App() {
   };
 
   const handleAddCardToSpace = (spaceId: string, cardData: Omit<SpaceCard, 'id'>) => {
-      logEvent('add_card_to_space', { 
+      trackEvent('add_card_to_space', { 
           card_type: cardData.type
       });
       const newCard = { ...cardData, id: Date.now().toString() };
@@ -1380,7 +1369,7 @@ function App() {
 
   // --- Card Management Functions ---
   const handleUpdateCard = (spaceId: string, cardId: string, updatedData: Partial<Omit<SpaceCard, 'id'>>) => {
-    logEvent('update_card');
+    trackEvent('update_card');
     setSpaces(prev => prev.map(space => {
       if (space.id === spaceId) {
         return {
@@ -1396,7 +1385,7 @@ function App() {
   };
 
   const handleDeleteCard = (spaceId: string, cardId: string) => {
-    logEvent('delete_card');
+    trackEvent('delete_card');
     setSpaces(prev => prev.map(space => {
       if (space.id === spaceId) {
         return { ...space, cards: space.cards.filter(card => card.id !== cardId) };
@@ -1407,7 +1396,7 @@ function App() {
   };
 
   const handleMoveCard = (sourceSpaceId: string, targetSpaceId: string, cardId: string) => {
-    logEvent('move_card');
+    trackEvent('move_card');
     setSpaces(prev => {
       // Find the card to move
       const sourceSpace = prev.find(space => space.id === sourceSpaceId);
@@ -1462,7 +1451,7 @@ function App() {
 
     const card = spaces[spaceIndex].cards[cardIndex];
     if (card) {
-        logEvent('execute_card', {
+        trackEvent('execute_card', {
             card_type: card.type
         });
     }
