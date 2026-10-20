@@ -29,13 +29,39 @@ scheme and, for OAuth, discovery, registration, PKCE, refresh, and redirect fact
 Whether the current mcptest user supplied a credential is deliberately not part
 of `ObservedServerFactsV1`.
 
-## Updating profiles
+## Client data is the source of truth
 
-Rules are data in `profiles.ts`. The evaluator only interprets conditions and
-does not contain host names or host-specific branches. Update a profile version,
-its assumptions, and its generated constraints when a host changes. Do not
-reinterpret old stored assessments under new assumptions; retain the returned
-`profileVersion` with the assessment.
+What each client documents (transports, protocol versions, OAuth registration
+modes, static credentials, headers, private-host reach, consumed capabilities,
+callback URIs, limitations and configuration surfaces) lives in
+`src/data/clientCompatibility.json`, typed and validated by
+`src/data/clientCompatibility.ts`. The same data feeds three outputs:
+
+- `profiles.ts` builds each host profile's transports, auth schemes,
+  registration modes, exact callback URIs, supported and ignored capabilities,
+  and assumption sources from the entry whose `hostProfileId` matches. The
+  profile version is `<entry verifiedOn>.1`.
+- The `<!-- compat-matrix clients="..." -->` directive in Learn articles is
+  expanded into a Markdown table when the article is created
+  (`src/content/compatMatrix.ts`), so the React page, the prerendered HTML and
+  the `.md` export carry the same table. Add `limitations="true"` to list each
+  client's sourced limitations under the table.
+- The release-readiness report's host compatibility cards cite the client name,
+  version, verification date and documentation link.
+
+Only `supported` cells change engine behavior. `limited` (beta, plan-gated or a
+subset of accounts), `unsupported`, `bridge-required` and `unknown` are all
+treated as not available, so a capability the host does not document becomes a
+caveat rather than an assumed pass. Callback patterns with a variable port are
+kept in the cell `note` and are not used for exact-match redirect checks.
+
+What stays in `profiles.ts` is modeling rather than client fact: accepted
+protocol eras, session behavior, whether stateful servers get a scaling caveat,
+the callback style (`hosted-https`, `loopback` or `flexible`) and whether
+browser CORS matters for the host. Rules remain data and the evaluator contains
+no host names or host-specific branches. Do not reinterpret old stored
+assessments under new assumptions; retain the returned `profileVersion` with
+the assessment.
 
 All current profiles accept the 2024, 2025, and 2026 protocol-era vocabulary.
 Protocol era and session behavior are independent facts: both stateful and
@@ -43,39 +69,53 @@ stateless Streamable HTTP servers have dedicated fixtures. Legacy HTTP+SSE is
 accepted with a migration caveat because it is deprecated by the MCP transport
 specification.
 
+## Updating a client cell
+
+Every cell is `{ "value", "source", "verifiedOn", "note"? }`. Limitations and
+configuration surfaces are `{ "text", "source", "verifiedOn" }`.
+
+1. Open the cell's `source` page (or the client's current official
+   documentation if the page moved) and read what it states today.
+2. Set `value` to what the page says. Support cells take `supported`,
+   `limited`, `unsupported`, `bridge-required` or `unknown`. Use `unknown` when
+   the vendor does not document it; never infer support from a forum post or
+   a third-party blog. Put qualifiers in `note`.
+3. Set `source` to the exact page that establishes the value. A new page must
+   also be added to the entry's `sources` list with a title.
+4. Set `verifiedOn` to the day you read it, and set the entry's `verifiedOn`
+   to the oldest `verifiedOn` among its cells. Re-checking a cell that did not
+   change still updates its `verifiedOn`.
+5. Run `npm run check-client-compat`, then `npm test`. A changed value that
+   alters a host verdict shows up in `src/compatibility/compatibility.test.ts`;
+   update the expectation only when the new documentation supports it, and say
+   why in the pull request.
+
+`npm run check-client-compat` fails when any cell was verified more than 90
+days ago (pass `-- --today YYYY-MM-DD` to check against another day) or when
+the data is structurally invalid. The data module also refuses to load invalid
+data, so a broken edit fails the build and the tests.
+
 ## Profile assumptions
 
-Assumptions were reviewed on 2026-08-11. Each profile also carries these sources
-as machine-readable evidence.
+Each profile's assumptions are generated from its client entry: one assumption
+per source page, listing the engine-relevant cells that page establishes, with
+that page's verification date. The MCP authorization specification is an
+additional modeling assumption on every profile, reviewed on 2026-08-11.
 
-### ChatGPT
-
-- [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt): remote custom servers can be public or OAuth-protected; OAuth refresh support affects continued connectivity. This profile represents ChatGPT custom apps/connectors, not the separately configurable OpenAI API hosted MCP tool.
-- [MCP authorization specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization): protected-resource and authorization-server discovery, PKCE, client registration, and exact redirect validation.
-- Only tools are treated as a usable ChatGPT capability in this foundation profile. Other advertised MCP capabilities produce caveats rather than transport failures.
-- Stateful Streamable HTTP is accepted with an operational caveat because hosted, horizontally scaled use requires durable session routing.
-
-### Claude
-
-- [Building custom integrations via remote MCP servers](https://support.anthropic.com/en/articles/11503834-building-custom-integrations-via-remote-mcp-servers): Streamable HTTP and SSE, authless and OAuth servers, DCR, tools, prompts, and resources are supported. Resource subscriptions, sampling, and other advanced capabilities are documented as unsupported.
-- The documented hosted callback is `https://claude.ai/api/mcp/auth_callback`.
-
-### Cursor
-
-- [Cursor MCP documentation](https://docs.cursor.com/context/model-context-protocol): remote SSE and Streamable HTTP endpoints and OAuth are supported.
-- The compatibility baseline is tool consumption. Other server capabilities are caveats until Cursor documents them as supported for remote servers.
-- As a local public OAuth client, Cursor is modeled with loopback callbacks and PKCE. Static bearer/API-key credentials can be provided through client configuration.
-
-### VS Code/Copilot
-
-- [Add and manage MCP servers in VS Code](https://code.visualstudio.com/docs/agent-customization/mcp-servers): HTTP with SSE fallback, tools, resources, prompts, and interactive capabilities.
-- [MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration): arbitrary HTTP authentication headers and pre-registered OAuth client IDs can be configured.
-- The desktop OAuth client is modeled with loopback callbacks. Resource subscriptions and sampling remain caveats in the host profile.
-
-### Generic MCP SDK
-
-- [MCP TypeScript SDK client guide](https://ts.sdk.modelcontextprotocol.io/v2/clients/connect): Streamable HTTP, legacy SSE, OAuth composition, and the protocol capability surface.
-- This profile describes what a configurable SDK client can implement, not what every application using an SDK has wired up. Browser CORS is therefore a runtime-dependent caveat.
+- **ChatGPT** (`chatgpt`): ChatGPT custom MCP servers and connectors, not the
+  separately configurable OpenAI API hosted MCP tool. Stateful Streamable HTTP
+  is accepted with an operational caveat because hosted, horizontally scaled
+  use requires durable session routing.
+- **Claude** (`claude-ai`): claude.ai custom connectors; Claude Desktop uses
+  the same connectors. The documented hosted callback is
+  `https://claude.ai/api/mcp/auth_callback`.
+- **Cursor** (`cursor`): modeled as a local public OAuth client with loopback
+  callbacks and PKCE.
+- **VS Code/Copilot** (`vscode-copilot`): the desktop OAuth client is modeled
+  with loopback callbacks.
+- **Generic MCP SDK** (`generic-sdk`): what a configurable client on the
+  TypeScript SDK can implement, not what every application using an SDK has
+  wired up. Browser CORS is therefore a runtime-dependent caveat.
 
 ## Canonical fixtures
 

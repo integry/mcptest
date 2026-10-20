@@ -17,6 +17,7 @@
     "validate-catalog-assets": "node scripts/validate-catalog-assets.js",
     "summarize-catalog-diff": "vite-node scripts/run-summarize-catalog-diff.ts",
     "generate-badges": "vite-node scripts/generate-badges.ts",
+    "check-client-compat": "vite-node scripts/check-client-compat.ts",
     "build:workers": "npm --prefix cors-proxy-worker run build && npm --prefix cloudflare-worker run build",
     "prebuild": "node scripts/generate-version.js && node scripts/validate-catalog-assets.js && node scripts/validate-oauth-client-metadata.mjs",
     "build": "npm run typecheck && vite build && npm run generate-seo",

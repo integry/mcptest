@@ -226,9 +226,12 @@ describe('host compatibility evaluator', () => {
     );
 
     expect(assessHostCompatibility(facts, 'chatgpt').status).toBe('compatible');
-    const claude = assessHostCompatibility(facts, 'claude');
-    expect(claude.status).toBe('incompatible');
-    expect(claude.findings).toContainEqual(expect.objectContaining({
+    // Claude's published identity is a CIMD (clientCompatibility.json); Cursor
+    // documents DCR and static clients only.
+    expect(assessHostCompatibility(facts, 'claude').status).toBe('compatible');
+    const cursor = assessHostCompatibility(facts, 'cursor');
+    expect(cursor.status).toBe('incompatible');
+    expect(cursor.findings).toContainEqual(expect.objectContaining({
       ruleId: 'authorization.oauth.registration',
       outcome: 'fail',
     }));
@@ -246,7 +249,30 @@ describe('host compatibility evaluator', () => {
     expect(assessHostCompatibility(facts, 'generic-sdk').status).toBe('compatible');
   });
 
-  it.each(['chatgpt', 'cursor', 'vscode-copilot', 'generic-sdk'] as const)(
+  it.each(['chatgpt', 'cursor', 'vscode-copilot'] as const)(
+    'fails an exact-match redirect policy that registers none of the documented %s callbacks',
+    (profileId) => {
+      const facts = cloneFacts(oauthProtectedServerFixture);
+      facts.authorization.oauth.dynamicRedirectRegistration = observedFact(
+        false,
+        'Redirects cannot be added during registration.'
+      );
+      facts.authorization.oauth.redirectPolicy = observedFact(
+        'exact-match',
+        'Only pre-registered exact callback URIs are accepted.'
+      );
+
+      const assessment = assessHostCompatibility(facts, profileId);
+
+      expect(assessment.status).toBe('incompatible');
+      expect(assessment.findings).toContainEqual(expect.objectContaining({
+        ruleId: 'authorization.oauth.redirects',
+        outcome: 'fail',
+      }));
+    }
+  );
+
+  it.each(['generic-sdk'] as const)(
     'returns unknown for an exact-match redirect policy when %s has no verified callback URI',
     (profileId) => {
       const facts = cloneFacts(oauthProtectedServerFixture);
@@ -391,7 +417,7 @@ describe('host compatibility evaluator', () => {
     facts.capabilities.resources = observedFact('present', 'resources/list returned a resource.');
 
     expect(assessHostCompatibility(facts, 'chatgpt').status).toBe('incompatible');
-    expect(assessHostCompatibility(facts, 'cursor').status).toBe('incompatible');
+    expect(assessHostCompatibility(facts, 'cursor').status).toBe('compatible');
     expect(assessHostCompatibility(facts, 'claude').status).toBe('compatible');
     expect(assessHostCompatibility(facts, 'vscode-copilot').status).toBe('compatible');
     expect(assessHostCompatibility(facts, 'generic-sdk').status).toBe('compatible');

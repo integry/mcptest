@@ -14,8 +14,18 @@ import {
   type SessionBehavior,
   type TransportKind,
 } from './types';
+import {
+  CAPABILITY_NAMES,
+  getClientCompatibilityForHost,
+  listCells,
+  type CapabilityName,
+  type ClientCompatibilityEntry,
+  type SourcedCell,
+  type SupportLevel,
+} from '../data/clientCompatibility.ts';
 
 const MCP_AUTH_SPEC = 'https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization';
+const MCP_AUTH_SPEC_REVIEWED_ON = '2026-08-11';
 const MCP_TRANSPORT_SPEC = 'https://modelcontextprotocol.io/specification/2025-06-18/basic/transports';
 
 const remediation = (
@@ -73,15 +83,6 @@ interface ProfileConstraints {
   ignoredCapabilities: readonly CapabilityName[];
   browserCors: 'irrelevant' | 'runtime-dependent';
 }
-
-type CapabilityName =
-  | 'tools'
-  | 'resources'
-  | 'prompts'
-  | 'resourceSubscriptions'
-  | 'sampling'
-  | 'elicitation'
-  | 'tasks';
 
 const all = (...conditions: CompatibilityConditionV1[]): CompatibilityConditionV1 => ({ all: conditions });
 const any = (...conditions: CompatibilityConditionV1[]): CompatibilityConditionV1 => ({ any: conditions });
@@ -486,8 +487,102 @@ const source = (
   id: string,
   title: string,
   url: string,
-  notes: string
-): HostAssumptionSourceV1 => ({ id, title, url, accessedOn: '2026-08-11', notes });
+  notes: string,
+  accessedOn: string
+): HostAssumptionSourceV1 => ({ id, title, url, accessedOn, notes });
+
+const supported = (cell: SourcedCell<SupportLevel>) => cell.value === 'supported';
+
+const cellLabels: Record<string, string> = {
+  'transports.streamableHttp': 'Streamable HTTP',
+  'transports.legacySse': 'legacy SSE',
+  'transports.stdio': 'stdio',
+  'protocolVersions': 'protocol versions',
+  'auth.oauthDcr': 'OAuth dynamic client registration',
+  'auth.preRegisteredClient': 'pre-registered OAuth clients',
+  'auth.cimd': 'Client ID Metadata Documents',
+  'auth.bearerToken': 'bearer tokens',
+  'auth.apiKeyHeader': 'API key headers',
+  'auth.none': 'authless servers',
+  'oauthCallbacks': 'OAuth callback URIs',
+  'headers.custom': 'custom headers',
+  'privateHosts': 'private hosts',
+  'capabilities.tools': 'tools',
+  'capabilities.resources': 'resources',
+  'capabilities.prompts': 'prompts',
+  'capabilities.resourceSubscriptions': 'resource subscriptions',
+  'capabilities.sampling': 'sampling',
+  'capabilities.elicitation': 'elicitation',
+  'capabilities.tasks': 'tasks',
+};
+
+const describeCell = (path: string, cell: SourcedCell<unknown>): string => {
+  const label = cellLabels[path] ?? path;
+  const value = Array.isArray(cell.value) ? cell.value.join(', ') : String(cell.value);
+  return `${label}: ${value}`;
+};
+
+/**
+ * Host-profile assumptions cite the client compatibility data: one assumption
+ * per source page, listing the engine-relevant cells that page establishes.
+ */
+const clientAssumptions = (entry: ClientCompatibilityEntry): HostAssumptionSourceV1[] => {
+  const cells = listCells(entry).filter((item): item is { path: string; cell: SourcedCell<unknown> } => (
+    'value' in item.cell && item.path in cellLabels
+  ));
+  return entry.sources.flatMap((link, index) => {
+    const cited = cells.filter(({ cell }) => cell.source === link.url);
+    if (cited.length === 0) return [];
+    const verifiedOn = cited.map(({ cell }) => cell.verifiedOn).sort()[0];
+    return [source(
+      `${entry.id}-${index + 1}`,
+      link.title,
+      link.url,
+      `${entry.name}: ${cited.map(({ path, cell }) => describeCell(path, cell)).join('; ')}.`,
+      verifiedOn
+    )];
+  });
+};
+
+/** Profile constraints that describe the client itself, read from clientCompatibility.json. */
+const fromClientData = (hostId: HostId) => {
+  const entry = getClientCompatibilityForHost(hostId);
+  const transports: TransportKind[] = [];
+  if (supported(entry.transports.streamableHttp)) transports.push('streamable-http');
+  if (supported(entry.transports.legacySse)) transports.push('legacy-sse');
+
+  const oauthRegistrationModes: OAuthRegistrationMode[] = [];
+  if (supported(entry.auth.cimd)) oauthRegistrationModes.push('client-id-metadata-document');
+  if (supported(entry.auth.oauthDcr)) oauthRegistrationModes.push('dynamic-client-registration');
+  // A client that accepts a user-supplied client ID can use both a client the
+  // server already registered for it and credentials the user registers.
+  if (supported(entry.auth.preRegisteredClient)) oauthRegistrationModes.push('pre-registered', 'manual-client-credentials');
+
+  const authSchemes: AuthorizationScheme[] = [];
+  if (oauthRegistrationModes.length > 0) authSchemes.push('oauth');
+  if (supported(entry.auth.bearerToken)) authSchemes.push('bearer');
+  if (supported(entry.auth.apiKeyHeader)) authSchemes.push('api-key');
+
+  return {
+    entry,
+    assumptions: clientAssumptions(entry),
+    transports,
+    authSchemes,
+    oauthRegistrationModes,
+    // Only exact URIs are usable for exact-match redirect checks.
+    callbackUris: entry.oauthCallbacks.value === 'unknown' ? [] : entry.oauthCallbacks.value,
+    supportedCapabilities: CAPABILITY_NAMES.filter((name) => supported(entry.capabilities[name])),
+    ignoredCapabilities: CAPABILITY_NAMES.filter((name) => !supported(entry.capabilities[name])),
+  };
+};
+
+const mcpAuthAssumption = (notes: string) => source(
+  'mcp-auth',
+  'MCP authorization specification',
+  MCP_AUTH_SPEC,
+  notes,
+  MCP_AUTH_SPEC_REVIEWED_ON
+);
 
 const common = {
   protocolEras: ['2024', '2025', '2026'] as const,
@@ -502,98 +597,64 @@ export const HOST_IDS = Object.freeze([
   'generic-sdk',
 ] as const satisfies readonly HostId[]);
 
-const constraints: readonly ProfileConstraints[] = [
-  {
-    id: 'chatgpt',
+/**
+ * Client facts (transports, credentials, registration, callbacks, consumed
+ * capabilities and their sources) come from clientCompatibility.json. What
+ * stays here is modeling: protocol eras, session handling, callback style and
+ * whether browser CORS matters for the host.
+ */
+const withClientData = (
+  hostId: HostId,
+  profile: Omit<ProfileConstraints, 'id' | 'assumptions' | 'transports' | 'authSchemes' | 'oauthRegistrationModes' | 'callbackUris' | 'supportedCapabilities' | 'ignoredCapabilities'>,
+  authNotes: string
+): ProfileConstraints & { verifiedOn: string } => {
+  const { entry, assumptions, ...client } = fromClientData(hostId);
+  return {
+    id: hostId,
+    ...profile,
+    ...client,
+    assumptions: [...assumptions, mcpAuthAssumption(authNotes)],
+    verifiedOn: entry.verifiedOn,
+  };
+};
+
+const constraints: ReadonlyArray<ProfileConstraints & { verifiedOn: string }> = [
+  withClientData('chatgpt', {
     name: 'ChatGPT',
     description: 'ChatGPT custom remote MCP apps/connectors.',
-    assumptions: [
-      source('chatgpt-apps', 'Developer mode and MCP apps in ChatGPT', 'https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt', 'Remote servers may be public or OAuth-protected; refresh tokens improve continued connectivity.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Discovery, PKCE, registration, and redirect requirements.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
     statefulIsCaveat: true,
-    authSchemes: ['oauth'],
-    oauthRegistrationModes: ['client-id-metadata-document', 'dynamic-client-registration', 'pre-registered'],
     callbackKind: 'hosted-https',
-    callbackUris: [],
-    supportedCapabilities: ['tools'],
-    ignoredCapabilities: ['resources', 'prompts', 'resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
     browserCors: 'irrelevant',
-  },
-  {
-    id: 'claude',
+  }, 'Discovery, PKCE, registration, and redirect requirements.'),
+  withClientData('claude', {
     name: 'Claude',
     description: 'Claude web and desktop remote custom connectors.',
-    assumptions: [
-      source('claude-connectors', 'Building custom integrations via remote MCP servers', 'https://support.anthropic.com/en/articles/11503834-building-custom-integrations-via-remote-mcp-servers', 'Supports Streamable HTTP and SSE, authless and OAuth, DCR, tools, prompts, and resources; advanced capabilities are not supported.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Discovery, PKCE, registration, and redirect requirements.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth'],
-    oauthRegistrationModes: ['dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'hosted-https',
-    callbackUris: ['https://claude.ai/api/mcp/auth_callback'],
-    supportedCapabilities: ['tools', 'resources', 'prompts'],
-    ignoredCapabilities: ['resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
     browserCors: 'irrelevant',
-  },
-  {
-    id: 'cursor',
+  }, 'Discovery, PKCE, registration, and redirect requirements.'),
+  withClientData('cursor', {
     name: 'Cursor',
     description: 'Cursor IDE remote MCP clients.',
-    assumptions: [
-      source('cursor-mcp', 'Cursor MCP documentation', 'https://docs.cursor.com/context/model-context-protocol', 'Supports remote SSE and Streamable HTTP with OAuth and tool consumption.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Local public clients use PKCE and loopback redirect URIs.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth', 'bearer', 'api-key'],
-    oauthRegistrationModes: ['dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'loopback',
-    callbackUris: [],
-    supportedCapabilities: ['tools'],
-    ignoredCapabilities: ['resources', 'prompts', 'resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
     browserCors: 'irrelevant',
-  },
-  {
-    id: 'vscode-copilot',
+  }, 'Local public clients use PKCE and loopback redirect URIs.'),
+  withClientData('vscode-copilot', {
     name: 'VS Code/Copilot',
     description: 'VS Code MCP support used by GitHub Copilot chat.',
-    assumptions: [
-      source('vscode-mcp', 'Add and manage MCP servers in VS Code', 'https://code.visualstudio.com/docs/agent-customization/mcp-servers', 'Supports HTTP with SSE fallback, OAuth, tools, resources, prompts, and interactive apps.'),
-      source('vscode-config', 'VS Code MCP configuration reference', 'https://code.visualstudio.com/docs/agents/reference/mcp-configuration', 'Supports configured HTTP headers and pre-registered OAuth client IDs.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth', 'bearer', 'api-key'],
-    oauthRegistrationModes: ['client-id-metadata-document', 'dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'loopback',
-    callbackUris: [],
-    supportedCapabilities: ['tools', 'resources', 'prompts', 'elicitation', 'tasks'],
-    ignoredCapabilities: ['resourceSubscriptions', 'sampling'],
     browserCors: 'irrelevant',
-  },
-  {
-    id: 'generic-sdk',
+  }, 'Local public clients use PKCE and loopback redirect URIs.'),
+  withClientData('generic-sdk', {
     name: 'Generic MCP SDK',
     description: 'A configurable client built on a current MCP SDK.',
-    assumptions: [
-      source('typescript-sdk', 'MCP TypeScript SDK client guide', 'https://ts.sdk.modelcontextprotocol.io/v2/clients/connect', 'The SDK supports Streamable HTTP, legacy SSE, OAuth composition, and the protocol capability surface; application wiring still determines behavior.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Generic clients can select any standardized registration and redirect strategy.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth', 'bearer', 'api-key'],
-    oauthRegistrationModes: ['client-id-metadata-document', 'dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'flexible',
-    callbackUris: [],
-    supportedCapabilities: ['tools', 'resources', 'prompts', 'resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
-    ignoredCapabilities: [],
     browserCors: 'runtime-dependent',
-  },
+  }, 'Generic clients can select any standardized registration and redirect strategy.'),
 ];
 
 export const HOST_PROFILES: Readonly<Record<HostId, HostProfileV1>> = Object.freeze(
@@ -601,7 +662,9 @@ export const HOST_PROFILES: Readonly<Record<HostId, HostProfileV1>> = Object.fre
     profile.id,
     Object.freeze({
       schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
-      profileVersion: '2026-08-11.1',
+      // The profile version follows the client data it was built from, so a
+      // stored assessment records which verified assumptions it used.
+      profileVersion: `${profile.verifiedOn}.1`,
       id: profile.id,
       name: profile.name,
       description: profile.description,
