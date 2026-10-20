@@ -398,8 +398,9 @@ describe('publishing a report', () => {
   });
 
   it('stores only artifacts that pass the guard after the transform, for every fixture in every embedding', async () => {
-    // Each case gets its own host so accepted cases never trip the host rate limit.
-    for (const [index, [name, text, secrets]] of CREDENTIAL_FUZZ_CASES.entries()) {
+    // Each case gets its own host so accepted cases never trip the host rate limit,
+    // which also lets the cases run in parallel batches; a cold CI runner needs that.
+    const runCase = async ([index, [name, text, secrets]]) => {
       const endpoint = `https://fuzz-${index}.example/mcp`;
       const artifact = clone(baseArtifact);
       artifact.target.testedEndpoint = endpoint;
@@ -410,15 +411,20 @@ describe('publishing a report', () => {
       if (response.status === 422) {
         expect((await response.json()).error, name).toBe('unredacted_content');
         expect(index_.snapshots, name).toHaveLength(0);
-        continue;
+        return;
       }
       const { id } = await response.json();
       const stored = await (await request(`/r/${id}`)).json();
       expect(findEmbeddedSecret(JSON.stringify(stored), secrets), name).toBeUndefined();
       expect(findUnredactedSecret(stored), name).toBeUndefined();
       expect(validateStored(stored), name).toBe(true);
+    };
+    const cases = [...CREDENTIAL_FUZZ_CASES.entries()];
+    const BATCH = 16;
+    for (let start = 0; start < cases.length; start += BATCH) {
+      await Promise.all(cases.slice(start, start + BATCH).map(runCase));
     }
-  }, 60000);
+  }, 240_000);
 
   it('refuses to store an artifact the guard still recognizes after the transform', async () => {
     const artifact = artifactFor(evaluation());
