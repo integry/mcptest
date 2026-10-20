@@ -18,7 +18,7 @@ import {
   getLearnArticleNeighbors,
 } from '../../content/learnRegistry';
 import { extractOutline } from '../../content/outline';
-import { RESOURCE_NAV_ITEMS } from '../../content/resourceNavigation';
+import { LEARN_HUB_NAVIGATION, LEARN_TRACKS, getLearnTrackForPath } from '../../content/navigation';
 import { getDocsMetadata } from '../../utils/pageMetadata';
 import ArticleMarkdown from './ArticleMarkdown';
 import LearnArticlePage from './LearnArticlePage';
@@ -140,10 +140,14 @@ describe('content registry', () => {
     }
   });
 
-  it('generates the resource hub links from the tracks', () => {
-    expect(RESOURCE_NAV_ITEMS.map(item => item.path)).toEqual(['/docs/what-is-mcp', '/learn', '/docs/troubleshooting']);
-    expect(RESOURCE_NAV_ITEMS[0].label).toBe('What is MCP?');
-    expect(RESOURCE_NAV_ITEMS[2].label).toBe('Troubleshooting');
+  it('derives the sidebar learn tracks from the content registry', () => {
+    expect(LEARN_HUB_NAVIGATION.path).toBe('/learn');
+    expect(LEARN_TRACKS.map(track => track.label)).toEqual(['Understand', 'Use', 'Build', 'Reference']);
+    expect(LEARN_TRACKS.every(track => track.icon.startsWith('bi-'))).toBe(true);
+    // The former "Resources" entries live inside their tracks.
+    expect(getLearnTrackForPath('/docs/what-is-mcp')?.id).toBe('understand');
+    expect(getLearnTrackForPath('/docs/troubleshooting/')?.id).toBe('reference');
+    expect(getLearnTrackForPath('/catalog')).toBeUndefined();
   });
 });
 

@@ -60,6 +60,21 @@ const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
           </p>
         </header>
 
+        {outline.length > 0 && (
+          <details className="reading-outline-inline">
+            <summary>On this page</summary>
+            <nav aria-label="On this page">
+              <ol>
+                {outline.map(heading => (
+                  <li key={heading.id} className={heading.level === 3 ? 'reading-outline-sub' : undefined}>
+                    <a href={`#${heading.id}`}>{heading.text}</a>
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          </details>
+        )}
+
         <div className="reading-prose">
           <ArticleMarkdown
             content={article.content}

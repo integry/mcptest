@@ -917,10 +917,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     && isDisconnected
     && !connectionError
     && !isAuthFlowActive;
-  // The landing stays up while a first-time visitor types into its input, so
-  // unlike isFirstConnection it does not depend on the entered URL.
+  // The landing is the empty state for new and returning users alike. It stays
+  // up while someone types into its input, so unlike isFirstConnection it does
+  // not depend on the entered URL; a connection attempt or an error leaves it.
   const showLanding = landingEligible
-    && recentServers.length === 0
     && !hasStartedFirstConnection
     && isDisconnected
     && !connectionError
@@ -929,6 +929,14 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const handleLandingConnect = (selection?: SuggestedServerSelection) => {
     setHasStartedFirstConnection(true);
     return selection ? handleSuggestedServerSelect(selection) : handleConnectWrapper();
+  };
+
+  // Recent chips reconnect the way RecentServersPanel does: set the URL, then connect to it.
+  const handleLandingRecentConnect = (url: string) => {
+    if (isConnecting) return;
+    setHasStartedFirstConnection(true);
+    handleServerUrlChange(url);
+    return handleConnectWrapper(url);
   };
 
   // Wrapper function for the refresh button
@@ -941,6 +949,43 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     handleListResourceTemplates();
     handleListPrompts();
   };
+
+  // Rendered on its own for tabs with a server, and inside the landing's
+  // "Advanced options" disclosure for empty tabs.
+  const connectionPanel = (
+    <ConnectionPanel
+      serverUrl={serverUrl}
+      setServerUrl={handleServerUrlChange}
+      connectionStatus={connectionStatus}
+      transportType={transportType}
+      protocolEra={protocolEra}
+      protocolVersion={protocolVersion}
+      isConnecting={isConnecting}
+      isConnected={isConnected}
+      isDisconnected={isDisconnected}
+      connectionStartTime={connectionStartTime}
+      handleConnect={handleConnectWrapper}
+      handleDisconnect={handleDisconnectWrapper}
+      handleAbortConnection={handleAbortConnection}
+      recentServers={recentServers}
+      connectionError={connectionError}
+      clearConnectionError={clearConnectionError}
+      useProxy={tab.useProxy}
+      setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
+      isProxied={isProxied} // Pass the new prop
+      isAuthFlowActive={isAuthFlowActive}
+      oauthProgress={oauthProgress}
+      oauthUserInfo={oauthUserInfo}
+      isOAuthConnection={isOAuthConnection}
+      catalogAuthType={tab.catalogAuthType}
+      diagnosticTransport={tab.preferredTransportHint || 'unknown'}
+      credentialHeader={credentialHeader}
+      credentialValue={catalogCredential}
+      setCredentialValue={setCatalogCredential}
+      credentialInputId={`${tab.id}-catalog-credential`}
+      autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
+    />
+  );
 
   return (
     <div 
@@ -962,41 +1007,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           onServerUrlChange={handleServerUrlChange}
           onConnect={handleLandingConnect}
           isConnecting={isConnecting}
+          recentServers={recentServers}
+          onConnectRecent={handleLandingRecentConnect}
+          onRemoveRecentServer={removeRecentServer}
+          advancedOptions={connectionPanel}
         />
-      ) : (
-        <ConnectionPanel
-            serverUrl={serverUrl}
-            setServerUrl={handleServerUrlChange}
-            connectionStatus={connectionStatus}
-            transportType={transportType}
-            protocolEra={protocolEra}
-            protocolVersion={protocolVersion}
-            isConnecting={isConnecting}
-            isConnected={isConnected}
-            isDisconnected={isDisconnected}
-            connectionStartTime={connectionStartTime}
-            handleConnect={handleConnectWrapper}
-            handleDisconnect={handleDisconnectWrapper}
-            handleAbortConnection={handleAbortConnection}
-            recentServers={recentServers}
-            connectionError={connectionError}
-            clearConnectionError={clearConnectionError}
-            useProxy={tab.useProxy}
-            setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
-            isProxied={isProxied} // Pass the new prop
-            isAuthFlowActive={isAuthFlowActive}
-            oauthProgress={oauthProgress}
-            oauthUserInfo={oauthUserInfo}
-            isOAuthConnection={isOAuthConnection}
-            catalogAuthType={tab.catalogAuthType}
-            diagnosticTransport={tab.preferredTransportHint || 'unknown'}
-            credentialHeader={credentialHeader}
-            credentialValue={catalogCredential}
-            setCredentialValue={setCatalogCredential}
-            credentialInputId={`${tab.id}-catalog-credential`}
-            autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
-          />
-      )}
+      ) : connectionPanel}
 
       {tab.originalServerUrl && tab.originalServerUrl !== serverUrl && tab.serverUrl === serverUrl && (
         <p className="small text-muted px-3">
