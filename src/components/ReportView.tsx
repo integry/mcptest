@@ -32,6 +32,8 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import { trackEvent, trackOAuthFlow } from '../utils/analytics';
+import { getReportGeneratedParams } from '../utils/reportAnalytics';
 import { getCatalogServerByEndpoint } from '../utils/catalogUtils';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import {
@@ -388,6 +390,7 @@ const ReportView: React.FC = () => {
         evaluationTrace = getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage);
         setOAuthTrace(evaluationTrace);
       }
+      trackEvent('report_generated', getReportGeneratedParams(reportData, evaluationTrace, 'report_page'));
       try {
         const snapshot = createReportSnapshot(reportData, evaluationTrace);
         setReportSnapshots(storeReportSnapshot(snapshot, localStorage));
@@ -462,6 +465,7 @@ const ReportView: React.FC = () => {
       const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
         ? oauthChallengeRef.current
         : undefined;
+      trackOAuthFlow('start', authenticationUrl);
       const result = await beginOAuthFlow(authenticationUrl, {
         ...(challenge?.resourceMetadataUrl
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
@@ -486,6 +490,7 @@ const ReportView: React.FC = () => {
         deferAuthorizedTraceOutcome: true,
       });
       if (result === 'AUTHORIZED') {
+        trackOAuthFlow('success', authenticationUrl);
         sessionStorage.removeItem('oauth_return_view');
         await handleRunReportRef.current?.(authenticationUrl, undefined, undefined, report?.serverUrl);
       }
@@ -497,6 +502,7 @@ const ReportView: React.FC = () => {
         return;
       }
       const message = error instanceof Error ? error.message : 'Unknown OAuth error';
+      trackOAuthFlow('error', authenticationUrl);
       setOAuthError(`OAuth authorization could not start: ${message}`);
     } finally {
       setOAuthAction(null);

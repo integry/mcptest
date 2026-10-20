@@ -12,7 +12,7 @@ import {
   getCatalogServers,
   sortCatalogServers,
 } from '../utils/catalogUtils';
-import { logEvent } from '../utils/analytics';
+import { trackEvent } from '../utils/analytics';
 
 const isOAuthFilter = (value: string | null): value is OAuthFilter => {
   return (
@@ -241,7 +241,7 @@ export const useCatalog = () => {
       const timeoutId = window.setTimeout(() => {
         searchAnalyticsTimeoutRef.current = null;
         lastLoggedSearchQueryRef.current = normalizedNextQuery;
-        logEvent('catalog_search', { query_length: normalizedNextQuery.length });
+        trackEvent('catalog_search', { query_length: normalizedNextQuery.length });
       }, SEARCH_ANALYTICS_DEBOUNCE_MS);
 
       searchAnalyticsTimeoutRef.current = timeoutId;
@@ -300,7 +300,7 @@ export const useCatalog = () => {
 
       pushNextCatalogParamsRef.current = true;
       setOauthFilterState(nextOauthFilter);
-      logEvent('catalog_filter_auth', { filter: nextOauthFilter });
+      trackEvent('catalog_filter_auth', { filter: nextOauthFilter });
     },
     [oauthFilter]
   );
@@ -313,7 +313,7 @@ export const useCatalog = () => {
 
       pushNextCatalogParamsRef.current = true;
       setCategoryState(nextCategory);
-      logEvent('catalog_filter_category', { category: nextCategory });
+      trackEvent('catalog_filter_category', { category: nextCategory });
     },
     [category]
   );
@@ -326,7 +326,7 @@ export const useCatalog = () => {
 
       pushNextCatalogParamsRef.current = true;
       setSortOrderState(nextSortOrder);
-      logEvent('catalog_sort', { sort: nextSortOrder });
+      trackEvent('catalog_sort', { sort: nextSortOrder });
     },
     [sortOrder]
   );

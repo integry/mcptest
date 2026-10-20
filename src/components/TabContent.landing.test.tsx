@@ -15,7 +15,10 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ currentUser: null, loading: false, loginWithGoogle: vi.fn() }),
 }));
 
-vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
+vi.mock('../utils/analytics', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../utils/analytics')>(),
+  trackEvent: vi.fn(),
+}));
 
 import TabContent from './TabContent';
 import { isLandingEligible } from '../utils/landingEligibility';

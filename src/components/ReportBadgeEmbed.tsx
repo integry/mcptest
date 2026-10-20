@@ -37,6 +37,7 @@ const ReportBadgeEmbed: React.FC<ReportBadgeEmbedProps> = ({ report, oauthTrace 
       previewAlt={getBadgeTitle(variant)}
       linkUrl={getReportUrl(report.serverUrl)}
       snippets={snippets}
+      analyticsSurface="report"
     />
   );
 };
