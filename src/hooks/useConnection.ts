@@ -29,6 +29,7 @@ import {
 } from '../utils/oauthTrace';
 import {
   collectConnectionAttemptFacts,
+  collectConnectionTransportDiagnostics,
   type ConnectionErrorDetails,
   type ConnectionFailureEvidence,
 } from '../utils/connectionDiagnostics';
@@ -834,6 +835,7 @@ export const useConnection = (
                 effectivePreferredTransport
               ),
               transportEvidence: diagnosticTransportEvidence,
+              transportDiagnostics: collectConnectionTransportDiagnostics(diagnosticFailures),
               expectedAuthentication: 'oauth',
               supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
               serverReachable: catalogEndpointEvidence?.serverReachable,
@@ -901,19 +903,21 @@ export const useConnection = (
                 serverUrl: targetUrl, // Report error against the target URL
                 operation: 'connection'
             });
+            const reportedFailures: ConnectionFailureEvidence[] = diagnosticFailures.length > 0
+              ? diagnosticFailures
+              : [{ route: connectionRoute, error }];
             setConnectionError({
                 error: errorDetails,
                 serverUrl: targetUrl,
                 timestamp: new Date(),
                 details: error.stack || error.toString(),
                 attempts: collectConnectionAttemptFacts(
-                  diagnosticFailures.length > 0
-                    ? diagnosticFailures
-                    : [{ route: connectionRoute, error }],
+                  reportedFailures,
                   targetUrl,
                   effectivePreferredTransport
                 ),
                 transportEvidence: diagnosticTransportEvidence,
+                transportDiagnostics: collectConnectionTransportDiagnostics(reportedFailures),
                 expectedAuthentication,
                 supportsBearerToken: catalogEndpointEvidence?.supportsBearerToken,
                 serverReachable: catalogEndpointEvidence?.serverReachable,

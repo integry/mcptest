@@ -1,0 +1,65 @@
+.transport-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.transport-diagnostic {
+  border: 1px solid var(--border-color);
+  border-left-width: 4px;
+  border-radius: var(--button-radius);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  padding: 0.75rem 1rem;
+}
+
+.transport-diagnostic--error {
+  border-left-color: var(--danger-color);
+}
+
+.transport-diagnostic--warning {
+  border-left-color: var(--warning-color);
+}
+
+.transport-diagnostic--not-checked {
+  border-left-color: var(--secondary-color);
+}
+
+.transport-diagnostic__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+.transport-diagnostic__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.transport-diagnostic__id {
+  font-size: 0.8rem;
+}
+
+.transport-diagnostic__wait {
+  font-weight: 600;
+}
+
+.transport-diagnostic__evidence {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+}
+
+.transport-diagnostic__hint {
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--button-radius-sm);
+  background-color: var(--card-bg-secondary);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
