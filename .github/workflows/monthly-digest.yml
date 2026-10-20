@@ -1,0 +1,74 @@
+name: Monthly digest issue
+
+# Opens the "Monthly digest: What changed in MCP, <Month YYYY>" issue with the AI
+# label, so the agent drafts the digest and a maintainer only reviews its pull
+# request. Runs only on the schedule and on manual dispatch, never on push or
+# pull request events. Body: scripts/digest-issue.mjs + .github/digest-issue-template.md.
+on:
+  schedule:
+    # The 2nd of each month at 06:00 UTC, covering the previous calendar month.
+    - cron: '0 6 2 * *'
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month to cover as YYYY-MM (defaults to the previous calendar month)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monthly-digest
+  cancel-in-progress: false
+
+jobs:
+  open-issue:
+    name: Open the digest issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      # The script has no dependencies, so there is no npm ci.
+      - name: Render the issue body
+        id: render
+        env:
+          MONTH: ${{ inputs.month }}
+        run: |
+          args=(--output "$RUNNER_TEMP/digest-issue.md")
+          if [ -n "$MONTH" ]; then args+=(--month "$MONTH"); fi
+          node scripts/digest-issue.mjs "${args[@]}"
+
+      - name: Report an existing article
+        if: steps.render.outputs.skip == 'true'
+        env:
+          SLUG: ${{ steps.render.outputs.slug }}
+        run: echo "src/content/articles/$SLUG.md already exists; no issue opened." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Open the issue unless one with the same title exists
+        if: steps.render.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: ${{ steps.render.outputs.title }}
+        run: |
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 100 \
+            --search "\"$TITLE\" in:title" --json number,title \
+            | jq -r --arg title "$TITLE" '[.[] | select(.title == $title) | .number] | first // empty')
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing already exists: $TITLE" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          url=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --label AI \
+            --body-file "$RUNNER_TEMP/digest-issue.md")
+          echo "Opened $url: $TITLE" | tee -a "$GITHUB_STEP_SUMMARY"
