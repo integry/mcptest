@@ -129,6 +129,34 @@ describe('checkSite', () => {
     fs.rmSync(path.join(root, 'routes.txt'));
     expect(() => loadSite(root)).toThrow(/routes\.txt is missing/);
   });
+
+  it.each([
+    ['a routes.txt', '/\n/catalog\n'],
+    ['an empty routes.txt', ''],
+  ])('fails on a directory with only %s', (_label, routes) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-links-'));
+    temporaryDirectories.push(root);
+    fs.writeFileSync(path.join(root, 'routes.txt'), routes);
+    expect(() => check(root)).toThrow(/No HTML documents/);
+  });
+
+  it('fails on documents with no checkable internal links', () => {
+    const empty = page('/', '<a href="mailto:hi@example.com">Mail</a><a href="javascript:void 0">Top</a><a href="https://example.com/docs">Docs</a>')
+      .replace(/<link rel="canonical"[^>]*>\n/, '')
+      .replace(/<script[^>]*><\/script>\n/, '');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-links-'));
+    temporaryDirectories.push(root);
+    for (const [file, contents] of Object.entries({
+      'index.html': empty,
+      'learn/index.html': '<!doctype html><html><body><p>No links.</p></body></html>',
+      'learn/guide.md': '# Guide\n\n```\n[not a link](/nowhere)\n```\n',
+      'routes.txt': '/\n/learn\n',
+    })) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), contents);
+    }
+    expect(() => check(root)).toThrow(/No checkable internal links in 3 files/);
+  });
 });
 
 describe('checkExternalLinks', () => {

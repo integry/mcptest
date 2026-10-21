@@ -280,12 +280,17 @@ export function checkLink(site, value, basePath) {
 
 /**
  * Checks every internal link in the site. `errors` are failures; `external`
- * maps each external URL to the files that link to it.
+ * maps each external URL to the files that link to it. Throws when there is
+ * nothing to check, so an empty or wrong dist/ cannot pass vacuously.
  */
 export function checkSite(site) {
+  if (site.pages.size === 0) {
+    throw new Error(`No HTML documents under ${site.root}; run npm run build or pass the right --dist.`);
+  }
   const errors = [];
   const external = new Map();
   let checked = 0;
+  let internal = 0;
   const visit = (file, links, basePath) => {
     for (const link of links) {
       const result = checkLink(site, link.value, basePath);
@@ -295,8 +300,9 @@ export function checkSite(site) {
         const key = result.external.replace(/#.*$/, '');
         if (!external.has(key)) external.set(key, new Set());
         external.get(key).add(file);
-      } else if (result.error) {
-        errors.push({ file, link: link.value, reason: result.error });
+      } else {
+        internal += 1;
+        if (result.error) errors.push({ file, link: link.value, reason: result.error });
       }
     }
   };
@@ -307,6 +313,9 @@ export function checkSite(site) {
     // A Markdown export's relative links and bare anchors belong to the page it was rendered into.
     const basePath = file.endsWith('.md') ? `/${file.slice(0, -'.md'.length)}` : '/';
     visit(file, document.links, basePath);
+  }
+  if (internal === 0) {
+    throw new Error(`No checkable internal links in ${site.pages.size + site.markdown.size} files under ${site.root}.`);
   }
   return { errors, external, checked, files: site.pages.size + site.markdown.size };
 }
