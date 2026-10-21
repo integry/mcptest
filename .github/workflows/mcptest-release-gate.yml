@@ -132,7 +132,7 @@ jobs:
             exit 3
           fi
           echo "ref=$MCPTEST_DISPATCH_SHA" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: integry/mcptest
           ref: ${{ steps.reusable_ref.outputs.ref || steps.dispatch_ref.outputs.ref }}
