@@ -804,7 +804,7 @@ describe('generated page metadata', () => {
   });
 
   it('lists every article in the sitemap at its canonical path without .md alternates', () => {
-    const sitemap = renderSitemap([{ id: 'example-server' }], articles, '2026-10-20');
+    const sitemap = renderSitemap([{ id: 'example-server', checkedAt: '2026-10-20T15:30:37.843Z' }], articles, ['privacy-policy']);
 
     expect(sitemap).toContain('<loc>https://mcptest.io/learn</loc>');
     expect(sitemap).toContain('<loc>https://mcptest.io/docs/what-is-mcp</loc>');
@@ -813,7 +813,8 @@ describe('generated page metadata', () => {
       expect(sitemap).toContain(`<loc>https://mcptest.io${article.path}</loc>\n    <lastmod>${article.lastReviewed}</lastmod>`);
     }
     expect(sitemap).not.toContain('.md</loc>');
-    expect(sitemap).not.toContain('/docs/privacy-policy');
+    // React-only documentation pages are prerendered and indexable, so they are listed too.
+    expect(sitemap).toContain('<loc>https://mcptest.io/docs/privacy-policy</loc>');
   });
 });
 

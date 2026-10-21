@@ -9,6 +9,7 @@ import './components/LandingHero.css'
 import { loadFirebase, scheduleAnalyticsLoad, shouldRestoreAuthSession } from './firebase'
 import { deferMountUntilInput } from './staticPage/deferredMount'
 import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage } from './staticPage/staticPage'
+import { canonicalAliasPath } from './utils/appRoutes'
 
 /*
  * The entry stays small: React, the router and the app are one dynamic
@@ -17,6 +18,14 @@ import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage } from 
  * without React, so they mount on the first input instead (issue #405).
  */
 const prepareApp = () => import('./bootstrapApp').then(module => module.prepareApp())
+
+// A served alias of a page (/catalog.html, /learn/index.html) takes the
+// page's canonical URL before anything reads the path, so the app renders the
+// page rather than NotFound.
+const canonicalPath = canonicalAliasPath(window.location.pathname)
+if (canonicalPath) {
+  window.history.replaceState(window.history.state, '', `${canonicalPath}${window.location.search}${window.location.hash}`)
+}
 
 // A returning signed-in user: fetch Firebase now, alongside the app.
 const restoringSession = shouldRestoreAuthSession()

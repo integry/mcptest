@@ -52,6 +52,13 @@ const { selectLandingQuickPicks } = require('../src/utils/landingQuickPicks.ts')
 const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.ts');
 const { getSpaceUrl } = require('../src/utils/urlUtils.ts');
 const { highlightCode } = require('../src/content/codeHighlighting.ts');
+const {
+  APP_ROUTE_PREFIXES,
+  EXACT_APP_ROUTES,
+  NOT_FOUND_LINKS,
+  NOT_FOUND_SUMMARY,
+  NOT_FOUND_TITLE,
+} = require('../src/utils/appRoutes.ts');
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
@@ -94,6 +101,14 @@ function safeJsonForHtml(value) {
 
 function serverPath(serverId) {
   return `/servers/${encodeURIComponent(serverId)}/`;
+}
+
+/**
+ * The one absolute URL of a page: its canonical link, og:url and sitemap
+ * <loc>. The home page has no trailing slash, as in the app.
+ */
+function canonicalUrlFor(pathname) {
+  return pathname === '/' ? SITE_URL : `${SITE_URL}${pathname}`;
 }
 
 function transportLabel(transport) {
@@ -545,7 +560,7 @@ function renderServerHtml(indexHtml, server, options = {}) {
       }
     : mergeCatalogServers([server], [])[0];
 
-  const canonicalUrl = `${SITE_URL}${serverPath(server.id)}`;
+  const canonicalUrl = canonicalUrlFor(serverPath(server.id));
   const title = `${server.name} MCP Server Report | mcptest.io`;
   const description = truncate(
     server.seoDescription
@@ -627,10 +642,10 @@ function renderServerHtml(indexHtml, server, options = {}) {
 /**
  * Head metadata (and optional static body) for a prerendered page. Every page
  * gets its build-time Open Graph image; `options.feed` adds the guides RSS
- * link. The home page's canonical URL has no trailing slash, as in the app.
+ * link.
  */
 function renderStaticPageHtml(indexHtml, pathname, metadata, options = {}) {
-  const canonicalUrl = pathname === '/' ? SITE_URL : `${SITE_URL}${pathname}`;
+  const canonicalUrl = canonicalUrlFor(pathname);
   let html = indexHtml.replace(
     /<title>[^<]*<\/title>/i,
     `<title>${escapeHtml(metadata.title)}</title>`
@@ -912,7 +927,7 @@ function renderLearnArticleFallback(article, articles) {
 }
 
 function getLearnArticleStructuredData(article, learnIndex) {
-  const canonicalUrl = `${SITE_URL}${article.path}`;
+  const canonicalUrl = canonicalUrlFor(article.path);
   return {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -1616,20 +1631,42 @@ function writeLlmsTxt(articles) {
   fs.writeFileSync(path.join(distRoot, 'llms.txt'), renderLlmsTxt(articles), 'utf8');
 }
 
-function renderSitemap(servers, articles, lastModified = new Date().toISOString().slice(0, 10)) {
-  const staticPaths = ['/', '/catalog', '/report', '/learn'];
-  const paths = [
-    ...staticPaths.map(pathname => ({ pathname, lastModified })),
-    ...articles.map(article => ({
-      pathname: article.path,
-      lastModified: article.lastReviewed,
-    })),
-    ...servers.map(server => ({ pathname: serverPath(server.id), lastModified })),
+/** The YYYY-MM-DD day of an ISO timestamp, or undefined. */
+function isoDay(value) {
+  const match = typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : undefined;
+}
+
+function latestDay(values) {
+  return values.map(isoDay).filter(Boolean).sort().at(-1);
+}
+
+/**
+ * Every indexable prerendered page, once, with the date its content last
+ * changed: an article's lastReviewed, a server's latest catalog validation,
+ * the newest of those for the pages that list them. Pages with no content
+ * date (the legal and contact pages) carry no lastmod rather than the build
+ * date. /report is not listed: it has no prerendered page, and the shell the
+ * origin serves for it canonicalises to the home page.
+ */
+function getSitemapEntries(servers, articles, docsSlugs = []) {
+  const catalogValidated = latestDay(servers.map(server => server.checkedAt));
+  const guidesReviewed = latestDay(articles.map(article => article.lastReviewed));
+  return [
+    { pathname: '/', lastModified: latestDay([catalogValidated, guidesReviewed]) },
+    { pathname: '/catalog', lastModified: catalogValidated },
+    { pathname: '/learn', lastModified: guidesReviewed },
+    ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
+    ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
+    ...servers.map(server => ({ pathname: serverPath(server.id), lastModified: isoDay(server.checkedAt) })),
   ];
-  const entries = paths.map(({ pathname, lastModified: entryLastModified }) => [
+}
+
+function renderSitemap(servers, articles, docsSlugs = []) {
+  const entries = getSitemapEntries(servers, articles, docsSlugs).map(({ pathname, lastModified }) => [
     '  <url>',
-    `    <loc>${escapeXml(`${SITE_URL}${pathname === '/' ? '' : pathname}`)}</loc>`,
-    `    <lastmod>${entryLastModified}</lastmod>`,
+    `    <loc>${escapeXml(canonicalUrlFor(pathname))}</loc>`,
+    ...(lastModified ? [`    <lastmod>${lastModified}</lastmod>`] : []),
     '  </url>',
   ].join('\n'));
   return [
@@ -1641,13 +1678,75 @@ function renderSitemap(servers, articles, lastModified = new Date().toISOString(
   ].join('\n');
 }
 
-function writeSitemap(servers, articles) {
-  fs.writeFileSync(path.join(distRoot, 'sitemap.xml'), renderSitemap(servers, articles), 'utf8');
-  fs.writeFileSync(
-    path.join(distRoot, 'robots.txt'),
-    `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`,
-    'utf8'
-  );
+function renderRobotsTxt() {
+  return `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
+}
+
+function writeSitemap(servers, articles, docsSlugs) {
+  fs.writeFileSync(path.join(distRoot, 'sitemap.xml'), renderSitemap(servers, articles, docsSlugs), 'utf8');
+  fs.writeFileSync(path.join(distRoot, 'robots.txt'), renderRobotsTxt(), 'utf8');
+}
+
+function renderNotFoundFallback() {
+  return [
+    '<div class="reading-shell reading-shell-single not-found-page seo-not-found-fallback">',
+    '  <section class="reading-article" aria-labelledby="not-found-title">',
+    '    <header class="reading-header">',
+    `      <h1 id="not-found-title">${escapeHtml(NOT_FOUND_TITLE)}</h1>`,
+    `      <p class="reading-summary">${escapeHtml(NOT_FOUND_SUMMARY)}</p>`,
+    '    </header>',
+    '    <div class="reading-prose">',
+    '      <ul class="not-found-links">',
+    ...NOT_FOUND_LINKS.map(link => `        <li><a href="${escapeHtml(link.path)}">${escapeHtml(link.label)}</a> — ${escapeHtml(link.description)}</li>`),
+    '      </ul>',
+    '    </div>',
+    '  </section>',
+    '</div>',
+  ].join('\n');
+}
+
+/**
+ * dist/404.html, which the origin serves with a 404 status for any path that
+ * is neither a file nor an app route. noindex, and no canonical or og:url: it
+ * is not a page of its own. The app mounts over it and shows NotFound.
+ */
+function render404Html(indexHtml) {
+  const title = 'Page Not Found | mcptest.io';
+  const description = 'This page is not available. Open the playground, browse the MCP server catalog, or read the guides.';
+  let html = indexHtml.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(title)}</title>`);
+  html = html
+    .replace(/\s*<link\s+[^>]*rel=["']canonical["'][^>]*>/gi, '')
+    .replace(/\s*<meta\s+[^>]*property=["']og:url["'][^>]*>/gi, '');
+  html = setNamedMeta(html, 'robots', 'noindex');
+  html = setNamedMeta(html, 'description', description);
+  html = setNamedMeta(html, 'twitter:title', title);
+  html = setNamedMeta(html, 'twitter:description', description);
+  html = setPropertyMeta(html, 'og:title', title);
+  html = setPropertyMeta(html, 'og:description', description);
+  return html.replace('<div id="root"></div>', `<div id="root">\n${renderNotFoundFallback()}\n    </div>`);
+}
+
+/**
+ * dist/routes.txt: every path the app answers, for configuring the origin
+ * to return 404 for anything else. `/path` is one exact path; `/prefix/*` is
+ * every path below a prefix. See docs/site-hygiene.md.
+ */
+function renderRoutesTxt(pagePaths) {
+  const exact = [...new Set([...EXACT_APP_ROUTES, ...pagePaths])].sort();
+  return [
+    '# Known app routes, generated by scripts/generate-seo-pages.js.',
+    '# Exact paths, then prefixes (/prefix/* matches every path below /prefix/).',
+    '# Prerendered pages are files in dist/; the other routes are served by the SPA shell (index.html).',
+    '# Anything else should get dist/404.html with a 404 status (see docs/site-hygiene.md).',
+    ...exact,
+    ...APP_ROUTE_PREFIXES.map(prefix => `${prefix}*`),
+    '',
+  ].join('\n');
+}
+
+function writeNotFoundAndRoutes(indexHtml, pagePaths) {
+  fs.writeFileSync(path.join(distRoot, '404.html'), render404Html(indexHtml), 'utf8');
+  fs.writeFileSync(path.join(distRoot, 'routes.txt'), renderRoutesTxt(pagePaths), 'utf8');
 }
 
 function validateInputs(servers) {
@@ -1847,7 +1946,9 @@ async function main() {
   writeLearnFeed(articles, learnIndex);
   writeSearchIndex(articles);
   writeLlmsTxt(articles);
-  writeSitemap(servers, articles);
+  const docsSlugs = Object.keys(pageMetadata.docs);
+  writeSitemap(servers, articles, docsSlugs);
+  writeNotFoundAndRoutes(indexHtml, getSitemapEntries(servers, articles, docsSlugs).map(entry => entry.pathname));
   const resizedLogos = writeServedLogos();
   const finalizedPages = finalizeHtmlPages();
 
@@ -1855,7 +1956,7 @@ async function main() {
   const cards = buildOgCards({ servers, articles, pageMetadata });
   const og = await writeOgImages(cards, { distRoot });
 
-  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, and robots.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
   console.log(`Critical CSS inlined in ${finalizedPages} pages; ${resizedLogos} PNG logos served at ${SERVED_LOGO_PX}px.`);
   console.log(`Open Graph images: ${cards.length} (${og.rendered} rendered, ${og.cached} from cache) in ${((Date.now() - ogStartedAt) / 1000).toFixed(1)}s.`);
 }
@@ -1891,6 +1992,11 @@ module.exports = {
   renderServerLogo,
   renderClientSetups,
   renderAuthorizationSetup,
+  canonicalUrlFor,
+  getSitemapEntries,
+  render404Html,
+  renderRobotsTxt,
+  renderRoutesTxt,
   renderSitemap,
   renderStaticPageHtml,
   serverPath,

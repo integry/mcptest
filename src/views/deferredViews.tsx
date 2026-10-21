@@ -5,6 +5,7 @@ import { getContentPage, getLearnArticleFromPath } from '../content/learnRegistr
 import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
 import { getPrerenderedArticle } from '../content/prerenderedArticle';
 import { markdownLearnArticle } from '../components/learn/deferredMarkdownArticle';
+import { isKnownAppPath } from '../utils/appRoutes';
 
 /*
  * Route-level code splitting. Each view below is its own chunk (plus the
@@ -50,11 +51,13 @@ export type RouteView =
   | 'catalog'
   | 'server-profile'
   | 'learn-index'
-  | 'page';
+  | 'page'
+  | 'not-found';
 
 /** The view a path renders first, mirroring App's activeView derivation. */
 export const getRouteView = (pathname: string, search = ''): RouteView => {
   if (pathname === '/oauth/callback') return 'oauth-callback';
+  if (!isKnownAppPath(pathname)) return 'not-found';
   if (pathname === '/submit') return 'submit';
   if (pathname.startsWith('/report')) return 'report';
   if (pathname.startsWith('/space/')) return 'dashboards';
