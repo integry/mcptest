@@ -50,6 +50,13 @@ jobs:
       - name: Chunk graph of the built site
         run: npm run test:bundle-graph
 
+      # External links are listed, not fetched; maintainers run npm run check-links:external.
+      - name: Internal links of the built site
+        run: npm run check-links
+
+      - name: Sitemap, robots and canonical audit of the built site
+        run: npm run test:site-audit
+
       # The e2e job reuses this build instead of building again.
       - name: Upload the built site
         uses: actions/upload-artifact@v4

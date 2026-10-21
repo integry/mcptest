@@ -165,6 +165,22 @@ Both bindings are declared in `wrangler.toml`; the `v2` migration creates the `P
 
 Published reports are user-generated and are not prerendered or indexed; the `/report/<endpoint>` app route stays indexable only for catalog endpoints as before.
 
+### Static site origin: real 404s
+
+The build writes `dist/404.html` (noindex) and `dist/routes.txt`, which lists every path the app answers. Prerendered pages are files. The app-only routes (`/report`, `/submit`, `/oauth/callback`, `/install-integration`, `/server/*`, `/call/*`, `/space/*`, `/report/*`) need the SPA shell. Every other path should get `404.html` with a `404` status instead of the shell with a `200`, which search engines treat as a soft 404. On nginx, keep `try_files $uri $uri/ /index.html;` for the app routes only, and add `error_page 404 /404.html;` with `try_files $uri $uri/index.html $uri.html =404;` for everything else:
+
+```nginx
+error_page 404 /404.html;
+location = /404.html { internal; }
+# .html spellings (/index.html, /catalog.html, .../index.html) 301 to the canonical URL; see docs/site-hygiene.md
+location / { try_files $uri $uri/index.html $uri.html =404; }
+location = /report { try_files $uri $uri/ /index.html; }
+location ^~ /server/ { try_files $uri $uri/ /index.html; }
+# ...one block per app-only route in dist/routes.txt
+```
+
+The full configuration, the Cloudflare Pages variant and how to verify it are in [docs/site-hygiene.md](docs/site-hygiene.md). The repository does not change the origin; a maintainer applies this configuration.
+
 ### CORS Proxy Configuration
 The `cors-proxy-worker/wrangler.toml` file is configured to:
 - Deploy as a separate worker named `mcptest-cors-proxy`

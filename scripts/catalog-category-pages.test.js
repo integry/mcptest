@@ -92,7 +92,7 @@ describe('prerendered catalog category pages', () => {
   });
 
   it('lists every category page in the sitemap exactly once', () => {
-    const sitemap = renderSitemap(servers, articles, '2026-10-21');
+    const sitemap = renderSitemap(servers, articles);
     for (const summary of summaries) {
       expect(sitemap.split(`<loc>https://mcptest.io${summary.path}</loc>`)).toHaveLength(2);
     }
