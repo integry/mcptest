@@ -11,6 +11,7 @@ lastReviewed: "2026-10-20"
 relatedSlugs:
   - connect-remote-mcp-server
   - mcp-clients-compared
+  - mcp-client-support-matrix
   - remote-mcp-server-401-unauthorized
   - mcp-server-connected-but-no-tools
 sourceLinks:
@@ -42,6 +43,10 @@ Claude has three places where a remote MCP server can be added, and they are con
 | Claude Code | `claude mcp add` or a `.mcp.json` file | Your own machine |
 
 This guide reflects the claude.ai connector documentation reviewed on 20 October 2026 and Claude Code v2.1.304 (19 October 2026). It covers remote servers only. If you have not yet confirmed that your URL is a working MCP endpoint, read [How to connect to a remote MCP server](/learn/connect-remote-mcp-server) first.
+
+## Compatibility at a glance
+
+<!-- compat-matrix clients="claude-ai,claude-desktop,claude-code" limitations="true" -->
 
 ## claude.ai custom connectors
 

@@ -11,6 +11,7 @@ lastReviewed: "2026-10-20"
 relatedSlugs:
   - connect-remote-mcp-server
   - mcp-clients-compared
+  - mcp-client-support-matrix
   - remote-mcp-server-401-unauthorized
   - mcp-server-connected-but-no-tools
 sourceLinks:
@@ -39,6 +40,10 @@ This guide reflects VS Code 1.142 (14 October 2026) and the MCP documentation da
 The **MCP: Add Server** flow now labels the VS Code format destinations as deprecated, kept for compatibility. They still work, and they are the only format that supports `inputs` prompts for secrets. Servers that need input prompts are not forwarded to Copilot harness sessions, which is one reason a server can work in one chat and not another. The workspace `.mcp.json` option only appears when the experimental setting `chat.mcp.workspaceRootConfig.enabled` is on. The examples below use the VS Code format because it is what most published server docs show.
 
 For the general checks on an endpoint before you configure it, see [How to connect to a remote MCP server](/learn/connect-remote-mcp-server).
+
+## Compatibility at a glance
+
+<!-- compat-matrix clients="vscode-copilot" limitations="true" -->
 
 ## Add a remote HTTP server
 

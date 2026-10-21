@@ -280,3 +280,132 @@
     transform: none;
   }
 }
+
+/* Returning users: recent endpoints as chips with a remove control. */
+.landing-recent-item {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.landing-recent-connect {
+  min-width: 0;
+  padding-left: 0.7rem;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.landing-recent-icon {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.landing-recent-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+}
+
+.landing-recent-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 2rem;
+  padding: 0 0.5rem;
+  margin-left: -1px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 0 var(--button-radius) var(--button-radius) 0;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.landing-recent-remove:hover:not(:disabled),
+.landing-recent-remove:focus-visible {
+  color: var(--danger-color);
+  border-color: var(--danger-color);
+  position: relative;
+  z-index: 1;
+}
+
+.landing-recent-remove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.landing-recent-remove:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Advanced options: swaps the simple row for the full connection panel, in place. */
+.landing-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 1.25rem;
+  padding: 0.25rem 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.landing-advanced-toggle:hover,
+.landing-advanced-toggle:focus-visible {
+  color: var(--text-color);
+}
+
+.landing-advanced-toggle:focus-visible {
+  outline: none;
+  border-radius: var(--button-radius-sm);
+  box-shadow: var(--focus-ring);
+}
+
+.landing-advanced-hint {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.landing-advanced-hint:empty {
+  display: none;
+}
+
+.landing-advanced {
+  text-align: left;
+}
+
+.landing-advanced .connection-console {
+  margin: 0;
+}
+
+/* Touch targets: the connect row and chips reach 44px on phones. */
+@media (max-width: 768px) {
+  .landing-quick-pick,
+  .landing-recent-remove,
+  .landing-advanced-toggle {
+    min-height: 2.75rem;
+  }
+
+  .landing-recent-remove {
+    min-width: 2.75rem;
+  }
+
+  .landing-quick-picks ul,
+  .landing-recent-item {
+    max-width: 100%;
+  }
+
+  .landing-recent-connect {
+    max-width: calc(100vw - 2rem - 2.75rem);
+  }
+}

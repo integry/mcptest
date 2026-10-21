@@ -1,4 +1,4 @@
-import { Space } from '../types';
+import type { Space } from '../types';
 
 // Generate URL-safe slug from space title
 export const generateSpaceSlug = (spaceName: string): string => {

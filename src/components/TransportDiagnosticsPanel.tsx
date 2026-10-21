@@ -4,6 +4,7 @@ import type {
   TransportDiagnosticEvidence,
 } from '../types/transportDiagnostics';
 import { formatRetryWait } from '../utils/transportDiagnostics';
+import FindingReferenceLink from './FindingReferenceLink';
 import './TransportDiagnosticsPanel.css';
 
 interface TransportDiagnosticsPanelProps {
@@ -60,11 +61,12 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
               key={diagnostic.id}
               className={`transport-diagnostic transport-diagnostic--${modifier}`}
               aria-label={diagnostic.title}
+              data-testid="transport-diagnostic"
             >
               <div className="transport-diagnostic__header">
                 <span className={`badge ${severityBadge(diagnostic)}`}>{severityLabel(diagnostic)}</span>
                 <h6 className="transport-diagnostic__title">{diagnostic.title}</h6>
-                <code className="transport-diagnostic__id">{diagnostic.id}</code>
+                <FindingReferenceLink id={diagnostic.id} className="transport-diagnostic__id" />
               </div>
 
               {diagnostic.status === 'not-checked' ? (

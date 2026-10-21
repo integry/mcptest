@@ -4,3 +4,6 @@ dist
 issues.sh
 .env
 .dev.vars
+.lighthouseci/
+playwright-report/
+test-results/

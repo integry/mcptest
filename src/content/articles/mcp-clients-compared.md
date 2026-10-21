@@ -41,6 +41,10 @@ This matrix records behavior in the vendors' public documentation reviewed on **
 | VS Code | Yes | Streamable HTTP with SSE fallback; explicit `sse` is also configurable | Request headers/input variables and OAuth with a client ID are documented | Tools, resources, prompts, and MCP Apps | First start normally asks whether the server is trusted; tool calls can require confirmation; local stdio can be sandboxed on macOS/Linux | Workspace or profile `mcp.json`, guided command, or gallery install |
 | MCP Inspector | Yes | Streamable HTTP and legacy SSE | Custom headers/bearer tokens and interactive OAuth are documented in current Inspector guidance | A testing UI for tools, resources, prompts, protocol messages, and transport behavior | Its local proxy can spawn processes and must not be exposed to untrusted networks | Web UI, TUI/CLI flags, or an MCP configuration file |
 
+**Verified transport and authentication matrix.** The next table is generated from mcptest's sourced client data, the same data the release-readiness report uses for its host verdicts. Each row shows the date its cells were last checked against the vendor's documentation, and every cell has a source in the data file. Where a vendor does not document something, the cell says unknown instead of guessing.
+
+<!-- compat-matrix clients="claude-ai,claude-desktop,claude-code,chatgpt,codex-cli,cursor,vscode-copilot,windsurf,gemini-cli,generic-sdk" -->
+
 ### Important product boundaries
 
 **Claude Desktop and Claude Code are different clients.** Desktop extensions are designed for locally installed integrations, while Claude Code documents CLI configuration scopes, resource mentions, prompt commands, HTTP headers, and an OAuth login flow. Do not copy a Claude Code command and assume the Desktop UI consumes it.

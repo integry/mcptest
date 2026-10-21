@@ -11,6 +11,7 @@ lastReviewed: "2026-10-20"
 relatedSlugs:
   - connect-remote-mcp-server
   - mcp-clients-compared
+  - mcp-client-support-matrix
   - connect-mcp-server-to-chatgpt
   - remote-mcp-server-401-unauthorized
 sourceLinks:
@@ -42,6 +43,10 @@ All three clients connect to remote Streamable HTTP servers directly. None of th
 | Codex | Yes, `url` | Not documented; use a bridge | `~/.codex/config.toml` | rust-v0.163.0 (15 October 2026) |
 
 For the checks to run on an endpoint before you configure any client, see [How to connect to a remote MCP server](/learn/connect-remote-mcp-server). For the wider client comparison, see [MCP clients compared](/learn/mcp-clients-compared).
+
+### Verified compatibility
+
+<!-- compat-matrix clients="windsurf,gemini-cli,codex-cli" limitations="true" -->
 
 ## Windsurf (Devin Desktop)
 

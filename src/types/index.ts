@@ -1,5 +1,6 @@
-import { z } from 'zod';
-import { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
+// Type-only: the SDK schemas and zod must not enter the initial bundle through this module.
+import type { z } from 'zod';
+import type { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
 import type { CatalogAuthType, CatalogRequiredHeader } from './catalog';
 import type { CatalogProtocolEra } from './catalog';
 import type { OutputContractResult } from '../utils/outputContract';

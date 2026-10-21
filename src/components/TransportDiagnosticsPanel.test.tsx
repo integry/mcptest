@@ -83,6 +83,12 @@ describe('ConnectionErrorCard transport diagnostics', () => {
     expect(container.querySelector('h6.alert-heading')?.textContent)
       .toBe('Server rejected the Accept header (HTTP 406)');
     expect(text).toContain('transport.accept-header-406');
+    const reference = container.querySelector<HTMLAnchorElement>('a.transport-diagnostic__id');
+    expect(reference?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#transport-accept-header-406');
+    expect(reference?.getAttribute('target')).toBeNull();
+    expect(reference?.querySelector('code')?.textContent).toBe('transport.accept-header-406');
+    expect(reference?.textContent).toContain('Learn more');
     expect(text).toContain('must send an Accept header that lists both application/json and text/event-stream');
     expect(text).toContain('Sent: accept: application/json, text/event-stream');
     expect(text).toContain('How to fix:');

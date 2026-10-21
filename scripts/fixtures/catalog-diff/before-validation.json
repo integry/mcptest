@@ -1,0 +1,85 @@
+[
+  {
+    "serverId": "alpha",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "ok alpha",
+    "validatedUrl": "https://alpha.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "bravo",
+    "status": "offline",
+    "transport": "unknown",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "down",
+    "errorCode": "network_error"
+  },
+  {
+    "serverId": "charlie",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "ok charlie",
+    "validatedUrl": "https://charlie.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "delta",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "ok delta",
+    "validatedUrl": "https://delta.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "echo",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "ok echo",
+    "validatedUrl": "https://echo.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "foxtrot",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "ok foxtrot",
+    "validatedUrl": "https://foxtrot.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "retired",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "ok retired",
+    "validatedUrl": "https://retired.example/mcp",
+    "protocolVersion": "2025-11-25"
+  }
+]

@@ -3,6 +3,10 @@
     "title": "Test Remote MCP Servers | MCP Inspector Online | mcptest.io",
     "description": "Inspect, debug and evaluate remote MCP servers in your browser. An MCP inspector online: test remote MCP server protocol negotiation, OAuth 2.1, CORS and tool contracts, then share a report."
   },
+  "catalog": {
+    "title": "Remote MCP Server Catalog | mcptest.io",
+    "description": "Browse remote MCP servers by capability, transport, authentication method, and live validation status."
+  },
   "learn": {
     "title": "Learn MCP",
     "description": "Practical, source-backed guides for choosing MCP clients, connecting remote servers, understanding OAuth, and operating trustworthy production MCP systems.",

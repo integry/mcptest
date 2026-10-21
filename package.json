@@ -9,12 +9,22 @@
     "predev": "node scripts/generate-version.js",
     "dev": "vite",
     "test": "vitest run",
+    "test:first-paint": "FIRST_PAINT=1 vitest run scripts/first-paint.test.js",
+    "test:e2e": "playwright test",
+    "test:lighthouse": "lhci autorun --config=lighthouserc.cjs",
+    "test:lighthouse:mobile": "lhci autorun --config=lighthouserc.mobile.cjs",
+    "test:bundle-graph": "BUNDLE_GRAPH=1 vitest run scripts/bundle-graph.test.js",
+    "analyze": "vite build && node scripts/bundle/report.mjs",
+    "lighthouse-summary": "node scripts/bundle/lighthouse-summary.mjs",
     "mcptest": "vite-node scripts/mcptest.ts",
     "typecheck": "tsc --noEmit",
     "validate-catalog": "vite-node scripts/run-validate-catalog.ts",
     "import-catalog-capabilities": "vite-node scripts/import-catalog-capabilities.ts",
     "validate-catalog-assets": "node scripts/validate-catalog-assets.js",
+    "summarize-catalog-diff": "vite-node scripts/run-summarize-catalog-diff.ts",
+    "apply-catalog-submission": "vite-node scripts/run-apply-catalog-submission.ts",
     "generate-badges": "vite-node scripts/generate-badges.ts",
+    "check-client-compat": "vite-node scripts/check-client-compat.ts",
     "build:workers": "npm --prefix cors-proxy-worker run build && npm --prefix cloudflare-worker run build",
     "prebuild": "node scripts/generate-version.js && node scripts/validate-catalog-assets.js && node scripts/validate-oauth-client-metadata.mjs",
     "build": "npm run typecheck && vite build && npm run generate-seo",
@@ -46,11 +56,16 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.15.1",
+    "@playwright/test": "^1.64.1",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^4.7.0",
     "jsdom": "^26.1.0",
+    "rollup-plugin-visualizer": "^6.0.11",
+    "satori": "^0.63.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vite-node": "^3.2.4",
@@ -58,9 +73,11 @@
     "wrangler": "^4.151.2"
   },
   "//": [
-    "overrides.@grpc/grpc-js: firebase -> @firebase/firestore pins ~1.9.0; 1.13.7 fixes GHSA-m9gg-hp2v-232j and GHSA-f596-whhp-79r4 (minor bump, client API unchanged). Remove once @firebase/firestore depends on a fixed grpc-js."
+    "overrides.@grpc/grpc-js: firebase -> @firebase/firestore pins ~1.9.0; 1.13.7 fixes GHSA-m9gg-hp2v-232j and GHSA-f596-whhp-79r4 (minor bump, client API unchanged). Remove once @firebase/firestore depends on a fixed grpc-js.",
+    "overrides.fflate: satori pins fflate 0.7.3 (GHSA-px8p-9vwx-vf98, unzipSync ZIP64 loop). satori only calls inflateSync, whose API is unchanged in 0.8.x. Remove once satori depends on a fixed fflate."
   ],
   "overrides": {
-    "@grpc/grpc-js": "~1.13.7"
+    "@grpc/grpc-js": "~1.13.7",
+    "fflate": "^0.8.3"
   }
 }

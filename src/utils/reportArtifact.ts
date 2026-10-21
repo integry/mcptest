@@ -17,6 +17,7 @@ import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
 import { getTrustedAuthorizationGuidanceForEndpoint } from './authorizationGuidanceLookup';
+import { documentedEvidenceIdFor, isCanonicalReferenceUrl, referenceUrlFor } from './referenceLinks';
 
 export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
 export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
@@ -52,6 +53,7 @@ const ReleaseDecisionSchema = z.object({
     detail: z.string(),
     remediation: z.string().min(1),
     source: z.enum(['Host compatibility', 'Tool surface', 'Evaluation']),
+    referenceUrl: z.string().url().optional(),
   }).strict()),
 }).strict();
 
@@ -1796,6 +1798,9 @@ const redactReportValueAtPath = (
     inputSchemaSanitized = true;
   }
   if (value === undefined) return undefined;
+  // Generated reference links carry a public anchor, not a credential; only
+  // the exact canonical URLs are exempt from fragment redaction.
+  if (key === 'referenceUrl' && isCanonicalReferenceUrl(value)) return value;
   if (typeof value === 'string') {
     // This field is generated only from catalog templates that validation has
     // proved contain one named placeholder and no credential value. Preserve
@@ -1941,10 +1946,37 @@ const sectionStatus = (
   return 'evaluated';
 };
 
+/**
+ * Adds `referenceUrl` next to the documented id recorded in evidence metadata:
+ * inside `transportDiagnostic` for a transport diagnostic, or beside a
+ * top-level `findingId` such as `tool.output-contract-violation`.
+ */
+const withDiagnosticReferenceUrl = (metadata: unknown): unknown => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
+  const diagnostic = (metadata as { transportDiagnostic?: unknown }).transportDiagnostic;
+  if (diagnostic && typeof diagnostic === 'object' && !Array.isArray(diagnostic)) {
+    const id = (diagnostic as { id?: unknown }).id;
+    const referenceUrl = typeof id === 'string' ? referenceUrlFor(id) : undefined;
+    if (referenceUrl) return { ...metadata, transportDiagnostic: { ...diagnostic, referenceUrl } };
+  }
+  const findingId = (metadata as { findingId?: unknown }).findingId;
+  const referenceUrl = typeof findingId === 'string' ? referenceUrlFor(findingId) : undefined;
+  return referenceUrl ? { ...metadata, referenceUrl } : metadata;
+};
+
 const redactEvidence = (detail: DetailItem): PublicReport['sections'][number]['evidence'][number] => ({
   message: detail.text,
   ...(detail.context ? { context: detail.context } : {}),
-  ...(detail.metadata !== undefined ? { metadata: detail.metadata } : {}),
+  ...(detail.metadata !== undefined ? { metadata: withDiagnosticReferenceUrl(detail.metadata) } : {}),
+});
+
+/** Adds the canonical reference URL next to each documented priority id. */
+const withReferenceUrls = (decision: ReleaseDecision): ReleaseDecision => ({
+  ...decision,
+  priorities: decision.priorities.map((priority) => {
+    const referenceUrl = referenceUrlFor(priority.id);
+    return referenceUrl ? { ...priority, referenceUrl } : priority;
+  }),
 });
 
 const normalizeGeneratedAt = (generatedAt: string | Date | undefined): string => {
@@ -2077,7 +2109,7 @@ export const createPublicReport = (
         checks,
       },
     } : {}),
-    ...(options.releaseDecision ? { releaseDecision: options.releaseDecision } : {}),
+    ...(options.releaseDecision ? { releaseDecision: withReferenceUrls(options.releaseDecision) } : {}),
     ...(options.compatibilityMatrix ? {
       compatibility: options.compatibilityMatrix as unknown as NonNullable<PublicReport['compatibility']>,
     } : {}),
@@ -2170,6 +2202,26 @@ const markdownInline = (value: string): string => value
   .replace(/\\/g, '\\\\')
   .replace(/([`*_{}\[\]<>])/g, '\\$1')
   .replace(/[\r\n]+/g, ' ');
+
+/** An id as a Markdown link to its reference section, or escaped text when it has none. */
+const markdownFindingId = (id: string): string => {
+  const url = referenceUrlFor(id);
+  return url ? `[${markdownInline(id)}](${url})` : markdownInline(id);
+};
+
+/**
+ * Links the documented id of an evidence item to its reference section: the
+ * `(id)` suffix of the message when present, otherwise an appended link.
+ */
+const markdownEvidenceMessage = (message: string, metadata: unknown): string => {
+  const text = markdownInline(message);
+  const id = documentedEvidenceIdFor(metadata);
+  if (!id) return text;
+  const suffix = `(${markdownInline(id)})`;
+  return text.endsWith(suffix)
+    ? `${text.slice(0, -suffix.length)}(${markdownFindingId(id)})`
+    : `${text} (${markdownFindingId(id)})`;
+};
 
 const scoreLabel = (section: PublicReport['sections'][number]): string => (
   section.score.earned === null
@@ -2371,7 +2423,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     for (const priority of value.releaseDecision.priorities) {
       lines.push(
         `- [${priority.severity}] ${markdownInline(priority.title)} (${markdownInline(priority.source)})`,
-        `  - Id: ${markdownInline(priority.id)}`,
+        `  - Id: ${markdownFindingId(priority.id)}`,
         `  - ${markdownInline(priority.detail)}`,
         `  - Remediation: ${markdownInline(priority.remediation)}`
       );
@@ -2444,7 +2496,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       ''
     );
     for (const evidence of section.evidence) {
-      lines.push(`- ${markdownInline(evidence.message)}`);
+      lines.push(`- ${markdownEvidenceMessage(evidence.message, evidence.metadata)}`);
       if (evidence.context) lines.push(`  - Context: ${markdownInline(evidence.context)}`);
       if (evidence.metadata !== undefined) {
         lines.push('  - Metadata:', '', '    ```json');

@@ -137,10 +137,6 @@
   font-weight: 600;
 }
 
-.app-sidenav ul .nav-link {
-  padding-left: 0.875rem;
-}
-
 /* --- Responsive Mobile Menu --- */
 .mobile-menu-toggle {
   display: none;
@@ -151,8 +147,9 @@
   border-radius: var(--button-radius);
   padding: 0.5rem;
   color: var(--text-color);
-  width: 2.5rem;
-  height: 2.5rem;
+  /* 44px touch target */
+  width: 2.75rem;
+  height: 2.75rem;
   transition: background-color 0.15s ease;
   flex-shrink: 0;
 }
@@ -234,7 +231,12 @@
   font-size: 1.5rem;
   color: var(--text-color);
   cursor: pointer;
-  padding: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
   border-radius: var(--button-radius);
 }
 
@@ -441,11 +443,6 @@
   white-space: nowrap;
 }
 
-.sidenav-content-list {
-  min-width: 0;
-  margin-left: 0.45rem;
-}
-
 .main-content.p-3 {
   padding: clamp(1rem, 2vw, 1.5rem) !important;
 }
@@ -499,4 +496,285 @@
     margin-inline: 0;
     box-shadow: none;
   }
+}
+
+/* --- Sidebar information architecture: Workspace, Learn, footer --- */
+.app-sidenav {
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.sidenav-group + .sidenav-group {
+  margin-top: var(--space-3);
+}
+
+.sidenav-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.app-sidenav .sidenav-link {
+  width: 100%;
+  gap: var(--space-2);
+  text-align: left;
+  text-decoration: none;
+}
+
+/* Group toggles are buttons styled as links. */
+.app-sidenav button.sidenav-link {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.app-sidenav .sidenav-link:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+.sidenav-icon {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.sidenav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidenav-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+
+.sidenav-group-toggle[aria-expanded='true'] .sidenav-chevron {
+  transform: rotate(90deg);
+}
+
+/* Header row of a collapsible group: the toggle takes the width, actions sit at the end. */
+.sidenav-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.sidenav-group-header .sidenav-group-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidenav-group-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.125rem;
+}
+
+.app-sidenav .sidenav-action.btn {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.app-sidenav .sidenav-action.btn:hover,
+.app-sidenav .sidenav-action.btn:focus-visible {
+  color: var(--text-color);
+  background: var(--hover-wash);
+}
+
+/* Articles and dashboards hang from a hairline under their group toggle. */
+.sidenav-sublist,
+.sidenav-dashboards-body {
+  margin-left: calc(var(--space-2) + 0.625rem);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border-color);
+}
+
+.app-sidenav .sidenav-sublink {
+  min-height: 1.75rem;
+  padding: 0.25rem var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-accent);
+}
+
+.sidenav-empty-hint {
+  margin: 0.125rem 0 0.25rem;
+  padding: 0.25rem var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.sidenav-create {
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+.sidenav-mobile-controls {
+  margin-top: var(--space-4);
+  padding: 0 var(--space-2);
+}
+
+/* 44px touch target for the drawer's theme switch */
+.app-sidenav .sidenav-theme-toggle.btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+/* Footer: quieter type, hairline above */
+.sidenav-footer {
+  margin-top: auto;
+  padding: var(--space-3) var(--space-2) 0;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.sidenav-footer-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.sidenav-footer-link {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.sidenav-footer-link:hover,
+.sidenav-footer-link:focus-visible {
+  color: var(--text-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sidenav-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.sidenav-build {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-size: 0.6875rem;
+}
+
+.sidenav-collapse-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 2rem;
+  margin-top: var(--space-2);
+  padding: 0.3125rem var(--space-2);
+  border: 0;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.sidenav-collapse-toggle:hover,
+.sidenav-collapse-toggle:focus-visible {
+  color: var(--text-color);
+  background: var(--hover-wash);
+}
+
+.sidenav-collapse-toggle:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+.sidenav-collapse-toggle .bi {
+  width: 1.25rem;
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+/* Collapsed desktop mode: a 56px rail of icons so the inspector takes the width. */
+.sidenav-collapsed .desktop-sidebar {
+  width: 56px;
+  padding: var(--space-3) var(--space-1) !important;
+}
+
+.app-sidenav--collapsed .sidenav-section-label,
+.app-sidenav--collapsed .sidenav-label,
+.app-sidenav--collapsed .sidenav-chevron,
+.app-sidenav--collapsed .sidenav-group-actions,
+.app-sidenav--collapsed .sidenav-footer-links,
+.app-sidenav--collapsed .sidenav-legal,
+.app-sidenav--collapsed .sidenav-build {
+  display: none;
+}
+
+.app-sidenav--collapsed .sidenav-group + .sidenav-group {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-color);
+}
+
+.app-sidenav--collapsed .sidenav-link,
+.app-sidenav--collapsed .sidenav-collapse-toggle {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.app-sidenav--collapsed .sidenav-link {
+  min-height: 2.25rem;
+}
+
+.app-sidenav--collapsed .sidenav-icon {
+  font-size: 1.05rem;
+}
+
+.app-sidenav--collapsed .sidenav-footer {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidenav-chevron {
+    transition: none;
+  }
+}
+
+/* Shown while a route's chunk is still arriving after client-side navigation. */
+.view-loading {
+  display: flex;
+  align-items: center;
+  padding: 2rem 0.5rem;
+  opacity: 0.75;
 }

@@ -1,5 +1,6 @@
-import React, { useId } from 'react';
+import React, { useId, useState } from 'react';
 import { useCatalog } from '../hooks/useCatalog';
+import { trackEvent } from '../utils/analytics';
 import {
   CATALOG_CATEGORY_ALL,
   type CatalogServer,
@@ -43,6 +44,14 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
     setSortOrder,
   } = useCatalog();
   const idPrefix = useId();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterFieldsId = `${idPrefix}-catalog-filter-fields`;
+  // Search is always visible, so it does not count; the three selects do.
+  const activeFilterCount = [
+    oauthFilter !== 'all',
+    category !== CATALOG_CATEGORY_ALL,
+    sortOrder !== 'catalog-order',
+  ].filter(Boolean).length;
 
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -81,6 +90,28 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             />
           </div>
 
+          <button
+            type="button"
+            className="catalog-filters-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls={filterFieldsId}
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <i className="bi bi-sliders" aria-hidden="true" />
+            <span>Filters</span>
+            {activeFilterCount > 0 && (
+              <span className="catalog-filters-count" aria-label={`${activeFilterCount} active`}>
+                {activeFilterCount}
+              </span>
+            )}
+            <i className="bi bi-chevron-down catalog-filters-chevron" aria-hidden="true" />
+          </button>
+
+          <div
+            id={filterFieldsId}
+            className={`catalog-filter-fields${filtersOpen ? ' is-open' : ''}`}
+            data-active-filters={activeFilterCount}
+          >
           <div className="catalog-auth-field">
             <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-auth`}>
               Authentication
@@ -138,6 +169,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
                 </option>
               ))}
             </select>
+          </div>
           </div>
         </div>
       </div>
@@ -199,7 +231,10 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
                 <li key={server.id} className="catalog-server-list-item">
                   <CatalogServerCard
                     server={server}
-                    onTest={onTestServer}
+                    onTest={(selected) => {
+                      trackEvent('catalog_open_server', { server_id: selected.id, surface: 'list' });
+                      onTestServer(selected);
+                    }}
                     onCategorySelect={setCategory}
                   />
                 </li>

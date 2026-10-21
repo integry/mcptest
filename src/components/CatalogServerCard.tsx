@@ -106,6 +106,11 @@ const getListingSourceDetails = (
         label: 'MCP Registry',
         description: 'Listing sourced from an official MCP Registry record; publisher identity is not proven',
       };
+    case 'community-submission':
+      return {
+        label: 'Community submission',
+        description: 'Listing submitted through mcptest.io, checked live and reviewed by a maintainer',
+      };
     case 'community':
     default:
       return {
