@@ -236,6 +236,8 @@ describe('static frame of a prerendered Learn page', () => {
     await prepareContentPrerender();
     const page = renderArticlePage(pathname);
     expect(page).not.toBeNull();
+    // The review date the sitemap's lastmod and the site audit read.
+    expect(page).toMatch(/Last reviewed <time datetime="\d{4}-\d{2}-\d{2}"/);
 
     expect(outline(renderStaticAt(pathname, page))).toEqual(outline(renderAppAt(pathname)));
   });

@@ -7,8 +7,9 @@
  *
  * The mount replaces the static DOM, so whatever the visitor started on it
  * carries over: scroll positions, the focused field with its text and caret,
- * and a button click no static handler served, replayed on the app's
- * matching button. Links need nothing: they navigate natively.
+ * a button click no static handler served, replayed on the app's matching
+ * button, and the state the static handlers changed (staticPage.ts). Links
+ * need nothing: they navigate natively.
  */
 
 /** Finds an element again after the mount: its id, or its position under the nearest ancestor with an id. */
@@ -130,10 +131,12 @@ export interface DeferredMountOptions {
   prepare: () => Promise<() => Promise<void>>;
   /** Clicks a static handler fully served; not replayed after the mount. */
   isHandled?: (element: Element) => boolean;
+  /** Reads state the static handlers changed, just before the mount; the returned function applies it to the app. */
+  snapshotState?: (root: HTMLElement) => () => void;
 }
 
 /** Waits for the first input, then mounts. Returns a function that starts the mount immediately. */
-export const deferMountUntilInput = ({ root, prepare, isHandled = () => false }: DeferredMountOptions): (() => void) => {
+export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, snapshotState = () => () => {} }: DeferredMountOptions): (() => void) => {
   let started = false;
   let pressed = false;
   let clickedButton: Element | null = null;
@@ -157,6 +160,7 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false }:
       // The mount replaces the scrolling panel too; a reader keeps their place.
       const scroll = snapshotScroll(root);
       const focus = snapshotFocus(root);
+      const restoreState = snapshotState(root);
       // Decided now: the static handlers run after this capture-phase listener saw the click.
       const click = clickedButton && !isHandled(clickedButton) ? locateElement(root, clickedButton) : null;
       removeListeners();
@@ -164,6 +168,7 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false }:
         .then(() => {
           restoreScroll(root, scroll);
           restoreFocus(root, focus);
+          restoreState();
           if (click) resolveElement(root, click)?.click();
         })
         .catch(error => console.error('[Startup] The app failed to mount over the static page.', error));

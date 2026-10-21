@@ -8,7 +8,7 @@ vi.mock('../utils/analytics', () => ({
 }));
 
 import { logPageView, recordStaticPageEvent, trackEvent } from '../utils/analytics';
-import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage } from './staticPage';
+import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage, snapshotStaticPageState } from './staticPage';
 
 const SHELL = `
   <div class="app-shell seo-shell-fallback" data-deferred-mount data-page-view-title="Learn: Guide" data-guide-slug="guide" data-guide-track="use">
@@ -98,6 +98,20 @@ describe('static page handlers', () => {
     // Expanding restores the group that was open.
     shell.querySelector<HTMLButtonElement>('.sidenav-collapse-toggle')!.click();
     expect(shell.querySelector('#track-use')!.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('carries no group state into a collapsed app sidebar, whose toggles would expand it', () => {
+    const shell = mountShell();
+    shell.querySelector<HTMLButtonElement>('.sidenav-group-toggle')!.click();
+    shell.querySelector<HTMLButtonElement>('.sidenav-collapse-toggle')!.click();
+    const root = document.getElementById('root')!;
+    const restore = snapshotStaticPageState(root);
+
+    root.innerHTML = '<button type="button" class="sidenav-group-toggle" aria-expanded="false" aria-controls="track-use"></button>';
+    const appToggle = vi.fn();
+    root.querySelector('button')!.addEventListener('click', appToggle);
+    restore();
+    expect(appToggle).not.toHaveBeenCalled();
   });
 
   it('starts collapsed when the visitor collapsed the sidebar before', () => {

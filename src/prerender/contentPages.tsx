@@ -18,9 +18,17 @@ export const prepareContentPrerender = async (): Promise<void> => {
   await loadHighlighter();
 };
 
-const renderAt = (pathname: string, element: React.ReactElement): string => renderToStaticMarkup(
+/**
+ * React 19 writes the `dateTime` prop as `dateTime="…"`. Browsers read it
+ * either way, but the site audit and crawlers read the HTML spelling
+ * (`<time datetime>`, as the guides' "Last reviewed" date). Text and code
+ * cannot match: React escapes their quotes.
+ */
+const lowercaseDateTime = (html: string): string => html.replace(/ dateTime="/g, ' datetime="');
+
+const renderAt = (pathname: string, element: React.ReactElement): string => lowercaseDateTime(renderToStaticMarkup(
   <MemoryRouter initialEntries={[pathname]}>{element}</MemoryRouter>
-);
+));
 
 /**
  * The Markdown article at `pathname` as LearnArticlePage renders it in the

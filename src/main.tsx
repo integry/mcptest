@@ -8,7 +8,7 @@ import './index.css'
 import './components/LandingHero.css'
 import { loadFirebase, scheduleAnalyticsLoad, shouldRestoreAuthSession } from './firebase'
 import { deferMountUntilInput } from './staticPage/deferredMount'
-import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage } from './staticPage/staticPage'
+import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage, snapshotStaticPageState } from './staticPage/staticPage'
 import { canonicalAliasPath } from './utils/appRoutes'
 
 /*
@@ -37,7 +37,12 @@ const root = document.getElementById('root')!
 const staticPage = getDeferredStaticPage(root)
 if (staticPage) {
   enhanceStaticPage(staticPage)
-  const mountNow = deferMountUntilInput({ root, prepare: prepareApp, isHandled: isHandledByStaticPage })
+  const mountNow = deferMountUntilInput({
+    root,
+    prepare: prepareApp,
+    isHandled: isHandledByStaticPage,
+    snapshotState: snapshotStaticPageState,
+  })
   // The header shows the signed-in user, which only the app knows.
   if (restoringSession) mountNow()
 } else {

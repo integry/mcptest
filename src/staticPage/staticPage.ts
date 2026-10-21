@@ -78,12 +78,40 @@ const applySidebarCollapsed = (shell: HTMLElement, collapsed: boolean): void => 
   });
 };
 
+/** Marks a sidebar group the visitor opened or closed on the static page. */
+const TOGGLED_GROUP_ATTRIBUTE = 'data-static-toggled';
+
 const toggleGroup = (button: Element): void => {
   const body = document.getElementById(button.getAttribute('aria-controls') || '');
   if (!body) return;
   const expanded = button.getAttribute('aria-expanded') !== 'true';
   button.setAttribute('aria-expanded', String(expanded));
   body.hidden = !expanded;
+  button.setAttribute(TOGGLED_GROUP_ATTRIBUTE, '');
+};
+
+/**
+ * Called just before the deferred mount replaces the static page; returns
+ * what to apply once the app has rendered. The app's sidebar groups
+ * (ContentTrackNav's tracks, SideNav's dashboards) start from the route's
+ * defaults, so a group the visitor toggled here would snap back: each one
+ * whose final state differs is toggled again on the app's own button.
+ * A collapsed sidebar shows no group bodies, and the app's toggles expand it
+ * there, so nothing carries over while it is collapsed.
+ */
+export const snapshotStaticPageState = (root: HTMLElement): (() => void) => {
+  const isCollapsed = () => document.body.classList.contains(SIDEBAR_COLLAPSED_CLASS);
+  if (isCollapsed()) return () => {};
+  const groups = Array.from(root.querySelectorAll(`.sidenav-group-toggle[aria-controls][${TOGGLED_GROUP_ATTRIBUTE}]`))
+    .map(button => ({ controls: button.getAttribute('aria-controls')!, expanded: button.getAttribute('aria-expanded') === 'true' }));
+  return () => {
+    if (isCollapsed()) return;
+    for (const { controls, expanded } of groups) {
+      const button = Array.from(root.querySelectorAll<HTMLElement>('.sidenav-group-toggle[aria-controls]'))
+        .find(candidate => candidate.getAttribute('aria-controls') === controls);
+      if (button && (button.getAttribute('aria-expanded') === 'true') !== expanded) button.click();
+    }
+  };
 };
 
 const isEditable = (target: EventTarget | null): boolean => (
