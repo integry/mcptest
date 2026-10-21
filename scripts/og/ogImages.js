@@ -29,7 +29,8 @@ const COLORS = {
  * @property {string} pagePath Canonical page path; decides the output file.
  * @property {string} title
  * @property {string} summary
- * @property {string} [eyebrow] Short label above the title, such as the track.
+ * @property {string} [eyebrow] Short label above the title, such as the track. Rendered as
+ *   written, in sentence case: the design rules forbid small uppercase labels.
  * @property {string} [logoFile] Absolute path to a local server logo (SVG or PNG).
  * @property {string} [initials] Shown in place of a logo when there is no local file.
  */
@@ -40,6 +41,14 @@ const CARD_PADDING_TOP = 52;
 const CARD_PADDING_BOTTOM = 56;
 const LOGO_TILE_SIZE = 128;
 const LOGO_GAP = 48;
+
+const TEMPLATE_PROBE_CARD = {
+  pagePath: '/',
+  eyebrow: 'Eyebrow',
+  title: 'Title',
+  summary: 'Summary',
+  initials: 'T',
+};
 
 let fontsPromise;
 let rendererFingerprint;
@@ -58,7 +67,12 @@ function loadFonts() {
   return fontsPromise;
 }
 
-/** Changes whenever the template, the fonts or the renderer versions change. */
+/**
+ * Changes whenever the template, the fonts or the renderer versions change.
+ * The template is covered twice: by this file's bytes and by the element tree
+ * of a probe card with every optional slot filled, so a style change (such as
+ * the eyebrow casing) always invalidates the cached PNGs.
+ */
 function getRendererFingerprint() {
   if (!rendererFingerprint) {
     const versions = ['satori', '@resvg/resvg-js'].map(name => (
@@ -66,6 +80,7 @@ function getRendererFingerprint() {
     ));
     rendererFingerprint = sha256(
       fs.readFileSync(__filename),
+      JSON.stringify(buildOgCardTree(TEMPLATE_PROBE_CARD)),
       versions.join(','),
       ...FONT_FILES.map(file => fs.readFileSync(path.join(FONT_DIR, file)))
     );
@@ -156,8 +171,6 @@ function buildOgCardTree(card) {
             fontSize: 26,
             fontWeight: 600,
             color: COLORS.accent,
-            textTransform: 'uppercase',
-            letterSpacing: 2,
             marginBottom: 18,
           }, card.eyebrow)] : []),
           element('div', {
