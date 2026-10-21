@@ -297,11 +297,11 @@ describe('generated page metadata', () => {
     expect(server).toBeDefined();
     expect(observedTool).toBeDefined();
     const html = renderServerHtml(indexHtml, server);
-    expect(html).toContain(`<strong>${observedTool.name}</strong>`);
-    expect(html).toContain(`<p>${observedTool.description}</p>`);
+    expect(html).toContain(`<code class="server-tool-name">${observedTool.name}</code>`);
+    expect(html).toContain(`<p class="server-tool-description">${observedTool.description}</p>`);
   });
 
-  it('renders escaped literal capabilities and only aggregate inventory counts in JSON-LD', () => {
+  it('renders escaped literal capabilities in the page and an escaped featureList in JSON-LD', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.checkedAt = '2026-08-18T00:32:48';
     const section = (items) => ({
@@ -326,21 +326,23 @@ describe('generated page metadata', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).toContain('Tools provided by Example Server');
-    expect(html).toContain('Resources provided by Example Server');
-    expect(html).toContain('Resource templates provided by Example Server');
-    expect(html).toContain('Prompts provided by Example Server');
+    expect(html).toContain('id="server-tool-inventory-resources" class="server-tool-inventory-heading">Resources <span class="server-tool-inventory-count">2</span>');
+    expect(html).toContain('Record template');
+    expect(html).toContain('id="server-tool-inventory-prompts" class="server-tool-inventory-heading">Prompts');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('Aug 18, 2026 at 12:32 AM');
     expect(html).not.toContain('<dd>2026-08-18T00:32:48</dd>');
     expect(html).toContain('server-spec-list server-connection-specs');
     expect(html).toContain('<code class="technical-string technical-string-url technical-string-inline">https://example.com/mcp</code>');
-    expect(html).toContain('<code class="technical-string technical-string-inline">libraryId</code>');
+    expect(html).toContain('<summary><span class="server-tool-schema-label">Input</span> <code>libraryId: string</code></summary>');
     expect(html).toContain('server-profile-breadcrumb-parent');
     expect(html).toContain('server-profile-breadcrumb-current');
     expect(html).toContain('"name":"Tools observed","value":1');
     const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
-    expect(structuredData).not.toContain('alert(1)');
+    // featureList carries the tool names, escaped so the script element cannot be closed early.
+    expect(structuredData).not.toContain('<script>');
+    expect(JSON.parse(structuredData).featureList).toEqual(['<script>alert(1)</script>: safe & useful', 'Prompt summarize']);
   });
 
   it('keeps standalone and quoted credentials out of generated static HTML', () => {
@@ -437,16 +439,10 @@ describe('generated page metadata', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain(
-      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
-    );
-    expect(html).toContain(
-      'Discovery completed; bounded inventory: 1 retained of 2 observed; 1 omitted.'
-    );
-    expect(html).toContain(
-      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
-    );
-    expect(html.match(/Partial discovery:/g)).toHaveLength(1);
+    expect(html).toContain('Some details were sanitized for public display.');
+    expect(html).toContain('2 of 3 shown; 1 omitted to keep the page bounded.');
+    expect(html.match(/Partial listing:/g)).toBeNull();
+    expect(html).not.toContain('id="server-tool-inventory-prompts"');
   });
 
   it('uses the server Open Graph card in social metadata and the local logo in static profile markup', () => {

@@ -1,0 +1,161 @@
+/* Catalog category pages (/catalog/<slug>) and the category rail links.
+   Theme colors come from the shared tokens, so both themes follow. */
+
+.catalog-command-copy h1 {
+  font-size: 1.375rem;
+  letter-spacing: -0.02em;
+}
+
+.catalog-category-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.catalog-category-breadcrumb a {
+  color: var(--text-muted);
+}
+
+.catalog-category-breadcrumb a:hover {
+  color: var(--primary-color);
+}
+
+.catalog-category-intro {
+  max-width: 72ch;
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.catalog-category-summary {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.catalog-category-summary > div {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.catalog-category-summary dt {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.catalog-category-summary dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin: 0;
+  color: var(--text-accent);
+}
+
+.catalog-category-summary strong {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+/* Rail entries are links to category pages. */
+a.catalog-category-option {
+  text-decoration: none;
+}
+
+a.catalog-category-option:hover {
+  color: var(--text-color);
+  background: var(--hover-wash);
+}
+
+.catalog-category-option[aria-current='page'] {
+  color: var(--primary-hover);
+  background: var(--active-wash);
+  font-weight: 500;
+}
+
+.catalog-category-option[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+a.badge.catalog-metadata-badge--category {
+  border-style: solid;
+  text-decoration: none;
+}
+
+a.badge.catalog-metadata-badge--category:hover {
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 35%, var(--border-color));
+}
+
+a.badge.catalog-metadata-badge--category:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+.catalog-category-footer {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-color);
+}
+
+.catalog-category-guides h2 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-accent);
+  font-size: 1rem;
+}
+
+.catalog-category-guides ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.catalog-category-guides li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.catalog-category-guides li:last-child {
+  border-bottom: 0;
+}
+
+.catalog-category-guides a {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.catalog-category-guides p {
+  margin: 0.125rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.catalog-category-neighbors {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  font-size: 0.875rem;
+}
+
+.catalog-category-neighbors a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+@media (max-width: 768px) {
+  .catalog-category-summary > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}

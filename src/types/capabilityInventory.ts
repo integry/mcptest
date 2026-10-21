@@ -17,6 +17,8 @@ export interface CapabilityInventoryToolV1 {
   name: string;
   description?: string;
   input?: CapabilityInventoryArgumentV1[];
+  /** Whether tools/list declared an outputSchema; absent in snapshots recorded before this was kept. */
+  outputSchema?: boolean;
 }
 
 export interface CapabilityInventoryResourceV1 {

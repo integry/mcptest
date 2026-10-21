@@ -60,7 +60,7 @@ describe('ServerProfileView capability inventory', () => {
       <MemoryRouter><ServerProfileView server={server} onTestServer={vi.fn()} /></MemoryRouter>
     );
 
-    expect(markup).toContain('Capabilities provided');
+    expect(markup).toContain('Tool inventory');
     expect(markup).toContain('Tools provided by Example');
     expect(markup).toContain('find_items');
     expect(markup).toContain('Aug 18, 2026 at 12:32 AM');
@@ -68,7 +68,7 @@ describe('ServerProfileView capability inventory', () => {
     expect(markup).toContain('server-spec-list server-connection-specs');
     expect(markup).toContain('technical-string technical-string-url');
     expect(markup).toContain('technical-string technical-string-url technical-string-inline');
-    expect(markup).toContain('technical-string technical-string-inline');
+    expect(markup).toContain('<code>libraryId: string</code>');
     expect(markup).toContain('Also supports Bearer token');
     expect(markup).toContain('Alternative credential');
     expect(markup).toContain('https://example.com/token-mcp');

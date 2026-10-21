@@ -36,6 +36,38 @@ test('catalog: lists servers and opens a server profile', async ({ page }) => {
   await expect(page).toHaveTitle(/Context7/);
 });
 
+test('catalog: a category is a page of its own, reached from the category list', async ({ page }) => {
+  await page.goto('/catalog');
+  await page.getByRole('navigation', { name: 'Catalog categories' }).getByRole('link', { name: /^Databases/ }).click();
+  await expect(page).toHaveURL('/catalog/databases');
+  await expect(page.getByRole('heading', { level: 1, name: 'Databases MCP servers' })).toBeVisible();
+  await expect(page).toHaveTitle('Databases MCP Servers | mcptest.io');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://mcptest.io/catalog/databases');
+  await expect(page.getByText(/^Showing \d+ of \d+ Databases servers$/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'How to convert a local stdio MCP server to a remote server' })).toBeVisible();
+
+  // Loaded directly, the prerendered page carries the same heading and rows before and after React mounts.
+  await page.goto('/catalog/databases');
+  await expect(page.getByRole('heading', { level: 1, name: 'Databases MCP servers' })).toBeVisible();
+  await expect(page.locator('li.catalog-server-list-item').first()).toBeVisible();
+});
+
+test('server: shows the observed tool inventory with a collapsed input schema', async ({ page }) => {
+  await page.goto('/servers/astro-docs/');
+  const inventory = page.getByRole('region', { name: 'Tool inventory' });
+  await expect(inventory).toContainText('What the catalog validator observed on');
+  const schema = inventory.locator('details.server-tool-schema').first();
+  await expect(schema).not.toHaveAttribute('open', '');
+  await schema.locator('summary').click();
+  await expect(schema.locator('.server-tool-parameters')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Documentation' }))
+    .toHaveAttribute('href', '/catalog/documentation');
+
+  await page.goto('/servers/github/');
+  await expect(page.getByRole('region', { name: 'Tool inventory' }))
+    .toContainText('Requires authorization; inventory not observed');
+});
+
 test('guide: renders a Learn article', async ({ page }) => {
   await page.goto('/learn/mcp-http-headers-reference');
   await expect(page.getByRole('heading', { level: 1, name: 'MCP HTTP headers reference' })).toBeVisible();
@@ -49,6 +81,8 @@ test.describe('mobile viewport sanity', () => {
   for (const { path, heading } of [
     { path: '/', heading: 'Inspect, debug and evaluate remote MCP servers in your browser' },
     { path: '/catalog', heading: 'Remote MCP server catalog' },
+    { path: '/catalog/developer-tools', heading: 'Developer Tools MCP servers' },
+    { path: '/servers/astro-docs/', heading: 'Astro Docs' },
     { path: '/learn/mcp-http-headers-reference', heading: 'MCP HTTP headers reference' },
   ]) {
     test(`no horizontal scroll on ${path}`, async ({ page }) => {

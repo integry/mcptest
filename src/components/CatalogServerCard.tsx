@@ -12,12 +12,14 @@ import {
   getCatalogServerPath,
   getEffectiveCatalogTransport,
 } from '../utils/catalogSeo';
+import { getCatalogCategoryPath } from '../utils/catalogCategories';
 import { CatalogServerLogo } from './CatalogServerLogo';
 
 export interface CatalogServerCardProps {
   server: CatalogServer;
   onTest: (server: CatalogServer) => void;
-  onCategorySelect?: (category: string) => void;
+  /** Query string (search, auth, sort) the category link keeps. */
+  categorySearch?: string;
 }
 
 const formatValidationTime = (checkedAt?: string): string => {
@@ -123,7 +125,7 @@ const getListingSourceDetails = (
 export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
   server,
   onTest,
-  onCategorySelect,
+  categorySearch = '',
 }) => {
   const statusDetails = getStatusDetails(server.status, server.checkedAt);
   const transportIsDeclaredOnly = server.transport === 'unknown';
@@ -226,14 +228,13 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
           role="group"
           aria-label="Server summary"
         >
-          <button
-            type="button"
+          <Link
             className="badge catalog-metadata-badge catalog-metadata-badge--category"
-            onClick={() => onCategorySelect?.(server.category)}
+            to={{ pathname: getCatalogCategoryPath(server.category), search: categorySearch }}
             aria-label={`Show ${server.category} servers`}
           >
             {server.category}
-          </button>
+          </Link>
           <span className="badge catalog-metadata-badge catalog-metadata-badge--auth">
             {formatCatalogAuth(server.authType)}
           </span>

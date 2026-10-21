@@ -37,11 +37,14 @@ const servers = mergeCatalogServers(catalogSeeds, catalogValidation);
 const cards = buildOgCards({ servers, articles, pageMetadata });
 
 describe('Open Graph cards', () => {
-  it('cover the home, catalog and learn index plus every content and server page, once each', () => {
+  it('cover the home, catalog and learn index plus every category, content and server page, once each', () => {
     const paths = cards.map(card => card.pagePath);
     expect(paths).toEqual(expect.arrayContaining(['/', '/catalog', '/learn']));
     for (const article of articles) expect(paths).toContain(article.path);
     for (const server of servers) expect(paths).toContain(`/servers/${server.id}/`);
+    for (const category of new Set(servers.map(server => server.category))) {
+      expect(paths).toContain(`/catalog/${category.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
+    }
     expect(new Set(cards.map(ogImageOutputPath)).size).toBe(cards.length);
   });
 
@@ -78,6 +81,7 @@ describe('Open Graph image rendering', () => {
     const cacheDir = temporaryDirectory('og-cache-');
     const distRoot = temporaryDirectory('og-dist-');
     const sample = [cards.find(card => card.pagePath === '/'), cards.find(card => card.logoFile)];
+    expect(ogImageOutputPath(cards.find(card => card.pagePath === '/catalog/databases'))).toBe('og/catalog/databases.png');
 
     expect(await writeOgImages(sample, { distRoot, cacheDir })).toEqual({ rendered: 2, cached: 0 });
     expect(await writeOgImages(sample, { distRoot, cacheDir })).toEqual({ rendered: 0, cached: 2 });
