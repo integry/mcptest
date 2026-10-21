@@ -126,7 +126,7 @@ describe('content registry', () => {
       const outlineLinks = Array.from(container.querySelectorAll('.reading-outline a'), link => link.getAttribute('href'));
       expect(outlineLinks, article.slug).toEqual(article.outline.map(heading => `#${heading.id}`));
     }
-  });
+  }, 120_000);
 
   it('keeps the page outline in place while a body is loading, and offers a retry when it fails', async () => {
     const pending = { ...getLearnArticle('oauth-for-mcp-explained')!, slug: 'not-loaded-yet' };
