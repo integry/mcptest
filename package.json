@@ -70,7 +70,7 @@
     "rollup-plugin-visualizer": "^6.0.11",
     "satori": "^0.63.0",
     "typescript": "^5.9.3",
-    "vite": "^6.4.3",
+    "vite": "^8.3.4",
     "vite-node": "^3.2.4",
     "vitest": "^4.1.12",
     "wrangler": "^4.151.2"
