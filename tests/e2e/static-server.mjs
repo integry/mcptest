@@ -2,7 +2,9 @@
 
 /**
  * Serves a built dist/ directory the way the production host resolves paths:
- * the file itself, a directory index, a `.html` sibling, then the SPA shell.
+ * the file itself, a directory index, a `.html` sibling, then the SPA shell
+ * for the app routes in dist/routes.txt, and dist/404.html with a 404 status
+ * for anything else (see docs/site-hygiene.md).
  * Text assets are gzip-compressed and hashed assets are cached like they are
  * in production, so Lighthouse measures the shipped bundle rather than an
  * uncompressed dev server.
@@ -38,8 +40,20 @@ const CONTENT_TYPES = {
 
 const COMPRESSIBLE = /^(text\/|application\/(json|xml|manifest\+json)|image\/svg\+xml)/;
 
+/** dist/routes.txt: `/path` lines are exact routes, `/prefix/*` lines match below the prefix. */
+function loadAppRoutes(root) {
+  const routesPath = path.join(root, 'routes.txt');
+  if (!fs.existsSync(routesPath)) return null;
+  const lines = fs.readFileSync(routesPath, 'utf8').split('\n').map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
+  const exact = new Set(lines.filter(line => !line.endsWith('/*')));
+  const prefixes = lines.filter(line => line.endsWith('/*')).map(line => line.slice(0, -1));
+  return pathname => exact.has(pathname) || prefixes.some(prefix => pathname.startsWith(prefix) && pathname.length > prefix.length);
+}
+
 export function createStaticServer(distDir) {
   const root = path.resolve(distDir);
+  const isAppRoute = loadAppRoutes(root);
+  const notFoundPage = path.join(root, '404.html');
   const isFile = candidate => candidate.startsWith(root) && fs.existsSync(candidate) && fs.statSync(candidate).isFile();
   const resolve = (pathname) => {
     const candidates = [
@@ -59,7 +73,9 @@ export function createStaticServer(distDir) {
       return;
     }
     const resolved = resolve(pathname);
-    const file = resolved || path.join(root, 'index.html');
+    // Without a routes.txt (an older build) every unknown path gets the shell.
+    const notFound = !resolved && isAppRoute && !isAppRoute(pathname) && fs.existsSync(notFoundPage);
+    const file = resolved || (notFound ? notFoundPage : path.join(root, 'index.html'));
     const type = CONTENT_TYPES[path.extname(file)] || 'application/octet-stream';
     const headers = {
       'Content-Type': type,
@@ -68,19 +84,20 @@ export function createStaticServer(distDir) {
         : 'public, max-age=0, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
     };
-    // Missing hashed assets are real 404s; every other path falls back to the SPA shell.
+    // Missing hashed assets are bare 404s.
     if (!resolved && pathname.startsWith('/assets/')) {
       response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
       return;
     }
     const body = fs.readFileSync(file);
+    const status = notFound ? 404 : 200;
     if (COMPRESSIBLE.test(type) && /\bgzip\b/.test(request.headers['accept-encoding'] || '')) {
       const compressed = zlib.gzipSync(body);
-      response.writeHead(200, { ...headers, 'Content-Encoding': 'gzip', 'Content-Length': compressed.length, Vary: 'Accept-Encoding' });
+      response.writeHead(status, { ...headers, 'Content-Encoding': 'gzip', 'Content-Length': compressed.length, Vary: 'Accept-Encoding' });
       response.end(request.method === 'HEAD' ? undefined : compressed);
       return;
     }
-    response.writeHead(200, { ...headers, 'Content-Length': body.length });
+    response.writeHead(status, { ...headers, 'Content-Length': body.length });
     response.end(request.method === 'HEAD' ? undefined : body);
   });
 }
