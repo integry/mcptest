@@ -28,7 +28,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           className="app-logo"
           aria-label="mcptest.io home"
         >
-          <img src="/logo.png" alt="MCP Logo" width="40" height="40" />
+          <img src="/logo-96.png" alt="MCP Logo" width="40" height="40" />
         </Link>
         <Link to="/" className="app-brand-copy">
           <h1 className="app-brand-title">mcptest.io</h1>

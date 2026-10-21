@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { trackEvent, type BadgeSurface } from '../utils/analytics';
-import type { BadgeSnippets } from '../utils/badges';
+import { getStaticBadgeWidth, type BadgeSnippets } from '../utils/badges';
 import './BadgeEmbed.css';
 
 interface BadgeEmbedProps {
@@ -69,7 +69,7 @@ const BadgeEmbed: React.FC<BadgeEmbedProps> = ({
         )}
       </div>
       <a className="badge-embed-preview" href={linkUrl} target="_blank" rel="noopener noreferrer">
-        <img src={previewSrc} alt={previewAlt} height={20} />
+        <img src={previewSrc} alt={previewAlt} width={getStaticBadgeWidth(previewSrc)} height={20} />
       </a>
       <div className="badge-embed-snippets">
         {SNIPPET_FORMATS.map(({ key, label }) => {

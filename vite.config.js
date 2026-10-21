@@ -71,6 +71,12 @@ export default defineConfig({
   build: {
     // dist/.vite/manifest.json: the chunk graph scripts/bundle-graph.test.js asserts on.
     manifest: true,
+    // One stylesheet for the whole app. The entry no longer imports App
+    // statically (src/main.tsx), so split CSS would move most rules into a
+    // chunk stylesheet that only arrives with the app. The generator inlines
+    // each page's critical subset and preloads this file instead
+    // (scripts/critical-css.js), so it no longer blocks the first paint.
+    cssCodeSplit: false,
     rollupOptions: {
       output: { manualChunks }
     }

@@ -53,6 +53,8 @@ const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.t
 const { getSpaceUrl } = require('../src/utils/urlUtils.ts');
 const { highlightCode } = require('../src/content/codeHighlighting.ts');
 const { writeOgImages } = require('./og/ogImages.js');
+const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
+const { downscalePng, readPngSize } = require('./raster-images.js');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -347,13 +349,16 @@ function serverInitials(name) {
   return initials.toLocaleUpperCase();
 }
 
+/** Matches LOGO_SIZE_PX in src/components/CatalogServerLogo.tsx. */
+const LOGO_SIZE_PX = 40;
+
 function isLocalServerLogo(logoUrl) {
   return typeof logoUrl === 'string' && logoUrl.startsWith('/server-logos/');
 }
 
 function renderServerLogo(server) {
   if (isLocalServerLogo(server.logoUrl)) {
-    return `<span class="catalog-server-logo server-profile-logo" aria-hidden="true"><img src="${escapeHtml(server.logoUrl)}" alt="" /></span>`;
+    return `<span class="catalog-server-logo server-profile-logo" aria-hidden="true"><img src="${escapeHtml(server.logoUrl)}" alt="" width="${LOGO_SIZE_PX}" height="${LOGO_SIZE_PX}" /></span>`;
   }
 
   return `<span class="catalog-server-logo catalog-server-logo--fallback server-profile-logo" role="img" aria-label="${escapeHtml(server.name)} logo"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(serverInitials(server.name))}</span></span>`;
@@ -420,6 +425,7 @@ function renderServerFallback(server) {
   const {
     createCatalogBadgeSnippets,
     getBadgeTitle,
+    getBadgeWidth,
     getCatalogBadgeVariant,
     getStaticBadgeUrl,
   } = require('../src/utils/badges.ts');
@@ -502,7 +508,7 @@ function renderServerFallback(server) {
     '        <h2 id="server-badge-embed-title">Share and embed</h2>',
     `        <p>Maintain ${escapeHtml(server.name)}? Embed this badge in your README. It follows the latest catalog validation result and links to this server profile.</p>`,
     '      </div>',
-    `      <a class="badge-embed-preview" href="${escapeHtml(serverPath(server.id))}"><img src="${escapeHtml(getStaticBadgeUrl(badgeVariant, ''))}" alt="${escapeHtml(getBadgeTitle(badgeVariant))}" height="20"></a>`,
+    `      <a class="badge-embed-preview" href="${escapeHtml(serverPath(server.id))}"><img src="${escapeHtml(getStaticBadgeUrl(badgeVariant, ''))}" alt="${escapeHtml(getBadgeTitle(badgeVariant))}" width="${getBadgeWidth(badgeVariant)}" height="20"></a>`,
     '      <div class="badge-embed-snippets">',
     ...badgeFormats.map(([key, label]) => (
       `        <div class="badge-embed-snippet"><div class="badge-embed-snippet-header"><label for="server-badge-embed-title-${key}">${label}</label></div><textarea id="server-badge-embed-title-${key}" class="form-control badge-embed-code" readonly spellcheck="false" rows="${key === 'restructuredText' ? 3 : 2}">${escapeHtml(badgeSnippets[key])}</textarea></div>`
@@ -523,7 +529,12 @@ function renderServerFallback(server) {
   ].join('\n');
 }
 
-function renderServerHtml(indexHtml, server) {
+/**
+ * `options.shell` (the shell options of renderAppShell) renders the profile
+ * inside the app shell as a page that mounts on first input; without it the
+ * page holds the profile alone.
+ */
+function renderServerHtml(indexHtml, server, options = {}) {
   server = server.declaredTransport
     ? {
         ...server,
@@ -595,9 +606,19 @@ function renderServerHtml(indexHtml, server) {
     '</head>',
     `    <script id="server-structured-data" type="application/ld+json">${safeJson}</script>\n  </head>`
   );
+  const profile = renderServerFallback(server);
+  const body = options.shell
+    ? renderContentShell(profile, {
+      view: 'server-profile',
+      pathname: serverPath(server.id),
+      // App.tsx's page view title for a catalog server.
+      pageViewTitle: `${server.name} MCP Server Report`,
+      shell: options.shell,
+    })
+    : profile;
   html = html.replace(
     '<div id="root"></div>',
-    `<div id="root">\n${renderServerFallback(server)}\n    </div>`
+    `<div id="root">\n${body}\n    </div>`
   );
 
   return html;
@@ -914,7 +935,20 @@ function getLearnArticleStructuredData(article, learnIndex) {
   };
 }
 
-function renderLearnArticleHtml(indexHtml, article, articles, learnIndex = DEFAULT_LEARN_INDEX) {
+/** The page view title App.tsx logs for an article (getLearnPageViewTitle, or the docs route). */
+function articlePageViewTitle(article) {
+  return article.path.startsWith('/docs/')
+    ? `Docs: ${article.path.replace('/docs/', '').replace(/-/g, ' ')}`
+    : `Learn: ${article.title}`;
+}
+
+/**
+ * `options.pageHtml` is the article as LearnArticlePage renders it
+ * (src/prerender/contentPages.tsx); without it a static rendering stands in.
+ * `options.shell` puts the page in the app shell, mounted on first input.
+ */
+function renderLearnArticleHtml(indexHtml, article, articles, learnIndex = DEFAULT_LEARN_INDEX, options = {}) {
+  const page = options.pageHtml || renderLearnArticleFallback(article, articles);
   return renderStaticPageHtml(indexHtml, article.path, {
     title: getArticleMetaTitle(article),
     description: getArticleMetaDescription(article),
@@ -922,17 +956,29 @@ function renderLearnArticleHtml(indexHtml, article, articles, learnIndex = DEFAU
     type: 'article',
     feed: true,
     structuredData: getLearnArticleStructuredData(article, learnIndex),
-    fallbackHtml: renderLearnArticleFallback(article, articles),
+    fallbackHtml: options.shell
+      ? renderContentShell(page, {
+        view: article.path.startsWith('/docs/') ? 'docs' : 'learn',
+        pathname: article.path,
+        pageViewTitle: articlePageViewTitle(article),
+        guide: { slug: article.slug, track: article.track },
+        shell: options.shell,
+      })
+      : page,
   });
 }
 
-function renderLearnIndexHtml(indexHtml, learnIndex, articles) {
+/** As renderLearnArticleHtml: `options.pageHtml` is LearnIndex's markup, `options.shell` the app shell. */
+function renderLearnIndexHtml(indexHtml, learnIndex, articles, options = {}) {
+  const page = options.pageHtml || renderLearnIndexFallback(learnIndex, articles);
   return renderStaticPageHtml(indexHtml, '/learn', {
     title: `${learnIndex.title} | mcptest.io`,
     description: learnIndex.description,
   }, {
     feed: true,
-    fallbackHtml: renderLearnIndexFallback(learnIndex, articles),
+    fallbackHtml: options.shell
+      ? renderContentShell(page, { view: 'learn', pathname: '/learn', pageViewTitle: 'Learn MCP', shell: options.shell })
+      : page,
   });
 }
 
@@ -948,7 +994,7 @@ function renderQuickPicks(quickPicks) {
     '      <ul aria-labelledby="landing-quick-picks-label">',
     ...quickPicks.map(server => [
       `        <li><button type="button" class="landing-quick-pick" data-server-id="${escapeHtml(server.id)}" title="${escapeHtml(getPreferredCatalogEndpoint(server).url)}">`,
-      `<span class="catalog-server-logo landing-quick-pick-logo" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt=""></span>`,
+      `<span class="catalog-server-logo landing-quick-pick-logo" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt="" width="${LOGO_SIZE_PX}" height="${LOGO_SIZE_PX}" loading="lazy" decoding="async"></span>`,
       `${escapeHtml(server.name)}</button></li>`,
     ].join('')),
     '      </ul>',
@@ -1014,7 +1060,7 @@ function renderHeaderFallback({ authEnabled }) {
     '<header class="app-header">',
     '  <div class="app-header-brand">',
     '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu"><span class="hamburger"></span></button>',
-    '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo.png" alt="MCP Logo" width="40" height="40"></a>',
+    '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo-96.png" alt="MCP Logo" width="40" height="40"></a>',
     '    <a href="/" class="app-brand-copy">',
     '      <h1 class="app-brand-title">mcptest.io</h1>',
     '      <p class="app-brand-subtitle d-none d-md-block">Remote MCP Inspector</p>',
@@ -1038,14 +1084,32 @@ function cardCountLabel(count) {
   return `${count} ${count === 1 ? 'card' : 'cards'}`;
 }
 
+/** Which views light up each primary link, as PRIMARY_ACTIVE_VIEWS in SideNav. */
+const PRIMARY_ACTIVE_VIEWS = {
+  '/': ['playground'],
+  '/catalog': ['catalog', 'server-profile'],
+  '/report': ['report'],
+};
+
+/** Views on which the guide search takes the `/` shortcut (components/learn/guideSearchShortcut.ts). */
+const GUIDE_SEARCH_SHORTCUT_VIEWS = ['learn', 'docs'];
+
 /**
- * Desktop sidebar as src/components/SideNav.tsx renders it on the playground
- * for a visitor with nothing saved and the sidebar expanded: the workspace
- * and learn groups from src/content/navigationLinks.ts, the default dashboard
+ * Desktop sidebar as src/components/SideNav.tsx renders it for a visitor with
+ * nothing saved and the sidebar expanded, on `view` at `pathname`: the
+ * workspace and learn groups from src/content/navigationLinks.ts (the track
+ * owning the page expanded, as ContentTrackNav does), the default dashboard
  * from src/utils/defaultWorkspace.ts, and the footer.
  */
-function renderSideNavFallback({ learnTracks, versionInfo, year }) {
+function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playground', pathname = '/' }) {
   const idSuffix = 'desktop';
+  const currentPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  const currentTrack = learnTracks.find(track => track.items.some(item => item.path === currentPath));
+  const shortcut = GUIDE_SEARCH_SHORTCUT_VIEWS.includes(view);
+  // NavLink: `active` and aria-current on an exact match.
+  const navLinkState = (path, className) => (path === currentPath
+    ? { className: `${className} active`, extra: ' aria-current="page"' }
+    : { className, extra: '' });
   const learnPrefix = `sidenav-${idSuffix}`;
   const commitDate = new Date(versionInfo.commitDate);
   const updated = `${commitDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${commitDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -1058,12 +1122,12 @@ function renderSideNavFallback({ learnTracks, versionInfo, year }) {
     `    <h2 id="workspace-nav-heading-${idSuffix}" class="sidenav-section-label">Workspace</h2>`,
     '    <ul class="sidenav-list">',
     ...PRIMARY_NAVIGATION.map(item => {
-      const active = item.path === '/';
+      const active = (PRIMARY_ACTIVE_VIEWS[item.path] || []).includes(view);
       return `      <li class="nav-item">${sidenavLink(item, `nav-link sidenav-link${active ? ' active' : ''}`, active ? ' aria-current="page"' : '')}</li>`;
     }),
     '      <li class="nav-item sidenav-dashboards">',
     '        <div class="sidenav-group-header">',
-    `          <button type="button" class="nav-link sidenav-link sidenav-group-toggle" aria-expanded="true" aria-controls="sidenav-dashboards-${idSuffix}"><i class="bi ${escapeHtml(DASHBOARDS_NAVIGATION.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(DASHBOARDS_NAVIGATION.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
+    `          <button type="button" class="nav-link sidenav-link sidenav-group-toggle${view === 'dashboards' ? ' active' : ''}" aria-expanded="true" aria-controls="sidenav-dashboards-${idSuffix}"><i class="bi ${escapeHtml(DASHBOARDS_NAVIGATION.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(DASHBOARDS_NAVIGATION.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
     '          <div class="sidenav-group-actions">',
     '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Refresh health status" aria-label="Refresh health status of all dashboards"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>',
     '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Create new dashboard" aria-label="Create new dashboard"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>',
@@ -1086,18 +1150,25 @@ function renderSideNavFallback({ learnTracks, versionInfo, year }) {
     `  <section class="sidenav-group content-track-nav" aria-labelledby="${learnPrefix}-learn-heading">`,
     `    <h2 id="${learnPrefix}-learn-heading" class="sidenav-section-label">Learn</h2>`,
     // The guide search field, inert until React mounts, so the tracks below it do not shift.
-    `    <div class="guide-search guide-search--sidebar" role="search" aria-label="Guides"><div class="guide-search-field"><i class="bi bi-search guide-search-icon" aria-hidden="true"></i><input type="search" class="guide-search-input" placeholder="Search guides" aria-label="Search guides" role="combobox" aria-expanded="false" aria-controls="${learnPrefix}-guide-search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false"></div><p class="guide-search-status visually-hidden" role="status" aria-live="polite"></p><div id="${learnPrefix}-guide-search-results" class="guide-search-results" role="listbox" aria-label="Guide search results" hidden></div></div>`,
+    `    <div class="guide-search guide-search--sidebar" role="search" aria-label="Guides"><div class="guide-search-field"><i class="bi bi-search guide-search-icon" aria-hidden="true"></i><input type="search" class="guide-search-input" placeholder="Search guides" aria-label="Search guides"${shortcut ? ' aria-keyshortcuts="/"' : ''} role="combobox" aria-expanded="false" aria-controls="${learnPrefix}-guide-search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false">${shortcut ? '<kbd class="guide-search-shortcut" aria-hidden="true">/</kbd>' : ''}</div><p class="guide-search-status visually-hidden" role="status" aria-live="polite"></p><div id="${learnPrefix}-guide-search-results" class="guide-search-results" role="listbox" aria-label="Guide search results" hidden></div></div>`,
     '    <ul class="sidenav-list">',
-    `      <li class="nav-item">${sidenavLink(LEARN_HUB_NAVIGATION, 'nav-link sidenav-link')}</li>`,
-    ...learnTracks.map(track => [
-      `      <li class="nav-item content-track" data-track="${escapeHtml(track.id)}">`,
-      `<button type="button" class="nav-link sidenav-link sidenav-group-toggle content-track-label" aria-expanded="false" aria-controls="${learnPrefix}-track-${escapeHtml(track.id)}"><i class="bi ${escapeHtml(track.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(track.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
-      `<ul id="${learnPrefix}-track-${escapeHtml(track.id)}" class="sidenav-list sidenav-sublist" aria-label="${escapeHtml(track.label)} guides" hidden>`,
-      ...track.items.map(item => (
-        `<li class="nav-item"><a href="${escapeHtml(item.path)}" class="nav-link sidenav-link sidenav-sublink">${escapeHtml(item.navTitle)}</a></li>`
-      )),
-      '</ul></li>',
-    ].join('')),
+    (() => {
+      const hub = navLinkState(LEARN_HUB_NAVIGATION.path, 'nav-link sidenav-link');
+      return `      <li class="nav-item">${sidenavLink(LEARN_HUB_NAVIGATION, hub.className, hub.extra)}</li>`;
+    })(),
+    ...learnTracks.map(track => {
+      const current = track === currentTrack;
+      return [
+        `      <li class="nav-item content-track" data-track="${escapeHtml(track.id)}">`,
+        `<button type="button" class="nav-link sidenav-link sidenav-group-toggle content-track-label${current ? ' is-current' : ''}" aria-expanded="${current}" aria-controls="${learnPrefix}-track-${escapeHtml(track.id)}"><i class="bi ${escapeHtml(track.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(track.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
+        `<ul id="${learnPrefix}-track-${escapeHtml(track.id)}" class="sidenav-list sidenav-sublist" aria-label="${escapeHtml(track.label)} guides"${current ? '' : ' hidden'}>`,
+        ...track.items.map(item => {
+          const link = navLinkState(item.path, 'nav-link sidenav-link sidenav-sublink');
+          return `<li class="nav-item"><a href="${escapeHtml(item.path)}" class="${link.className}"${link.extra}>${escapeHtml(item.navTitle)}</a></li>`;
+        }),
+        '</ul></li>',
+      ].join('');
+    }),
     '    </ul>',
     '  </section>',
     '  <div class="sidenav-footer">',
@@ -1120,22 +1191,28 @@ function renderSideNavFallback({ learnTracks, versionInfo, year }) {
 }
 
 /**
- * The full first frame of the home page: header, sidebar, playground tab
- * strip and landing, in the elements and classes App.tsx renders for a
- * first-time visitor. React replaces it in one commit when it mounts.
- * The mobile drawer is omitted; it is off-screen until opened.
+ * App.tsx's frame around a view, as it renders for a first-time visitor:
+ * header, desktop sidebar and the main panel holding `content` (the active
+ * view's panel content). The mobile drawer is omitted; it is off-screen until
+ * opened. `attributes` go on the shell element (src/staticPage reads them).
  */
-function renderShellFallback({
-  catalogCount,
-  quickPicks = [],
+function renderAppShell({
+  content,
+  view = 'playground',
+  pathname = '/',
+  panelStyle = 'height: 100%;',
+  attributes = {},
   learnTracks = [],
   authEnabled = false,
   versionInfo = VERSION_INFO,
   year = new Date().getFullYear(),
 }) {
-  const [tab] = createDefaultTabs();
+  const attributeHtml = Object.entries(attributes)
+    .filter(([, value]) => value !== undefined && value !== null && value !== false)
+    .map(([name, value]) => (value === true ? ` ${name}` : ` ${name}="${escapeHtml(value)}"`))
+    .join('');
   return [
-    '<div class="app-shell container-fluid vh-100 d-flex flex-column p-0 seo-shell-fallback">',
+    `<div class="app-shell container-fluid vh-100 d-flex flex-column p-0 seo-shell-fallback"${attributeHtml}>`,
     '<style>',
     ":root[data-theme='dark'] .seo-shell-fallback .theme-toggle-icon.bi-moon-stars-fill,",
     ":root:not([data-theme='dark']) .seo-shell-fallback .theme-toggle-icon.bi-sun-fill { display: none; }",
@@ -1143,10 +1220,31 @@ function renderShellFallback({
     renderHeaderFallback({ authEnabled }),
     '<main class="app-workspace flex-grow-1 d-flex overflow-hidden" role="main">',
     '<div class="desktop-sidebar col-auto p-2 d-flex flex-column">',
-    renderSideNavFallback({ learnTracks, versionInfo, year }),
+    renderSideNavFallback({ learnTracks, versionInfo, year, view, pathname }),
     '</div>',
     '<div class="main-content col overflow-auto p-3 position-relative">',
-    '<div class="view-panel" style="height: 100%;">',
+    `<div class="view-panel" style="${escapeHtml(panelStyle)}">`,
+    content,
+    '</div>',
+    '</div>',
+    '</main>',
+    '</div>',
+    SHELL_FALLBACK_END,
+  ].join('\n');
+}
+
+/**
+ * The full first frame of the home page: header, sidebar, playground tab
+ * strip and landing, in the elements and classes App.tsx renders for a
+ * first-time visitor. React replaces it in one commit when it mounts.
+ */
+function renderShellFallback({
+  catalogCount,
+  quickPicks = [],
+  ...shellOptions
+}) {
+  const [tab] = createDefaultTabs();
+  return renderAppShell({ ...shellOptions, content: [
     '<div class="h-100 d-flex flex-column">',
     '<div class="playground-tabs-wrapper">',
     '<div class="playground-tab-strip">',
@@ -1165,12 +1263,30 @@ function renderShellFallback({
     '</div>',
     '</div>',
     '</div>',
-    '</div>',
-    '</div>',
-    '</main>',
-    '</div>',
-    SHELL_FALLBACK_END,
-  ].join('\n');
+  ].join('\n') });
+}
+
+/**
+ * A prerendered content page in the app shell. These pages are complete
+ * without React, so src/main.tsx mounts the app on the first input rather
+ * than at load (issue #405); the attributes carry what the static page
+ * reports to analytics in the meantime.
+ */
+function renderContentShell(content, { view, pathname, pageViewTitle, guide, shell }) {
+  return renderAppShell({
+    ...shell,
+    content,
+    view,
+    pathname,
+    // App.tsx: content views fill at least the panel; the server profile panel is the panel.
+    panelStyle: view === 'server-profile' ? 'height: 100%;' : 'min-height: 100%;',
+    attributes: {
+      'data-deferred-mount': true,
+      'data-page-view-title': pageViewTitle,
+      'data-guide-slug': guide?.slug,
+      'data-guide-track': guide?.track,
+    },
+  });
 }
 
 /**
@@ -1179,7 +1295,8 @@ function renderShellFallback({
  * fallback into other pages, so a previous run's fallback is removed first.
  */
 function stripLandingFallback(indexHtml) {
-  const html = indexHtml
+  const html = restoreStylesheetLinks(indexHtml)
+    .replace(APP_PRELOAD_PATTERN, '')
     .replace(SHELL_FALLBACK_PATTERN, '<div id="root"></div>')
     .replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>');
   if (!html.includes('<div id="root"></div>')) {
@@ -1240,6 +1357,120 @@ function addFontPreloads(indexHtml, fontHrefs) {
   const anchor = html.search(/<script type="module"|<link rel="stylesheet"/);
   if (anchor === -1) return html.replace('</head>', `    ${tags}</head>`);
   return `${html.slice(0, anchor)}${tags}${html.slice(anchor)}`;
+}
+
+/** The module src/main.tsx imports to mount the app. */
+const APP_MODULE = 'src/bootstrapApp.tsx';
+const APP_CHUNK_NAME = 'bootstrapApp';
+const APP_PRELOAD_PATTERN = /<link rel="modulepreload" crossorigin href="[^"]*" data-app-preload>\n\s*/g;
+
+/** Chunk files reachable from a manifest entry through static imports (scripts/bundle/route-graph.mjs). */
+function staticImportClosure(manifest, key) {
+  const byFile = new Map(Object.values(manifest).map(chunk => [chunk.file, chunk]));
+  const seen = new Set();
+  const queue = [manifest[key]];
+  while (queue.length) {
+    const chunk = queue.shift();
+    if (!chunk || seen.has(chunk.file)) continue;
+    seen.add(chunk.file);
+    for (const name of chunk.imports || []) queue.push(manifest[name] || byFile.get(name));
+  }
+  return [...seen];
+}
+
+/**
+ * The app chunk and what it imports statically, minus what the entry already
+ * loads: the modules every page that mounts at load fetches right after the
+ * entry. Preloading them saves that round trip.
+ */
+function findAppPreloadHrefs(manifest) {
+  // Rollup keys a dynamic entry that shares modules by its chunk, not its source path.
+  const appKey = (manifest['index.html']?.dynamicImports || [])
+    .find(key => manifest[key]?.src === APP_MODULE || manifest[key]?.name === APP_CHUNK_NAME);
+  if (!appKey) throw new Error(`${APP_MODULE} is not a dynamic import of the entry in the build manifest.`);
+  const entry = new Set(staticImportClosure(manifest, 'index.html'));
+  return staticImportClosure(manifest, appKey).filter(file => !entry.has(file)).map(file => `/${file}`);
+}
+
+/**
+ * Adds the app preloads after the entry script, except on pages that mount
+ * on first input (those must not spend a slow connection on the app).
+ * Idempotent across reruns.
+ */
+function addAppPreloads(html, hrefs) {
+  const clean = html.replace(APP_PRELOAD_PATTERN, '');
+  if (clean.includes(' data-deferred-mount') || !hrefs.length) return clean;
+  const script = clean.indexOf('<script type="module"');
+  if (script === -1) return clean;
+  const anchor = clean.indexOf('</script>', script) + '</script>'.length;
+  const tags = hrefs.map(href => `\n    <link rel="modulepreload" crossorigin href="${escapeHtml(href)}" data-app-preload>`).join('');
+  return `${clean.slice(0, anchor)}${tags}${clean.slice(anchor)}`;
+}
+
+/**
+ * State scripts set before the full stylesheet has surely applied: classes on
+ * <body> or the sidebar (src/staticPage), and data-theme on <html>
+ * (public/theme-init.js), which is outside the page body the CSS is matched against.
+ */
+const RUNTIME_STATE_CLASSES = ['menu-open', 'sidenav-collapsed', 'app-sidenav--collapsed'];
+const RUNTIME_STATE_ATTRIBUTES = ['data-theme'];
+
+function listHtmlFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return listHtmlFiles(entryPath);
+    return entry.name.endsWith('.html') ? [entryPath] : [];
+  });
+}
+
+/**
+ * Last pass over every app page in dist/: inline its critical CSS and load
+ * the stylesheet without blocking (scripts/critical-css.js), and preload the
+ * app where it mounts at load.
+ */
+function finalizeHtmlPages() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(distRoot, '.vite', 'manifest.json'), 'utf8'));
+  const appPreloads = findAppPreloadHrefs(manifest);
+  const stylesheets = new Map();
+  const readStylesheet = (href) => {
+    const file = href.split(/[?#]/)[0].replace(/^\//, '');
+    if (!stylesheets.has(file)) stylesheets.set(file, fs.readFileSync(path.join(distRoot, file), 'utf8'));
+    return stylesheets.get(file);
+  };
+  let pages = 0;
+  for (const file of listHtmlFiles(distRoot)) {
+    const html = fs.readFileSync(file, 'utf8');
+    if (!html.includes('<div id="root"')) continue;
+    const next = inlineCriticalCss(addAppPreloads(html, appPreloads), readStylesheet, {
+      extraClasses: RUNTIME_STATE_CLASSES,
+      extraAttributes: RUNTIME_STATE_ATTRIBUTES,
+    });
+    if (next !== html) fs.writeFileSync(file, next, 'utf8');
+    pages += 1;
+  }
+  return pages;
+}
+
+/** Twice LOGO_SIZE_PX and a bit: sharp on high-density screens. */
+const SERVED_LOGO_PX = 96;
+
+/**
+ * Catalog logos are 128-512px PNG or SVG sources (validate-catalog-assets.js)
+ * shown at 40px or less; the built site serves the PNGs at SERVED_LOGO_PX.
+ */
+function writeServedLogos() {
+  const directory = path.join(distRoot, 'server-logos');
+  if (!fs.existsSync(directory)) return 0;
+  let resized = 0;
+  for (const name of fs.readdirSync(directory).filter(file => file.endsWith('.png'))) {
+    const file = path.join(directory, name);
+    const smaller = downscalePng(fs.readFileSync(file), SERVED_LOGO_PX);
+    if (smaller) {
+      fs.writeFileSync(file, smaller);
+      resized += 1;
+    }
+  }
+  return resized;
 }
 
 /** Reads a VITE_ build flag the way Vite does: process env first, then .env files. */
@@ -1303,13 +1534,13 @@ function buildOgCards({ servers, articles, pageMetadata }) {
   return cards;
 }
 
-function writeServerPages(indexHtml, servers) {
+function writeServerPages(indexHtml, servers, shell) {
   for (const server of servers) {
     const outputDirectory = path.join(distRoot, 'servers', server.id);
     fs.mkdirSync(outputDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(outputDirectory, 'index.html'),
-      renderServerHtml(indexHtml, server),
+      renderServerHtml(indexHtml, server, { shell }),
       'utf8'
     );
   }
@@ -1337,22 +1568,28 @@ function distPathFor(pathname) {
   return resolved;
 }
 
-/** Prerendered HTML plus raw Markdown for every article, at its canonical path. */
-function writeArticlePages(indexHtml, learnIndex, articles) {
+/**
+ * Prerendered HTML plus raw Markdown for every article, at its canonical path.
+ * `prerender` is src/prerender/contentPages.tsx: the pages are rendered with
+ * the app's own components, inside the app shell.
+ */
+function writeArticlePages(indexHtml, learnIndex, articles, { shell, prerender }) {
   const learnDirectory = path.join(distRoot, 'learn');
   fs.mkdirSync(learnDirectory, { recursive: true });
   fs.writeFileSync(
     path.join(learnDirectory, 'index.html'),
-    renderLearnIndexHtml(indexHtml, learnIndex, articles),
+    renderLearnIndexHtml(indexHtml, learnIndex, articles, { shell, pageHtml: prerender.renderLearnIndexPage() }),
     'utf8'
   );
 
   for (const article of articles) {
+    const pageHtml = prerender.renderArticlePage(article.path);
+    if (!pageHtml) throw new Error(`The app has no article at ${article.path}; the guide registries disagree.`);
     const outputDirectory = distPathFor(article.path);
     fs.mkdirSync(outputDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(outputDirectory, 'index.html'),
-      renderLearnArticleHtml(indexHtml, article, articles, learnIndex),
+      renderLearnArticleHtml(indexHtml, article, articles, learnIndex, { shell, pageHtml }),
       'utf8'
     );
     fs.writeFileSync(distPathFor(articleMarkdownPath(article)), renderArticleMarkdown(article), 'utf8');
@@ -1597,33 +1834,45 @@ async function main() {
     authEnabled: readBuildEnv('VITE_FIREBASE_AUTH_ENABLED') === 'true',
   };
 
-  writeServerPages(indexHtml, servers);
+  // The Learn pages are rendered with the app's components (through vite-node).
+  const prerender = await import('../src/prerender/contentPages.tsx');
+  await prerender.prepareContentPrerender();
+  const contentShell = { learnTracks: shellOptions.learnTracks, authEnabled: shellOptions.authEnabled };
+
+  writeServerPages(indexHtml, servers, contentShell);
   writeStaticPages(indexHtml, pageMetadata.docs);
-  writeArticlePages(indexHtml, learnIndex, articles);
+  writeArticlePages(indexHtml, learnIndex, articles, { shell: contentShell, prerender });
   // Last: overwrites the shell the pages above were rendered from.
   writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length, shellOptions);
   writeLearnFeed(articles, learnIndex);
   writeSearchIndex(articles);
   writeLlmsTxt(articles);
   writeSitemap(servers, articles);
+  const resizedLogos = writeServedLogos();
+  const finalizedPages = finalizeHtmlPages();
 
   const ogStartedAt = Date.now();
   const cards = buildOgCards({ servers, articles, pageMetadata });
   const og = await writeOgImages(cards, { distRoot });
 
   console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, and robots.txt.`);
+  console.log(`Critical CSS inlined in ${finalizedPages} pages; ${resizedLogos} PNG logos served at ${SERVED_LOGO_PX}px.`);
   console.log(`Open Graph images: ${cards.length} (${og.rendered} rendered, ${og.cached} from cache) in ${((Date.now() - ogStartedAt) / 1000).toFixed(1)}s.`);
 }
 
 if (require.main === module || process.argv[1] === __filename) {
-  main().catch(error => {
+  // Awaited at the top level: vite-node closes its module server once this
+  // file has evaluated, and main() still imports the prerenderer through it.
+  await main().catch(error => {
     console.error(error);
     process.exitCode = 1;
   });
 }
 
 module.exports = {
+  addAppPreloads,
   buildOgCards,
+  findAppPreloadHrefs,
   loadArticles,
   mergeCatalogServers,
   renderArticleMarkdown,
@@ -1633,6 +1882,7 @@ module.exports = {
   findFirstFrameFontAssets,
   renderLandingFallback,
   renderShellFallback,
+  renderAppShell,
   renderLearnArticleHtml,
   renderLearnIndexHtml,
   renderLlmsTxt,

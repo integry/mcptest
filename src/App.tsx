@@ -1577,6 +1577,8 @@ function App() {
   // Effect to handle OAuth refresh cards
   useEffect(() => {
     const refreshOAuthCards = async () => {
+      // Most visits have nothing to refresh; they never download the card runtime (the MCP SDK).
+      if (!spaces.some(space => space.cards.some(card => (card as any).needsOAuthRefresh))) return;
       // Add a delay to ensure OAuth tokens are properly stored in sessionStorage
       await new Promise(resolve => setTimeout(resolve, 500));
       const runtime = await loadSavedCardRuntime();

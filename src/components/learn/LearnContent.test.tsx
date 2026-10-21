@@ -3,8 +3,8 @@ import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { MemoryRouter, useLocation } from 'react-router-dom';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { CONTENT_COMPONENTS, PAGE_COMPONENTS } from '../../content/componentRegistry';
 import { COMPONENT_MARKER, CONTENT_COMPONENT_NAMES } from '../../content/contentModel';
 import {
@@ -18,13 +18,23 @@ import {
   getLearnArticleNeighbors,
 } from '../../content/learnRegistry';
 import { extractOutline } from '../../content/outline';
+import {
+  capturePrerenderedArticle,
+  getPrerenderedArticle,
+  resetPrerenderedArticleForTests,
+} from '../../content/prerenderedArticle';
 import { LEARN_HUB_NAVIGATION, LEARN_TRACKS, getLearnTrackForPath } from '../../content/navigation';
 import { getDocsMetadata } from '../../utils/pageMetadata';
 import ArticleMarkdown from './ArticleMarkdown';
 import { loadHighlighter } from './highlighter';
 import LearnArticlePage from './LearnArticlePage';
+import { markdownLearnArticle } from './deferredMarkdownArticle';
+import MarkdownLearnArticle from './MarkdownLearnArticle';
 import LearnIndex from './LearnIndex';
 import LearnNotFound from './LearnNotFound';
+
+// A guide without a prerendered body renders through the Markdown chunk; load it as the app does before mounting.
+beforeAll(() => markdownLearnArticle.preload());
 
 const render = (node: React.ReactNode) => {
   const container = document.createElement('div');
@@ -428,5 +438,72 @@ describe('Learn article page', () => {
     const doc = getLearnArticleMetadata(getLearnArticle('what-is-mcp')!);
     expect(doc.canonicalUrl).toBe('https://mcptest.io/docs/what-is-mcp');
     expect(doc.description).toContain('Understand MCP tools, resources, prompts');
+  });
+});
+
+describe('Learn article page over a prerendered guide (issue #405)', () => {
+  const article = getLearnArticleFromPath('/learn/mcp-http-headers-reference')!;
+
+  afterEach(() => {
+    resetPrerenderedArticleForTests();
+    document.body.innerHTML = '';
+  });
+
+  /** The page the build writes: MarkdownLearnArticle's markup inside #root. */
+  const capturePrerenderedPage = () => {
+    document.body.innerHTML = `<div id="root">${renderToStaticMarkup(
+      <MemoryRouter><MarkdownLearnArticle article={article} /></MemoryRouter>
+    )}</div>`;
+    const root = document.getElementById('root')!;
+    capturePrerenderedArticle(root);
+    return root;
+  };
+
+  it('renders exactly the prerendered page from the kept body and outline', () => {
+    const prerendered = capturePrerenderedPage().innerHTML;
+    expect(getPrerenderedArticle(article.slug)!.outline).toEqual(extractOutline(article.content));
+    expect(render(<LearnArticlePage article={article} />).innerHTML).toBe(prerendered);
+    expect(getPrerenderedArticle('another-guide')).toBeNull();
+  });
+
+  it('takes the body from the page, not from the Markdown', () => {
+    const root = capturePrerenderedPage();
+    root.querySelector('.reading-prose')!.insertAdjacentHTML('beforeend', '<p class="kept-marker">kept</p>');
+    capturePrerenderedArticle(root);
+
+    expect(render(<LearnArticlePage article={article} />).querySelector('.reading-prose .kept-marker')).not.toBeNull();
+    // Another guide (client-side navigation) renders from its Markdown.
+    const other = LEARN_ARTICLES.find(item => item.slug !== article.slug && !item.component)!;
+    expect(render(<LearnArticlePage article={other} />).querySelector('.kept-marker')).toBeNull();
+  });
+
+  it('keeps internal links in the app and copy buttons working in the kept body', async () => {
+    capturePrerenderedPage();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    let pathname = '';
+    const Location = () => {
+      pathname = useLocation().pathname;
+      return null;
+    };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    mountedRoots.push(root);
+    act(() => root.render(
+      <MemoryRouter initialEntries={[article.path]}>
+        <LearnArticlePage article={article} />
+        <Location />
+      </MemoryRouter>
+    ));
+
+    const copy = container.querySelector<HTMLButtonElement>('.reading-code-copy')!;
+    await act(async () => copy.click());
+    expect(writeText).toHaveBeenCalledWith(container.querySelector('.reading-code pre')!.textContent!.replace(/\n$/, ''));
+
+    const internal = container.querySelector<HTMLAnchorElement>('.reading-prose a[href^="/"]:not([target])')!;
+    act(() => internal.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })));
+    expect(pathname).toBe(internal.getAttribute('href')!.split('#')[0]);
+    delete (navigator as { clipboard?: unknown }).clipboard;
   });
 });

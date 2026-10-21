@@ -18,10 +18,11 @@ import { LEARN_HUB_NAVIGATION, LEARN_TRACKS, PRIMARY_NAVIGATION } from '../src/c
 import * as landingCopy from '../src/content/landingCopy';
 import { getCatalogServers } from '../src/utils/catalogUtils';
 import { preloadViewsForPath } from '../src/views/deferredViews';
+import { prepareContentPrerender, renderArticlePage, renderLearnIndexPage } from '../src/prerender/contentPages';
 import seoGenerator from './generate-seo-pages.js';
 import catalogSeeds from '../src/data/serverCatalog.json';
 
-const { renderLandingFallback, renderShellFallback } = seoGenerator;
+const { renderAppShell, renderLandingFallback, renderShellFallback } = seoGenerator;
 
 const catalogCount = getCatalogServers().length;
 const parse = html => new DOMParser().parseFromString(`<!DOCTYPE html><body>${html}</body>`, 'text/html').body;
@@ -200,5 +201,46 @@ describe('static first frame (header, sidebar, playground landing)', () => {
     const style = renderShell(false).querySelector('style').textContent;
     expect(style).toContain(":root[data-theme='dark'] .seo-shell-fallback .theme-toggle-icon.bi-moon-stars-fill");
     expect(style).toContain(":root:not([data-theme='dark']) .seo-shell-fallback .theme-toggle-icon.bi-sun-fill");
+  });
+});
+
+/**
+ * Guides and the Learn index mount React on the first input (issue #405), so
+ * their static page must already be the frame the app renders: the same
+ * header, sidebar (with the guide's track open) and page body.
+ */
+describe('static frame of a prerendered Learn page', () => {
+  const renderAppAt = pathname => parse(renderToStaticMarkup(React.createElement(
+    MemoryRouter,
+    { initialEntries: [pathname] },
+    React.createElement(AuthProvider, null, React.createElement(App))
+  ))).querySelector('.app-shell');
+  const renderStaticAt = (pathname, content) => parse(renderAppShell({
+    content,
+    view: 'learn',
+    pathname,
+    panelStyle: 'min-height: 100%;',
+    learnTracks: LEARN_TRACKS,
+  })).querySelector('.app-shell');
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it.each([
+    '/learn/mcp-http-headers-reference',
+    '/learn/connect-remote-mcp-server',
+  ])('matches the app React mounts over %s', async (pathname) => {
+    // As in the browser without a prerendered body: the article and Markdown chunks and highlight.js.
+    await preloadViewsForPath(pathname);
+    await prepareContentPrerender();
+    const page = renderArticlePage(pathname);
+    expect(page).not.toBeNull();
+
+    expect(outline(renderStaticAt(pathname, page))).toEqual(outline(renderAppAt(pathname)));
+  });
+
+  it('matches the app React mounts over the Learn index', () => {
+    expect(outline(renderStaticAt('/learn', renderLearnIndexPage()))).toEqual(outline(renderAppAt('/learn')));
   });
 });

@@ -3,6 +3,8 @@ import { createDeferredComponent } from '../utils/deferredComponent';
 import { getCatalogServerIdFromPath } from '../utils/catalogSeo';
 import { getContentPage, getLearnArticleFromPath } from '../content/learnRegistry';
 import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
+import { getPrerenderedArticle } from '../content/prerenderedArticle';
+import { markdownLearnArticle } from '../components/learn/deferredMarkdownArticle';
 
 /*
  * Route-level code splitting. Each view below is its own chunk (plus the
@@ -94,7 +96,12 @@ export const preloadViewsForPath = (pathname: string, search = ''): Promise<void
     case 'article': {
       loads.push(article.preload());
       const current = getLearnArticleFromPath(pathname);
-      if (current && hasCodeBlock(current.content)) loads.push(highlighter());
+      // A prerendered guide keeps its static body (LearnArticlePage), so it needs
+      // neither the Markdown renderer nor highlight.js; embedded components still render.
+      if (current && (current.component || getPrerenderedArticle(current.slug) === null)) {
+        loads.push(markdownLearnArticle.preload());
+        if (hasCodeBlock(current.content)) loads.push(highlighter());
+      }
       break;
     }
     default:

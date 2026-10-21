@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export const SIDEBAR_COLLAPSED_KEY = 'mcpSidebarCollapsed';
-/** Set on <body> so the layout can narrow the desktop sidebar column. */
-export const SIDEBAR_COLLAPSED_CLASS = 'sidenav-collapsed';
+import { SIDEBAR_COLLAPSED_CLASS, SIDEBAR_COLLAPSED_KEY, readStoredSidebarCollapsed } from '../utils/layoutState';
 
-export const readStoredSidebarCollapsed = (): boolean => {
-  try {
-    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
-  } catch {
-    return false;
-  }
-};
+export { SIDEBAR_COLLAPSED_CLASS, SIDEBAR_COLLAPSED_KEY, readStoredSidebarCollapsed };
 
 /**
  * Icon-only desktop sidebar, remembered across visits. Only the desktop
