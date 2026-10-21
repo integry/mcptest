@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
+import { loadArticles } from '../../../scripts/content/loadArticles.js';
+import { loadAllLearnArticles } from '../../content/__fixtures__/loadedArticles';
 import { CONTENT_COMPONENTS, PAGE_COMPONENTS } from '../../content/componentRegistry';
 import { COMPONENT_MARKER, CONTENT_COMPONENT_NAMES } from '../../content/contentModel';
 import {
@@ -16,6 +18,8 @@ import {
   getLearnArticleFromPath,
   getLearnArticleMetadata,
   getLearnArticleNeighbors,
+  getLoadedLearnArticleBody,
+  loadLearnArticleBody,
 } from '../../content/learnRegistry';
 import { extractOutline } from '../../content/outline';
 import { LEARN_HUB_NAVIGATION, LEARN_TRACKS, getLearnTrackForPath } from '../../content/navigation';
@@ -25,6 +29,10 @@ import { loadHighlighter } from './highlighter';
 import LearnArticlePage from './LearnArticlePage';
 import LearnIndex from './LearnIndex';
 import LearnNotFound from './LearnNotFound';
+
+// Loads every body through the on-demand path, as main.tsx does before
+// mounting a guide route, so the pages below render without a loading state.
+const LOADED_ARTICLES = await loadAllLearnArticles();
 
 const render = (node: React.ReactNode) => {
   const container = document.createElement('div');
@@ -83,6 +91,61 @@ describe('content registry', () => {
     expect(getLearnArticleFromPath('/docs/privacy-policy')).toBeUndefined();
   });
 
+  it('indexes exactly the Markdown files, frontmatter only', () => {
+    const slugs = readdirSync(resolve('src/content/articles'))
+      .filter(file => file.endsWith('.md'))
+      .map(file => file.replace(/\.md$/, ''));
+    expect(LEARN_ARTICLES.map(article => article.slug).sort()).toEqual(slugs.sort());
+    for (const article of LEARN_ARTICLES) {
+      expect(article, article.slug).not.toHaveProperty('content');
+      expect(article.outline, article.slug).toBeInstanceOf(Array);
+      expect(typeof article.hasCodeBlock, article.slug).toBe('boolean');
+    }
+  });
+
+  it('matches the build-time loader for every article, body loaded on demand', async () => {
+    const built = loadArticles({ reservedPaths: COMPONENT_PAGES.map(page => page.path) });
+    expect(LEARN_ARTICLES.map(article => article.slug)).toEqual(built.map(article => article.slug));
+    for (const [position, { content, ...summary }] of built.entries()) {
+      const entry = LEARN_ARTICLES[position];
+      expect(entry, entry.slug).toMatchObject(summary);
+      await expect(loadLearnArticleBody(entry), entry.slug).resolves.toBe(content);
+      expect(entry.hasCodeBlock, entry.slug).toBe(/^(`{3,}|~{3,})/m.test(content));
+    }
+  });
+
+  it('precomputes the outline the rendered headings carry', () => {
+    for (const article of LEARN_ARTICLES) {
+      expect(article.outline, article.slug).toEqual(extractOutline(getLoadedLearnArticleBody(article.slug)!));
+      const container = render(<LearnArticlePage article={article} />);
+      const rendered = Array.from(container.querySelectorAll('.reading-prose h2[id], .reading-prose h3[id]'), heading => ({
+        level: Number(heading.tagName.slice(1)),
+        id: heading.id,
+      }));
+      expect(rendered, article.slug).toEqual(article.outline.map(({ level, id }) => ({ level, id })));
+      const outlineLinks = Array.from(container.querySelectorAll('.reading-outline a'), link => link.getAttribute('href'));
+      expect(outlineLinks, article.slug).toEqual(article.outline.map(heading => `#${heading.id}`));
+    }
+  });
+
+  it('keeps the page outline in place while a body is loading, and offers a retry when it fails', async () => {
+    const pending = { ...getLearnArticle('oauth-for-mcp-explained')!, slug: 'not-loaded-yet' };
+    const loading = render(<LearnArticlePage article={pending} />);
+    expect(loading.querySelector('h1')?.textContent).toBe(pending.title);
+    expect(loading.querySelector('.reading-prose [role="status"]')?.textContent).toContain('Loading guide');
+    expect(Array.from(loading.querySelectorAll('.reading-outline a'), link => link.getAttribute('href'))).toEqual(
+      pending.outline.map(heading => `#${heading.id}`)
+    );
+    expect(loading.querySelector('.reading-sources')).not.toBeNull();
+
+    const { container } = renderStrict(<LearnArticlePage article={pending} />);
+    await act(async () => {
+      await loadLearnArticleBody(pending).catch(() => undefined);
+    });
+    expect(container.querySelector('.reading-prose [role="alert"]')?.textContent).toContain('could not be loaded');
+    expect(container.querySelector('.reading-prose button')?.textContent).toBe('Try again');
+  });
+
   it('keeps every pre-existing docs and learn URL resolving to the same title', () => {
     for (const expected of PRE_EXISTING_PAGES) {
       const page = getContentPage(expected.path);
@@ -129,7 +192,7 @@ describe('content registry', () => {
   it('keeps environment references unexpanded in shell commands that save MCP server config', () => {
     const shellBlocks = (markdown: string) =>
       [...markdown.matchAll(/^[ \t]*```(?:bash|sh|shell|console)\n([\s\S]*?)^[ \t]*```/gm)].map(match => match[1]);
-    const mcpAddCommands = LEARN_ARTICLES.flatMap(article =>
+    const mcpAddCommands = LOADED_ARTICLES.flatMap(article =>
       shellBlocks(article.content)
         .flatMap(block => block.replace(/\\\n/g, ' ').split('\n'))
         .filter(command => /\bmcp add\b/.test(command))
@@ -183,7 +246,7 @@ describe('Learn article page', () => {
     expect(container.querySelector('.reading-table table')).not.toBeNull();
     expect(container.querySelectorAll(`time[datetime="${article.lastReviewed}"]`).length).toBeGreaterThan(0);
 
-    const outline = extractOutline(article.content);
+    const outline = extractOutline(getLoadedLearnArticleBody(article.slug)!);
     const outlineLinks = Array.from(container.querySelectorAll('.reading-outline a'), link => link.getAttribute('href'));
     expect(outlineLinks).toEqual(outline.map(heading => `#${heading.id}`));
     for (const heading of outline) {
