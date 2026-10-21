@@ -1,0 +1,88 @@
+[
+  {
+    "serverId": "alpha",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-10-20T03:00:00.000Z",
+    "message": "ok alpha",
+    "validatedUrl": "https://alpha.example/mcp",
+    "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "bravo",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-20T03:00:00.000Z",
+    "message": "ok bravo",
+    "validatedUrl": "https://bravo.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "charlie",
+    "status": "offline",
+    "transport": "unknown",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-20T03:00:00.000Z",
+    "message": "timed out",
+    "errorCode": "timeout"
+  },
+  {
+    "serverId": "delta",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-20T03:00:00.000Z",
+    "message": "ok delta",
+    "validatedUrl": "https://delta.example/mcp",
+    "protocolVersion": "2025-11-25",
+    "authorizationServers": [
+      "https://auth.delta.example"
+    ]
+  },
+  {
+    "serverId": "echo",
+    "status": "online",
+    "transport": "both",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-20T03:00:00.000Z",
+    "message": "ok echo",
+    "validatedUrl": "https://echo.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "foxtrot",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-13T03:00:00.000Z",
+    "message": "ok foxtrot",
+    "validatedUrl": "https://foxtrot.example/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "golf",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-20T03:00:00.000Z",
+    "message": "ok golf",
+    "validatedUrl": "https://golf.example/mcp",
+    "protocolVersion": "2025-11-25"
+  }
+]

@@ -1,65 +1,38 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { getAnalyticsHost, trackEvent } from '../utils/analytics';
 import { getCatalogServers } from '../utils/catalogUtils';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import type { CatalogServer } from '../types/catalog';
+import {
+  LANDING_AUDIENCE_PATHS as AUDIENCE_PATHS,
+  LANDING_CATALOG_LINK_PREFIX,
+  LANDING_CATALOG_LINK_SUFFIX,
+  LANDING_COVERAGE_TITLE,
+  LANDING_HEADLINE,
+  LANDING_LEDE,
+  LANDING_PATHS_LABEL,
+  LANDING_REPORT_COVERAGE as REPORT_COVERAGE,
+} from '../content/landingCopy';
+import { selectLandingQuickPicks } from '../utils/landingQuickPicks';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
 import './LandingHero.css';
 
-const QUICK_PICK_LIMIT = 3;
+const RECENT_SERVER_LIMIT = 6;
 
-/**
- * Catalog servers a first-time visitor can connect to with one click: online
- * or unproven (never offline), no credentials of any kind, reachable directly
- * from the browser, and carrying a real publisher logo. Servers tagged as
- * suggested keep their catalog order ahead of the rest.
- */
-export const selectLandingQuickPicks = (
-  servers: CatalogServer[],
-  limit = QUICK_PICK_LIMIT
-): CatalogServer[] => {
-  const eligible = servers.filter((server) => (
-    server.status !== 'offline'
-    && server.authType === 'none'
-    && !server.requiresOAuth
-    && !server.requiredHeaders?.some(({ required }) => required !== false)
-    && server.browserAccess === 'direct'
-    && Boolean(server.browserUrl)
-    && Boolean(server.logoUrl)
-    && server.logoSourceKind !== 'generated-fallback'
-  ));
-  const suggested = eligible.filter((server) => server.tags.includes('suggested'));
-  const others = eligible.filter((server) => !server.tags.includes('suggested'));
-  return [...suggested, ...others].slice(0, limit);
+export { selectLandingQuickPicks };
+
+/** The host a returning user recognises a recent endpoint by; the full URL stays in the tooltip. */
+export const getRecentServerLabel = (url: string): string => {
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    return parsed.host || url;
+  } catch {
+    return url;
+  }
 };
-
-const AUDIENCE_PATHS = [
-  {
-    title: 'New to MCP',
-    description: 'What the Model Context Protocol is, and how remote servers differ from local ones.',
-    to: '/docs/what-is-mcp',
-  },
-  {
-    title: 'Connecting a server to Claude, ChatGPT or Cursor',
-    description: 'Check that an endpoint responds and authorizes before you add it to a client.',
-    to: '/learn/connect-remote-mcp-server',
-  },
-  {
-    title: 'Building a server',
-    description: 'Run the checks a client will run, and find protocol, auth and CORS problems before release.',
-    to: '/docs/testing-guide',
-  },
-] as const;
-
-const REPORT_COVERAGE = [
-  'Protocol negotiation across MCP 2026 stateless, 2025 stateful and legacy HTTP+SSE',
-  'OAuth 2.1 with PKCE, bearer tokens and API keys',
-  'CORS evidence from a real browser',
-  'Tool, resource and prompt contracts',
-  'Shareable reports',
-] as const;
 
 export interface LandingHeroProps {
   serverUrl: string;
@@ -72,6 +45,16 @@ export interface LandingHeroProps {
   isConnecting: boolean;
   quickPicks?: CatalogServer[];
   catalogCount?: number;
+  /** A returning user's recent endpoints; when present they replace the catalog quick picks. */
+  recentServers?: readonly string[];
+  /** One-click reconnect for a recent endpoint, through the same connection path. */
+  onConnectRecent?: (serverUrl: string) => void;
+  onRemoveRecentServer?: (serverUrl: string) => void;
+  /**
+   * The full connection panel (headers, auth, proxy). When provided, an
+   * "Advanced options" disclosure swaps it in for the simple connect row.
+   */
+  advancedOptions?: React.ReactNode;
 }
 
 export const LandingHero: React.FC<LandingHeroProps> = ({
@@ -81,90 +64,166 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   isConnecting,
   quickPicks = selectLandingQuickPicks(getCatalogServers()),
   catalogCount = getCatalogServers().length,
+  recentServers = [],
+  onConnectRecent,
+  onRemoveRecentServer,
+  advancedOptions,
 }) => {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const canConnect = Boolean(serverUrl.trim()) && !isConnecting;
+  const recent = recentServers.slice(0, RECENT_SERVER_LIMIT);
+  const showRecent = recent.length > 0 && Boolean(onConnectRecent);
+  const advancedOpen = showAdvanced && Boolean(advancedOptions);
+
+  // Once per landing shown; a returning user is one with recent endpoints.
+  useEffect(() => trackEvent('landing_view', { variant: showRecent ? 'returning' : 'new' }), []);
 
   const handleManualConnect = () => {
     if (!canConnect) return;
+    trackEvent('landing_connect', { source: 'manual', host: getAnalyticsHost(serverUrl) });
     onConnect();
   };
 
   return (
-    <section className="landing" aria-labelledby="landing-title">
+    <section className={`landing${showRecent ? ' landing--returning' : ''}`} aria-labelledby="landing-title">
       <div className="landing-hero">
         <h1 id="landing-title" className="landing-title">
-          Inspect, debug and evaluate remote MCP servers in your browser
+          {LANDING_HEADLINE}
         </h1>
         <p className="landing-lede">
-          Paste an endpoint URL to test a remote MCP server. mcptest.io negotiates the protocol,
-          handles authorization, and lists its tools, resources and prompts next to the raw
-          JSON-RPC traffic.
+          {LANDING_LEDE}
         </p>
 
-        <div className="landing-connect">
-          <label htmlFor="serverUrl" className="visually-hidden">MCP endpoint URL</label>
-          <input
-            id="serverUrl"
-            type="text"
-            inputMode="url"
-            autoComplete="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            className="form-control landing-connect-input"
-            placeholder="https://example.com/mcp"
-            value={serverUrl}
-            onChange={(event) => onServerUrlChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                handleManualConnect();
-              }
-            }}
-            disabled={isConnecting}
-          />
-          <button
-            id="connectBtn"
-            type="button"
-            className="btn btn-primary landing-connect-button"
-            onClick={handleManualConnect}
-            disabled={!canConnect}
-          >
-            Connect
-          </button>
-        </div>
-
-        {quickPicks.length > 0 && (
-          <div className="landing-quick-picks">
-            <span className="landing-quick-picks-label" id="landing-quick-picks-label">Try with</span>
-            <ul aria-labelledby="landing-quick-picks-label">
-              {quickPicks.map((server) => {
-                const endpoint = getPreferredCatalogEndpoint(server);
-                return (
-                  <li key={server.id}>
-                    <button
-                      type="button"
-                      className="landing-quick-pick"
-                      data-server-id={server.id}
-                      title={endpoint.url}
-                      disabled={isConnecting}
-                      onClick={() => onConnect({ endpoint, protocolEra: server.protocolEra })}
-                    >
-                      <CatalogServerLogo
-                        name={server.name}
-                        logoUrl={server.logoUrl}
-                        className="landing-quick-pick-logo"
-                      />
-                      {server.name}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+        {advancedOpen ? (
+          <div className="landing-advanced" id="landing-advanced-panel">
+            {advancedOptions}
           </div>
+        ) : (
+          <>
+            <div className="landing-connect">
+              <label htmlFor="serverUrl" className="visually-hidden">MCP endpoint URL</label>
+              <input
+                id="serverUrl"
+                type="text"
+                inputMode="url"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                className="form-control landing-connect-input"
+                placeholder="https://example.com/mcp"
+                value={serverUrl}
+                onChange={(event) => onServerUrlChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleManualConnect();
+                  }
+                }}
+                disabled={isConnecting}
+              />
+              <button
+                id="connectBtn"
+                type="button"
+                className="btn btn-primary landing-connect-button"
+                onClick={handleManualConnect}
+                disabled={!canConnect}
+              >
+                Connect
+              </button>
+            </div>
+
+            {showRecent ? (
+              <div className="landing-quick-picks landing-recent">
+                <span className="landing-quick-picks-label" id="landing-recent-label">Recent</span>
+                <ul aria-labelledby="landing-recent-label">
+                  {recent.map((url) => (
+                    <li key={url} className="landing-recent-item">
+                      <button
+                        type="button"
+                        className="landing-quick-pick landing-recent-connect"
+                        data-recent-url={url}
+                        title={url}
+                        disabled={isConnecting}
+                        onClick={() => {
+                          trackEvent('landing_connect', { source: 'recent_chip', host: getAnalyticsHost(url) });
+                          onConnectRecent?.(url);
+                        }}
+                      >
+                        <i className="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i>
+                        <span className="landing-recent-host">{getRecentServerLabel(url)}</span>
+                      </button>
+                      {onRemoveRecentServer && (
+                        <button
+                          type="button"
+                          className="landing-recent-remove"
+                          onClick={() => onRemoveRecentServer(url)}
+                          disabled={isConnecting}
+                          title={`Remove ${url} from recent connections`}
+                          aria-label={`Remove ${url} from recent connections`}
+                        >
+                          <i className="bi bi-x-lg" aria-hidden="true"></i>
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : quickPicks.length > 0 && (
+              <div className="landing-quick-picks">
+                <span className="landing-quick-picks-label" id="landing-quick-picks-label">Try with</span>
+                <ul aria-labelledby="landing-quick-picks-label">
+                  {quickPicks.map((server) => {
+                    const endpoint = getPreferredCatalogEndpoint(server);
+                    return (
+                      <li key={server.id}>
+                        <button
+                          type="button"
+                          className="landing-quick-pick"
+                          data-server-id={server.id}
+                          title={endpoint.url}
+                          disabled={isConnecting}
+                          onClick={() => {
+                            trackEvent('landing_connect', { source: 'quick_pick', host: getAnalyticsHost(endpoint.url) });
+                            onConnect({ endpoint, protocolEra: server.protocolEra });
+                          }}
+                        >
+                          <CatalogServerLogo
+                            name={server.name}
+                            logoUrl={server.logoUrl}
+                            className="landing-quick-pick-logo"
+                          />
+                          {server.name}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+
+        {advancedOptions && (
+          <button
+            type="button"
+            className="landing-advanced-toggle"
+            aria-expanded={advancedOpen}
+            aria-controls={advancedOpen ? 'landing-advanced-panel' : undefined}
+            onClick={() => {
+              if (!advancedOpen) trackEvent('advanced_options_open');
+              setShowAdvanced((open) => !open);
+            }}
+          >
+            <i className="bi bi-gear" aria-hidden="true"></i>
+            {advancedOpen ? 'Simple connect' : 'Advanced options'}
+            <span className="landing-advanced-hint">
+              {advancedOpen ? '' : 'headers, auth, proxy'}
+            </span>
+          </button>
         )}
       </div>
 
-      <nav className="landing-paths" aria-label="Where to start">
+      <nav className="landing-paths" aria-label={LANDING_PATHS_LABEL}>
         <ul>
           {AUDIENCE_PATHS.map((path) => (
             <li key={path.to}>
@@ -179,7 +238,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
       </nav>
 
       <div className="landing-coverage">
-        <h2 className="landing-coverage-title">What a report covers</h2>
+        <h2 className="landing-coverage-title">{LANDING_COVERAGE_TITLE}</h2>
         <ul>
           {REPORT_COVERAGE.map((item) => (
             <li key={item}>
@@ -192,7 +251,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
 
       <p className="landing-catalog">
         <Link to="/catalog">
-          Browse {catalogCount} public remote MCP servers in the catalog <span aria-hidden="true">&rarr;</span>
+          {LANDING_CATALOG_LINK_PREFIX} {catalogCount} {LANDING_CATALOG_LINK_SUFFIX} <span aria-hidden="true">&rarr;</span>
         </Link>
       </p>
     </section>

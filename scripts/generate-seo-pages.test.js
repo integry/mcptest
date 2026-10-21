@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
@@ -8,8 +11,9 @@ import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 import { extractOutline } from '../src/content/outline';
 
 const {
-  loadArticles, mergeCatalogServers, renderLearnArticleHtml, renderLearnIndexHtml, renderServerHtml,
-  renderMarkdown, renderSitemap, renderStaticPageHtml, validateCapabilitySnapshots,
+  loadArticles, mergeCatalogServers, renderCatalogHtml, renderHomeHtml, renderLearnArticleHtml,
+  renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
+  stripLandingFallback, validateCapabilitySnapshots, addFontPreloads, findFirstFrameFontAssets,
 } = seoGenerator;
 const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
 const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
@@ -445,12 +449,13 @@ describe('generated page metadata', () => {
     expect(html.match(/Partial discovery:/g)).toHaveLength(1);
   });
 
-  it('uses the absolute local logo in social metadata and static profile markup', () => {
+  it('uses the server Open Graph card in social metadata and the local logo in static profile markup', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('property="og:image" content="https://mcptest.io/server-logos/example-server.svg"');
-    expect(html).toContain('name="twitter:image" content="https://mcptest.io/server-logos/example-server.svg"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/servers/example-server.png"');
+    expect(html).toContain('name="twitter:image" content="https://mcptest.io/og/servers/example-server.png"');
+    expect(html).toContain('name="twitter:card" content="summary_large_image"');
     expect(html).toContain('<img src="/server-logos/example-server.svg" alt=""');
     expect(html).not.toContain('server-profile-eyebrow');
   });
@@ -461,7 +466,7 @@ describe('generated page metadata', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).not.toContain('https://remote.example/logo.svg');
-    expect(html).toContain('property="og:image" content="https://mcptest.io/logo.png"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/servers/example-server.png"');
     expect(html).toContain('role="img" aria-label="Example Server logo"');
     expect(html).toContain('catalog-server-logo-initials');
   });
@@ -476,6 +481,80 @@ describe('generated page metadata', () => {
     expect(html).toContain(`name="description" content="${server.seoDescription}"`);
     expect(html).toContain(`property="og:description" content="${server.seoDescription}"`);
     expect(html).toContain(`name="twitter:description" content="${server.seoDescription}"`);
+  });
+
+  it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
+    const html = renderHomeHtml(indexHtml, { title: 'Home | mcptest.io', description: 'Home description.' }, 111);
+    const document = new DOMParser().parseFromString(html, 'text/html');
+
+    expect(html).toContain('rel="canonical" href="https://mcptest.io"');
+    expect(html).toContain('property="og:url" content="https://mcptest.io"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/home.png"');
+    const root = document.getElementById('root');
+    expect(root.querySelector('.landing-title').textContent).toBe('Inspect, debug and evaluate remote MCP servers in your browser');
+    expect(root.querySelector('.landing-catalog a[href="/catalog"]').textContent).toContain('Browse 111 public remote MCP servers');
+    // The whole first frame, not just the landing: header and sidebar too.
+    expect(root.querySelector('.seo-shell-fallback .app-header .app-brand-title').textContent).toBe('mcptest.io');
+    expect(root.querySelector('.seo-shell-fallback .desktop-sidebar .app-sidenav a.active').getAttribute('href')).toBe('/');
+  });
+
+  it('removes a previous landing fallback so rerunning never copies it into other pages', () => {
+    const builtHome = renderHomeHtml(indexHtml, { title: 'Home', description: 'Home description.' }, 3);
+    const shell = stripLandingFallback(builtHome);
+
+    expect(shell).toContain('<div id="root"></div>');
+    expect(shell).not.toContain('landing-title');
+    expect(shell).not.toContain('seo-shell-fallback');
+    expect(renderLearnIndexHtml(shell, learnIndex, articles)).not.toContain('seo-landing-fallback');
+    // Output of earlier generator versions (landing only) is removed too.
+    const landingOnly = indexHtml.replace('<div id="root"></div>', '<div id="root">\n<section class="landing seo-landing-fallback"><h1>x</h1></section>\n    </div>');
+    expect(stripLandingFallback(landingOnly)).toBe(indexHtml);
+    expect(() => stripLandingFallback('<html><body><div id="root"><p>x</p></div></body></html>')).toThrow('rebuild with Vite');
+  });
+
+  it('preloads the first frame fonts once, ahead of the scripts and stylesheets', () => {
+    const builtHead = '<html><head><title>t</title>\n    <script type="module" crossorigin src="/assets/index.js"></script>\n    <link rel="stylesheet" crossorigin href="/assets/index.css">\n  </head><body><div id="root"></div></body></html>';
+    const hrefs = ['/assets/inter-latin-wght-normal-Dx4kXJAl.woff2', '/assets/bootstrap-icons-mSm7cUeB.woff2'];
+    const html = addFontPreloads(builtHead, hrefs);
+    const tags = hrefs.map(href => `<link rel="preload" href="${href}" as="font" type="font/woff2" crossorigin />`);
+
+    for (const tag of tags) {
+      expect(html.split(tag)).toHaveLength(2);
+      expect(html.indexOf(tag)).toBeLessThan(html.indexOf('type="module"'));
+      expect(html.indexOf(tag)).toBeLessThan(html.indexOf('rel="stylesheet"'));
+    }
+    expect(addFontPreloads(html, hrefs)).toBe(html);
+    // Every prerendered page is rendered from the same shell, so it inherits the preloads.
+    expect(renderLearnIndexHtml(stripLandingFallback(html), learnIndex, articles)).toContain(tags[0]);
+  });
+
+  it('takes the font URLs the built stylesheets request, query string included', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'seo-assets-'));
+    try {
+      expect(() => findFirstFrameFontAssets(directory)).toThrow('Expected one Inter latin woff2');
+      fs.writeFileSync(path.join(directory, 'vendor-x.css'), [
+        '@font-face{font-family:"Inter Variable";src:url(/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2) format("woff2-variations")}',
+        '@font-face{font-family:"Inter Variable";src:url(/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2) format("woff2-variations")}',
+        '@font-face{font-family:"Inter Variable";src:url(/assets/inter-latin-wght-normal-Dx4kXJAl.woff2) format("woff2-variations")}',
+        '@font-face{font-family:bootstrap-icons;src:url(/assets/bootstrap-icons-mSm7cUeB.woff2?e3485313) format("woff2"),url(/assets/bootstrap-icons-BeopsB42.woff?e3485313) format("woff")}',
+      ].join('\n'));
+      fs.writeFileSync(path.join(directory, 'index-x.css'), '.logo{background:url("/assets/inter-latin-wght-normal-Dx4kXJAl.woff2")}');
+      expect(findFirstFrameFontAssets(directory)).toEqual([
+        '/assets/inter-latin-wght-normal-Dx4kXJAl.woff2',
+        '/assets/bootstrap-icons-mSm7cUeB.woff2?e3485313',
+      ]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('renders the catalog page with its own metadata and Open Graph card', () => {
+    const html = renderCatalogHtml(indexHtml, { title: 'Catalog | mcptest.io', description: 'Catalog description.' });
+
+    expect(html).toContain('<title>Catalog | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/catalog"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/catalog.png"');
+    expect(html).toContain('<div id="root"></div>');
   });
 
   it('renders unique initial metadata for documentation routes', () => {
@@ -511,6 +590,37 @@ describe('generated page metadata', () => {
     expect(html).toContain('rel="next" href="/learn/oauth-for-mcp-explained"');
   });
 
+  it('sets parseable large-card Open Graph and Twitter image tags and the feed link on article pages', () => {
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const shell = '<!DOCTYPE html><html><head><title>mcptest.io</title><meta property="og:image" content="https://mcptest.io/logo.png" /><meta name="twitter:card" content="summary" /></head><body><div id="root"></div></body></html>';
+    const document = new DOMParser().parseFromString(renderLearnArticleHtml(shell, article, articles, learnIndex), 'text/html');
+    const property = name => Array.from(document.head.querySelectorAll(`meta[property="${name}"]`), meta => meta.getAttribute('content'));
+    const named = name => Array.from(document.head.querySelectorAll(`meta[name="${name}"]`), meta => meta.getAttribute('content'));
+    const imageUrl = `https://mcptest.io/og${article.path}.png`;
+
+    expect(property('og:image')).toEqual([imageUrl]);
+    expect(property('og:image:width')).toEqual(['1200']);
+    expect(property('og:image:height')).toEqual(['630']);
+    expect(property('og:image:alt')).toEqual([`${article.title} | mcptest.io`]);
+    expect(property('og:title')).toEqual([`${article.title} | mcptest.io`]);
+    expect(property('og:url')).toEqual([`https://mcptest.io${article.path}`]);
+    expect(named('twitter:card')).toEqual(['summary_large_image']);
+    expect(named('twitter:image')).toEqual([imageUrl]);
+
+    const feeds = document.head.querySelectorAll('link[rel="alternate"][type="application/rss+xml"]');
+    expect(Array.from(feeds, link => link.getAttribute('href'))).toEqual(['https://mcptest.io/learn/feed.xml']);
+    const structuredData = JSON.parse(document.getElementById('server-structured-data').textContent);
+    expect(structuredData.image).toBe(imageUrl);
+  });
+
+  it('advertises the feed on the Learn index but not on server or documentation pages', () => {
+    const feedLink = 'type="application/rss+xml"';
+    expect(renderLearnIndexHtml(indexHtml, learnIndex, articles)).toContain(feedLink);
+    expect(renderLearnIndexHtml(indexHtml, learnIndex, articles)).toContain('property="og:image" content="https://mcptest.io/og/learn.png"');
+    expect(renderServerHtml(indexHtml, catalogServer('https://example.com/mcp', 'streamable-http'))).not.toContain(feedLink);
+    expect(renderStaticPageHtml(indexHtml, '/docs/contact', { title: 'Contact', description: 'Contact us.' })).not.toContain(feedLink);
+  });
+
   it('nests the prerendered article inside a single-column shell so the no-JS layout reads top to bottom', () => {
     const article = articles.find(item => item.slug === 'mcp-clients-compared');
     const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
@@ -538,7 +648,7 @@ describe('generated page metadata', () => {
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
     expect(html).toContain('name="description" content="Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers.');
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
-    expect(html).toContain('<pre><code class="language-bash">curl -i https://your-server.example.com/mcp');
+    expect(html).toContain('<pre><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
   });
 
@@ -625,11 +735,20 @@ describe('generated page metadata', () => {
     expect(ids).toEqual(extractOutline(markdown).map(heading => heading.id));
   });
 
+  it('highlights fenced code at build time with the languages the browser registers', () => {
+    // The static HTML carries highlight.js markup so a guide paints colored code
+    // before any script runs; unknown languages stay plain, as in the browser.
+    const html = renderMarkdown('```typescript\nconst x: number = 1;\n```\n\n```nginx\nserver {}\n```\n\n```\nplain\n```');
+    expect(html).toContain('<pre><code class="hljs language-typescript"><span class="hljs-keyword">const</span> <span class="hljs-attr">x</span>: <span class="hljs-built_in">number</span> = <span class="hljs-number">1</span>;</code></pre>');
+    expect(html).toContain('<pre><code class="language-nginx">server {}</code></pre>');
+    expect(html).toContain('<pre><code>plain</code></pre>');
+  });
+
   it('closes a fence only with a matching delimiter of at least the opening length', () => {
     const markdown = ['~~~~ text', '```', '## not a heading', '~~~', '~~~~', '', '```js', 'const a = `~~~`;', '```'].join('\n');
     const html = renderMarkdown(markdown);
     expect(html).toContain('<pre><code class="language-text">```\n## not a heading\n~~~</code></pre>');
-    expect(html).toContain('<pre><code class="language-js">const a = `~~~`;</code></pre>');
+    expect(html).toContain('<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> a = <span class="hljs-string">`~~~`</span>;</code></pre>');
     expect(html).not.toContain('<h2');
   });
 

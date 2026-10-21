@@ -11,6 +11,7 @@ lastReviewed: "2026-10-20"
 relatedSlugs:
   - connect-remote-mcp-server
   - mcp-clients-compared
+  - mcp-client-support-matrix
   - mcp-server-connected-but-no-tools
   - remote-mcp-server-401-unauthorized
 sourceLinks:
@@ -30,6 +31,10 @@ sourceLinks:
 This guide reflects Cursor's MCP documentation reviewed on 20 October 2026 and Cursor 3.24. Recent builds moved MCP management into **Customize** in the sidebar. Older guides describe settings pages such as "Tools & MCP" or "Tools & Integrations"; those are not in Cursor's current documentation, so use the config file and **Customize > MCPs** as described here.
 
 Cursor supports stdio, SSE and Streamable HTTP. For a remote server you need the exact MCP endpoint, for example `https://mcp.example.com/mcp`, and to know whether it uses OAuth, a fixed header, or no authentication. [How to connect to a remote MCP server](/learn/connect-remote-mcp-server) covers how to confirm that.
+
+## Compatibility at a glance
+
+<!-- compat-matrix clients="cursor" limitations="true" -->
 
 ## Add the server to mcp.json
 

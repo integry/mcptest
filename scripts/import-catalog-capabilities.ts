@@ -28,11 +28,45 @@ const fail = (message: string): never => {
   throw new Error(message);
 };
 
+const writeCapabilities = (snapshots: Record<string, CapabilityInventoryV1>): void => {
+  const next = Object.fromEntries(Object.entries(snapshots)
+    .sort(([left], [right]) => left.localeCompare(right)));
+  fs.writeFileSync(capabilitiesPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+};
+
+// Scheduled revalidation mode: re-checks every stored snapshot (including imported
+// authenticated inventories) and drops snapshots for servers no longer in the catalog.
+const refreshAll = (): void => {
+  const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf8')) as CatalogServerSeed[];
+  const catalogIds = new Set(seeds.map(({ id }) => id));
+  const current = JSON.parse(
+    fs.readFileSync(capabilitiesPath, 'utf8')
+  ) as Record<string, CapabilityInventoryV1>;
+  const retained = Object.entries(current).filter(([serverId]) => catalogIds.has(serverId));
+  const next = Object.fromEntries(retained.map(([serverId, inventory]) => {
+    try {
+      return [serverId, validateCapabilityInventory(inventory)];
+    } catch (error) {
+      return fail(`Stored capability inventory for ${serverId} is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`);
+    }
+  }));
+  writeCapabilities(next);
+  const dropped = Object.keys(current).length - retained.length;
+  console.log(`Verified ${retained.length} capability snapshots${dropped > 0 ? `; dropped ${dropped} for removed servers` : ''}.`);
+};
+
 const main = (): void => {
+  if (process.argv.includes('--all')) {
+    refreshAll();
+    return;
+  }
   const serverId = option('--server');
   const reportPath = option('--report');
   if (!serverId || !reportPath) {
-    fail('Usage: npm run import-catalog-capabilities -- --server <catalog-id> --report <public-report.json>');
+    fail('Usage: npm run import-catalog-capabilities -- --server <catalog-id> --report <public-report.json>\n'
+      + '   or: npm run import-catalog-capabilities -- --all');
   }
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf8')) as CatalogServerSeed[];
@@ -67,9 +101,7 @@ const main = (): void => {
   const current = JSON.parse(
     fs.readFileSync(capabilitiesPath, 'utf8')
   ) as Record<string, CapabilityInventoryV1>;
-  const next = Object.fromEntries(Object.entries({ ...current, [serverId]: inventory })
-    .sort(([left], [right]) => left.localeCompare(right)));
-  fs.writeFileSync(capabilitiesPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  writeCapabilities({ ...current, [serverId]: inventory });
   console.log(`Imported capability inventory for ${serverId} observed at ${inventory.observedAt}.`);
 };
 

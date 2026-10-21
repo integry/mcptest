@@ -437,6 +437,8 @@ export interface ReleasePriority {
   detail: string;
   remediation: string;
   source: 'Host compatibility' | 'Tool surface' | 'Evaluation';
+  /** Canonical reference section for the id; set on report artifacts for documented ids. */
+  referenceUrl?: string;
 }
 
 export interface ReleaseDecision {

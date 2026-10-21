@@ -1,6 +1,4 @@
 import React, { act } from 'react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { createRoot } from 'react-dom/client';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -37,6 +35,7 @@ vi.mock('./CatalogServerCard', () => ({
 }));
 
 import CatalogView from './CatalogView';
+import { readStylesheet } from '../styles/readStylesheet';
 
 beforeAll(() => {
   (
@@ -93,8 +92,8 @@ describe('CatalogView', () => {
     });
   });
 
-  it('keeps cards in two columns at the 1440px sidebar-visible desktop width', () => {
-    catalogMocks.filteredServers = [{ id: 'example' }];
+  it('renders servers as one dense list of rows instead of a card grid', () => {
+    catalogMocks.filteredServers = [{ id: 'example' }, { id: 'example-2' }];
     const container = document.createElement('div');
     const root = createRoot(container);
 
@@ -102,15 +101,15 @@ describe('CatalogView', () => {
       root.render(<CatalogView onTestServer={vi.fn()} />);
     });
 
-    const resultColumn = container.querySelector<HTMLElement>('.catalog-result-column');
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
-    const wideDesktopRule = catalogCss.match(
-      /@media \(min-width: (\d+)px\) \{\s*\.catalog-result-column \{\s*width: 33\.33333333%;/
-    );
+    const list = container.querySelector<HTMLElement>('ul.catalog-server-list');
+    const rows = container.querySelectorAll('li.catalog-server-list-item');
+    const catalogCss = readStylesheet();
 
-    expect(resultColumn?.classList).toContain('col-md-6');
-    expect(resultColumn?.classList).not.toContain('col-xl-4');
-    expect(Number(wideDesktopRule?.[1])).toBeGreaterThan(1440);
+    expect(list?.getAttribute('aria-label')).toBe('Catalog servers');
+    expect(rows).toHaveLength(2);
+    expect(container.querySelector('.row.g-3, .catalog-result-column, .catalog-server-card')).toBeNull();
+    expect(catalogCss).not.toMatch(/\.catalog-result-column/);
+    expect(catalogCss).toMatch(/\.catalog-server-list\s*\{[^}]*border-top:\s*1px solid var\(--border-color\);/);
 
     act(() => {
       root.unmount();
@@ -118,7 +117,7 @@ describe('CatalogView', () => {
   });
 
   it('keeps catalog actions visually light and aligns the outline action to the right', () => {
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const actionRule = catalogCss.match(/\.catalog-card-actions\s*\{([^}]*)\}/)?.[1] ?? '';
     const reportRule = catalogCss.match(/\.catalog-report-link\s*\{([^}]*)\}/)?.[1] ?? '';
     const reportHoverRule =
@@ -139,12 +138,57 @@ describe('CatalogView', () => {
   });
 
   it('uses the stronger brand color and medium weight for an active category', () => {
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const activeCategoryRule = catalogCss.match(
       /\.catalog-category-option\[aria-pressed='true'\]\s*\{([^}]*)\}/
     )?.[1] ?? '';
 
     expect(activeCategoryRule).toMatch(/color:\s*var\(--primary-hover\);/);
     expect(activeCategoryRule).toMatch(/font-weight:\s*500;/);
+  });
+
+  it('folds the three selects into a Filters disclosure that counts the active filters', () => {
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(<CatalogView onTestServer={vi.fn()} />);
+    });
+
+    const filters = container.querySelector<HTMLElement>('.catalog-filters')!;
+    const toggle = filters.querySelector<HTMLButtonElement>('.catalog-filters-toggle')!;
+    const fields = filters.querySelector<HTMLElement>('.catalog-filter-fields')!;
+
+    // Search stays first and outside the disclosure.
+    expect(filters.firstElementChild?.classList).toContain('catalog-search-field');
+    expect(fields.contains(filters.querySelector('.catalog-search-field'))).toBe(false);
+    expect(fields.querySelectorAll('select')).toHaveLength(3);
+    expect(toggle.textContent).toContain('Filters');
+    // Mocked state: auth "oauth", category "Developer tools", sort "name" are all non-default.
+    expect(toggle.querySelector('.catalog-filters-count')?.textContent).toBe('3');
+    expect(fields.dataset.activeFilters).toBe('3');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe(fields.id);
+    expect(fields.classList).not.toContain('is-open');
+
+    act(() => {
+      toggle.click();
+    });
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(fields.classList).toContain('is-open');
+
+    // Desktop keeps the grid: the wrapper is transparent and the toggle hidden until the phone breakpoint.
+    const catalogCss = readStylesheet();
+    expect(catalogCss).toMatch(/\.catalog-filter-fields\s*\{\s*display:\s*contents;\s*\}/);
+    expect(catalogCss).toMatch(/\.catalog-filters-toggle\s*\{\s*display:\s*none;\s*\}/);
+    const phone = catalogCss.slice(catalogCss.indexOf('@media (max-width: 768px)'));
+    expect(phone).toMatch(/\.catalog-filters-toggle\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*2\.75rem;/);
+    expect(phone).toMatch(/\.catalog-filter-fields\s*\{\s*display:\s*none;\s*\}/);
+    expect(phone).toMatch(/\.catalog-filter-fields\.is-open\s*\{[^}]*display:\s*grid;/);
+
+    act(() => {
+      root.unmount();
+    });
   });
 });

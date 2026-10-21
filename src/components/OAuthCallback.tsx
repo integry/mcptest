@@ -6,6 +6,7 @@ import {
   getHostedOAuthTokenProxyUrl,
 } from '../utils/oauthFlow';
 import { completeHostedOAuthFlow } from '../utils/hostedOAuth';
+import { trackOAuthFlow } from '../utils/analytics';
 import { getSpaceUrl } from '../utils/urlUtils';
 import { storeOAuthReconnectRequest } from '../utils/oauthReconnect';
 import { useAuth } from '../context/AuthContext';
@@ -67,6 +68,7 @@ const OAuthCallback: React.FC = () => {
     const handleOAuthCallback = async () => {
       setSessionItem('oauth_callback_logs', '[]');
       addOAuthLog('info', 'Processing the OAuth authorization response...');
+      trackOAuthFlow('callback');
 
       try {
         const callbackUrl = new URL(
@@ -108,6 +110,7 @@ const OAuthCallback: React.FC = () => {
           }));
         }
         addOAuthLog('info', 'OAuth authorization completed successfully.');
+        trackOAuthFlow('success', serverUrl);
 
         // The token remains in OAuth storage. Only hand the exact endpoint to
         // the app so it can select and reconnect the authorized server.
@@ -154,6 +157,7 @@ const OAuthCallback: React.FC = () => {
           ? error.message
           : 'OAuth authorization could not be completed.';
         addOAuthLog('error', message);
+        trackOAuthFlow('error');
         navigate('/', {
           state: { oauthError: message },
           replace: true,

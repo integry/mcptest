@@ -1,0 +1,2092 @@
+{
+  "schemaVersion": 1,
+  "clients": [
+    {
+      "id": "claude-ai",
+      "name": "Claude.ai custom connectors",
+      "vendor": "Anthropic",
+      "version": {
+        "value": "unknown",
+        "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+        "verifiedOn": "2026-10-20",
+        "note": "The hosted service publishes no version; the row describes the documentation read on the verification date."
+      },
+      "hostProfileId": "claude",
+      "guidePath": "/learn/add-remote-mcp-server-to-claude",
+      "documentationUrl": "https://claude.com/docs/connectors/custom/add-unlisted",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "Claude docs: Add a connector that isn't in the directory",
+          "url": "https://claude.com/docs/connectors/custom/add-unlisted"
+        },
+        {
+          "title": "Claude docs: Authentication for connectors",
+          "url": "https://claude.com/docs/connectors/building/authentication"
+        },
+        {
+          "title": "Claude docs: Troubleshoot your connector",
+          "url": "https://claude.com/docs/connectors/building/troubleshooting"
+        },
+        {
+          "title": "Claude docs: Building connectors",
+          "url": "https://claude.com/docs/connectors/building/index.md"
+        },
+        {
+          "title": "Claude docs: MCP tunnels",
+          "url": "https://claude.com/docs/connectors/mcp-tunnels/overview.md"
+        },
+        {
+          "title": "Claude Help Center: Get started with custom connectors using remote MCP",
+          "url": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+        },
+        {
+          "title": "Claude Help Center: When to use desktop and web connectors",
+          "url": "https://support.claude.com/en/articles/11725091-when-to-use-desktop-and-web-connectors"
+        },
+        {
+          "title": "Anthropic API: IP addresses",
+          "url": "https://platform.claude.com/docs/en/api/ip-addresses"
+        },
+        {
+          "title": "anthropics/claude-code#5826: custom connector OAuth failures traced to server responses",
+          "url": "https://github.com/anthropics/claude-code/issues/5826"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Supported but being deprecated; a URL ending in /sse selects it."
+        },
+        "stdio": {
+          "value": "unsupported",
+          "source": "https://support.claude.com/en/articles/11725091-when-to-use-desktop-and-web-connectors",
+          "verifiedOn": "2026-10-20",
+          "note": "Local servers run only in Claude Desktop and Claude Code, not on web or mobile."
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://claude.com/docs/connectors/building/index.md",
+        "verifiedOn": "2026-10-20",
+        "note": "The docs cite the 2025-03-26, 2025-06-18 and 2025-11-25 authorization specifications but list no negotiated MCP protocol versions."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20",
+          "note": "Supported by default; Claude falls back to DCR when CIMD is not advertised."
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "\"Use your own OAuth client\": a client ID, plus a secret only if the authorization server requires one."
+        },
+        "cimd": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "\"Use Claude's published identity\" is a Client ID Metadata Document hosted by Anthropic. Used only when the authorization server advertises client_id_metadata_document_supported and token auth method none."
+        },
+        "bearerToken": {
+          "value": "limited",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "Request-header authentication is in beta and available to a limited set of organizations."
+        },
+        "apiKeyHeader": {
+          "value": "limited",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20",
+          "note": "static_headers: beta, for a limited set of organizations."
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20",
+          "note": "Authless servers are supported by default."
+        }
+      },
+      "oauthCallbacks": {
+        "value": [
+          {
+            "uri": "https://claude.ai/api/mcp/auth_callback",
+            "use": "required"
+          }
+        ],
+        "source": "https://claude.com/docs/connectors/building/authentication",
+        "verifiedOn": "2026-10-20",
+        "note": "The single redirect URI for claude.ai, Desktop, mobile and Cowork."
+      },
+      "headers": {
+        "custom": {
+          "value": "limited",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "Beta for a limited set of organizations: up to four headers, and Anthropic approves each custom header name. Authorization cannot be set as a header on OAuth connections."
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "unsupported",
+        "source": "https://claude.com/docs/connectors/building/troubleshooting",
+        "verifiedOn": "2026-10-20",
+        "note": "Claude rejects addresses that are not globally routable and connects over IPv4 only. MCP tunnels (Enterprise research preview) are the exception."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "unsupported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Listed as not yet supported."
+        },
+        "sampling": {
+          "value": "unsupported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Listed as not yet supported."
+        },
+        "elicitation": {
+          "value": "unknown",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Not named; the page says only that advanced or draft capabilities are unsupported."
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Not named; the page says only that advanced or draft capabilities are unsupported."
+        }
+      },
+      "limitations": [
+        {
+          "text": "Free plans can add one custom connector.",
+          "source": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "On Team and Enterprise only Owners add custom connectors, and each member connects separately.",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "The server must be reachable from Anthropic's outbound range 160.79.104.0/21 over IPv4; hostnames with only AAAA records fail.",
+          "source": "https://platform.claude.com/docs/en/api/ip-addresses",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Private, loopback and CGNAT addresses are rejected, including mixed public/private DNS answers.",
+          "source": "https://claude.com/docs/connectors/building/troubleshooting",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "OAuth discovery, registration and token endpoints must answer within 10 seconds (refresh: 30 seconds).",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Sign-in starts only from a 401; PKCE S256 is required; only the first authorization_servers entry is used.",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "A cross-host redirect of the server URL drops the Authorization header.",
+          "source": "https://claude.com/docs/connectors/building/troubleshooting",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Authentication settings cannot be edited after the connector is saved.",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Tool calls time out after 240 seconds; results are capped at about 150,000 characters.",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Private networks are reachable only through MCP tunnels, an Enterprise research preview.",
+          "source": "https://claude.com/docs/connectors/mcp-tunnels/overview.md",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "ui",
+          "text": "Customize > Connectors > Add custom connector",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "ui",
+          "text": "Team/Enterprise: Organization settings > Connectors > Add > Custom > Web",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "claude-desktop",
+      "name": "Claude Desktop",
+      "vendor": "Anthropic",
+      "version": {
+        "value": "unknown",
+        "source": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "No version is stated for connector behavior."
+      },
+      "guidePath": "/learn/add-remote-mcp-server-to-claude",
+      "documentationUrl": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "Claude docs: Add a connector that isn't in the directory",
+          "url": "https://claude.com/docs/connectors/custom/add-unlisted"
+        },
+        {
+          "title": "Claude docs: Authentication for connectors",
+          "url": "https://claude.com/docs/connectors/building/authentication"
+        },
+        {
+          "title": "Claude docs: Troubleshoot your connector",
+          "url": "https://claude.com/docs/connectors/building/troubleshooting"
+        },
+        {
+          "title": "Claude docs: Building connectors",
+          "url": "https://claude.com/docs/connectors/building/index.md"
+        },
+        {
+          "title": "Claude docs: MCP tunnels",
+          "url": "https://claude.com/docs/connectors/mcp-tunnels/overview.md"
+        },
+        {
+          "title": "Claude Help Center: Get started with custom connectors using remote MCP",
+          "url": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+        },
+        {
+          "title": "Claude Help Center: When to use desktop and web connectors",
+          "url": "https://support.claude.com/en/articles/11725091-when-to-use-desktop-and-web-connectors"
+        },
+        {
+          "title": "Anthropic API: IP addresses",
+          "url": "https://platform.claude.com/docs/en/api/ip-addresses"
+        },
+        {
+          "title": "anthropics/claude-code#5826: custom connector OAuth failures traced to server responses",
+          "url": "https://github.com/anthropics/claude-code/issues/5826"
+        },
+        {
+          "title": "Claude Help Center: Local MCP servers on Claude Desktop",
+          "url": "https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop"
+        },
+        {
+          "title": "MCP docs: Connect to local MCP servers",
+          "url": "https://modelcontextprotocol.io/docs/develop/connect-local-servers"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Through remote connectors added to the Claude account."
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Through remote connectors; being deprecated."
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://modelcontextprotocol.io/docs/develop/connect-local-servers",
+          "verifiedOn": "2026-10-20",
+          "note": "Local servers defined in claude_desktop_config.json or installed as desktop extensions."
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://claude.com/docs/connectors/building/index.md",
+        "verifiedOn": "2026-10-20",
+        "note": "The docs cite the 2025-03-26, 2025-06-18 and 2025-11-25 authorization specifications but list no negotiated MCP protocol versions."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20",
+          "note": "Supported by default; Claude falls back to DCR when CIMD is not advertised."
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "\"Use your own OAuth client\": a client ID, plus a secret only if the authorization server requires one."
+        },
+        "cimd": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "\"Use Claude's published identity\" is a Client ID Metadata Document hosted by Anthropic. Used only when the authorization server advertises client_id_metadata_document_supported and token auth method none."
+        },
+        "bearerToken": {
+          "value": "limited",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "Request-header authentication is in beta and available to a limited set of organizations."
+        },
+        "apiKeyHeader": {
+          "value": "limited",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20",
+          "note": "static_headers: beta, for a limited set of organizations."
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/authentication",
+          "verifiedOn": "2026-10-20",
+          "note": "Authless servers are supported by default."
+        }
+      },
+      "oauthCallbacks": {
+        "value": [
+          {
+            "uri": "https://claude.ai/api/mcp/auth_callback",
+            "use": "required"
+          }
+        ],
+        "source": "https://claude.com/docs/connectors/building/authentication",
+        "verifiedOn": "2026-10-20",
+        "note": "The single redirect URI for claude.ai, Desktop, mobile and Cowork."
+      },
+      "headers": {
+        "custom": {
+          "value": "limited",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "Beta for a limited set of organizations: up to four headers, and Anthropic approves each custom header name. Authorization cannot be set as a header on OAuth connections."
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "unsupported",
+        "source": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "Remote connectors are brokered through the Claude account, so requests come from Anthropic's cloud. Local servers run on the computer."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "unsupported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Listed as not yet supported."
+        },
+        "sampling": {
+          "value": "unsupported",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Listed as not yet supported."
+        },
+        "elicitation": {
+          "value": "unknown",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Not named; the page says only that advanced or draft capabilities are unsupported."
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://claude.com/docs/connectors/building/index.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Not named; the page says only that advanced or draft capabilities are unsupported."
+        }
+      },
+      "limitations": [
+        {
+          "text": "Remote connectors have the same public-internet, IPv4 and egress-range requirements as claude.ai.",
+          "source": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Local servers from claude_desktop_config.json are not available in claude.ai or Cowork.",
+          "source": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "No official page says whether a remote URL in claude_desktop_config.json works; add remote servers as connectors.",
+          "source": "https://support.claude.com/en/articles/11725091-when-to-use-desktop-and-web-connectors",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Organizations can disable or restrict desktop extensions.",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "ui",
+          "text": "Remote: Customize > Connectors (same as claude.ai)",
+          "source": "https://claude.com/docs/connectors/custom/add-unlisted",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "ui",
+          "text": "Local: Settings > Developer > Edit Config, or Settings > Extensions for .mcpb files",
+          "source": "https://modelcontextprotocol.io/docs/develop/connect-local-servers",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "file",
+          "text": "`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\\Claude\\claude_desktop_config.json` (Windows), local servers only",
+          "source": "https://modelcontextprotocol.io/docs/develop/connect-local-servers",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "vendor": "Anthropic",
+      "version": {
+        "value": "2.1.304",
+        "source": "https://code.claude.com/docs/en/changelog",
+        "verifiedOn": "2026-10-20",
+        "note": "Newest changelog entry, 19 October 2026."
+      },
+      "guidePath": "/learn/add-remote-mcp-server-to-claude",
+      "documentationUrl": "https://code.claude.com/docs/en/mcp",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "Claude Code: Connect Claude Code to tools via MCP",
+          "url": "https://code.claude.com/docs/en/mcp"
+        },
+        {
+          "title": "Claude Code changelog",
+          "url": "https://code.claude.com/docs/en/changelog"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "--transport http; falls back to SSE automatically from v2.1.265."
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Deprecated; --transport sse."
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://code.claude.com/docs/en/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "The docs name only 2026-07-28, which the v2 runtime (TypeScript SDK 2.0) adds; the versions the v1 runtime negotiates are not listed. MCP_PROTOCOL_NEGOTIATION=legacy keeps the older handshake."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Default for HTTP and SSE servers."
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "--client-id, --client-secret and --callback-port."
+        },
+        "cimd": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Discovered automatically."
+        },
+        "bearerToken": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "--header \"Authorization: Bearer ...\"; a configured Authorization header disables the OAuth fallback."
+        },
+        "apiKeyHeader": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Any static header, or a headersHelper command."
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "oauthCallbacks": {
+        "value": "unknown",
+        "source": "https://code.claude.com/docs/en/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "http://localhost:<port>/callback on a random port unless --callback-port fixes it."
+      },
+      "headers": {
+        "custom": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "headers in .mcp.json, --header, or headersHelper."
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required. Credential variables such as ANTHROPIC_API_KEY expand to empty strings in remote url and headers."
+        }
+      },
+      "privateHosts": {
+        "value": "unknown",
+        "source": "https://code.claude.com/docs/en/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "The docs do not state whether private or localhost HTTP servers are reachable; the client runs on the user's machine."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "@ mentions."
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Slash commands."
+        },
+        "resourceSubscriptions": {
+          "value": "unknown",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "sampling": {
+          "value": "unknown",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "elicitation": {
+          "value": "supported",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Form and URL mode."
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "limitations": [
+        {
+          "text": "Non-interactive runs (claude -p, Agent SDK) cannot complete OAuth; sign in interactively first.",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Project-scoped .mcp.json servers need approval in interactive sessions.",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "v2.1.229 sent 127.0.0.1 callbacks and broke exact redirect matches; v2.1.231 restored localhost.",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "HTTP and SSE responses over 16 MiB fail; tool output is limited to 25,000 tokens by default.",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "cli",
+          "text": "`claude mcp add --transport http <name> <url>`",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "file",
+          "text": "`.mcp.json` (project) or `~/.claude.json` (local and user scopes)",
+          "source": "https://code.claude.com/docs/en/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT custom MCP servers (developer mode, deep research)",
+      "vendor": "OpenAI",
+      "version": {
+        "value": "unknown",
+        "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+        "verifiedOn": "2026-10-20",
+        "note": "The hosted service publishes no version."
+      },
+      "hostProfileId": "chatgpt",
+      "guidePath": "/learn/connect-mcp-server-to-chatgpt",
+      "documentationUrl": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "OpenAI: Add custom MCP server",
+          "url": "https://developers.openai.com/api/docs/guides/custom-mcp-server"
+        },
+        {
+          "title": "OpenAI Apps SDK: Authentication",
+          "url": "https://developers.openai.com/apps-sdk/build/auth"
+        },
+        {
+          "title": "OpenAI plugins: Build an MCP server",
+          "url": "https://developers.openai.com/plugins/build/mcp-server"
+        },
+        {
+          "title": "OpenAI: Connect and test your plugin",
+          "url": "https://developers.openai.com/plugins/deploy/connect-chatgpt"
+        },
+        {
+          "title": "OpenAI: Building MCP servers for plugins and API integrations",
+          "url": "https://developers.openai.com/api/docs/mcp"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20",
+          "note": "Recommended, usually at /mcp."
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+          "verifiedOn": "2026-10-20",
+          "note": "The custom-server guide lists SSE and streaming HTTP; the plugin pages require Streamable HTTP for plugins."
+        },
+        "stdio": {
+          "value": "bridge-required",
+          "source": "https://developers.openai.com/plugins/deploy/connect-chatgpt",
+          "verifiedOn": "2026-10-20",
+          "note": "Secure MCP Tunnel can reach a configured stdio or HTTP server."
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://developers.openai.com/apps-sdk/build/auth",
+        "verifiedOn": "2026-10-20",
+        "note": "No supported protocol version is stated; the pages link to the 2025-06-18, 2025-11-25 and 2026-07-28 specifications."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://developers.openai.com/apps-sdk/build/auth",
+          "verifiedOn": "2026-10-20",
+          "note": "Used when the authorization server has a registration endpoint."
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+          "verifiedOn": "2026-10-20",
+          "note": "Static client credentials are used when supplied."
+        },
+        "cimd": {
+          "value": "supported",
+          "source": "https://developers.openai.com/apps-sdk/build/auth",
+          "verifiedOn": "2026-10-20",
+          "note": "Preferred registration method; client IDs are https://chatgpt.com/oauth/client.json or a callback-specific variant."
+        },
+        "bearerToken": {
+          "value": "unsupported",
+          "source": "https://developers.openai.com/apps-sdk/build/auth",
+          "verifiedOn": "2026-10-20",
+          "note": "Only the OAuth-issued token is sent; ChatGPT cannot present custom API keys."
+        },
+        "apiKeyHeader": {
+          "value": "unsupported",
+          "source": "https://developers.openai.com/apps-sdk/build/auth",
+          "verifiedOn": "2026-10-20",
+          "note": "ChatGPT cannot present custom API keys."
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+          "verifiedOn": "2026-10-20",
+          "note": "No authentication, or \"OAuth or no authentication\" with per-tool security schemes."
+        }
+      },
+      "oauthCallbacks": {
+        "value": [
+          {
+            "uri": "https://chatgpt.com/connector_platform_oauth_redirect",
+            "use": "conditional"
+          }
+        ],
+        "source": "https://developers.openai.com/apps-sdk/build/auth",
+        "verifiedOn": "2026-10-20",
+        "note": "The stable URI applies when issuer identification is met; otherwise ChatGPT uses https://chatgpt.com/connector/oauth/{callback_id} and shows the exact URI on the server's management page."
+      },
+      "headers": {
+        "custom": {
+          "value": "unknown",
+          "source": "https://developers.openai.com/apps-sdk/build/auth",
+          "verifiedOn": "2026-10-20",
+          "note": "Custom headers are not documented."
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://developers.openai.com/apps-sdk/build/auth",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "bridge-required",
+        "source": "https://developers.openai.com/plugins/deploy/connect-chatgpt",
+        "verifiedOn": "2026-10-20",
+        "note": "Private servers need Secure MCP Tunnel."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+          "verifiedOn": "2026-10-20",
+          "note": "Read and write tools."
+        },
+        "resources": {
+          "value": "limited",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20",
+          "note": "resources/read is documented for UI templates and skills listed in the plugin manifest, not as general context."
+        },
+        "prompts": {
+          "value": "unknown",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "unknown",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20"
+        },
+        "sampling": {
+          "value": "unknown",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20"
+        },
+        "elicitation": {
+          "value": "supported",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20"
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "limitations": [
+        {
+          "text": "Deep research and company knowledge use read and fetch actions only; servers for them should implement search and fetch tools.",
+          "source": "https://developers.openai.com/api/docs/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Generic custom MCP servers no longer require search and fetch tools.",
+          "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Tools without readOnlyHint are treated as write actions and ask for confirmation by default.",
+          "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "The authorization server must advertise PKCE S256 in code_challenge_methods_supported.",
+          "source": "https://developers.openai.com/apps-sdk/build/auth",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Workspace permissions and security restrictions, including Lockdown, apply to custom servers.",
+          "source": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Secure MCP Tunnel and local endpoints do not meet public submission requirements.",
+          "source": "https://developers.openai.com/plugins/build/mcp-server",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "ui",
+          "text": "ChatGPT web: Plugins > Add custom MCP server, then configure authentication and accept the risk warning",
+          "source": "https://developers.openai.com/plugins/deploy/connect-chatgpt",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "codex-cli",
+      "name": "Codex CLI",
+      "vendor": "OpenAI",
+      "version": {
+        "value": "rust-v0.163.0",
+        "source": "https://github.com/openai/codex/releases/tag/rust-v0.163.0",
+        "verifiedOn": "2026-10-20",
+        "note": "Latest release tag, dated 15 October."
+      },
+      "guidePath": "/learn/connect-mcp-server-to-windsurf-gemini-cli-and-codex",
+      "documentationUrl": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "ChatGPT Learn: Model Context Protocol in Codex",
+          "url": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli"
+        },
+        {
+          "title": "Codex rust-v0.163.0 release",
+          "url": "https://github.com/openai/codex/releases/tag/rust-v0.163.0"
+        },
+        {
+          "title": "mcp-remote",
+          "url": "https://github.com/geelen/mcp-remote"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        "legacySse": {
+          "value": "bridge-required",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "Only stdio and Streamable HTTP are documented; legacy SSE servers need a stdio bridge such as the community mcp-remote package."
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+        "verifiedOn": "2026-10-20",
+        "note": "Not documented."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "--oauth-client-registration dcr (or auto, the default)."
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "--oauth-client-id, plus --oauth-client-secret for confidential clients."
+        },
+        "cimd": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "--oauth-client-registration cimd (or auto)."
+        },
+        "bearerToken": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "bearer_token_env_var names the variable that holds the token."
+        },
+        "apiKeyHeader": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "http_headers, env_http_headers or http_headers_helper."
+        },
+        "none": {
+          "value": "unknown",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "An explicit no-auth mode for HTTP servers is not documented."
+        }
+      },
+      "oauthCallbacks": {
+        "value": [
+          {
+            "uri": "http://127.0.0.1/callback",
+            "use": "conditional"
+          }
+        ],
+        "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+        "verifiedOn": "2026-10-20",
+        "note": "Default; Codex can append a server-specific callback ID, and oauth.callback_port or mcp_oauth_callback_url override it."
+      },
+      "headers": {
+        "custom": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "http_headers and env_http_headers."
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "unknown",
+        "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+        "verifiedOn": "2026-10-20",
+        "note": "Not stated for HTTP servers; local stdio servers run on the machine."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20",
+          "note": "enabled_tools, disabled_tools and per-tool approval_mode."
+        },
+        "resources": {
+          "value": "unknown",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        "prompts": {
+          "value": "unknown",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "unknown",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        "sampling": {
+          "value": "unknown",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        "elicitation": {
+          "value": "supported",
+          "source": "https://github.com/openai/codex/releases/tag/rust-v0.163.0",
+          "verifiedOn": "2026-10-20",
+          "note": "The release notes handle unanswered MCP elicitations."
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "limitations": [
+        {
+          "text": "startup_timeout_sec defaults to 10 seconds and tool_timeout_sec to 60 seconds.",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Project .codex/config.toml files apply only in trusted projects.",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "ChatGPT web does not read local Codex configuration.",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "cli",
+          "text": "`codex mcp add <name> --url <url>`, then `codex mcp login <name>`",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "file",
+          "text": "`~/.codex/config.toml`, `[mcp_servers.<name>]`",
+          "source": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "vendor": "Anysphere",
+      "version": {
+        "value": "3.24",
+        "source": "https://cursor.com/docs/release-notes",
+        "verifiedOn": "2026-10-20",
+        "note": "Newest release-notes heading."
+      },
+      "hostProfileId": "cursor",
+      "guidePath": "/learn/connect-mcp-server-to-cursor",
+      "documentationUrl": "https://cursor.com/docs/context/mcp",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "Cursor docs: Model Context Protocol (MCP)",
+          "url": "https://cursor.com/docs/context/mcp"
+        },
+        {
+          "title": "Cursor help: MCP",
+          "url": "https://cursor.com/help/customization/mcp"
+        },
+        {
+          "title": "Cursor release notes",
+          "url": "https://cursor.com/docs/release-notes"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://cursor.com/docs/context/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "Not documented."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Static credentials are documented for providers without Dynamic Client Registration."
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "auth block with CLIENT_ID (required), CLIENT_SECRET and scopes."
+        },
+        "cimd": {
+          "value": "unknown",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Not mentioned."
+        },
+        "bearerToken": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Authorization header with ${env:NAME} interpolation."
+        },
+        "apiKeyHeader": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Arbitrary headers on remote servers."
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://cursor.com/help/customization/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "A url-only entry; sign-in is offered only when required."
+        }
+      },
+      "oauthCallbacks": {
+        "value": [
+          {
+            "uri": "http://localhost:8787/callback",
+            "use": "required",
+            "runtimes": [
+              "desktop"
+            ]
+          },
+          {
+            "uri": "https://www.cursor.com/agents/mcp/oauth/callback",
+            "use": "required",
+            "runtimes": [
+              "web",
+              "agents"
+            ]
+          }
+        ],
+        "source": "https://cursor.com/docs/context/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "Desktop uses the localhost callback; Cursor on the web and Cursor agents use the hosted one."
+      },
+      "headers": {
+        "custom": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "headers object with interpolation."
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "unknown",
+        "source": "https://cursor.com/docs/context/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "SSE and Streamable HTTP servers can be \"local or remote\"; no policy for private hosts is stated."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "unknown",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "sampling": {
+          "value": "unknown",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "elicitation": {
+          "value": "supported",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "The protocol support table also lists roots and apps."
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "limitations": [
+        {
+          "text": "envFile works only for stdio servers.",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "An admin allowlist restricts remote URLs to the configured pattern.",
+          "source": "https://cursor.com/docs/context/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Restart Cursor after editing mcp.json or the shell environment.",
+          "source": "https://cursor.com/help/customization/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "A Cursor-hosted callback page exists for OAuth apps that reject local redirect URIs.",
+          "source": "https://cursor.com/docs/release-notes",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "file",
+          "text": "`.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global), `mcpServers`",
+          "source": "https://cursor.com/help/customization/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "ui",
+          "text": "Customize > MCPs",
+          "source": "https://cursor.com/help/customization/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "vscode-copilot",
+      "name": "VS Code with GitHub Copilot",
+      "vendor": "Microsoft",
+      "version": {
+        "value": "1.142",
+        "source": "https://code.visualstudio.com/updates",
+        "verifiedOn": "2026-10-20",
+        "note": "Released 14 October 2026."
+      },
+      "hostProfileId": "vscode-copilot",
+      "guidePath": "/learn/connect-mcp-server-to-vs-code",
+      "documentationUrl": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "VS Code: Add MCP servers in VS Code",
+          "url": "https://code.visualstudio.com/docs/agent-customization/mcp-servers"
+        },
+        {
+          "title": "VS Code: MCP configuration reference",
+          "url": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration"
+        },
+        {
+          "title": "VS Code: Manage MCP servers",
+          "url": "https://code.visualstudio.com/docs/agents/run/manage-mcp-servers"
+        },
+        {
+          "title": "VS Code: Tools in chat",
+          "url": "https://code.visualstudio.com/docs/agents/run/tools"
+        },
+        {
+          "title": "VS Code extension guide: MCP developer guide",
+          "url": "https://code.visualstudio.com/api/extension-guides/ai/mcp"
+        },
+        {
+          "title": "VS Code release notes",
+          "url": "https://code.visualstudio.com/updates"
+        },
+        {
+          "title": "VS Code OAuth client metadata document",
+          "url": "https://vscode.dev/oauth/client-metadata.json"
+        },
+        {
+          "title": "microsoft/vscode#341574: Agent Host chats never start OAuth sign-in for remote HTTP MCP servers",
+          "url": "https://github.com/microsoft/vscode/issues/341574"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20",
+          "note": "type http tries Streamable HTTP first and falls back to SSE."
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Legacy support; type sse."
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "No version list; the guide links to the 2025-06-18 specification."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20",
+          "note": "oauth.clientId in config; VS Code prompts for a client ID and secret when DCR is unavailable."
+        },
+        "cimd": {
+          "value": "supported",
+          "source": "https://vscode.dev/oauth/client-metadata.json",
+          "verifiedOn": "2026-10-20",
+          "note": "Microsoft publishes a client metadata document whose client_id is its own URL. The VS Code docs pages do not describe CIMD."
+        },
+        "bearerToken": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20",
+          "note": "headers with ${input:...} variables."
+        },
+        "apiKeyHeader": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20",
+          "note": "Arbitrary headers for authentication or configuration."
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agent-customization/mcp-servers",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "oauthCallbacks": {
+        "value": [
+          {
+            "uri": "http://127.0.0.1:33418",
+            "use": "required"
+          },
+          {
+            "uri": "https://vscode.dev/redirect",
+            "use": "required"
+          }
+        ],
+        "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "Register both. The client metadata document lists http://127.0.0.1:33418/ with a trailing slash."
+      },
+      "headers": {
+        "custom": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20"
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "supported",
+        "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+        "verifiedOn": "2026-10-20",
+        "note": "Examples use localhost URLs; Unix sockets and Windows named pipes are also supported."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agent-customization/mcp-servers",
+          "verifiedOn": "2026-10-20"
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/docs/agent-customization/mcp-servers",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Documented as resource updates shown in real time."
+        },
+        "sampling": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "elicitation": {
+          "value": "supported",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Not mentioned."
+        }
+      },
+      "limitations": [
+        {
+          "text": "At most 128 tools can be enabled in one chat request.",
+          "source": "https://code.visualstudio.com/docs/agents/run/tools",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Servers that need input prompts are not forwarded to Copilot harness sessions.",
+          "source": "https://code.visualstudio.com/docs/agent-customization/mcp-servers",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Workspace servers do not start in Restricted Mode, and organization policy can block servers.",
+          "source": "https://code.visualstudio.com/docs/agents/run/manage-mcp-servers",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Open issue: Agent Host (Copilot SDK) chats never start OAuth sign-in for remote HTTP servers; the local agent works.",
+          "source": "https://github.com/microsoft/vscode/issues/341574",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "ui",
+          "text": "**MCP: Add Server** command",
+          "source": "https://code.visualstudio.com/docs/agent-customization/mcp-servers",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "file",
+          "text": "`.vscode/mcp.json` or user `mcp.json` (`servers`), or `.mcp.json` and `~/.copilot/mcp-config.json` (`mcpServers`)",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "cli",
+          "text": "`code --add-mcp '<json>'`",
+          "source": "https://code.visualstudio.com/docs/agents/reference/mcp-configuration",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "windsurf",
+      "name": "Windsurf (Devin Desktop, Cascade)",
+      "vendor": "Cognition",
+      "version": {
+        "value": "unknown",
+        "source": "https://docs.devin.ai/desktop/cascade/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "No version is stated."
+      },
+      "guidePath": "/learn/connect-mcp-server-to-windsurf-gemini-cli-and-codex",
+      "documentationUrl": "https://docs.devin.ai/desktop/cascade/mcp",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "Devin Desktop docs: Cascade MCP configuration",
+          "url": "https://docs.devin.ai/desktop/cascade/mcp"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://docs.devin.ai/desktop/cascade/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "Not documented."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "OAuth is supported for every transport, but the registration method is not documented."
+        },
+        "preRegisteredClient": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Not documented for Desktop (the separate Devin CLI documents client IDs)."
+        },
+        "cimd": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Not mentioned."
+        },
+        "bearerToken": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "headers with ${env:VAR} or ${file:path}."
+        },
+        "apiKeyHeader": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "none": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "Not stated."
+        }
+      },
+      "oauthCallbacks": {
+        "value": "unknown",
+        "source": "https://docs.devin.ai/desktop/cascade/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "No redirect URI is documented."
+      },
+      "headers": {
+        "custom": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "unknown",
+        "source": "https://docs.devin.ai/desktop/cascade/mcp",
+        "verifiedOn": "2026-10-20",
+        "note": "Not stated."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "sampling": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "elicitation": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "limitations": [
+        {
+          "text": "Cascade can use at most 100 tools at a time.",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Once a team allowlists one server, every other server is blocked; IDs must match the config key exactly.",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "OAuth is supported for every transport, but the docs do not say how the client registers.",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Enterprise users must turn MCP on in settings.",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "file",
+          "text": "`~/.config/devin/mcp_config.json` (`%APPDATA%\\devin\\mcp_config.json` on Windows), `serverUrl` or `url`",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "ui",
+          "text": "Cascade panel > ... > MCPs > Open MCP config file",
+          "source": "https://docs.devin.ai/desktop/cascade/mcp",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "gemini-cli",
+      "name": "Gemini CLI",
+      "vendor": "Google",
+      "version": {
+        "value": "unknown",
+        "source": "https://geminicli.com/docs/tools/mcp-server/",
+        "verifiedOn": "2026-10-20",
+        "note": "No CLI version is stated; the page was last updated 6 October 2026."
+      },
+      "guidePath": "/learn/connect-mcp-server-to-windsurf-gemini-cli-and-codex",
+      "documentationUrl": "https://geminicli.com/docs/tools/mcp-server/",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "Gemini CLI: MCP servers with Gemini CLI",
+          "url": "https://geminicli.com/docs/tools/mcp-server/"
+        },
+        {
+          "title": "Gemini CLI source docs: mcp-server.md",
+          "url": "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md"
+        },
+        {
+          "title": "Gemini CLI: configuration reference",
+          "url": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "httpUrl, or gemini mcp add --transport http."
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "url selects SSE."
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "command; the default transport for gemini mcp add."
+        }
+      },
+      "protocolVersions": {
+        "value": "unknown",
+        "source": "https://geminicli.com/docs/tools/mcp-server/",
+        "verifiedOn": "2026-10-20",
+        "note": "No version list; the page links to the 2025-06-18 specification."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "Discovery plus dynamic registration when the server supports it."
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "oauth block with clientId, clientSecret, scopes and redirectUri."
+        },
+        "cimd": {
+          "value": "unknown",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "Not mentioned."
+        },
+        "bearerToken": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "--header \"Authorization: Bearer ...\""
+        },
+        "apiKeyHeader": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "-H \"X-Api-Key: ...\""
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "OAuth starts only when the server returns 401."
+        }
+      },
+      "oauthCallbacks": {
+        "value": "unknown",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md",
+        "verifiedOn": "2026-10-20",
+        "note": "http://localhost:<random-port>/oauth/callback unless oauth.redirectUri sets a fixed one."
+      },
+      "headers": {
+        "custom": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required."
+        }
+      },
+      "privateHosts": {
+        "value": "supported",
+        "source": "https://geminicli.com/docs/tools/mcp-server/",
+        "verifiedOn": "2026-10-20",
+        "note": "Examples use localhost URLs."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md",
+          "verifiedOn": "2026-10-20",
+          "note": "@server://resource/path references."
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md",
+          "verifiedOn": "2026-10-20",
+          "note": "Slash commands."
+        },
+        "resourceSubscriptions": {
+          "value": "unknown",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        "sampling": {
+          "value": "unknown",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        "elicitation": {
+          "value": "unknown",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "limitations": [
+        {
+          "text": "OAuth needs a local browser; it fails over SSH without X11 forwarding and in containers without a browser.",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "Unpaid-tier and Google One users were moved to Antigravity CLI on 18 June 2026.",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "When several of httpUrl, url and command are set, httpUrl wins, then url.",
+          "source": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "\"trust\": true skips every tool confirmation for that server.",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "cli",
+          "text": "`gemini mcp add --transport http <name> <url>`",
+          "source": "https://geminicli.com/docs/tools/mcp-server/",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "kind": "file",
+          "text": "`~/.gemini/settings.json` (user) or `.gemini/settings.json` (project), `mcpServers`",
+          "source": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "id": "generic-sdk",
+      "name": "MCP TypeScript SDK client",
+      "vendor": "Model Context Protocol",
+      "version": {
+        "value": "2.3.1",
+        "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+        "verifiedOn": "2026-10-20",
+        "note": "@modelcontextprotocol/client and core 2.3.1 as installed by mcptest; the docs describe the v2 line."
+      },
+      "hostProfileId": "generic-sdk",
+      "documentationUrl": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+      "verifiedOn": "2026-10-20",
+      "sources": [
+        {
+          "title": "TypeScript SDK v2: Connect a client",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect"
+        },
+        {
+          "title": "TypeScript SDK v2: Protocol versions",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/protocol-versions.html"
+        },
+        {
+          "title": "TypeScript SDK v2: OAuth",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/clients/oauth.html"
+        },
+        {
+          "title": "TypeScript SDK v2: Machine authentication",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/clients/machine-auth.html"
+        },
+        {
+          "title": "TypeScript SDK v2: Middleware",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/clients/middleware.html"
+        },
+        {
+          "title": "TypeScript SDK v2: Calling tools, resources and prompts",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/clients/calling.html"
+        },
+        {
+          "title": "TypeScript SDK v2: Subscriptions",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/clients/subscriptions.html"
+        },
+        {
+          "title": "TypeScript SDK v2: Handle server requests",
+          "url": "https://ts.sdk.modelcontextprotocol.io/v2/clients/server-requests.html"
+        },
+        {
+          "title": "TypeScript SDK source: client auth",
+          "url": "https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/auth.ts"
+        }
+      ],
+      "transports": {
+        "streamableHttp": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+          "verifiedOn": "2026-10-20"
+        },
+        "legacySse": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+          "verifiedOn": "2026-10-20",
+          "note": "SSEClientTransport as a manual fallback on a fresh Client."
+        },
+        "stdio": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "protocolVersions": {
+        "value": [
+          "2024-10-07",
+          "2024-11-05",
+          "2025-03-26",
+          "2025-06-18",
+          "2025-11-25",
+          "2026-07-28"
+        ],
+        "source": "https://ts.sdk.modelcontextprotocol.io/v2/protocol-versions.html",
+        "verifiedOn": "2026-10-20",
+        "note": "The docs describe the 2024-10-07 to 2025-11-25 initialize era and the 2026-07-28 era; the intermediate revisions are the installed 2.3.1 SUPPORTED_PROTOCOL_VERSIONS. The legacy handshake is the default."
+      },
+      "auth": {
+        "oauthDcr": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/oauth.html",
+          "verifiedOn": "2026-10-20"
+        },
+        "preRegisteredClient": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/machine-auth.html",
+          "verifiedOn": "2026-10-20",
+          "note": "Stored client information or ClientCredentialsProvider."
+        },
+        "cimd": {
+          "value": "supported",
+          "source": "https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/auth.ts",
+          "verifiedOn": "2026-10-20",
+          "note": "OAuthClientProvider.clientMetadataUrl; not described on the docs pages."
+        },
+        "bearerToken": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/machine-auth.html",
+          "verifiedOn": "2026-10-20",
+          "note": "AuthProvider with token()."
+        },
+        "apiKeyHeader": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/middleware.html",
+          "verifiedOn": "2026-10-20",
+          "note": "Fetch middleware sets headers on every request."
+        },
+        "none": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+          "verifiedOn": "2026-10-20"
+        }
+      },
+      "oauthCallbacks": {
+        "value": "unknown",
+        "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/oauth.html",
+        "verifiedOn": "2026-10-20",
+        "note": "The application chooses its redirect URL."
+      },
+      "headers": {
+        "custom": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/middleware.html",
+          "verifiedOn": "2026-10-20"
+        },
+        "required": {
+          "value": "unknown",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+          "verifiedOn": "2026-10-20",
+          "note": "No header is documented as required of the server."
+        }
+      },
+      "privateHosts": {
+        "value": "supported",
+        "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+        "verifiedOn": "2026-10-20",
+        "note": "The example connects to http://localhost:3000/mcp. Browser runtimes are subject to CORS."
+      },
+      "capabilities": {
+        "tools": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/calling.html",
+          "verifiedOn": "2026-10-20"
+        },
+        "resources": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/calling.html",
+          "verifiedOn": "2026-10-20"
+        },
+        "prompts": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/calling.html",
+          "verifiedOn": "2026-10-20"
+        },
+        "resourceSubscriptions": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/subscriptions.html",
+          "verifiedOn": "2026-10-20"
+        },
+        "sampling": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/server-requests.html",
+          "verifiedOn": "2026-10-20",
+          "note": "sampling/createMessage handler; sunset in the 2026-07-28 revision."
+        },
+        "elicitation": {
+          "value": "supported",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/server-requests.html",
+          "verifiedOn": "2026-10-20",
+          "note": "elicitation/create handler."
+        },
+        "tasks": {
+          "value": "unknown",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/calling.html",
+          "verifiedOn": "2026-10-20",
+          "note": "The v2 client docs have no tasks page."
+        }
+      },
+      "limitations": [
+        {
+          "text": "The application wires transports, auth and handlers; what a given SDK-based client supports depends on that code.",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+          "verifiedOn": "2026-10-20"
+        },
+        {
+          "text": "The SDK does not validate the OAuth state parameter; the application must.",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/oauth.html",
+          "verifiedOn": "2026-10-20"
+        }
+      ],
+      "configuration": [
+        {
+          "kind": "cli",
+          "text": "Programmatic: `new Client(...).connect(new StreamableHTTPClientTransport(url))`",
+          "source": "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect",
+          "verifiedOn": "2026-10-20"
+        }
+      ]
+    }
+  ]
+}

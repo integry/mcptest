@@ -7,6 +7,7 @@ export interface PageMetadata {
 }
 
 export const HOME_METADATA: PageMetadata = pageMetadata.home;
+export const CATALOG_METADATA: PageMetadata = pageMetadata.catalog;
 
 /** Metadata for React-only documentation pages; article metadata lives in frontmatter. */
 export const DOCS_METADATA: Readonly<Record<string, PageMetadata>> = pageMetadata.docs;

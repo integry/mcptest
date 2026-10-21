@@ -3,6 +3,7 @@
  * with no browser or React dependencies so it can be used by the Vite app,
  * tests, and the Node build script alike.
  */
+import { expandCompatMatrixDirectives } from './compatMatrix.ts';
 
 
 export const SITE_NAME = 'mcptest.io';
@@ -194,7 +195,8 @@ const expectNumber = (value: unknown, field: string, slug: string): number => {
 
 /**
  * Builds a typed article from parsed frontmatter and body. The slug is the
- * Markdown file name without its extension.
+ * Markdown file name without its extension. `compat-matrix` directives in the
+ * body are expanded to Markdown tables here, so every output shares them.
  */
 export const createArticle = (
   frontmatter: Record<string, unknown>,
@@ -203,6 +205,7 @@ export const createArticle = (
 ): LearnArticle => {
   const slug = slugFromFileName(fileName);
   const title = expectString(frontmatter.title, 'title', slug);
+  const path = optionalString(frontmatter.path, 'path', slug) ?? `/learn/${slug}`;
   const article: LearnArticle = {
     title,
     summary: expectString(frontmatter.summary, 'summary', slug),
@@ -212,11 +215,11 @@ export const createArticle = (
     lastReviewed: String(frontmatter.lastReviewed ?? ''),
     relatedSlugs: expectStringList(frontmatter.relatedSlugs, 'relatedSlugs', slug),
     sourceLinks: expectSourceLinks(frontmatter.sourceLinks, slug),
-    content,
+    content: expandCompatMatrixDirectives(content, path),
     track: expectString(frontmatter.track, 'track', slug) as ContentTrackId,
     level: expectString(frontmatter.level, 'level', slug) as ContentLevel,
     order: expectNumber(frontmatter.order, 'order', slug),
-    path: optionalString(frontmatter.path, 'path', slug) ?? `/learn/${slug}`,
+    path,
     navTitle: optionalString(frontmatter.navTitle, 'navTitle', slug) ?? title,
   };
   const metaTitle = optionalString(frontmatter.metaTitle, 'metaTitle', slug);

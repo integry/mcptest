@@ -9,7 +9,7 @@ import {
   shouldRetryMcpConnectionThroughProxy,
   type ObservedTransportRequest,
 } from '../utils/transportDetection';
-import { logEvent } from '../utils/analytics';
+import { formatDiagnosticIds, trackEvent, trackOAuthFlow, type ConnectOutcome } from '../utils/analytics';
 import { useAuth } from '../context/AuthContext';
 import {
   beginOAuthFlow,
@@ -325,7 +325,7 @@ export const useConnection = (
 
   const handleDisconnect = useCallback(async () => {
     if (connectionStatus !== 'Disconnected' && !isConnecting) {
-        logEvent('disconnect');
+        trackEvent('disconnect');
         addLogEntry({ type: 'info', data: 'Disconnecting...' });
         await cleanupConnection();
     }
@@ -333,7 +333,7 @@ export const useConnection = (
 
   const handleAbortConnection = useCallback(() => {
     if (isConnecting && abortControllerRef.current) {
-      logEvent('connect_abort');
+      trackEvent('connect_abort');
       console.log('[DEBUG] Aborting connection attempt...');
       abortControllerRef.current.abort();
       addLogEntry({ type: 'info', data: 'Connection aborted by user' });
@@ -398,7 +398,19 @@ export const useConnection = (
     // controls whether it can execute, not whether the preference is enabled.
     // Only a persisted or per-attempt explicit false opts out.
     const shouldUseProxy = forceUseProxy ?? useProxy ?? true;
-    logEvent('connect_attempt');
+    // connect_attempt is sent by the caller, which knows how the attempt started.
+    const connectStartedAt = Date.now();
+    const trackConnectResult = (outcome: ConnectOutcome, result: {
+      protocolEra?: ProtocolEra | null;
+      transport?: TransportType | null;
+      diagnostics?: readonly { id: string; status?: string }[];
+    } = {}) => trackEvent('connect_result', {
+      outcome,
+      protocol_era: result.protocolEra || 'unknown',
+      transport: result.transport || 'unknown',
+      diagnostic_ids: formatDiagnosticIds(result.diagnostics),
+      duration_ms: Date.now() - connectStartedAt,
+    });
 
     // Clear any previous connection error
     setConnectionError(null);
@@ -695,6 +707,7 @@ export const useConnection = (
             setConnectionStartTime(null);
             abortControllerRef.current = null;
             addLogEntry({ type: 'warning', data: prerequisite.explanation });
+            trackConnectResult('auth_required');
             return;
           }
 
@@ -736,6 +749,7 @@ export const useConnection = (
               setConnectionStartTime(null);
               abortControllerRef.current = null;
               addLogEntry({ type: 'warning', data: prerequisite.explanation });
+              trackConnectResult('auth_required');
               return;
             }
             if (challengePlan?.kind === 'forbidden' && !suppressOAuthDiscovery) {
@@ -765,6 +779,7 @@ export const useConnection = (
           const activeTabs = localStorage.getItem('mcpConnectionTabs');
           if (activeTabs) sessionStorage.setItem('oauth_tabs_before_redirect', activeTabs);
 
+          trackOAuthFlow('start', targetUrl);
           try {
             const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
             const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
@@ -810,6 +825,7 @@ export const useConnection = (
               setIsConnecting(false);
               setConnectionStartTime(null);
               abortControllerRef.current = null;
+              trackConnectResult('auth_required');
               return;
             }
 
@@ -828,6 +844,7 @@ export const useConnection = (
               startedAt: connectionAttemptStartedAt,
             });
 
+            trackOAuthFlow('success', targetUrl);
             setIsAuthFlowActive(false);
             setOauthProgress(null);
             setConnectionStatus('Connecting...');
@@ -856,6 +873,7 @@ export const useConnection = (
                 type: 'warning',
                 data: '⚠️ Automatic OAuth discovery completed, but this provider requires a pre-registered client.'
               });
+              trackConnectResult('auth_required');
               return;
             }
 
@@ -869,6 +887,7 @@ export const useConnection = (
                 type: 'warning',
                 data: prerequisite.explanation,
               });
+              trackConnectResult('auth_required');
               return;
             }
 
@@ -901,6 +920,8 @@ export const useConnection = (
               serverReachable: catalogEndpointEvidence?.serverReachable,
             });
             addLogEntry({ type: 'error', data: `OAuth authorization failed: ${message}` });
+            trackOAuthFlow('error', targetUrl);
+            trackConnectResult('failed', { diagnostics: collectConnectionTransportDiagnostics(diagnosticFailures) });
             return;
           }
         }
@@ -922,10 +943,7 @@ export const useConnection = (
             setConnectionStatus('Connected');
             setIsConnecting(false);
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
-            logEvent('connect_success', { 
-              transport_type: finalTransportType,
-              is_proxied: finalUsedProxy,
-            });
+            trackConnectResult('connected', { protocolEra: finalProtocolEra, transport: finalTransportType });
             setTools([]);
             setResources([]);
             
@@ -958,7 +976,6 @@ export const useConnection = (
         }
         if (!isUserAborted) {
             // Handle all other errors normally
-            logEvent('connect_failure');
             const errorDetails = formatErrorForDisplay(error, {
                 serverUrl: targetUrl, // Report error against the target URL
                 operation: 'connection'
@@ -983,6 +1000,7 @@ export const useConnection = (
                 serverReachable: catalogEndpointEvidence?.serverReachable,
             });
             addLogEntry({ type: 'error', data: `Connection failed: ${errorDetails}` });
+            trackConnectResult('failed', { diagnostics: collectConnectionTransportDiagnostics(reportedFailures) });
         }
         cleanupConnection();
     }

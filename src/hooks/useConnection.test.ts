@@ -18,7 +18,10 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ currentUser: authMocks.currentUser, loading: false }),
 }));
 
-vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
+vi.mock('../utils/analytics', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../utils/analytics')>(),
+  trackEvent: vi.fn(),
+}));
 
 vi.mock('../utils/oauthFlow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/oauthFlow')>();

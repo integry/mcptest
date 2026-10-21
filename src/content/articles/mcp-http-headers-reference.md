@@ -113,7 +113,7 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 - **GET (2025 only):** MUST list `text/event-stream`.
 - **Example:** `Accept: application/json, text/event-stream`
 - **When missing or partial:** servers built on the TypeScript SDK answer `406` with "Not Acceptable: Client must accept both application/json and text/event-stream".
-- **mcptest:** the SDK always sends both types on POST. A `406` from the target therefore points at an over-strict server check and fires [`transport.accept-header-406`](/learn/mcp-transport-diagnostics-reference#transportaccept-header-406).
+- **mcptest:** the SDK always sends both types on POST. A `406` from the target therefore points at an over-strict server check and fires [`transport.accept-header-406`](/learn/mcp-transport-diagnostics-reference#transport-accept-header-406).
 
 ## Content-Type
 

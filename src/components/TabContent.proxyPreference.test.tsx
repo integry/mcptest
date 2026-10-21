@@ -36,6 +36,11 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ currentUser: authMocks.currentUser, loading: false, loginWithGoogle: vi.fn() }),
 }));
 
+vi.mock('../utils/analytics', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../utils/analytics')>(),
+  trackEvent: vi.fn(),
+}));
+
 vi.mock('../utils/oauthFlow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/oauthFlow')>();
   return { ...actual, beginOAuthFlow: oauthMocks.begin };
@@ -45,8 +50,6 @@ vi.mock('../utils/hostedOAuth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/hostedOAuth')>();
   return { ...actual, beginHostedOAuthFlow: oauthMocks.beginHosted };
 });
-
-vi.mock('../utils/analytics', () => ({ logEvent: vi.fn() }));
 
 import TabContent, { savePlaygroundOAuthReturnState } from './TabContent';
 import { OAuthPrerequisiteError, type OAuthPrerequisite } from '../utils/oauthFlow';

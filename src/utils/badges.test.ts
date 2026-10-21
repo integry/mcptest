@@ -7,15 +7,18 @@ import {
   BADGE_VARIANTS,
   createBadgeSnippets,
   createCatalogBadgeSnippets,
+  createPublishedReportBadgeSnippets,
   createReportBadgeSnippets,
   getBadgeVariantForResult,
   getCatalogBadgeUrl,
   getCatalogBadgeVariant,
+  getPublishedReportBadgeUrl,
   getReportUrl,
   getStaticBadgeUrl,
   renderBadgeSvg,
 } from './badges';
 import type { ReleaseReadinessStatus } from './releaseReadiness';
+import { readStylesheet } from '../styles/readStylesheet';
 
 describe('badge selection by result', () => {
   it.each<[ReleaseReadinessStatus, string]>([
@@ -38,7 +41,7 @@ describe('badge selection by result', () => {
   });
 
   it('uses the semantic design-token colors', () => {
-    const css = readFileSync(resolve('src/index.css'), 'utf8');
+    const css = readStylesheet('tokens');
     const token = (name: string) => css.match(new RegExp(`--${name}: (#[0-9a-f]{6});`))?.[1];
     expect(BADGE_DEFINITIONS.ready.color).toBe(token('success-color'));
     expect(BADGE_DEFINITIONS.blocked.color).toBe(token('danger-color'));
@@ -104,6 +107,13 @@ describe('badge snippets', () => {
     expect(snippets.html).toContain('href="https://mcptest.io/report/a&quot;b"');
     expect(snippets.html).toContain('alt="Tested [on] &lt;mcptest&gt;"');
     expect(snippets.markdown).toContain('[![Tested \\[on\\] <mcptest>]');
+  });
+
+  it('points published report snippets at the live report badge and the canonical report URL', () => {
+    expect(getPublishedReportBadgeUrl(endpoint)).toBe(`https://mcptest.io/badge/report/${encoded}.svg`);
+    const snippets = createPublishedReportBadgeSnippets(endpoint);
+    expect(snippets.markdown).toContain(`(https://mcptest.io/badge/report/${encoded.replace('(', '%28').replace(')', '%29')}.svg)`);
+    expect(snippets.html).toBe(`<a href="https://mcptest.io/report/${encoded}"><img src="https://mcptest.io/badge/report/${encoded}.svg" alt="Tested on mcptest.io"></a>`);
   });
 
   it('points catalog snippets at the worker badge and the server profile', () => {

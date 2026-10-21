@@ -457,9 +457,80 @@
   text-decoration: underline;
 }
 
-@media (min-width: 1200px) {
+/* Below 1024px the sticky outline gives way to a collapsible list above the article. */
+.reading-outline-inline {
+  margin: 0 0 1.5rem;
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--reading-rule);
+  border-bottom: 1px solid var(--reading-rule);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.reading-outline-inline summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  color: var(--text-color);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.reading-outline-inline summary::-webkit-details-marker {
+  display: none;
+}
+
+.reading-outline-inline summary::after {
+  margin-left: auto;
+  content: '\203A';
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.reading-outline-inline[open] summary::after {
+  transform: rotate(-90deg);
+}
+
+.reading-outline-inline summary:focus-visible {
+  outline: 0;
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--focus-ring);
+}
+
+.reading-outline-inline ol {
+  margin: 0;
+  padding: 0 0 0.75rem;
+  list-style: none;
+}
+
+.reading-outline-inline li + li {
+  margin-top: 0.3rem;
+}
+
+.reading-outline-inline a {
+  display: inline-block;
+  padding: 0.2rem 0;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.reading-outline-inline a:hover,
+.reading-outline-inline a:focus-visible {
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+
+@media (min-width: 1024px) {
+  .reading-outline-inline {
+    display: none;
+  }
+
   .reading-shell {
-    grid-template-columns: minmax(0, var(--reading-measure)) 13rem;
+    grid-template-columns: minmax(0, var(--reading-measure)) 12rem;
   }
 
   /* Shells without an outline column (index, prerendered fallback) stay single-column. */

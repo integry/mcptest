@@ -15,6 +15,16 @@ import {
   validateDeterministicAssertions,
 } from '../utils/deterministicTests';
 import { recordOutputContractResult } from '../utils/outputContract';
+import {
+  countPlanResults,
+  deleteSavedTestPlan,
+  loadSavedTestPlans,
+  recordSavedPlanRun,
+  renameSavedTestPlan,
+  saveTestPlan,
+  type SavedTestPlanV1,
+} from '../utils/savedTestPlans';
+import SavedTestPlansList from './SavedTestPlansList';
 
 interface DeterministicTestPanelProps {
   open: boolean;
@@ -23,6 +33,9 @@ interface DeterministicTestPanelProps {
   client: Client | null;
   serverUrl: string;
   connectionSummary: string;
+  /** A plan to open instead of the generated one, such as one built from call history. */
+  initialPlan?: DeterministicTestPlanV1 | null;
+  initialNotice?: string;
 }
 
 type JsonDraft = {
@@ -84,8 +97,14 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
   client,
   serverUrl,
   connectionSummary,
+  initialPlan,
+  initialNotice,
 }) => {
   const [plan, setPlan] = useState<DeterministicTestPlanV1 | null>(null);
+  const [savedPlans, setSavedPlans] = useState<SavedTestPlanV1[]>([]);
+  const [activeSavedId, setActiveSavedId] = useState<string | null>(null);
+  // The plan as last saved or loaded; run counts are only recorded for that exact plan.
+  const savedPlanSignatureRef = useRef<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, JsonDraft>>({});
   const [results, setResults] = useState<DeterministicCaseResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -131,7 +150,10 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     setResults([]);
     setConfirmedUnsafeFixtureSignature(null);
     setExpandedCase(null);
-    setNotice('');
+    setNotice(initialPlan && initialNotice ? initialNotice : '');
+    setSavedPlans(loadSavedTestPlans(serverUrl));
+    setActiveSavedId(null);
+    savedPlanSignatureRef.current = null;
 
     if (!client || tools.length === 0) {
       planBindingRef.current = null;
@@ -140,14 +162,14 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
       return invalidateAsyncWork;
     }
 
-    const generated = generateDeterministicTestPlan(tools, serverUrl);
+    const opened = initialPlan ?? generateDeterministicTestPlan(tools, serverUrl);
     planBindingRef.current = { client, serverUrl, toolSurfaceSignature };
-    setPlan(generated);
-    setDrafts(createDrafts(generated));
+    setPlan(opened);
+    setDrafts(createDrafts(opened));
     return invalidateAsyncWork;
     // The serialized signature intentionally covers schemas, descriptions, and annotations.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, client, serverUrl, toolSurfaceSignature]);
+  }, [open, client, serverUrl, toolSurfaceSignature, initialPlan]);
 
   const selectedCases = useMemo(() => plan?.tools.flatMap(tool => (
     tool.cases.filter(testCase => testCase.selected).map(testCase => ({ tool, testCase }))
@@ -210,8 +232,15 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
       : { assertions: parsed as DeterministicTestCaseV1['assertions'] });
   };
 
-  const handleRun = async () => {
-    if (importInProgressRef.current || !client || !plan || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors) return;
+  const handleRun = async (override?: { plan: DeterministicTestPlanV1; savedId: string }) => {
+    const runPlan = override?.plan ?? plan;
+    const runCaseIds = override
+      ? override.plan.tools.flatMap(tool => tool.cases.filter(testCase => testCase.selected).map(testCase => testCase.id))
+      : selectedCases.map(({ testCase }) => testCase.id);
+    if (importInProgressRef.current || !client || !runPlan || !planIsCurrent || runCaseIds.length === 0 || (!override && hasDraftErrors)) return;
+    const runSavedId = override?.savedId
+      ?? (activeSavedId && savedPlanSignatureRef.current === JSON.stringify(runPlan) ? activeSavedId : null);
+    const runResults: DeterministicCaseResult[] = [];
     const runGeneration = runGenerationRef.current + 1;
     runGenerationRef.current = runGeneration;
     setIsRunning(true);
@@ -220,9 +249,9 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await runDeterministicPlan(client, plan, {
-        caseIds: selectedCases.map(({ testCase }) => testCase.id),
-        confirmedUnsafeToolNames: unsafeConfirmed ? selectedUnsafeTools : [],
+      await runDeterministicPlan(client, runPlan, {
+        caseIds: runCaseIds,
+        confirmedUnsafeToolNames: !override && unsafeConfirmed ? selectedUnsafeTools : [],
         unsafeToolNames: [...discoveredSafety.entries()]
           .filter(([, safety]) => safety.writeCapable || safety.destructive)
           .map(([name]) => name),
@@ -230,11 +259,16 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
         signal: controller.signal,
         onResult: result => {
           if (result.outputContract) recordOutputContractResult(serverUrl, result.outputContract);
+          runResults.push(result);
           if (runGenerationRef.current === runGeneration) {
             setResults(current => [...current, result]);
           }
         },
       });
+      if (runSavedId && runResults.length > 0) {
+        const updated = recordSavedPlanRun(serverUrl, runSavedId, countPlanResults(runResults, 'playground'));
+        if (runGenerationRef.current === runGeneration) setSavedPlans(updated);
+      }
     } catch (cause) {
       if (runGenerationRef.current === runGeneration) {
         setNotice(`Run failed: ${cause instanceof Error ? cause.message : String(cause)}`);
@@ -300,6 +334,8 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
       setDrafts(createDrafts(imported));
       setResults([]);
       setConfirmedUnsafeFixtureSignature(null);
+      setActiveSavedId(null);
+      savedPlanSignatureRef.current = null;
       setNotice(`Imported ${imported.tools.length} tool plans from ${file.name}.`);
     } catch (cause) {
       if (!importIsCurrent()) return;
@@ -319,7 +355,102 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
     setDrafts(createDrafts(generated));
     setResults([]);
     setConfirmedUnsafeFixtureSignature(null);
+    setActiveSavedId(null);
+    savedPlanSignatureRef.current = null;
     setNotice('Generated a fresh plan from the discovered tool surface.');
+  };
+
+  const handleSave = () => {
+    if (!plan || !planIsCurrent || hasDraftErrors) return;
+    try {
+      const saved = saveTestPlan(serverUrl, plan, activeSavedId ? { id: activeSavedId } : {});
+      setSavedPlans(loadSavedTestPlans(serverUrl));
+      setActiveSavedId(saved.id);
+      // The stored copy is redacted; keep editing exactly what was stored.
+      setPlan(saved.plan);
+      setDrafts(createDrafts(saved.plan));
+      savedPlanSignatureRef.current = JSON.stringify(saved.plan);
+      const selectedCount = (value: DeterministicTestPlanV1) => value.tools
+        .reduce((total, tool) => total + tool.cases.filter(testCase => testCase.selected).length, 0);
+      const unselected = selectedCount(plan) - selectedCount(saved.plan);
+      setNotice(`Saved "${saved.name}" for this endpoint.${unselected > 0
+        ? ` ${unselected} ${unselected === 1 ? 'case was' : 'cases were'} unselected because redaction replaced argument values.`
+        : ''}`);
+    } catch (cause) {
+      setNotice(`Save failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+  };
+
+  const loadSavedPlan = (saved: SavedTestPlanV1): DeterministicTestPlanV1 | undefined => {
+    const missing = saved.plan.tools.map(tool => tool.toolName).filter(name => !discoveredSafety.has(name));
+    if (missing.length > 0) {
+      setNotice(`"${saved.name}" uses tools the connected server no longer lists: ${missing.join(', ')}.`);
+      return undefined;
+    }
+    const loaded = {
+      ...saved.plan,
+      tools: saved.plan.tools.map(tool => {
+        const actual = discoveredSafety.get(tool.toolName)!;
+        return {
+          ...tool,
+          safety: {
+            writeCapable: tool.safety.writeCapable || actual.writeCapable,
+            destructive: tool.safety.destructive || actual.destructive,
+            reasons: [...new Set([...tool.safety.reasons, ...actual.reasons])],
+          },
+        };
+      }),
+    };
+    setPlan(loaded);
+    setDrafts(createDrafts(loaded));
+    setResults([]);
+    setConfirmedUnsafeFixtureSignature(null);
+    setActiveSavedId(saved.id);
+    savedPlanSignatureRef.current = JSON.stringify(loaded);
+    return loaded;
+  };
+
+  const handleRunSaved = (saved: SavedTestPlanV1) => {
+    if (importInProgressRef.current || isRunning || !client) return;
+    const loaded = loadSavedPlan(saved);
+    if (!loaded) return;
+    const needsConfirmation = loaded.tools.some(tool => (tool.safety.writeCapable || tool.safety.destructive)
+      && tool.cases.some(testCase => testCase.selected));
+    if (needsConfirmation) {
+      setNotice(`Loaded "${saved.name}". It includes write-capable tools; confirm them below, then run.`);
+      return;
+    }
+    setNotice(`Running "${saved.name}".`);
+    void handleRun({ plan: loaded, savedId: saved.id });
+  };
+
+  const handleRenameSaved = (saved: SavedTestPlanV1, name: string) => {
+    try {
+      setSavedPlans(renameSavedTestPlan(serverUrl, saved.id, name));
+    } catch (cause) {
+      setNotice(`Rename failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+  };
+
+  const handleExportSaved = (saved: SavedTestPlanV1) => {
+    try {
+      downloadPlan(saved.plan);
+    } catch (cause) {
+      setNotice(`Export failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+  };
+
+  const handleDeleteSaved = (saved: SavedTestPlanV1) => {
+    try {
+      setSavedPlans(deleteSavedTestPlan(serverUrl, saved.id));
+      if (activeSavedId === saved.id) {
+        setActiveSavedId(null);
+        savedPlanSignatureRef.current = null;
+      }
+      setNotice(`Deleted "${saved.name}".`);
+    } catch (cause) {
+      setNotice(`Delete failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
   };
 
   if (!open) return null;
@@ -344,6 +475,9 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
           <button className="btn btn-sm btn-outline-secondary" onClick={() => importRef.current?.click()} disabled={isRunning || isImporting}>Import JSON</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={handleExport} disabled={!plan || !planIsCurrent || isRunning || hasDraftErrors}>Export JSON</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={handleRegenerate} disabled={isRunning || isImporting || !client || tools.length === 0}>Regenerate</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={handleSave} disabled={!plan || !planIsCurrent || isRunning || isImporting || hasDraftErrors || plan.tools.length === 0}>
+            {activeSavedId ? 'Save changes' : 'Save plan'}
+          </button>
           <input ref={importRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImport} disabled={isRunning || isImporting} />
           <span className="text-muted">Plan version {plan?.version || '—'}</span>
         </div>
@@ -352,6 +486,15 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
 
         <div className="deterministic-tests-content">
           <div className="deterministic-tests-plan">
+            <SavedTestPlansList
+              plans={savedPlans}
+              activePlanId={activeSavedId}
+              disabled={isRunning || isImporting || !client}
+              onRun={handleRunSaved}
+              onRename={handleRenameSaved}
+              onExport={handleExportSaved}
+              onDelete={handleDeleteSaved}
+            />
             {!plan || plan.tools.length === 0 ? (
               <p className="text-muted">No discovered tools are available for a test plan.</p>
             ) : plan.tools.map(tool => (
@@ -469,7 +612,7 @@ export const DeterministicTestPanel: React.FC<DeterministicTestPanelProps> = ({
             {isRunning && <button className="btn btn-outline-danger" onClick={() => abortRef.current?.abort()}>Cancel run</button>}
             <button
               className="btn btn-primary"
-              onClick={handleRun}
+              onClick={() => { void handleRun(); }}
               disabled={isRunning || isImporting || !client || !planIsCurrent || selectedCases.length === 0 || hasDraftErrors || (selectedUnsafeTools.length > 0 && !unsafeConfirmed)}
             >
               {isRunning ? 'Running…' : `Run ${selectedCases.length} selected ${selectedCases.length === 1 ? 'case' : 'cases'}`}

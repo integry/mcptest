@@ -1,0 +1,65 @@
+/* Playground tab strip: scrolls horizontally when tabs outgrow the width, with a
+   fade at whichever edge still has tabs hidden behind it. The fade is a mask on
+   the scroller itself, so it never covers the tabs with a painted overlay. */
+.playground-tab-strip {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.playground-tabs.nav-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
+
+.playground-tabs.nav-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.playground-tabs .nav-item {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.playground-tabs .nav-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 16rem;
+  white-space: nowrap;
+}
+
+.playground-tab-status {
+  flex: 0 0 auto;
+}
+
+.playground-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playground-tab-strip--fade-start .playground-tabs,
+.playground-tab-strip--fade-end .playground-tabs {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tab-fade-start, 0), #000 calc(100% - var(--tab-fade-end, 0px)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--tab-fade-start, 0), #000 calc(100% - var(--tab-fade-end, 0px)), transparent 100%);
+}
+
+.playground-tab-strip--fade-start {
+  --tab-fade-start: 2rem;
+}
+
+.playground-tab-strip--fade-end {
+  --tab-fade-end: 2rem;
+}
+
+@media (max-width: 767.98px) {
+  .playground-tabs .nav-link {
+    max-width: 11rem;
+    min-height: 2.75rem;
+  }
+}

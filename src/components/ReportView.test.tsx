@@ -742,6 +742,74 @@ describe('ReportView OAuth discovery', () => {
     expect(copyHtml?.textContent).toContain('Copied');
   });
 
+  it('drops the live badge when the report moves to an endpoint without published runs', async () => {
+    // F12: the live snippets for the first endpoint must not survive a rerun
+    // against another endpoint, even when that endpoint's index cannot be read.
+    const first = 'https://api.githubcopilot.com/mcp/';
+    const second = 'https://second.example/mcp';
+    vi.stubEnv('VITE_CLOUDFLARE_WORKER_URL', 'https://worker.test/');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('https://worker.test/r/endpoint/')) {
+        const requested = decodeURIComponent(url.slice('https://worker.test/r/endpoint/'.length));
+        if (requested !== first) return new Response(JSON.stringify({ error: 'unavailable' }), { status: 503 });
+        return new Response(JSON.stringify({
+          endpoint: first,
+          retention: 20,
+          snapshots: [{
+            id: 'aaaaaaaaaaaaaaaaaaaa-11111111111111111111',
+            endpoint: first,
+            createdAt: '2026-10-19T20:00:00.000Z',
+            lastPublishedAt: '2026-10-19T20:00:00.000Z',
+            contentHash: '1'.repeat(60),
+            summary: { status: 'authorization-required', generatedAt: '2026-10-19T20:00:00.000Z' },
+          }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ error: 'not_found' }), { status: 404 });
+    }));
+    const container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<ReportView />);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const section = () => container.querySelector('section[aria-labelledby="report-badge-embed-title"]');
+    expect(section()?.textContent).toContain('follows the latest published report for');
+    expect(section()?.textContent).toContain(first);
+
+    evaluationMocks.evaluate.mockResolvedValue({
+      serverUrl: second,
+      outcome: 'failed',
+      finalScore: 0,
+      sections: {},
+    });
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="MCP server URL"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, second);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const run = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Run Report')
+    ));
+    expect(run).toBeDefined();
+    await act(async () => run?.click());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).toContain(`Report for: ${second}`);
+    expect(section()?.textContent).not.toContain('follows the latest published report');
+    expect(section()?.textContent).not.toContain(first);
+    const snippets = Array.from(section()?.querySelectorAll('textarea') ?? []).map((field) => field.value);
+    expect(snippets.every((snippet) => !snippet.includes(encodeURIComponent(first)))).toBe(true);
+    expect(snippets[0]).toContain(encodeURIComponent(second));
+  });
+
   it('shows the blocked badge for a failed evaluation', async () => {
     evaluationMocks.evaluate.mockResolvedValue({
       serverUrl: 'https://api.githubcopilot.com/mcp/',

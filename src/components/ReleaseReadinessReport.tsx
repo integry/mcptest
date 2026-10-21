@@ -5,6 +5,7 @@ import {
   type CompatibilityStatus,
   type Known,
 } from '../compatibility';
+import { getClientCompatibilityForHost } from '../data/clientCompatibility';
 import {
   getEvaluationMaxScore,
   getEvaluationPercentage,
@@ -20,10 +21,13 @@ import {
   createReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
+import { documentedEvidenceIdFor, hasReference } from '../utils/referenceLinks';
+import { trackEvent } from '../utils/analytics';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import AuthorizationSetup from './AuthorizationSetup';
 import CapabilitiesProvided from './CapabilitiesProvided';
+import FindingReferenceLink from './FindingReferenceLink';
 
 interface ReleaseReadinessReportProps {
   authorizationActions?: React.ReactNode;
@@ -191,6 +195,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
       toolSurfaceAnalysis: toolSurface,
       oauthTrace,
     }));
+    trackEvent('report_shared', { method: format });
   };
 
   return (
@@ -249,6 +254,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                   <div className="release-priority-meta">
                     <span>{priority.source}</span>
                     <span>{priority.severity === 'unknown' ? 'Unknown' : `${priority.severity} priority`}</span>
+                    {hasReference(priority.id) && <FindingReferenceLink id={priority.id} />}
                   </div>
                   <h4>{priority.title}</h4>
                   <p>{priority.detail}</p>
@@ -274,6 +280,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           {Object.values(matrix.assessments).map((assessment) => {
             const actionable = assessment.findings.filter((finding) => finding.outcome !== 'pass');
             const evidence = assessment.findings.flatMap((finding) => finding.evidence);
+            const client = getClientCompatibilityForHost(assessment.profileId);
             return (
               <article className={`compatibility-card compatibility-${assessment.status}`} key={assessment.profileId}>
                 <div className="compatibility-card-heading">
@@ -286,6 +293,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                     {statusLabel[assessment.status]}
                   </span>
                 </div>
+                <p className="compatibility-citation small text-muted mb-2">
+                  Client data: <a href={client.documentationUrl} target="_blank" rel="noopener noreferrer">{client.name}</a>
+                  {client.version.value !== 'unknown' && ` ${client.version.value}`}, verified {client.verifiedOn}
+                </p>
                 {actionable.length === 0 ? (
                   <p className="mb-0">No client-specific caveats or blockers were found.</p>
                 ) : (
@@ -438,6 +449,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
               {section.details.map((detail, index) => {
                 const detailKey = `protocol-${key}-${index}`;
                 const expandable = detail.context || detail.metadata;
+                const referenceId = documentedEvidenceIdFor(detail.metadata);
                 return (
                   <div className="protocol-evidence" key={detailKey}>
                     {expandable ? (
@@ -448,6 +460,9 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                     {expandable && expandedItems.has(detailKey) && (
                       <div id={`${detailKey}-body`} className="protocol-evidence-body">
                         {detail.context && <p>{detail.context}</p>}
+                        {referenceId && (
+                          <p><FindingReferenceLink id={referenceId} /></p>
+                        )}
                         {detail.metadata !== undefined && <pre>{JSON.stringify(detail.metadata, null, 2)}</pre>}
                       </div>
                     )}

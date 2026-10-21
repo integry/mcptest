@@ -8,7 +8,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
-  const { currentUser, loginWithGoogle, logout } = useAuth();
+  const { currentUser, loading, loginWithGoogle, logout } = useAuth();
   const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
 
   return (
@@ -30,7 +30,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
         >
           <img src="/logo.png" alt="MCP Logo" width="40" height="40" />
         </Link>
-        <Link to="/" className="app-brand-copy" aria-label="mcptest.io home">
+        <Link to="/" className="app-brand-copy">
           <h1 className="app-brand-title">mcptest.io</h1>
           <p className="app-brand-subtitle d-none d-md-block">
             Remote MCP Inspector
@@ -50,7 +50,20 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
         
         {authEnabled && (
           <>
-            {currentUser ? (
+            {loading ? (
+              // Holds the sign-in button's space until auth resolves; the static
+              // shell in dist/index.html renders the same placeholder.
+              <button
+                type="button"
+                className="btn btn-sm btn-primary app-auth-placeholder"
+                style={{ visibility: 'hidden' }}
+                aria-hidden="true"
+                tabIndex={-1}
+                disabled
+              >
+                Login with Google
+              </button>
+            ) : currentUser ? (
               <div className="d-flex align-items-center">
                 <img src={currentUser.photoURL || undefined} alt={currentUser.displayName || 'User'} className="rounded-circle" width="32" height="32" />
                 <span className="ms-2 me-3">{currentUser.displayName}</span>

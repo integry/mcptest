@@ -6,6 +6,9 @@ import ReportAuthorizationGate from './ReportAuthorizationGate';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
 import ReportHistory from './ReportHistory';
 import ReportBadgeEmbed from './ReportBadgeEmbed';
+import PublishedReportHistory from './PublishedReportHistory';
+import SavedPlanRunAction, { type SavedPlanRunRequest } from './SavedPlanRunAction';
+import { loadSavedTestPlans } from '../utils/savedTestPlans';
 import {
   beginOAuthFlow,
   getHostedOAuthTokenProxyUrl,
@@ -23,6 +26,7 @@ import {
   isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
   type EvaluationAuthorizationContext,
+  type EvaluationOptions,
   type EvaluationReport,
 } from '../utils/evaluation';
 import {
@@ -33,8 +37,11 @@ import {
 } from '../utils/reportPresentation';
 import { getStoredOAuthTrace, type OAuthTraceV1 } from '../utils/oauthTrace';
 import { createObservedServerFacts } from '../utils/releaseReadiness';
+import { trackEvent, trackOAuthFlow } from '../utils/analytics';
+import { getReportGeneratedParams } from '../utils/reportAnalytics';
 import { getCatalogServerByEndpoint } from '../utils/catalogUtils';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
+import { publishedEndpointIdentity } from '../utils/publishedReports';
 import {
   clearHostedOAuthAuthorization,
   loadHostedOAuthAuthorization,
@@ -156,6 +163,44 @@ export const getOAuthTraceForEvaluation = (
     )));
 };
 
+// The pending saved-plan run, when it belongs to the endpoint being retried.
+const savedPlanOptionsFor = (
+  pending: SavedPlanRunRequest | null,
+  endpoint: string | undefined
+): EvaluationOptions | undefined => (
+  pending && pending.endpoint === endpoint ? { savedPlan: pending } : undefined
+);
+
+// What an OAuth redirect keeps of a pending saved-plan run: references only,
+// the plan itself is reloaded from this browser's saved plans on return.
+const savedPlanReturnContext = (pending: SavedPlanRunRequest | null, endpoint: string) => (
+  pending && pending.endpoint === endpoint
+    ? {
+        savedPlanRequest: {
+          id: pending.id,
+          endpoint: pending.endpoint,
+          confirmedUnsafeToolNames: pending.confirmedUnsafeToolNames,
+        },
+      }
+    : {}
+);
+
+const restoreSavedPlanRequest = (value: unknown, endpoint: string): SavedPlanRunRequest | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const { id, endpoint: savedEndpoint, confirmedUnsafeToolNames } = value as Record<string, unknown>;
+  if (typeof id !== 'string' || savedEndpoint !== endpoint) return undefined;
+  const saved = loadSavedTestPlans(endpoint).find((entry) => entry.id === id);
+  if (!saved) return undefined;
+  return {
+    id,
+    endpoint,
+    plan: saved.plan,
+    confirmedUnsafeToolNames: Array.isArray(confirmedUnsafeToolNames)
+      ? confirmedUnsafeToolNames.filter((name): name is string => typeof name === 'string')
+      : [],
+  };
+};
+
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -199,12 +244,17 @@ const ReportView: React.FC = () => {
   const [oauthTrace, setOAuthTrace] = useState<OAuthTraceV1 | undefined>();
   const [reportSnapshots, setReportSnapshots] = useState<ReportSnapshotV1[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  // Endpoint with at least one snapshot published to the Worker; switches badges to the live variant.
+  const [publishedEndpoint, setPublishedEndpoint] = useState<string | null>(null);
 
   // Track if initial report has been triggered
   const [hasInitialized, setHasInitialized] = useState(false);
   const [reportRunnerReady, setReportRunnerReady] = useState(false);
   const isRunningRef = useRef(false);
   const hasProcessedOAuthReturn = useRef(false);
+  // A saved-plan run waiting on target authorization. Authorization retries for
+  // the same endpoint carry it, so the authorized run still executes the plan.
+  const pendingSavedPlanRef = useRef<SavedPlanRunRequest | null>(null);
   const oauthChallengeRef = useRef<{
     authenticationUrl: string;
     resourceMetadataUrl?: string;
@@ -216,7 +266,8 @@ const ReportView: React.FC = () => {
     urlToTest: string,
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext,
-    displayUrl?: string
+    displayUrl?: string,
+    evaluationOptions?: EvaluationOptions
   ) => Promise<void>) | null>(null);
   
   // Log component mount/unmount
@@ -248,6 +299,7 @@ const ReportView: React.FC = () => {
       if (!authLoading && !hasInitialized && handleRunReportRef.current) {
         const state = location.state as { fromOAuthReturn?: boolean; authorizedServerUrl?: string } | null;
         let evaluationUrl = decodedUrl;
+        let evaluationOptions: EvaluationOptions | undefined;
         if (state?.fromOAuthReturn && !hasProcessedOAuthReturn.current) {
           try {
             const saved = JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null');
@@ -256,6 +308,11 @@ const ReportView: React.FC = () => {
               && typeof state.authorizedServerUrl === 'string'
               && saved.serverUrl === state.authorizedServerUrl) {
               evaluationUrl = state.authorizedServerUrl;
+              const savedPlan = restoreSavedPlanRequest(saved.savedPlanRequest, decodedUrl);
+              if (savedPlan) {
+                pendingSavedPlanRef.current = savedPlan;
+                evaluationOptions = { savedPlan };
+              }
               hasProcessedOAuthReturn.current = true;
               sessionStorage.removeItem('oauth_return_view');
               sessionStorage.removeItem('oauth_completed_time');
@@ -265,7 +322,7 @@ const ReportView: React.FC = () => {
           }
         }
         setHasInitialized(true);
-        void handleRunReportRef.current(evaluationUrl, undefined, undefined, decodedUrl);
+        void handleRunReportRef.current(evaluationUrl, undefined, undefined, decodedUrl, evaluationOptions);
       }
     }
   }, [urlParam, authLoading, hasInitialized, serverUrl, reportRunnerReady, location.state]);
@@ -327,7 +384,8 @@ const ReportView: React.FC = () => {
     urlToTest: string,
     targetHeaders?: Record<string, string>,
     authorizationContext?: EvaluationAuthorizationContext,
-    displayUrl = urlToTest
+    displayUrl = urlToTest,
+    evaluationOptions?: EvaluationOptions
   ) => {
     if (isRunning || isRunningRef.current) {
       console.log('[ReportView] Report already running, skipping');
@@ -336,6 +394,7 @@ const ReportView: React.FC = () => {
 
     setIsRunning(true);
     isRunningRef.current = true;
+    if (!evaluationOptions?.savedPlan) pendingSavedPlanRef.current = null;
     setOAuthError(null);
     setReportError(null);
     if (!targetHeaders) {
@@ -367,6 +426,11 @@ const ReportView: React.FC = () => {
     
     try {
       const evaluationStartedAt = Date.now();
+      // Saved-plan options carry the hosted grant; otherwise it is passed on its own.
+      const hostedGrantArgument = (grant: string | null | undefined) => {
+        if (evaluationOptions) return [{ ...evaluationOptions, hostedGrant: grant }];
+        return grant === undefined ? [] : [grant];
+      };
       let reportData: EvaluationReport;
       try {
         reportData = await evaluateServer(
@@ -376,7 +440,7 @@ const ReportView: React.FC = () => {
           oauthAccessToken,
           targetHeaders,
           authorizationContext,
-          hostedGrant
+          ...hostedGrantArgument(hostedGrant)
         );
       } catch (error) {
         if (!hostedGrant || !(error instanceof HostedGrantRejectedError)) throw error;
@@ -390,7 +454,7 @@ const ReportView: React.FC = () => {
           oauthAccessToken,
           targetHeaders,
           authorizationContext,
-          null
+          ...hostedGrantArgument(null)
         );
       }
       if (displayUrl !== urlToTest) {
@@ -412,6 +476,7 @@ const ReportView: React.FC = () => {
         evaluationTrace = getOAuthTraceForEvaluation(reportData, evaluationStartedAt, sessionStorage);
         setOAuthTrace(evaluationTrace);
       }
+      trackEvent('report_generated', getReportGeneratedParams(reportData, evaluationTrace, 'report_page'));
       try {
         const snapshot = createReportSnapshot(reportData, evaluationTrace);
         setReportSnapshots(storeReportSnapshot(snapshot, localStorage));
@@ -422,6 +487,9 @@ const ReportView: React.FC = () => {
       }
       
       addOrUpdateServer(reportData);
+      if (resolveEvaluationOutcome(reportData) !== 'authorization-required' || isProxyAuthenticationRequired(reportData)) {
+        pendingSavedPlanRef.current = null;
+      }
       
       if (resolveEvaluationOutcome(reportData) === 'authorization-required') {
         if (isProxyAuthenticationRequired(reportData)) {
@@ -455,6 +523,7 @@ const ReportView: React.FC = () => {
       setProgress(prev => [...prev, `Error: ${message}`]);
       setReportError(message);
       setReport(null);
+      pendingSavedPlanRef.current = null;
     } finally {
       setIsRunning(false);
       isRunningRef.current = false;
@@ -472,6 +541,7 @@ const ReportView: React.FC = () => {
       activeView: 'report',
       serverUrl: authenticationUrl,
       reportInputUrl: report?.serverUrl || authenticationUrl,
+      ...savedPlanReturnContext(pendingSavedPlanRef.current, report?.serverUrl || authenticationUrl),
       timestamp: Date.now()
     }));
   }, [report?.serverUrl]);
@@ -490,6 +560,7 @@ const ReportView: React.FC = () => {
       const challenge = oauthChallengeRef.current?.authenticationUrl === authenticationUrl
         ? oauthChallengeRef.current
         : undefined;
+      trackOAuthFlow('start', authenticationUrl);
       const result = await beginOAuthFlow(authenticationUrl, {
         ...(challenge?.resourceMetadataUrl
           ? { resourceMetadataUrl: challenge.resourceMetadataUrl }
@@ -514,8 +585,15 @@ const ReportView: React.FC = () => {
         deferAuthorizedTraceOutcome: true,
       });
       if (result === 'AUTHORIZED') {
+        trackOAuthFlow('success', authenticationUrl);
         sessionStorage.removeItem('oauth_return_view');
-        await handleRunReportRef.current?.(authenticationUrl, undefined, undefined, report?.serverUrl);
+        await handleRunReportRef.current?.(
+          authenticationUrl,
+          undefined,
+          undefined,
+          report?.serverUrl,
+          savedPlanOptionsFor(pendingSavedPlanRef.current, report?.serverUrl || authenticationUrl)
+        );
       }
     } catch (error) {
       const prerequisite = getOAuthPrerequisite(error);
@@ -525,6 +603,7 @@ const ReportView: React.FC = () => {
         return;
       }
       const message = error instanceof Error ? error.message : 'Unknown OAuth error';
+      trackOAuthFlow('error', authenticationUrl);
       setOAuthError(`OAuth authorization could not start: ${message}`);
     } finally {
       setOAuthAction(null);
@@ -573,6 +652,16 @@ const ReportView: React.FC = () => {
     }
   }, [currentUser, saveOAuthReturnState]);
 
+  // Published history follows the route's endpoint so a visitor sees the last
+  // published run even before (or without) a live evaluation.
+  const publishedReportEndpoint = report?.serverUrl || (urlParam ? decodeURIComponent(urlParam) : undefined);
+  // Live badge snippets only for the endpoint on screen: the published state is
+  // reported as the Worker's normalized identity, so it is compared with the
+  // current report's identity rather than with the raw endpoint it came from.
+  const liveBadgeEndpoint = report?.serverUrl && publishedEndpoint
+    && publishedEndpoint === publishedEndpointIdentity(report.serverUrl)
+    ? publishedEndpoint
+    : undefined;
   const reportOutcome = report ? resolveEvaluationOutcome(report) : undefined;
   const reportRequiresProxyAuthentication = report
     ? isProxyAuthenticationRequired(report)
@@ -635,7 +724,8 @@ const ReportView: React.FC = () => {
           provenance: 'direct_target',
         },
       },
-      report.serverUrl
+      report.serverUrl,
+      savedPlanOptionsFor(pendingSavedPlanRef.current, report.serverUrl)
     );
   };
 
@@ -658,11 +748,11 @@ const ReportView: React.FC = () => {
       </div>
 
       {testedServers.length > 0 && (
-        <div className="card mb-3">
-          <div className="card-header">
-            <h5 className="mb-0">Previously Tested Servers</h5>
+        <section className="report-section mb-3" aria-labelledby="report-history-servers-title">
+          <div className="report-section-heading">
+            <h5 id="report-history-servers-title" className="mb-0">Previously Tested Servers</h5>
           </div>
-          <div className="card-body">
+          <div className="report-section-body">
             <div className="list-group">
               {testedServers.map((server) => (
                 <div
@@ -696,7 +786,7 @@ const ReportView: React.FC = () => {
               ))}
             </div>
           </div>
-        </div>
+        </section>
       )}
 
       {isRunning && (
@@ -728,12 +818,12 @@ const ReportView: React.FC = () => {
       )}
 
       {progress.length > 0 && !report && !reportError && (
-        <div className="card mb-3">
-          <div className="card-header">Progress</div>
+        <section className="report-section mb-3" aria-label="Progress">
+          <div className="report-section-heading">Progress</div>
           <ul className="list-group list-group-flush">
             {progress.map((p, i) => <li key={i} className="list-group-item">{p}</li>)}
           </ul>
-        </div>
+        </section>
       )}
 
       {!isRunning && !report && progress.length === 0 && !reportError && (
@@ -751,11 +841,11 @@ const ReportView: React.FC = () => {
       )}
 
       {report && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h4 className="report-target-title mb-0">Report for: {report.serverUrl}</h4>
+        <section className="report-section mb-4" aria-labelledby="report-target-title">
+          <div className="report-section-heading">
+            <h4 id="report-target-title" className="report-target-title mb-0">Report for: {report.serverUrl}</h4>
           </div>
-          <div className="card-body">
+          <div className="report-section-body">
             <ReleaseReadinessReport
               report={report}
               oauthTrace={oauthTrace}
@@ -961,13 +1051,34 @@ const ReportView: React.FC = () => {
               </>}
             />
             {!reportRequiresProxyAuthentication && (
-              <ReportBadgeEmbed report={report} oauthTrace={oauthTrace} />
+              <ReportBadgeEmbed
+                report={report}
+                oauthTrace={oauthTrace}
+                publishedEndpoint={liveBadgeEndpoint}
+              />
+            )}
+            {!reportRequiresAuthorization && !reportRequiresProxyAuthentication && (
+              <SavedPlanRunAction
+                endpoint={report.serverUrl}
+                disabled={isRunning}
+                onRun={(savedPlan) => {
+                  pendingSavedPlanRef.current = savedPlan;
+                  void handleRunReport(report.authenticationUrl || report.serverUrl, undefined, undefined, report.serverUrl, { savedPlan });
+                }}
+              />
             )}
             {historyError && <div className="alert alert-warning mt-3" role="alert">{historyError}</div>}
 
           </div>
-        </div>
+        </section>
       )}
+      <PublishedReportHistory
+        endpoint={publishedReportEndpoint}
+        report={report && !reportRequiresProxyAuthentication ? report : null}
+        oauthTrace={oauthTrace}
+        canPublish={!isRunning}
+        onPublishedStateChange={setPublishedEndpoint}
+      />
       <ReportHistory
         endpoint={report?.serverUrl}
         snapshots={reportSnapshots}
@@ -1015,7 +1126,8 @@ const ReportView: React.FC = () => {
                 ),
               },
               undefined,
-              report?.serverUrl
+              report?.serverUrl,
+              savedPlanOptionsFor(pendingSavedPlanRef.current, report?.serverUrl || configuredServerUrl)
             );
           } : undefined}
           onBeforeHostedAuthorization={() => saveOAuthReturnState(oauthConfigServerUrl)}
