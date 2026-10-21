@@ -69,7 +69,7 @@ mcptest.io is our product. Glama's features below were checked against its inspe
 
 ## Connection paths
 
-Glama's page says it can "Connect through the built-in proxy, or directly to servers that allow browser requests." It does not say when each path is used or show which one a connection took. Its FAQ separately states that inspector requests go from your browser to the MCP server without Glama logging them. Glama can also reach a server on your own machine: `npx mcp-proxy --port 8080 --tunnel` exposes it at a public tunnel URL.
+Glama's page says it can "Connect through the built-in proxy, or directly to servers that allow browser requests." It does not say when each path is used or show which one a connection took. Its FAQ separately states that inspector requests go from your browser to the MCP server without Glama logging them. Glama can also reach a server on your own machine: `npx mcp-proxy --port 8080 --tunnel -- tsx server.ts` exposes it at a public tunnel URL. Replace `tsx server.ts` with the command that starts your own server.
 
 mcptest.io always tries a direct connection from your browser first. If the browser blocks it, the failure is recorded and the connection is retried through mcptest.io's CORS proxy, and the report notes which path succeeded. Anonymous proxy use is rate-limited; signing in raises the limits. mcptest.io has no tunnel, so it cannot test a local stdio server.
 
