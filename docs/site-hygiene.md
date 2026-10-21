@@ -34,6 +34,21 @@ This repository does not change the origin. The common single-page-app setting `
 root /path/to/dist;
 error_page 404 /404.html;
 
+# .html spellings of a page (/index.html, /catalog.html, /learn/index.html,
+# /learn/<slug>/index.html, /servers/<id>/index.html) redirect to its canonical
+# URL. Served as files, the app would mount at the alias and show NotFound with
+# a 200. $request_uri is the client's path, so the internal redirects to
+# /index.html and /404.html below are not affected.
+if ($request_uri ~ "^/index\.html(?:\?|$)")                  { return 301 /$is_args$args; }
+if ($request_uri ~ "^(/servers/[^/?]+/)index\.html(?:\?|$)") { return 301 $1$is_args$args; }
+if ($request_uri ~ "^(/servers/[^/?]+)\.html(?:\?|$)")       { return 301 $1/$is_args$args; }
+if ($request_uri ~ "^(?!/(?:404\.html|server/|call/|space/|report/))(/[^?]+?)(?:/index)?\.html(?:\?|$)") {
+    return 301 $1$is_args$args;
+}
+
+# The error page is not a page of its own: a direct request gets a 404.
+location = /404.html { internal; }
+
 # Files, directory indexes (/learn/<slug>/index.html) and .html siblings
 # (/catalog -> catalog.html). Nothing else: an unknown path is a 404.
 location / {
@@ -53,11 +68,13 @@ location ^~ /report/            { try_files $uri $uri/ /index.html; }
 
 The app-only routes change rarely: only when `EXACT_APP_ROUTES` or `APP_ROUTE_PREFIXES` in `src/utils/appRoutes.ts` changes. Compare `dist/routes.txt` with the `location` blocks after such a change. New guides and catalog servers need no origin change, because they are files.
 
-Check the result with `curl -sI https://mcptest.io/no-such-page` (expect `404`) and `curl -sI https://mcptest.io/report` (expect `200`).
+Check the result with `curl -sI https://mcptest.io/no-such-page` (expect `404`), `curl -sI https://mcptest.io/report` (expect `200`) and `curl -sI https://mcptest.io/catalog.html` (expect `301` to `/catalog`).
+
+The app redirects the same spellings itself before it mounts (`canonicalAliasPath` in `src/utils/appRoutes.ts`, applied in `src/main.tsx`), along with a trailing slash the canonical URL lacks (`/catalog/`). A host that serves an alias without redirecting it still shows the page, not `NotFound`.
 
 If the site is ever served by Cloudflare Pages instead, note that Pages serves a top-level `404.html` with a `404` status for every path without a file, app routes included. Add a `_redirects` file that rewrites the app-only routes to the shell (`/report /index.html 200`, `/server/* /index.html 200`, and so on for each line of `routes.txt` that has no file).
 
-`npm run test:e2e` serves `dist/` with `tests/e2e/static-server.mjs`, which follows the same rules: files first, the shell for `routes.txt`, `404.html` with a `404` for the rest.
+`npm run test:e2e` serves `dist/` with `tests/e2e/static-server.mjs`, which follows the same rules: `.html` spellings redirect to the canonical route, then files, the shell for `routes.txt`, and `404.html` with a `404` for the rest (a direct `/404.html` included).
 
 ## Internal link checker
 

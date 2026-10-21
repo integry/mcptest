@@ -38,6 +38,23 @@ export const isKnownAppPath = (pathname: string): boolean => {
   );
 };
 
+/**
+ * The canonical path for another spelling of a page the host serves as a
+ * file: `/index.html`, `/catalog.html`, `/learn/<slug>/index.html`,
+ * `/servers/<id>/index.html`, or a trailing slash the canonical URL does not
+ * have (`/catalog/`). Null when `pathname` is canonical, an app-only route, or
+ * no page's spelling. main.tsx replaces the URL with it before the app mounts,
+ * so a served alias shows its page instead of a 200 NotFound.
+ */
+export const canonicalAliasPath = (pathname: string): string | null => {
+  if (APP_ROUTE_PREFIXES.some(prefix => pathname.startsWith(prefix))) return null;
+  let target = pathname.replace(/\/index\.html$/, '/').replace(/\.html$/, '');
+  // Server pages end in a slash (/servers/<id>/); every other page does not.
+  if (/^\/servers\/[^/]+\/?$/.test(target)) target = target.replace(/\/?$/, '/');
+  else if (target.length > 1) target = target.replace(/\/+$/, '');
+  return target !== pathname && isKnownAppPath(target) ? target : null;
+};
+
 /** Where a reader who followed a dead link most likely wanted to go (NotFound and dist/404.html). */
 export const NOT_FOUND_LINKS = [
   { path: '/', label: 'Open the playground', description: 'Connect to a remote MCP server and inspect it.' },

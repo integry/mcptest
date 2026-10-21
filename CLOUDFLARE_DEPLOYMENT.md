@@ -171,6 +171,8 @@ The build writes `dist/404.html` (noindex) and `dist/routes.txt`, which lists ev
 
 ```nginx
 error_page 404 /404.html;
+location = /404.html { internal; }
+# .html spellings (/index.html, /catalog.html, .../index.html) 301 to the canonical URL; see docs/site-hygiene.md
 location / { try_files $uri $uri/index.html $uri.html =404; }
 location = /report { try_files $uri $uri/ /index.html; }
 location ^~ /server/ { try_files $uri $uri/ /index.html; }

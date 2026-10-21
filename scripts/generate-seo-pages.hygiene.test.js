@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import seoGenerator from './generate-seo-pages.js';
 import { parseHtml, parseRoutes } from './check-links.mjs';
-import { NOT_FOUND_LINKS, isKnownAppPath } from '../src/utils/appRoutes';
+import { NOT_FOUND_LINKS, canonicalAliasPath, isKnownAppPath } from '../src/utils/appRoutes';
 
 const {
   canonicalUrlFor, getSitemapEntries, loadArticles, render404Html, renderRobotsTxt, renderRoutesTxt,
@@ -113,5 +113,42 @@ describe('isKnownAppPath', () => {
     '/index.html', '/wp-admin', '/docs/',
   ])('does not know %s', pathname => {
     expect(isKnownAppPath(pathname)).toBe(false);
+  });
+});
+
+describe('canonicalAliasPath', () => {
+  // Spellings the host serves as a file (or the shell): the app must show the page, not NotFound.
+  it.each([
+    ['/index.html', '/'],
+    ['/catalog.html', '/catalog'],
+    ['/catalog/', '/catalog'],
+    ['/learn/', '/learn'],
+    ['/learn/index.html', '/learn'],
+    ['/learn/what-is-mcp/', '/learn/what-is-mcp'],
+    ['/learn/what-is-mcp/index.html', '/learn/what-is-mcp'],
+    ['/learn/what-is-mcp.html', '/learn/what-is-mcp'],
+    ['/docs/privacy-policy/index.html', '/docs/privacy-policy'],
+    ['/servers/github/index.html', '/servers/github/'],
+    ['/servers/github.html', '/servers/github/'],
+    ['/servers/github', '/servers/github/'],
+  ])('redirects %s to %s', (alias, canonical) => {
+    expect(canonicalAliasPath(alias)).toBe(canonical);
+    expect(isKnownAppPath(canonical)).toBe(true);
+    expect(canonicalAliasPath(canonical)).toBeNull();
+  });
+
+  it.each([
+    '/', '/catalog', '/learn/what-is-mcp', '/servers/github/', '/404.html', '/nope.html', '/docs/', '/report/',
+    '/server/https://example.com/mcp.html', '/call/https://example.com/mcp/', '/space/x/index.html',
+  ])('leaves %s alone', pathname => {
+    expect(canonicalAliasPath(pathname)).toBeNull();
+  });
+
+  it('maps the .html spelling of every prerendered page in routes.txt back to it', () => {
+    const pagePaths = ['/', '/catalog', '/learn', '/learn/what-is-mcp', '/docs/privacy-policy', '/servers/github/'];
+    for (const route of [...parseRoutes(renderRoutesTxt(pagePaths)).exact].filter(route => pagePaths.includes(route))) {
+      const file = route === '/' ? '/index.html' : route === '/catalog' ? '/catalog.html' : `${route.replace(/\/$/, '')}/index.html`;
+      expect(canonicalAliasPath(file), file).toBe(route);
+    }
   });
 });

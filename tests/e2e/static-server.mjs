@@ -2,9 +2,10 @@
 
 /**
  * Serves a built dist/ directory the way the production host resolves paths:
- * the file itself, a directory index, a `.html` sibling, then the SPA shell
- * for the app routes in dist/routes.txt, and dist/404.html with a 404 status
- * for anything else (see docs/site-hygiene.md).
+ * `.html` spellings of a page redirect to its canonical route, then the file
+ * itself, a directory index, a `.html` sibling, then the SPA shell for the app
+ * routes in dist/routes.txt, and dist/404.html with a 404 status for anything
+ * else (see docs/site-hygiene.md).
  * Text assets are gzip-compressed and hashed assets are cached like they are
  * in production, so Lighthouse measures the shipped bundle rather than an
  * uncompressed dev server.
@@ -47,12 +48,29 @@ function loadAppRoutes(root) {
   const lines = fs.readFileSync(routesPath, 'utf8').split('\n').map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
   const exact = new Set(lines.filter(line => !line.endsWith('/*')));
   const prefixes = lines.filter(line => line.endsWith('/*')).map(line => line.slice(0, -1));
-  return pathname => exact.has(pathname) || prefixes.some(prefix => pathname.startsWith(prefix) && pathname.length > prefix.length);
+  return {
+    isAppRoute: pathname => exact.has(pathname) || prefixes.some(prefix => pathname.startsWith(prefix) && pathname.length > prefix.length),
+    isExactRoute: pathname => exact.has(pathname),
+  };
+}
+
+/**
+ * The route an `.html` spelling of a prerendered page redirects to
+ * (/index.html -> /, /catalog.html -> /catalog, /servers/<id>/index.html ->
+ * /servers/<id>/), or null. Served as the file, the app would mount at the
+ * alias and show NotFound with a 200.
+ */
+function htmlAliasTarget(pathname, isExactRoute) {
+  if (!pathname.endsWith('.html')) return null;
+  const stripped = pathname.replace(/\/index\.html$/, '/').replace(/\.html$/, '');
+  return [stripped, stripped.replace(/(.)\/$/, '$1'), `${stripped}/`]
+    .find(candidate => candidate !== pathname && isExactRoute(candidate)) ?? null;
 }
 
 export function createStaticServer(distDir) {
   const root = path.resolve(distDir);
-  const isAppRoute = loadAppRoutes(root);
+  const routes = loadAppRoutes(root);
+  const isAppRoute = routes?.isAppRoute;
   const notFoundPage = path.join(root, '404.html');
   const isFile = candidate => candidate.startsWith(root) && fs.existsSync(candidate) && fs.statSync(candidate).isFile();
   const resolve = (pathname) => {
@@ -66,13 +84,22 @@ export function createStaticServer(distDir) {
 
   return http.createServer((request, response) => {
     let pathname;
+    let search;
     try {
-      pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+      const url = new URL(request.url, 'http://localhost');
+      pathname = decodeURIComponent(url.pathname);
+      search = url.search;
     } catch {
       response.writeHead(400).end();
       return;
     }
-    const resolved = resolve(pathname);
+    const aliasTarget = routes && htmlAliasTarget(pathname, routes.isExactRoute);
+    if (aliasTarget) {
+      response.writeHead(301, { Location: `${aliasTarget}${search}`, 'Cache-Control': 'public, max-age=0, must-revalidate' }).end();
+      return;
+    }
+    // 404.html is the error page, not a page of its own: a direct request is a 404 too.
+    const resolved = routes && pathname === '/404.html' ? null : resolve(pathname);
     // Without a routes.txt (an older build) every unknown path gets the shell.
     const notFound = !resolved && isAppRoute && !isAppRoute(pathname) && fs.existsSync(notFoundPage);
     const file = resolved || (notFound ? notFoundPage : path.join(root, 'index.html'));
