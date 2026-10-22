@@ -4549,5 +4549,49 @@
     "homepageUrl": "https://browser-use.com",
     "sourceUrl": "https://github.com/browser-use/browser-use",
     "caveats": ["Initialization succeeded without credentials in the 2026-10-20 audit; tool calls require the API key."]
+  },
+  {
+    "id": "contextqa",
+    "name": "ContextQA",
+    "url": "https://mcp.contextqa.com/mcp",
+    "description": "Create and run end-to-end tests and investigate failures through the hosted ContextQA MCP server. Requires a ContextQA account and OAuth browser sign-in.",
+    "category": "Developer Tools",
+    "tags": [
+      "testing",
+      "end-to-end",
+      "automation",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://mcp.contextqa.com/docs"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false,
+        "redirectUrls": {}
+      },
+      "reviewedAt": "2026-10-22",
+      "evidenceUrl": "https://mcp.contextqa.com/docs"
+    },
+    "caveats": [
+      "Create a ContextQA account at https://ship.contextqa.com/ for credentials/API-token access; MCP sign-in follows the OAuth documentation. Hosted mcptest OAuth registration has not been tested."
+    ],
+    "logoUrl": "/server-logos/contextqa.svg",
+    "logoSourceUrl": "https://raw.githubusercontent.com/indivatools/contextqa-skills/4a67f1b297ba18f8253eaaf0f2195437965715b8/assets/contextqa-logo-square.svg",
+    "logoSourceKind": "publisher-repository",
+    "logoRetrievedAt": "2026-10-22",
+    "logoLicenseNote": "ContextQA mark from the publisher repository; trademark rights remain with ContextQA.",
+    "homepageUrl": "https://mcp.contextqa.com/docs"
   }
 ]
