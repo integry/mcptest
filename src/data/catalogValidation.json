@@ -3002,5 +3002,19 @@
     "authorizationServers": [
       "https://api.browser-use.com"
     ]
+  },
+  {
+    "serverId": "contextqa",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-22T22:55:36.978Z",
+    "message": "Authentication challenge at https://mcp.contextqa.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.contextqa.com/mcp",
+    "authorizationServers": [
+      "https://mcp.contextqa.com/"
+    ]
   }
 ]
