@@ -3002,5 +3002,17 @@
     "authorizationServers": [
       "https://api.browser-use.com"
     ]
+  },
+  {
+    "serverId": "flickdirect",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-10-23T18:56:22.554Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://connect.flickdirect.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://connect.flickdirect.com/mcp",
+    "protocolVersion": "2026-07-28"
   }
 ]

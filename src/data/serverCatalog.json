@@ -4549,5 +4549,42 @@
     "homepageUrl": "https://browser-use.com",
     "sourceUrl": "https://github.com/browser-use/browser-use",
     "caveats": ["Initialization succeeded without credentials in the 2026-10-20 audit; tool calls require the API key."]
+  },
+  {
+    "id": "flickdirect",
+    "name": "FlickDirect Connect: Movie MCP Server",
+    "url": "https://connect.flickdirect.com/mcp",
+    "description": "Read-only movie MCP server for FlickDirect movie and TV facts, available country dates and ratings, site-wide news and review previews, podcasts, streaming and deals. Free access with no authentication.",
+    "seoDescription": "Free Movie MCP Server from FlickDirect Connect for movie facts, news, reviews, regional release dates and ratings, podcasts and original coverage links.",
+    "category": "Search",
+    "tags": [
+      "movies",
+      "television",
+      "movie-mcp-server",
+      "entertainment",
+      "news",
+      "reviews",
+      "podcasts",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://flickdirect.com/connect.aspx"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/flickdirect.png",
+    "logoSourceUrl": "https://github.com/nrose101/flickdirect-movie-mcp-server/blob/master/assets/logo.png",
+    "logoSourceKind": "publisher-repository",
+    "logoRetrievedAt": "2026-10-23",
+    "logoLicenseNote": "Official FlickDirect mark supplied by FlickDirect Inc. to identify its connector. Trademark rights remain with FlickDirect Inc.",
+    "homepageUrl": "https://flickdirect.com/connect.aspx",
+    "sourceUrl": "https://github.com/nrose101/flickdirect-movie-mcp-server",
+    "caveats": [
+      "Returns bounded source previews and links, not complete articles, reviews or transcripts. Editorial photos are linked through their containing pages.",
+      "Missing country dates and ratings are omitted. Some AI clients require a tool-schema refresh after server updates."
+    ]
   }
 ]
