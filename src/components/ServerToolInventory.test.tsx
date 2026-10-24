@@ -107,6 +107,29 @@ describe('ServerToolInventory', () => {
     expect(container.textContent).toContain('topic: any');
   });
 
+  it('keeps incomplete resource-template discovery visible next to a bounded resource list', () => {
+    const container = render(<ServerToolInventory server={server({
+      capabilityInventory: {
+        ...inventory,
+        resources: {
+          status: 'partial', observedCount: 2, retainedCount: 1,
+          omittedCount: 1, paginationComplete: true, items: [{ name: 'Public records' }],
+        },
+        resourceTemplates: {
+          status: 'partial', observedCount: 1, retainedCount: 1,
+          omittedCount: 0, paginationComplete: false, items: [{ name: 'Record template' }],
+        },
+      },
+    })} />);
+    const note = (id: string) => container
+      .querySelector(`section[aria-labelledby="${id}"] .server-tool-inventory-note`)?.textContent;
+
+    expect(container.querySelector('#server-tool-inventory-resources')?.textContent).toBe('Resources 2');
+    expect(note('server-tool-inventory-resources')).toBe('1 of 2 shown; 1 omitted to keep the page bounded.');
+    expect(container.querySelector('#server-tool-inventory-resource-templates')?.textContent).toBe('Resource templates 1');
+    expect(note('server-tool-inventory-resource-templates')).toBe('Partial listing: 1 of 1 shown; more may exist.');
+  });
+
   it('says an inventory needs authorization instead of showing nothing for credentialed servers', () => {
     const container = render(<ServerToolInventory server={server({ authType: 'oauth', name: 'Locked' })} />);
     const note = container.querySelector('.server-tool-inventory-missing');

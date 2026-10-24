@@ -1,6 +1,7 @@
 import React from 'react';
 import type {
   CapabilityInventoryArgumentV1,
+  CapabilityInventoryResourceV1,
   CapabilityInventorySectionV1,
   CapabilityInventoryV1,
 } from '../types/capabilityInventory';
@@ -74,17 +75,36 @@ const SectionHeading: React.FC<{ id: string; label: string; section: CapabilityI
   );
 };
 
+/** Resources and resource templates are listed by separate discovery calls, so each keeps its own completeness note. */
+const ResourceSection: React.FC<{
+  id: string;
+  label: string;
+  section: CapabilityInventorySectionV1<CapabilityInventoryResourceV1>;
+}> = ({ id, label, section }) => (section.items.length > 0 ? (
+  <section aria-labelledby={id}>
+    <SectionHeading id={id} label={label} section={section} />
+    <ul className="server-tool-list">
+      {section.items.map((resource, index) => (
+        <li key={`${resource.name}-${index}`} className="server-tool-row">
+          <div className="server-tool-title">
+            <code className="server-tool-name">{resource.name}</code>
+            {resource.mimeType && <span className="server-tool-output">{resource.mimeType}</span>}
+          </div>
+          {(resource.title || resource.description) && (
+            <p className="server-tool-description">
+              {[resource.title, resource.description].filter(Boolean).join(' — ')}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  </section>
+) : null);
+
 const InventoryBody: React.FC<{ inventory: CapabilityInventoryV1; serverName: string }> = ({
   inventory,
   serverName,
 }) => {
-  const resources = [...inventory.resources.items, ...inventory.resourceTemplates.items];
-  const resourceSection = {
-    ...inventory.resources,
-    observedCount: inventory.resources.observedCount + inventory.resourceTemplates.observedCount,
-    retainedCount: resources.length,
-    omittedCount: inventory.resources.omittedCount + inventory.resourceTemplates.omittedCount,
-  };
   return (
     <>
       <p className="server-tool-inventory-provenance">
@@ -119,26 +139,12 @@ const InventoryBody: React.FC<{ inventory: CapabilityInventoryV1; serverName: st
         )}
       </section>
 
-      {resources.length > 0 && (
-        <section aria-labelledby="server-tool-inventory-resources">
-          <SectionHeading id="server-tool-inventory-resources" label="Resources" section={resourceSection} />
-          <ul className="server-tool-list">
-            {resources.map((resource, index) => (
-              <li key={`${resource.name}-${index}`} className="server-tool-row">
-                <div className="server-tool-title">
-                  <code className="server-tool-name">{resource.name}</code>
-                  {resource.mimeType && <span className="server-tool-output">{resource.mimeType}</span>}
-                </div>
-                {(resource.title || resource.description) && (
-                  <p className="server-tool-description">
-                    {[resource.title, resource.description].filter(Boolean).join(' — ')}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <ResourceSection id="server-tool-inventory-resources" label="Resources" section={inventory.resources} />
+      <ResourceSection
+        id="server-tool-inventory-resource-templates"
+        label="Resource templates"
+        section={inventory.resourceTemplates}
+      />
 
       {inventory.prompts.items.length > 0 && (
         <section aria-labelledby="server-tool-inventory-prompts">

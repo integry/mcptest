@@ -326,7 +326,8 @@ describe('generated page metadata', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).toContain('Tools provided by Example Server');
-    expect(html).toContain('id="server-tool-inventory-resources" class="server-tool-inventory-heading">Resources <span class="server-tool-inventory-count">2</span>');
+    expect(html).toContain('id="server-tool-inventory-resources" class="server-tool-inventory-heading">Resources <span class="server-tool-inventory-count">1</span>');
+    expect(html).toContain('id="server-tool-inventory-resource-templates" class="server-tool-inventory-heading">Resource templates <span class="server-tool-inventory-count">1</span>');
     expect(html).toContain('Record template');
     expect(html).toContain('id="server-tool-inventory-prompts" class="server-tool-inventory-heading">Prompts');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
@@ -439,9 +440,11 @@ describe('generated page metadata', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('Some details were sanitized for public display.');
-    expect(html).toContain('2 of 3 shown; 1 omitted to keep the page bounded.');
-    expect(html.match(/Partial listing:/g)).toBeNull();
+    const section = (id) => html.slice(html.indexOf(`<section aria-labelledby="${id}">`)).split('</section>')[0];
+    expect(section('server-tool-inventory-tools')).toContain('Some details were sanitized for public display.');
+    expect(section('server-tool-inventory-resources')).toContain('1 of 2 shown; 1 omitted to keep the page bounded.');
+    expect(section('server-tool-inventory-resource-templates')).toContain('Partial listing: 1 of 1 shown; more may exist.');
+    expect(html.match(/Partial listing:/g)).toHaveLength(1);
     expect(html).not.toContain('id="server-tool-inventory-prompts"');
   });
 

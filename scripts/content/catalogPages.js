@@ -247,6 +247,19 @@ function renderRow(name, extra, description, body = '') {
 }
 
 /** The server page's tool inventory section, as ServerToolInventory renders it. */
+// Resources and resource templates come from separate discovery calls, so
+// each keeps its own completeness note.
+function renderResourceSection(id, label, section) {
+  if (!section.items.length) return [];
+  return [
+    `    <section aria-labelledby="${id}">${renderSectionHeading(id, label, section)}<ul class="server-tool-list">${section.items.map(resource => renderRow(
+      resource.name,
+      resource.mimeType ? `<span class="server-tool-output">${escapeHtml(resource.mimeType)}</span>` : '',
+      [resource.title, resource.description].filter(Boolean).join(' — ')
+    )).join('')}</ul></section>`,
+  ];
+}
+
 function renderToolInventory(server) {
   const inventory = server.capabilityInventory;
   const heading = [
@@ -261,13 +274,6 @@ function renderToolInventory(server) {
       '  </div></section>',
     ].join('\n');
   }
-  const resources = [...inventory.resources.items, ...inventory.resourceTemplates.items];
-  const resourceSection = {
-    ...inventory.resources,
-    observedCount: inventory.resources.observedCount + inventory.resourceTemplates.observedCount,
-    retainedCount: resources.length,
-    omittedCount: inventory.resources.omittedCount + inventory.resourceTemplates.omittedCount,
-  };
   const tools = inventory.tools.items.length
     ? `<ul class="server-tool-list">${inventory.tools.items.map(tool => renderRow(
       tool.name,
@@ -280,13 +286,8 @@ function renderToolInventory(server) {
     ...heading,
     `    <p class="server-tool-inventory-provenance">What the catalog validator observed on <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(formatSnapshotDate(inventory.observedAt))}</time> at <code class="technical-string technical-string-url technical-string-inline">${escapeHtml(inventory.provenance.testedEndpoint)}</code>${inventory.authentication === 'authenticated' ? ' with credentials' : ' without credentials'}. The live server may have changed since; connect in the Playground for the current list.</p>`,
     `    <section aria-labelledby="server-tool-inventory-tools">${renderSectionHeading('server-tool-inventory-tools', `Tools provided by ${server.name}`, inventory.tools)}${tools}</section>`,
-    ...(resources.length ? [
-      `    <section aria-labelledby="server-tool-inventory-resources">${renderSectionHeading('server-tool-inventory-resources', 'Resources', resourceSection)}<ul class="server-tool-list">${resources.map(resource => renderRow(
-        resource.name,
-        resource.mimeType ? `<span class="server-tool-output">${escapeHtml(resource.mimeType)}</span>` : '',
-        [resource.title, resource.description].filter(Boolean).join(' — ')
-      )).join('')}</ul></section>`,
-    ] : []),
+    ...renderResourceSection('server-tool-inventory-resources', 'Resources', inventory.resources),
+    ...renderResourceSection('server-tool-inventory-resource-templates', 'Resource templates', inventory.resourceTemplates),
     ...(inventory.prompts.items.length ? [
       `    <section aria-labelledby="server-tool-inventory-prompts">${renderSectionHeading('server-tool-inventory-prompts', 'Prompts', inventory.prompts)}<ul class="server-tool-list">${inventory.prompts.items.map(prompt => renderRow(
         prompt.name,
