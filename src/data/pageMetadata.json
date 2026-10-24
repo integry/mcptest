@@ -12,6 +12,12 @@
     "description": "Practical, source-backed guides for choosing MCP clients, connecting remote servers, understanding OAuth, and operating trustworthy production MCP systems.",
     "summary": "Evergreen guides for evaluating, connecting, building, and operating Model Context Protocol integrations."
   },
+  "tools": {
+    "breaking-changes": {
+      "title": "MCP Breaking Change Checker for tools/list | mcptest.io",
+      "description": "Free MCP breaking-change check. Compare two tools/list results and see which changes break clients that cached the old schema: removed tools, new required inputs, narrowed types and output contracts."
+    }
+  },
   "docs": {
     "privacy-policy": {
       "title": "Privacy Policy | mcptest.io",

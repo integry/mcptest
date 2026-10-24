@@ -30,7 +30,9 @@ describe('sitemap entries', () => {
 
   it('lists each page once', () => {
     expect(byPath.size).toBe(entries.length);
-    expect(entries).toHaveLength(3 + articles.length + 2 + servers.length);
+    // Home, catalog, learn, the breaking-change tool, articles, docs, servers.
+    expect(entries).toHaveLength(4 + articles.length + 2 + servers.length);
+    expect(byPath.has('/tools/breaking-changes')).toBe(true);
   });
 
   it('dates articles by lastReviewed and servers by their latest validation, never by the build', () => {

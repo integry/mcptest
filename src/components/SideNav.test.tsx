@@ -137,6 +137,7 @@ describe('SideNav information architecture', () => {
       ['Playground', '/'],
       ['Catalog', '/catalog'],
       ['Reports', '/report'],
+      ['Breaking changes', '/tools/breaking-changes'],
     ]);
     expect(container.querySelector('a[href="/catalog"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/catalog"]')?.getAttribute('aria-current')).toBe('page');

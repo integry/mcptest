@@ -17,10 +17,50 @@ export type { PublishedReportEntry, PublishedReportSummary } from './publishedRe
 
 export const PUBLISHED_REPORT_REMOVAL_TOKENS_KEY = 'mcpPublishedReportRemovalTokensV1';
 
+/** One stored change of the weekly watch, as the Worker's index exposes it. */
+export interface PublishedWatchChange {
+  id: string;
+  observedAt: string;
+  contentHash: string;
+  toolCount: number;
+  summary: string;
+  baseline?: boolean;
+  severity?: 'breaking' | 'risky' | 'safe';
+  counts?: { breaking: number; risky: number; safe: number };
+  findingCount?: number;
+}
+
+export interface PublishedWatchState {
+  state: 'baseline' | 'unchanged' | 'breaking' | 'risky' | 'safe' | 'auth-required' | 'unreachable' | 'error' | 'skipped';
+  checkedAt: string;
+  changedAt?: string;
+  summary?: string;
+  message?: string;
+}
+
+/** The weekly watch of an endpoint (cloudflare-worker/src/weeklyWatch.js). */
+export interface PublishedWatchSummary {
+  enabled: boolean;
+  plan?: string;
+  optedInAt?: string;
+  state: PublishedWatchState | null;
+  lastChange: PublishedWatchChange | null;
+  changesFeedUrl: string;
+}
+
+/** The outcome of turning the watch on or off; `reason` explains a refusal. */
+export interface PublishedWatchToggle {
+  enabled: boolean;
+  plan?: string;
+  interval?: string;
+  reason?: string;
+}
+
 export interface PublishedReportIndex {
   endpoint: string;
   retention: number;
   snapshots: PublishedReportEntry[];
+  watch?: PublishedWatchSummary;
 }
 
 export interface PublishReportResult {
@@ -34,6 +74,8 @@ export interface PublishReportResult {
   snapshotCount: number;
   retention: number;
   removalToken?: string;
+  watch?: PublishedWatchToggle;
+  changesFeedUrl?: string;
 }
 
 export class PublishedReportError extends Error {
@@ -132,6 +174,7 @@ export const fetchPublishedReportIndex = async (
     endpoint: body.endpoint,
     retention: body.retention,
     snapshots: Array.isArray(body.snapshots) ? body.snapshots : [],
+    ...(body.watch ? { watch: body.watch } : {}),
   };
 };
 
@@ -156,12 +199,12 @@ export const fetchPublishedReport = async (
 
 export const publishReport = async (
   artifactJson: string,
-  options: RequestOptions = {}
+  options: RequestOptions & { watchWeekly?: boolean } = {}
 ): Promise<PublishReportResult> => {
   const base = resolveBase(options);
   if (!base) throw new PublishedReportError('Published reports are not configured.', 0, 'not_configured');
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(`${base}/r`, {
+  const response = await fetchImpl(`${base}/r${options.watchWeekly ? '?watch=weekly' : ''}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: artifactJson,
@@ -183,6 +226,25 @@ export const deletePublishedReport = async (
     headers: { 'X-Removal-Token': removalToken, Accept: 'application/json' },
   });
   if (!response.ok && response.status !== 404) throw await readError(response);
+};
+
+/** Turns the weekly watch on or off; any snapshot's removal token authorizes it. */
+export const setPublishedReportWatch = async (
+  id: string,
+  removalToken: string,
+  watch: boolean,
+  options: RequestOptions = {}
+): Promise<PublishedWatchToggle> => {
+  const base = resolveBase(options);
+  if (!base) throw new PublishedReportError('Published reports are not configured.', 0, 'not_configured');
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const response = await fetchImpl(`${base}/r/${encodeURIComponent(id)}/watch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Removal-Token': removalToken, Accept: 'application/json' },
+    body: JSON.stringify({ watch }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json() as { watch: PublishedWatchToggle }).watch;
 };
 
 type TokenStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;

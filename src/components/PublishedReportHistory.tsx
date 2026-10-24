@@ -3,6 +3,9 @@ import type { EvaluationReport } from '../utils/evaluation';
 import type { OAuthTraceV1 } from '../utils/oauthTrace';
 import type { PublicReport } from '../utils/reportArtifact';
 import { diffPublicReports } from '../utils/reportDiff';
+import { classifyBreakingChanges, toolSurfaceFromInterfaceSnapshot } from '../utils/breakingChanges';
+import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
+import { interfaceSnapshotFromReport } from '../utils/interfaceSnapshot';
 import { getReportUrl } from '../utils/badges';
 import {
   PublishedReportError,
@@ -16,12 +19,14 @@ import {
   publishReport,
   publishedEndpointIdentity,
   saveRemovalToken,
+  setPublishedReportWatch,
   type PublishReportResult,
   type PublishedReportEntry,
   type PublishedReportIndex,
   type PublishedReportSummary,
 } from '../utils/publishedReports';
 import ReportDiffChanges from './ReportDiffChanges';
+import BreakingChangeFindings from './BreakingChangeFindings';
 import './PublishedReportHistory.css';
 
 interface PublishedReportHistoryProps {
@@ -99,6 +104,10 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
   // A failed comparison is scoped to the pair it was for, so reselecting a pair
   // whose artifacts are already cached renders its diff instead of a stale error.
   const [diffFailure, setDiffFailure] = useState<{ before: string; after: string; message: string } | null>(null);
+  const [latestPairFailure, setLatestPairFailure] = useState<string | null>(null);
+  const [watchWeekly, setWatchWeekly] = useState(false);
+  const [watchUpdating, setWatchUpdating] = useState(false);
+  const [watchError, setWatchError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
   const requestVersion = useRef(0);
@@ -144,6 +153,8 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     setCompare(null);
     setArtifacts({});
     setDiffFailure(null);
+    setLatestPairFailure(null);
+    setWatchError(null);
     // Nothing published is known for this identity until its index arrives, so
     // the parent must not keep showing another endpoint's published state.
     onPublishedStateChangeRef.current?.(null);
@@ -207,6 +218,46 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     return before && after ? diffPublicReports(before, after) : undefined;
   }, [compare, artifacts]);
 
+  // "Changes since the previous snapshot" always compares the two newest runs,
+  // whatever pair the drift comparison below has selected.
+  const latestPair = snapshots.length >= 2 ? { before: snapshots[1].id, after: snapshots[0].id } : null;
+  const latestPairKey = latestPair ? `${latestPair.before}:${latestPair.after}` : '';
+  const compareIsLatestPair = Boolean(compare && latestPair
+    && compare.before === latestPair.before && compare.after === latestPair.after);
+
+  useEffect(() => {
+    // The comparison effect above already loads the default pair.
+    if (!latestPair || compareIsLatestPair) return;
+    const missing = [latestPair.before, latestPair.after].filter((id) => !artifacts[id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    setLatestPairFailure(null);
+    void Promise.all(missing.map(async (id) => [id, await fetchPublishedReport(id)] as const))
+      .then((loaded) => {
+        if (!cancelled) setArtifacts((current) => ({ ...current, ...Object.fromEntries(loaded) }));
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setLatestPairFailure(`The snapshots could not be compared: ${errorMessage(error)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // latestPairKey stands for latestPair.
+  }, [latestPairKey, compareIsLatestPair, artifacts]);
+
+  const interfaceChanges = useMemo(() => {
+    if (!latestPair) return undefined;
+    const before = artifacts[latestPair.before];
+    const after = artifacts[latestPair.after];
+    if (!before || !after) return undefined;
+    const left = toolSurfaceFromInterfaceSnapshot(interfaceSnapshotFromReport(before));
+    const right = toolSurfaceFromInterfaceSnapshot(interfaceSnapshotFromReport(after));
+    return left && right ? classifyBreakingChanges(left, right) : null;
+    // latestPairKey stands for latestPair.
+  }, [latestPairKey, artifacts]);
+
+  const latestPairError = compareIsLatestPair ? (diffFailure && compare && diffFailure.before === compare.before && diffFailure.after === compare.after ? diffFailure.message : null) : latestPairFailure;
+
   const diffError = compare && diffFailure && diffFailure.before === compare.before && diffFailure.after === compare.after
     ? diffFailure.message
     : null;
@@ -224,7 +275,7 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     setPublishError(null);
     setPublishResult(null);
     try {
-      const result = await publishReport(createPublishableReportJson(report, oauthTrace));
+      const result = await publishReport(createPublishableReportJson(report, oauthTrace), { watchWeekly });
       if (result.removalToken) {
         try {
           saveRemovalToken(result.id, result.removalToken, window.localStorage);
@@ -272,9 +323,29 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     }
   };
 
+  const handleWatchToggle = async (enabled: boolean) => {
+    const owned = snapshots.find((candidate) => removalTokens[candidate.id]);
+    if (!owned || !identity) return;
+    const forIdentity = identity;
+    setWatchUpdating(true);
+    setWatchError(null);
+    try {
+      const outcome = await setPublishedReportWatch(owned.id, removalTokens[owned.id], enabled);
+      if (identityRef.current !== forIdentity) return;
+      if (enabled && !outcome.enabled) setWatchError(outcome.reason ?? 'The weekly watch could not be turned on.');
+      await loadIndex(identity, true);
+    } catch (error) {
+      if (identityRef.current !== forIdentity) return;
+      setWatchError(`The weekly watch could not be updated: ${errorMessage(error)}`);
+    } finally {
+      if (identityRef.current === forIdentity) setWatchUpdating(false);
+    }
+  };
+
   if (!publishable || !identity) return null;
 
   const latest = snapshots[0];
+  const watch = index?.watch;
   const canonicalUrl = getReportUrl(index?.endpoint ?? identity);
   const permalink = (entry: PublishedReportEntry) => `${apiBase}/r/${entry.id}`;
 
@@ -308,6 +379,22 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
               <i className="bi bi-cloud-upload me-2" aria-hidden="true"></i>
               {publishing ? 'Publishing...' : 'Publish report'}
             </button>
+          )}
+          {report && !watch?.enabled && (
+            <div className="form-check published-watch-option">
+              <input
+                id="published-watch-weekly"
+                className="form-check-input"
+                type="checkbox"
+                checked={watchWeekly}
+                onChange={(event) => setWatchWeekly(event.target.checked)}
+                aria-describedby="published-watch-weekly-hint"
+              />
+              <label className="form-check-label" htmlFor="published-watch-weekly">Watch weekly</label>
+              <span id="published-watch-weekly-hint" className="visually-hidden">
+                mcptest lists this endpoint's tools once a week and publishes classified interface changes as a feed and on the live badge. Public servers without authorization only.
+              </span>
+            </div>
           )}
         </div>
       </div>
@@ -356,6 +443,14 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
         </div>
       )}
 
+      {publishResult?.watch && (
+        <p className="published-reports-note" role="status">
+          {publishResult.watch.enabled
+            ? 'Weekly watch on: mcptest lists this endpoint\'s tools once a week and classifies any change.'
+            : `Weekly watch not turned on: ${publishResult.watch.reason ?? 'unavailable.'}`}
+        </p>
+      )}
+
       {loading && !index && (
         <p className="published-reports-note" role="status">Loading published history...</p>
       )}
@@ -385,6 +480,39 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
           </div>
         </div>
       )}
+
+      {watch && (watch.enabled || watch.lastChange) && (
+        <div className="published-watch" data-testid="published-watch">
+          <p className="published-watch-status">
+            <i className="bi bi-eye me-2" aria-hidden="true"></i>
+            {watch.enabled ? 'Watched weekly' : 'Weekly watch off'}
+            {watch.state?.checkedAt ? ` · last checked ${formatDate(watch.state.checkedAt)}` : ' · first check pending'}
+            {watch.state?.state === 'auth-required' ? ' · the server now requires authorization, so it is skipped' : ''}
+            {watch.state?.state === 'unreachable' || watch.state?.state === 'error' ? ' · the last check did not complete' : ''}
+          </p>
+          {watch.lastChange && (
+            <p className="published-reports-note">
+              Last interface change {formatDate(watch.lastChange.observedAt)}: <strong>{watch.lastChange.summary}</strong>
+            </p>
+          )}
+          <div className="published-watch-actions">
+            <a className="btn btn-sm btn-outline-secondary" href={watch.changesFeedUrl} target="_blank" rel="noopener noreferrer">
+              <i className="bi bi-rss me-1" aria-hidden="true"></i>Changes feed (Atom)
+            </a>
+            {snapshots.some((candidate) => removalTokens[candidate.id]) && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => void handleWatchToggle(!watch.enabled)}
+                disabled={watchUpdating}
+              >
+                {watch.enabled ? 'Stop weekly watch' : 'Watch weekly again'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {watchError && <div className="alert alert-warning mt-2" role="alert">{watchError}</div>}
 
       {snapshots.length > 0 && (
         <ol className="published-list" aria-label="Published snapshots">
@@ -420,6 +548,30 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
             </li>
           ))}
         </ol>
+      )}
+
+      {latestPair && (
+        <section className="published-interface-changes" aria-labelledby="published-interface-changes-title">
+          <h4 id="published-interface-changes-title">Changes since the previous snapshot</h4>
+          <p className="published-reports-note">
+            The tool interface of the newest run against the one before it, classified for clients that cached the
+            earlier tool list. <a href={BREAKING_CHANGES_TOOL_PATH}>Check a change before you ship it</a>.
+          </p>
+          {latestPairError ? (
+            <div className="alert alert-warning mb-0 mt-2" role="alert">{latestPairError}</div>
+          ) : interfaceChanges ? (
+            <BreakingChangeFindings
+              report={interfaceChanges}
+              headingLevel={5}
+              idPrefix="published-interface"
+              emptyMessage="No tool interface changes between the two newest snapshots."
+            />
+          ) : interfaceChanges === null ? (
+            <p className="published-reports-note">These snapshots do not both record a complete tool list, so their interfaces cannot be compared.</p>
+          ) : (
+            <p className="published-reports-note" role="status">Loading snapshots to compare...</p>
+          )}
+        </section>
       )}
 
       {snapshots.length >= 2 && compare && (

@@ -1046,6 +1046,7 @@ const PRIMARY_ACTIVE_VIEWS = {
   '/': ['playground'],
   '/catalog': ['catalog', 'server-profile'],
   '/report': ['report'],
+  '/tools/breaking-changes': ['breaking-changes'],
 };
 
 /** Views on which the guide search takes the `/` shortcut (components/learn/guideSearchShortcut.ts). */
@@ -1478,6 +1479,12 @@ function buildOgCards({ servers, articles, pageMetadata }) {
     },
     ...categoryCards,
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
+    ...Object.entries(pageMetadata.tools || {}).map(([slug, metadata]) => ({
+      pagePath: `/tools/${slug}`,
+      eyebrow: 'Free tool',
+      title: stripSiteSuffix(metadata.title),
+      summary: metadata.description,
+    })),
     ...Object.entries(pageMetadata.docs).map(([slug, metadata]) => ({
       pagePath: `/docs/${slug}`,
       title: stripSiteSuffix(metadata.title),
@@ -1583,6 +1590,26 @@ function writeArticlePages(indexHtml, learnIndex, articles, { shell, prerender }
   }
 }
 
+/**
+ * Free tools (`/tools/<slug>`) as tools/<slug>.html, served without a trailing
+ * slash like catalog.html. The first frame is the app shell around the tool as
+ * src/prerender/contentPages.tsx renders it; the app mounts over it at once.
+ */
+function writeToolPages(indexHtml, toolsMetadata, { shell, prerender }) {
+  const pathname = '/tools/breaking-changes';
+  const outputPath = `${distPathFor(pathname)}.html`;
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, renderStaticPageHtml(indexHtml, pathname, toolsMetadata['breaking-changes'], {
+    fallbackHtml: renderAppShell({
+      ...shell,
+      content: prerender.renderBreakingChangesPage(),
+      view: 'breaking-changes',
+      pathname,
+      panelStyle: '',
+    }),
+  }), 'utf8');
+}
+
 function writeHomeAndCatalogPages(indexHtml, pageMetadata, catalogCount, shellOptions) {
   // catalog.html, not catalog/index.html: hosts serve /catalog from it without
   // a trailing-slash redirect, and the app matches /catalog exactly.
@@ -1636,6 +1663,7 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: '/catalog', lastModified: catalogValidated },
     ...categoryEntries,
     { pathname: '/learn', lastModified: guidesReviewed },
+    { pathname: '/tools/breaking-changes' },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
     ...servers.map(server => ({ pathname: serverPath(server.id), lastModified: isoDay(server.checkedAt) })),
@@ -1897,6 +1925,9 @@ function validatePageMetadata(pageMetadata) {
       throw new Error(`pageMetadata.json requires a title and description for ${key}.`);
     }
   }
+  if (!pageMetadata.tools?.['breaking-changes']?.title || !pageMetadata.tools['breaking-changes'].description) {
+    throw new Error('pageMetadata.json requires a title and description for tools.breaking-changes.');
+  }
 }
 
 async function main() {
@@ -1933,6 +1964,7 @@ async function main() {
   writeServerPages(indexHtml, servers, contentShell);
   const categoryCount = writeCategoryPages(indexHtml, servers, articles);
   writeStaticPages(indexHtml, pageMetadata.docs);
+  writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });
   writeArticlePages(indexHtml, learnIndex, articles, { shell: contentShell, prerender });
   // Last: overwrites the shell the pages above were rendered from.
   writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length, shellOptions);

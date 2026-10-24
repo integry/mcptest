@@ -16,6 +16,7 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   '/learn',
   '/report',
   '/submit',
+  '/tools/breaking-changes',
   '/oauth/callback',
   '/install-integration',
 ];
