@@ -51,7 +51,7 @@ export const CatalogCategorySummaryList: React.FC<CategoryDetailsProps> = ({ sum
 export const CatalogCategoryFooter: React.FC<CategoryDetailsProps> = ({ summary }) => {
   const guides = getCategoryGuideSlugs(summary.category)
     .map(getLearnArticle)
-    .filter((article): article is LearnArticle => Boolean(article));
+    .filter((article): article is NonNullable<ReturnType<typeof getLearnArticle>> => Boolean(article));
   const categories = useMemo(() => getCatalogCategoryNames(getCatalogServers()), []);
   const { previous, next } = getCatalogCategoryNeighbors(categories, summary.category);
   const headingId = `catalog-category-guides-${summary.slug}`;
