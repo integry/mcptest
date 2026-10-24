@@ -25,6 +25,12 @@ const discovery = createDeferredComponent(() => import('../components/DiscoveryC
 const article = createDeferredComponent(() => import('../components/learn/LearnArticlePage'));
 const oauthCallback = createDeferredComponent(() => import('../components/OAuthCallback'));
 const oauthConfig = createDeferredComponent(() => import('../components/OAuthConfig'));
+/**
+ * A server profile's "Connect it" section carries the compatibility engine
+ * and the client data; the prerendered page has its static copy, and the
+ * profile route preloads it so the mount shows it at once.
+ */
+const serverConnect = createDeferredComponent(() => import('../components/ServerConnect'));
 /** highlight.js with the languages the guides use; only fetched for pages with code blocks. */
 const highlighter = () => import('../components/learn/highlighter').then(module => module.loadHighlighter());
 
@@ -37,6 +43,7 @@ export const DiscoveryCheckerView = discovery.Component;
 export const LearnArticlePage = article.Component;
 export const OAuthCallback = oauthCallback.Component;
 export const OAuthConfig = oauthConfig.Component;
+export const ServerConnect = serverConnect.Component;
 
 /** Shown while a view chunk is still arriving after client-side navigation. */
 export const ViewFallback: React.FC<{ label?: string }> = ({ label = 'Loading' }) => (
@@ -108,6 +115,9 @@ export const preloadViewsForPath = (pathname: string, search = ''): Promise<void
       break;
     case 'oauth-callback':
       loads.push(oauthCallback.preload());
+      break;
+    case 'server-profile':
+      loads.push(serverConnect.preload());
       break;
     case 'article': {
       loads.push(article.preload());

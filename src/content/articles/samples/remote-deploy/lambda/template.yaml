@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  PublicUrl:
+    Type: String
+    Default: https://replace-before-testing.example/mcp
+Resources:
+  McpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../
+      Handler: lambda/index.handler
+      Runtime: nodejs22.x
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          PUBLIC_URL: !Ref PublicUrl
+      Policies:
+        - AWSLambdaBasicExecutionRole
+  McpUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt McpFunction.Arn
+      AuthType: NONE
+      InvokeMode: RESPONSE_STREAM
+  UrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref McpFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+  InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref McpFunction
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+Outputs:
+  Endpoint:
+    Value: !Sub '${McpUrl.FunctionUrl}mcp'

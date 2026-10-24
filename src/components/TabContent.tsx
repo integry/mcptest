@@ -4,6 +4,8 @@ import 'bootstrap';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
 import { trackEvent, type ConnectSource } from '../utils/analytics';
 
+const SessionResiliencePanel = React.lazy(() => import('./SessionResiliencePanel'));
+
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
 import { UnifiedPanel } from './UnifiedPanel';
@@ -991,6 +993,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   // Rendered on its own for tabs with a server, and inside the landing's
   // "Advanced options" disclosure for empty tabs.
   const connectionPanel = (
+    <>
     <ConnectionPanel
       serverUrl={serverUrl}
       setServerUrl={handleServerUrlChange}
@@ -1023,6 +1026,16 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       credentialInputId={`${tab.id}-catalog-credential`}
       autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
     />
+    {isConnected && transportType === 'streamable-http' && (
+      <React.Suspense fallback={null}>
+        <SessionResiliencePanel key={`${serverUrl}-${isProxied}-${protocolVersion}`}
+          endpoint={normalizeConnectionTarget(serverUrl)} stateless={protocolEra === 'modern'}
+          protocolVersion={protocolVersion} headers={requestHeaders} oauthToken={isOAuthConnection ? accessToken : undefined}
+          proxyUrl={isProxied ? import.meta.env.VITE_PROXY_URL : undefined}
+          getFirebaseToken={async () => currentUser ? currentUser.getIdToken() : undefined} />
+      </React.Suspense>
+    )}
+    </>
   );
 
   return (

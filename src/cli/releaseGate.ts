@@ -65,6 +65,7 @@ export interface ReleaseGateRunResult {
 }
 
 export interface RunReleaseGateOptions {
+  sessionResilience?: boolean;
   endpoints: readonly string[];
   headers?: HeadersInit;
   policy?: ReleaseGatePolicy;
@@ -522,7 +523,7 @@ export const runReleaseGate = async (
         null,
         options.headers,
         undefined,
-        { runtime: 'headless' }
+        { runtime: 'headless', ...(options.sessionResilience ? { sessionResilience: true } : {}) }
       );
       const evaluation = credentialedTargetOrigin
         ? await withCredentialScopedFetch(credentialedTargetOrigin, fetchFn, evaluate)

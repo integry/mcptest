@@ -6,6 +6,7 @@
  *
  *   /2026/mcp            2026-07-28 stateless: answers server/discover, keeps no session
  *   /2025/mcp            2025-11-25 stateful: initialize issues an Mcp-Session-Id
+ *   /session-replicas/mcp stateful; alternating ping requests lose the session
  *   /accept-406/mcp      rejects the spec Accept header with HTTP 406
  *   /no-expose/mcp       stateful, but the session id is not listed in Access-Control-Expose-Headers
  *   /rate-limited/mcp    HTTP 429 with a readable Retry-After
@@ -75,8 +76,8 @@ export const PROMPTS = [
   },
 ];
 
-const MODES = new Set(['2026', '2025', 'accept-406', 'no-expose', 'rate-limited']);
-const STATEFUL_MODES = new Set(['2025', 'no-expose']);
+const MODES = new Set(['2026', '2025', 'accept-406', 'no-expose', 'rate-limited', 'session-replicas']);
+const STATEFUL_MODES = new Set(['2025', 'no-expose', 'session-replicas']);
 const EXPOSED_HEADERS = 'Mcp-Session-Id, MCP-Protocol-Version, Retry-After, WWW-Authenticate';
 
 class RpcError extends Error {
@@ -157,6 +158,7 @@ export function createMockMcpServer({ log = () => {} } = {}) {
   /** session id → negotiated protocol version, per stateful mode. */
   const sessions = new Map();
   const requests = [];
+  const replicaPings = new Map();
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
@@ -225,6 +227,7 @@ export function createMockMcpServer({ log = () => {} } = {}) {
     if (request.method === 'DELETE') {
       const sessionId = request.headers['mcp-session-id'];
       if (stateful && sessionId && sessions.delete(`${mode}:${sessionId}`)) {
+        replicaPings.delete(sessionId);
         response.writeHead(204, cors).end();
       } else {
         response.writeHead(stateful ? 404 : 405, cors).end();
@@ -270,6 +273,14 @@ export function createMockMcpServer({ log = () => {} } = {}) {
       if (!sessions.has(`${mode}:${sessionId}`)) {
         rpcError(404, message.id, -32001, 'Session not found');
         return;
+      }
+      if (mode === 'session-replicas' && message.method === 'ping') {
+        const count = (replicaPings.get(sessionId) ?? 0) + 1;
+        replicaPings.set(sessionId, count);
+        if (count % 2 === 0) {
+          rpcError(404, message.id, -32001, 'Session not found on this replica');
+          return;
+        }
       }
       if (isNotification) {
         response.writeHead(202, cors).end();

@@ -126,6 +126,7 @@ export const useMetaTags = () => {
   const location = useLocation();
 
   useEffect(() => {
+    let current = true;
     const resultData = parseResultShareUrl(location.pathname, location.search);
     const serverId = getCatalogServerIdFromPath(location.pathname);
     const catalogServer = serverId ? getCatalogServerById(serverId) : undefined;
@@ -135,10 +136,14 @@ export const useMetaTags = () => {
     const category = findCatalogCategoryBySlug(getCatalogCategoryNames(catalogServers), categorySlug);
 
     if (catalogServer) {
-      applyMetadata({
-        ...getCatalogServerSeo(catalogServer),
-        imageUrl: ogImage(getCatalogServerPath(catalogServer.id)),
-      });
+      const imageUrl = ogImage(getCatalogServerPath(catalogServer.id));
+      applyMetadata({ ...getCatalogServerSeo(catalogServer), imageUrl });
+      // The setup description and JSON-LD need the compatibility engine, which
+      // the server page loads with its "Connect it" section (preloaded on the
+      // profile route), so they follow as soon as that chunk is in.
+      import('../utils/serverConnect').then(({ getServerPageSeo }) => {
+        if (current) applyMetadata({ ...getServerPageSeo(catalogServer), imageUrl });
+      }).catch(() => {});
     } else if (serverId) {
       applyMetadata({
         title: 'MCP Server Not Found | mcptest.io',
@@ -234,5 +239,8 @@ export const useMetaTags = () => {
       });
     }
 
+    return () => {
+      current = false;
+    };
   }, [location]);
 };
