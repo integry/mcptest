@@ -8983,6 +8983,124 @@
       "items": []
     }
   },
+  "mubboo-flights": {
+    "version": 1,
+    "observedAt": "2026-10-22T13:35:33.553Z",
+    "provenance": {
+      "testedEndpoint": "https://mubboo.flights/api/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "find_airports",
+          "description": "Find airports and city codes for your trip using Mubboo Flights. Search by place name or IATA code and choose the intended location when several suggestions match. Results identify locations; flight availability is checked separately.",
+          "input": [
+            {
+              "name": "language",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "get_service_info",
+          "description": "Explore Mubboo Flights services, available MCP tools, travel product links and support. Includes connection details and commercial information. The website also offers hotels, car rentals, tours and travel research."
+        },
+        {
+          "name": "prepare_flight_search",
+          "description": "Prepare a personalized Mubboo Flights search for one-way, round-trip or multi-city travel. Validate airports, dates, passengers, cabin, language and currency, then return a search link. The traveler opens the link to compare current options; this tool returns search details rather than quotes or reservations. Round trips require outbound and reversed inbound segments. comfort means premium economy. childAges must contain an age for every child; infants are on lap.",
+          "input": [
+            {
+              "name": "adults",
+              "type": "integer",
+              "required": true
+            },
+            {
+              "name": "cabin",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "childAges",
+              "type": "array",
+              "required": true
+            },
+            {
+              "name": "children",
+              "type": "integer",
+              "required": true
+            },
+            {
+              "name": "currency",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "infants",
+              "type": "integer",
+              "required": true
+            },
+            {
+              "name": "language",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "market",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "segments",
+              "type": "array",
+              "required": true
+            },
+            {
+              "name": "tripType",
+              "type": "string",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "nuxt": {
     "version": 1,
     "observedAt": "2026-10-21T13:00:13.671Z",

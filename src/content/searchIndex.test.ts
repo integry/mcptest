@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createArticle } from './contentModel';
 import type { LearnArticle } from './contentModel';
-import { LEARN_ARTICLES } from './learnRegistry';
+import { loadAllLearnArticles } from './__fixtures__/loadedArticles';
 import { extractOutline } from './outline';
 import {
   SEARCH_EXCERPT_LENGTH,
@@ -12,6 +12,8 @@ import {
   serializeSearchIndex,
   truncateExcerpt,
 } from './searchIndex';
+
+const LEARN_ARTICLES = await loadAllLearnArticles();
 
 const bytes = (text: string) => new TextEncoder().encode(text).length;
 

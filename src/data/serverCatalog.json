@@ -4549,5 +4549,38 @@
     "homepageUrl": "https://browser-use.com",
     "sourceUrl": "https://github.com/browser-use/browser-use",
     "caveats": ["Initialization succeeded without credentials in the 2026-10-20 audit; tool calls require the API key."]
+  },
+  {
+    "id": "mubboo-flights",
+    "name": "Mubboo Flights",
+    "url": "https://mubboo.flights/api/mcp",
+    "description": "Looks up airport and city codes, prepares flight-comparison search links and returns Mubboo service information. Free hosted MCP with no account or API key; it does not return live fares or availability, or make bookings.",
+    "category": "Search",
+    "tags": [
+      "flights",
+      "travel",
+      "flight-comparison",
+      "airports",
+      "search-links",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://mubboo.flights/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/mubboo-flights.png",
+    "logoSourceUrl": "https://mubboo.flights/mubboo-flights-favicon-512.png",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-10-23",
+    "logoLicenseNote": "Mubboo Flights mark from the publisher’s official website, supplied by Mubboo LLC for this directory listing; trademark rights remain with Mubboo LLC.",
+    "homepageUrl": "https://mubboo.flights/mcp",
+    "sourceUrl": "https://github.com/Mubboo-Ai/mubboo-flights-mcp",
+    "caveats": [
+      "The public repository contains integration guides and client examples; the hosted server implementation is private."
+    ]
   }
 ]
