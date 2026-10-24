@@ -30,7 +30,9 @@ describe('sitemap entries', () => {
 
   it('lists each page once', () => {
     expect(byPath.size).toBe(entries.length);
-    expect(entries).toHaveLength(4 + articles.length + 2 + servers.length);
+    // Home, catalog, learn, both tools, articles, docs, servers.
+    expect(entries).toHaveLength(5 + articles.length + 2 + servers.length);
+    expect(byPath.has('/tools/breaking-changes')).toBe(true);
   });
 
   it('lists the discovery checker without a content date', () => {

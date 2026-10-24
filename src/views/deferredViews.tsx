@@ -6,6 +6,7 @@ import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
 import { getPrerenderedArticle } from '../content/prerenderedArticle';
 import { markdownLearnArticle } from '../components/learn/deferredMarkdownArticle';
 import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from '../utils/appRoutes';
+import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 
 /*
  * Route-level code splitting. Each view below is its own chunk (plus the
@@ -19,6 +20,7 @@ const playground = createDeferredComponent(() => import('../components/TabConten
 const dashboards = createDeferredComponent(() => import('../components/DashboardsView'));
 const report = createDeferredComponent(() => import('../components/ReportView'));
 const submit = createDeferredComponent(() => import('../components/SubmitServerView'));
+const breakingChanges = createDeferredComponent(() => import('../components/BreakingChangesView'));
 const discovery = createDeferredComponent(() => import('../components/DiscoveryCheckerView'));
 const article = createDeferredComponent(() => import('../components/learn/LearnArticlePage'));
 const oauthCallback = createDeferredComponent(() => import('../components/OAuthCallback'));
@@ -30,6 +32,7 @@ export const TabContent = playground.Component;
 export const DashboardsView = dashboards.Component;
 export const ReportView = report.Component;
 export const SubmitServerView = submit.Component;
+export const BreakingChangesView = breakingChanges.Component;
 export const DiscoveryCheckerView = discovery.Component;
 export const LearnArticlePage = article.Component;
 export const OAuthCallback = oauthCallback.Component;
@@ -48,6 +51,7 @@ export type RouteView =
   | 'dashboards'
   | 'report'
   | 'submit'
+  | 'breaking-changes'
   | 'discovery'
   | 'article'
   | 'oauth-callback'
@@ -62,6 +66,7 @@ export const getRouteView = (pathname: string, search = ''): RouteView => {
   if (pathname === '/oauth/callback') return 'oauth-callback';
   if (!isKnownAppPath(pathname)) return 'not-found';
   if (pathname === '/submit') return 'submit';
+  if (pathname === BREAKING_CHANGES_TOOL_PATH) return 'breaking-changes';
   if (pathname === DISCOVERY_CHECKER_PATH) return 'discovery';
   if (pathname.startsWith('/report')) return 'report';
   if (pathname.startsWith('/space/')) return 'dashboards';
@@ -94,6 +99,9 @@ export const preloadViewsForPath = (pathname: string, search = ''): Promise<void
       break;
     case 'submit':
       loads.push(submit.preload());
+      break;
+    case 'breaking-changes':
+      loads.push(breakingChanges.preload());
       break;
     case 'discovery':
       loads.push(discovery.preload());
