@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
+import { themeInitVersion, versionThemeInitTag } from './theme-init-version.js';
 
 const projectRoot = path.join(__dirname, '..');
 const source = fs.readFileSync(path.join(projectRoot, 'public', 'theme-init.js'), 'utf8');
@@ -59,5 +60,22 @@ describe('theme-init.js', () => {
     expect(indexHtml.indexOf('type="module"')).toBeGreaterThan(position);
     // CSP: script-src 'self' covers a same-origin file, so no hash is needed.
     expect(head).toMatch(/script-src 'self'/);
+  });
+});
+
+describe('theme-init.js versioning', () => {
+  const indexHtml = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
+
+  it('adds a content hash to the script URL so caches fetch a changed script', () => {
+    const versioned = versionThemeInitTag(indexHtml, source);
+    expect(versioned).toContain(`<script src="/theme-init.js?v=${themeInitVersion(source)}"></script>`);
+    expect(versioned).not.toContain('<script src="/theme-init.js"></script>');
+    expect(themeInitVersion(source)).not.toBe(themeInitVersion(`${source}\n// changed`));
+  });
+
+  it('is idempotent and fails loudly when the tag is missing', () => {
+    const once = versionThemeInitTag(indexHtml, source);
+    expect(versionThemeInitTag(once, source)).toBe(once);
+    expect(() => versionThemeInitTag('<html></html>', source)).toThrow(/theme-init/);
   });
 });

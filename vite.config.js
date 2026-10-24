@@ -17,6 +17,15 @@ const ARTICLE_INDEX_ID = 'virtual:learn-article-index'
 const RESOLVED_ARTICLE_INDEX_ID = `\0${ARTICLE_INDEX_ID}`
 
 /** Articles parsed and validated by the Node loader; React-only docs pages reserve their paths. */
+/** Versions the unhashed theme-init.js URL in index.html (scripts/theme-init-version.js). */
+const versionedThemeInit = () => ({
+  name: 'versioned-theme-init',
+  transformIndexHtml(html) {
+    const { versionThemeInitTag } = require('./scripts/theme-init-version.js')
+    return versionThemeInitTag(html, fs.readFileSync(path.join(rootDir, 'public', 'theme-init.js')))
+  },
+})
+
 const loadContent = () => {
   const { loadArticleIndex, loadArticles } = require('./scripts/content/loadArticles.js')
   const pageMetadata = JSON.parse(fs.readFileSync(PAGE_METADATA_PATH, 'utf8'))
@@ -120,6 +129,7 @@ export default defineConfig({
     react(),
     learnArticleIndex(),
     learnSearchIndexDevServer(),
+    versionedThemeInit(),
     // Module-level sizes per chunk for scripts/bundle-graph.test.js and `npm run analyze`.
     visualizer({ template: 'raw-data', filename: 'dist/.vite/bundle-stats.json', gzipSize: false }),
   ],
