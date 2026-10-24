@@ -10,6 +10,7 @@ import NotificationPopup from './components/NotificationPopup';
 import SideNav from './components/SideNav';
 import CatalogView from './components/CatalogView';
 import ServerProfileView from './components/ServerProfileView';
+import ToolSelectionEvalsView from './components/ToolSelectionEvalsView';
 import Tabs from './components/Tabs';
 import LearnIndex from './components/learn/LearnIndex';
 import LearnNotFound from './components/learn/LearnNotFound';
@@ -103,7 +104,7 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' | 'discovery' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'evals' | 'submit' | 'discovery' => {
   const path = window.location.pathname;
   if (path === '/submit') {
     return 'submit';
@@ -122,6 +123,9 @@ const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'rep
   }
   if (path.startsWith('/report')) {
     return 'report';
+  }
+  if (path.startsWith('/evals')) {
+    return 'evals';
   }
   if (getCatalogServerIdFromPath(path)) {
     return 'server-profile';
@@ -230,7 +234,7 @@ function App() {
     const path = location.pathname;
     console.log('[ActiveView Calculation] Path:', path, 'Spaces count:', spaces.length);
 
-    if (!isKnownAppPath(path)) {
+    if (!isKnownAppPath(path) && !path.startsWith('/evals')) {
       return { activeView: 'not-found' as const };
     }
     
@@ -255,6 +259,10 @@ function App() {
     // Check for report routes
     if (path.startsWith('/report')) {
       return { activeView: 'report' as const };
+    }
+
+    if (path.startsWith('/evals')) {
+      return { activeView: 'evals' as const, activeDocPage: null };
     }
 
     if (getCatalogServerIdFromPath(path)) {
@@ -353,7 +361,7 @@ function App() {
       return;
     }
 
-    if (!isKnownAppPath(path)) {
+    if (!isKnownAppPath(path) && !path.startsWith('/evals')) {
       logPageView(path, 'Page Not Found');
       return;
     }
@@ -1865,6 +1873,10 @@ function App() {
               </Suspense>
             </div>
           )}
+
+          <div className={`view-panel ${activeView === 'evals' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+            <ToolSelectionEvalsView />
+          </div>
 
           {/* Catalog View */}
           {hasVisited('catalog') && (

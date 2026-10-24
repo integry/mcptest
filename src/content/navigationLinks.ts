@@ -32,6 +32,7 @@ export const PRIMARY_NAVIGATION: readonly NavigationLink[] = [
   { label: 'Playground', path: '/', icon: 'bi-terminal' },
   { label: 'Catalog', path: '/catalog', icon: 'bi-grid', matchDescendants: true },
   { label: 'Reports', path: '/report', icon: 'bi-clipboard2-data', matchDescendants: true },
+  { label: 'Tool-selection evals', path: '/evals', icon: 'bi-bezier2', matchDescendants: true },
   { label: 'Discovery check', path: '/tools/discovery', icon: 'bi-broadcast' },
 ];
 
