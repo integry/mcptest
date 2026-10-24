@@ -88,7 +88,7 @@ const readLimited = async (response) => {
   const declared = Number(response.headers.get('Content-Length') || 0);
   if (declared > WATCH_MAX_RESPONSE_BYTES) {
     await response.body?.cancel().catch(() => {});
-    throw new HandshakeError('The response is too large.');
+    throw new HandshakeError('The response is too large.', 'error');
   }
   if (!response.body) return '';
   const reader = response.body.getReader();
@@ -100,7 +100,7 @@ const readLimited = async (response) => {
     length += value.byteLength;
     if (length > WATCH_MAX_RESPONSE_BYTES) {
       await reader.cancel().catch(() => {});
-      throw new HandshakeError('The response is too large.');
+      throw new HandshakeError('The response is too large.', 'error');
     }
     chunks.push(value);
   }
