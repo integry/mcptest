@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkSessionResilience } from './sessionResilience';
 import { sessionResilienceConnection } from './sessionResilienceConnection';
+import { detectedTransportDiagnostics } from './transportDiagnostics';
+import { transportDiagnosticPriority } from './releaseReadiness';
 
 function mockServer(mode = 'compliant') {
   const sessions = new Set<string>();
@@ -46,6 +48,84 @@ describe('opt-in session resilience', () => {
     const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch: mockServer('bad-status').fetch });
     expect(results[0].outcome).toBe('fail');
     expect(results[1].status).toBe('not-checked');
+  });
+  it.each(
+    ['unknown-id', 'reinitialize', 'stickiness', 'delete'].flatMap(phase =>
+      [401, 403, 429].map(status => ({ phase, status }))),
+  )('does not report HTTP $status during $phase as a session failure', async ({ phase, status }) => {
+    const server = mockServer();
+    let initializes = 0;
+    let intercepted = false;
+    let deletedSession: string | null = null;
+    const deletions: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const session = new Headers(init?.headers).get('Mcp-Session-Id');
+      if (body.method === 'initialize') initializes++;
+      if (init?.method === 'DELETE') {
+        deletedSession = session;
+        deletions.push(session!);
+      }
+      const intercept = phase === 'reinitialize'
+        ? body.method === 'initialize' && initializes === 2
+        : body.method === 'ping' && (phase === 'unknown-id'
+          ? !server.sessions.has(session!)
+          : phase === 'stickiness' ? initializes === 2 : session === deletedSession);
+      if (!intercepted && intercept) {
+        intercepted = true;
+        return new Response(null, { status });
+      }
+      return server.fetch(input, init);
+    });
+    const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch });
+    const result = results.find(item => item.id === `session.${phase}`)!;
+    expect(intercepted).toBe(true);
+    expect(result).toMatchObject({ status: 'not-checked', severity: 'info' });
+    expect(result.outcome).toBeUndefined();
+    expect(result.notCheckedReason).toBeTruthy();
+    expect(result.evidence.some(item => item.status === status)).toBe(true);
+    expect(detectedTransportDiagnostics(results)).toEqual([]);
+    expect(results.map(transportDiagnosticPriority)).toEqual([undefined, undefined, undefined, undefined]);
+    expect(server.sessions.size).toBe(0);
+    if (phase === 'unknown-id' || phase === 'reinitialize') {
+      expect(results.slice(phase === 'unknown-id' ? 0 : 1).every(item => item.status === 'not-checked')).toBe(true);
+      expect(initializes).toBe(phase === 'unknown-id' ? 1 : 2);
+      expect(fetch.mock.calls.filter(([, init]) => init?.method !== 'DELETE')).toHaveLength(phase === 'unknown-id' ? 3 : 4);
+    }
+    if (phase === 'delete') {
+      // A blocked verification cannot discharge cleanup ownership of the fresh id.
+      expect(deletions.filter(session => session === 'session-2')).toHaveLength(2);
+    }
+  });
+  it.each(['reinitialize', 'delete'])('does not report an unavailable %s response as a session failure', async phase => {
+    const server = mockServer();
+    let initializes = 0;
+    let deleted = false;
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (body.method === 'initialize') initializes++;
+      if (init?.method === 'DELETE') deleted = true;
+      if (phase === 'reinitialize' ? body.method === 'initialize' && initializes === 2 : body.method === 'ping' && deleted) {
+        throw new TypeError('Network unavailable');
+      }
+      return server.fetch(input, init);
+    };
+    const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch });
+    expect(results.find(item => item.id === `session.${phase}`)).toMatchObject({ status: 'not-checked', severity: 'info', outcome: undefined });
+    expect(detectedTransportDiagnostics(results)).toEqual([]);
+    expect(server.sessions.size).toBe(0);
+  });
+  it('checks cancellation after awaiting the unknown-id response', async () => {
+    const server = mockServer('bad-status');
+    const controller = new AbortController();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const response = await server.fetch(input, init);
+      if (response.status === 400) controller.abort();
+      return response;
+    };
+    const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch, signal: controller.signal });
+    expect(results.every(item => item.status === 'not-checked' && item.outcome === undefined)).toBe(true);
+    expect(results[0].notCheckedReason).toContain('cancellation');
   });
   it.each(['replicas', 'replicas-400'])('reports replica loss ratio for %s', async (mode) => {
     const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch: mockServer(mode).fetch });

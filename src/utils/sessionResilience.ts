@@ -114,6 +114,8 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
     }
   };
   const ok = (reply: Reply) => reply.target && reply.status === 200 && !!reply.message?.result && !reply.message.error;
+  const blocked = (reply: Reply) => [401, 403, 429].includes(reply.status ?? 0);
+  const available = (reply: Reply) => reply.target && !blocked(reply);
   if (options.stateless) {
     for (const id of SESSION_RESILIENCE_IDS) add(id, 'pass', [], 'Not applicable: stateless. The negotiated protocol uses no Mcp-Session-Id.');
     return findings;
@@ -134,15 +136,18 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
     }
     await request('notifications/initialized', initial.session);
     const unknown = await request('ping', crypto.randomUUID());
-    add('session.unknown-id', unknown.target ? unknown.status === 404 ? 'pass' : 'fail' : undefined, [unknown.evidence], unknown.target ? `Unknown id returned HTTP ${unknown.status}; expected 404 so clients re-initialize.` : 'Target response unavailable; unknown-id handling was not checked.', !unknown.target);
-    if (options.signal?.aborted || [401, 403, 429].includes(unknown.status ?? 0)) {
+    const stop = options.signal?.aborted || blocked(unknown);
+    const unknownChecked = available(unknown) && !stop;
+    add('session.unknown-id', unknownChecked ? unknown.status === 404 ? 'pass' : 'fail' : undefined, [unknown.evidence], unknownChecked ? `Unknown id returned HTTP ${unknown.status}; expected 404 so clients re-initialize.` : stop ? 'Stopped after cancellation, an authorization failure or rate limiting; unknown-id handling was not checked.' : 'Target response unavailable; unknown-id handling was not checked.', !unknownChecked);
+    if (stop) {
       for (const id of ['session.reinitialize', 'session.stickiness', 'session.delete'] as const) add(id, undefined, [unknown.evidence], 'Stopped after cancellation, an authorization failure or rate limiting.', true);
       return findings;
     }
     const fresh = await request('initialize');
     if (fresh.session && fresh.target) owned.add(fresh.session);
     const recovered = ok(fresh) && !!fresh.session && fresh.session !== initial.session;
-    add('session.reinitialize', unknown.target && unknown.status === 404 ? recovered ? 'pass' : 'fail' : undefined, [unknown.evidence, fresh.evidence], unknown.status === 404 && unknown.target ? recovered ? 'A fresh initialize issued a different session id after 404.' : 'Fresh initialize did not issue a new usable session id after 404.' : 'No target HTTP 404 was observed; recovery after 404 was not checked.', !(unknown.status === 404 && unknown.target));
+    const recoveryChecked = unknown.target && unknown.status === 404 && available(fresh) && !options.signal?.aborted;
+    add('session.reinitialize', recoveryChecked ? recovered ? 'pass' : 'fail' : undefined, [unknown.evidence, fresh.evidence], unknown.status !== 404 || !unknown.target ? 'No target HTTP 404 was observed; recovery after 404 was not checked.' : !recoveryChecked ? 'Fresh initialize was unavailable due to cancellation, authorization, rate limiting or an unavailable target response; recovery after 404 was not checked.' : recovered ? 'A fresh initialize issued a different session id after 404.' : 'Fresh initialize did not issue a new usable session id after 404.', !recoveryChecked);
     if (!recovered) {
       for (const id of ['session.stickiness', 'session.delete'] as const) add(id, undefined, [fresh.evidence], 'A fresh probe session was unavailable.', true);
       return findings;
@@ -155,7 +160,7 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
     for (let index = 0; index < 8 && !options.signal?.aborted; index++) {
       const reply = await request('ping', session);
       burst.push(reply);
-      if ([401, 403, 429].includes(reply.status ?? 0) || !reply.target) { stopped = true; break; }
+      if (blocked(reply) || !reply.target) { stopped = true; break; }
     }
     if (!stopped && !options.signal?.aborted) burst.push(...await Promise.all(Array.from({ length: 4 }, () => request('ping', session))));
     // A generic 400 can be unrelated; only explicit session errors establish session loss.
@@ -167,8 +172,8 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
     const after = deletion.target && deletion.status! >= 200 && deletion.status! < 300 ? await request('ping', session) : undefined;
     if (after?.target && after.status === 404) owned.delete(session);
     const unsupported = deletion.target && deletion.status === 405;
-    const checked = unsupported || !!after?.target;
-    add('session.delete', unsupported ? 'warning' : checked ? after?.status === 404 ? 'pass' : 'fail' : undefined, [deletion.evidence, ...(after ? [after.evidence] : [])], unsupported ? 'DELETE returned 405, which the specification permits.' : after ? `After accepted DELETE, the old id returned HTTP ${after.status}; expected 404.` : 'DELETE was not accepted or its target response was unavailable.', !checked);
+    const checked = unsupported || (!!after && available(after) && !options.signal?.aborted);
+    add('session.delete', unsupported ? 'warning' : checked ? after?.status === 404 ? 'pass' : 'fail' : undefined, [deletion.evidence, ...(after ? [after.evidence] : [])], unsupported ? 'DELETE returned 405, which the specification permits.' : !checked ? 'DELETE was not accepted or its verification was unavailable due to cancellation, authorization, rate limiting or an unavailable target response.' : `After accepted DELETE, the old id returned HTTP ${after!.status}; expected 404.`, !checked);
     return findings;
   } finally {
     // Only ids created by this run; never delete the inspector connection's id.
