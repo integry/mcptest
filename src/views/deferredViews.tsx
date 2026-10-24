@@ -1,7 +1,7 @@
 import React from 'react';
 import { createDeferredComponent } from '../utils/deferredComponent';
 import { getCatalogServerIdFromPath } from '../utils/catalogSeo';
-import { getContentPage, getLearnArticleFromPath } from '../content/learnRegistry';
+import { getContentPage, getLearnArticleFromPath, loadLearnArticleBody } from '../content/learnRegistry';
 import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
 import { isKnownAppPath } from '../utils/appRoutes';
 
@@ -70,8 +70,6 @@ export const getRouteView = (pathname: string, search = ''): RouteView => {
   return 'playground';
 };
 
-const hasCodeBlock = (markdown: string): boolean => /^(`{3,}|~{3,})/m.test(markdown);
-
 /**
  * The chunks the first render of `pathname` needs. main.tsx awaits them before
  * mounting so the mount never shows a Suspense fallback over the static HTML.
@@ -96,8 +94,11 @@ export const preloadViewsForPath = (pathname: string, search = ''): Promise<void
       break;
     case 'article': {
       loads.push(article.preload());
+      // The body is its own chunk; with it loaded the page mounts over the
+      // prerendered article in one frame instead of through a loading state.
       const current = getLearnArticleFromPath(pathname);
-      if (current && hasCodeBlock(current.content)) loads.push(highlighter());
+      if (current) loads.push(loadLearnArticleBody(current));
+      if (current?.hasCodeBlock) loads.push(highlighter());
       break;
     }
     default:

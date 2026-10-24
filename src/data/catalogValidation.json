@@ -3002,5 +3002,17 @@
     "authorizationServers": [
       "https://api.browser-use.com"
     ]
+  },
+  {
+    "serverId": "mubboo-flights",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-22T13:35:34.251Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mubboo.flights/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mubboo.flights/api/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
