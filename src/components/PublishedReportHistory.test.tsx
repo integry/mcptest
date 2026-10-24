@@ -80,7 +80,11 @@ type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
 // Behaves like a browser with the index response still fresh in its HTTP cache:
 // a default-cache GET of an index URL replays the first body served for that
 // URL, and only a request that bypasses the cache sees the current entries.
-const installFetch = (entries: PublishedReportEntry[], artifacts: Record<string, unknown>): FetchMock => {
+const installFetch = (
+  entries: PublishedReportEntry[],
+  artifacts: Record<string, unknown>,
+  extra: { watch?: unknown } = {}
+): FetchMock => {
   const cachedIndexes = new Map<string, string>();
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -89,7 +93,7 @@ const installFetch = (entries: PublishedReportEntry[], artifacts: Record<string,
       const requested = decodeURIComponent(url.slice(`${API}/r/endpoint/`.length));
       const cached = cachedIndexes.get(url);
       if (cached !== undefined && init?.cache !== 'no-store') return new Response(cached, { status: 200, headers: { 'Content-Type': 'application/json' } });
-      const body = JSON.stringify({ endpoint: requested, retention: 20, snapshots: entries });
+      const body = JSON.stringify({ endpoint: requested, retention: 20, snapshots: entries, ...(extra.watch ? { watch: extra.watch } : {}) });
       if (cached === undefined) cachedIndexes.set(url, body);
       return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
@@ -97,7 +101,7 @@ const installFetch = (entries: PublishedReportEntry[], artifacts: Record<string,
       const id = decodeURIComponent(url.slice(`${API}/r/`.length));
       return artifacts[id] ? jsonResponse(artifacts[id]) : jsonResponse({ error: 'not_found' }, 404);
     }
-    if (method === 'POST' && url === `${API}/r`) {
+    if (method === 'POST' && (url === `${API}/r` || url === `${API}/r?watch=weekly`)) {
       const published = { ...entry(newerId, newer), endpoint: PUBLISHED_IDENTITY };
       entries.splice(0, entries.length, published);
       return jsonResponse({
@@ -111,6 +115,7 @@ const installFetch = (entries: PublishedReportEntry[], artifacts: Record<string,
         snapshotCount: 1,
         retention: 20,
         removalToken: 'removal-token-shown-once',
+        ...(url.endsWith('?watch=weekly') ? { watch: { enabled: true, plan: 'free', interval: 'weekly' } } : {}),
       }, 201);
     }
     if (method === 'DELETE' && url.startsWith(`${API}/r/`)) {
@@ -211,6 +216,66 @@ describe('PublishedReportHistory', () => {
     expect(container.textContent).not.toContain('Publish report');
     expect(container.textContent).toContain('Copy report link');
     expect(container.textContent).not.toContain('Remove');
+  });
+
+  it('classifies the tool interface changes since the previous snapshot', async () => {
+    const changed = createReportSnapshot({
+      ...report('streamable-http'),
+      toolSurfaceAnalysis: analyzeToolSurface([
+        {
+          name: 'search', description: 'Search records.',
+          inputSchema: { type: 'object', properties: { query: { type: 'string' }, tenant: { type: 'string' } }, required: ['tenant'] },
+        },
+        { name: 'list_records', description: 'List records.', inputSchema: { type: 'object' } },
+      ]),
+    }, undefined, '2026-10-19T20:00:00.000Z').report;
+    installFetch([entry(newerId, changed), entry(olderId, older)], { [newerId]: changed, [olderId]: older });
+    await render(<PublishedReportHistory endpoint={ENDPOINT} />);
+    const section = container.querySelector('.published-interface-changes')!;
+    expect(section.querySelector('h4')?.textContent).toBe('Changes since the previous snapshot');
+    expect(section.querySelector('[data-testid="breaking-changes-summary"]')?.textContent).toBe('1 breaking, 1 safe');
+    expect(section.textContent).toContain('Input "tenant" is now required');
+    expect(section.textContent).toContain('Tool added');
+    expect(section.querySelector<HTMLAnchorElement>('a[href^="/learn/which-mcp-tool-changes-break-clients#adding-a-required-input"]')).not.toBeNull();
+  });
+
+  it('reports no interface change when only the transport changed', async () => {
+    installFetch([entry(newerId, newer), entry(olderId, older)], { [newerId]: newer, [olderId]: older });
+    await render(<PublishedReportHistory endpoint={ENDPOINT} />);
+    expect(container.querySelector('.published-interface-changes')?.textContent)
+      .toContain('No tool interface changes between the two newest snapshots.');
+  });
+
+  it('shows the weekly watch with its feed and last classified change', async () => {
+    installFetch([entry(newerId, newer)], { [newerId]: newer }, {
+      watch: {
+        enabled: true,
+        plan: 'free',
+        state: { state: 'breaking', checkedAt: '2026-10-21T10:00:00.000Z' },
+        lastChange: { id: 'x', observedAt: '2026-10-21T10:00:00.000Z', contentHash: 'h', toolCount: 2, summary: '1 breaking, 2 safe', severity: 'breaking' },
+        changesFeedUrl: `${API}/r/${encodeURIComponent(ENDPOINT)}/changes.xml`,
+      },
+    });
+    await render(<PublishedReportHistory endpoint={ENDPOINT} />);
+    const watch = container.querySelector('[data-testid="published-watch"]')!;
+    expect(watch.textContent).toContain('Watched weekly');
+    expect(watch.textContent).toContain('1 breaking, 2 safe');
+    expect(watch.querySelector<HTMLAnchorElement>('a')?.href).toBe(`${API}/r/${encodeURIComponent(ENDPOINT)}/changes.xml`);
+    // Only a removal-token holder can turn it off.
+    expect(watch.textContent).not.toContain('Stop weekly watch');
+  });
+
+  it('opts into the weekly watch when publishing with "Watch weekly" checked', async () => {
+    const fetchMock = installFetch([], {});
+    await render(<PublishedReportHistory endpoint={ENDPOINT} report={report('streamable-http')} />);
+    const checkbox = container.querySelector<HTMLInputElement>('#published-watch-weekly')!;
+    await act(async () => {
+      checkbox.click();
+    });
+    await clickButton('Publish report');
+    const publishCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(publishCall?.[0]).toBe(`${API}/r?watch=weekly`);
+    expect(container.textContent).toContain('Weekly watch on');
   });
 
   it('compares any two selected snapshots', async () => {

@@ -6,6 +6,13 @@
 //     by latest publication (a republished identical run moves to the front), each
 //     addressed by its content hash so identical runs share one entry.
 //   - "rate:<scope>:<value>" keeps the timestamps of recent publishes for one IP or host.
+//   - "watch:registry" lists the endpoints opted into the weekly watch (one key per
+//     endpoint), so the cron run finds due endpoints without visiting every instance.
+//
+// An endpoint instance also keeps its weekly watch (see ./weeklyWatch.js): the opt-in,
+// the latest drift state, and up to PUBLISHED_REPORT_RETENTION tools/list snapshots,
+// each stored only when the listing changed, with its classified changes. They live
+// beside the report snapshots under their own keys, so no migration is needed.
 //
 // Artifacts are stored as JSON text split into chunks so a snapshot never exceeds
 // the per-value storage limit. Removal tokens are stored only as SHA-256 hashes.
@@ -14,6 +21,10 @@ import { PUBLISHED_REPORT_RETENTION } from '../../src/utils/publishedReportIdent
 const CHUNK_SIZE = 96 * 1024;
 const INDEX_KEY = 'index';
 const RATE_KEY = 'hits';
+const WATCH_CONFIG_KEY = 'watch:config';
+const WATCH_STATE_KEY = 'watch:state';
+const WATCH_INDEX_KEY = 'watch:index';
+const REGISTRY_PREFIX = 'registry:';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -21,6 +32,7 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), {
 });
 
 const chunkKey = (id, index) => `artifact:${id}:${index}`;
+const watchChunkKey = (id, index) => `watch:snapshot:${id}:${index}`;
 
 export class PublishedReports {
   constructor(state) {
@@ -32,26 +44,161 @@ export class PublishedReports {
     return Array.isArray(index) ? index : [];
   }
 
-  async writeArtifact(id, artifactJson) {
-    const chunkCount = Math.max(1, Math.ceil(artifactJson.length / CHUNK_SIZE));
+  writeArtifact(id, artifactJson) {
+    return this.writeChunks(chunkKey, id, artifactJson);
+  }
+
+  readArtifact(entry) {
+    return this.readChunks(chunkKey, entry);
+  }
+
+  async deleteArtifact(entry) {
+    await this.storage.delete(Array.from({ length: entry.chunkCount }, (_, index) => chunkKey(entry.id, index)));
+  }
+
+  async writeChunks(keyFor, id, json) {
+    const chunkCount = Math.max(1, Math.ceil(json.length / CHUNK_SIZE));
     const entries = {};
     for (let index = 0; index < chunkCount; index += 1) {
-      entries[chunkKey(id, index)] = artifactJson.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
+      entries[keyFor(id, index)] = json.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
     }
     await this.storage.put(entries);
     return chunkCount;
   }
 
-  async readArtifact(entry) {
-    const keys = Array.from({ length: entry.chunkCount }, (_, index) => chunkKey(entry.id, index));
+  async readChunks(keyFor, entry) {
+    const keys = Array.from({ length: entry.chunkCount }, (_, index) => keyFor(entry.id, index));
     const chunks = await this.storage.get(keys);
     const parts = keys.map((key) => chunks.get(key));
     if (parts.some((part) => typeof part !== 'string')) return undefined;
     return parts.join('');
   }
 
-  async deleteArtifact(entry) {
-    await this.storage.delete(Array.from({ length: entry.chunkCount }, (_, index) => chunkKey(entry.id, index)));
+  // --- Weekly watch (endpoint instances) ---
+
+  async readWatch() {
+    const [config, state, index] = await Promise.all([
+      this.storage.get(WATCH_CONFIG_KEY),
+      this.storage.get(WATCH_STATE_KEY),
+      this.storage.get(WATCH_INDEX_KEY),
+    ]);
+    return {
+      config: config || { enabled: false },
+      state: state || null,
+      entries: Array.isArray(index) ? index : [],
+    };
+  }
+
+  publicWatchEntry(entry) {
+    const { chunkCount: _chunkCount, ...rest } = entry;
+    return rest;
+  }
+
+  /** The watch as the routes and the badge read it; never includes snapshot bodies. */
+  async watchSummary() {
+    const { config, state, entries } = await this.readWatch();
+    const lastChange = entries.find((entry) => !entry.baseline);
+    return {
+      config,
+      state,
+      lastChange: lastChange ? this.publicWatchEntry(lastChange) : null,
+      snapshotCount: entries.length,
+    };
+  }
+
+  async setWatch(body) {
+    const { enabled, endpoint, plan, now } = body;
+    // The watch is controlled with a snapshot's removal token, so it runs only while
+    // the endpoint has a published snapshot; checked here so an opt-in cannot land
+    // after the last snapshot was removed.
+    if (enabled && (await this.readIndex()).length === 0) return json({ error: 'no_published_snapshot' }, 409);
+    const current = (await this.storage.get(WATCH_CONFIG_KEY)) || {};
+    const config = enabled
+      ? { ...current, enabled: true, endpoint, plan, optedInAt: current.enabled ? current.optedInAt : now, updatedAt: now }
+      : { ...current, enabled: false, updatedAt: now };
+    await this.storage.put(WATCH_CONFIG_KEY, config);
+    return json({ config });
+  }
+
+  async latestWatchSnapshot() {
+    const { config, entries } = await this.readWatch();
+    const latest = entries[0];
+    if (!latest) return json({ config, entry: null, snapshotJson: null });
+    const snapshotJson = await this.readChunks(watchChunkKey, latest);
+    return json({ config, entry: this.publicWatchEntry(latest), snapshotJson: snapshotJson ?? null });
+  }
+
+  async recordWatchState(body) {
+    await this.storage.put(WATCH_STATE_KEY, body.state);
+    return json({ state: body.state });
+  }
+
+  /** Stores a changed listing and its classification, keeping the newest PUBLISHED_REPORT_RETENTION. */
+  async recordWatchSnapshot(body) {
+    const { entry, snapshotJson, state } = body;
+    const { entries } = await this.readWatch();
+    if (entries[0]?.contentHash === entry.contentHash) {
+      await this.storage.put(WATCH_STATE_KEY, state);
+      return json({ created: false, entry: this.publicWatchEntry(entries[0]) });
+    }
+    const chunkCount = await this.writeChunks(watchChunkKey, entry.id, snapshotJson);
+    const stored = { ...entry, chunkCount };
+    const retained = [stored, ...entries].slice(0, PUBLISHED_REPORT_RETENTION);
+    for (const old of entries.slice(PUBLISHED_REPORT_RETENTION - 1)) {
+      await this.storage.delete(Array.from({ length: old.chunkCount }, (_, index) => watchChunkKey(old.id, index)));
+    }
+    await this.storage.put({ [WATCH_INDEX_KEY]: retained, [WATCH_STATE_KEY]: state });
+    return json({ created: true, entry: this.publicWatchEntry(stored), count: retained.length }, 201);
+  }
+
+  // --- Watch registry (the "watch:registry" instance) ---
+
+  async readRegistry() {
+    const listed = await this.storage.list({ prefix: REGISTRY_PREFIX });
+    return [...listed.values()];
+  }
+
+  async registryAdd(body) {
+    const { endpointKey, endpoint, plan, now, max } = body;
+    const key = `${REGISTRY_PREFIX}${endpointKey}`;
+    const existing = await this.storage.get(key);
+    if (existing) {
+      const updated = { ...existing, endpoint, plan };
+      await this.storage.put(key, updated);
+      return json({ added: false, watching: true, entry: updated });
+    }
+    const count = (await this.readRegistry()).length;
+    if (count >= max) return json({ added: false, watching: false, full: true, count });
+    // A new endpoint is due on the next run, which records its baseline.
+    const entry = { endpointKey, endpoint, plan, optedInAt: now, lastCheckedAt: null, lastOutcome: null };
+    await this.storage.put(key, entry);
+    return json({ added: true, watching: true, entry, count: count + 1 });
+  }
+
+  async registryRemove(body) {
+    await this.storage.delete(`${REGISTRY_PREFIX}${body.endpointKey}`);
+    return json({ removed: true });
+  }
+
+  /** Endpoints whose plan interval has elapsed, least recently checked first. */
+  async registryDue(body) {
+    const { now, limit, intervals } = body;
+    const due = (await this.readRegistry())
+      .filter((entry) => {
+        const interval = intervals[entry.plan] ?? intervals.free;
+        return !entry.lastCheckedAt || now - Date.parse(entry.lastCheckedAt) >= interval;
+      })
+      .sort((left, right) => (Date.parse(left.lastCheckedAt || 0) || 0) - (Date.parse(right.lastCheckedAt || 0) || 0))
+      .slice(0, limit);
+    return json({ entries: due });
+  }
+
+  async registryChecked(body) {
+    const key = `${REGISTRY_PREFIX}${body.endpointKey}`;
+    const existing = await this.storage.get(key);
+    if (!existing) return json({ updated: false });
+    await this.storage.put(key, { ...existing, lastCheckedAt: body.checkedAt, lastOutcome: body.outcome });
+    return json({ updated: true });
   }
 
   publicEntry(entry) {
@@ -111,8 +258,20 @@ export class PublishedReports {
       if (request.method === 'POST' && path === '/rate-limit') return await this.rateLimit(await request.json());
       if (request.method === 'GET' && path === '/snapshots') {
         const index = await this.readIndex();
-        return json({ entries: index.map((entry) => this.publicEntry(entry)) });
+        return json({ entries: index.map((entry) => this.publicEntry(entry)), watch: await this.watchSummary() });
       }
+      if (request.method === 'GET' && path === '/watch') {
+        const { config, state, entries } = await this.readWatch();
+        return json({ config, state, entries: entries.map((entry) => this.publicWatchEntry(entry)) });
+      }
+      if (request.method === 'GET' && path === '/watch/latest') return await this.latestWatchSnapshot();
+      if (request.method === 'POST' && path === '/watch') return await this.setWatch(await request.json());
+      if (request.method === 'POST' && path === '/watch/state') return await this.recordWatchState(await request.json());
+      if (request.method === 'POST' && path === '/watch/snapshot') return await this.recordWatchSnapshot(await request.json());
+      if (request.method === 'POST' && path === '/registry/add') return await this.registryAdd(await request.json());
+      if (request.method === 'POST' && path === '/registry/remove') return await this.registryRemove(await request.json());
+      if (request.method === 'POST' && path === '/registry/due') return await this.registryDue(await request.json());
+      if (request.method === 'POST' && path === '/registry/checked') return await this.registryChecked(await request.json());
       if (path.startsWith('/snapshot/')) {
         const id = path.slice('/snapshot/'.length);
         const index = await this.readIndex();
@@ -123,14 +282,25 @@ export class PublishedReports {
           if (artifactJson === undefined) return json({ error: 'not_found' }, 404);
           return json({ entry: this.publicEntry(entry), artifactJson });
         }
-        if (request.method === 'DELETE') {
+        if (request.method === 'POST') {
           const { removalTokenHash } = await request.json();
+          return json({ valid: Boolean(removalTokenHash) && removalTokenHash === entry.removalTokenHash });
+        }
+        if (request.method === 'DELETE') {
+          const body = await request.json();
+          const { removalTokenHash } = body;
           if (!removalTokenHash || removalTokenHash !== entry.removalTokenHash) {
             return json({ error: 'forbidden' }, 403);
           }
           await this.deleteArtifact(entry);
-          await this.storage.put(INDEX_KEY, index.filter((candidate) => candidate.id !== id));
-          return json({ deleted: true });
+          const remaining = index.filter((candidate) => candidate.id !== id);
+          await this.storage.put(INDEX_KEY, remaining);
+          // Removing the last snapshot removes the last token that could turn the
+          // watch off, so the watch stops with it.
+          const config = await this.storage.get(WATCH_CONFIG_KEY);
+          const watchDisabled = remaining.length === 0 && Boolean(config?.enabled);
+          if (watchDisabled) await this.storage.put(WATCH_CONFIG_KEY, { ...config, enabled: false, updatedAt: body.now });
+          return json({ deleted: true, remaining: remaining.length, watchDisabled });
         }
       }
       return json({ error: 'not_found' }, 404);
