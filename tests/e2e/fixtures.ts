@@ -1,7 +1,7 @@
 import { expect, test as base, type Page } from '@playwright/test';
 import { MOCK_PORT } from '../../playwright.config';
 
-export type MockPath = '2026' | '2025' | 'accept-406' | 'no-expose' | 'rate-limited';
+export type MockPath = '2026' | '2025' | 'accept-406' | 'no-expose' | 'rate-limited' | 'session-replicas';
 
 /** Endpoint of the local mock MCP server for one flow or misbehavior mode. */
 export const mockUrl = (path: MockPath): string => `http://127.0.0.1:${MOCK_PORT}/${path}/mcp`;

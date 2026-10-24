@@ -8,6 +8,10 @@ import {
 import { RELEASE_GATE_EXIT_CODES } from './releaseGate';
 
 describe('release gate CLI configuration', () => {
+  it('requires an explicit session resilience flag', () => {
+    expect(parseReleaseGateArgs(['https://example.com/mcp'], {}).sessionResilience).toBeUndefined();
+    expect(parseReleaseGateArgs(['--session-resilience', 'https://example.com/mcp'], {}).sessionResilience).toBe(true);
+  });
   it('reads same-origin endpoints and bearer credentials without putting the secret in arguments', () => {
     const configuration = parseReleaseGateArgs([
       '--endpoints-env', 'MCP_ENDPOINTS',

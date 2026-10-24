@@ -315,3 +315,38 @@ On Cloudflare Workers, `McpAgent` exposes the same SDK server as `this.server`. 
 ## Try it
 
 Connect [Context7 in the playground](/server/https://mcp.context7.com/mcp/mcp), then connect your own server the same way. When a connection fails, the error card shows the diagnostic id, the evidence it rests on and the fix for your stack.
+
+## session.unknown-id {#session-unknown-id}
+
+**Active check; error on failure, high release priority.** An isolated probe initializes a temporary session, then sends `ping` with a fabricated UUID in `Mcp-Session-Id`. Only a target HTTP 404 passes. HTTP 400, 401, 500 or even 200 fails: clients rely on 404 to discard stale sessions and re-initialize. Network/CORS/proxy failures are explicitly not checked. Evidence records the request method, status and redacted relevant headers.
+
+In a TypeScript SDK stateful router, guard unknown ids before routing:
+
+```ts
+const id = req.headers['mcp-session-id'];
+if (id && !transports.has(id)) return res.status(404).end();
+```
+
+In Python/FastMCP, let `streamable_http_app()` handle session lookup; do not translate unknown-session 404 responses into authentication failures. On Workers, route to the session's owning Durable Object, and return `new Response(null, { status: 404 })` for an unknown id. Authenticate every request independently.
+
+## session.reinitialize {#session-reinitialize}
+
+**Active check; error on failure, high release priority.** After the fabricated id receives 404, a fresh `initialize` without a session header must return a successful JSON-RPC result and a new readable session id. If no target 404 was observed, this finding is not checked. The probe never deletes the inspector's session.
+
+For the TypeScript SDK, create a new `StreamableHTTPServerTransport` for an id-free initialize rather than routing it to an old transport. For Python/FastMCP, keep initialization available after expired sessions. For Workers, allocate fresh durable session ownership when initialization has no id. Browser deployments must expose `Mcp-Session-Id` using `Access-Control-Expose-Headers`.
+
+## session.stickiness {#session-stickiness}
+
+**Active check; error on session rejection, high release priority.** After initializing its own session, mcptest sends **8 sequential then 4 parallel pings**, with no tool execution. The finding reports unsuccessful requests and session rejection counts out of 12, plus a failure percentage. A valid id receiving 404 or a 400 naming an invalid/missing session fails. Other unsuccessful responses make the result not checked rather than proving a session bug.
+
+These observations are consistent with sessions lost during recycling or stored separately on replicas; they do not prove the infrastructure cause. The probe does not restart your server, and a clean sample cannot guarantee future restart survival. It runs only from **Check session resilience**, an opted-in report, or `--session-resilience` in the release gate. Requests have five-second deadlines; there are at most 22 HTTP requests including initialization, notifications and cleanup.
+
+For TypeScript SDK deployments, a process-local `Map` needs consistent routing to a durable owner or a stateless transport (`sessionIdGenerator: undefined`). For Python/FastMCP, use `FastMCP("server", stateless_http=True, json_response=True)` when sessions are unnecessary. On Workers, route stateful sessions to Durable Objects, such as through `McpAgent.serve('/mcp')`. A shared Redis store can hold application session state, but storing an id alone does not serialize a live SDK transport.
+
+## session.delete {#session-delete}
+
+**Active check; error on accepted-but-not-invalidated sessions, warning for HTTP 405.** DELETE is sent only for a temporary probe session. If accepted with a 2xx response, a subsequent ping using that id must get 404. HTTP 405 is permitted by the specification and creates only a medium release priority. Other DELETE failures are reported as not checked.
+
+Route DELETE to `transport.handleRequest(req, res)` in the TypeScript SDK and remove terminated session ownership. With Python/FastMCP use the HTTP application's lifecycle management. In a custom Workers handler, delete durable session state and ensure later lookup returns 404. If termination is intentionally unsupported, return `new Response(null, { status: 405 })`.
+
+All four checks pass as **not applicable: stateless** when the negotiated 2026 protocol uses no sessions. For older sessionless HTTP, successful initialization without an id plus a successful sessionless ping establishes this outcome. An unreadable id followed by rejection is not called stateless. Credentials and actual session ids are never retained in findings. See [why session 404s happen after deploys](/learn/mcp-session-not-found-after-deploy).

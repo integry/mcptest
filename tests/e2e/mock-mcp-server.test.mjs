@@ -130,3 +130,24 @@ describe('misbehavior modes', () => {
     expect(response.headers.get('access-control-expose-headers')).toContain('Retry-After');
   });
 });
+
+// Exercise the same pure module against a real HTTP server, including gate artifacts.
+describe('active session probes against the stateful mock', () => {
+  it('retains stable finding ids, deep links and release blockers in gate artifacts', async () => {
+    const { runReleaseGate } = await import('../../src/cli/releaseGate');
+    const result = await runReleaseGate({ endpoints: [`${base}/session-replicas/mcp`], sessionResilience: true });
+    expect(result.exitCode).toBe(1);
+    const target = result.targets[0];
+    expect(target.releaseDecision.priorities).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'session.stickiness', severity: 'high' })]));
+    const artifact = JSON.parse(target.json);
+    const section = artifact.sections.find(item => item.id === 'sessionResilience');
+    expect(section.evidence).toHaveLength(4);
+    expect(section.evidence[0].metadata.transportDiagnostic.referenceUrl).toContain('#session-unknown-id');
+    expect(target.markdown).toContain('#session-stickiness');
+    expect(target.markdown).toContain('6/12');
+    const { findUnredactedSecret } = await import('../../cloudflare-worker/src/redactionGuard.js');
+    const { redactReportValue } = await import('../../cloudflare-worker/src/reportRedaction.js');
+    expect(findUnredactedSecret(artifact)).toBeUndefined();
+    expect(redactReportValue(artifact).sections.find(item => item.id === 'sessionResilience').evidence[0].metadata.transportDiagnostic.referenceUrl).toContain('#session-unknown-id');
+  });
+});
