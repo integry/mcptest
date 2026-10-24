@@ -3,6 +3,8 @@ import { createDeferredComponent } from '../utils/deferredComponent';
 import { getCatalogServerIdFromPath } from '../utils/catalogSeo';
 import { getContentPage, getLearnArticleFromPath, loadLearnArticleBody } from '../content/learnRegistry';
 import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
+import { getPrerenderedArticle } from '../content/prerenderedArticle';
+import { markdownLearnArticle } from '../components/learn/deferredMarkdownArticle';
 import { isKnownAppPath } from '../utils/appRoutes';
 
 /*
@@ -94,11 +96,15 @@ export const preloadViewsForPath = (pathname: string, search = ''): Promise<void
       break;
     case 'article': {
       loads.push(article.preload());
-      // The body is its own chunk; with it loaded the page mounts over the
-      // prerendered article in one frame instead of through a loading state.
       const current = getLearnArticleFromPath(pathname);
-      if (current) loads.push(loadLearnArticleBody(current));
-      if (current?.hasCodeBlock) loads.push(highlighter());
+      // A prerendered guide keeps its static body (LearnArticlePage), so it needs
+      // neither its body chunk, the Markdown renderer nor highlight.js; embedded
+      // components still render. Otherwise the body is its own chunk; with it
+      // loaded the page mounts in one frame instead of through a loading state.
+      if (current && (current.component || getPrerenderedArticle(current.slug) === null)) {
+        loads.push(markdownLearnArticle.preload(), loadLearnArticleBody(current));
+        if (current.hasCodeBlock) loads.push(highlighter());
+      }
       break;
     }
     default:

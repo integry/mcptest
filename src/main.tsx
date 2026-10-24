@@ -1,31 +1,23 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
 import '@fontsource-variable/inter/wght.css'
 import '@fontsource-variable/jetbrains-mono/wght.css'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap-icons/font/bootstrap-icons.min.css'
-import App from './App'
 import './index.css'
 // The prerendered home page paints the landing before the playground chunk
 // arrives; its styles must travel with the shell stylesheet, not that chunk.
 import './components/LandingHero.css'
-import { AuthProvider } from './context/AuthContext'
 import { loadFirebase, scheduleAnalyticsLoad, shouldRestoreAuthSession } from './firebase'
-import { preloadViewsForPath } from './views/deferredViews'
+import { deferMountUntilInput } from './staticPage/deferredMount'
+import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage, snapshotStaticPageState } from './staticPage/staticPage'
 import { canonicalAliasPath } from './utils/appRoutes'
 
-const mount = () => {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </BrowserRouter>
-    </React.StrictMode>,
-  )
-}
+/*
+ * The entry stays small: React, the router and the app are one dynamic
+ * import away (src/bootstrapApp.tsx). App routes mount at once. Prerendered
+ * content pages (guides, the Learn index, server profiles) are complete
+ * without React, so they mount on the first input instead (issue #405).
+ */
+const prepareApp = () => import('./bootstrapApp').then(module => module.prepareApp())
 
 // A served alias of a page (/catalog.html, /learn/index.html) takes the
 // page's canonical URL before anything reads the path, so the app renders the
@@ -35,15 +27,26 @@ if (canonicalPath) {
   window.history.replaceState(window.history.state, '', `${canonicalPath}${window.location.search}${window.location.hash}`)
 }
 
-// A returning signed-in user: fetch Firebase now, alongside the view chunk.
-if (shouldRestoreAuthSession()) loadFirebase().catch(() => {})
+// A returning signed-in user: fetch Firebase now, alongside the app.
+const restoringSession = shouldRestoreAuthSession()
+if (restoringSession) loadFirebase().catch(() => {})
 // Analytics loads once the page is idle; earlier events are queued.
 scheduleAnalyticsLoad()
 
-// The view this route renders first is fetched before React mounts, so the
-// mount replaces the prerendered HTML with the finished view in one frame
-// rather than with a loading fallback. A failed preload still mounts; the
-// lazy component retries the download when it renders.
-preloadViewsForPath(window.location.pathname, window.location.search)
-  .catch(error => console.warn('[Startup] View chunk preload failed; mounting anyway.', error))
-  .then(mount)
+const root = document.getElementById('root')!
+const staticPage = getDeferredStaticPage(root)
+if (staticPage) {
+  enhanceStaticPage(staticPage)
+  const mountNow = deferMountUntilInput({
+    root,
+    prepare: prepareApp,
+    isHandled: isHandledByStaticPage,
+    snapshotState: snapshotStaticPageState,
+  })
+  // The header shows the signed-in user, which only the app knows.
+  if (restoringSession) mountNow()
+} else {
+  prepareApp()
+    .then(render => render())
+    .catch(error => console.error('[Startup] The app failed to mount.', error))
+}

@@ -4,8 +4,10 @@
  *
  * The "initial graph" of a route is the entry chunk plus everything it imports
  * statically: the JavaScript every page downloads before any dynamic import.
- * The content routes (guides, catalog, server profiles) render from that graph
- * alone, so it must not contain the inspector's dependencies.
+ * Since issue #405 it holds only the static page handlers: React and the app
+ * are one dynamic import away, loaded at once on app routes and on the first
+ * input over a prerendered content page. It must never contain the
+ * inspector's dependencies.
  */
 
 /** Chunk files reachable from `entryKey` through static imports only. */

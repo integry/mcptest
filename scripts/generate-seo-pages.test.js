@@ -9,11 +9,14 @@ import catalogValidation from '../src/data/catalogValidation.json';
 import catalogCapabilities from '../src/data/catalogCapabilities.json';
 import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 import { extractOutline } from '../src/content/outline';
+import { buildTrackNavigation } from '../src/content/contentModel';
+import { buildLearnTrackNavigation } from '../src/content/navigationLinks';
 
 const {
   loadArticles, mergeCatalogServers, renderCatalogHtml, renderHomeHtml, renderLearnArticleHtml,
   renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
   stripLandingFallback, validateCapabilitySnapshots, addFontPreloads, findFirstFrameFontAssets,
+  addAppPreloads, findAppPreloadHrefs,
 } = seoGenerator;
 const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
 const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
@@ -823,7 +826,8 @@ describe('generated server profile badge embed', () => {
     );
     const html = renderServerHtml(indexHtml, server);
     expect(html).toContain('<h2 id="server-badge-embed-title">Share and embed</h2>');
-    expect(html).toContain('<img src="/badge/ready.svg" alt="mcptest.io: ready" height="20">');
+    // Sized like the badge SVG, so the preview reserves its box before it loads.
+    expect(html).toContain('<img src="/badge/ready.svg" alt="mcptest.io: ready" width="110" height="20">');
     expect(html).toContain(
       '[![Tested on mcptest.io](https://mcptest.io/badge/server/context7.svg)](https://mcptest.io/servers/context7/)'
     );
@@ -835,7 +839,100 @@ describe('generated server profile badge embed', () => {
 
   it('previews the neutral badge for a server without a validation run', () => {
     const html = renderServerHtml(indexHtml, catalogServer('https://example.com/mcp', 'streamable-http'));
-    expect(html).toContain('<img src="/badge/mcptest.svg" alt="tested on: mcptest.io" height="20">');
+    expect(html).toContain('<img src="/badge/mcptest.svg" alt="tested on: mcptest.io" width="130" height="20">');
     expect(html).toContain('https://mcptest.io/badge/server/example-server.svg');
+  });
+});
+
+describe('content pages in the app shell (issue #405)', () => {
+  const learnTracks = buildLearnTrackNavigation(buildTrackNavigation(articles));
+  const shell = { learnTracks, authEnabled: false };
+  const rootOf = html => new DOMParser().parseFromString(html, 'text/html').getElementById('root');
+
+  it('puts a guide in the header and sidebar, mounted on first input, with its track open', () => {
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const root = rootOf(renderLearnArticleHtml(indexHtml, article, articles, learnIndex, { shell, pageHtml: '<div class="reading-shell">guide</div>' }));
+    const app = root.querySelector(':scope > .app-shell.seo-shell-fallback');
+
+    expect(app.hasAttribute('data-deferred-mount')).toBe(true);
+    expect(app.dataset).toMatchObject({
+      pageViewTitle: `Learn: ${article.title}`,
+      guideSlug: article.slug,
+      guideTrack: article.track,
+    });
+    expect(app.querySelector('.app-header .app-brand-title').textContent).toBe('mcptest.io');
+    expect(app.querySelector('.main-content > .view-panel').getAttribute('style')).toBe('min-height: 100%;');
+    expect(app.querySelector('.main-content > .view-panel').innerHTML.trim()).toBe('<div class="reading-shell">guide</div>');
+
+    // ContentTrackNav: the owning track is expanded and the guide is the current link.
+    const track = learnTracks.find(item => item.items.some(entry => entry.path === article.path));
+    const toggle = app.querySelector(`.content-track[data-track="${track.id}"] > button`);
+    expect(toggle.classList.contains('is-current')).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(app.querySelector(`#${toggle.getAttribute('aria-controls')}`).hasAttribute('hidden')).toBe(false);
+    const current = app.querySelector('.sidenav-sublink[aria-current="page"]');
+    expect(current.getAttribute('href')).toBe(article.path);
+    expect(current.classList.contains('active')).toBe(true);
+    expect(app.querySelectorAll('.content-track > button[aria-expanded="true"]')).toHaveLength(1);
+    // No primary destination is active on a guide; the guide search takes `/`.
+    expect(app.querySelectorAll('.sidenav-group:first-child a.nav-link.active')).toHaveLength(0);
+    expect(app.querySelector('.guide-search-input').getAttribute('aria-keyshortcuts')).toBe('/');
+    expect(app.querySelector('.guide-search-field kbd.guide-search-shortcut').textContent).toBe('/');
+  });
+
+  it('logs documentation articles under the docs page view title', () => {
+    const article = articles.find(item => item.path === '/docs/testing-guide');
+    const app = rootOf(renderLearnArticleHtml(indexHtml, article, articles, learnIndex, { shell })).firstElementChild;
+    expect(app.dataset.pageViewTitle).toBe('Docs: testing guide');
+  });
+
+  it('marks the guide hub on the Learn index', () => {
+    const app = rootOf(renderLearnIndexHtml(indexHtml, learnIndex, articles, { shell })).firstElementChild;
+    expect(app.dataset.pageViewTitle).toBe('Learn MCP');
+    expect(app.querySelector('.content-track-nav a.active[aria-current="page"]').getAttribute('href')).toBe('/learn');
+    expect(app.querySelectorAll('.content-track > button[aria-expanded="true"]')).toHaveLength(0);
+  });
+
+  it('puts a server profile under the catalog link, with sized logo and badge images', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    const app = rootOf(renderServerHtml(indexHtml, server, { shell })).firstElementChild;
+
+    expect(app.hasAttribute('data-deferred-mount')).toBe(true);
+    expect(app.dataset.pageViewTitle).toBe('Example Server MCP Server Report');
+    expect(app.querySelector('.main-content > .view-panel').getAttribute('style')).toBe('height: 100%;');
+    expect(app.querySelector('.sidenav-group:first-child a.nav-link.active').getAttribute('href')).toBe('/catalog');
+    expect(app.querySelector('.server-profile-logo img').getAttribute('width')).toBe('40');
+    expect(app.querySelector('.server-profile-logo img').getAttribute('height')).toBe('40');
+    expect(app.querySelector('.badge-embed-preview img').getAttribute('width')).toBe('130');
+  });
+
+  it('keeps the home page mounting at load', () => {
+    const html = renderHomeHtml(indexHtml, { title: 'Home', description: 'Home.' }, 3, shell);
+    expect(html).not.toContain('data-deferred-mount');
+    expect(rootOf(html).querySelector('.sidenav-group:first-child a.nav-link.active').getAttribute('href')).toBe('/');
+  });
+
+  it('preloads the app on pages that mount at load only', () => {
+    const head = '<html><head>\n    <script type="module" crossorigin src="/assets/index.js"></script>\n    <link rel="stylesheet" crossorigin href="/assets/style.css">\n  </head>';
+    const hrefs = ['/assets/bootstrapApp.js', '/assets/react.js'];
+    const appPage = addAppPreloads(`${head}<body><div id="root"></div></body></html>`, hrefs);
+
+    expect(appPage).toContain('src="/assets/index.js"></script>\n    <link rel="modulepreload" crossorigin href="/assets/bootstrapApp.js" data-app-preload>\n    <link rel="modulepreload" crossorigin href="/assets/react.js" data-app-preload>');
+    expect(addAppPreloads(appPage, hrefs)).toBe(appPage);
+    expect(stripLandingFallback(appPage)).not.toContain('data-app-preload');
+
+    const contentPage = `${head}<body><div id="root"><div class="app-shell" data-deferred-mount></div></div></body></html>`;
+    expect(addAppPreloads(contentPage, hrefs)).toBe(contentPage);
+  });
+
+  it('finds the app chunk and its static imports in the build manifest', () => {
+    const manifest = {
+      'index.html': { file: 'assets/index.js', isEntry: true, imports: ['_runtime.js'], dynamicImports: ['_bootstrapApp.js'] },
+      '_runtime.js': { file: 'assets/runtime.js' },
+      '_bootstrapApp.js': { file: 'assets/bootstrapApp.js', name: 'bootstrapApp', isDynamicEntry: true, imports: ['_react.js', '_runtime.js', 'index.html'] },
+      '_react.js': { file: 'assets/react.js', imports: ['_runtime.js'] },
+    };
+    expect(findAppPreloadHrefs(manifest)).toEqual(['/assets/bootstrapApp.js', '/assets/react.js']);
+    expect(() => findAppPreloadHrefs({ 'index.html': { file: 'assets/index.js', dynamicImports: [] } })).toThrow('bootstrapApp');
   });
 });

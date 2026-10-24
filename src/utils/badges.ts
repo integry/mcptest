@@ -96,6 +96,19 @@ export const getBadgeTitle = (variant: BadgeVariant) => {
   return `${label}: ${message}`;
 };
 
+/** Pixel width of a variant's badge; its height is always 20. */
+export const getBadgeWidth = (variant: BadgeVariant): number => {
+  const { label, message } = BADGE_DEFINITIONS[variant];
+  return textWidth(label) + 10 + textWidth(message) + 10;
+};
+
+/** Width of a static badge (`/badge/<variant>.svg`, see getStaticBadgeUrl), or undefined for live badges. */
+export const getStaticBadgeWidth = (src: string): number | undefined => {
+  const file = src.match(/\/badge\/([\w-]+)\.svg$/)?.[1];
+  const variant = BADGE_VARIANTS.find(candidate => BADGE_DEFINITIONS[candidate].file === file);
+  return variant ? getBadgeWidth(variant) : undefined;
+};
+
 /** Renders a flat shields.io-style badge using system fonts and a <title> for screen readers. */
 export const renderBadgeSvg = (variant: BadgeVariant): string => {
   const { label, message, color } = BADGE_DEFINITIONS[variant];
@@ -103,7 +116,7 @@ export const renderBadgeSvg = (variant: BadgeVariant): string => {
   const messageTextWidth = textWidth(message);
   const labelWidth = labelTextWidth + 10;
   const messageWidth = messageTextWidth + 10;
-  const width = labelWidth + messageWidth;
+  const width = getBadgeWidth(variant);
   const title = escapeXml(getBadgeTitle(variant));
   const labelX = labelWidth / 2;
   const messageX = labelWidth + messageWidth / 2;

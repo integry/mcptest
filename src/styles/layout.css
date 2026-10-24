@@ -385,6 +385,8 @@
 .app-logo img {
   width: 2rem;
   height: 2rem;
+  /* The logo is 96x90; a square box would stretch it (Lighthouse image-aspect-ratio). */
+  object-fit: contain;
 }
 
 .app-brand-copy {

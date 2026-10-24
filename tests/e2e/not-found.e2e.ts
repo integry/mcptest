@@ -7,6 +7,7 @@ test('not found: an unknown path gets a 404 status and the NotFound page', async
   const view = page.locator('.not-found-page');
   await expect(view.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
   await expect(page).toHaveTitle('Page Not Found | mcptest.io');
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(1);
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
   // The app mounted over the static fallback: the guide search is interactive.
   await expect(view.getByRole('combobox')).toBeVisible();
@@ -14,8 +15,38 @@ test('not found: an unknown path gets a 404 status and the NotFound page', async
   await view.getByRole('link', { name: 'Browse the server catalog' }).click();
   await expect(page).toHaveURL('/catalog');
   await expect(page.getByRole('heading', { name: 'Remote MCP server catalog' })).toBeVisible();
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(1);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
 
   expect(externalRequests).toEqual([]);
+});
+
+test('not found: a known content page is indexable before and after mounting, and the 404 route is not', async ({ page }) => {
+  const robots = page.locator('meta[name="robots"]');
+  await page.goto('/learn');
+  // Content pages mount on the first input; the static page alone must carry the tag.
+  await expect(page.locator('#root > [data-deferred-mount]')).toHaveCount(1);
+  await expect(robots).toHaveCount(1);
+  await expect(robots).toHaveAttribute('content', 'index, follow');
+
+  await page.keyboard.press('Shift');
+  await expect(page.locator('#root > [data-deferred-mount]')).toHaveCount(0);
+  await expect(robots).toHaveAttribute('content', 'index, follow');
+
+  // A client-side navigation to an unknown path: the app's route-aware update applies noindex.
+  await page.evaluate(() => {
+    window.history.pushState(null, '', '/no-such-page');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
+  await expect(robots).toHaveCount(1);
+  await expect(robots).toHaveAttribute('content', /noindex/);
+
+  await page.goBack();
+  await expect(page).toHaveURL('/learn');
+  await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toHaveCount(0);
+  await expect(robots).toHaveCount(1);
+  await expect(robots).toHaveAttribute('content', 'index, follow');
 });
 
 test('not found: app routes without a prerendered page still get the shell', async ({ page }) => {
