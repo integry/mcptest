@@ -247,6 +247,8 @@ const SAMPLE_EXPRESSION = `(() => {
     sidebar: has('.desktop-sidebar .app-sidenav'),
     landing: has('.landing-title'),
     connect: has('.landing-connect'),
+    catalog: has('.catalog-view'),
+    catalogRows: root ? root.querySelectorAll('.catalog-server-row').length : 0,
     connectionPanel: has('.connection-console'),
     inter,
     painted: Boolean(state && state.paints['first-paint'] !== undefined),
@@ -292,13 +294,20 @@ async function measureFirstPaint(options = {}) {
     const ticks = Math.floor(settings.durationMs / settings.intervalMs);
     const screenshotEvery = Math.max(1, Math.ceil(ticks / settings.maxScreenshots));
     const startedAt = Date.now();
-    await page('Page.navigate', { url: `${server.origin}/` });
+    await page('Page.navigate', { url: `${server.origin}${settings.pathname || '/'}` });
 
+    let inputTriggered = false;
     for (let tick = 0; tick < ticks; tick++) {
       const due = startedAt + tick * settings.intervalMs;
       const wait = due - Date.now();
       if (wait > 0) await new Promise(done => setTimeout(done, wait));
       const t = Date.now() - startedAt;
+      if (settings.triggerMountAtMs !== undefined && t >= settings.triggerMountAtMs && !inputTriggered) {
+        inputTriggered = true;
+        // Synthetic input starts the deferred mount without excluding layout
+        // shifts as recent user input, so the swap is part of the CLS budget.
+        await page('Runtime.evaluate', { expression: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }))" });
+      }
       const { result } = await page('Runtime.evaluate', { expression: SAMPLE_EXPRESSION, returnByValue: true });
       const sample = { t, ...(result.value || { phase: 'no-document', blank: true }) };
       if (!String(sample.url || '').startsWith(server.origin)) sample.phase = 'navigating';

@@ -1,8 +1,8 @@
 // Version information - this should be updated during build process
 export const VERSION_INFO = {
-  commitHash: 'f7ca7ec0e3979ed2c63d44604fff542cd5ac514f',
-  commitDate: '2026-10-20T20:08:00+03:00',
-  shortHash: 'f7ca7ec'
+  commitHash: '2c36081f2cabdd9ed5a892a3cd6a7f71fa5d67e2',
+  commitDate: '2026-10-24T22:29:18+03:00',
+  shortHash: '2c36081'
 };
 
 export const getGithubCommitUrl = (commitHash: string): string => {

@@ -56,3 +56,31 @@ describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built home page', 
     expect(result.cls).toBeLessThan(0.05);
   }, 90000);
 });
+
+
+describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built catalog', () => {
+  it.each([{ width: 1280, height: 800 }, { width: 390, height: 844 }])('paints every row and mounts without shifting at $width px', async (viewport) => {
+    const html = fs.readFileSync(path.join(distDir, 'catalog.html'), 'utf8');
+    const rowCount = (html.match(/class="catalog-server-row"/g) || []).length;
+    expect(rowCount).toBeGreaterThan(0);
+    expect(html).toContain('data-critical-css');
+    const result = await measureFirstPaint({
+      distDir, pathname: '/catalog', viewport, colorScheme: 'dark',
+      durationMs: 7000, triggerMountAtMs: 1800,
+    });
+    console.log(formatTimeline(result));
+    const painted = result.samples.filter(sample => sample.painted);
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.some(sample => sample.phase === 'static')).toBe(true);
+    for (const sample of painted) {
+      expect(sample, `frame at ${sample.t} ms`).toMatchObject({
+        blank: false, header: true, catalog: true, theme: 'dark',
+      });
+      expect(sample.catalogRows).toBeGreaterThan(0);
+      expect(['static', 'react']).toContain(sample.phase);
+    }
+    expect(result.samples.at(-1).catalogRows).toBe(rowCount);
+    expect(result.samples.at(-1).phase).toBe('react');
+    expect(result.cls).toBeLessThan(0.05);
+  }, 90000);
+});
