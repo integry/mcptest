@@ -52,8 +52,10 @@ const { selectLandingQuickPicks } = require('../src/utils/landingQuickPicks.ts')
 const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.ts');
 const { getSpaceUrl } = require('../src/utils/urlUtils.ts');
 const { highlightCode } = require('../src/content/codeHighlighting.ts');
+const { DISCOVERY_COPY, DISCOVERY_GUIDE_PATH } = require('../src/content/discoveryCopy.ts');
 const {
   APP_ROUTE_PREFIXES,
+  DISCOVERY_CHECKER_PATH,
   EXACT_APP_ROUTES,
   NOT_FOUND_LINKS,
   NOT_FOUND_SUMMARY,
@@ -1046,6 +1048,7 @@ const PRIMARY_ACTIVE_VIEWS = {
   '/': ['playground'],
   '/catalog': ['catalog', 'server-profile'],
   '/report': ['report'],
+  [DISCOVERY_CHECKER_PATH]: ['discovery'],
 };
 
 /** Views on which the guide search takes the `/` shortcut (components/learn/guideSearchShortcut.ts). */
@@ -1180,7 +1183,7 @@ function renderAppShell({
     renderSideNavFallback({ learnTracks, versionInfo, year, view, pathname }),
     '</div>',
     '<div class="main-content col overflow-auto p-3 position-relative">',
-    `<div class="view-panel" style="${escapeHtml(panelStyle)}">`,
+    panelStyle ? `<div class="view-panel" style="${escapeHtml(panelStyle)}">` : '<div class="view-panel">',
     content,
     '</div>',
     '</div>',
@@ -1446,6 +1449,62 @@ function renderCatalogHtml(indexHtml, catalogMetadata) {
   return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata);
 }
 
+/**
+ * The discovery checker's first screen as DiscoveryCheckerView renders it
+ * with no domain entered (copy from src/content/discoveryCopy.ts). The form is
+ * inert until the app mounts, which it does at load: this is an app route.
+ */
+function renderDiscoveryFallback({ proxyConfigured = false } = {}) {
+  return [
+    '<div class="discovery-checker">',
+    '<header class="discovery-header">',
+    `<h1>${escapeHtml(DISCOVERY_COPY.heading)}</h1>`,
+    `<p>${escapeHtml(DISCOVERY_COPY.lede)}</p>`,
+    '</header>',
+    '<form class="discovery-form" novalidate="">',
+    `<label for="discovery-domain" class="form-label">${escapeHtml(DISCOVERY_COPY.inputLabel)}</label>`,
+    '<div class="discovery-form-row">',
+    `<input id="discovery-domain" type="text" inputmode="url" autocomplete="url" spellcheck="false" class="form-control" placeholder="${escapeHtml(DISCOVERY_COPY.placeholder)}" maxlength="253" aria-invalid="false" aria-describedby="discovery-domain-hint" value="">`,
+    `<button type="submit" class="btn btn-primary" disabled="">${escapeHtml(DISCOVERY_COPY.submit)}</button>`,
+    '</div>',
+    `<p id="discovery-domain-hint" class="discovery-hint">${escapeHtml(DISCOVERY_COPY.hint)}${proxyConfigured ? '' : escapeHtml(DISCOVERY_COPY.noProxyHint)}</p>`,
+    '</form>',
+    `<p class="discovery-hint discovery-guide-link">${escapeHtml(DISCOVERY_COPY.guidePrompt)}<a href="${escapeHtml(DISCOVERY_GUIDE_PATH)}">${escapeHtml(DISCOVERY_COPY.guideLink)}</a>.</p>`,
+    '</div>',
+  ].join('\n');
+}
+
+/** Prerendered /tools/discovery: metadata, WebApplication JSON-LD and the app shell around the empty form. */
+function renderDiscoveryHtml(indexHtml, discoveryMetadata, { shell = {}, proxyConfigured = false } = {}) {
+  return renderStaticPageHtml(indexHtml, DISCOVERY_CHECKER_PATH, discoveryMetadata, {
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: DISCOVERY_COPY.heading,
+      url: canonicalUrlFor(DISCOVERY_CHECKER_PATH),
+      description: discoveryMetadata.description,
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Any',
+      browserRequirements: 'Requires JavaScript.',
+      isAccessibleForFree: true,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    },
+    fallbackHtml: renderAppShell({
+      ...shell,
+      content: renderDiscoveryFallback({ proxyConfigured }),
+      view: 'discovery',
+      pathname: DISCOVERY_CHECKER_PATH,
+      panelStyle: '',
+    }),
+  });
+}
+
+/** tools/discovery.html, served for /tools/discovery without a trailing slash, like catalog.html. */
+function writeDiscoveryPage(indexHtml, discoveryMetadata, options) {
+  fs.mkdirSync(path.join(distRoot, 'tools'), { recursive: true });
+  fs.writeFileSync(`${distPathFor(DISCOVERY_CHECKER_PATH)}.html`, renderDiscoveryHtml(indexHtml, discoveryMetadata, options), 'utf8');
+}
+
 /** Prerendered `/catalog/<slug>`: metadata, CollectionPage JSON-LD and the static category body. */
 function renderCategoryHtml(indexHtml, summary, { summaries, servers, articles }) {
   const seo = getCatalogCategorySeo(summary);
@@ -1477,6 +1536,12 @@ function buildOgCards({ servers, articles, pageMetadata }) {
       summary: `${servers.length} public remote MCP servers. ${pageMetadata.catalog.description}`,
     },
     ...categoryCards,
+    {
+      pagePath: DISCOVERY_CHECKER_PATH,
+      eyebrow: 'Free tool',
+      title: DISCOVERY_COPY.heading,
+      summary: DISCOVERY_COPY.cardSummary,
+    },
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     ...Object.entries(pageMetadata.docs).map(([slug, metadata]) => ({
       pagePath: `/docs/${slug}`,
@@ -1635,6 +1700,7 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: '/', lastModified: latestDay([catalogValidated, guidesReviewed]) },
     { pathname: '/catalog', lastModified: catalogValidated },
     ...categoryEntries,
+    { pathname: DISCOVERY_CHECKER_PATH },
     { pathname: '/learn', lastModified: guidesReviewed },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
@@ -1892,7 +1958,7 @@ function validateLearnIndex(learnIndex) {
 }
 
 function validatePageMetadata(pageMetadata) {
-  for (const key of ['home', 'catalog']) {
+  for (const key of ['home', 'catalog', 'discovery']) {
     if (!pageMetadata[key]?.title || !pageMetadata[key]?.description) {
       throw new Error(`pageMetadata.json requires a title and description for ${key}.`);
     }
@@ -1933,6 +1999,10 @@ async function main() {
   writeServerPages(indexHtml, servers, contentShell);
   const categoryCount = writeCategoryPages(indexHtml, servers, articles);
   writeStaticPages(indexHtml, pageMetadata.docs);
+  writeDiscoveryPage(indexHtml, pageMetadata.discovery, {
+    shell: contentShell,
+    proxyConfigured: Boolean(readBuildEnv('VITE_PROXY_URL')),
+  });
   writeArticlePages(indexHtml, learnIndex, articles, { shell: contentShell, prerender });
   // Last: overwrites the shell the pages above were rendered from.
   writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length, shellOptions);
@@ -1949,7 +2019,7 @@ async function main() {
   const cards = buildOgCards({ servers, articles, pageMetadata });
   const og = await writeOgImages(cards, { distRoot });
 
-  console.log(`Generated ${servers.length} server profile documents, ${categoryCount} catalog category pages, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${categoryCount} catalog category pages, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home, catalog and discovery checker pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
   console.log(`Critical CSS inlined in ${finalizedPages} pages; ${resizedLogos} PNG logos served at ${SERVED_LOGO_PX}px.`);
   console.log(`Open Graph images: ${cards.length} (${og.rendered} rendered, ${og.cached} from cache) in ${((Date.now() - ogStartedAt) / 1000).toFixed(1)}s.`);
 }
@@ -1972,6 +2042,7 @@ module.exports = {
   renderArticleMarkdown,
   renderCatalogHtml,
   renderCategoryHtml,
+  renderDiscoveryHtml,
   renderHomeHtml,
   addFontPreloads,
   findFirstFrameFontAssets,

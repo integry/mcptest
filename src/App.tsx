@@ -21,6 +21,7 @@ import {
   LearnArticlePage,
   OAuthCallback,
   OAuthConfig,
+  DiscoveryCheckerView,
   ReportView,
   SubmitServerView,
   TabContent,
@@ -53,7 +54,7 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
-import { isKnownAppPath } from './utils/appRoutes';
+import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
 // The MCP SDK, OAuth flow and saved-card helpers load on demand; see utils/savedCardRuntime.
 import type {
   OAuthPrerequisite,
@@ -102,10 +103,13 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' | 'discovery' => {
   const path = window.location.pathname;
   if (path === '/submit') {
     return 'submit';
+  }
+  if (path === DISCOVERY_CHECKER_PATH) {
+    return 'discovery';
   }
   if (path.startsWith('/docs/')) {
     return 'docs';
@@ -242,6 +246,10 @@ function App() {
 
     if (path === '/submit') {
       return { activeView: 'submit' as const };
+    }
+
+    if (path === DISCOVERY_CHECKER_PATH) {
+      return { activeView: 'discovery' as const };
     }
 
     // Check for report routes
@@ -381,6 +389,11 @@ function App() {
 
     if (path === '/submit') {
       logPageView(path, 'Submit a server');
+      return;
+    }
+
+    if (path === DISCOVERY_CHECKER_PATH) {
+      logPageView(path, 'MCP discovery checker');
       return;
     }
     
@@ -1865,6 +1878,15 @@ function App() {
             <div className="view-panel">
               <Suspense fallback={<ViewFallback label="Loading the submission form" />}>
                 <SubmitServerView initialUrl={connectedTab?.serverUrl} />
+              </Suspense>
+            </div>
+          )}
+
+          {/* MCP Discovery Checker */}
+          {activeView === 'discovery' && (
+            <div className="view-panel">
+              <Suspense fallback={<ViewFallback label="Loading the discovery checker" />}>
+                <DiscoveryCheckerView />
               </Suspense>
             </div>
           )}

@@ -30,7 +30,11 @@ describe('sitemap entries', () => {
 
   it('lists each page once', () => {
     expect(byPath.size).toBe(entries.length);
-    expect(entries).toHaveLength(3 + articles.length + 2 + servers.length);
+    expect(entries).toHaveLength(4 + articles.length + 2 + servers.length);
+  });
+
+  it('lists the discovery checker without a content date', () => {
+    expect(byPath.get('/tools/discovery')).toEqual({ pathname: '/tools/discovery' });
   });
 
   it('dates articles by lastReviewed and servers by their latest validation, never by the build', () => {
@@ -116,7 +120,7 @@ describe('routes.txt', () => {
   const routes = parseRoutes(renderRoutesTxt(['/', '/catalog', '/learn/what-is-mcp', '/servers/alpha/']));
 
   it('lists prerendered pages and app routes exactly, and dynamic routes as prefixes', () => {
-    for (const pathname of ['/', '/catalog', '/learn', '/report', '/submit', '/oauth/callback', '/learn/what-is-mcp', '/servers/alpha/']) {
+    for (const pathname of ['/', '/catalog', '/learn', '/report', '/submit', '/tools/discovery', '/oauth/callback', '/learn/what-is-mcp', '/servers/alpha/']) {
       expect(routes.exact.has(pathname), pathname).toBe(true);
     }
     expect(routes.prefixes).toEqual(['/server/', '/call/', '/space/', '/report/']);
@@ -151,6 +155,8 @@ describe('canonicalAliasPath', () => {
     ['/index.html', '/'],
     ['/catalog.html', '/catalog'],
     ['/catalog/', '/catalog'],
+    ['/tools/discovery.html', '/tools/discovery'],
+    ['/tools/discovery/', '/tools/discovery'],
     ['/learn/', '/learn'],
     ['/learn/index.html', '/learn'],
     ['/learn/what-is-mcp/', '/learn/what-is-mcp'],
