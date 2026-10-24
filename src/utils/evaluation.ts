@@ -489,6 +489,8 @@ interface EvaluationRouteFailure {
   method?: string;
   requestUrl?: string;
   responseHeaders?: Record<string, string>;
+  responseSource?: ProxyAuthenticationSource;
+  retryAfter?: string;
   resourceMetadataUrl?: string;
   scope?: string;
   timing?: {
@@ -496,6 +498,36 @@ interface EvaluationRouteFailure {
     durationMs?: number;
   };
 }
+
+const getLastObservedFailure = (
+  error: unknown,
+  seen = new Set<object>()
+): ObservedTransportRequest | undefined => {
+  if (!error || typeof error !== 'object' || seen.has(error)) return undefined;
+  seen.add(error);
+  const value = error as {
+    candidateFailures?: readonly TransportCandidateFailure[];
+    cause?: unknown;
+    errors?: readonly unknown[];
+  };
+  if (Array.isArray(value.candidateFailures)) {
+    for (const candidate of [...value.candidateFailures].reverse()) {
+      const observed = [...(candidate.observedRequests || [])].reverse().find((request) => (
+        request.outcome === 'failed'
+      ));
+      if (observed) return observed;
+      const nested = getLastObservedFailure(candidate.error, seen);
+      if (nested) return nested;
+    }
+  }
+  if (Array.isArray(value.errors)) {
+    for (const nestedError of [...value.errors].reverse()) {
+      const observed = getLastObservedFailure(nestedError, seen);
+      if (observed) return observed;
+    }
+  }
+  return getLastObservedFailure(value.cause, seen);
+};
 
 const attachEphemeralChallengeDirectives = <T extends object>(
   target: T,
@@ -564,7 +596,10 @@ const makeRouteFailure = (
   attemptStartedAtMs?: number
 ): EvaluationRouteFailure => {
   const authenticationChallenge = observedChallenge || getObservedAuthenticationChallenge(error);
-  const httpStatus = authenticationChallenge?.status || getAuthenticationHttpStatus(error);
+  const observedFailure = getLastObservedFailure(error);
+  const httpStatus = authenticationChallenge?.status
+    || getAuthenticationHttpStatus(error)
+    || observedFailure?.status;
   const authenticationSource = authenticationChallenge?.source || (
     route === 'direct' && httpStatus ? 'target' : undefined
   );
@@ -585,6 +620,10 @@ const makeRouteFailure = (
     method: authenticationChallenge?.method,
     requestUrl: authenticationChallenge?.requestUrl || failedCandidateUrl,
     responseHeaders: authenticationChallenge?.responseHeaders,
+    responseSource: authenticationChallenge?.source
+      || observedFailure?.responseSource
+      || (route === 'direct' ? 'target' : undefined),
+    retryAfter: observedFailure?.retryAfter,
     timing: {
       startedAt: authenticationChallenge?.startedAt
         || new Date(attemptStartedAtMs ?? Date.now()).toISOString(),
@@ -1485,6 +1524,8 @@ export async function evaluateServer(
         ...(failure.authenticationSource
           ? { authenticationSource: failure.authenticationSource }
           : {}),
+        ...(failure.responseSource ? { responseSource: failure.responseSource } : {}),
+        ...(failure.retryAfter ? { retryAfter: failure.retryAfter } : {}),
         ...(failure.candidateUrl ? { endpoint: failure.candidateUrl } : {}),
       })),
     } : undefined;
