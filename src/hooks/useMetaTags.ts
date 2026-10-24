@@ -10,6 +10,7 @@ import {
 import { CATALOG_METADATA, HOME_METADATA } from '../utils/pageMetadata';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
+import { isKnownAppPath } from '../utils/appRoutes';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -176,6 +177,13 @@ export const useMetaTags = () => {
       applyMetadata({
         title: 'Documentation Not Found | mcptest.io',
         description: 'This documentation page is not available. Browse mcptest.io guides for testing and debugging remote MCP servers.',
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
+        robots: 'noindex, follow',
+      });
+    } else if (!isKnownAppPath(location.pathname)) {
+      applyMetadata({
+        title: 'Page Not Found | mcptest.io',
+        description: 'This page is not available. Open the playground, browse the MCP server catalog, or read the guides.',
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });

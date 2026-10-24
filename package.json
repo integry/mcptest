@@ -14,6 +14,9 @@
     "test:lighthouse": "lhci autorun --config=lighthouserc.cjs",
     "test:lighthouse:mobile": "lhci autorun --config=lighthouserc.mobile.cjs",
     "test:bundle-graph": "BUNDLE_GRAPH=1 vitest run scripts/bundle-graph.test.js",
+    "test:site-audit": "SITE_AUDIT=1 vitest run scripts/audit-site.test.mjs",
+    "check-links": "node scripts/check-links.mjs",
+    "check-links:external": "node scripts/check-links.mjs --external --concurrency 8 --timeout 10000",
     "analyze": "vite build && node scripts/bundle/report.mjs",
     "lighthouse-summary": "node scripts/bundle/lighthouse-summary.mjs",
     "mcptest": "vite-node scripts/mcptest.ts",
@@ -69,7 +72,7 @@
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vite-node": "^3.2.4",
-    "vitest": "^4.1.12",
+    "vitest": "^5.0.5",
     "wrangler": "^4.151.2"
   },
   "//": [
