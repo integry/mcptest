@@ -137,6 +137,7 @@ describe('SideNav information architecture', () => {
       ['Playground', '/'],
       ['Catalog', '/catalog'],
       ['Reports', '/report'],
+      ['Breaking changes', '/tools/breaking-changes'],
       ['Discovery check', '/tools/discovery'],
     ]);
     expect(container.querySelector('a[href="/catalog"]')?.classList).toContain('active');

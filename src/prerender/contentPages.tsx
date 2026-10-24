@@ -8,6 +8,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import BreakingChangesView from '../components/BreakingChangesView';
 import LearnIndex from '../components/learn/LearnIndex';
 import MarkdownLearnArticle from '../components/learn/MarkdownLearnArticle';
 import { loadHighlighter } from '../components/learn/highlighter';
@@ -46,3 +47,6 @@ export const renderArticlePage = (pathname: string): string | null => {
 
 /** The Learn index as /learn renders it. */
 export const renderLearnIndexPage = (): string => renderAt('/learn', <LearnIndex />);
+
+/** The breaking-change check as /tools/breaking-changes first renders it. */
+export const renderBreakingChangesPage = (): string => renderAt('/tools/breaking-changes', <BreakingChangesView />);

@@ -32,6 +32,8 @@ export const PRIMARY_NAVIGATION: readonly NavigationLink[] = [
   { label: 'Playground', path: '/', icon: 'bi-terminal' },
   { label: 'Catalog', path: '/catalog', icon: 'bi-grid', matchDescendants: true },
   { label: 'Reports', path: '/report', icon: 'bi-clipboard2-data', matchDescendants: true },
+  // The free breaking-change check (src/components/BreakingChangesView.tsx).
+  { label: 'Breaking changes', path: '/tools/breaking-changes', icon: 'bi-signpost-split' },
   { label: 'Discovery check', path: '/tools/discovery', icon: 'bi-broadcast' },
 ];
 

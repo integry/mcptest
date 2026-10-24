@@ -3,6 +3,7 @@ import { PublishedReports } from "./PublishedReports";
 import { handleBadgeRequest } from "./badges";
 import { handleSubmissionRequest, SubmissionRateLimiter } from "./submissions";
 import { handlePublishedReportRequest } from "./publishedReportRoutes";
+import { runWeeklyWatch } from "./weeklyWatch";
 
 // Firebase public keys URL
 const FIREBASE_PUBLIC_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
@@ -12,6 +13,13 @@ let publicKeysCache = null;
 let publicKeysCacheExpiry = 0;
 
 export default {
+  // Cron Trigger (wrangler.toml [triggers]): one bounded batch of the weekly watch.
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(runWeeklyWatch(env, { now: controller.scheduledTime }).then((results) => {
+      console.log(`[weekly-watch] checked ${results.length} endpoints`, JSON.stringify(results.map((result) => result.outcome)));
+    }));
+  },
+
   async fetch(request, env, ctx) {
     // Public catalog badges are served before authentication and never reach the Durable Object.
     const badgeResponse = handleBadgeRequest(request);

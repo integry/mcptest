@@ -7,8 +7,12 @@ import type { CatalogServerStatus } from '../types/catalog';
 
 export const BADGE_SITE_URL = 'https://mcptest.io';
 
-/** A badge either names a release result from the evaluator or is the neutral brand badge. */
-export type BadgeVariant = ReleaseReadinessStatus | 'neutral';
+/**
+ * A badge names a release result from the evaluator, is the neutral brand
+ * badge, or (live report badges only) reports a breaking interface change the
+ * weekly watch found after the newest published run.
+ */
+export type BadgeVariant = ReleaseReadinessStatus | 'neutral' | 'breaking-change';
 
 interface BadgeDefinition {
   label: string;
@@ -33,6 +37,7 @@ export const BADGE_DEFINITIONS: Record<BadgeVariant, BadgeDefinition> = {
   },
   blocked: { label: 'mcptest.io', message: 'blocked', color: '#dc2626', file: 'blocked' },
   unknown: { label: 'mcptest.io', message: 'unknown', color: '#64748b', file: 'unknown' },
+  'breaking-change': { label: 'mcptest.io', message: 'breaking change', color: '#dc2626', file: 'breaking-change' },
 };
 
 export const BADGE_VARIANTS = Object.keys(BADGE_DEFINITIONS) as BadgeVariant[];
