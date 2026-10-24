@@ -167,6 +167,7 @@ export const useCatalog = () => {
       : DEFAULT_CATALOG_FILTERS
   );
   const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
+  const lastUrlSearchQueryRef = useRef(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
   const [selectedCategory, setCategoryState] = useState(initialFilters.category);
   const [sortOrder, setSortOrderState] = useState<CatalogSortOrder>(initialFilters.sortOrder);
@@ -238,10 +239,16 @@ export const useCatalog = () => {
 
     const nextFilters = getCatalogFiltersFromParams(searchParams, categories);
 
-    setSearchQueryState((current) => {
-      const currentNormalized = normalizeSearchQuery(current);
-      return currentNormalized === nextFilters.searchQuery ? current : nextFilters.searchQuery;
-    });
+    // Removing empty/default parameters can navigate just after the static
+    // search hands its text to React. Only a changed URL query may replace
+    // pending typing; normalization of the same query must leave it alone.
+    if (lastUrlSearchQueryRef.current !== nextFilters.searchQuery) {
+      lastUrlSearchQueryRef.current = nextFilters.searchQuery;
+      setSearchQueryState((current) => {
+        const currentNormalized = normalizeSearchQuery(current);
+        return currentNormalized === nextFilters.searchQuery ? current : nextFilters.searchQuery;
+      });
+    }
     setOauthFilterState((current) =>
       current === nextFilters.oauthFilter ? current : nextFilters.oauthFilter
     );

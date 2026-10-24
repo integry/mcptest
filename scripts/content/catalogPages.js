@@ -106,7 +106,7 @@ function renderCatalogFallback({ servers, summaries }) {
     '<h2 class="mb-1">Remote MCP server catalog</h2><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
     `<div class="catalog-results-bar" aria-live="polite"><p class="catalog-results-count">Showing <strong>${servers.length}</strong> of ${servers.length} servers</p></div>`,
     '</div><div class="catalog-filters"><div class="catalog-search-field"><i class="bi bi-search catalog-search-icon" aria-hidden="true"></i>',
-    '<input id="catalog-search" type="search" class="form-control" aria-label="Search servers" value="" placeholder="Search by name, URL, tag, or description" readonly></div>',
+    '<input id="catalog-search" type="search" class="form-control" aria-label="Search servers" value="" placeholder="Search by name, URL, tag, or description"></div>',
     '<button type="button" class="catalog-filters-toggle" aria-expanded="false" aria-controls="catalog-filter-fields"><i class="bi bi-sliders" aria-hidden="true"></i><span>Filters</span><i class="bi bi-chevron-down catalog-filters-chevron" aria-hidden="true"></i></button>',
     '<div id="catalog-filter-fields" class="catalog-filter-fields" data-active-filters="0">',
     select('auth', 'Authentication', [['all', 'All'], ['no-auth', 'No auth'], ['oauth', 'OAuth'], ['bearer-token', 'Bearer'], ['api-token', 'API token'], ['api-key', 'API key']].map(([value, label]) => [value, `Authentication: ${label}`])),

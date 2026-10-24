@@ -20,6 +20,7 @@ import {
 } from '../utils/layoutState';
 import { logPageView, recordStaticPageEvent, trackEvent, trackGuideLinkClick } from '../utils/analytics';
 import { handleCodeCopyClick, handleCopyFromClick } from '../utils/codeCopy';
+import { setFieldValue } from './deferredMount';
 
 /** Set by scripts/generate-seo-pages.js on the shell of pages that mount on first input. */
 export const DEFERRED_MOUNT_ATTRIBUTE = 'data-deferred-mount';
@@ -80,6 +81,7 @@ const applySidebarCollapsed = (shell: HTMLElement, collapsed: boolean): void => 
 
 /** Marks a sidebar group the visitor opened or closed on the static page. */
 const TOGGLED_GROUP_ATTRIBUTE = 'data-static-toggled';
+const SEARCH_EDITED_ATTRIBUTE = 'data-static-search-edited';
 
 const toggleGroup = (button: Element): void => {
   const body = document.getElementById(button.getAttribute('aria-controls') || '');
@@ -121,12 +123,28 @@ const snapshotRadioChoices = (root: HTMLElement): (() => void) => {
  */
 export const snapshotStaticPageState = (root: HTMLElement): (() => void) => {
   const restoreChoices = snapshotRadioChoices(root);
+  // The editable static input buffers typing while React downloads. Keep the
+  // node until the first commit so even edits after this snapshot survive,
+  // including a search the visitor blurred before the swap.
+  const search = root.querySelector<HTMLInputElement>('#catalog-search');
+  const searchFocused = search !== null && document.activeElement === search;
+  const restoreInputs = () => {
+    restoreChoices();
+    const appSearch = root.querySelector<HTMLInputElement>('#catalog-search');
+    // An untouched fallback is empty even for a filtered URL; React's URL
+    // state wins unless the visitor actually edited the static search.
+    if (!search?.hasAttribute(SEARCH_EDITED_ATTRIBUTE) || !appSearch) return;
+    if (appSearch.value !== search.value) setFieldValue(appSearch, search.value);
+    if (searchFocused) {
+      appSearch.setSelectionRange(search.selectionStart, search.selectionEnd);
+    }
+  };
   const isCollapsed = () => document.body.classList.contains(SIDEBAR_COLLAPSED_CLASS);
-  if (isCollapsed()) return restoreChoices;
+  if (isCollapsed()) return restoreInputs;
   const groups = Array.from(root.querySelectorAll(`.sidenav-group-toggle[aria-controls][${TOGGLED_GROUP_ATTRIBUTE}]`))
     .map(button => ({ controls: button.getAttribute('aria-controls')!, expanded: button.getAttribute('aria-expanded') === 'true' }));
   return () => {
-    restoreChoices();
+    restoreInputs();
     if (isCollapsed()) return;
     for (const { controls, expanded } of groups) {
       const button = Array.from(root.querySelectorAll<HTMLElement>('.sidenav-group-toggle[aria-controls]'))
@@ -172,6 +190,9 @@ const reportPageView = (shell: HTMLElement): void => {
 /** Wires the static page's controls. */
 export const enhanceStaticPage = (shell: HTMLElement): void => {
   if (readStoredSidebarCollapsed()) applySidebarCollapsed(shell, true);
+
+  const search = shell.querySelector<HTMLInputElement>('#catalog-search');
+  search?.addEventListener('input', () => search.setAttribute(SEARCH_EDITED_ATTRIBUTE, ''));
 
   const guideSlug = shell.dataset.guideSlug;
   const trackGuideLinks = guideSlug ? trackGuideLinkClick(guideSlug) : undefined;

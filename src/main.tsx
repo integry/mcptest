@@ -40,7 +40,12 @@ const staticPage = getDeferredStaticPage(root)
 // Served aliases have already been canonicalized above.
 const catalogParams = new URLSearchParams(window.location.search)
 const hasCatalogFilters = window.location.pathname === '/catalog'
-  && ['q', 'auth', 'category', 'sort'].some(key => catalogParams.has(key))
+  && (Boolean(catalogParams.get('q')?.trim())
+    || ['auth', 'category', 'sort'].some(key => {
+      const value = catalogParams.get(key)
+      const defaultValue = key === 'sort' ? 'catalog-order' : 'all'
+      return Boolean(value) && value !== defaultValue
+    }))
 if (staticPage) {
   enhanceStaticPage(staticPage)
   const mountNow = deferMountUntilInput({
