@@ -14,10 +14,10 @@ import {
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { CATALOG_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
-import { isKnownAppPath } from '../utils/appRoutes';
+import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from '../utils/appRoutes';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -202,6 +202,12 @@ export const useMetaTags = () => {
         description: 'This documentation page is not available. Browse mcptest.io guides for testing and debugging remote MCP servers.',
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
+      });
+    } else if (location.pathname === DISCOVERY_CHECKER_PATH) {
+      applyMetadata({
+        ...DISCOVERY_METADATA,
+        canonicalUrl: `${SITE_URL}${DISCOVERY_CHECKER_PATH}`,
+        imageUrl: ogImage(DISCOVERY_CHECKER_PATH),
       });
     } else if (!isKnownAppPath(location.pathname)) {
       applyMetadata({

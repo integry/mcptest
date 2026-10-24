@@ -4,6 +4,8 @@
 // are rate limited by client IP and have their streamed responses capped, while
 // a valid Firebase login lifts those limits to a generous per-user allowance.
 
+import { DISCOVERY_PATH, handleDiscoveryRequest, type DiscoveryRouteDependencies } from './discovery';
+
 export interface Env {
   FIREBASE_PROJECT_ID: string;
   /** Server-only operator OAuth configuration. Set these with `wrangler secret put`. */
@@ -2065,6 +2067,36 @@ export async function handleProxyRequest(
   }
 }
 
+/**
+ * The discovery route (src/discovery.ts) shares the proxy's private-network
+ * check and caller limits; anonymous callers count against the same allowance.
+ */
+export function discoveryRouteDependencies(
+  env: Env,
+  verifyToken?: (token: string, projectId: string) => Promise<string | null>
+): DiscoveryRouteDependencies {
+  return {
+    isForbiddenHostname: isForbiddenOAuthHostname,
+    admitCaller: async (request) => {
+      const corsHeaders = { ...getCorsHeaders(), 'Cache-Control': 'no-store' };
+      const caller = await identifyCaller(request, env, verifyToken);
+      if (!caller) {
+        return {
+          admitted: false,
+          response: new Response(JSON.stringify({ error: 'invalid_token', message: 'The mcptest sign-in token is invalid or expired.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }),
+        };
+      }
+      if (!(await consumeCallerRateLimit(caller, env))) {
+        return { admitted: false, response: callerLimitResponse(caller, corsHeaders) };
+      }
+      return { admitted: true };
+    },
+  };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -2076,6 +2108,9 @@ export default {
     }
     if (url.pathname === OAUTH_OPERATOR_CLIENT_PATH) {
       return handleOAuthOperatorClientRequest(request, env);
+    }
+    if (url.pathname === DISCOVERY_PATH) {
+      return handleDiscoveryRequest(request, discoveryRouteDependencies(env));
     }
     return handleProxyRequest(request, env);
   },

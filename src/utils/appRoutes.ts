@@ -9,6 +9,9 @@
  * under those prefixes.
  */
 
+/** The MCP discovery checker (src/components/DiscoveryCheckerView.tsx). */
+export const DISCOVERY_CHECKER_PATH = '/tools/discovery';
+
 /** Paths the app serves exactly (a trailing slash is not a variant). */
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
@@ -16,6 +19,7 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   '/learn',
   '/report',
   '/submit',
+  DISCOVERY_CHECKER_PATH,
   '/oauth/callback',
   '/install-integration',
 ];

@@ -13,7 +13,7 @@ import { buildTrackNavigation } from '../src/content/contentModel';
 import { buildLearnTrackNavigation } from '../src/content/navigationLinks';
 
 const {
-  loadArticles, mergeCatalogServers, renderCatalogHtml, renderHomeHtml, renderLearnArticleHtml,
+  loadArticles, mergeCatalogServers, renderCatalogHtml, renderDiscoveryHtml, renderHomeHtml, renderLearnArticleHtml,
   renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
   stripLandingFallback, validateCapabilitySnapshots, addFontPreloads, findFirstFrameFontAssets,
   addAppPreloads, findAppPreloadHrefs,
@@ -557,6 +557,24 @@ describe('generated page metadata', () => {
     expect(html).toContain('rel="canonical" href="https://mcptest.io/catalog"');
     expect(html).toContain('property="og:image" content="https://mcptest.io/og/catalog.png"');
     expect(html).toContain('<div id="root"></div>');
+  });
+
+  it('prerenders the discovery checker in the app shell, with the form React mounts over at load', () => {
+    const metadata = { title: 'MCP Discovery Checker | mcptest.io', description: 'Discovery description.' };
+    const html = renderDiscoveryHtml(indexHtml, metadata, { proxyConfigured: true });
+
+    expect(html).toContain('<title>MCP Discovery Checker | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/tools/discovery"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/tools/discovery.png"');
+    expect(html).toContain('"@type":"WebApplication"');
+    expect(html).toContain('<h1>MCP discovery checker</h1>');
+    expect(html).toContain('<label for="discovery-domain" class="form-label">Domain</label>');
+    expect(html).toContain('<a href="/learn/make-mcp-server-discoverable">');
+    expect(html).not.toContain('The proxy is not configured in this build');
+    // An app route: React mounts at load rather than on the first input.
+    expect(html).not.toContain('data-deferred-mount');
+    expect(html).toContain('<a href="/tools/discovery" class="nav-link sidenav-link active" aria-current="page">');
+    expect(renderDiscoveryHtml(indexHtml, metadata)).toContain('The proxy is not configured in this build');
   });
 
   it('renders unique initial metadata for documentation routes', () => {
