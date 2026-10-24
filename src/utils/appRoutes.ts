@@ -4,8 +4,9 @@
  * dist/routes.txt (see scripts/generate-seo-pages.js) so the origin can
  * answer unknown paths with dist/404.html and a 404 status.
  *
- * Content paths (/learn/*, /docs/*, /servers/*) are prerendered files; the app
- * keeps its own "not found" views for unknown slugs under those prefixes.
+ * Content paths (/learn/*, /docs/*, /servers/*, /catalog/<slug>) are
+ * prerendered files; the app keeps its own "not found" views for unknown slugs
+ * under those prefixes.
  */
 
 /** Paths the app serves exactly (a trailing slash is not a variant). */
@@ -31,8 +32,9 @@ export const APP_ROUTE_PREFIXES: readonly string[] = [
 export const isKnownAppPath = (pathname: string): boolean => {
   if (EXACT_APP_ROUTES.includes(pathname)) return true;
   if (pathname === '/learn/') return true;
-  // Content slugs: unknown ones get the app's own guide or server not-found view.
+  // Content slugs: unknown ones get the app's own guide, server or category not-found view.
   if (/^\/servers\/[^/]+\/?$/.test(pathname)) return true;
+  if (/^\/catalog\/[^/]+$/.test(pathname)) return true;
   return [...APP_ROUTE_PREFIXES, '/learn/', '/docs/'].some(
     prefix => pathname.startsWith(prefix) && pathname.length > prefix.length
   );

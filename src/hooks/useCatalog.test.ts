@@ -170,17 +170,39 @@ describe('catalog query params', () => {
   });
 
   it('hydrates category, auth, and sort together and produces filtered name order', () => {
-    const view = renderCatalogHook('/catalog?category=Finance&auth=no-auth&sort=name');
+    const view = renderCatalogHook('/catalog/finance?auth=no-auth&sort=name');
 
     expect(view.catalog.category).toBe('Finance');
+    expect(view.catalog.categoryNotFound).toBe(false);
     expect(view.catalog.oauthFilter).toBe('no-auth');
     expect(view.catalog.sortOrder).toBe('name');
     expect(view.catalog.filteredServers.map(({ name }) => name)).toEqual([
       'CoinGecko',
       'Yahoo Finance',
     ]);
-    expect(view.location.search).toBe('?category=Finance&auth=no-auth&sort=name');
+    expect(view.location.pathname).toBe('/catalog/finance');
+    expect(view.location.search).toBe('?auth=no-auth&sort=name');
+    expect(view.catalog.filterSearch).toBe('?auth=no-auth&sort=name');
     expect(mockedTrackEvent).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('redirects the legacy category parameter to the category page, keeping other filters', () => {
+    const view = renderCatalogHook('/catalog?category=Finance&auth=no-auth&sort=name');
+
+    expect(view.location.pathname).toBe('/catalog/finance');
+    expect(view.location.search).toBe('?auth=no-auth&sort=name');
+    expect(view.catalog.category).toBe('Finance');
+    expect(mockedTrackEvent).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('reports an unknown category slug without filtering the catalog by it', () => {
+    const view = renderCatalogHook('/catalog/not-a-category');
+
+    expect(view.catalog.categoryNotFound).toBe(true);
+    expect(view.catalog.category).toBe(CATALOG_CATEGORY_ALL);
+    expect(view.location.pathname).toBe('/catalog/not-a-category');
     view.unmount();
   });
 
@@ -204,8 +226,8 @@ describe('catalog query params', () => {
     view.unmount();
   });
 
-  it('pushes category changes so browser back and forward restore selection', () => {
-    const view = renderCatalogHook();
+  it('navigates category changes to the category URL so back and forward restore selection', () => {
+    const view = renderCatalogHook('/catalog?sort=name');
 
     act(() => {
       view.catalog.setCategory('Finance');
@@ -213,15 +235,23 @@ describe('catalog query params', () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(view.location.search).toBe('?category=Finance');
+    expect(view.location.pathname).toBe('/catalog/finance');
+    expect(view.location.search).toBe('?sort=name');
+    expect(mockedTrackEvent).toHaveBeenCalledWith('catalog_filter_category', { category: 'Finance' });
 
     act(() => view.navigate(-1));
-    expect(view.location.search).toBe('');
+    expect(view.location.pathname).toBe('/catalog');
     expect(view.catalog.category).toBe(CATALOG_CATEGORY_ALL);
 
     act(() => view.navigate(1));
-    expect(view.location.search).toBe('?category=Finance');
+    expect(view.location.pathname).toBe('/catalog/finance');
     expect(view.catalog.category).toBe('Finance');
+
+    act(() => {
+      view.catalog.setCategory(CATALOG_CATEGORY_ALL);
+    });
+    expect(view.location.pathname).toBe('/catalog');
+    expect(view.location.search).toBe('?sort=name');
     view.unmount();
   });
 

@@ -198,13 +198,24 @@ const sanitizeTool = (raw: unknown): { item?: CapabilityInventoryToolV1; changed
   const input = value.inputSchema !== undefined
     ? sanitizeArguments(value.inputSchema, 'schema')
     : sanitizeArguments(value.input, 'prompt');
+  // Only presence is kept, never the schema. A raw tools/list entry always
+  // carries inputSchema, so its missing outputSchema is a recorded "no"; a
+  // canonical item carries the boolean itself.
+  const outputSchema = typeof value.outputSchema === 'boolean'
+    ? value.outputSchema
+    : record(value.outputSchema)
+      ? true
+      : value.inputSchema !== undefined ? false : undefined;
   return {
     item: {
       name,
       ...(description.value ? { description: description.value } : {}),
       ...(input.items ? { input: input.items } : {}),
+      ...(outputSchema !== undefined ? { outputSchema } : {}),
     },
-    changed: description.changed || input.changed,
+    changed: description.changed || input.changed
+      || (value.outputSchema !== undefined && typeof value.outputSchema !== 'boolean'
+        && !record(value.outputSchema)),
   };
 };
 
