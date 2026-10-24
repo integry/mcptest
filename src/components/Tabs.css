@@ -2,12 +2,15 @@
    fade at whichever edge still has tabs hidden behind it. The fade is a mask on
    the scroller itself, so it never covers the tabs with a painted overlay. */
 .playground-tab-strip {
+  display: flex;
+  align-items: stretch;
   position: relative;
   min-width: 0;
   max-width: 100%;
 }
 
 .playground-tabs.nav-tabs {
+  min-width: 0;
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
@@ -62,4 +65,10 @@
     max-width: 11rem;
     min-height: 2.75rem;
   }
+}
+
+.playground-tab-new {
+  flex: 0 0 auto;
+  padding: 0.5rem 1rem;
+  color: var(--text-muted);
 }
