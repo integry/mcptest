@@ -1,7 +1,7 @@
 import React from 'react';
 import { createDeferredComponent } from '../utils/deferredComponent';
 import { getCatalogServerIdFromPath } from '../utils/catalogSeo';
-import { getContentPage, getLearnArticleFromPath } from '../content/learnRegistry';
+import { getContentPage, getLearnArticleFromPath, loadLearnArticleBody } from '../content/learnRegistry';
 import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
 import { getPrerenderedArticle } from '../content/prerenderedArticle';
 import { markdownLearnArticle } from '../components/learn/deferredMarkdownArticle';
@@ -72,8 +72,6 @@ export const getRouteView = (pathname: string, search = ''): RouteView => {
   return 'playground';
 };
 
-const hasCodeBlock = (markdown: string): boolean => /^(`{3,}|~{3,})/m.test(markdown);
-
 /**
  * The chunks the first render of `pathname` needs. main.tsx awaits them before
  * mounting so the mount never shows a Suspense fallback over the static HTML.
@@ -100,10 +98,12 @@ export const preloadViewsForPath = (pathname: string, search = ''): Promise<void
       loads.push(article.preload());
       const current = getLearnArticleFromPath(pathname);
       // A prerendered guide keeps its static body (LearnArticlePage), so it needs
-      // neither the Markdown renderer nor highlight.js; embedded components still render.
+      // neither its body chunk, the Markdown renderer nor highlight.js; embedded
+      // components still render. Otherwise the body is its own chunk; with it
+      // loaded the page mounts in one frame instead of through a loading state.
       if (current && (current.component || getPrerenderedArticle(current.slug) === null)) {
-        loads.push(markdownLearnArticle.preload());
-        if (hasCodeBlock(current.content)) loads.push(highlighter());
+        loads.push(markdownLearnArticle.preload(), loadLearnArticleBody(current));
+        if (current.hasCodeBlock) loads.push(highlighter());
       }
       break;
     }

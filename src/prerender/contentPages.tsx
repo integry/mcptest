@@ -11,11 +11,15 @@ import { MemoryRouter } from 'react-router-dom';
 import LearnIndex from '../components/learn/LearnIndex';
 import MarkdownLearnArticle from '../components/learn/MarkdownLearnArticle';
 import { loadHighlighter } from '../components/learn/highlighter';
-import { getContentPage } from '../content/learnRegistry';
+import { LEARN_ARTICLES, getContentPage, loadLearnArticleBody } from '../content/learnRegistry';
 
-/** Loads highlight.js so code blocks render highlighted, as they do once the browser has it. */
+/**
+ * Loads highlight.js so code blocks render highlighted, as they do once the
+ * browser has it, and every guide body, so each page renders without a
+ * loading state.
+ */
 export const prepareContentPrerender = async (): Promise<void> => {
-  await loadHighlighter();
+  await Promise.all([loadHighlighter(), ...LEARN_ARTICLES.map(loadLearnArticleBody)]);
 };
 
 /**

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import type { LearnArticle } from '../../content/learnRegistry';
+import type { LearnArticleSummary } from '../../content/learnRegistry';
 import {
   CONTENT_LEVEL_LABELS,
   getLearnArticleNeighbors,
@@ -13,11 +13,13 @@ import { formatReviewedDate } from './articleFormatting';
 import './ReadingLayout.css';
 
 interface LearnArticleLayoutProps {
-  article: LearnArticle;
+  article: LearnArticleSummary;
   /** The h2 and h3 entries of the "On this page" outline. */
   outline: readonly OutlineHeading[];
   /** The `.reading-prose` element holding the article body. */
   prose: React.ReactNode;
+  /** False while the body is still loading; a `#section` scrolls once it is in place. */
+  bodyReady?: boolean;
 }
 
 /**
@@ -25,7 +27,7 @@ interface LearnArticleLayoutProps {
  * guides and sources. LearnArticlePage supplies the body, either the
  * prerendered HTML or ArticleMarkdown (MarkdownLearnArticle).
  */
-const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outline, prose }) => {
+const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outline, prose, bodyReady = true }) => {
   const related = getRelatedLearnArticles(article);
   const { previous, next } = getLearnArticleNeighbors(article);
   const track = getTrack(article.track);
@@ -40,6 +42,7 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
 
   // Client-side navigation to `#section` (guide search results) does not
   // scroll by itself; every navigation has a new key, so repeats scroll too.
+  // A body that arrives after navigation scrolls to its section once rendered.
   useEffect(() => {
     const id = location.hash.slice(1);
     if (!id) return;
@@ -50,7 +53,7 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
       return;
     }
     target?.scrollIntoView?.({ block: 'start' });
-  }, [article.slug, location.hash, location.key]);
+  }, [article.slug, location.hash, location.key, bodyReady]);
 
   useEffect(() => {
     // The static page already reported the view it was loaded with.

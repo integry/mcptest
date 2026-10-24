@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { LearnArticle } from '../../content/learnRegistry';
+import type { LearnArticle, LearnArticleEntry } from '../../content/learnRegistry';
 import { ARTICLE_PROSE_PROPS, getPrerenderedArticle } from '../../content/prerenderedArticle';
 import { handleCodeCopyClick } from '../../utils/codeCopy';
 import { ViewFallback } from '../../views/deferredViews';
@@ -8,7 +8,8 @@ import LearnArticleLayout from './LearnArticleLayout';
 import { markdownLearnArticle } from './deferredMarkdownArticle';
 
 interface LearnArticlePageProps {
-  article: LearnArticle;
+  /** A registry entry, whose body is loaded on demand, or an article that carries its body. */
+  article: LearnArticleEntry | LearnArticle;
 }
 
 const isPlainClick = (event: React.MouseEvent) => (
@@ -18,8 +19,9 @@ const isPlainClick = (event: React.MouseEvent) => (
 /**
  * A guide page. When the app mounted over the page the build prerendered for
  * this guide, it keeps that body and outline as they are (issue #405), so
- * neither the Markdown parser nor highlight.js is downloaded. Otherwise, and
- * for guides with an embedded component, MarkdownLearnArticle renders it.
+ * neither the Markdown parser, highlight.js nor the guide's body chunk is
+ * downloaded. Otherwise, and for guides with an embedded component,
+ * MarkdownLearnArticle renders it, loading the body on demand.
  */
 const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
   const navigate = useNavigate();

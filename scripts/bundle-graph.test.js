@@ -12,6 +12,7 @@ import {
 const distDir = path.join(__dirname, '..', 'dist');
 const manifestPath = path.join(distDir, '.vite', 'manifest.json');
 const statsPath = path.join(distDir, '.vite', 'bundle-stats.json');
+const articlesDir = path.join(__dirname, '..', 'src', 'content', 'articles');
 
 /**
  * Modules that belong to the inspector, not to a guide, catalog or server
@@ -164,11 +165,27 @@ describe.skipIf(!process.env.BUNDLE_GRAPH)('chunk graph of the built site', () =
     for (const view of LAZY_VIEWS) expect(initial.has(graph[view].file), `${view} is not in the initial graph`).toBe(false);
   });
 
+  it('loads every guide body on demand, never with the initial graph', () => {
+    const graph = manifest();
+    const guides = fs.readdirSync(articlesDir).filter(file => file.endsWith('.md'));
+    const initial = new Set(staticClosure(graph));
+    for (const file of guides) {
+      const chunk = graph[`src/content/articles/${file}?raw`];
+      expect(chunk, `${file} is a chunk`).toBeDefined();
+      expect(chunk.isDynamicEntry, `${file} is a dynamic entry`).toBe(true);
+      expect(initial.has(chunk.file), `${file} is not in the initial graph`).toBe(false);
+    }
+    const offenders = forbiddenInitialModules(graph, stats(), [/\/src\/content\/articles\//]);
+    expect(offenders, offenders.map(item => `${item.module} (in ${item.chunk})`).join('\n')).toEqual([]);
+  });
+
   it('keeps the initial JavaScript under budget', () => {
     const graph = manifest();
     const bytes = staticClosure(graph).reduce((sum, file) => sum + fs.statSync(path.join(distDir, file)).size, 0);
-    // Minified, before compression: 2.9 MB before issue #401, 1.64 MB after it, 17 KB once
-    // React moved behind the first input (issue #405). Ratchet down, never up.
+    console.log(`Initial JavaScript: ${bytes} bytes`);
+    // Minified, before compression: 2.9 MB before issue #401, 1.64 MB after it, 1,346,890
+    // bytes once guide bodies left the initial bundle (issue #424), 17 KB once React moved
+    // behind the first input (issue #405). Ratchet down, never up.
     expect(bytes).toBeLessThan(40_000);
   });
 });

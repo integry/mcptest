@@ -271,16 +271,25 @@ export const parseYaml = (source: string): Record<string, unknown> => {
 };
 
 /**
- * Splits a Markdown document into its frontmatter block and body. The file
- * must start with a `---` line and contain a closing `---` line.
+ * Separates the raw frontmatter block from the body without parsing the YAML.
+ * The browser uses this alone to read a guide body loaded on demand; the
+ * frontmatter itself was parsed and validated at build time.
  */
-export const parseFrontmatter = (source: string): ParsedFrontmatter => {
+export const splitFrontmatter = (source: string): { frontmatter: string; content: string } => {
   const normalized = source.replace(/^﻿/, '').replace(/\r\n/g, '\n');
   const match = normalized.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/);
   if (!match) {
     throw new FrontmatterError('Document must begin with a "---" frontmatter block.');
   }
-  const data = parseYaml(match[1]);
   const content = normalized.slice(match[0].length).replace(/^\n+/, '').replace(/\s+$/, '');
-  return { data, content };
+  return { frontmatter: match[1], content };
+};
+
+/**
+ * Splits a Markdown document into its frontmatter block and body. The file
+ * must start with a `---` line and contain a closing `---` line.
+ */
+export const parseFrontmatter = (source: string): ParsedFrontmatter => {
+  const { frontmatter, content } = splitFrontmatter(source);
+  return { data: parseYaml(frontmatter), content };
 };
