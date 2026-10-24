@@ -1,8 +1,9 @@
 import React from 'react';
 import { createDeferredComponent } from '../utils/deferredComponent';
 import { getCatalogServerIdFromPath } from '../utils/catalogSeo';
-import { getContentPage, getLearnArticleFromPath } from '../content/learnRegistry';
+import { getContentPage, getLearnArticleFromPath, loadLearnArticleBody } from '../content/learnRegistry';
 import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
+import { isKnownAppPath } from '../utils/appRoutes';
 
 /*
  * Route-level code splitting. Each view below is its own chunk (plus the
@@ -48,11 +49,13 @@ export type RouteView =
   | 'catalog'
   | 'server-profile'
   | 'learn-index'
-  | 'page';
+  | 'page'
+  | 'not-found';
 
 /** The view a path renders first, mirroring App's activeView derivation. */
 export const getRouteView = (pathname: string, search = ''): RouteView => {
   if (pathname === '/oauth/callback') return 'oauth-callback';
+  if (!isKnownAppPath(pathname)) return 'not-found';
   if (pathname === '/submit') return 'submit';
   if (pathname.startsWith('/report')) return 'report';
   if (pathname.startsWith('/space/')) return 'dashboards';
@@ -66,8 +69,6 @@ export const getRouteView = (pathname: string, search = ''): RouteView => {
   if (parseServerUrl(pathname) || parseResultShareUrl(pathname, search)) return 'playground';
   return 'playground';
 };
-
-const hasCodeBlock = (markdown: string): boolean => /^(`{3,}|~{3,})/m.test(markdown);
 
 /**
  * The chunks the first render of `pathname` needs. main.tsx awaits them before
@@ -93,8 +94,11 @@ export const preloadViewsForPath = (pathname: string, search = ''): Promise<void
       break;
     case 'article': {
       loads.push(article.preload());
+      // The body is its own chunk; with it loaded the page mounts over the
+      // prerendered article in one frame instead of through a loading state.
       const current = getLearnArticleFromPath(pathname);
-      if (current && hasCodeBlock(current.content)) loads.push(highlighter());
+      if (current) loads.push(loadLearnArticleBody(current));
+      if (current?.hasCodeBlock) loads.push(highlighter());
       break;
     }
     default:

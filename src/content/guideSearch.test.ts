@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { CONTENT_TRACKS } from './contentModel';
-import { LEARN_ARTICLES } from './learnRegistry';
+import { loadAllLearnArticles } from './__fixtures__/loadedArticles';
 import { GUIDE_SEARCH_RESULT_LIMIT, prepareGuideSearch, searchGuides, snippetAround } from './guideSearch';
 import { buildSearchIndex, type SearchIndex, type SearchIndexArticle } from './searchIndex';
 
+const LEARN_ARTICLES = await loadAllLearnArticles();
 const prepared = prepareGuideSearch(buildSearchIndex(LEARN_ARTICLES));
 const flat = (query: string, search = prepared) => searchGuides(search, query).flatMap(group => group.results);
 const marked = (text: string, ranges: readonly (readonly [number, number])[]) =>
