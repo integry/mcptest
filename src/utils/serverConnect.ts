@@ -494,12 +494,16 @@ const listNames = (names: string[]): string => (
   names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
 );
 
-/** Meta description lead: names the top clients the page has setup for. */
-export const getServerSetupSummary = (server: CatalogServer): string => {
-  const names = getServerSetupClientNames(server);
-  return names.length
-    ? `Connect the ${server.name} MCP server to ${listNames(names)}: setup, auth and tools.`
-    : `Set up the ${server.name} MCP server: client setup, auth and tools.`;
+/**
+ * Short setup phrases for the meta description, longest first: up to three
+ * client names, then fewer, then none.
+ */
+const getServerSetupPhrases = (server: CatalogServer): string[] => {
+  const names = getServerSetupClientNames(server, 3);
+  return [
+    ...names.map((_, index) => `Setup for ${names.slice(0, names.length - index).join(', ')} and more.`),
+    'Client setup, auth and tools.',
+  ];
 };
 
 /**
@@ -514,10 +518,22 @@ const truncateDescription = (value: string, maxLength = 158): string => (
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 1).trimEnd()}…`
 );
 
-/** Meta description of a server page: the clients it has setup for, then what the server does. */
-export const getServerPageMetaDescription = (server: CatalogServer): string => (
-  truncateDescription(`${getServerSetupSummary(server)} ${server.seoDescription || server.description}`)
-);
+const SERVER_META_DESCRIPTION_MAX_LENGTH = 158;
+
+/**
+ * Meta description of a server page: what the server does, then a short
+ * setup phrase when it fits. The server summary is never shortened to make
+ * room for client names.
+ */
+export const getServerPageMetaDescription = (server: CatalogServer): string => {
+  const summary = (server.seoDescription || server.description).trim();
+  if (summary.length >= SERVER_META_DESCRIPTION_MAX_LENGTH) {
+    return truncateDescription(summary, SERVER_META_DESCRIPTION_MAX_LENGTH);
+  }
+  const phrase = getServerSetupPhrases(server)
+    .find((candidate) => summary.length + 1 + candidate.length <= SERVER_META_DESCRIPTION_MAX_LENGTH);
+  return phrase ? `${summary} ${phrase}` : summary;
+};
 
 /** Anchor of the "Connect it" heading; JSON-LD points installUrl at it. */
 export const SERVER_CONNECT_TITLE_ID = 'server-connect-title';

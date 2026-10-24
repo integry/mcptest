@@ -58,6 +58,17 @@ describe('ServerConnect client switcher and copying', () => {
     expect(radios[0].checked).toBe(false);
   });
 
+  it('hides unselected panels itself instead of relying on :has() CSS', () => {
+    const view = renderConnect();
+    const visible = () => Array.from(view.querySelectorAll<HTMLElement>('.server-connect-panel'))
+      .filter(({ hidden }) => !hidden)
+      .map(({ dataset }) => dataset.client);
+    expect(visible()).toEqual(['claude-code']);
+
+    act(() => view.querySelector<HTMLInputElement>('#connect-cursor')?.click());
+    expect(visible()).toEqual(['cursor']);
+  });
+
   it('copies a setup snippet and announces success', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });

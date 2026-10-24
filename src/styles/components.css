@@ -436,6 +436,13 @@
   display: block;
 }
 
+/* Without :has() the static page shows every panel; the app hides unselected ones with [hidden]. */
+@supports not selector(:has(*)) {
+  .server-connect-panel:not([hidden]) {
+    display: block;
+  }
+}
+
 .server-connect-panel h3,
 .server-connect-subheading {
   margin: 0 0 0.5rem;

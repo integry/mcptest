@@ -174,7 +174,7 @@ const ServerConnect: React.FC<ServerConnectProps> = ({ server }) => {
           ))}
         </fieldset>
         {model.clients.map((client) => (
-          <section key={client.id} className="server-connect-panel" data-client={client.id}>
+          <section key={client.id} className="server-connect-panel" data-client={client.id} hidden={client.id !== selectedId}>
             <h3>{client.heading}</h3>
             {renderSetup(client)}
           </section>
