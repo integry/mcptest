@@ -10433,5 +10433,30 @@
       "Returns bounded source previews and links, not complete articles, reviews or transcripts. Editorial photos are linked through their containing pages.",
       "Missing country dates and ratings are omitted. Some AI clients require a tool-schema refresh after server updates."
     ]
+  },
+  {
+    "id": "acme-weather",
+    "name": "Acme Weather (submission smoke test)",
+    "url": "https://mcp.acme-weather.dev/mcp",
+    "browserAccess": "direct",
+    "description": "Read-only forecasts and severe-weather alerts for any coordinates. No authentication is required.",
+    "category": "Search",
+    "tags": [
+      "search",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://acme-weather.dev/docs/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/acme-weather.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-24",
+    "logoLicenseNote": "Locally generated AW monogram for a community submission; it is not an official Acme Weather (submission smoke test) mark.",
+    "homepageUrl": "https://acme-weather.dev/docs/mcp"
   }
 ]

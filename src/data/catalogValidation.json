@@ -3040,5 +3040,16 @@
     "message": "Negotiated stateless MCP 2026-07-28 at https://connect.flickdirect.com/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://connect.flickdirect.com/mcp",
     "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "acme-weather",
+    "status": "offline",
+    "transport": "unknown",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-24T10:09:51.492Z",
+    "message": "All transport probes failed; first failure: network_error (Version negotiation probe failed: fetch failed)",
+    "errorCode": "network_error"
   }
 ]
