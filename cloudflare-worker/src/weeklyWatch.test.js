@@ -166,6 +166,21 @@ describe('listToolsForWatch against the e2e mock server', () => {
     expect((await listToolsForWatch('http://127.0.0.1:1/mcp')).outcome).toBe('unreachable');
   });
 
+  it('stops reading a body past the size cap even without a Content-Length', async () => {
+    let pulled = 0;
+    const endless = () => new Response(new ReadableStream({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(256 * 1024).fill(32));
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const listed = await listToolsForWatch(ENDPOINT, { fetchImpl: async () => endless() });
+    expect(listed.outcome).toBe('error');
+    expect(listed.message).toMatch(/too large/);
+    // About 1 MiB of 256 KiB chunks per request, not an unbounded read.
+    expect(pulled).toBeLessThan(40);
+  });
+
   it('skips servers that require authorization', async () => {
     const server = fakeServer(TOOLS());
     server.status = 401;
@@ -408,6 +423,24 @@ describe('weekly watch', () => {
     await registry.storage.put(filler);
     const body = await (await publish(run('a'))).json();
     expect(body.watch).toEqual({ enabled: false, reason: expect.stringMatching(/full/) });
+  });
+
+  it('limits watch opt-ins per client address but still publishes the report', async () => {
+    const sameClient = { headers: { 'CF-Connecting-IP': '203.0.113.77' } };
+    const optIn = (label) => request('/r?watch=weekly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...sameClient.headers },
+      body: JSON.stringify(run(label)),
+    });
+    for (let index = 0; index < 5; index += 1) {
+      const body = await (await optIn(`limit-${index}`)).json();
+      expect(body.watch?.enabled).toBe(true);
+    }
+    const refused = await optIn('limit-5');
+    expect(refused.status).toBeLessThan(300);
+    const body = await refused.json();
+    expect(body.id).toBeTruthy();
+    expect(body.watch).toEqual({ enabled: false, reason: expect.stringMatching(/per day per address/) });
   });
 
   it('serves an empty but valid feed for an endpoint that is not watched', async () => {

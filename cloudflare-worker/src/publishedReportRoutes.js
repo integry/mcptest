@@ -49,6 +49,9 @@ import {
 export const PUBLISH_RATE_LIMITS = {
   host: { limit: 10, windowMs: 60 * 60 * 1000 },
   ip: { limit: 30, windowMs: 60 * 60 * 1000 },
+  // Weekly-watch opt-ins per client address: the watch registry is shared and
+  // capped (WATCH_MAX_ENDPOINTS), so one client cannot fill it.
+  watchIp: { limit: 5, windowMs: 24 * 60 * 60 * 1000 },
 };
 export const PUBLISHED_REPORT_CACHE_CONTROL = 'public, max-age=300, s-maxage=300';
 export const PUBLISHED_INDEX_CACHE_CONTROL = 'public, max-age=60, s-maxage=60';
@@ -263,7 +266,11 @@ const publish = async (request, env, url) => {
   }
   const result = await stored.json();
   const summary = result.entry?.summary;
-  const watch = url.searchParams.get('watch') === 'weekly'
+  const watchRequested = url.searchParams.get('watch') === 'weekly';
+  const watchLimit = watchRequested ? await checkRateLimit(env, 'watchIp', ip, now) : undefined;
+  const watch = watchRequested && !watchLimit.allowed
+    ? { enabled: false, reason: `Watch opt-ins are limited to ${PUBLISH_RATE_LIMITS.watchIp.limit} per day per address. The report was published.` }
+    : watchRequested
     ? await setEndpointWatch(env, {
       endpoint,
       endpointKey,

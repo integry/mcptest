@@ -83,12 +83,34 @@ class HandshakeError extends Error {
   }
 }
 
+/** The body as text, never buffering more than WATCH_MAX_RESPONSE_BYTES whatever the server sends. */
 const readLimited = async (response) => {
   const declared = Number(response.headers.get('Content-Length') || 0);
-  if (declared > WATCH_MAX_RESPONSE_BYTES) throw new HandshakeError('The response is too large.');
-  const text = await response.text();
-  if (text.length > WATCH_MAX_RESPONSE_BYTES) throw new HandshakeError('The response is too large.');
-  return text;
+  if (declared > WATCH_MAX_RESPONSE_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new HandshakeError('The response is too large.');
+  }
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > WATCH_MAX_RESPONSE_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw new HandshakeError('The response is too large.');
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 };
 
 /** The JSON-RPC message answering `id`, from a JSON or an SSE body. */
