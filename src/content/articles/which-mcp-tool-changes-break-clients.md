@@ -4,7 +4,7 @@ navTitle: Breaking tool changes
 summary: Clients cache tools/list, so a deploy that changes a tool can break agents that still hold the old schema. Which changes break callers, which only change behavior, why list_changed does not save a stateless server, and how to version and ship changes safely.
 track: build
 level: practitioner
-order: 27
+order: 28
 category: Tool contracts
 readingTimeMinutes: 9
 lastReviewed: "2026-10-24"
