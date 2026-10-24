@@ -5,6 +5,7 @@ import type {
   CatalogTransport,
   CatalogValidationTransport,
 } from '../types/catalog';
+import { getMissingInventoryNotice, getToolInventoryFeatureList } from './toolInventory.ts';
 
 export const SITE_URL = 'https://mcptest.io';
 
@@ -116,6 +117,31 @@ export const getCatalogServerMetaDescription = (server: CatalogServer): string =
   );
 };
 
+/** Inventory counts and snapshot date, or why no inventory was observed. */
+export const getToolInventoryProperties = (
+  server: Pick<CatalogServer, 'name' | 'authType' | 'capabilityInventory'>
+) => {
+  const inventory = server.capabilityInventory;
+  if (!inventory) {
+    return [{
+      '@type': 'PropertyValue' as const,
+      name: 'Tool inventory',
+      value: getMissingInventoryNotice(server).title,
+    }];
+  }
+  return [
+    { '@type': 'PropertyValue' as const, name: 'Tool inventory observed at', value: inventory.observedAt },
+    { '@type': 'PropertyValue' as const, name: 'Tools observed', value: inventory.tools.observedCount },
+    { '@type': 'PropertyValue' as const, name: 'Resources observed', value: inventory.resources.observedCount },
+    {
+      '@type': 'PropertyValue' as const,
+      name: 'Resource templates observed',
+      value: inventory.resourceTemplates.observedCount,
+    },
+    { '@type': 'PropertyValue' as const, name: 'Prompts observed', value: inventory.prompts.observedCount },
+  ];
+};
+
 export const getCatalogServerSeo = (server: CatalogServer) => {
   const transport = formatCatalogTransport(getEffectiveCatalogTransport(server));
   const auth = formatCatalogAuth(server.authType);
@@ -130,7 +156,8 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
     imageUrl: getCatalogServerImageUrl(server.logoUrl),
     structuredData: {
       '@context': 'https://schema.org',
-      '@type': 'WebAPI',
+      // SoftwareApplication carries applicationCategory and featureList.
+      '@type': ['WebAPI', 'SoftwareApplication'],
       name: `${server.name} MCP Server`,
       description: server.description,
       url: canonicalUrl,
@@ -138,6 +165,9 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
       applicationCategory: server.category,
       keywords: server.tags.join(', '),
       documentation: server.homepageUrl || canonicalUrl,
+      ...(server.capabilityInventory?.tools.items.length || server.capabilityInventory?.prompts.items.length
+        ? { featureList: getToolInventoryFeatureList(server.capabilityInventory) }
+        : {}),
       additionalProperty: [
         {
           '@type': 'PropertyValue',
@@ -164,6 +194,7 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
           name: 'Validation status',
           value: server.status,
         },
+        ...getToolInventoryProperties(server),
       ],
     },
   };

@@ -1,0 +1,149 @@
+/* Server page tool inventory: one dense row per tool, resource or prompt,
+   divided by hairlines; the input schema stays collapsed until asked for. */
+
+.server-tool-inventory-provenance {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.server-tool-inventory-provenance code {
+  overflow-wrap: anywhere;
+}
+
+.server-tool-inventory-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--text-accent);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.server-tool-inventory-count {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.server-tool-inventory-note,
+.server-tool-inventory-empty {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.server-tool-list {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-color);
+  list-style: none;
+}
+
+.server-tool-row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.server-tool-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.server-tool-name {
+  color: var(--text-color);
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.server-tool-output {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.server-tool-output--declared {
+  color: var(--success-color);
+}
+
+.server-tool-description {
+  margin: 0;
+  color: var(--text-accent);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.server-tool-schema {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.server-tool-schema summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.server-tool-schema summary:focus-visible {
+  border-radius: var(--border-radius-sm);
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+.server-tool-schema code {
+  color: var(--text-accent);
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+}
+
+.server-tool-schema-label {
+  font-weight: 500;
+}
+
+.server-tool-parameters {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0 0 0 var(--space-3);
+  border-left: 1px solid var(--border-color);
+  list-style: none;
+}
+
+.server-tool-parameters li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+}
+
+.server-tool-parameters p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.server-tool-inventory-missing {
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.server-tool-inventory-missing strong {
+  color: var(--text-color);
+  font-size: 0.875rem;
+}
+
+.server-tool-inventory-missing p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}

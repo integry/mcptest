@@ -1,5 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const catalogMocks = vi.hoisted(() => ({
@@ -25,6 +26,8 @@ vi.mock('../hooks/useCatalog', () => ({
     setOauthFilter: catalogMocks.setOauthFilter,
     category: 'Developer tools',
     setCategory: catalogMocks.setCategory,
+    categoryNotFound: false,
+    filterSearch: '?q=ASDFASDF&auth=oauth&sort=name',
     sortOrder: 'name',
     setSortOrder: catalogMocks.setSortOrder,
   }),
@@ -54,7 +57,7 @@ describe('CatalogView', () => {
     const root = createRoot(container);
 
     act(() => {
-      root.render(<CatalogView onTestServer={vi.fn()} />);
+      root.render(<MemoryRouter initialEntries={['/catalog']}><CatalogView onTestServer={vi.fn()} /></MemoryRouter>);
     });
 
     const searchIcon = container.querySelector('.catalog-search-field .catalog-search-icon');
@@ -85,7 +88,13 @@ describe('CatalogView', () => {
 
     const categoryRail = container.querySelector<HTMLElement>('.catalog-category-rail');
     expect(categoryRail?.getAttribute('aria-label')).toBe('Catalog categories');
-    expect(categoryRail?.querySelectorAll('button')).toHaveLength(2);
+    const railOptions = categoryRail?.querySelectorAll<HTMLElement>('.catalog-category-option') ?? [];
+    expect(railOptions).toHaveLength(2);
+    // An emptied category is inert; the selected one links to its page with the other filters.
+    expect(railOptions[0]?.tagName).toBe('SPAN');
+    expect(railOptions[0]?.getAttribute('aria-disabled')).toBe('true');
+    expect(railOptions[1]?.getAttribute('href')).toBe('/catalog/developer-tools?q=ASDFASDF&auth=oauth&sort=name');
+    expect(railOptions[1]?.getAttribute('aria-current')).toBe('page');
 
     act(() => {
       root.unmount();
@@ -98,7 +107,7 @@ describe('CatalogView', () => {
     const root = createRoot(container);
 
     act(() => {
-      root.render(<CatalogView onTestServer={vi.fn()} />);
+      root.render(<MemoryRouter initialEntries={['/catalog']}><CatalogView onTestServer={vi.fn()} /></MemoryRouter>);
     });
 
     const list = container.querySelector<HTMLElement>('ul.catalog-server-list');
@@ -152,7 +161,7 @@ describe('CatalogView', () => {
     const root = createRoot(container);
 
     act(() => {
-      root.render(<CatalogView onTestServer={vi.fn()} />);
+      root.render(<MemoryRouter initialEntries={['/catalog']}><CatalogView onTestServer={vi.fn()} /></MemoryRouter>);
     });
 
     const filters = container.querySelector<HTMLElement>('.catalog-filters')!;

@@ -60,6 +60,16 @@ const {
   NOT_FOUND_TITLE,
 } = require('../src/utils/appRoutes.ts');
 const { writeOgImages } = require('./og/ogImages.js');
+const { renderCategoryFallback, renderToolInventory } = require('./content/catalogPages.js');
+const {
+  getCatalogCategoryNames,
+  getCatalogCategoryPath,
+  getCatalogCategorySeo,
+  getCatalogCategorySlug,
+  summarizeCatalogCategories,
+} = require('../src/utils/catalogCategories.ts');
+const { getToolInventoryProperties } = require('../src/utils/catalogSeo.ts');
+const { getToolInventoryFeatureList } = require('../src/utils/toolInventory.ts');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -177,34 +187,6 @@ function mergeCatalogServers(seeds, validationResults, capabilitySnapshots = {})
   });
 }
 
-function inventoryStatusText(section) {
-  const counts = `${section.retainedCount} retained of ${section.observedCount} observed`;
-  const omitted = section.omittedCount ? `; ${section.omittedCount} omitted` : '';
-  if (section.status === 'complete') return `Complete discovery: ${counts}${omitted}.`;
-  if (section.status === 'partial' && !section.paginationComplete) {
-    return `Partial discovery: ${counts}${omitted}. More capabilities may exist.`;
-  }
-  if (section.status === 'partial' && section.omittedCount > 0) {
-    return `Discovery completed; bounded inventory: ${counts}${omitted}.`;
-  }
-  if (section.status === 'partial') {
-    return `Discovery completed; sanitized inventory: ${counts}. Capability details were sanitized for public display.`;
-  }
-  if (section.status === 'unsupported') return 'This discovery method is unsupported.';
-  return 'Discovery was unavailable. This does not mean the server provides no capabilities.';
-}
-
-function renderArguments(argumentsList) {
-  if (!argumentsList?.length) return '';
-  return `<ul class="capability-argument-list">${argumentsList.map(argument => [
-    `<li><code class="technical-string technical-string-inline">${escapeHtml(argument.name)}</code>`,
-    argument.type ? ` · ${escapeHtml(argument.type)}` : '',
-    ` · ${argument.required ? 'required' : 'optional'}`,
-    argument.description ? `<p>${escapeHtml(argument.description)}</p>` : '',
-    '</li>',
-  ].join('')).join('')}</ul>`;
-}
-
 function formatDisplayTimestamp(value) {
   if (!value) return value;
   const timestamp = new Date(value);
@@ -217,54 +199,6 @@ function formatDisplayTimestamp(value) {
     hour: 'numeric', minute: '2-digit',
   }).format(timestamp);
   return `${date} at ${time}`;
-}
-
-function renderCapabilityInventory(server) {
-  const inventory = server.capabilityInventory;
-  if (!inventory) return '';
-  const groups = [
-    ['Tools', inventory.tools, item => [
-      `<strong>${escapeHtml(item.name)}</strong>`,
-      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
-      renderArguments(item.input),
-    ].join('')],
-    ['Resources', inventory.resources, item => [
-      `<strong>${escapeHtml(item.name)}</strong>`,
-      item.title ? `<span class="capability-inventory-title">${escapeHtml(item.title)}</span>` : '',
-      item.mimeType ? `<span class="capability-inventory-mime">${escapeHtml(item.mimeType)}</span>` : '',
-      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
-    ].join('')],
-    ['Resource templates', inventory.resourceTemplates, item => [
-      `<strong>${escapeHtml(item.name)}</strong>`,
-      item.title ? `<span class="capability-inventory-title">${escapeHtml(item.title)}</span>` : '',
-      item.mimeType ? `<span class="capability-inventory-mime">${escapeHtml(item.mimeType)}</span>` : '',
-      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
-    ].join('')],
-    ['Prompts', inventory.prompts, item => [
-      `<strong>${escapeHtml(item.name)}</strong>`,
-      item.description ? `<p>${escapeHtml(item.description)}</p>` : '',
-      renderArguments(item.arguments),
-    ].join('')],
-  ];
-  return [
-    '  <section class="card server-profile-section capability-inventory"><div class="card-body">',
-    '    <h2>Capabilities provided</h2>',
-    `    <p>Observed <time datetime="${escapeHtml(inventory.observedAt)}">${escapeHtml(formatDisplayTimestamp(inventory.observedAt))}</time> at <code class="technical-string technical-string-url technical-string-inline">${escapeHtml(inventory.provenance.testedEndpoint)}</code> via ${escapeHtml(inventory.provenance.route)}; ${escapeHtml(inventory.authentication)} discovery.</p>`,
-    '    <div class="capability-inventory-grid">',
-    ...groups.map(([label, section, renderItem]) => [
-      '      <section class="capability-inventory-group">',
-      `        <h3>${escapeHtml(label)} provided by ${escapeHtml(server.name)}</h3>`,
-      `        <p class="capability-inventory-status capability-inventory-status-${escapeHtml(section.status)}">${escapeHtml(inventoryStatusText(section))}</p>`,
-      ...(section.items.length ? [
-        '        <ul class="capability-inventory-list">',
-        ...section.items.map(item => `          <li>${renderItem(item)}</li>`),
-        '        </ul>',
-      ] : []),
-      '      </section>',
-    ].join('\n')),
-    '    </div>',
-    '  </div></section>',
-  ].join('\n');
 }
 
 function validationStatusLabel(server) {
@@ -473,7 +407,7 @@ function renderServerFallback(server) {
 
   return [
     `<article class="server-profile seo-server-fallback" data-server-id="${escapeHtml(server.id)}">`,
-    `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server Catalog</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
+    `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server Catalog</a></li><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
     '  <header class="server-profile-hero">',
     `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
     `      <h1>${escapeHtml(server.name)}</h1>`,
@@ -500,14 +434,14 @@ function renderServerFallback(server) {
     `      <div><dt>Protocol lifecycle</dt><dd>${escapeHtml(protocolLabel(server.protocolEra, server.protocolVersion))}</dd></div>`,
     ...requiredHeaders,
     ...authorizationServers,
-    `      <div><dt>Category</dt><dd>${escapeHtml(server.category)}</dd></div>`,
+    `      <div><dt>Category</dt><dd><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a></dd></div>`,
     '    </dl>',
     `    <p>${references}</p>`,
     ...(server.caveats?.length ? [
       '    <h3>Provider guidance</h3>',
       `    <ul>${server.caveats.map(caveat => `<li>${escapeHtml(caveat)}</li>`).join('')}</ul>`,
     ] : []),
-    `    <p><a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
+    `    <p><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">More ${escapeHtml(server.category)} MCP servers</a> · <a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
     renderAuthorizationSetup(server),
     renderClientSetups(server),
@@ -533,7 +467,7 @@ function renderServerFallback(server) {
     `      <div><dt>Validation detail</dt><dd>${escapeHtml(validationDetail(server))}</dd></div>`,
     '    </dl>',
     '  </div></section>',
-    renderCapabilityInventory(server),
+    renderToolInventory(server),
     '</article>',
   ].join('\n');
 }
@@ -558,7 +492,8 @@ function renderServerHtml(indexHtml, server) {
   const imageUrl = ogImageUrl(serverPath(server.id));
   const structuredData = {
     '@context': 'https://schema.org',
-    '@type': 'WebAPI',
+    // SoftwareApplication carries applicationCategory and featureList.
+    '@type': ['WebAPI', 'SoftwareApplication'],
     name: `${server.name} MCP Server`,
     description: server.description,
     url: canonicalUrl,
@@ -566,6 +501,9 @@ function renderServerHtml(indexHtml, server) {
     applicationCategory: server.category,
     keywords: server.tags.join(', '),
     documentation: server.homepageUrl || canonicalUrl,
+    ...(server.capabilityInventory?.tools.items.length || server.capabilityInventory?.prompts.items.length
+      ? { featureList: getToolInventoryFeatureList(server.capabilityInventory) }
+      : {}),
     additionalProperty: [
       { '@type': 'PropertyValue', name: 'Declared MCP transport', value: transportLabel(server.declaredTransport) },
       { '@type': 'PropertyValue', name: 'Live-validated MCP transport', value: transportLabel(server.transport) },
@@ -581,12 +519,7 @@ function renderServerHtml(indexHtml, server) {
       { '@type': 'PropertyValue', name: 'Validation status', value: validationStatusLabel(server) },
       { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },
       { '@type': 'PropertyValue', name: 'Validation detail', value: validationDetail(server) },
-      ...(server.capabilityInventory ? [
-        { '@type': 'PropertyValue', name: 'Tools observed', value: server.capabilityInventory.tools.observedCount },
-        { '@type': 'PropertyValue', name: 'Resources observed', value: server.capabilityInventory.resources.observedCount },
-        { '@type': 'PropertyValue', name: 'Resource templates observed', value: server.capabilityInventory.resourceTemplates.observedCount },
-        { '@type': 'PropertyValue', name: 'Prompts observed', value: server.capabilityInventory.prompts.observedCount },
-      ] : []),
+      ...getToolInventoryProperties(server),
     ],
   };
 
@@ -1273,6 +1206,15 @@ function renderCatalogHtml(indexHtml, catalogMetadata) {
   return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata);
 }
 
+/** Prerendered `/catalog/<slug>`: metadata, CollectionPage JSON-LD and the static category body. */
+function renderCategoryHtml(indexHtml, summary, { summaries, servers, articles }) {
+  const seo = getCatalogCategorySeo(summary);
+  return renderStaticPageHtml(indexHtml, summary.path, seo, {
+    structuredData: seo.structuredData,
+    fallbackHtml: renderCategoryFallback({ summary, summaries, servers, articles }),
+  });
+}
+
 /** Title without the trailing `| mcptest.io` suffix, for image cards. */
 function stripSiteSuffix(title) {
   return title.replace(/\s*\|\s*mcptest\.io$/i, '');
@@ -1280,6 +1222,12 @@ function stripSiteSuffix(title) {
 
 /** One Open Graph card per prerendered page. */
 function buildOgCards({ servers, articles, pageMetadata }) {
+  const categoryCards = summarizeCatalogCategories(servers).map(summary => ({
+    pagePath: summary.path,
+    eyebrow: 'Server catalog',
+    title: `${summary.category} MCP servers`,
+    summary: getCatalogCategorySeo(summary).description,
+  }));
   const cards = [
     { pagePath: '/', title: LANDING_HEADLINE, summary: LANDING_LEDE },
     {
@@ -1288,6 +1236,7 @@ function buildOgCards({ servers, articles, pageMetadata }) {
       title: stripSiteSuffix(pageMetadata.catalog.title),
       summary: `${servers.length} public remote MCP servers. ${pageMetadata.catalog.description}`,
     },
+    ...categoryCards,
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     ...Object.entries(pageMetadata.docs).map(([slug, metadata]) => ({
       pagePath: `/docs/${slug}`,
@@ -1328,6 +1277,20 @@ function writeServerPages(indexHtml, servers) {
       'utf8'
     );
   }
+}
+
+/** `/catalog/<slug>` as catalog/<slug>.html, served without a trailing slash like catalog.html. */
+function writeCategoryPages(indexHtml, servers, articles) {
+  const summaries = summarizeCatalogCategories(servers);
+  fs.mkdirSync(path.join(distRoot, 'catalog'), { recursive: true });
+  for (const summary of summaries) {
+    fs.writeFileSync(
+      `${distPathFor(summary.path)}.html`,
+      renderCategoryHtml(indexHtml, summary, { summaries, servers, articles }),
+      'utf8'
+    );
+  }
+  return summaries.length;
 }
 
 /** React-only documentation pages (privacy, terms, contact) keep their metadata in pageMetadata.json. */
@@ -1407,17 +1370,25 @@ function latestDay(values) {
 /**
  * Every indexable prerendered page, once, with the date its content last
  * changed: an article's lastReviewed, a server's latest catalog validation,
- * the newest of those for the pages that list them. Pages with no content
- * date (the legal and contact pages) carry no lastmod rather than the build
- * date. /report is not listed: it has no prerendered page, and the shell the
+ * the newest of those for the pages that list them (the catalog, each
+ * category page, the guide index). Pages with no content date (the legal and
+ * contact pages) carry no lastmod rather than the build date. /report is not listed: it has no prerendered page, and the shell the
  * origin serves for it canonicalises to the home page.
  */
 function getSitemapEntries(servers, articles, docsSlugs = []) {
   const catalogValidated = latestDay(servers.map(server => server.checkedAt));
   const guidesReviewed = latestDay(articles.map(article => article.lastReviewed));
+  const categorized = servers.filter(server => server.category);
+  const categoryEntries = summarizeCatalogCategories(categorized).map(summary => ({
+    pathname: summary.path,
+    lastModified: latestDay(categorized
+      .filter(server => server.category === summary.category)
+      .map(server => server.checkedAt)),
+  }));
   return [
     { pathname: '/', lastModified: latestDay([catalogValidated, guidesReviewed]) },
     { pathname: '/catalog', lastModified: catalogValidated },
+    ...categoryEntries,
     { pathname: '/learn', lastModified: guidesReviewed },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
@@ -1526,6 +1497,15 @@ function validateInputs(servers) {
     }
     ids.add(server.id);
   }
+  const categoriesBySlug = new Map();
+  for (const category of getCatalogCategoryNames(servers)) {
+    const slug = getCatalogCategorySlug(category);
+    if (!slug) throw new Error(`Catalog category has no URL slug: ${category}`);
+    if (categoriesBySlug.has(slug)) {
+      throw new Error(`Catalog categories ${categoriesBySlug.get(slug)} and ${category} share the slug ${slug}`);
+    }
+    categoriesBySlug.set(slug, category);
+  }
 }
 
 function assertExactKeys(value, allowed, label) {
@@ -1606,7 +1586,7 @@ function validateCapabilitySnapshots(snapshots, seeds) {
       for (const [index, item] of section.items.entries()) {
         const label = `${serverId} ${category}[${index}]`;
         const itemKeys = category === 'tools'
-          ? ['name', 'description', 'input']
+          ? ['name', 'description', 'input', 'outputSchema']
           : category === 'prompts'
             ? ['name', 'description', 'arguments']
             : ['name', 'title', 'description', 'mimeType'];
@@ -1617,6 +1597,9 @@ function validateCapabilitySnapshots(snapshots, seeds) {
         }
         if ((category === 'tools' || category === 'prompts') && !identifier.test(item.name)) {
           throw new Error(`${label} has an invalid name.`);
+        }
+        if (item.outputSchema !== undefined && typeof item.outputSchema !== 'boolean') {
+          throw new Error(`${label} outputSchema flag is invalid.`);
         }
         assertSafeInventoryString(item.title, 200, `${label} title`, true);
         assertSafeInventoryString(item.description, 600, `${label} description`, true);
@@ -1697,6 +1680,7 @@ async function main() {
   };
 
   writeServerPages(indexHtml, servers);
+  const categoryCount = writeCategoryPages(indexHtml, servers, articles);
   writeStaticPages(indexHtml, pageMetadata.docs);
   writeArticlePages(indexHtml, learnIndex, articles);
   // Last: overwrites the shell the pages above were rendered from.
@@ -1712,7 +1696,7 @@ async function main() {
   const cards = buildOgCards({ servers, articles, pageMetadata });
   const og = await writeOgImages(cards, { distRoot });
 
-  console.log(`Generated ${servers.length} server profile documents, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${categoryCount} catalog category pages, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home and catalog pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
   console.log(`Open Graph images: ${cards.length} (${og.rendered} rendered, ${og.cached} from cache) in ${((Date.now() - ogStartedAt) / 1000).toFixed(1)}s.`);
 }
 
@@ -1729,6 +1713,7 @@ module.exports = {
   mergeCatalogServers,
   renderArticleMarkdown,
   renderCatalogHtml,
+  renderCategoryHtml,
   renderHomeHtml,
   addFontPreloads,
   findFirstFrameFontAssets,

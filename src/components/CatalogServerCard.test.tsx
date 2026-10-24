@@ -35,7 +35,7 @@ describe('CatalogServerCard presentation', () => {
   it('styles metadata semantically and keeps testing secondary to card details', () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
-        <CatalogServerCard server={server} onTest={vi.fn()} onCategorySelect={vi.fn()} />
+        <CatalogServerCard server={server} onTest={vi.fn()} />
       </MemoryRouter>
     );
     const container = document.createElement('div');
@@ -93,12 +93,14 @@ describe('CatalogServerCard presentation', () => {
       'Online'
     );
     expect(container.querySelector('a a, a button, button a')).toBeNull();
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]?.textContent).toContain('Developer tools');
-    expect(buttons[0]?.getAttribute('aria-label')).toBe('Show Developer tools servers');
-    expect(buttons[1]?.textContent).toContain('Test in Playground');
-    expect(buttons[1]?.classList).toContain('btn-sm');
-    expect(buttons[1]?.classList).toContain('btn-outline-primary');
+    const categoryLink = container.querySelector<HTMLAnchorElement>('a.catalog-metadata-badge--category');
+    expect(categoryLink?.textContent).toBe('Developer tools');
+    expect(categoryLink?.getAttribute('aria-label')).toBe('Show Developer tools servers');
+    expect(categoryLink?.getAttribute('href')).toBe('/catalog/developer-tools');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.textContent).toContain('Test in Playground');
+    expect(buttons[0]?.classList).toContain('btn-sm');
+    expect(buttons[0]?.classList).toContain('btn-outline-primary');
   });
 
   it('keeps long endpoint URLs on a truncated line while preserving the full value', () => {
@@ -109,7 +111,7 @@ describe('CatalogServerCard presentation', () => {
         <CatalogServerCard
           server={{ ...server, url: longUrl }}
           onTest={vi.fn()}
-          onCategorySelect={vi.fn()}
+         
         />
       </MemoryRouter>
     );
@@ -134,7 +136,7 @@ describe('CatalogServerCard presentation', () => {
         <CatalogServerCard
           server={{ ...server, name: longName }}
           onTest={vi.fn()}
-          onCategorySelect={vi.fn()}
+         
         />
       </MemoryRouter>
     );
@@ -184,7 +186,7 @@ describe('CatalogServerCard presentation', () => {
             },
           }}
           onTest={vi.fn()}
-          onCategorySelect={vi.fn()}
+         
         />
       </MemoryRouter>
     );

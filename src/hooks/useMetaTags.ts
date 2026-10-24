@@ -1,6 +1,13 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getCatalogServerById } from '../utils/catalogUtils';
+import { getCatalogServerById, getCatalogServers } from '../utils/catalogUtils';
+import {
+  findCatalogCategoryBySlug,
+  getCatalogCategoryNames,
+  getCatalogCategorySeo,
+  getCatalogCategorySlugFromPath,
+  summarizeCatalogCategory,
+} from '../utils/catalogCategories';
 import {
   getCatalogServerIdFromPath,
   getCatalogServerPath,
@@ -122,6 +129,9 @@ export const useMetaTags = () => {
     const serverId = getCatalogServerIdFromPath(location.pathname);
     const catalogServer = serverId ? getCatalogServerById(serverId) : undefined;
     const contentPage = getContentPage(location.pathname);
+    const categorySlug = getCatalogCategorySlugFromPath(location.pathname);
+    const catalogServers = categorySlug !== null ? getCatalogServers() : [];
+    const category = findCatalogCategoryBySlug(getCatalogCategoryNames(catalogServers), categorySlug);
 
     if (catalogServer) {
       applyMetadata({
@@ -132,6 +142,19 @@ export const useMetaTags = () => {
       applyMetadata({
         title: 'MCP Server Not Found | mcptest.io',
         description: 'This MCP server report is not available. Browse the catalog for tested remote MCP servers.',
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
+        robots: 'noindex, follow',
+      });
+    } else if (category) {
+      const summary = summarizeCatalogCategory(catalogServers, category);
+      applyMetadata({
+        ...getCatalogCategorySeo(summary),
+        imageUrl: ogImage(summary.path),
+      });
+    } else if (categorySlug !== null) {
+      applyMetadata({
+        title: 'Catalog Category Not Found | mcptest.io',
+        description: 'This catalog category is not available. Browse the catalog for tested remote MCP servers.',
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });
