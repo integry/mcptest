@@ -1,12 +1,15 @@
+import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import seoGenerator from './generate-seo-pages.js';
+import criticalCss from './critical-css.js';
 import { parseHtml, parseRoutes } from './check-links.mjs';
 import { NOT_FOUND_LINKS, canonicalAliasPath, isKnownAppPath } from '../src/utils/appRoutes';
 
 const {
   canonicalUrlFor, getSitemapEntries, loadArticles, render404Html, renderRobotsTxt, renderRoutesTxt,
-  renderSitemap, renderStaticPageHtml,
+  renderSitemap, renderStaticPageHtml, setIndexableRobots,
 } = seoGenerator;
+const { inlineCriticalCss } = criticalCss;
 
 const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
 const indexHtml = [
@@ -80,6 +83,32 @@ describe('404 page', () => {
   it('links to the playground, catalog and guides like the NotFound view', () => {
     expect(html).toContain('<h1 id="not-found-title">Page not found</h1>');
     expect(links.map(link => link.value)).toEqual(NOT_FOUND_LINKS.map(link => link.path));
+  });
+});
+
+describe('robots meta', () => {
+  // The shell as the build reads it: the real template plus a stylesheet for the critical-CSS pass.
+  const template = fs.readFileSync('index.html', 'utf8')
+    .replace('</head>', '<link rel="stylesheet" href="/assets/style.css" />\n</head>');
+  const shell = setIndexableRobots(template);
+  const finalize = html => inlineCriticalCss(html, () => 'body{margin:0}');
+  const robotsOf = html => parseHtml(finalize(html)).meta.robots;
+
+  it('the template carries one indexable robots tag before the app mounts', () => {
+    expect(parseHtml(template).meta.robots).toEqual(['index, follow']);
+    expect(setIndexableRobots(shell)).toBe(shell);
+    expect(parseHtml(setIndexableRobots(indexHtml)).meta.robots).toEqual(['index, follow']);
+  });
+
+  it('keeps one index, follow tag on known pages through critical-CSS finalization', () => {
+    expect(finalize(shell)).toContain('<style');
+    for (const pathname of ['/', '/catalog', '/learn', articles[0].path, '/docs/contact']) {
+      expect(robotsOf(renderStaticPageHtml(shell, pathname, { title: 'T', description: 'D' })), pathname).toEqual(['index, follow']);
+    }
+  });
+
+  it('replaces it with noindex on the 404 page instead of adding a second tag', () => {
+    expect(robotsOf(render404Html(shell))).toEqual(['noindex']);
   });
 });
 

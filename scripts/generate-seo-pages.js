@@ -330,6 +330,15 @@ function setNamedMeta(html, name, content) {
   );
 }
 
+/**
+ * Every page rendered from the shell is indexable unless it says otherwise:
+ * one explicit robots tag, present before the app mounts (content pages mount
+ * on first input). render404Html replaces it with noindex.
+ */
+function setIndexableRobots(html) {
+  return setNamedMeta(html, 'robots', 'index, follow');
+}
+
 /** Advertises the guides RSS feed in a page head. */
 function setFeedLink(html) {
   return replaceOrInsertHead(
@@ -1926,7 +1935,7 @@ async function main() {
   });
   const servers = mergeCatalogServers(seeds, validationResults, capabilitySnapshots);
   const fontHrefs = findFirstFrameFontAssets(path.join(distRoot, 'assets'));
-  const indexHtml = addFontPreloads(stripLandingFallback(fs.readFileSync(indexPath, 'utf8')), fontHrefs);
+  const indexHtml = setIndexableRobots(addFontPreloads(stripLandingFallback(fs.readFileSync(indexPath, 'utf8')), fontHrefs));
   const shellOptions = {
     quickPicks: selectLandingQuickPicks(servers),
     learnTracks: buildLearnTrackNavigation(buildTrackNavigation(articles)),
@@ -1995,6 +2004,7 @@ module.exports = {
   canonicalUrlFor,
   getSitemapEntries,
   render404Html,
+  setIndexableRobots,
   renderRobotsTxt,
   renderRoutesTxt,
   renderSitemap,
