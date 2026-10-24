@@ -4,6 +4,7 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { parseServerUrl } from '../src/utils/urlUtils';
 import seoGenerator from './generate-seo-pages.js';
+import catalogPages from './content/catalogPages.js';
 import catalogSeeds from '../src/data/serverCatalog.json';
 import catalogValidation from '../src/data/catalogValidation.json';
 import catalogCapabilities from '../src/data/catalogCapabilities.json';
@@ -130,14 +131,14 @@ describe('generated page metadata', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    for (const heading of ['Claude Code setup', 'Codex CLI setup', 'Cursor setup', 'VS Code setup']) {
-      expect(html).toContain(`<h3>${heading}</h3>`);
+    for (const [client, heading] of [['claude-code', 'Claude Code setup'], ['codex-cli', 'Codex CLI setup'], ['cursor', 'Cursor setup'], ['vscode-copilot', 'VS Code setup']]) {
+      expect(html).toContain(`<section class="server-connect-panel" data-client="${client}"><h3>${heading}</h3>`);
     }
     expect(html).toContain('claude mcp add');
     expect(html).toContain('codex mcp add');
     expect(html).toContain('&lt;unsafe&gt;');
     expect(html).not.toContain('<unsafe>');
-    expect(html).toContain('Canonical catalog endpoint'.toLowerCase());
+    expect(html).toContain('Canonical catalog endpoint: <code');
     expect(html).toContain('client will request authorization');
     expect(html).toContain('After adding the server, open Claude Code, run /mcp, select the server, and follow the browser flow to authenticate.');
     expect(html).not.toContain('claude mcp login');
@@ -473,16 +474,18 @@ describe('generated page metadata', () => {
     expect(html).toContain('catalog-server-logo-initials');
   });
 
-  it('uses the server capability summary across search and social tags', () => {
+  it('leads search and social descriptions with the setup clients, then the capability summary', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';
 
     const html = renderServerHtml(indexHtml, server);
 
+    const description = 'Connect the Example Server MCP server to Claude, ChatGPT, Cursor or VS Code: setup, auth and tools. '
+      + 'Inspect the Example Server MCP server. Explore example re…';
     expect(html).toContain('<title>Example Server MCP Server Report | mcptest.io</title>');
-    expect(html).toContain(`name="description" content="${server.seoDescription}"`);
-    expect(html).toContain(`property="og:description" content="${server.seoDescription}"`);
-    expect(html).toContain(`name="twitter:description" content="${server.seoDescription}"`);
+    expect(html).toContain(`name="description" content="${description}"`);
+    expect(html).toContain(`property="og:description" content="${description}"`);
+    expect(html).toContain(`name="twitter:description" content="${description}"`);
   });
 
   it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
@@ -934,5 +937,93 @@ describe('content pages in the app shell (issue #405)', () => {
     };
     expect(findAppPreloadHrefs(manifest)).toEqual(['/assets/bootstrapApp.js', '/assets/react.js']);
     expect(() => findAppPreloadHrefs({ 'index.html': { file: 'assets/index.js', dynamicImports: [] } })).toThrow('bootstrapApp');
+  });
+});
+
+describe('server page "Connect it" section', () => {
+  const { renderServerConnect } = catalogPages;
+  const servers = mergeCatalogServers(catalogSeeds, catalogValidation, catalogCapabilities);
+  const parse = (html) => new DOMParser().parseFromString(html, 'text/html');
+  const context7 = () => servers.find(({ id }) => id === 'context7');
+
+  it('renders setup for every client, the agent prompt and a compatibility row per client without JavaScript', () => {
+    const server = context7();
+    const document = parse(renderServerHtml(indexHtml, server));
+    const section = document.querySelector('section.server-connect');
+    expect(section?.querySelector('h2#server-connect-title')?.textContent).toBe('Connect it');
+
+    const radios = Array.from(section.querySelectorAll('.server-connect-switch input[type="radio"]'));
+    const clientIds = radios.map(({ id }) => id.replace(/^connect-/, ''));
+    expect(clientIds).toHaveLength(10);
+    expect(clientIds.slice(0, 4)).toEqual(['claude-code', 'codex-cli', 'cursor', 'vscode-copilot']);
+    expect(radios.filter(({ checked }) => checked).map(({ id }) => id)).toEqual(['connect-claude-code']);
+    expect(section.querySelector('fieldset.server-connect-switch')?.hasAttribute('data-carry-choice')).toBe(true);
+    expect(Array.from(section.querySelectorAll('.server-connect-panel')).map(panel => panel.dataset.client)).toEqual(clientIds);
+
+    // Every copy button names an element that holds its text.
+    const buttons = Array.from(section.querySelectorAll('button[data-copy-from]'));
+    expect(buttons.length).toBeGreaterThanOrEqual(5);
+    for (const button of buttons) expect(document.getElementById(button.dataset.copyFrom), button.dataset.copyFrom).not.toBeNull();
+
+    const prompt = section.querySelector('details.server-connect-agent-details pre#server-connect-agent-prompt')?.textContent || '';
+    expect(section.querySelector('.server-connect-agent-copy')?.textContent).toBe('Copy as agent prompt');
+    expect(prompt).toContain('Add the Context7 MCP server');
+    expect(prompt).toContain('Server URL: https://mcp.context7.com/mcp');
+    expect(prompt).toContain('Authentication: none');
+    for (const tool of server.capabilityInventory.tools.items) expect(prompt).toContain(tool.name);
+    expect(prompt).toContain('call tools/list');
+
+    const claude = section.querySelector('.server-connect-panel[data-client="claude-ai"]');
+    expect(claude.textContent).toContain('Add custom connector');
+
+    const rows = Array.from(section.querySelectorAll('table.server-connect-compat tbody tr'));
+    expect(rows.map(row => row.querySelector('th').textContent)).toEqual(radios.map(radio => section.querySelector(`label[for="${radio.id}"]`).textContent));
+    for (const row of rows) {
+      expect(row.querySelector('th a').getAttribute('href')).toMatch(/^(\/learn\/|https:\/\/)/);
+      expect(row.querySelector('td[data-level]').textContent).toMatch(/^(Supported|Partial|Not supported)$/);
+    }
+    const cursor = rows.find(row => row.querySelector('th').textContent === 'Cursor');
+    expect(cursor.textContent).toContain('Supported');
+    expect(cursor.textContent).toContain('Cursor supports Streamable HTTP servers and servers without authentication.');
+    const claudeRow = rows.find(row => row.querySelector('th').textContent === 'Claude');
+    expect(claudeRow.querySelector('a').getAttribute('href')).toBe('/learn/add-remote-mcp-server-to-claude');
+  });
+
+  it('reports clients that cannot send an API key header as not supported and leaves them out of the meta description', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    server.authType = 'api-key';
+    server.declaredAuthType = 'api-key';
+    server.requiredHeaders = [{ name: 'X-API-Key', valueTemplate: '<EXAMPLE_API_KEY>', required: true, secret: true }];
+
+    const html = renderServerHtml(indexHtml, server);
+    const document = parse(html);
+    const chatgpt = Array.from(document.querySelectorAll('table.server-connect-compat tbody tr'))
+      .find(row => row.querySelector('th').textContent === 'ChatGPT');
+    expect(chatgpt.querySelector('td[data-level="unsupported"]').textContent).toBe('Not supported');
+    expect(chatgpt.textContent).toContain('ChatGPT does not support API key headers');
+
+    const description = document.querySelector('meta[name="description"]').getAttribute('content');
+    expect(description).toMatch(/^Connect the Example Server MCP server to /);
+    expect(description).not.toContain('ChatGPT');
+    expect(description).toContain('Cursor');
+  });
+
+  it('adds the setup location, requirements and client support to the JSON-LD', () => {
+    const html = renderServerHtml(indexHtml, context7());
+    const structuredData = JSON.parse(html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '{}');
+    expect(structuredData.installUrl).toBe('https://mcptest.io/servers/context7/#server-connect-title');
+    expect(structuredData.softwareRequirements).toMatch(/^An MCP client that connects to Streamable HTTP remote servers, such as Claude Code, /);
+    const supported = structuredData.additionalProperty.find(({ name }) => name === 'Supported MCP clients');
+    expect(supported.value).toContain('Claude Code');
+    expect(supported.value).toContain('ChatGPT');
+  });
+
+  it('keeps the section small enough for every catalog server', () => {
+    // Issue #444 lets a server page grow by about 15 KB. The section replaced
+    // four stacked client setups of 2.8 KB (context7) to 12 KB (asana), and
+    // measured 9-16 KB when it landed; a larger section needs a new budget.
+    const sizes = servers.map(server => ({ id: server.id, bytes: Buffer.byteLength(renderServerConnect(server)) }));
+    const largest = sizes.reduce((max, size) => (size.bytes > max.bytes ? size : max));
+    expect(largest.bytes, largest.id).toBeLessThan(18_000);
   });
 });

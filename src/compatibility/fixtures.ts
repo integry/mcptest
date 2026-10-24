@@ -4,7 +4,7 @@ import {
   type Known,
   type ObservedServerFactsV1,
   type ObservedValueV1,
-} from './types';
+} from './types.ts';
 
 const targetEvidence = (description: string): CompatibilityEvidenceV1 => ({
   schemaVersion: COMPATIBILITY_SCHEMA_VERSION,

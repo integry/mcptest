@@ -34,3 +34,35 @@ export const handleCodeCopyClick = (event: { target: EventTarget | null }): bool
   );
   return true;
 };
+
+/** Shows a copy button's result, then restores its own label (`data-copy-label`). */
+const setCopyFromState = (button: HTMLElement, copied: boolean): void => {
+  const label = button.dataset.copyLabel ?? 'Copy';
+  const labelElement = button.querySelector('span');
+  if (labelElement) labelElement.textContent = copied ? 'Copied' : label;
+  const icon = button.querySelector('i');
+  if (icon) icon.className = `bi ${copied ? 'bi-check-lg' : 'bi-copy'}`;
+};
+
+/**
+ * Copy buttons that name the element holding their text:
+ * `button[data-copy-from="<id>"]`, as the server page's setup snippets and
+ * agent prompt render them (ServerConnect.tsx, scripts/content/catalogPages.js).
+ * True when the click was such a button.
+ */
+export const handleCopyFromClick = (event: { target: EventTarget | null }): boolean => {
+  const target = event.target as Element | null;
+  const button = typeof target?.closest === 'function' ? target.closest<HTMLElement>('button[data-copy-from]') : null;
+  if (!button) return false;
+  const source = document.getElementById(button.dataset.copyFrom ?? '');
+  const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+  if (!source || !clipboard) return true;
+  clipboard.writeText(source.textContent ?? '').then(
+    () => {
+      setCopyFromState(button, true);
+      window.setTimeout(() => setCopyFromState(button, false), COPIED_RESET_MS);
+    },
+    () => setCopyFromState(button, false),
+  );
+  return true;
+};

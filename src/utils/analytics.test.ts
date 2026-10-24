@@ -57,6 +57,7 @@ const SAMPLE_EVENTS: { [K in AnalyticsEventName]: AnalyticsEventParams<K> } = {
   sidebar_collapse: { collapsed: false },
   oauth_flow: { stage: 'callback', provider_policy_id: 'docusign-developer' },
   theme_changed: { theme_name: 'dark' },
+  server_setup_copied: { server_id: 'context7', target: 'agent_prompt' },
   server_url_connection: { host: 'localhost:3000', transport_method: 'sse' },
   result_share_connection: { host: 'api.example.co.uk', type: 'tool' },
   create_tab: {},

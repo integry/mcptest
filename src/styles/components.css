@@ -341,44 +341,79 @@
   border: 0;
 }
 
-.client-setup-tabs {
+/*
+ * Server page "Connect it" (ServerConnect.tsx, catalogPages.js): radios pick
+ * the client panel with CSS alone, so the prerendered page switches clients
+ * before the app mounts. The nth radio shows the nth panel (the panels are
+ * the section's only sections); a rule per position covers up to 12 clients.
+ */
+.server-connect-agent {
   display: flex;
-  gap: 0.4rem;
-  overflow-x: auto;
-  margin: 0 -0.25rem 1rem;
-  padding: 0.25rem;
-  scrollbar-width: thin;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.25rem;
 }
 
-.client-setup-tab {
-  flex: 0 0 auto;
-  padding: 0.375rem 0.75rem;
+.server-connect-agent-copy,
+.client-setup-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border-color);
+}
+
+.server-connect-agent-details {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.server-connect-agent-details summary {
+  padding: 0.3rem 0;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.server-connect-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+}
+
+.server-connect-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.server-connect-switch label {
+  padding: 0.3rem 0.7rem;
   border: 1px solid var(--border-color);
   border-radius: var(--button-radius);
   background: var(--card-bg);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.8125rem;
   font-weight: 500;
+  cursor: pointer;
 }
 
-.client-setup-tab:hover {
-  border-color: var(--primary-color);
-  color: var(--text-color);
-}
-
-.client-setup-tab.active {
+.server-connect-switch label:hover,
+.server-connect-switch :checked + label {
   border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
-  background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg));
   color: var(--text-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg));
 }
 
-.client-setup-tab:focus-visible {
+.server-connect-switch :focus-visible + label {
   outline: 3px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
   outline-offset: 2px;
 }
 
-.client-setup-panel {
+.server-connect-panel {
+  display: none;
   min-width: 0;
   padding: clamp(1rem, 3vw, 1.4rem);
   border: 1px solid var(--border-color);
@@ -386,28 +421,65 @@
   background: var(--card-bg-secondary);
 }
 
-.client-setup-panel-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+.server-connect:has(:nth-of-type(1):checked) section:nth-of-type(1),
+.server-connect:has(:nth-of-type(2):checked) section:nth-of-type(2),
+.server-connect:has(:nth-of-type(3):checked) section:nth-of-type(3),
+.server-connect:has(:nth-of-type(4):checked) section:nth-of-type(4),
+.server-connect:has(:nth-of-type(5):checked) section:nth-of-type(5),
+.server-connect:has(:nth-of-type(6):checked) section:nth-of-type(6),
+.server-connect:has(:nth-of-type(7):checked) section:nth-of-type(7),
+.server-connect:has(:nth-of-type(8):checked) section:nth-of-type(8),
+.server-connect:has(:nth-of-type(9):checked) section:nth-of-type(9),
+.server-connect:has(:nth-of-type(10):checked) section:nth-of-type(10),
+.server-connect:has(:nth-of-type(11):checked) section:nth-of-type(11),
+.server-connect:has(:nth-of-type(12):checked) section:nth-of-type(12) {
+  display: block;
 }
 
-.client-setup-panel-heading h3 {
-  margin: 0 0 0.25rem;
+.server-connect-panel h3,
+.server-connect-subheading {
+  margin: 0 0 0.5rem;
   font-size: 1.05rem;
 }
 
-.client-setup-panel-heading p,
-.client-setup-auth,
-.client-setup-notes {
-  color: var(--text-muted);
+.server-connect-subheading {
+  margin-top: 1.5rem;
+}
+
+.server-connect-location {
+  margin-bottom: 0.75rem;
+}
+
+.server-connect-compat {
+  width: 100%;
+  margin-bottom: 0.5rem;
+  border-collapse: collapse;
   font-size: 0.875rem;
 }
 
-.client-setup-panel-heading p {
-  margin: 0;
+.server-connect-compat th,
+.server-connect-compat td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.server-connect-compat [data-level] {
+  border-left: 3px solid var(--danger-color);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.server-connect-compat [data-level="supported"] { border-left-color: var(--success-color); }
+.server-connect-compat [data-level="partial"] { border-left-color: var(--warning-color); }
+
+.server-connect-location,
+.server-connect-lede,
+.server-connect-footnote,
+.client-setup-notes {
+  color: var(--text-muted);
+  font-size: 0.875rem;
 }
 
 .client-setup-code-wrap {
@@ -416,7 +488,7 @@
 }
 
 .client-setup-code-wrap pre,
-.seo-client-setup pre {
+.server-connect-agent pre {
   min-height: 5.5rem;
   max-height: 22rem;
   margin: 0;
@@ -434,25 +506,18 @@
   -webkit-user-select: text;
 }
 
-.seo-client-setup .client-setup-panel + .client-setup-panel {
-  margin-top: 1rem;
+.server-connect-agent pre {
+  margin-top: 0.5rem;
+  padding-right: var(--space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .client-setup-copy {
   position: absolute;
   top: 0.65rem;
   right: 0.65rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  border: 1px solid var(--border-color);
   background: var(--card-bg-secondary);
-}
-
-.client-setup-auth {
-  margin: 1rem 0 0.5rem;
-  color: var(--text-color);
-  font-weight: 600;
 }
 
 .client-setup-notes {
@@ -572,10 +637,6 @@
   .server-spec-list > div {
     grid-template-columns: 1fr;
     gap: 0.25rem;
-  }
-
-  .client-setup-panel-heading {
-    flex-direction: column;
   }
 
   .client-setup-code-wrap pre {
