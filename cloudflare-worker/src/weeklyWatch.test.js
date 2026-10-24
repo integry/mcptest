@@ -328,6 +328,77 @@ describe('weekly watch', () => {
     expect(await runWeeklyWatch(env, { now: Date.now(), fetchImpl: server.fetch })).toHaveLength(1);
   });
 
+  it('stops the watch when the last published snapshot is removed', async () => {
+    const first = await (await publish(run('a'))).json();
+    const second = await (await publish(run('b'), '')).json();
+    const remove = (body) => request(`/r/${body.id}`, { method: 'DELETE', headers: { 'X-Removal-Token': body.removalToken } });
+    const server = fakeServer(TOOLS());
+    const start = Date.now();
+    await runWeeklyWatch(env, { now: start, fetchImpl: server.fetch });
+    server.tools = server.tools.slice(0, 1);
+    await runWeeklyWatch(env, { now: start + WEEK, fetchImpl: server.fetch });
+    const badge = async () => (await request(`/badge/report/${encodeURIComponent(ENDPOINT)}.svg`)).headers.get('X-Badge-Result');
+    const feedEntries = async () => ((await (await request(`/r/${encodeURIComponent(ENDPOINT)}/changes.xml`)).text()).match(/<entry>/g) || []).length;
+    expect(await badge()).toBe('breaking-change');
+    expect(await feedEntries()).toBe(2);
+
+    // Another snapshot still carries a token that controls the watch.
+    expect((await remove(second)).status).toBe(204);
+    expect((await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json()).watch.enabled).toBe(true);
+
+    expect((await remove(first)).status).toBe(204);
+    const index = await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json();
+    expect(index.snapshots).toEqual([]);
+    expect(index.watch.enabled).toBe(false);
+    const registry = env.PUBLISHED_REPORTS.get({ name: 'watch:registry' });
+    expect([...registry.storage.map.keys()].filter((k) => k.startsWith('registry:'))).toEqual([]);
+    const calls = server.calls;
+    expect(await runWeeklyWatch(env, { now: start + 3 * WEEK, fetchImpl: server.fetch })).toEqual([]);
+    expect(server.calls).toBe(calls);
+    expect(await feedEntries()).toBe(2);
+    expect(await badge()).toBe('neutral');
+  });
+
+  it('stops the watch with the last snapshot even if the registry update fails', async () => {
+    const body = await (await publish(run('a'))).json();
+    const registry = env.PUBLISHED_REPORTS.get({ name: 'watch:registry' });
+    const registryFetch = registry.fetch.bind(registry);
+    registry.fetch = async (req) => (new URL(req.url).pathname === '/registry/remove' ? new Response('{}', { status: 500 }) : registryFetch(req));
+    expect((await request(`/r/${body.id}`, { method: 'DELETE', headers: { 'X-Removal-Token': body.removalToken } })).status).toBe(204);
+    registry.fetch = registryFetch;
+    const server = fakeServer(TOOLS());
+    expect(await runWeeklyWatch(env, { now: Date.now(), fetchImpl: server.fetch })).toEqual([
+      expect.objectContaining({ outcome: 'not-watched' }),
+    ]);
+    expect(server.calls).toBe(0);
+    expect([...registry.storage.map.keys()].filter((k) => k.startsWith('registry:'))).toEqual([]);
+  });
+
+  it('does not turn the watch on once the snapshot it was authorized by is removed', async () => {
+    const body = await (await publish(run('a'), '')).json();
+    const key = await publishedEndpointKey(ENDPOINT);
+    const endpoint = env.PUBLISHED_REPORTS.get({ name: `endpoint:${key}` });
+    const endpointFetch = endpoint.fetch.bind(endpoint);
+    // The snapshot is removed after the token was verified and the snapshot read.
+    let reads = 0;
+    endpoint.fetch = async (req) => {
+      const response = await endpointFetch(req);
+      if (req.method === 'GET' && new URL(req.url).pathname === `/snapshot/${body.id}` && (reads += 1) === 1) {
+        await request(`/r/${body.id}`, { method: 'DELETE', headers: { 'X-Removal-Token': body.removalToken } });
+      }
+      return response;
+    };
+    const toggled = await request(`/r/${body.id}/watch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Removal-Token': body.removalToken },
+      body: JSON.stringify({ watch: true }),
+    });
+    expect((await toggled.json()).watch).toEqual({ enabled: false, reason: expect.stringMatching(/no published report/) });
+    const registry = env.PUBLISHED_REPORTS.get({ name: 'watch:registry' });
+    expect([...registry.storage.map.keys()].filter((k) => k.startsWith('registry:'))).toEqual([]);
+    expect((await (await request(`/r/endpoint/${encodeURIComponent(ENDPOINT)}`)).json()).watch.enabled).toBe(false);
+  });
+
   it('refuses opt-ins once the watch is full', async () => {
     const registry = env.PUBLISHED_REPORTS.get({ name: 'watch:registry' });
     const filler = {};

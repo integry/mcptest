@@ -339,8 +339,18 @@ export async function setEndpointWatch(env, { endpoint, endpointKey, enabled, re
     endpointKey, endpoint, plan: DEFAULT_WATCH_PLAN, now: nowIso, max: WATCH_MAX_ENDPOINTS,
   })).json();
   if (!added.watching) return { enabled: false, reason: 'The free weekly watch is full. Try again later.' };
-  await callStub(stub, '/watch', { enabled: true, endpoint, plan: DEFAULT_WATCH_PLAN, now: nowIso });
+  const enabledWatch = await callStub(stub, '/watch', { enabled: true, endpoint, plan: DEFAULT_WATCH_PLAN, now: nowIso });
+  if (!enabledWatch.ok) {
+    // The last snapshot was removed meanwhile; nobody could turn this watch off.
+    if (added.added) await callStub(registry, '/registry/remove', { endpointKey });
+    return { enabled: false, reason: 'The endpoint has no published report, so it cannot be watched.' };
+  }
   return { enabled: true, plan: DEFAULT_WATCH_PLAN, interval: 'weekly' };
+}
+
+/** Drops an endpoint whose watch was stopped with its last snapshot from the cron registry. */
+export async function removeFromWatchRegistry(env, endpointKey) {
+  await callStub(registryStub(env), '/registry/remove', { endpointKey });
 }
 
 // --- Atom feed ---

@@ -38,7 +38,7 @@ import {
 import { KNOWN_BADGE_CACHE_CONTROL, UNKNOWN_BADGE_CACHE_CONTROL } from './badges.js';
 import { compileSchema } from './jsonSchema.js';
 import { findUnredactedSecret } from './redactionGuard.js';
-import { renderChangesFeed, setEndpointWatch } from './weeklyWatch.js';
+import { removeFromWatchRegistry, renderChangesFeed, setEndpointWatch } from './weeklyWatch.js';
 import {
   InspectionBudgetExceededError,
   createInspectionBudget,
@@ -317,11 +317,15 @@ const deleteSnapshot = async (request, env, id) => {
   const response = await callStub(endpointStub(env, parsed.endpointKey), `/snapshot/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ removalTokenHash: await sha256Hex(token) }),
+    body: JSON.stringify({ removalTokenHash: await sha256Hex(token), now: new Date().toISOString() }),
   });
   if (response.status === 404) return errorResponse(request, 404, 'not_found', 'No published report has this id.', methods);
   if (response.status === 403) return errorResponse(request, 403, 'invalid_removal_token', 'The removal token does not match this snapshot.', methods);
   if (!response.ok) return errorResponse(request, 502, 'storage_failure', 'The report could not be removed.', methods);
+  const { watchDisabled } = await response.json();
+  // The endpoint instance already stopped the watch; a failed registry update is
+  // repaired by the next cron run, which drops endpoints that are not watched.
+  if (watchDisabled) await removeFromWatchRegistry(env, parsed.endpointKey).catch(() => {});
   return new Response(null, { status: 204, headers: corsHeaders(request, methods) });
 };
 
@@ -347,7 +351,10 @@ const updateWatch = async (request, env, id) => {
   if (verified.status === 404) return errorResponse(request, 404, 'not_found', 'No published report has this id.', methods);
   if (!verified.ok) return errorResponse(request, 502, 'storage_failure', 'The watch could not be updated.', methods);
   if (!(await verified.json()).valid) return errorResponse(request, 403, 'invalid_removal_token', 'The removal token does not match this snapshot.', methods);
-  const snapshot = await (await callStub(stub, `/snapshot/${id}`)).json();
+  const read = await callStub(stub, `/snapshot/${id}`);
+  if (read.status === 404) return errorResponse(request, 404, 'not_found', 'No published report has this id.', methods);
+  if (!read.ok) return errorResponse(request, 502, 'storage_failure', 'The watch could not be updated.', methods);
+  const snapshot = await read.json();
   const summary = snapshot.entry?.summary;
   const watch = await setEndpointWatch(env, {
     endpoint: snapshot.entry.endpoint,

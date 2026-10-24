@@ -108,6 +108,10 @@ export class PublishedReports {
 
   async setWatch(body) {
     const { enabled, endpoint, plan, now } = body;
+    // The watch is controlled with a snapshot's removal token, so it runs only while
+    // the endpoint has a published snapshot; checked here so an opt-in cannot land
+    // after the last snapshot was removed.
+    if (enabled && (await this.readIndex()).length === 0) return json({ error: 'no_published_snapshot' }, 409);
     const current = (await this.storage.get(WATCH_CONFIG_KEY)) || {};
     const config = enabled
       ? { ...current, enabled: true, endpoint, plan, optedInAt: current.enabled ? current.optedInAt : now, updatedAt: now }
@@ -283,13 +287,20 @@ export class PublishedReports {
           return json({ valid: Boolean(removalTokenHash) && removalTokenHash === entry.removalTokenHash });
         }
         if (request.method === 'DELETE') {
-          const { removalTokenHash } = await request.json();
+          const body = await request.json();
+          const { removalTokenHash } = body;
           if (!removalTokenHash || removalTokenHash !== entry.removalTokenHash) {
             return json({ error: 'forbidden' }, 403);
           }
           await this.deleteArtifact(entry);
-          await this.storage.put(INDEX_KEY, index.filter((candidate) => candidate.id !== id));
-          return json({ deleted: true });
+          const remaining = index.filter((candidate) => candidate.id !== id);
+          await this.storage.put(INDEX_KEY, remaining);
+          // Removing the last snapshot removes the last token that could turn the
+          // watch off, so the watch stops with it.
+          const config = await this.storage.get(WATCH_CONFIG_KEY);
+          const watchDisabled = remaining.length === 0 && Boolean(config?.enabled);
+          if (watchDisabled) await this.storage.put(WATCH_CONFIG_KEY, { ...config, enabled: false, updatedAt: body.now });
+          return json({ deleted: true, remaining: remaining.length, watchDisabled });
         }
       }
       return json({ error: 'not_found' }, 404);
