@@ -22,6 +22,7 @@ import {
   LearnArticlePage,
   OAuthCallback,
   OAuthConfig,
+  BreakingChangesView,
   DiscoveryCheckerView,
   ReportView,
   SubmitServerView,
@@ -29,6 +30,7 @@ import {
   ViewFallback,
 } from './views/deferredViews';
 import { PAGE_COMPONENTS } from './content/componentRegistry';
+import { BREAKING_CHANGES_TOOL_PATH } from './utils/breakingChangesRoute';
 import {
   getContentPage,
   getLearnArticle,
@@ -252,6 +254,10 @@ function App() {
       return { activeView: 'submit' as const };
     }
 
+    if (path === BREAKING_CHANGES_TOOL_PATH) {
+      return { activeView: 'breaking-changes' as const };
+    }
+
     if (path === DISCOVERY_CHECKER_PATH) {
       return { activeView: 'discovery' as const };
     }
@@ -397,6 +403,11 @@ function App() {
 
     if (path === '/submit') {
       logPageView(path, 'Submit a server');
+      return;
+    }
+
+    if (path === BREAKING_CHANGES_TOOL_PATH) {
+      logPageView(path, 'Breaking-change check');
       return;
     }
 
@@ -1890,6 +1901,15 @@ function App() {
             <div className="view-panel">
               <Suspense fallback={<ViewFallback label="Loading the submission form" />}>
                 <SubmitServerView initialUrl={connectedTab?.serverUrl} />
+              </Suspense>
+            </div>
+          )}
+
+          {/* Breaking-change check */}
+          {activeView === 'breaking-changes' && (
+            <div className="view-panel">
+              <Suspense fallback={<ViewFallback label="Loading the breaking-change check" />}>
+                <BreakingChangesView initialEndpoint={new URLSearchParams(location.search).get('endpoint') ?? undefined} />
               </Suspense>
             </div>
           )}

@@ -19,12 +19,14 @@ interface TransportDiagnosticsPanelProps {
 
 const severityLabel = (diagnostic: TransportDiagnostic): string => {
   if (diagnostic.status === 'not-checked') return 'Not checked';
+  if (diagnostic.outcome === 'pass') return 'Pass';
   if (diagnostic.status === 'suspected') return 'Possible';
   return diagnostic.severity === 'error' ? 'Error' : diagnostic.severity === 'warning' ? 'Warning' : 'Info';
 };
 
 const severityBadge = (diagnostic: TransportDiagnostic): string => {
   if (diagnostic.status === 'not-checked') return 'bg-secondary';
+  if (diagnostic.outcome === 'pass') return 'bg-success';
   if (diagnostic.status === 'suspected') return 'bg-light text-dark border';
   return diagnostic.severity === 'error' ? 'bg-danger' : diagnostic.severity === 'warning' ? 'bg-warning text-dark' : 'bg-info text-dark';
 };

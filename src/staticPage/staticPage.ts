@@ -19,7 +19,7 @@ import {
   readStoredSidebarCollapsed,
 } from '../utils/layoutState';
 import { logPageView, recordStaticPageEvent, trackEvent, trackGuideLinkClick } from '../utils/analytics';
-import { handleCodeCopyClick } from '../utils/codeCopy';
+import { handleCodeCopyClick, handleCopyFromClick } from '../utils/codeCopy';
 
 /** Set by scripts/generate-seo-pages.js on the shell of pages that mount on first input. */
 export const DEFERRED_MOUNT_ATTRIBUTE = 'data-deferred-mount';
@@ -90,6 +90,26 @@ const toggleGroup = (button: Element): void => {
   button.setAttribute(TOGGLED_GROUP_ATTRIBUTE, '');
 };
 
+/** Marks a radio group whose choice carries over to the app, such as the server page's client switcher. */
+export const CARRIED_CHOICE_ATTRIBUTE = 'data-carry-choice';
+
+/**
+ * The static page switches these radio groups with CSS alone; the app renders
+ * them from its default. A choice the visitor made here is clicked again on
+ * the app's radio with the same id.
+ */
+const snapshotRadioChoices = (root: HTMLElement): (() => void) => {
+  const chosen = Array.from(root.querySelectorAll<HTMLInputElement>(`[${CARRIED_CHOICE_ATTRIBUTE}] input[type="radio"]:checked`))
+    .filter(input => input.id && !input.defaultChecked)
+    .map(input => input.id);
+  return () => {
+    for (const id of chosen) {
+      const input = document.getElementById(id);
+      if (input instanceof HTMLInputElement && root.contains(input) && !input.checked) input.click();
+    }
+  };
+};
+
 /**
  * Called just before the deferred mount replaces the static page; returns
  * what to apply once the app has rendered. The app's sidebar groups
@@ -100,11 +120,13 @@ const toggleGroup = (button: Element): void => {
  * there, so nothing carries over while it is collapsed.
  */
 export const snapshotStaticPageState = (root: HTMLElement): (() => void) => {
+  const restoreChoices = snapshotRadioChoices(root);
   const isCollapsed = () => document.body.classList.contains(SIDEBAR_COLLAPSED_CLASS);
-  if (isCollapsed()) return () => {};
+  if (isCollapsed()) return restoreChoices;
   const groups = Array.from(root.querySelectorAll(`.sidenav-group-toggle[aria-controls][${TOGGLED_GROUP_ATTRIBUTE}]`))
     .map(button => ({ controls: button.getAttribute('aria-controls')!, expanded: button.getAttribute('aria-expanded') === 'true' }));
   return () => {
+    restoreChoices();
     if (isCollapsed()) return;
     for (const { controls, expanded } of groups) {
       const button = Array.from(root.querySelectorAll<HTMLElement>('.sidenav-group-toggle[aria-controls]'))
@@ -159,6 +181,10 @@ export const enhanceStaticPage = (shell: HTMLElement): void => {
     if (!target?.closest) return;
     if (handleCodeCopyClick(event)) {
       handledClicks.add(target.closest('.reading-code-copy')!);
+      return;
+    }
+    if (handleCopyFromClick(event)) {
+      handledClicks.add(target.closest('button[data-copy-from]')!);
       return;
     }
     if (trackGuideLinks && target.closest('article.reading-article')) trackGuideLinks(event);

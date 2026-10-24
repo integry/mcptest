@@ -1,3 +1,4 @@
+import { SESSION_RESILIENCE_IDS } from '../utils/sessionResilienceDefinitions';
 /**
  * Transport-level diagnostics for remote MCP servers.
  *
@@ -5,6 +6,7 @@
  * reference documentation key on them. Never rename or reuse an id.
  */
 export const TRANSPORT_DIAGNOSTIC_IDS = [
+  ...SESSION_RESILIENCE_IDS,
   'transport.accept-header-406',
   'transport.get-stream-405',
   'transport.unsupported-media-type-415',
@@ -19,7 +21,8 @@ export type TransportDiagnosticId = typeof TRANSPORT_DIAGNOSTIC_IDS[number];
 export type TransportDiagnosticSeverity = 'error' | 'warning' | 'info';
 
 /**
- * `detected` means the observed responses prove the problem. `suspected` means
+ * `detected` means the observed responses establish the finding; active probes
+ * additionally carry an explicit pass/fail `outcome`. `suspected` means
  * the responses are consistent with the problem but do not prove it, so it is
  * shown as a possibility and never blocks release. `not-checked` means mcptest
  * could not perform the check and says why; neither is a finding against the
@@ -61,6 +64,8 @@ export interface TransportDiagnosticEvidence {
 
 export interface TransportDiagnostic {
   id: TransportDiagnosticId;
+  /** Explicit active-probe verdict; absent on passive diagnostics. */
+  outcome?: 'pass' | 'fail' | 'warning';
   status: TransportDiagnosticStatus;
   severity: TransportDiagnosticSeverity;
   title: string;

@@ -98,6 +98,7 @@ These are typed in the same catalog and follow the same privacy rules.
 | Event | Fires when | Params |
 | --- | --- | --- |
 | `theme_changed` | The theme changes. | `theme_name` |
+| `server_setup_copied` | A client setup snippet or the agent prompt is copied on a server profile after the app has mounted (`ServerConnect`). | `server_id` (catalog id); `target`: the client id from `clientCompatibility.json`, e.g. `claude-code`, or `agent_prompt` |
 | `server_url_connection` | A `/server/<endpoint>` share link opens a tab. | `host`; `transport_method` (`mcp` \| `sse`, optional) |
 | `result_share_connection` | A `/call/…` result-share link opens a tab. | `host`; `type`: `tool` \| `resource` |
 | `create_tab`, `select_tab` | A playground tab is created or selected. | none |

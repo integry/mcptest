@@ -143,4 +143,57 @@ describe('static page handlers', () => {
     expect(button.textContent).toBe('Copied');
     expect(isHandledByStaticPage(button)).toBe(true);
   });
+
+  it('copies the text a server page button names, then restores its own label', async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const shell = mountShell();
+    shell.insertAdjacentHTML('beforeend', [
+      '<button type="button" data-copy-from="server-connect-agent-prompt" data-copy-label="Copy as agent prompt"><i class="bi bi-copy"></i><span>Copy as agent prompt</span></button>',
+      '<details><summary>Agent prompt</summary><pre id="server-connect-agent-prompt">Add the Example MCP server</pre></details>',
+    ].join(''));
+    const button = shell.querySelector<HTMLButtonElement>('button[data-copy-from]')!;
+    button.click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(writeText).toHaveBeenCalledWith('Add the Example MCP server');
+    expect(button.textContent).toBe('Copied');
+    expect(isHandledByStaticPage(button)).toBe(true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(button.textContent).toBe('Copy as agent prompt');
+    vi.useRealTimers();
+  });
+
+  it('carries a client the visitor picked on the static page over to the app', () => {
+    const shell = mountShell();
+    const switcher = (checked: string) => [
+      '<fieldset data-carry-choice>',
+      ...['claude-code', 'cursor'].map(id => `<input type="radio" name="server-connect-client" id="connect-${id}"${id === checked ? ' checked' : ''}>`),
+      '</fieldset>',
+    ].join('');
+    shell.insertAdjacentHTML('beforeend', switcher('claude-code'));
+    shell.querySelector<HTMLInputElement>('#connect-cursor')!.click();
+    const root = document.getElementById('root')!;
+    const restore = snapshotStaticPageState(root);
+
+    root.innerHTML = switcher('claude-code');
+    const appRadio = root.querySelector<HTMLInputElement>('#connect-cursor')!;
+    const onAppClick = vi.fn();
+    appRadio.addEventListener('click', onAppClick);
+    restore();
+    expect(onAppClick).toHaveBeenCalledTimes(1);
+    expect(appRadio.checked).toBe(true);
+  });
+
+  it('leaves the app on its default client when the visitor kept it', () => {
+    mountShell().insertAdjacentHTML('beforeend', '<fieldset data-carry-choice><input type="radio" name="c" id="connect-claude-code" checked><input type="radio" name="c" id="connect-cursor"></fieldset>');
+    const root = document.getElementById('root')!;
+    const restore = snapshotStaticPageState(root);
+    root.innerHTML = '<fieldset data-carry-choice><input type="radio" name="c" id="connect-claude-code" checked><input type="radio" name="c" id="connect-cursor"></fieldset>';
+    const onAppClick = vi.fn();
+    root.querySelector('#connect-claude-code')!.addEventListener('click', onAppClick);
+    restore();
+    expect(onAppClick).not.toHaveBeenCalled();
+  });
 });

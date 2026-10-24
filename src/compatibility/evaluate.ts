@@ -1,4 +1,4 @@
-import { HOST_IDS, HOST_PROFILE_LIST, HOST_PROFILES } from './profiles';
+import { HOST_IDS, HOST_PROFILE_LIST, HOST_PROFILES } from './profiles.ts';
 import {
   COMPATIBILITY_SCHEMA_VERSION,
   type CompatibilityConditionV1,
@@ -14,7 +14,7 @@ import {
   type ObservedValueV1,
   type PartialCompatibilityMatrixV1,
   type RuleResultDefinitionV1,
-} from './types';
+} from './types.ts';
 
 type TruthValue = true | false | 'unknown';
 

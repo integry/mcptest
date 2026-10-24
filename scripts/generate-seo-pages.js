@@ -2,10 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const {
-  generateClientSetups,
-  getPreferredCatalogEndpoint,
-} = require('../src/utils/clientSetup.ts');
+const { getPreferredCatalogEndpoint } = require('../src/utils/clientSetup.ts');
 const { createAuthorizationGuidance } = require('../src/utils/authorizationGuidance.ts');
 const {
   CONTENT_LEVEL_LABELS,
@@ -64,7 +61,8 @@ const {
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
-const { renderCategoryFallback, renderToolInventory } = require('./content/catalogPages.js');
+const { renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
+const { getServerPageMetaDescription, getServerSetupStructuredData } = require('../src/utils/serverConnect.ts');
 const {
   getCatalogCategoryNames,
   getCatalogCategoryPath,
@@ -235,12 +233,6 @@ function playgroundPath(server) {
   return `/server/${endpoint.url}/${transportMethod}`;
 }
 
-function truncate(value, maxLength = 158) {
-  return value.length <= maxLength
-    ? value
-    : `${value.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
 function replaceOrInsertHead(html, pattern, replacement) {
   if (pattern.test(html)) {
     return html.replace(pattern, replacement);
@@ -322,27 +314,6 @@ function renderServerLogo(server) {
   }
 
   return `<span class="catalog-server-logo catalog-server-logo--fallback server-profile-logo" role="img" aria-label="${escapeHtml(server.name)} logo"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(serverInitials(server.name))}</span></span>`;
-}
-
-function renderClientSetups(server) {
-  const setups = generateClientSetups(server);
-  return [
-    '  <section class="card server-profile-section client-setup seo-client-setup"><div class="card-body">',
-    '    <h2>Connect this server to your client</h2>',
-    ...setups.map(setup => [
-      `    <section class="client-setup-panel" data-client="${escapeHtml(setup.id)}">`,
-      `      <h3>${escapeHtml(setup.heading)}</h3>`,
-      `      <p>${escapeHtml(setup.location)}</p>`,
-      setup.supported
-        ? `      <pre aria-label="${escapeHtml(setup.label)} configuration"><code class="language-${escapeHtml(setup.format)}">${escapeHtml(setup.copyText)}</code></pre>`
-        : `      <div class="alert alert-warning client-setup-unsupported" role="status"><strong>Setup unavailable</strong><p>${escapeHtml(setup.copyText)}</p></div>`,
-      `      <p>${escapeHtml(setup.authSummary)}</p>`,
-      `      <ul>${setup.notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`,
-      `      <p><a href="${escapeHtml(setup.documentationUrl)}">${escapeHtml(setup.documentationLabel)}</a></p>`,
-      '    </section>',
-    ].join('\n')),
-    '  </div></section>',
-  ].join('\n');
 }
 
 function renderAuthorizationSetup(server) {
@@ -461,7 +432,7 @@ function renderServerFallback(server) {
     `    <p><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">More ${escapeHtml(server.category)} MCP servers</a> · <a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
     renderAuthorizationSetup(server),
-    renderClientSetups(server),
+    renderServerConnect(server),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <section class="badge-embed" aria-labelledby="server-badge-embed-title">',
     '      <div class="badge-embed-heading">',
@@ -507,11 +478,9 @@ function renderServerHtml(indexHtml, server, options = {}) {
 
   const canonicalUrl = canonicalUrlFor(serverPath(server.id));
   const title = `${server.name} MCP Server Report | mcptest.io`;
-  const description = truncate(
-    server.seoDescription
-      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
-  );
+  const description = getServerPageMetaDescription(server);
   const imageUrl = ogImageUrl(serverPath(server.id));
+  const setup = getServerSetupStructuredData(server, canonicalUrl);
   const structuredData = {
     '@context': 'https://schema.org',
     // SoftwareApplication carries applicationCategory and featureList.
@@ -523,6 +492,8 @@ function renderServerHtml(indexHtml, server, options = {}) {
     applicationCategory: server.category,
     keywords: server.tags.join(', '),
     documentation: server.homepageUrl || canonicalUrl,
+    installUrl: setup.installUrl,
+    softwareRequirements: setup.softwareRequirements,
     ...(server.capabilityInventory?.tools.items.length || server.capabilityInventory?.prompts.items.length
       ? { featureList: getToolInventoryFeatureList(server.capabilityInventory) }
       : {}),
@@ -542,6 +513,7 @@ function renderServerHtml(indexHtml, server, options = {}) {
       { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },
       { '@type': 'PropertyValue', name: 'Validation detail', value: validationDetail(server) },
       ...getToolInventoryProperties(server),
+      ...setup.additionalProperty,
     ],
   };
 
@@ -1048,6 +1020,7 @@ const PRIMARY_ACTIVE_VIEWS = {
   '/': ['playground'],
   '/catalog': ['catalog', 'server-profile'],
   '/report': ['report'],
+  '/tools/breaking-changes': ['breaking-changes'],
   [DISCOVERY_CHECKER_PATH]: ['discovery'],
 };
 
@@ -1543,6 +1516,12 @@ function buildOgCards({ servers, articles, pageMetadata }) {
       summary: DISCOVERY_COPY.cardSummary,
     },
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
+    ...Object.entries(pageMetadata.tools || {}).map(([slug, metadata]) => ({
+      pagePath: `/tools/${slug}`,
+      eyebrow: 'Free tool',
+      title: stripSiteSuffix(metadata.title),
+      summary: metadata.description,
+    })),
     ...Object.entries(pageMetadata.docs).map(([slug, metadata]) => ({
       pagePath: `/docs/${slug}`,
       title: stripSiteSuffix(metadata.title),
@@ -1648,6 +1627,26 @@ function writeArticlePages(indexHtml, learnIndex, articles, { shell, prerender }
   }
 }
 
+/**
+ * Free tools (`/tools/<slug>`) as tools/<slug>.html, served without a trailing
+ * slash like catalog.html. The first frame is the app shell around the tool as
+ * src/prerender/contentPages.tsx renders it; the app mounts over it at once.
+ */
+function writeToolPages(indexHtml, toolsMetadata, { shell, prerender }) {
+  const pathname = '/tools/breaking-changes';
+  const outputPath = `${distPathFor(pathname)}.html`;
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, renderStaticPageHtml(indexHtml, pathname, toolsMetadata['breaking-changes'], {
+    fallbackHtml: renderAppShell({
+      ...shell,
+      content: prerender.renderBreakingChangesPage(),
+      view: 'breaking-changes',
+      pathname,
+      panelStyle: '',
+    }),
+  }), 'utf8');
+}
+
 function writeHomeAndCatalogPages(indexHtml, pageMetadata, catalogCount, shellOptions) {
   // catalog.html, not catalog/index.html: hosts serve /catalog from it without
   // a trailing-slash redirect, and the app matches /catalog exactly.
@@ -1702,6 +1701,7 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     ...categoryEntries,
     { pathname: DISCOVERY_CHECKER_PATH },
     { pathname: '/learn', lastModified: guidesReviewed },
+    { pathname: '/tools/breaking-changes' },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
     ...servers.map(server => ({ pathname: serverPath(server.id), lastModified: isoDay(server.checkedAt) })),
@@ -1963,6 +1963,9 @@ function validatePageMetadata(pageMetadata) {
       throw new Error(`pageMetadata.json requires a title and description for ${key}.`);
     }
   }
+  if (!pageMetadata.tools?.['breaking-changes']?.title || !pageMetadata.tools['breaking-changes'].description) {
+    throw new Error('pageMetadata.json requires a title and description for tools.breaking-changes.');
+  }
 }
 
 async function main() {
@@ -1999,6 +2002,7 @@ async function main() {
   writeServerPages(indexHtml, servers, contentShell);
   const categoryCount = writeCategoryPages(indexHtml, servers, articles);
   writeStaticPages(indexHtml, pageMetadata.docs);
+  writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });
   writeDiscoveryPage(indexHtml, pageMetadata.discovery, {
     shell: contentShell,
     proxyConfigured: Boolean(readBuildEnv('VITE_PROXY_URL')),
@@ -2055,7 +2059,6 @@ module.exports = {
   renderMarkdown,
   renderServerHtml,
   renderServerLogo,
-  renderClientSetups,
   renderAuthorizationSetup,
   canonicalUrlFor,
   getSitemapEntries,

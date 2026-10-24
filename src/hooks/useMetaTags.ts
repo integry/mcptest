@@ -14,7 +14,8 @@ import {
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
 import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from '../utils/appRoutes';
@@ -125,6 +126,7 @@ export const useMetaTags = () => {
   const location = useLocation();
 
   useEffect(() => {
+    let current = true;
     const resultData = parseResultShareUrl(location.pathname, location.search);
     const serverId = getCatalogServerIdFromPath(location.pathname);
     const catalogServer = serverId ? getCatalogServerById(serverId) : undefined;
@@ -134,10 +136,14 @@ export const useMetaTags = () => {
     const category = findCatalogCategoryBySlug(getCatalogCategoryNames(catalogServers), categorySlug);
 
     if (catalogServer) {
-      applyMetadata({
-        ...getCatalogServerSeo(catalogServer),
-        imageUrl: ogImage(getCatalogServerPath(catalogServer.id)),
-      });
+      const imageUrl = ogImage(getCatalogServerPath(catalogServer.id));
+      applyMetadata({ ...getCatalogServerSeo(catalogServer), imageUrl });
+      // The setup description and JSON-LD need the compatibility engine, which
+      // the server page loads with its "Connect it" section (preloaded on the
+      // profile route), so they follow as soon as that chunk is in.
+      import('../utils/serverConnect').then(({ getServerPageSeo }) => {
+        if (current) applyMetadata({ ...getServerPageSeo(catalogServer), imageUrl });
+      }).catch(() => {});
     } else if (serverId) {
       applyMetadata({
         title: 'MCP Server Not Found | mcptest.io',
@@ -184,6 +190,12 @@ export const useMetaTags = () => {
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });
+    } else if (location.pathname === BREAKING_CHANGES_TOOL_PATH) {
+      applyMetadata({
+        ...BREAKING_CHANGES_METADATA,
+        canonicalUrl: `${SITE_URL}${BREAKING_CHANGES_TOOL_PATH}`,
+        imageUrl: ogImage(BREAKING_CHANGES_TOOL_PATH),
+      });
     } else if (resultData) {
       const { type, name, serverUrl } = resultData;
       const title = `MCP Test Result: ${name}`;
@@ -227,5 +239,8 @@ export const useMetaTags = () => {
       });
     }
 
+    return () => {
+      current = false;
+    };
   }, [location]);
 };

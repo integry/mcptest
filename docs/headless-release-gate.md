@@ -177,3 +177,28 @@ and pass `MCPTEST_API_KEY`. Cross-repository callers must pin `uses` to a commit
 SHA and pass that same SHA as `mcptest_ref`, so the workflow checks out the exact
 mcptest commit that contains the invoked reusable workflow. The workflow rejects
 a non-SHA `mcptest_ref` or a value that differs from the SHA pinned in `uses`.
+
+## Optional session resilience check
+
+Add `--session-resilience` to opt into active Streamable HTTP session checks:
+
+```bash
+npm run mcptest -- --session-resilience https://mcp.example/mcp
+```
+
+The reusable workflow and workflow dispatch accept `session_resilience: true`
+(default false). Nothing runs automatically on connect or in ordinary gates.
+The probes use isolated temporary sessions and the evaluation's credentials and
+route, never execute tools, and never retain credentials or actual session ids.
+They check unknown-id 404, fresh initialization after 404, 8 sequential then
+4 parallel pings, and DELETE invalidation. A run sends at most 22 HTTP requests
+including notifications and cleanup, with five-second request deadlines.
+A clean sample does not simulate a restart or guarantee durability. Stateless
+2026 servers pass as "not applicable: stateless" without session traffic.
+
+Findings `session.unknown-id`, `session.reinitialize`, `session.stickiness`, and
+`session.delete` appear in JSON/Markdown evidence with reference links and flow
+into the shared release decision. Confirmed failures are high priorities;
+DELETE 405 is permitted and informational; it does not lower the release decision.
+Unavailable observations are explicitly not checked, and never reported as passing. Browser report exports
+and published permalinks carry the same evidence.

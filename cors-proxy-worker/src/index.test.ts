@@ -2603,11 +2603,12 @@ describe('caller-based proxy limits', () => {
     await expect(response.text()).resolves.toContain('http or https');
   });
 
-  it('declares both Cloudflare rate-limit bindings with a 60 second period', () => {
+  it('declares the three independent Cloudflare rate-limit bindings with a 60 second period', () => {
     const workerConfiguration = readFileSync(new NodeURL('../wrangler.toml', import.meta.url), 'utf8');
 
     expect(workerConfiguration).toMatch(/name = "ANON_RATE_LIMITER"[\s\S]*?simple = \{ limit = 60, period = 60 \}/);
     expect(workerConfiguration).toMatch(/name = "USER_RATE_LIMITER"[\s\S]*?simple = \{ limit = 600, period = 60 \}/);
+    expect(workerConfiguration).toMatch(/name = "DISCOVERY_RATE_LIMITER"[\s\S]*?namespace_id = "3322"[\s\S]*?simple = \{ limit = 150, period = 60 \}/);
   });
 });
 

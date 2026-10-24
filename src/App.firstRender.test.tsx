@@ -81,7 +81,7 @@ const mount = (path = '/') => {
 
 const FIRST_FRAME = {
   header: true,
-  sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Tool-selection evals', 'Discovery check'],
+  sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Tool-selection evals', 'Breaking changes', 'Discovery check'],
   dashboards: ['My first dashboard'],
   tabs: ['New Connection'],
   landing: 'Inspect, debug and evaluate remote MCP servers in your browser',
