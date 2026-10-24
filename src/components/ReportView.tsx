@@ -21,6 +21,7 @@ import {
 } from '../utils/oauthFlow';
 import {
   evaluateServer,
+  HostedGrantRejectedError,
   isProxyAuthenticationRequired,
   isTargetAuthenticationRequired,
   resolveEvaluationOutcome,
@@ -41,6 +42,10 @@ import { getReportGeneratedParams } from '../utils/reportAnalytics';
 import { getCatalogServerByEndpoint } from '../utils/catalogUtils';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import { publishedEndpointIdentity } from '../utils/publishedReports';
+import {
+  clearHostedOAuthAuthorization,
+  loadHostedOAuthAuthorization,
+} from '../utils/hostedOAuth';
 import {
   createReportSnapshot,
   deleteAllReportSnapshots,
@@ -410,6 +415,7 @@ const ReportView: React.FC = () => {
 
     // Get the exact resource's issuer-bound OAuth access token if available.
     const oauthAccessToken = loadOAuthAuthorization(urlToTest)?.accessToken;
+    const hostedGrant = loadHostedOAuthAuthorization(urlToTest)?.grant;
     
     // Optional Firebase login: it only lifts the proxy's anonymous limits.
     const token = currentUser ? await currentUser.getIdToken() : undefined;
@@ -421,17 +427,43 @@ const ReportView: React.FC = () => {
     
     try {
       const evaluationStartedAt = Date.now();
-      const reportData = await evaluateServer(
-        urlToTest,
-        token,
-        onProgress,
-        oauthAccessToken,
-        targetHeaders,
-        authorizationContext,
-        ...(evaluationOptions || sessionResilience
-          ? [{ ...evaluationOptions, ...(sessionResilience ? { sessionResilience: true } : {}) }]
-          : [])
-      );
+      // Evaluation options carry the hosted grant; otherwise it is passed on its own.
+      const hostedGrantArgument = (grant: string | null | undefined) => {
+        if (evaluationOptions || sessionResilience) {
+          return [{
+            ...evaluationOptions,
+            ...(sessionResilience ? { sessionResilience: true } : {}),
+            hostedGrant: grant,
+          }];
+        }
+        return grant === undefined ? [] : [grant];
+      };
+      let reportData: EvaluationReport;
+      try {
+        reportData = await evaluateServer(
+          urlToTest,
+          token,
+          onProgress,
+          oauthAccessToken,
+          targetHeaders,
+          authorizationContext,
+          ...hostedGrantArgument(hostedGrant)
+        );
+      } catch (error) {
+        if (!hostedGrant || !(error instanceof HostedGrantRejectedError)) throw error;
+
+        clearHostedOAuthAuthorization(urlToTest);
+        onProgress('The stored hosted OAuth authorization expired or belongs to another user. Requesting authorization again...');
+        reportData = await evaluateServer(
+          urlToTest,
+          token,
+          onProgress,
+          oauthAccessToken,
+          targetHeaders,
+          authorizationContext,
+          ...hostedGrantArgument(null)
+        );
+      }
       if (displayUrl !== urlToTest) {
         reportData.authenticationUrl ||= urlToTest;
         reportData.serverUrl = displayUrl;
@@ -511,9 +543,7 @@ const ReportView: React.FC = () => {
     setReportRunnerReady(true);
   }, [handleRunReport]);
 
-  const startOAuth = useCallback(async (authenticationUrl: string) => {
-    setOAuthAction('authorize');
-    setOAuthError(null);
+  const saveOAuthReturnState = useCallback((authenticationUrl: string) => {
     sessionStorage.setItem('oauth_return_view', JSON.stringify({
       activeView: 'report',
       serverUrl: authenticationUrl,
@@ -521,6 +551,12 @@ const ReportView: React.FC = () => {
       ...savedPlanReturnContext(pendingSavedPlanRef.current, report?.serverUrl || authenticationUrl),
       timestamp: Date.now()
     }));
+  }, [report?.serverUrl]);
+
+  const startOAuth = useCallback(async (authenticationUrl: string) => {
+    setOAuthAction('authorize');
+    setOAuthError(null);
+    saveOAuthReturnState(authenticationUrl);
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
@@ -579,18 +615,12 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, [currentUser, report?.serverUrl]);
+  }, [currentUser, saveOAuthReturnState, report?.serverUrl]);
 
   const configureOAuthClient = useCallback(async (authenticationUrl: string) => {
     setOAuthAction('configure');
     setOAuthError(null);
-    sessionStorage.setItem('oauth_return_view', JSON.stringify({
-      activeView: 'report',
-      serverUrl: authenticationUrl,
-      reportInputUrl: report?.serverUrl || authenticationUrl,
-      ...savedPlanReturnContext(pendingSavedPlanRef.current, report?.serverUrl || authenticationUrl),
-      timestamp: Date.now()
-    }));
+    saveOAuthReturnState(authenticationUrl);
 
     try {
       const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
@@ -627,7 +657,7 @@ const ReportView: React.FC = () => {
     } finally {
       setOAuthAction(null);
     }
-  }, [currentUser, report?.serverUrl]);
+  }, [currentUser, saveOAuthReturnState]);
 
   // Published history follows the route's endpoint so a visitor sees the last
   // published run even before (or without) a live evaluation.
@@ -1092,6 +1122,7 @@ const ReportView: React.FC = () => {
       {oauthConfigServerUrl && (
         <OAuthConfig
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onBearerToken={oauthPrerequisite?.supportsBearerToken ? async (token) => {
             const configuredServerUrl = oauthConfigServerUrl;
@@ -1112,6 +1143,7 @@ const ReportView: React.FC = () => {
               savedPlanOptionsFor(pendingSavedPlanRef.current, report?.serverUrl || configuredServerUrl)
             );
           } : undefined}
+          onBeforeHostedAuthorization={() => saveOAuthReturnState(oauthConfigServerUrl)}
           onConfigured={async () => {
             const configuredServerUrl = oauthConfigServerUrl;
             setOAuthConfigServerUrl(null);
