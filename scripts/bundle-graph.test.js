@@ -81,6 +81,7 @@ const LAZY_VIEWS = [
   'src/components/learn/MarkdownLearnArticle.tsx',
   'src/components/OAuthCallback.tsx',
   'src/components/OAuthConfig.tsx',
+  'src/components/ServerConnect.tsx',
   'src/firebaseRuntime.ts',
   'src/utils/savedCardRuntime.ts',
 ];
@@ -178,6 +179,15 @@ describe.skipIf(!process.env.BUNDLE_GRAPH)('chunk graph of the built site', () =
     }
     const offenders = forbiddenInitialModules(graph, stats(), [/\/src\/content\/articles\//]);
     expect(offenders, offenders.map(item => `${item.module} (in ${item.chunk})`).join('\n')).toEqual([]);
+  });
+
+  it('loads active session probes only on demand from diagnostics or reports', () => {
+    const graph = manifest();
+    const probe = graph['src/utils/sessionResilience.ts'];
+    expect(probe?.isDynamicEntry).toBe(true);
+    for (const entry of ['index.html', 'src/components/TabContent.tsx', 'src/components/ReportView.tsx']) {
+      expect(staticClosure(graph, entry)).not.toContain(probe.file);
+    }
   });
 
   it('keeps the initial JavaScript under budget', () => {

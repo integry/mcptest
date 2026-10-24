@@ -191,10 +191,15 @@ which reads documents the browser cannot fetch cross-origin. It is not a general
   validated `Content-Type` and the body come back, plus `X-MCP-Discovery-Final-Url`.
 - **Caps**: at most 3 redirects, each re-checked against the same policy; 256 KB per document
   (`DISCOVERY_MAX_RESPONSE_BYTES`); 8 seconds upstream (`DISCOVERY_TIMEOUT_MS`).
-- **Caller limits**: the same per-IP and per-user rate limits as the proxy.
+- **Caller limits**: an independent `DISCOVERY_RATE_LIMITER` bucket allows 150 requests per
+  60 seconds per client (IP when anonymous, Firebase uid when signed in), enough for about five
+  full checks of 20–30 requests. Discovery does not consume the main proxy's unchanged 60/minute
+  anonymous or 600/minute signed-in allowance. Signing in does not raise the discovery allowance.
+  A limit refusal is a `429` with `Retry-After: 60`, the proxy source and limit headers, and
+  `signInLiftsLimit: false`. The binding fails open when missing or unavailable, as on the proxy.
 
 Refusals carry `X-MCP-Proxy-Response-Source: proxy` and a JSON `error`
-(`target_not_allowed`, `too_large`, `timeout`, `too_many_redirects`, `upstream_unreachable`), so
+(`invalid_token`, `rate_limited`, `target_not_allowed`, `too_large`, `timeout`, `too_many_redirects`, `upstream_unreachable`), so
 the checker can tell them apart from a target's own response. See `src/discovery.ts`.
 
 ## Development

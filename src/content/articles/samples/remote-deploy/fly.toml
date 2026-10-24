@@ -1,0 +1,23 @@
+app = "replace-with-your-unique-mcp-app"
+primary_region = "iad"
+[build]
+  dockerfile = "Dockerfile"
+[env]
+  PORT = "8080"
+  PUBLIC_URL = "https://replace-with-your-unique-mcp-app.fly.dev/mcp"
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.http_options]
+    idle_timeout = 120
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"
+    [http_service.checks.headers]
+      Host = "replace-with-your-unique-mcp-app.fly.dev"

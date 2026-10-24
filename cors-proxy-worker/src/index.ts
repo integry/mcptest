@@ -31,6 +31,7 @@ export interface Env extends HostedOAuthEnv {
    */
   ANON_RATE_LIMITER?: RateLimiter;
   USER_RATE_LIMITER?: RateLimiter;
+  DISCOVERY_RATE_LIMITER?: RateLimiter;
 }
 
 /** Shape of Cloudflare's native Rate Limiting binding. */
@@ -122,6 +123,8 @@ const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 export const RATE_LIMIT_PERIOD_SECONDS = 60;
 export const ANONYMOUS_REQUESTS_PER_PERIOD = 60;
 export const SIGNED_IN_REQUESTS_PER_PERIOD = 600;
+// A full discovery check can need 30 requests; allow about five per minute.
+export const DISCOVERY_REQUESTS_PER_PERIOD = 150;
 export const ANONYMOUS_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 export const ANONYMOUS_MAX_STREAM_DURATION_MS = 5 * 60 * 1000;
 export const ANONYMOUS_MAX_REQUEST_BYTES = 1024 * 1024;
@@ -175,6 +178,14 @@ const missingRateLimiterWarnings = new Set<string>();
 /** Returns true when the caller is within its request-rate allowance. */
 export async function consumeCallerRateLimit(caller: ProxyCaller, env: Env): Promise<boolean> {
   const bindingName = caller.tier === 'anonymous' ? 'ANON_RATE_LIMITER' : 'USER_RATE_LIMITER';
+  return consumeRateLimit(caller, env, bindingName);
+}
+
+async function consumeRateLimit(
+  caller: ProxyCaller,
+  env: Env,
+  bindingName: 'ANON_RATE_LIMITER' | 'USER_RATE_LIMITER' | 'DISCOVERY_RATE_LIMITER'
+): Promise<boolean> {
   const limiter = env[bindingName];
   if (!limiter) {
     if (!missingRateLimiterWarnings.has(bindingName)) {
@@ -2087,7 +2098,7 @@ export async function handleProxyRequest(
 
 /**
  * The discovery route (src/discovery.ts) shares the proxy's private-network
- * check and caller limits; anonymous callers count against the same allowance.
+ * check and caller identity, with an independent discovery request allowance.
  */
 export function discoveryRouteDependencies(
   env: Env,
@@ -2103,12 +2114,31 @@ export function discoveryRouteDependencies(
           admitted: false,
           response: new Response(JSON.stringify({ error: 'invalid_token', message: 'The mcptest sign-in token is invalid or expired.' }), {
             status: 401,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', [PROXY_RESPONSE_SOURCE_HEADER]: 'proxy' },
           }),
         };
       }
-      if (!(await consumeCallerRateLimit(caller, env))) {
-        return { admitted: false, response: callerLimitResponse(caller, corsHeaders) };
+      if (!(await consumeRateLimit(caller, env, 'DISCOVERY_RATE_LIMITER'))) {
+        return {
+          admitted: false,
+          response: new Response(JSON.stringify({
+            error: 'rate_limited',
+            tier: caller.tier,
+            limit: 'requests',
+            signInLiftsLimit: false,
+            message: `mcptest discovery limit reached (${DISCOVERY_REQUESTS_PER_PERIOD} requests per ${RATE_LIMIT_PERIOD_SECONDS}s). Retry shortly.`,
+          }), {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+              'Retry-After': String(RATE_LIMIT_PERIOD_SECONDS),
+              [PROXY_LIMIT_HEADER]: caller.tier,
+              [PROXY_LIMIT_KIND_HEADER]: 'requests',
+              [PROXY_RESPONSE_SOURCE_HEADER]: 'proxy',
+            },
+          }),
+        };
       }
       return { admitted: true };
     },

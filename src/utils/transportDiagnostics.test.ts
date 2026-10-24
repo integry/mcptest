@@ -65,7 +65,7 @@ describe('transport diagnostic model', () => {
   it('defines an explanation and three stack-specific code hints for every stable id', () => {
     expect(Object.keys(TRANSPORT_DIAGNOSTIC_DEFINITIONS).sort()).toEqual([...TRANSPORT_DIAGNOSTIC_IDS].sort());
     for (const id of TRANSPORT_DIAGNOSTIC_IDS) {
-      expect(id).toMatch(/^transport\.[a-z0-9-]+$/);
+      expect(id).toMatch(/^(transport|session)\.[a-z0-9-]+$/);
       const definition = TRANSPORT_DIAGNOSTIC_DEFINITIONS[id];
       expect(definition.explanation.length).toBeGreaterThan(120);
       expect(definition.remediation.summary.length).toBeGreaterThan(40);

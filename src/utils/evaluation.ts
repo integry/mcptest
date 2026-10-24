@@ -189,6 +189,8 @@ export interface EvaluationOptions {
    * the same evaluator but omit that browser-only observation from scoring.
    */
   runtime?: 'browser' | 'headless';
+  /** Explicit opt-in: creates isolated sessions and sends a bounded ping burst. */
+  sessionResilience?: boolean;
   /**
    * Output-contract verdicts to include. Defaults to the verdicts recorded for
    * this server by playground tool calls and deterministic test runs.
@@ -1748,6 +1750,26 @@ export async function evaluateServer(
         requests: connection.observedRequests || [],
       },
     ], runtime);
+
+    if (options.sessionResilience && connection.transportType === 'streamable-http') {
+      onProgress('Checking session resilience (8 sequential and 4 parallel pings)...');
+      const [{ checkSessionResilience }, { sessionResilienceConnection }] = await Promise.all([
+        import('./sessionResilience'), import('./sessionResilienceConnection'),
+      ]);
+      const diagnostics = await checkSessionResilience({
+        ...sessionResilienceConnection({
+          endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
+          ...(connection.usedProxy ? { proxyUrl: getProxyUrl(), firebaseToken } : {}),
+          oauthToken, headers: targetHeaders,
+        }),
+        protocolVersion: connection.protocolVersion,
+        stateless: connection.protocolEra === 'modern',
+      });
+      report.sections.sessionResilience = {
+        name: 'Session resilience', description: 'Opt-in active session checks; no tools are executed.',
+        score: 0, maxScore: 0, details: diagnostics.map(transportDiagnosticReportDetail),
+      };
+    }
 
     report.sections.performance = performanceSection(durationMs);
     report.finalScore = Object.entries(report.sections)

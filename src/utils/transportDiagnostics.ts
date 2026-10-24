@@ -1,3 +1,4 @@
+import { SESSION_RESILIENCE_DEFINITIONS } from './sessionResilienceDefinitions';
 import type {
   TransportDiagnostic,
   TransportDiagnosticEvidence,
@@ -22,6 +23,7 @@ interface TransportDiagnosticDefinition {
  * A reference page is generated per id, so keep ids and titles stable.
  */
 export const TRANSPORT_DIAGNOSTIC_DEFINITIONS: Record<TransportDiagnosticId, TransportDiagnosticDefinition> = {
+  ...SESSION_RESILIENCE_DEFINITIONS,
   'transport.accept-header-406': {
     title: 'Server rejected the Accept header (HTTP 406)',
     explanation: 'Streamable HTTP clients must send an Accept header that lists both application/json and text/event-stream on every POST, because the server may answer with either a JSON body or an SSE stream. The server answered HTTP 406 Not Acceptable, which usually means its Accept check is stricter than the specification: it compares the whole header to one exact string, requires one media type only, or rejects the order or parameters of the list. Other inspectors report this as a generic connection error.',
@@ -613,7 +615,7 @@ export const collectTransportDiagnostics = (
 /** Diagnostics that are findings against the server (not "not checked" notes). */
 export const detectedTransportDiagnostics = (
   diagnostics: readonly TransportDiagnostic[] | undefined
-): TransportDiagnostic[] => (diagnostics || []).filter(({ status }) => status === 'detected');
+): TransportDiagnostic[] => (diagnostics || []).filter(({ status, outcome }) => status === 'detected' && outcome !== 'pass');
 
 /** Short human description of a wait, for UI and report text. */
 export const formatRetryWait = (seconds: number): string => {
@@ -623,6 +625,7 @@ export const formatRetryWait = (seconds: number): string => {
 };
 
 const reportIcon = (diagnostic: TransportDiagnostic): string => {
+  if (diagnostic.outcome === 'pass') return '✓';
   if (diagnostic.status === 'not-checked') return 'ℹ';
   if (diagnostic.status === 'suspected') return '?';
   return diagnostic.severity === 'error' ? '✗' : diagnostic.severity === 'warning' ? '⚠' : 'ℹ';

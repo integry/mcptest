@@ -229,6 +229,7 @@ const ReportView: React.FC = () => {
   const [report, setReport] = useState<EvaluationReport | null>(null);
   const [progress, setProgress] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [sessionResilience, setSessionResilience] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [testedServers, setTestedServers] = useState<TestedServerHistoryEntry[]>([]);
   const [oauthConfigServerUrl, setOAuthConfigServerUrl] = useState<string | null>(null);
@@ -426,9 +427,15 @@ const ReportView: React.FC = () => {
     
     try {
       const evaluationStartedAt = Date.now();
-      // Saved-plan options carry the hosted grant; otherwise it is passed on its own.
+      // Evaluation options carry the hosted grant; otherwise it is passed on its own.
       const hostedGrantArgument = (grant: string | null | undefined) => {
-        if (evaluationOptions) return [{ ...evaluationOptions, hostedGrant: grant }];
+        if (evaluationOptions || sessionResilience) {
+          return [{
+            ...evaluationOptions,
+            ...(sessionResilience ? { sessionResilience: true } : {}),
+            hostedGrant: grant,
+          }];
+        }
         return grant === undefined ? [] : [grant];
       };
       let reportData: EvaluationReport;
@@ -528,7 +535,7 @@ const ReportView: React.FC = () => {
       setIsRunning(false);
       isRunningRef.current = false;
     }
-  }, [currentUser, isRunning, navigate, urlParam, addOrUpdateServer]);
+  }, [currentUser, isRunning, navigate, urlParam, addOrUpdateServer, sessionResilience]);
 
   // Assign handleRunReport to ref after it's defined
   useEffect(() => {
@@ -746,6 +753,12 @@ const ReportView: React.FC = () => {
           {isRunning ? 'Running...' : 'Run Report'}
         </button>
       </div>
+
+      <label className="d-block mb-3">
+        <input type="checkbox" checked={sessionResilience} disabled={isRunning}
+          onChange={event => setSessionResilience(event.target.checked)} />{' '}
+        Check session resilience (optional; 8 sequential and 4 parallel pings, temporary sessions only)
+      </label>
 
       {testedServers.length > 0 && (
         <section className="report-section mb-3" aria-labelledby="report-history-servers-title">

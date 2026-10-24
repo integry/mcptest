@@ -1,8 +1,8 @@
-import React, { act } from 'react';
+import React, { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../utils/analytics', () => ({
   logPageView: vi.fn(),
@@ -46,14 +46,16 @@ const tap = (button: HTMLButtonElement) => {
   button.click();
 };
 
-const flush = async () => {
-  await new Promise(resolve => setTimeout(resolve, 0));
-  await new Promise(resolve => setTimeout(resolve, 0));
+// Match bootstrapApp's completion signal: restoration runs after the first
+// commit and effects, rather than after an arbitrary number of timer ticks.
+const OnCommit = ({ done }: { done: () => void }) => {
+  useEffect(done, [done]);
+  return null;
 };
 
 let reactRoot: Root | null = null;
 
-const setup = ({ transfer = true } = {}) => {
+const setup = ({ commitGate = Promise.resolve() }: { commitGate?: Promise<void> } = {}) => {
   document.body.innerHTML = `<div id="root"><div class="app-shell" data-deferred-mount>${renderToStaticMarkup(sidebar())}</div></div>`;
   const root = document.getElementById('root')!;
   enhanceStaticPage(getDeferredStaticPage(root)!);
@@ -65,24 +67,41 @@ const setup = ({ transfer = true } = {}) => {
     root,
     prepare,
     isHandled: isHandledByStaticPage,
-    ...(transfer ? { snapshotState: snapshotStaticPageState } : {}),
+    snapshotState: snapshotStaticPageState,
   });
-  const mount = async () => {
-    resolvePrepare(async () => {
+  const ready = () => {
+    resolvePrepare(() => new Promise<void>((resolve) => {
       root.innerHTML = '';
       reactRoot = createRoot(root);
-      await act(async () => {
-        reactRoot!.render(<div className="app-shell">{sidebar()}</div>);
-      });
-    });
-    await flush();
+      reactRoot.render(
+        <React.StrictMode>
+          <div className="app-shell">{sidebar()}</div>
+          <OnCommit done={() => { void commitGate.then(resolve); }} />
+        </React.StrictMode>
+      );
+    }));
   };
-  return { root, mount };
+  const runMountTimer = async () => {
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+  };
+  const mount = async () => {
+    ready();
+    await Promise.resolve();
+    await runMountTimer();
+  };
+  return { root, ready, runMountTimer, mount };
+
 };
 
 describe('track toggles across the deferred mount', () => {
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
@@ -91,6 +110,7 @@ describe('track toggles across the deferred mount', () => {
     document.body.innerHTML = '';
     document.body.className = '';
     localStorage.clear();
+    vi.useRealTimers();
   });
 
   it('keeps the final state of every track toggled before the app loaded', async () => {
@@ -116,4 +136,42 @@ describe('track toggles across the deferred mount', () => {
     act(() => toggle(page.root, other.id).click());
     expect(expanded(page.root)[other.id]).toBe(false);
   });
+
+  it('waits if a new press starts after the chunk resolves but before the mount timer runs', async () => {
+    const page = setup();
+    tap(toggle(page.root, other.id));
+    page.ready();
+    // The chunk is ready and the idle mount is queued, but has not run yet.
+    await Promise.resolve();
+    const button = toggle(page.root, owning.id);
+    button.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await page.runMountTimer();
+    expect(page.root.querySelector('[data-deferred-mount]')).not.toBeNull();
+    expect(toggle(page.root, owning.id)).toBe(button);
+
+    button.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    button.click();
+    const chosen = expanded(page.root);
+    await page.runMountTimer();
+    expect(page.root.querySelector('[data-deferred-mount]')).toBeNull();
+    expect(expanded(page.root)).toEqual(chosen);
+  });
+
+  it('restores only after the render completion promise resolves', async () => {
+    let finishCommit!: () => void;
+    const commitGate = new Promise<void>(resolve => { finishCommit = resolve; });
+    const page = setup({ commitGate });
+    tap(toggle(page.root, other.id));
+    tap(toggle(page.root, owning.id));
+    const chosen = expanded(page.root);
+
+    await page.mount();
+    // DOM replacement alone does not mean the handoff has finished. The old
+    // two-timer helper could return at this point and assert route defaults.
+    expect(page.root.querySelector('[data-deferred-mount]')).toBeNull();
+    expect(expanded(page.root)).toMatchObject({ [owning.id]: true, [other.id]: false });
+    await act(async () => { finishCommit(); });
+    expect(expanded(page.root)).toEqual(chosen);
+  });
+
 });

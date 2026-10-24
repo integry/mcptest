@@ -1,7 +1,8 @@
 /**
- * Static HTML for the catalog category pages and the server-page tool
- * inventory. Mirrors CatalogView, CatalogServerCard, CatalogCategoryDetails
- * and ServerToolInventory (same elements and classes) so the prerendered
+ * Static HTML for the catalog category pages, the server-page "Connect it"
+ * section and tool inventory. Mirrors CatalogView, CatalogServerCard,
+ * CatalogCategoryDetails, ServerConnect and ServerToolInventory (same
+ * elements and classes) so the prerendered
  * page reads the same before React mounts and replaces the root. The text
  * itself comes from the shared src/utils modules the components use.
  */
@@ -21,7 +22,14 @@ const {
 } = require('../../src/utils/toolInventory.ts');
 const { getCategoryGuideSlugs } = require('../../src/content/categoryGuides.ts');
 const {
+  SERVER_CONNECT_TITLE_ID,
+  createServerConnectModel,
+  splitInlineCode,
+} = require('../../src/utils/serverConnect.ts');
+const { CLIENT_COMPATIBILITY_DATA_URL } = require('../../src/content/compatMatrix.ts');
+const {
   formatCatalogAuth,
+  formatCatalogTransport,
   formatProtocolEra,
   getCatalogServerPath,
   getEffectiveCatalogTransport,
@@ -201,6 +209,81 @@ function renderCategoryFallback({ summary, summaries, servers, articles }) {
   ].join('\n');
 }
 
+function renderInlineCode(text) {
+  return splitInlineCode(text).map(part => (
+    part.code ? `<code>${escapeHtml(part.text)}</code>` : escapeHtml(part.text)
+  )).join('');
+}
+
+function renderNotes(notes) {
+  return notes.length ? `<ul class="client-setup-notes">${notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : '';
+}
+
+function renderCopyButton(sourceId, label, ariaLabel, className) {
+  return `<button type="button" class="btn btn-sm ${className}" data-copy-from="${sourceId}" data-copy-label="${escapeHtml(label)}" aria-label="${escapeHtml(ariaLabel)}"><i class="bi bi-copy" aria-hidden="true"></i><span>${escapeHtml(label)}</span></button>`;
+}
+
+function renderConnectSetup(client) {
+  const { setup } = client;
+  if (setup.kind === 'snippet') {
+    const sourceId = `server-connect-setup-${client.id}`;
+    return [
+      `<p class="server-connect-location">${escapeHtml(setup.location)}</p>`,
+      `<div class="client-setup-code-wrap"><pre id="${sourceId}" tabindex="0" aria-label="${escapeHtml(client.label)} configuration"><code>${escapeHtml(setup.copyText)}</code></pre>`,
+      renderCopyButton(sourceId, 'Copy', `Copy ${client.label} setup`, 'btn-ghost client-setup-copy'),
+      '</div>',
+      renderNotes(setup.notes),
+    ].join('');
+  }
+  if (setup.kind === 'unavailable') {
+    return [
+      `<p class="server-connect-location">${escapeHtml(setup.location)}</p>`,
+      `<div class="alert alert-warning client-setup-unsupported" role="note"><strong>Setup unavailable</strong><p class="mb-0">${escapeHtml(setup.text)}</p></div>`,
+      renderNotes(setup.notes),
+    ].join('');
+  }
+  return [
+    `<p class="server-connect-location">Add the endpoint above in ${escapeHtml(client.label)}:</p>`,
+    `<ul class="client-setup-notes">${setup.surfaces.map(text => `<li>${renderInlineCode(text)}</li>`).join('')}</ul>`,
+  ].join('');
+}
+
+/**
+ * The server page's "Connect it" section, as ServerConnect renders it: the
+ * agent prompt, a client switcher that works with CSS alone, per-client setup
+ * and the compatibility table.
+ */
+function renderServerConnect(server) {
+  const model = createServerConnectModel(server);
+  const { endpoint } = model;
+  return [
+    `  <section class="card server-profile-section server-connect" aria-labelledby="${SERVER_CONNECT_TITLE_ID}"><div class="card-body">`,
+    `    <div class="server-section-heading"><span class="server-section-icon"><i class="bi bi-plug" aria-hidden="true"></i></span><div><h2 id="${SERVER_CONNECT_TITLE_ID}">Connect it</h2></div></div>`,
+    `    <p class="server-connect-lede">${escapeHtml(endpoint.provenanceLabel)}: <code class="technical-string technical-string-url technical-string-inline">${escapeHtml(endpoint.url)}</code> · ${escapeHtml(formatCatalogTransport(endpoint.transport))}. ${escapeHtml(model.authSummary)}</p>`,
+    '    <div class="server-connect-agent">',
+    `      ${renderCopyButton('server-connect-agent-prompt', 'Copy as agent prompt', 'Copy as agent prompt', 'btn-ghost server-connect-agent-copy')}`,
+    `      <details class="server-connect-agent-details"><summary>Agent prompt for Claude Code or Codex</summary><pre id="server-connect-agent-prompt" tabindex="0">${escapeHtml(model.agentPrompt)}</pre></details>`,
+    '    </div>',
+    '    <fieldset class="server-connect-switch" data-carry-choice><legend class="visually-hidden">MCP client</legend>',
+    ...model.clients.map((client, index) => (
+      `      <input type="radio" name="server-connect-client" id="connect-${escapeHtml(client.id)}"${index === 0 ? ' checked' : ''}><label for="connect-${escapeHtml(client.id)}">${escapeHtml(client.label)}</label>`
+    )),
+    '    </fieldset>',
+    ...model.clients.map(client => (
+      `    <section class="server-connect-panel" data-client="${escapeHtml(client.id)}"><h3>${escapeHtml(client.heading)}</h3>${renderConnectSetup(client)}</section>`
+    )),
+    ...(model.sharedNotes.length ? [`    <h3 class="server-connect-subheading">Notes for every client</h3>${renderNotes(model.sharedNotes)}`] : []),
+    '    <h3 class="server-connect-subheading">Client compatibility</h3>',
+    '    <table class="server-connect-compat"><thead><tr><th scope="col">Client</th><th scope="col">Status</th><th scope="col">Why</th></tr></thead><tbody>',
+    ...model.clients.map(client => (
+      `      <tr><th scope="row"><a href="${escapeHtml(client.href)}">${escapeHtml(client.label)}</a></th><td data-level="${client.compatibility.level}">${escapeHtml(client.compatibility.label)}</td><td>${escapeHtml(client.compatibility.reason)}</td></tr>`
+    )),
+    '    </tbody></table>',
+    `    <p class="server-connect-footnote">Computed from this server's validated transport, protocol and authentication against <a href="${CLIENT_COMPATIBILITY_DATA_URL}">documented client support</a>. Checks the catalog has not observed are not counted.</p>`,
+    '  </div></section>',
+  ].join('\n');
+}
+
 function renderParameters(parameters, label) {
   if (!parameters?.length) {
     return `<p class="server-tool-schema server-tool-schema--empty"><span class="server-tool-schema-label">${label}</span> No parameters</p>`;
@@ -303,5 +386,6 @@ function renderToolInventory(server) {
 module.exports = {
   renderCatalogRow,
   renderCategoryFallback,
+  renderServerConnect,
   renderToolInventory,
 };
