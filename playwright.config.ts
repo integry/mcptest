@@ -2,13 +2,15 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * End-to-end smoke suite (issue #390): the built dist/ served statically, a
- * local mock MCP server, Chromium only. `npm run build` first, then
- * `npm run test:e2e`. Set CHROME_PATH to use a system Chromium instead of the
- * Playwright-managed one.
+ * local mock MCP server and a local discovery fixture domain, Chromium only.
+ * `npm run build` first, then `npm run test:e2e`. Set CHROME_PATH to use a
+ * system Chromium instead of the Playwright-managed one.
  */
 
 export const APP_PORT = Number(process.env.E2E_APP_PORT) || 4173;
 export const MOCK_PORT = Number(process.env.E2E_MOCK_PORT) || 4180;
+/** A local domain for the discovery checker, advertising the mock server (tests/e2e/discovery-fixture-server.mjs). */
+export const DISCOVERY_PORT = Number(process.env.E2E_DISCOVERY_PORT) || 4181;
 const isCI = Boolean(process.env.CI);
 
 export default defineConfig({
@@ -51,6 +53,12 @@ export default defineConfig({
     {
       command: `node tests/e2e/mock-mcp-server.mjs --port ${MOCK_PORT}`,
       url: `http://127.0.0.1:${MOCK_PORT}/health`,
+      reuseExistingServer: !isCI,
+      timeout: 30_000,
+    },
+    {
+      command: `node tests/e2e/discovery-fixture-server.mjs --port ${DISCOVERY_PORT} --mock-port ${MOCK_PORT}`,
+      url: `http://127.0.0.1:${DISCOVERY_PORT}/health`,
       reuseExistingServer: !isCI,
       timeout: 30_000,
     },

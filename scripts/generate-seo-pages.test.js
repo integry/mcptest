@@ -9,11 +9,14 @@ import catalogValidation from '../src/data/catalogValidation.json';
 import catalogCapabilities from '../src/data/catalogCapabilities.json';
 import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 import { extractOutline } from '../src/content/outline';
+import { buildTrackNavigation } from '../src/content/contentModel';
+import { buildLearnTrackNavigation } from '../src/content/navigationLinks';
 
 const {
-  loadArticles, mergeCatalogServers, renderCatalogHtml, renderHomeHtml, renderLearnArticleHtml,
+  loadArticles, mergeCatalogServers, renderCatalogHtml, renderDiscoveryHtml, renderHomeHtml, renderLearnArticleHtml,
   renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
   stripLandingFallback, validateCapabilitySnapshots, addFontPreloads, findFirstFrameFontAssets,
+  addAppPreloads, findAppPreloadHrefs,
 } = seoGenerator;
 const articles = loadArticles({ reservedPaths: ['/docs/privacy-policy', '/docs/terms-of-service', '/docs/contact'] });
 const learnIndex = { title: 'Learn MCP', description: 'Learn description.', summary: 'Learn summary.' };
@@ -297,11 +300,11 @@ describe('generated page metadata', () => {
     expect(server).toBeDefined();
     expect(observedTool).toBeDefined();
     const html = renderServerHtml(indexHtml, server);
-    expect(html).toContain(`<strong>${observedTool.name}</strong>`);
-    expect(html).toContain(`<p>${observedTool.description}</p>`);
+    expect(html).toContain(`<code class="server-tool-name">${observedTool.name}</code>`);
+    expect(html).toContain(`<p class="server-tool-description">${observedTool.description}</p>`);
   });
 
-  it('renders escaped literal capabilities and only aggregate inventory counts in JSON-LD', () => {
+  it('renders escaped literal capabilities in the page and an escaped featureList in JSON-LD', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.checkedAt = '2026-08-18T00:32:48';
     const section = (items) => ({
@@ -326,21 +329,24 @@ describe('generated page metadata', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).toContain('Tools provided by Example Server');
-    expect(html).toContain('Resources provided by Example Server');
-    expect(html).toContain('Resource templates provided by Example Server');
-    expect(html).toContain('Prompts provided by Example Server');
+    expect(html).toContain('id="server-tool-inventory-resources" class="server-tool-inventory-heading">Resources <span class="server-tool-inventory-count">1</span>');
+    expect(html).toContain('id="server-tool-inventory-resource-templates" class="server-tool-inventory-heading">Resource templates <span class="server-tool-inventory-count">1</span>');
+    expect(html).toContain('Record template');
+    expect(html).toContain('id="server-tool-inventory-prompts" class="server-tool-inventory-heading">Prompts');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('Aug 18, 2026 at 12:32 AM');
     expect(html).not.toContain('<dd>2026-08-18T00:32:48</dd>');
     expect(html).toContain('server-spec-list server-connection-specs');
     expect(html).toContain('<code class="technical-string technical-string-url technical-string-inline">https://example.com/mcp</code>');
-    expect(html).toContain('<code class="technical-string technical-string-inline">libraryId</code>');
+    expect(html).toContain('<summary><span class="server-tool-schema-label">Input</span> <code>libraryId: string</code></summary>');
     expect(html).toContain('server-profile-breadcrumb-parent');
     expect(html).toContain('server-profile-breadcrumb-current');
     expect(html).toContain('"name":"Tools observed","value":1');
     const structuredData = html.match(/<script id="server-structured-data"[^>]*>(.*?)<\/script>/)?.[1] || '';
-    expect(structuredData).not.toContain('alert(1)');
+    // featureList carries the tool names, escaped so the script element cannot be closed early.
+    expect(structuredData).not.toContain('<script>');
+    expect(JSON.parse(structuredData).featureList).toEqual(['<script>alert(1)</script>: safe & useful', 'Prompt summarize']);
   });
 
   it('keeps standalone and quoted credentials out of generated static HTML', () => {
@@ -437,16 +443,12 @@ describe('generated page metadata', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain(
-      'Discovery completed; sanitized inventory: 1 retained of 1 observed. Capability details were sanitized for public display.'
-    );
-    expect(html).toContain(
-      'Discovery completed; bounded inventory: 1 retained of 2 observed; 1 omitted.'
-    );
-    expect(html).toContain(
-      'Partial discovery: 1 retained of 1 observed. More capabilities may exist.'
-    );
-    expect(html.match(/Partial discovery:/g)).toHaveLength(1);
+    const section = (id) => html.slice(html.indexOf(`<section aria-labelledby="${id}">`)).split('</section>')[0];
+    expect(section('server-tool-inventory-tools')).toContain('Some details were sanitized for public display.');
+    expect(section('server-tool-inventory-resources')).toContain('1 of 2 shown; 1 omitted to keep the page bounded.');
+    expect(section('server-tool-inventory-resource-templates')).toContain('Partial listing: 1 of 1 shown; more may exist.');
+    expect(html.match(/Partial listing:/g)).toHaveLength(1);
+    expect(html).not.toContain('id="server-tool-inventory-prompts"');
   });
 
   it('uses the server Open Graph card in social metadata and the local logo in static profile markup', () => {
@@ -555,6 +557,24 @@ describe('generated page metadata', () => {
     expect(html).toContain('rel="canonical" href="https://mcptest.io/catalog"');
     expect(html).toContain('property="og:image" content="https://mcptest.io/og/catalog.png"');
     expect(html).toContain('<div id="root"></div>');
+  });
+
+  it('prerenders the discovery checker in the app shell, with the form React mounts over at load', () => {
+    const metadata = { title: 'MCP Discovery Checker | mcptest.io', description: 'Discovery description.' };
+    const html = renderDiscoveryHtml(indexHtml, metadata, { proxyConfigured: true });
+
+    expect(html).toContain('<title>MCP Discovery Checker | mcptest.io</title>');
+    expect(html).toContain('rel="canonical" href="https://mcptest.io/tools/discovery"');
+    expect(html).toContain('property="og:image" content="https://mcptest.io/og/tools/discovery.png"');
+    expect(html).toContain('"@type":"WebApplication"');
+    expect(html).toContain('<h1>MCP discovery checker</h1>');
+    expect(html).toContain('<label for="discovery-domain" class="form-label">Domain</label>');
+    expect(html).toContain('<a href="/learn/make-mcp-server-discoverable">');
+    expect(html).not.toContain('The proxy is not configured in this build');
+    // An app route: React mounts at load rather than on the first input.
+    expect(html).not.toContain('data-deferred-mount');
+    expect(html).toContain('<a href="/tools/discovery" class="nav-link sidenav-link active" aria-current="page">');
+    expect(renderDiscoveryHtml(indexHtml, metadata)).toContain('The proxy is not configured in this build');
   });
 
   it('renders unique initial metadata for documentation routes', () => {
@@ -801,7 +821,7 @@ describe('generated page metadata', () => {
   });
 
   it('lists every article in the sitemap at its canonical path without .md alternates', () => {
-    const sitemap = renderSitemap([{ id: 'example-server' }], articles, '2026-10-20');
+    const sitemap = renderSitemap([{ id: 'example-server', checkedAt: '2026-10-20T15:30:37.843Z' }], articles, ['privacy-policy']);
 
     expect(sitemap).toContain('<loc>https://mcptest.io/learn</loc>');
     expect(sitemap).toContain('<loc>https://mcptest.io/docs/what-is-mcp</loc>');
@@ -810,7 +830,8 @@ describe('generated page metadata', () => {
       expect(sitemap).toContain(`<loc>https://mcptest.io${article.path}</loc>\n    <lastmod>${article.lastReviewed}</lastmod>`);
     }
     expect(sitemap).not.toContain('.md</loc>');
-    expect(sitemap).not.toContain('/docs/privacy-policy');
+    // React-only documentation pages are prerendered and indexable, so they are listed too.
+    expect(sitemap).toContain('<loc>https://mcptest.io/docs/privacy-policy</loc>');
   });
 });
 
@@ -823,7 +844,8 @@ describe('generated server profile badge embed', () => {
     );
     const html = renderServerHtml(indexHtml, server);
     expect(html).toContain('<h2 id="server-badge-embed-title">Share and embed</h2>');
-    expect(html).toContain('<img src="/badge/ready.svg" alt="mcptest.io: ready" height="20">');
+    // Sized like the badge SVG, so the preview reserves its box before it loads.
+    expect(html).toContain('<img src="/badge/ready.svg" alt="mcptest.io: ready" width="110" height="20">');
     expect(html).toContain(
       '[![Tested on mcptest.io](https://mcptest.io/badge/server/context7.svg)](https://mcptest.io/servers/context7/)'
     );
@@ -835,7 +857,100 @@ describe('generated server profile badge embed', () => {
 
   it('previews the neutral badge for a server without a validation run', () => {
     const html = renderServerHtml(indexHtml, catalogServer('https://example.com/mcp', 'streamable-http'));
-    expect(html).toContain('<img src="/badge/mcptest.svg" alt="tested on: mcptest.io" height="20">');
+    expect(html).toContain('<img src="/badge/mcptest.svg" alt="tested on: mcptest.io" width="130" height="20">');
     expect(html).toContain('https://mcptest.io/badge/server/example-server.svg');
+  });
+});
+
+describe('content pages in the app shell (issue #405)', () => {
+  const learnTracks = buildLearnTrackNavigation(buildTrackNavigation(articles));
+  const shell = { learnTracks, authEnabled: false };
+  const rootOf = html => new DOMParser().parseFromString(html, 'text/html').getElementById('root');
+
+  it('puts a guide in the header and sidebar, mounted on first input, with its track open', () => {
+    const article = articles.find(item => item.slug === 'mcp-clients-compared');
+    const root = rootOf(renderLearnArticleHtml(indexHtml, article, articles, learnIndex, { shell, pageHtml: '<div class="reading-shell">guide</div>' }));
+    const app = root.querySelector(':scope > .app-shell.seo-shell-fallback');
+
+    expect(app.hasAttribute('data-deferred-mount')).toBe(true);
+    expect(app.dataset).toMatchObject({
+      pageViewTitle: `Learn: ${article.title}`,
+      guideSlug: article.slug,
+      guideTrack: article.track,
+    });
+    expect(app.querySelector('.app-header .app-brand-title').textContent).toBe('mcptest.io');
+    expect(app.querySelector('.main-content > .view-panel').getAttribute('style')).toBe('min-height: 100%;');
+    expect(app.querySelector('.main-content > .view-panel').innerHTML.trim()).toBe('<div class="reading-shell">guide</div>');
+
+    // ContentTrackNav: the owning track is expanded and the guide is the current link.
+    const track = learnTracks.find(item => item.items.some(entry => entry.path === article.path));
+    const toggle = app.querySelector(`.content-track[data-track="${track.id}"] > button`);
+    expect(toggle.classList.contains('is-current')).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(app.querySelector(`#${toggle.getAttribute('aria-controls')}`).hasAttribute('hidden')).toBe(false);
+    const current = app.querySelector('.sidenav-sublink[aria-current="page"]');
+    expect(current.getAttribute('href')).toBe(article.path);
+    expect(current.classList.contains('active')).toBe(true);
+    expect(app.querySelectorAll('.content-track > button[aria-expanded="true"]')).toHaveLength(1);
+    // No primary destination is active on a guide; the guide search takes `/`.
+    expect(app.querySelectorAll('.sidenav-group:first-child a.nav-link.active')).toHaveLength(0);
+    expect(app.querySelector('.guide-search-input').getAttribute('aria-keyshortcuts')).toBe('/');
+    expect(app.querySelector('.guide-search-field kbd.guide-search-shortcut').textContent).toBe('/');
+  });
+
+  it('logs documentation articles under the docs page view title', () => {
+    const article = articles.find(item => item.path === '/docs/testing-guide');
+    const app = rootOf(renderLearnArticleHtml(indexHtml, article, articles, learnIndex, { shell })).firstElementChild;
+    expect(app.dataset.pageViewTitle).toBe('Docs: testing guide');
+  });
+
+  it('marks the guide hub on the Learn index', () => {
+    const app = rootOf(renderLearnIndexHtml(indexHtml, learnIndex, articles, { shell })).firstElementChild;
+    expect(app.dataset.pageViewTitle).toBe('Learn MCP');
+    expect(app.querySelector('.content-track-nav a.active[aria-current="page"]').getAttribute('href')).toBe('/learn');
+    expect(app.querySelectorAll('.content-track > button[aria-expanded="true"]')).toHaveLength(0);
+  });
+
+  it('puts a server profile under the catalog link, with sized logo and badge images', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    const app = rootOf(renderServerHtml(indexHtml, server, { shell })).firstElementChild;
+
+    expect(app.hasAttribute('data-deferred-mount')).toBe(true);
+    expect(app.dataset.pageViewTitle).toBe('Example Server MCP Server Report');
+    expect(app.querySelector('.main-content > .view-panel').getAttribute('style')).toBe('height: 100%;');
+    expect(app.querySelector('.sidenav-group:first-child a.nav-link.active').getAttribute('href')).toBe('/catalog');
+    expect(app.querySelector('.server-profile-logo img').getAttribute('width')).toBe('40');
+    expect(app.querySelector('.server-profile-logo img').getAttribute('height')).toBe('40');
+    expect(app.querySelector('.badge-embed-preview img').getAttribute('width')).toBe('130');
+  });
+
+  it('keeps the home page mounting at load', () => {
+    const html = renderHomeHtml(indexHtml, { title: 'Home', description: 'Home.' }, 3, shell);
+    expect(html).not.toContain('data-deferred-mount');
+    expect(rootOf(html).querySelector('.sidenav-group:first-child a.nav-link.active').getAttribute('href')).toBe('/');
+  });
+
+  it('preloads the app on pages that mount at load only', () => {
+    const head = '<html><head>\n    <script type="module" crossorigin src="/assets/index.js"></script>\n    <link rel="stylesheet" crossorigin href="/assets/style.css">\n  </head>';
+    const hrefs = ['/assets/bootstrapApp.js', '/assets/react.js'];
+    const appPage = addAppPreloads(`${head}<body><div id="root"></div></body></html>`, hrefs);
+
+    expect(appPage).toContain('src="/assets/index.js"></script>\n    <link rel="modulepreload" crossorigin href="/assets/bootstrapApp.js" data-app-preload>\n    <link rel="modulepreload" crossorigin href="/assets/react.js" data-app-preload>');
+    expect(addAppPreloads(appPage, hrefs)).toBe(appPage);
+    expect(stripLandingFallback(appPage)).not.toContain('data-app-preload');
+
+    const contentPage = `${head}<body><div id="root"><div class="app-shell" data-deferred-mount></div></div></body></html>`;
+    expect(addAppPreloads(contentPage, hrefs)).toBe(contentPage);
+  });
+
+  it('finds the app chunk and its static imports in the build manifest', () => {
+    const manifest = {
+      'index.html': { file: 'assets/index.js', isEntry: true, imports: ['_runtime.js'], dynamicImports: ['_bootstrapApp.js'] },
+      '_runtime.js': { file: 'assets/runtime.js' },
+      '_bootstrapApp.js': { file: 'assets/bootstrapApp.js', name: 'bootstrapApp', isDynamicEntry: true, imports: ['_react.js', '_runtime.js', 'index.html'] },
+      '_react.js': { file: 'assets/react.js', imports: ['_runtime.js'] },
+    };
+    expect(findAppPreloadHrefs(manifest)).toEqual(['/assets/bootstrapApp.js', '/assets/react.js']);
+    expect(() => findAppPreloadHrefs({ 'index.html': { file: 'assets/index.js', dynamicImports: [] } })).toThrow('bootstrapApp');
   });
 });

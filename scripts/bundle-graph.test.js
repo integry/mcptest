@@ -12,6 +12,7 @@ import {
 const distDir = path.join(__dirname, '..', 'dist');
 const manifestPath = path.join(distDir, '.vite', 'manifest.json');
 const statsPath = path.join(distDir, '.vite', 'bundle-stats.json');
+const articlesDir = path.join(__dirname, '..', 'src', 'content', 'articles');
 
 /**
  * Modules that belong to the inspector, not to a guide, catalog or server
@@ -39,13 +40,45 @@ const INSPECTOR_ONLY = [
   /\/src\/firebaseRuntime\.ts$/,
 ];
 
+/**
+ * The app itself. Prerendered content pages (guides, the Learn index, server
+ * profiles) are complete without React and mount it on the first input
+ * (issue #405), so the entry loads none of this either.
+ */
+const APP_ONLY = [
+  /\/node_modules\/react\//,
+  /\/node_modules\/react-dom\//,
+  /\/node_modules\/react-router(-dom)?\//,
+  /\/node_modules\/scheduler\//,
+  /\/src\/App\.tsx$/,
+  /\/src\/bootstrapApp\.tsx$/,
+  /\/src\/data\//,
+  /\/src\/content\/articles\//,
+  /\/src\/content\/learnRegistry\.ts$/,
+  // Component code; the entry only imports stylesheets from src/components.
+  /\/src\/components\/.*\.tsx?$/,
+];
+
+/**
+ * The Markdown parser and renderer. A prerendered guide keeps its static body
+ * when the app mounts, so the guide page's own chunks must not import them.
+ */
+const MARKDOWN = [
+  /\/node_modules\/react-markdown\//,
+  /\/node_modules\/(remark-|unified\/|micromark|mdast-|hast-)/,
+  /\/node_modules\/highlight\.js\//,
+  /\/src\/content\/outline\.ts$/,
+];
+
 /** Views that must be their own chunks, loaded on demand. */
 const LAZY_VIEWS = [
   'src/components/TabContent.tsx',
   'src/components/DashboardsView.tsx',
   'src/components/ReportView.tsx',
   'src/components/SubmitServerView.tsx',
+  'src/components/DiscoveryCheckerView.tsx',
   'src/components/learn/LearnArticlePage.tsx',
+  'src/components/learn/MarkdownLearnArticle.tsx',
   'src/components/OAuthCallback.tsx',
   'src/components/OAuthConfig.tsx',
   'src/firebaseRuntime.ts',
@@ -109,22 +142,51 @@ describe.skipIf(!process.env.BUNDLE_GRAPH)('chunk graph of the built site', () =
     expect(offenders, offenders.map(item => `${item.module} (in ${item.chunk})`).join('\n')).toEqual([]);
   });
 
+  it('keeps React and the app out of the initial graph', () => {
+    const offenders = forbiddenInitialModules(manifest(), stats(), APP_ONLY);
+    expect(offenders, offenders.map(item => `${item.module} (in ${item.chunk})`).join('\n')).toEqual([]);
+  });
+
+  it('mounts a prerendered guide without the Markdown parser or highlight.js', () => {
+    // LearnArticlePage and everything it imports statically; MarkdownLearnArticle stays behind a dynamic import.
+    const offenders = forbiddenInitialModules(manifest(), stats(), MARKDOWN, 'src/components/learn/LearnArticlePage.tsx');
+    expect(offenders, offenders.map(item => `${item.module} (in ${item.chunk})`).join('\n')).toEqual([]);
+  });
+
   it('loads every view behind a route boundary on demand', () => {
     const graph = manifest();
-    const entry = graph['index.html'];
     for (const view of LAZY_VIEWS) {
       expect(graph[view], `${view} is a chunk`).toBeDefined();
       expect(graph[view].isDynamicEntry, `${view} is a dynamic entry`).toBe(true);
     }
-    expect(entry.dynamicImports).toEqual(expect.arrayContaining(LAZY_VIEWS));
+    // The entry imports the app dynamically, and the app imports the views.
+    const dynamicTargets = new Set(Object.values(graph).flatMap(chunk => chunk.dynamicImports || []));
+    for (const view of LAZY_VIEWS) expect(dynamicTargets.has(view), `${view} is imported dynamically`).toBe(true);
     const initial = new Set(staticClosure(graph));
     for (const view of LAZY_VIEWS) expect(initial.has(graph[view].file), `${view} is not in the initial graph`).toBe(false);
+  });
+
+  it('loads every guide body on demand, never with the initial graph', () => {
+    const graph = manifest();
+    const guides = fs.readdirSync(articlesDir).filter(file => file.endsWith('.md'));
+    const initial = new Set(staticClosure(graph));
+    for (const file of guides) {
+      const chunk = graph[`src/content/articles/${file}?raw`];
+      expect(chunk, `${file} is a chunk`).toBeDefined();
+      expect(chunk.isDynamicEntry, `${file} is a dynamic entry`).toBe(true);
+      expect(initial.has(chunk.file), `${file} is not in the initial graph`).toBe(false);
+    }
+    const offenders = forbiddenInitialModules(graph, stats(), [/\/src\/content\/articles\//]);
+    expect(offenders, offenders.map(item => `${item.module} (in ${item.chunk})`).join('\n')).toEqual([]);
   });
 
   it('keeps the initial JavaScript under budget', () => {
     const graph = manifest();
     const bytes = staticClosure(graph).reduce((sum, file) => sum + fs.statSync(path.join(distDir, file)).size, 0);
-    // Minified, before compression: 2.9 MB before issue #401. Ratchet down, never up.
-    expect(bytes).toBeLessThan(1_700_000);
+    console.log(`Initial JavaScript: ${bytes} bytes`);
+    // Minified, before compression: 2.9 MB before issue #401, 1.64 MB after it, 1,346,890
+    // bytes once guide bodies left the initial bundle (issue #424), 17 KB once React moved
+    // behind the first input (issue #405). Ratchet down, never up.
+    expect(bytes).toBeLessThan(40_000);
   });
 });

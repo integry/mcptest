@@ -15,12 +15,16 @@ import { LEARN_ARTICLES } from '../content/learnRegistry';
 import BadgeEmbed from './BadgeEmbed';
 import { LandingHero } from './LandingHero';
 import LearnArticlePage from './learn/LearnArticlePage';
+import { markdownLearnArticle } from './learn/deferredMarkdownArticle';
 import { sanitizePagePath } from '../utils/analytics';
 
 const expectSent = (name: string, params: Record<string, unknown> = {}) => {
   const page_location = window.location.origin + sanitizePagePath(window.location.pathname);
   expect(firebase.logEvent).toHaveBeenCalledWith(firebase.analytics, name, { ...params, page_location });
 };
+
+// A guide without a prerendered body renders through the Markdown chunk; load it as the app does before mounting.
+beforeAll(() => markdownLearnArticle.preload());
 
 beforeAll(() => {
   (

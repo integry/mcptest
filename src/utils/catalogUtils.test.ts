@@ -59,9 +59,9 @@ describe('catalog authentication metadata', () => {
   it('merges every expanded seed into the UI-facing catalog', () => {
     const catalog = getCatalogServers();
 
-    expect(catalog).toHaveLength(218);
-    expect(catalogValidation).toHaveLength(218);
-    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(218);
+    expect(catalog).toHaveLength(221);
+    expect(catalogValidation).toHaveLength(221);
+    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(221);
     expect(new Set(catalogValidation.map(({ serverId }) => serverId)))
       .toEqual(new Set(catalog.map(({ id }) => id)));
     expect(catalog.find(({ id }) => id === 'asana')).toBeDefined();

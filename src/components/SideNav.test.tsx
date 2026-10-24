@@ -138,6 +138,7 @@ describe('SideNav information architecture', () => {
       ['Catalog', '/catalog'],
       ['Reports', '/report'],
       ['Tool-selection evals', '/evals'],
+      ['Discovery check', '/tools/discovery'],
     ]);
     expect(container.querySelector('a[href="/catalog"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/catalog"]')?.getAttribute('aria-current')).toBe('page');

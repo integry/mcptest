@@ -1,4 +1,5 @@
-import React, { useId, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useCatalog } from '../hooks/useCatalog';
 import { trackEvent } from '../utils/analytics';
 import {
@@ -7,7 +8,16 @@ import {
   type CatalogSortOrder,
   type OAuthFilter,
 } from '../types/catalog';
+import {
+  CATALOG_PATH,
+  getCatalogCategoryIntro,
+  getCatalogCategoryPath,
+  getCatalogCategorySlugFromPath,
+  summarizeCatalogCategory,
+} from '../utils/catalogCategories';
 import CatalogServerCard from './CatalogServerCard';
+import { CatalogCategoryFooter, CatalogCategorySummaryList } from './CatalogCategoryDetails';
+import './CatalogCategory.css';
 
 interface CatalogViewProps {
   onTestServer: (server: CatalogServer) => void;
@@ -40,38 +50,81 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
     setOauthFilter,
     category,
     setCategory,
+    categoryNotFound,
+    filterSearch = '',
     sortOrder,
     setSortOrder,
   } = useCatalog();
+  const location = useLocation();
   const idPrefix = useId();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterFieldsId = `${idPrefix}-catalog-filter-fields`;
+  // On /catalog/<slug> the category is the page itself, not a filter.
+  const onCategoryPage = getCatalogCategorySlugFromPath(location.pathname) !== null;
+  const categorySummary = useMemo(
+    () => (onCategoryPage && category !== CATALOG_CATEGORY_ALL
+      ? summarizeCatalogCategory(allServers, category)
+      : undefined),
+    [allServers, category, onCategoryPage]
+  );
   // Search is always visible, so it does not count; the three selects do.
   const activeFilterCount = [
     oauthFilter !== 'all',
-    category !== CATALOG_CATEGORY_ALL,
+    category !== CATALOG_CATEGORY_ALL && !onCategoryPage,
     sortOrder !== 'catalog-order',
   ].filter(Boolean).length;
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setOauthFilter('all');
-    setCategory(CATALOG_CATEGORY_ALL);
+    if (!onCategoryPage) setCategory(CATALOG_CATEGORY_ALL);
     setSortOrder('catalog-order');
   };
+
+  if (categoryNotFound) {
+    return (
+      <div className="catalog-view">
+        <section className="catalog-empty-state" aria-labelledby={`${idPrefix}-catalog-missing-title`}>
+          <h1 id={`${idPrefix}-catalog-missing-title`} className="h3">Catalog category not found</h1>
+          <p>This category does not exist, or its servers have moved to another category.</p>
+          <Link className="btn btn-outline-primary" to={CATALOG_PATH}>Browse every category</Link>
+        </section>
+      </div>
+    );
+  }
+
+  const totalInScope = categorySummary?.count ?? allServers.length;
 
   return (
     <div className="catalog-view">
       <div className="catalog-command-bar">
         <div className="catalog-command-copy">
-          <h2 className="mb-1">Remote MCP server catalog</h2>
-          <p className="text-muted mb-0">
-            Inspect transport, protocol era, and authentication before you connect.
-          </p>
+          {categorySummary ? (
+            <>
+              <nav aria-label="Breadcrumb" className="catalog-category-breadcrumb">
+                <Link to={{ pathname: CATALOG_PATH, search: filterSearch }}>Server Catalog</Link>
+                <span aria-hidden="true">/</span>
+                <span aria-current="page">{categorySummary.category}</span>
+              </nav>
+              <h1 className="mb-1">{categorySummary.category} MCP servers</h1>
+              <p className="catalog-category-intro">
+                {getCatalogCategoryIntro(categorySummary).join(' ')}
+              </p>
+              <CatalogCategorySummaryList summary={categorySummary} />
+            </>
+          ) : (
+            <>
+              <h2 className="mb-1">Remote MCP server catalog</h2>
+              <p className="text-muted mb-0">
+                Inspect transport, protocol era, and authentication before you connect.
+              </p>
+            </>
+          )}
           <div className="catalog-results-bar" aria-live="polite">
             <p className="catalog-results-count">
-              Showing <strong>{filteredServers.length}</strong> of {allServers.length}{' '}
-              {allServers.length === 1 ? 'server' : 'servers'}
+              Showing <strong>{filteredServers.length}</strong> of {totalInScope}{' '}
+              {categorySummary ? `${categorySummary.category} ` : ''}
+              {totalInScope === 1 ? 'server' : 'servers'}
             </p>
           </div>
         </div>
@@ -177,28 +230,22 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
       <div className="catalog-content-layout">
         <nav className="catalog-category-rail" aria-label="Catalog categories">
           <p className="catalog-category-heading">Categories</p>
-          <button
-            type="button"
-            className="catalog-category-option"
-            aria-pressed={category === CATALOG_CATEGORY_ALL}
-            disabled={categoryCounts.all === 0}
-            onClick={() => setCategory(CATALOG_CATEGORY_ALL)}
-          >
-            <span>All</span>
-            <span aria-label={`${categoryCounts.all} servers`}>{categoryCounts.all}</span>
-          </button>
+          <CategoryRailLink
+            label="All"
+            count={categoryCounts.all}
+            to={{ pathname: CATALOG_PATH, search: filterSearch }}
+            current={category === CATALOG_CATEGORY_ALL}
+            onSelect={() => setCategory(CATALOG_CATEGORY_ALL)}
+          />
           {categoryCounts.categories.map(({ category: catalogCategory, count }) => (
-            <button
+            <CategoryRailLink
               key={catalogCategory}
-              type="button"
-              className="catalog-category-option"
-              aria-pressed={category === catalogCategory}
-              disabled={count === 0}
-              onClick={() => setCategory(catalogCategory)}
-            >
-              <span>{catalogCategory}</span>
-              <span aria-label={`${count} servers`}>{count}</span>
-            </button>
+              label={catalogCategory}
+              count={count}
+              to={{ pathname: getCatalogCategoryPath(catalogCategory), search: filterSearch }}
+              current={category === catalogCategory}
+              onSelect={() => setCategory(catalogCategory)}
+            />
           ))}
         </nav>
 
@@ -235,15 +282,52 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
                       trackEvent('catalog_open_server', { server_id: selected.id, surface: 'list' });
                       onTestServer(selected);
                     }}
-                    onCategorySelect={setCategory}
+                    categorySearch={filterSearch}
                   />
                 </li>
               ))}
             </ul>
           )}
+          {categorySummary && <CatalogCategoryFooter summary={categorySummary} />}
         </div>
       </div>
     </div>
+  );
+};
+
+interface CategoryRailLinkProps {
+  label: string;
+  count: number;
+  to: { pathname: string; search: string };
+  current: boolean;
+  onSelect: () => void;
+}
+
+/** A category in the rail is a link to its page; a category the search empties is inert. */
+const CategoryRailLink: React.FC<CategoryRailLinkProps> = ({ label, count, to, current, onSelect }) => {
+  const content = (
+    <>
+      <span>{label}</span>
+      <span aria-label={`${count} servers`}>{count}</span>
+    </>
+  );
+  if (count === 0 && !current) {
+    return <span className="catalog-category-option" aria-disabled="true">{content}</span>;
+  }
+  return (
+    <Link
+      className="catalog-category-option"
+      to={to}
+      aria-current={current ? 'page' : undefined}
+      onClick={(event) => {
+        // setCategory navigates and records the filter analytics event.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        event.preventDefault();
+        onSelect();
+      }}
+    >
+      {content}
+    </Link>
   );
 };
 

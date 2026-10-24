@@ -10,7 +10,7 @@ import catalogValidation from '../../src/data/catalogValidation.json';
 import pageMetadata from '../../src/data/pageMetadata.json';
 
 const { buildOgCards, loadArticles, mergeCatalogServers } = seoGenerator;
-const { getOgCardHash, ogImageOutputPath, writeOgImages } = ogImages;
+const { buildOgCardTree, getOgCardHash, ogImageOutputPath, writeOgImages } = ogImages;
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const SIZE_BUDGET_BYTES = 200 * 1024;
@@ -36,12 +36,23 @@ const articles = loadArticles({ reservedPaths: Object.keys(pageMetadata.docs).ma
 const servers = mergeCatalogServers(catalogSeeds, catalogValidation);
 const cards = buildOgCards({ servers, articles, pageMetadata });
 
+/** The eyebrow element: the first child of the column that also holds the title. */
+function findEyebrow(card) {
+  const [, content] = buildOgCardTree(card).props.children[1].props.children;
+  const [textColumn] = content.props.children;
+  const [eyebrow] = textColumn.props.children;
+  return eyebrow.props.children === card.eyebrow ? eyebrow : undefined;
+}
+
 describe('Open Graph cards', () => {
-  it('cover the home, catalog and learn index plus every content and server page, once each', () => {
+  it('cover the home, catalog and learn index plus every category, content and server page, once each', () => {
     const paths = cards.map(card => card.pagePath);
     expect(paths).toEqual(expect.arrayContaining(['/', '/catalog', '/learn']));
     for (const article of articles) expect(paths).toContain(article.path);
     for (const server of servers) expect(paths).toContain(`/servers/${server.id}/`);
+    for (const category of new Set(servers.map(server => server.category))) {
+      expect(paths).toContain(`/catalog/${category.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
+    }
     expect(new Set(cards.map(ogImageOutputPath)).size).toBe(cards.length);
   });
 
@@ -49,6 +60,31 @@ describe('Open Graph cards', () => {
     for (const card of cards.filter(item => item.pagePath.startsWith('/servers/'))) {
       expect(card.logoFile || card.initials).toBeTruthy();
       if (card.logoFile) expect(fs.existsSync(card.logoFile)).toBe(true);
+    }
+  });
+
+  it('label server cards "MCP server · <category>" in sentence case', () => {
+    const card = cards.find(item => item.pagePath === `/servers/${servers[0].id}/`);
+    expect(card.eyebrow).toBe(`MCP server · ${servers[0].category}`);
+    const eyebrow = findEyebrow(card);
+    expect(eyebrow).toBeDefined();
+    expect(eyebrow.props.children).toBe(card.eyebrow);
+    expect(eyebrow.props.style).toMatchInlineSnapshot(`
+      {
+        "color": "#36e0aa",
+        "display": "flex",
+        "fontSize": 26,
+        "fontWeight": 600,
+        "marginBottom": 18,
+      }
+    `);
+  });
+
+  it('never uppercase a card label', () => {
+    for (const card of cards.filter(item => item.eyebrow)) {
+      const { style } = findEyebrow(card).props;
+      expect(style.textTransform, card.pagePath).toBeUndefined();
+      expect(card.eyebrow, card.pagePath).not.toBe(card.eyebrow.toUpperCase());
     }
   });
 
@@ -78,6 +114,7 @@ describe('Open Graph image rendering', () => {
     const cacheDir = temporaryDirectory('og-cache-');
     const distRoot = temporaryDirectory('og-dist-');
     const sample = [cards.find(card => card.pagePath === '/'), cards.find(card => card.logoFile)];
+    expect(ogImageOutputPath(cards.find(card => card.pagePath === '/catalog/databases'))).toBe('og/catalog/databases.png');
 
     expect(await writeOgImages(sample, { distRoot, cacheDir })).toEqual({ rendered: 2, cached: 0 });
     expect(await writeOgImages(sample, { distRoot, cacheDir })).toEqual({ rendered: 0, cached: 2 });

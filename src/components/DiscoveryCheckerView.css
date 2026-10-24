@@ -1,0 +1,272 @@
+/* /tools/discovery: the MCP discovery checker. */
+.discovery-checker {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: var(--space-2) 0 var(--space-8);
+}
+
+.discovery-header {
+  margin-bottom: var(--space-5);
+}
+
+.discovery-header h1 {
+  margin-bottom: var(--space-2);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.15;
+}
+
+.discovery-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.discovery-form {
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.discovery-form .form-label {
+  font-weight: 600;
+}
+
+.discovery-form-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.discovery-form-row .form-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.875rem;
+}
+
+.discovery-form-row .btn {
+  flex: 0 0 auto;
+}
+
+.discovery-hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.discovery-section {
+  margin-bottom: var(--space-6);
+}
+
+.discovery-section h2 {
+  margin-bottom: var(--space-1);
+  font-size: 1.15rem;
+}
+
+.discovery-endpoint-list,
+.discovery-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.discovery-endpoint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+}
+
+.discovery-endpoint code {
+  display: block;
+  word-break: break-all;
+}
+
+/* URLs are neutral text, not Bootstrap's accent code colour. */
+.discovery-checker code {
+  color: var(--text-color);
+}
+
+.discovery-endpoint-meta {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.discovery-row {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+}
+
+.discovery-row.is-found {
+  border-color: color-mix(in srgb, var(--success-color) 45%, var(--border-color));
+}
+
+.discovery-row.is-invalid {
+  border-color: color-mix(in srgb, var(--danger-color) 45%, var(--border-color));
+}
+
+.discovery-row.is-unreachable {
+  border-color: color-mix(in srgb, var(--warning-color) 45%, var(--border-color));
+}
+
+.discovery-row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.discovery-row-title h3 {
+  margin: 0;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.discovery-row-source {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.discovery-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 7.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.discovery-status.is-found i {
+  color: var(--success-color);
+}
+
+.discovery-status.is-invalid i {
+  color: var(--danger-color);
+}
+
+.discovery-status.is-unreachable i {
+  color: var(--warning-color);
+}
+
+.discovery-status.is-not-found i,
+.discovery-status.is-skipped i {
+  color: var(--text-muted);
+}
+
+.discovery-row-url {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  word-break: break-all;
+}
+
+.discovery-row-summary {
+  margin: var(--space-2) 0 0;
+  font-size: 0.9375rem;
+}
+
+.discovery-row-errors,
+.discovery-row-warnings,
+.discovery-row-links,
+.discovery-attempts {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  font-size: 0.875rem;
+}
+
+.discovery-row-errors {
+  color: var(--danger-color);
+}
+
+.discovery-row-warnings {
+  color: var(--text-accent);
+}
+
+.discovery-attempts code {
+  word-break: break-all;
+}
+
+.discovery-row-details {
+  margin-top: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.discovery-row-details summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.discovery-preview,
+.discovery-code pre {
+  max-height: 20rem;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--card-bg-secondary);
+  font-size: 0.8125rem;
+}
+
+.discovery-fix {
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+}
+
+.discovery-fix-steps {
+  padding-left: var(--space-5);
+}
+
+.discovery-fix-steps li + li {
+  margin-top: var(--space-4);
+}
+
+.discovery-fix-steps p {
+  margin-bottom: 0;
+}
+
+.discovery-code {
+  position: relative;
+}
+
+.discovery-copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.discovery-guide-link {
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .discovery-form-row {
+    flex-direction: column;
+  }
+
+  .discovery-form-row .btn,
+  .discovery-endpoint .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .discovery-row-head {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+}

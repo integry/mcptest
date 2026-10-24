@@ -4,6 +4,7 @@
  * tests, and the Node build script alike.
  */
 import { expandCompatMatrixDirectives } from './compatMatrix.ts';
+import type { OutlineHeading } from './outline.ts';
 
 
 export const SITE_NAME = 'mcptest.io';
@@ -88,7 +89,8 @@ export interface LearnSourceLink {
   url: string;
 }
 
-export interface LearnArticle {
+/** Everything about an article except its body: what navigation, the Learn index and metadata need. */
+export interface LearnArticleSummary {
   title: string;
   summary: string;
   slug: string;
@@ -97,7 +99,6 @@ export interface LearnArticle {
   lastReviewed: string;
   relatedSlugs: string[];
   sourceLinks: LearnSourceLink[];
-  content: string;
   track: ContentTrackId;
   level: ContentLevel;
   order: number;
@@ -111,6 +112,23 @@ export interface LearnArticle {
   metaDescription?: string;
   /** Optional registered React component embedded in the page. */
   component?: string;
+}
+
+export interface LearnArticle extends LearnArticleSummary {
+  /** Markdown body with `compat-matrix` directives expanded. */
+  content: string;
+}
+
+/**
+ * An article as the browser bundle carries it: the summary plus what the
+ * page needs before the body arrives. Built at build time from the body
+ * (scripts/content/loadArticles.js), which itself is loaded on demand.
+ */
+export interface LearnArticleEntry extends LearnArticleSummary {
+  /** The h2/h3 outline of the body, as `extractOutline` returns it. */
+  outline: OutlineHeading[];
+  /** Whether the body has a fenced code block and so needs the highlighter. */
+  hasCodeBlock: boolean;
 }
 
 export interface TrackNavigationItem {
@@ -321,12 +339,12 @@ export const validateArticles = (
   }
 };
 
-const byOrder = (a: LearnArticle, b: LearnArticle) => a.order - b.order;
+const byOrder = (a: LearnArticleSummary, b: LearnArticleSummary) => a.order - b.order;
 
 export const getTrack = (id: string) => CONTENT_TRACKS.find(track => track.id === id);
 
 /** Articles grouped by track, each track's items sorted by `order`. Empty tracks are omitted. */
-export const buildTrackNavigation = (articles: readonly LearnArticle[]): TrackNavigation[] =>
+export const buildTrackNavigation = (articles: readonly LearnArticleSummary[]): TrackNavigation[] =>
   CONTENT_TRACKS.map(track => ({
     ...track,
     items: articles
@@ -345,14 +363,14 @@ export const buildTrackNavigation = (articles: readonly LearnArticle[]): TrackNa
   })).filter(track => track.items.length > 0);
 
 /** Articles in reading order: by track, then by `order`. */
-export const sortArticlesForReading = (articles: readonly LearnArticle[]): LearnArticle[] => {
+export const sortArticlesForReading = <T extends LearnArticleSummary>(articles: readonly T[]): T[] => {
   const trackIndex = new Map(CONTENT_TRACKS.map((track, index) => [track.id, index]));
   return [...articles].sort(
     (a, b) => (trackIndex.get(a.track) ?? 0) - (trackIndex.get(b.track) ?? 0) || a.order - b.order
   );
 };
 
-export const getTrackNeighbors = (article: LearnArticle, articles: readonly LearnArticle[]) => {
+export const getTrackNeighbors = <T extends LearnArticleSummary>(article: LearnArticleSummary, articles: readonly T[]) => {
   const siblings = articles.filter(item => item.track === article.track).sort(byOrder);
   const index = siblings.findIndex(item => item.slug === article.slug);
   return {
@@ -361,13 +379,13 @@ export const getTrackNeighbors = (article: LearnArticle, articles: readonly Lear
   };
 };
 
-export const getArticleMetaTitle = (article: LearnArticle) =>
+export const getArticleMetaTitle = (article: LearnArticleSummary) =>
   article.metaTitle ?? `${article.title} | ${SITE_NAME}`;
 
-export const getArticleMetaDescription = (article: LearnArticle) =>
+export const getArticleMetaDescription = (article: LearnArticleSummary) =>
   article.metaDescription ?? article.summary;
 
-export const getArticleCanonicalUrl = (article: LearnArticle) => `${SITE_URL}${article.path}`;
+export const getArticleCanonicalUrl = (article: LearnArticleSummary) => `${SITE_URL}${article.path}`;
 
 /** Body text without the component marker, for Markdown output and prerendering. */
 export const getArticleBodyMarkdown = (article: LearnArticle) =>

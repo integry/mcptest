@@ -1,15 +1,23 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getCatalogServerById } from '../utils/catalogUtils';
+import { getCatalogServerById, getCatalogServers } from '../utils/catalogUtils';
+import {
+  findCatalogCategoryBySlug,
+  getCatalogCategoryNames,
+  getCatalogCategorySeo,
+  getCatalogCategorySlugFromPath,
+  summarizeCatalogCategory,
+} from '../utils/catalogCategories';
 import {
   getCatalogServerIdFromPath,
   getCatalogServerPath,
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { CATALOG_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
+import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from '../utils/appRoutes';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -121,6 +129,9 @@ export const useMetaTags = () => {
     const serverId = getCatalogServerIdFromPath(location.pathname);
     const catalogServer = serverId ? getCatalogServerById(serverId) : undefined;
     const contentPage = getContentPage(location.pathname);
+    const categorySlug = getCatalogCategorySlugFromPath(location.pathname);
+    const catalogServers = categorySlug !== null ? getCatalogServers() : [];
+    const category = findCatalogCategoryBySlug(getCatalogCategoryNames(catalogServers), categorySlug);
 
     if (catalogServer) {
       applyMetadata({
@@ -131,6 +142,19 @@ export const useMetaTags = () => {
       applyMetadata({
         title: 'MCP Server Not Found | mcptest.io',
         description: 'This MCP server report is not available. Browse the catalog for tested remote MCP servers.',
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
+        robots: 'noindex, follow',
+      });
+    } else if (category) {
+      const summary = summarizeCatalogCategory(catalogServers, category);
+      applyMetadata({
+        ...getCatalogCategorySeo(summary),
+        imageUrl: ogImage(summary.path),
+      });
+    } else if (categorySlug !== null) {
+      applyMetadata({
+        title: 'Catalog Category Not Found | mcptest.io',
+        description: 'This catalog category is not available. Browse the catalog for tested remote MCP servers.',
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });
@@ -176,6 +200,19 @@ export const useMetaTags = () => {
       applyMetadata({
         title: 'Documentation Not Found | mcptest.io',
         description: 'This documentation page is not available. Browse mcptest.io guides for testing and debugging remote MCP servers.',
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
+        robots: 'noindex, follow',
+      });
+    } else if (location.pathname === DISCOVERY_CHECKER_PATH) {
+      applyMetadata({
+        ...DISCOVERY_METADATA,
+        canonicalUrl: `${SITE_URL}${DISCOVERY_CHECKER_PATH}`,
+        imageUrl: ogImage(DISCOVERY_CHECKER_PATH),
+      });
+    } else if (!isKnownAppPath(location.pathname)) {
+      applyMetadata({
+        title: 'Page Not Found | mcptest.io',
+        description: 'This page is not available. Open the playground, browse the MCP server catalog, or read the guides.',
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });
