@@ -7,6 +7,10 @@
     "title": "Remote MCP Server Catalog | mcptest.io",
     "description": "Browse remote MCP servers by capability, transport, authentication method, and live validation status."
   },
+  "discovery": {
+    "title": "MCP Discovery Checker: Server Cards and Registry | mcptest.io",
+    "description": "Free MCP discovery checker: find every remote MCP server a domain advertises (Server Cards, OAuth metadata, MCP Registry), validated, with copy-paste fixes."
+  },
   "learn": {
     "title": "Learn MCP",
     "description": "Practical, source-backed guides for choosing MCP clients, connecting remote servers, understanding OAuth, and operating trustworthy production MCP systems.",

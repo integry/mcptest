@@ -129,6 +129,31 @@ private or changing DNS destinations at connection time. Removing that flag is a
 configuration change and is guarded by the Worker test suite. Provider cookies and internal response
 headers are never forwarded.
 
+## Discovery route
+
+`GET /discovery?target=<url>` serves the MCP discovery checker at `https://mcptest.io/tools/discovery`,
+which reads documents the browser cannot fetch cross-origin. It is not a general proxy:
+
+- **GET only** (plus the `OPTIONS` preflight); any other method is `405`.
+- **Fixed locations**: public HTTPS on the default port, no credentials in the URL, and one of
+  `/.well-known/mcp/server-card.json`, `/.well-known/mcp/server-cards.json`,
+  `/.well-known/mcp-server-card`, `/.well-known/mcp.json`, `/.well-known/ai-catalog.json`,
+  `/.well-known/oauth-protected-resource[/…]`, `/.well-known/oauth-authorization-server[/…]`,
+  `/.well-known/openid-configuration[/…]` or `…/.well-known/openid-configuration`, a path ending in
+  `/server-card` (SEP-2127's `<endpoint>/server-card`), or the MCP Registry search API
+  (`https://registry.modelcontextprotocol.io/v0[.1]/servers` with `search`, `version`, `limit`,
+  `cursor` and `updated_since`). Query strings are refused on every other target. Anything else is `403`.
+- **No credentials forwarded**: only `Accept`, `MCP-Protocol-Version` and a fixed `User-Agent` reach
+  the target; cookies, `Authorization` and `X-MCP-Authorization` never do. Only the status, a
+  validated `Content-Type` and the body come back, plus `X-MCP-Discovery-Final-Url`.
+- **Caps**: at most 3 redirects, each re-checked against the same policy; 256 KB per document
+  (`DISCOVERY_MAX_RESPONSE_BYTES`); 8 seconds upstream (`DISCOVERY_TIMEOUT_MS`).
+- **Caller limits**: the same per-IP and per-user rate limits as the proxy.
+
+Refusals carry `X-MCP-Proxy-Response-Source: proxy` and a JSON `error`
+(`target_not_allowed`, `too_large`, `timeout`, `too_many_redirects`, `upstream_unreachable`), so
+the checker can tell them apart from a target's own response. See `src/discovery.ts`.
+
 ## Development
 
 Run the worker locally:

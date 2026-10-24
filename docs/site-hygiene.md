@@ -1,6 +1,6 @@
 # Site hygiene for search: 404s, links, sitemap and canonical URLs
 
-The build (`npm run build`, which ends with `npm run generate-seo`) writes everything a crawler sees: a prerendered HTML page for the home page, the catalog, the guides index, every guide and documentation page and every catalog server, plus `sitemap.xml`, `robots.txt`, `404.html` and `routes.txt`. CI checks the result after every build. This page describes those checks and the one piece of configuration that lives on the origin, outside this repository.
+The build (`npm run build`, which ends with `npm run generate-seo`) writes everything a crawler sees: a prerendered HTML page for the home page, the catalog, the discovery checker (`tools/discovery.html`), the guides index, every guide and documentation page and every catalog server, plus `sitemap.xml`, `robots.txt`, `404.html` and `routes.txt`. CI checks the result after every build. This page describes those checks and the one piece of configuration that lives on the origin, outside this repository.
 
 ## Real 404s
 

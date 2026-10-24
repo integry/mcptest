@@ -4,7 +4,7 @@
   "description": "CORS proxy worker for MCP Test with caller-based rate limits",
   "main": "src/index.ts",
   "scripts": {
-    "test": "vitest run src/index.test.ts",
+    "test": "vitest run src/index.test.ts src/discovery.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && WRANGLER_WRITE_LOGS=false wrangler deploy --dry-run --outdir dist",
     "dev": "wrangler dev",

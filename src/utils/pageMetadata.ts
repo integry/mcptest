@@ -9,6 +9,7 @@ export interface PageMetadata {
 export const HOME_METADATA: PageMetadata = pageMetadata.home;
 export const CATALOG_METADATA: PageMetadata = pageMetadata.catalog;
 export const BREAKING_CHANGES_METADATA: PageMetadata = pageMetadata.tools['breaking-changes'];
+export const DISCOVERY_METADATA: PageMetadata = pageMetadata.discovery;
 
 /** Metadata for React-only documentation pages; article metadata lives in frontmatter. */
 export const DOCS_METADATA: Readonly<Record<string, PageMetadata>> = pageMetadata.docs;

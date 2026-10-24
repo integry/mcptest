@@ -17,7 +17,7 @@ import ContentTrackNav from './learn/ContentTrackNav';
 import GuideSearch from './learn/GuideSearch';
 import { isGuideSearchShortcutView } from './learn/guideSearchShortcut';
 
-type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes';
+type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes' | 'discovery';
 
 interface SideNavProps {
   activeView: ActiveView;
@@ -41,6 +41,7 @@ const PRIMARY_ACTIVE_VIEWS: Record<string, ActiveView[]> = {
   '/catalog': ['catalog', 'server-profile'],
   '/report': ['report'],
   '/tools/breaking-changes': ['breaking-changes'],
+  '/tools/discovery': ['discovery'],
 };
 
 const SideNav: React.FC<SideNavProps> = ({

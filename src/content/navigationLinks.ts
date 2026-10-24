@@ -34,6 +34,7 @@ export const PRIMARY_NAVIGATION: readonly NavigationLink[] = [
   { label: 'Reports', path: '/report', icon: 'bi-clipboard2-data', matchDescendants: true },
   // The free breaking-change check (src/components/BreakingChangesView.tsx).
   { label: 'Breaking changes', path: '/tools/breaking-changes', icon: 'bi-signpost-split' },
+  { label: 'Discovery check', path: '/tools/discovery', icon: 'bi-broadcast' },
 ];
 
 /** Dashboards are rendered as a collapsible group rather than a flat link. */
