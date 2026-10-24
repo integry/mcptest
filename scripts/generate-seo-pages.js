@@ -2,10 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const {
-  generateClientSetups,
-  getPreferredCatalogEndpoint,
-} = require('../src/utils/clientSetup.ts');
+const { getPreferredCatalogEndpoint } = require('../src/utils/clientSetup.ts');
 const { createAuthorizationGuidance } = require('../src/utils/authorizationGuidance.ts');
 const {
   CONTENT_LEVEL_LABELS,
@@ -64,7 +61,8 @@ const {
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
-const { renderCategoryFallback, renderToolInventory } = require('./content/catalogPages.js');
+const { renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
+const { getServerPageMetaDescription, getServerSetupStructuredData } = require('../src/utils/serverConnect.ts');
 const {
   getCatalogCategoryNames,
   getCatalogCategoryPath,
@@ -235,12 +233,6 @@ function playgroundPath(server) {
   return `/server/${endpoint.url}/${transportMethod}`;
 }
 
-function truncate(value, maxLength = 158) {
-  return value.length <= maxLength
-    ? value
-    : `${value.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
 function replaceOrInsertHead(html, pattern, replacement) {
   if (pattern.test(html)) {
     return html.replace(pattern, replacement);
@@ -322,27 +314,6 @@ function renderServerLogo(server) {
   }
 
   return `<span class="catalog-server-logo catalog-server-logo--fallback server-profile-logo" role="img" aria-label="${escapeHtml(server.name)} logo"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(serverInitials(server.name))}</span></span>`;
-}
-
-function renderClientSetups(server) {
-  const setups = generateClientSetups(server);
-  return [
-    '  <section class="card server-profile-section client-setup seo-client-setup"><div class="card-body">',
-    '    <h2>Connect this server to your client</h2>',
-    ...setups.map(setup => [
-      `    <section class="client-setup-panel" data-client="${escapeHtml(setup.id)}">`,
-      `      <h3>${escapeHtml(setup.heading)}</h3>`,
-      `      <p>${escapeHtml(setup.location)}</p>`,
-      setup.supported
-        ? `      <pre aria-label="${escapeHtml(setup.label)} configuration"><code class="language-${escapeHtml(setup.format)}">${escapeHtml(setup.copyText)}</code></pre>`
-        : `      <div class="alert alert-warning client-setup-unsupported" role="status"><strong>Setup unavailable</strong><p>${escapeHtml(setup.copyText)}</p></div>`,
-      `      <p>${escapeHtml(setup.authSummary)}</p>`,
-      `      <ul>${setup.notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`,
-      `      <p><a href="${escapeHtml(setup.documentationUrl)}">${escapeHtml(setup.documentationLabel)}</a></p>`,
-      '    </section>',
-    ].join('\n')),
-    '  </div></section>',
-  ].join('\n');
 }
 
 function renderAuthorizationSetup(server) {
@@ -461,7 +432,7 @@ function renderServerFallback(server) {
     `    <p><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">More ${escapeHtml(server.category)} MCP servers</a> · <a href="/catalog">Browse all MCP servers</a> · <a href="${escapeHtml(playgroundPath(server))}">Test this endpoint in the MCP Playground</a></p>`,
     '  </div></section>',
     renderAuthorizationSetup(server),
-    renderClientSetups(server),
+    renderServerConnect(server),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <section class="badge-embed" aria-labelledby="server-badge-embed-title">',
     '      <div class="badge-embed-heading">',
@@ -507,11 +478,9 @@ function renderServerHtml(indexHtml, server, options = {}) {
 
   const canonicalUrl = canonicalUrlFor(serverPath(server.id));
   const title = `${server.name} MCP Server Report | mcptest.io`;
-  const description = truncate(
-    server.seoDescription
-      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
-  );
+  const description = getServerPageMetaDescription(server);
   const imageUrl = ogImageUrl(serverPath(server.id));
+  const setup = getServerSetupStructuredData(server, canonicalUrl);
   const structuredData = {
     '@context': 'https://schema.org',
     // SoftwareApplication carries applicationCategory and featureList.
@@ -523,6 +492,8 @@ function renderServerHtml(indexHtml, server, options = {}) {
     applicationCategory: server.category,
     keywords: server.tags.join(', '),
     documentation: server.homepageUrl || canonicalUrl,
+    installUrl: setup.installUrl,
+    softwareRequirements: setup.softwareRequirements,
     ...(server.capabilityInventory?.tools.items.length || server.capabilityInventory?.prompts.items.length
       ? { featureList: getToolInventoryFeatureList(server.capabilityInventory) }
       : {}),
@@ -542,6 +513,7 @@ function renderServerHtml(indexHtml, server, options = {}) {
       { '@type': 'PropertyValue', name: 'Validation checked at', value: server.checkedAt || 'Not yet validated' },
       { '@type': 'PropertyValue', name: 'Validation detail', value: validationDetail(server) },
       ...getToolInventoryProperties(server),
+      ...setup.additionalProperty,
     ],
   };
 
@@ -2055,7 +2027,6 @@ module.exports = {
   renderMarkdown,
   renderServerHtml,
   renderServerLogo,
-  renderClientSetups,
   renderAuthorizationSetup,
   canonicalUrlFor,
   getSitemapEntries,

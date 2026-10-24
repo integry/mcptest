@@ -63,6 +63,7 @@ export interface AnalyticsEventCatalog {
 
   // Playground and dashboard interactions.
   theme_changed: { theme_name: string };
+  server_setup_copied: { server_id: string; target: string };
   server_url_connection: { host: string; transport_method?: string };
   result_share_connection: { host: string; type: 'tool' | 'resource' };
   create_tab: NoParams;

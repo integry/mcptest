@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
 import { trackEvent } from '../utils/analytics';
@@ -11,7 +11,7 @@ import {
 import ServerToolInventory from './ServerToolInventory';
 import { getCatalogCategoryPath } from '../utils/catalogCategories';
 import { CatalogServerLogo } from './CatalogServerLogo';
-import ClientSetup from './ClientSetup';
+import { ServerConnect, ViewFallback } from '../views/deferredViews';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import { createAuthorizationGuidance } from '../utils/authorizationGuidance';
 import AuthorizationSetup from './AuthorizationSetup';
@@ -299,7 +299,9 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
 
       <AuthorizationSetup guidance={authorizationGuidance} />
 
-      <ClientSetup server={server} />
+      <Suspense fallback={<ViewFallback label="Loading client setup" />}>
+        <ServerConnect server={server} />
+      </Suspense>
 
       <section className="card server-profile-section">
         <div className="card-body">

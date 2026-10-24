@@ -81,6 +81,7 @@ const LAZY_VIEWS = [
   'src/components/learn/MarkdownLearnArticle.tsx',
   'src/components/OAuthCallback.tsx',
   'src/components/OAuthConfig.tsx',
+  'src/components/ServerConnect.tsx',
   'src/firebaseRuntime.ts',
   'src/utils/savedCardRuntime.ts',
 ];

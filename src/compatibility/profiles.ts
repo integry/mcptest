@@ -13,7 +13,7 @@ import {
   type RedirectPolicy,
   type SessionBehavior,
   type TransportKind,
-} from './types';
+} from './types.ts';
 import {
   CAPABILITY_NAMES,
   getClientCompatibilityForHost,
@@ -707,13 +707,17 @@ const contentVersion = (profile: Omit<HostProfileV1, 'profileVersion'>): string 
   return `${fnv1a(text, 0x811c9dc5)}${fnv1a(text, 0x050c5d1f)}`;
 };
 
-/** Host profile for `hostId` built from a client compatibility entry. */
-export const buildHostProfile = (hostId: HostId, entry: ClientCompatibilityEntry): HostProfileV1 => {
+/**
+ * Host profile for `hostId` built from a client compatibility entry. `name`
+ * replaces the model's name when the model stands in for another client.
+ */
+export const buildHostProfile = (hostId: HostId, entry: ClientCompatibilityEntry, name?: string): HostProfileV1 => {
   const { authNotes, ...model } = models[hostId];
   const { assumptions, ...client } = fromClientData(entry, model.runtime);
   const constraints: ProfileConstraints = {
     id: hostId,
     ...model,
+    ...(name ? { name } : {}),
     ...client,
     assumptions: [...assumptions, mcpAuthAssumption(authNotes)],
   };
@@ -737,3 +741,35 @@ export const HOST_PROFILES: Readonly<Record<HostId, HostProfileV1>> = Object.fre
 export const HOST_PROFILE_LIST: readonly HostProfileV1[] = Object.freeze(
   HOST_IDS.map((id) => HOST_PROFILES[id])
 );
+
+/**
+ * Host model for clients without a host profile of their own: Claude Desktop
+ * adds remote servers as claude.ai connectors (hosted callback); the CLI and
+ * editor clients sign in through a local loopback callback, like Cursor.
+ */
+const CLIENT_MODEL_HOSTS: Readonly<Record<string, HostId>> = {
+  'claude-desktop': 'claude',
+  'claude-code': 'cursor',
+  'codex-cli': 'cursor',
+  windsurf: 'cursor',
+  'gemini-cli': 'cursor',
+};
+
+const clientProfiles = new Map<string, HostProfileV1>();
+
+/**
+ * Profile that assesses one client of clientCompatibility.json: its own host
+ * profile when it has one, otherwise its own data under the closest host
+ * model, named after the client. Undefined for a client with neither.
+ */
+export const getClientHostProfile = (entry: ClientCompatibilityEntry): HostProfileV1 | undefined => {
+  if (entry.hostProfileId) return HOST_PROFILES[entry.hostProfileId];
+  const modelHost = CLIENT_MODEL_HOSTS[entry.id];
+  if (!modelHost) return undefined;
+  let profile = clientProfiles.get(entry.id);
+  if (!profile) {
+    profile = buildHostProfile(modelHost, entry, entry.name);
+    clientProfiles.set(entry.id, profile);
+  }
+  return profile;
+};
