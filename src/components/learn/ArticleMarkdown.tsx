@@ -99,7 +99,7 @@ const markdownComponents: Components = {
   ),
 };
 
-interface ArticleMarkdownProps {
+export interface ArticleMarkdownProps {
   content: string;
   /** Component inserted at the `<!-- component -->` marker, or after the body when no marker exists. */
   embedded?: React.ReactNode;

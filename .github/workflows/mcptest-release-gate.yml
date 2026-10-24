@@ -132,12 +132,12 @@ jobs:
             exit 3
           fi
           echo "ref=$MCPTEST_DISPATCH_SHA" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: integry/mcptest
           ref: ${{ steps.reusable_ref.outputs.ref || steps.dispatch_ref.outputs.ref }}
           path: mcptest
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -179,7 +179,7 @@ jobs:
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mcptest-reports
           path: mcptest/mcptest-reports/

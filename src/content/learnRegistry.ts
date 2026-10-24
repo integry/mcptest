@@ -1,30 +1,35 @@
 /**
- * Single registry for every content page: Markdown articles loaded from
+ * Single registry for every content page: Markdown articles in
  * `./articles/*.md` plus the few React-only pages (privacy, terms, contact).
  * Routes, titles, and metadata for all of them resolve through this module.
+ *
+ * Articles come in two layers. The index (frontmatter, outline, code-block
+ * flag) is parsed and validated at build time and imported eagerly; it is all
+ * navigation, the Learn index and metadata need. A body is a separate chunk,
+ * fetched when its guide renders, so adding guides does not grow the initial
+ * JavaScript.
  */
+import articleIndex from 'virtual:learn-article-index';
 import pageMetadata from '../data/pageMetadata.json';
 import {
-  CONTENT_COMPONENT_NAMES,
   SITE_NAME,
   SITE_URL,
   buildTrackNavigation,
-  createArticle,
   getArticleCanonicalUrl,
   getArticleMetaDescription,
   getArticleMetaTitle,
   getTrackNeighbors,
-  sortArticlesForReading,
-  validateArticles,
 } from './contentModel';
-import type { LearnArticle, TrackNavigation } from './contentModel';
-import { parseFrontmatter } from './frontmatter';
+import type { LearnArticleEntry, LearnArticleSummary, TrackNavigation } from './contentModel';
+import { splitFrontmatter } from './frontmatter';
 
 export type {
   ContentLevel,
   ContentTrack,
   ContentTrackId,
   LearnArticle,
+  LearnArticleEntry,
+  LearnArticleSummary,
   LearnSourceLink,
   TrackNavigation,
   TrackNavigationItem,
@@ -54,7 +59,7 @@ export interface ComponentPage {
 }
 
 export type ContentPage =
-  | { kind: 'article'; article: LearnArticle }
+  | { kind: 'article'; article: LearnArticleEntry }
   | { kind: 'page'; page: ComponentPage };
 
 const componentPage = (
@@ -82,27 +87,45 @@ export const COMPONENT_PAGES: readonly ComponentPage[] = [
   componentPage('contact', 'Contact', 'Contact'),
 ];
 
-const rawArticles = import.meta.glob('./articles/*.md', {
+export const LEARN_INDEX_METADATA: LearnIndexMetadata = pageMetadata.learn;
+/** Every article without its body, in reading order (by track, then `order`). */
+export const LEARN_ARTICLES: readonly LearnArticleEntry[] = articleIndex;
+export const TRACK_NAVIGATION: readonly TrackNavigation[] = buildTrackNavigation(LEARN_ARTICLES);
+
+const articleBodyFiles = import.meta.glob('./articles/*.md', {
   query: '?raw',
   import: 'default',
-  eager: true,
-}) as Record<string, string>;
+}) as Record<string, () => Promise<string>>;
 
-const loadedArticles = Object.entries(rawArticles)
-  .sort(([left], [right]) => left.localeCompare(right))
-  .map(([fileName, raw]) => {
-    const { data, content } = parseFrontmatter(raw);
-    return createArticle(data, content, fileName);
-  });
+const loadedBodies = new Map<string, string>();
+const pendingBodies = new Map<string, Promise<string>>();
 
-validateArticles(loadedArticles, {
-  knownComponents: CONTENT_COMPONENT_NAMES,
-  reservedPaths: COMPONENT_PAGES.map(page => page.path),
-});
+const fetchArticleBody = async (article: LearnArticleSummary): Promise<string> => {
+  const file = articleBodyFiles[`./articles/${article.slug}.md`];
+  if (!file) throw new Error(`No Markdown file for article ${article.slug}.`);
+  // The matrix renderer and its data are only needed once a body is shown.
+  const [raw, { expandCompatMatrixDirectives }] = await Promise.all([file(), import('./compatMatrix')]);
+  // Same body createArticle builds at build time for the prerendered page and exports.
+  const content = expandCompatMatrixDirectives(splitFrontmatter(raw).content, article.path);
+  loadedBodies.set(article.slug, content);
+  return content;
+};
 
-export const LEARN_INDEX_METADATA: LearnIndexMetadata = pageMetadata.learn;
-export const LEARN_ARTICLES: readonly LearnArticle[] = sortArticlesForReading(loadedArticles);
-export const TRACK_NAVIGATION: readonly TrackNavigation[] = buildTrackNavigation(LEARN_ARTICLES);
+/** The article's Markdown body if it has already been loaded, for a render without a loading state. */
+export const getLoadedLearnArticleBody = (slug: string): string | undefined => loadedBodies.get(slug);
+
+/** Loads the article's Markdown body once; a failed load is retried on the next call. */
+export const loadLearnArticleBody = (article: LearnArticleSummary): Promise<string> => {
+  let pending = pendingBodies.get(article.slug);
+  if (!pending) {
+    pending = fetchArticleBody(article).catch(error => {
+      pendingBodies.delete(article.slug);
+      throw error;
+    });
+    pendingBodies.set(article.slug, pending);
+  }
+  return pending;
+};
 
 const articlesBySlug = new Map(LEARN_ARTICLES.map(article => [article.slug, article]));
 const articlesByPath = new Map(LEARN_ARTICLES.map(article => [article.path, article]));
@@ -154,15 +177,15 @@ export const getLearnArticleFromPath = (pathname: string) => {
   return page?.kind === 'article' ? page.article : undefined;
 };
 
-export const getRelatedLearnArticles = (article: LearnArticle) =>
+export const getRelatedLearnArticles = (article: LearnArticleSummary) =>
   article.relatedSlugs
     .map(getLearnArticle)
-    .filter((related): related is LearnArticle => Boolean(related));
+    .filter((related): related is LearnArticleEntry => Boolean(related));
 
-export const getLearnArticleNeighbors = (article: LearnArticle) =>
+export const getLearnArticleNeighbors = (article: LearnArticleSummary) =>
   getTrackNeighbors(article, LEARN_ARTICLES);
 
-export const getLearnArticleMetadata = (article: LearnArticle) => {
+export const getLearnArticleMetadata = (article: LearnArticleSummary) => {
   const canonicalUrl = getArticleCanonicalUrl(article);
   return {
     title: getArticleMetaTitle(article),

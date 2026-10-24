@@ -8,7 +8,8 @@ import {
   formatCatalogTransport,
   formatProtocolEra,
 } from '../utils/catalogSeo';
-import CapabilitiesProvided from './CapabilitiesProvided';
+import ServerToolInventory from './ServerToolInventory';
+import { getCatalogCategoryPath } from '../utils/catalogCategories';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import ClientSetup from './ClientSetup';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
@@ -114,6 +115,9 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <li className="breadcrumb-item server-profile-breadcrumb-parent">
             <Link to="/catalog">Server Catalog</Link>
           </li>
+          <li className="breadcrumb-item server-profile-breadcrumb-parent">
+            <Link to={getCatalogCategoryPath(server.category)}>{server.category}</Link>
+          </li>
           <li className="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">
             {server.name}
           </li>
@@ -179,7 +183,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Category</span>
-          <strong>{server.category}</strong>
+          <strong><Link to={getCatalogCategoryPath(server.category)}>{server.category}</Link></strong>
           <small>{server.tags.filter((tag) => tag !== 'suggested').slice(0, 3).join(' · ')}</small>
         </div>
       </section>
@@ -312,18 +316,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
       </section>
 
-      {server.capabilityInventory && (
-        <section className="card server-profile-section" aria-labelledby="server-capabilities-title">
-          <div className="card-body">
-            <CapabilitiesProvided
-              inventory={server.capabilityInventory}
-              serverName={server.name}
-              titleId="server-capabilities-title"
-              titleLevel={2}
-            />
-          </div>
-        </section>
-      )}
+      <ServerToolInventory server={server} />
 
       <section className="card server-profile-section">
         <div className="card-body">
@@ -341,6 +334,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             {server.sourceUrl && <a href={server.sourceUrl} target="_blank" rel="noopener noreferrer">Source repository <i className="bi bi-arrow-up-right"></i></a>}
             {server.listingSource.url && server.listingSource.url !== server.homepageUrl && <a href={server.listingSource.url} target="_blank" rel="noopener noreferrer">Official listing documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.registryUrl && <a href={server.registryUrl} target="_blank" rel="noopener noreferrer">Official MCP Registry record <i className="bi bi-arrow-up-right"></i></a>}
+            <Link to={getCatalogCategoryPath(server.category)}>More {server.category} MCP servers <i className="bi bi-arrow-right"></i></Link>
             <Link to="/docs/testing-guide">MCP testing guide <i className="bi bi-arrow-right"></i></Link>
           </div>
           {(server.requiredHeaders?.length || server.authorizationServers?.length) ? (

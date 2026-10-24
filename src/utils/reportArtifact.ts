@@ -199,6 +199,7 @@ const CapabilityInventoryArtifactSchema: z.ZodType<CapabilityInventoryV1> = z.ob
       name: z.string().min(1).max(128),
       description: z.string().min(1).max(600).optional(),
       input: z.array(CapabilityInventoryArgumentSchema).optional(),
+      outputSchema: z.boolean().optional(),
     }).strict()),
   }).strict(),
   resources: CapabilityInventorySectionBaseSchema.extend({

@@ -170,6 +170,8 @@ A protected endpoint that returns a valid authentication challenge can be catalo
 
 Server authors can submit a new entry by pull request. See [docs/catalog-submissions.md](docs/catalog-submissions.md) for the required fields, the validation that runs, and the logo licensing rules.
 
+Launch announcement, social, list-submission and press drafts (unpublished) are in [docs/launch/](docs/launch/).
+
 ## Core JSON-RPC methods
 
 - `server/discover` — advertises versions and capabilities for the stateless 2026 era.

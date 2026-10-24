@@ -13,6 +13,7 @@ import ServerProfileView from './components/ServerProfileView';
 import Tabs from './components/Tabs';
 import LearnIndex from './components/learn/LearnIndex';
 import LearnNotFound from './components/learn/LearnNotFound';
+import NotFound from './components/NotFound';
 // Route-level code splitting: the inspector, dashboards, reports, submission,
 // article renderer and OAuth screens are separate chunks (see views/deferredViews).
 import {
@@ -20,6 +21,7 @@ import {
   LearnArticlePage,
   OAuthCallback,
   OAuthConfig,
+  DiscoveryCheckerView,
   ReportView,
   SubmitServerView,
   TabContent,
@@ -52,6 +54,7 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
+import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
 // The MCP SDK, OAuth flow and saved-card helpers load on demand; see utils/savedCardRuntime.
 import type {
   OAuthPrerequisite,
@@ -100,10 +103,13 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' => {
+const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' | 'discovery' => {
   const path = window.location.pathname;
   if (path === '/submit') {
     return 'submit';
+  }
+  if (path === DISCOVERY_CHECKER_PATH) {
+    return 'discovery';
   }
   if (path.startsWith('/docs/')) {
     return 'docs';
@@ -223,6 +229,10 @@ function App() {
   const { activeView } = useMemo(() => {
     const path = location.pathname;
     console.log('[ActiveView Calculation] Path:', path, 'Spaces count:', spaces.length);
+
+    if (!isKnownAppPath(path)) {
+      return { activeView: 'not-found' as const };
+    }
     
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
@@ -236,6 +246,10 @@ function App() {
 
     if (path === '/submit') {
       return { activeView: 'submit' as const };
+    }
+
+    if (path === DISCOVERY_CHECKER_PATH) {
+      return { activeView: 'discovery' as const };
     }
 
     // Check for report routes
@@ -339,6 +353,11 @@ function App() {
       return;
     }
 
+    if (!isKnownAppPath(path)) {
+      logPageView(path, 'Page Not Found');
+      return;
+    }
+
     // Check for documentation routes
     if (path.startsWith('/docs/')) {
       const docPage = path.replace('/docs/', '');
@@ -370,6 +389,11 @@ function App() {
 
     if (path === '/submit') {
       logPageView(path, 'Submit a server');
+      return;
+    }
+
+    if (path === DISCOVERY_CHECKER_PATH) {
+      logPageView(path, 'MCP discovery checker');
       return;
     }
     
@@ -1577,6 +1601,8 @@ function App() {
   // Effect to handle OAuth refresh cards
   useEffect(() => {
     const refreshOAuthCards = async () => {
+      // Most visits have nothing to refresh; they never download the card runtime (the MCP SDK).
+      if (!spaces.some(space => space.cards.some(card => (card as any).needsOAuthRefresh))) return;
       // Add a delay to ensure OAuth tokens are properly stored in sessionStorage
       await new Promise(resolve => setTimeout(resolve, 500));
       const runtime = await loadSavedCardRuntime();
@@ -1675,7 +1701,8 @@ function App() {
     ? getCatalogServerById(selectedCatalogServerId)
     : undefined;
   // The submission page belongs to the catalog in the sidebar and prefills from the live connection.
-  const sideNavView = activeView === 'submit' ? 'catalog' : activeView;
+  // An unknown path highlights no primary link.
+  const sideNavView = activeView === 'submit' ? 'catalog' : activeView === 'not-found' ? 'docs' : activeView;
   const connectedTab = tabs.find(tab => tab.id === activeTabId && tab.connectionStatus === 'Connected');
   // Markdown articles (/docs/* and /learn/*) and React-only pages resolve from one registry.
   const selectedContentPage = getContentPage(location.pathname);
@@ -1824,6 +1851,12 @@ function App() {
             {(activeView === 'docs' || activeView === 'learn') && renderContentView()}
           </div>
 
+          {activeView === 'not-found' && (
+            <div className="view-panel" style={{ minHeight: '100%' }}>
+              <NotFound />
+            </div>
+          )}
+
           {/* Report View */}
           {hasVisited('report') && (
             <div className={`view-panel report-view-panel ${activeView === 'report' ? '' : 'd-none'}`}>
@@ -1845,6 +1878,15 @@ function App() {
             <div className="view-panel">
               <Suspense fallback={<ViewFallback label="Loading the submission form" />}>
                 <SubmitServerView initialUrl={connectedTab?.serverUrl} />
+              </Suspense>
+            </div>
+          )}
+
+          {/* MCP Discovery Checker */}
+          {activeView === 'discovery' && (
+            <div className="view-panel">
+              <Suspense fallback={<ViewFallback label="Loading the discovery checker" />}>
+                <DiscoveryCheckerView />
               </Suspense>
             </div>
           )}

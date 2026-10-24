@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CATALOG_CATEGORY_ALL,
   type CatalogSortOrder,
@@ -13,6 +13,13 @@ import {
   sortCatalogServers,
 } from '../utils/catalogUtils';
 import { trackEvent } from '../utils/analytics';
+import {
+  CATALOG_PATH,
+  findCatalogCategoryBySlug,
+  getCatalogCategoryPath,
+  getCatalogCategorySlugFromPath,
+  isCatalogPath,
+} from '../utils/catalogCategories';
 
 const isOAuthFilter = (value: string | null): value is OAuthFilter => {
   return (
@@ -105,8 +112,34 @@ export const buildCatalogSearchParams = (
   return params;
 };
 
-const isCatalogRoute = (pathname: string) => {
-  return pathname === '/catalog';
+const isCatalogRoute = isCatalogPath;
+
+/**
+ * A category lives in the path (`/catalog/databases`) so the selection is a
+ * shareable, indexable page. The older `?category=` parameter is still read
+ * on `/catalog` and redirected to the category path.
+ */
+const getCategoryFromLocation = (
+  pathname: string,
+  params: URLSearchParams,
+  categories: string[]
+): { category: string; fromLegacyParam: boolean; notFound: boolean } => {
+  const slug = getCatalogCategorySlugFromPath(pathname);
+  if (slug !== null) {
+    const category = findCatalogCategoryBySlug(categories, slug);
+    return { category: category ?? CATALOG_CATEGORY_ALL, fromLegacyParam: false, notFound: !category };
+  }
+  const category = getCategoryFromParams(params, categories);
+  return { category, fromLegacyParam: category !== CATALOG_CATEGORY_ALL, notFound: false };
+};
+
+const getCatalogPathForCategory = (category: string) => (
+  category === CATALOG_CATEGORY_ALL ? CATALOG_PATH : getCatalogCategoryPath(category)
+);
+
+const toSearch = (params: URLSearchParams) => {
+  const value = params.toString();
+  return value ? `?${value}` : '';
 };
 
 const catalogParamsMatch = (currentParams: URLSearchParams, nextParams: URLSearchParams) => {
@@ -121,23 +154,35 @@ const catalogParamsMatch = (currentParams: URLSearchParams, nextParams: URLSearc
 
 export const useCatalog = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [allServers] = useState(() => getCatalogServers());
   const [categories] = useState(() => getCatalogCategories(allServers));
   const [initialFilters] = useState(() =>
     isCatalogRoute(location.pathname)
-      ? getCatalogFiltersFromParams(searchParams, categories)
+      ? {
+          ...getCatalogFiltersFromParams(searchParams, categories),
+          category: getCategoryFromLocation(location.pathname, searchParams, categories).category,
+        }
       : DEFAULT_CATALOG_FILTERS
   );
   const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
-  const [category, setCategoryState] = useState(initialFilters.category);
+  const [selectedCategory, setCategoryState] = useState(initialFilters.category);
   const [sortOrder, setSortOrderState] = useState<CatalogSortOrder>(initialFilters.sortOrder);
   const lastLoggedSearchQueryRef = useRef(normalizeSearchQuery(initialFilters.searchQuery));
   const searchAnalyticsTimeoutRef = useRef<number | null>(null);
   const searchParamSyncTimeoutRef = useRef<number | null>(null);
   const pushNextCatalogParamsRef = useRef(false);
   const onCatalogRoute = isCatalogRoute(location.pathname);
+  const locationCategory = useMemo(
+    () => getCategoryFromLocation(location.pathname, searchParams, categories),
+    [categories, location.pathname, searchParams]
+  );
+  // On a catalog route the URL is the source of truth, so a category link
+  // renders its page on the first frame; elsewhere the last selection is kept.
+  const category = onCatalogRoute ? locationCategory.category : selectedCategory;
+  const categoryNotFound = onCatalogRoute && locationCategory.notFound;
   const normalizedSearchQuery = useMemo(
     () => normalizeSearchQuery(searchQuery),
     [searchQuery]
@@ -165,7 +210,6 @@ export const useCatalog = () => {
     (
       nextSearchQuery: string,
       nextOauthFilter: OAuthFilter,
-      nextCategory: string,
       nextSortOrder: CatalogSortOrder,
       replace: boolean
     ) => {
@@ -176,7 +220,7 @@ export const useCatalog = () => {
       const nextParams = buildCatalogSearchParams(
         nextSearchQuery,
         nextOauthFilter,
-        nextCategory,
+        CATALOG_CATEGORY_ALL,
         nextSortOrder
       );
 
@@ -202,7 +246,7 @@ export const useCatalog = () => {
       current === nextFilters.oauthFilter ? current : nextFilters.oauthFilter
     );
     setCategoryState((current) =>
-      current === nextFilters.category ? current : nextFilters.category
+      current === locationCategory.category ? current : locationCategory.category
     );
     setSortOrderState((current) =>
       current === nextFilters.sortOrder ? current : nextFilters.sortOrder
@@ -211,14 +255,22 @@ export const useCatalog = () => {
     const normalizedParams = buildCatalogSearchParams(
       nextFilters.searchQuery,
       nextFilters.oauthFilter,
-      nextFilters.category,
+      CATALOG_CATEGORY_ALL,
       nextFilters.sortOrder
     );
 
-    if (!catalogParamsMatch(searchParams, normalizedParams)) {
+    if (locationCategory.fromLegacyParam) {
+      navigate(
+        {
+          pathname: getCatalogCategoryPath(locationCategory.category),
+          search: toSearch(normalizedParams),
+        },
+        { replace: true }
+      );
+    } else if (!catalogParamsMatch(searchParams, normalizedParams)) {
       setSearchParams(normalizedParams, { replace: true });
     }
-  }, [categories, onCatalogRoute, searchParams, setSearchParams]);
+  }, [categories, locationCategory, navigate, onCatalogRoute, searchParams, setSearchParams]);
 
   const setSearchQuery = useCallback(
     (nextSearchQuery: string) => {
@@ -263,7 +315,6 @@ export const useCatalog = () => {
       syncCatalogParams(
         normalizedSearchQuery,
         oauthFilter,
-        category,
         sortOrder,
         !shouldPushHistory
       );
@@ -277,7 +328,6 @@ export const useCatalog = () => {
       }
     };
   }, [
-    category,
     clearPendingSearchParamSync,
     normalizedSearchQuery,
     oauthFilter,
@@ -305,17 +355,26 @@ export const useCatalog = () => {
     [oauthFilter]
   );
 
+  /** Search, auth and sort as the query string every catalog and category link carries. */
+  const filterSearch = useMemo(
+    () => toSearch(buildCatalogSearchParams(normalizedSearchQuery, oauthFilter, CATALOG_CATEGORY_ALL, sortOrder)),
+    [normalizedSearchQuery, oauthFilter, sortOrder]
+  );
+
+  // Selecting a category navigates to its page, keeping the other filters.
   const setCategory = useCallback(
     (nextCategory: string) => {
       if (nextCategory === category) {
         return;
       }
 
-      pushNextCatalogParamsRef.current = true;
       setCategoryState(nextCategory);
       trackEvent('catalog_filter_category', { category: nextCategory });
+      if (onCatalogRoute) {
+        navigate({ pathname: getCatalogPathForCategory(nextCategory), search: filterSearch });
+      }
     },
-    [category]
+    [category, filterSearch, navigate, onCatalogRoute]
   );
 
   const setSortOrder = useCallback(
@@ -359,6 +418,8 @@ export const useCatalog = () => {
     setOauthFilter,
     category,
     setCategory,
+    categoryNotFound,
+    filterSearch,
     sortOrder,
     setSortOrder,
   };

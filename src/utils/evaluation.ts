@@ -1,11 +1,9 @@
 import {
-  discoverAuthorizationServerMetadata,
-  discoverOAuthProtectedResourceMetadata,
   type Client,
   type FetchLike,
-  type OAuthProtectedResourceMetadata,
   type ProtocolEra,
 } from '@modelcontextprotocol/client';
+import { discoverOAuthMetadata } from './oauthMetadataDiscovery';
 import {
   OUTPUT_CONTRACT_FINDING_ID,
   getRecordedOutputContractResults,
@@ -1108,10 +1106,6 @@ const savedPlanDetail = (counts: SavedPlanRunCounts, ranInThisReport: boolean): 
   },
 });
 
-type AuthorizationServerMetadata = NonNullable<
-  Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
->;
-
 const metadataFetchForEvaluation = (firebaseToken: string | undefined): FetchLike => (
   input,
   init
@@ -1129,41 +1123,16 @@ const evaluateSecurityPosture = async (
   firebaseToken: string | undefined
 ): Promise<EvaluationSection | undefined> => {
   const endpoint = getEvaluationTargetUrl(connection.url, connection.usedProxy);
-  const metadataFetch = metadataFetchForEvaluation(firebaseToken);
-  let resourceMetadata: OAuthProtectedResourceMetadata | undefined;
-
-  try {
-    resourceMetadata = await discoverOAuthProtectedResourceMetadata(
-      endpoint,
-      { protocolVersion: connection.protocolVersion },
-      metadataFetch
-    );
-  } catch {
-    // Protected-resource metadata is optional for older OAuth-enabled servers.
-  }
-
-  const endpointUrl = new URL(endpoint);
-  const authorizationServers = resourceMetadata?.authorization_servers?.length
-    ? resourceMetadata.authorization_servers
-    : [endpointUrl.origin];
-  let authorizationServer: string | undefined;
-  let authorizationMetadata: AuthorizationServerMetadata | undefined;
-
-  for (const candidate of authorizationServers) {
-    try {
-      const metadata = await discoverAuthorizationServerMetadata(candidate, {
-        fetchFn: metadataFetch,
-        protocolVersion: connection.protocolVersion,
-      });
-      if (metadata) {
-        authorizationServer = candidate;
-        authorizationMetadata = metadata;
-        break;
-      }
-    } catch {
-      // Continue when one advertised authorization server has unavailable metadata.
-    }
-  }
+  const {
+    resourceMetadata,
+    authorizationServers,
+    authorizationServer,
+    authorizationMetadata,
+  } = await discoverOAuthMetadata(endpoint, {
+    fetchFn: metadataFetchForEvaluation(firebaseToken),
+    protocolVersion: connection.protocolVersion,
+    originFallback: true,
+  });
 
   if (!resourceMetadata && !authorizationMetadata) return undefined;
 

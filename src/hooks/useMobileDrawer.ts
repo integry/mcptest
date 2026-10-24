@@ -1,7 +1,9 @@
 import { useEffect, type RefObject } from 'react';
 import { useLocation } from 'react-router-dom';
 
-export const MENU_OPEN_CLASS = 'menu-open';
+import { MENU_OPEN_CLASS } from '../utils/layoutState';
+
+export { MENU_OPEN_CLASS };
 
 export const closeMobileDrawer = () => document.body.classList.remove(MENU_OPEN_CLASS);
 

@@ -295,6 +295,20 @@ export const trackGuideLinkClick = (slug: string) => (event: { target: EventTarg
 };
 
 /**
+ * Events a prerendered page sends before React mounts (src/staticPage), keyed
+ * like `page_view:/learn/x`. The app's first render would send each of them
+ * again, so it skips a recorded key once.
+ */
+const sentBeforeMount = new Set<string>();
+
+export const recordStaticPageEvent = (key: string): void => {
+  sentBeforeMount.add(key);
+};
+
+/** True (and forgets the key) when the static page already sent this event. */
+export const consumeStaticPageEvent = (key: string): boolean => sentBeforeMount.delete(key);
+
+/**
  * Sanitizes page path to remove user-specific slugs and endpoint URLs
  */
 const sanitizePagePath = (path: string): string => {
@@ -323,6 +337,7 @@ const sanitizePageTitle = (title: string): string => {
  * @param title The title of the page.
  */
 export const logPageView = (path: string, title: string) => {
+    if (consumeStaticPageEvent(`page_view:${path}`)) return;
     if (!isAnalyticsAllowed()) return;
     const sanitizedPath = sanitizePagePath(path);
     const sanitizedTitle = sanitizePageTitle(title);
