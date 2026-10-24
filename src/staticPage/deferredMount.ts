@@ -142,6 +142,7 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
   let clickedButton: Element | null = null;
   let render: (() => Promise<void>) | null = null;
   let mounted = false;
+  let mountScheduled = false;
 
   const listeners: [string, EventListener][] = [];
   const listen = (type: string, listener: EventListener) => {
@@ -153,10 +154,16 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
   };
 
   const mountWhenIdle = () => {
-    if (!render || mounted || pressed) return;
-    mounted = true;
+    if (!render || mounted || mountScheduled || pressed) return;
+    mountScheduled = true;
     // After the click the release belongs to has been dispatched to the static element.
     window.setTimeout(() => {
+      mountScheduled = false;
+      // Another press may have started since the chunk resolved (or the last
+      // release queued this timer). Keep the static handlers until its click
+      // has run; the next release will schedule a fresh mount.
+      if (pressed) return;
+      mounted = true;
       // The mount replaces the scrolling panel too; a reader keeps their place.
       const scroll = snapshotScroll(root);
       const focus = snapshotFocus(root);

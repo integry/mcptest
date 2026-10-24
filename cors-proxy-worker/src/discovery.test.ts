@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import proxyWorker, { discoveryRouteDependencies, type Env, type RateLimiter } from './index';
+import proxyWorker, { discoveryRouteDependencies, DISCOVERY_REQUESTS_PER_PERIOD, handleProxyRequest, type Env, type RateLimiter } from './index';
 import {
   DISCOVERY_FINAL_URL_HEADER,
   DISCOVERY_MAX_RESPONSE_BYTES,
@@ -183,14 +183,23 @@ describe('handleDiscoveryRequest', () => {
 describe('the worker dispatch', () => {
   const rateLimiter = (success: boolean) => ({ limit: vi.fn(async () => ({ success })) }) satisfies RateLimiter;
 
-  it('routes /discovery to the discovery handler with the anonymous caller limit', async () => {
-    const env: Env = { FIREBASE_PROJECT_ID: 'test', ANON_RATE_LIMITER: rateLimiter(false) };
+  it('routes /discovery through its own limiter without consuming the proxy allowance', async () => {
+    const env: Env = { FIREBASE_PROJECT_ID: 'test', ANON_RATE_LIMITER: rateLimiter(true), DISCOVERY_RATE_LIMITER: rateLimiter(false) };
     const response = await proxyWorker.fetch(new Request(routeUrl('https://example.com/.well-known/mcp.json'), {
       headers: { 'CF-Connecting-IP': '203.0.113.9' },
     }), env);
     expect(response.status).toBe(429);
     expect(response.headers.get('X-MCP-Proxy-Limit')).toBe('anonymous');
-    expect(env.ANON_RATE_LIMITER?.limit).toHaveBeenCalledWith({ key: 'ip:203.0.113.9' });
+    expect(env.DISCOVERY_RATE_LIMITER?.limit).toHaveBeenCalledWith({ key: 'ip:203.0.113.9' });
+    expect(env.ANON_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+    expect(response.headers.get('Retry-After')).toBe('60');
+    expect(response.headers.get('X-MCP-Proxy-Response-Source')).toBe('proxy');
+    expect(response.headers.get('X-MCP-Proxy-Limit-Kind')).toBe('requests');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'rate_limited', signInLiftsLimit: false,
+      message: expect.stringContaining('150 requests per 60s'),
+    });
 
     const refused = await proxyWorker.fetch(new Request(routeUrl('https://example.com/anything')), env);
     expect(refused.status).toBe(403);
@@ -203,5 +212,63 @@ describe('the worker dispatch', () => {
     const admission = await deps.admitCaller(new Request(routeUrl('https://example.com/.well-known/mcp.json'), { headers: { Authorization: 'Bearer bad' } }));
     expect(admission.admitted).toBe(false);
     expect('response' in admission && admission.response.status).toBe(401);
+    if ('response' in admission) {
+      expect(admission.response.headers.get('X-MCP-Proxy-Response-Source')).toBe('proxy');
+      expect(admission.response.headers.get('Access-Control-Expose-Headers')).toContain('X-MCP-Proxy-Response-Source');
+      expect(admission.response.headers.get('Cache-Control')).toBe('no-store');
+      await expect(admission.response.json()).resolves.toMatchObject({ error: 'invalid_token' });
+    }
   });
+
+  it.each([false, true])('allows five full checks independently of an exhausted proxy bucket (signed in: %s)', async signedIn => {
+    let remaining = DISCOVERY_REQUESTS_PER_PERIOD;
+    const env: Env = {
+      FIREBASE_PROJECT_ID: 'test',
+      ANON_RATE_LIMITER: rateLimiter(false),
+      USER_RATE_LIMITER: rateLimiter(false),
+      DISCOVERY_RATE_LIMITER: { limit: vi.fn(async () => ({ success: remaining-- > 0 })) },
+    };
+    const request = new Request(routeUrl('https://example.com/.well-known/mcp.json'), {
+      headers: {
+        'CF-Connecting-IP': '203.0.113.9',
+        ...(signedIn ? { Authorization: 'Bearer valid' } : {}),
+      },
+    });
+    const deps = discoveryRouteDependencies(env, async () => 'test-user');
+    for (let i = 0; i < 5 * 30; i++) {
+      expect(await deps.admitCaller(request)).toEqual({ admitted: true });
+    }
+    const refused = await deps.admitCaller(request);
+    expect('response' in refused && refused.response.status).toBe(429);
+    expect(env.DISCOVERY_RATE_LIMITER?.limit).toHaveBeenCalledWith({
+      key: signedIn ? 'uid:test-user' : 'ip:203.0.113.9',
+    });
+    expect(env.ANON_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+    expect(env.USER_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+
+    // The main route continues to use its original bucket.
+    const proxyResponse = await handleProxyRequest(
+      new Request(`${WORKER}/?target=https://example.com/mcp`), env
+    );
+    expect(proxyResponse.status).toBe(429);
+    expect(env.ANON_RATE_LIMITER?.limit).toHaveBeenCalled();
+    expect(env.DISCOVERY_RATE_LIMITER?.limit).toHaveBeenCalledTimes(151);
+  });
+
+  it('keeps discovery admission available when its binding is missing or fails', async () => {
+    const request = new Request(routeUrl('https://example.com/.well-known/mcp.json'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const env: Env = { FIREBASE_PROJECT_ID: 'test', ANON_RATE_LIMITER: rateLimiter(false) };
+      expect(await discoveryRouteDependencies(env).admitCaller(request)).toEqual({ admitted: true });
+      env.DISCOVERY_RATE_LIMITER = { limit: vi.fn().mockRejectedValue(new Error('unavailable')) };
+      expect(await discoveryRouteDependencies(env).admitCaller(request)).toEqual({ admitted: true });
+      expect(env.ANON_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
 });
