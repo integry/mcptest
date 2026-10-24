@@ -11,6 +11,11 @@ on:
         description: Newline-delimited remote MCP endpoint URLs
         required: true
         type: string
+      session_resilience:
+        description: Opt in to session resilience probes (temporary sessions and 12 pings)
+        required: false
+        default: false
+        type: boolean
       credential_mode:
         description: public, bearer, or api-key
         required: false
@@ -37,6 +42,11 @@ on:
         description: Newline-delimited remote MCP endpoint URLs
         required: true
         type: string
+      session_resilience:
+        description: Opt in to session resilience probes (temporary sessions and 12 pings)
+        required: false
+        default: false
+        type: boolean
       credential_mode:
         description: public, bearer, or api-key
         required: false
@@ -155,6 +165,7 @@ jobs:
         run: >-
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
+          ${{ inputs.session_resilience && '--session-resilience' || '' }}
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
       - name: Evaluate with bearer token
@@ -164,6 +175,7 @@ jobs:
         run: >-
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
+          ${{ inputs.session_resilience && '--session-resilience' || '' }}
           --bearer-token-env MCPTEST_BEARER_TOKEN
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
@@ -174,6 +186,7 @@ jobs:
         run: >-
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
+          ${{ inputs.session_resilience && '--session-resilience' || '' }}
           --api-key-env MCPTEST_API_KEY
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"

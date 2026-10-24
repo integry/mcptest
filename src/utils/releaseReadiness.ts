@@ -463,7 +463,7 @@ const severityOrder: Record<ReleasePriority['severity'], number> = {
 export const transportDiagnosticPriority = (
   diagnostic: TransportDiagnostic
 ): ReleasePriority | undefined => {
-  if (diagnostic.status !== 'detected' || diagnostic.severity === 'info') return undefined;
+  if (diagnostic.status !== 'detected' || diagnostic.outcome === 'pass' || diagnostic.severity === 'info') return undefined;
   const observation = diagnostic.evidence[0]?.observation;
   return {
     id: diagnostic.id,

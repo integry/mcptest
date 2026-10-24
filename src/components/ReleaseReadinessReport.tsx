@@ -1,3 +1,5 @@
+import TransportDiagnosticsPanel from './TransportDiagnosticsPanel';
+import { transportDiagnosticsFromSections } from '../utils/transportDiagnostics';
 import React, { useMemo } from 'react';
 import {
   HOST_PROFILES,
@@ -226,6 +228,8 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           </div>
         </div>
       </section>
+
+      <TransportDiagnosticsPanel diagnostics={transportDiagnosticsFromSections(report.sections).filter(item => item.id.startsWith('session.'))} />
 
       {authorizationActions}
       {!isProxyAuthenticationRequired(report) && (
