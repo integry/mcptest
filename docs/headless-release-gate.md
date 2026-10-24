@@ -199,6 +199,6 @@ A clean sample does not simulate a restart or guarantee durability. Stateless
 Findings `session.unknown-id`, `session.reinitialize`, `session.stickiness`, and
 `session.delete` appear in JSON/Markdown evidence with reference links and flow
 into the shared release decision. Confirmed failures are high priorities;
-DELETE 405 is a permitted warning (medium). Unavailable observations are
-explicitly not checked, and never reported as passing. Browser report exports
+DELETE 405 is permitted and informational; it does not lower the release decision.
+Unavailable observations are explicitly not checked, and never reported as passing. Browser report exports
 and published permalinks carry the same evidence.

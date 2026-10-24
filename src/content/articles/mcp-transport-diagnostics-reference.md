@@ -56,9 +56,9 @@ The fixes below repeat the code hints shown in the app (`src/utils/transportDiag
 
 ## How diagnostics are graded
 
-- **Status:** `detected` means the responses prove the problem. `suspected` means they are consistent with it but do not prove it. `not-checked` means mcptest could not run the check and says why.
+- **Status:** `detected` means the responses establish the observation. Active session probes also record `outcome: 'pass'`; these are successful checks and are excluded from finding counts. `suspected` means they are consistent with it but do not prove it. `not-checked` means mcptest could not run the check and says why.
 - **Severity:** `error` blocks the connection, `warning` degrades it, and `info` is context only.
-- **Release impact:** in the release-readiness report (`transportDiagnosticPriority` in `src/utils/releaseReadiness.ts`), a detected `error` becomes a high-priority item and the answer is "No — fix blockers first". A detected `warning` is medium priority and asks for review. `suspected` and `not-checked` never block.
+- **Release impact:** in the release-readiness report (`transportDiagnosticPriority` in `src/utils/releaseReadiness.ts`), a detected `error` becomes a high-priority item and the answer is "No — fix blockers first". A detected `warning` is medium priority and asks for review. Passing checks, `info`, `suspected`, and `not-checked` never lower the release decision.
 - **Attribution:** only responses from the target count. A `406`, `415` or caller-limit `429` produced by the mcptest proxy itself is never reported against your server.
 
 | Id | Usual severity | Blocks release |
@@ -345,7 +345,7 @@ For TypeScript SDK deployments, a process-local `Map` needs consistent routing t
 
 ## session.delete {#session-delete}
 
-**Active check; error on accepted-but-not-invalidated sessions, warning for HTTP 405.** DELETE is sent only for a temporary probe session. If accepted with a 2xx response, a subsequent ping using that id must get 404. HTTP 405 is permitted by the specification and creates only a medium release priority. Other DELETE failures are reported as not checked.
+**Active check; error on accepted-but-not-invalidated sessions, info for HTTP 405.** DELETE is sent only for a temporary probe session. If accepted with a 2xx response, a subsequent ping using that id must get 404. HTTP 405 is permitted by the specification and is informational; it does not affect the release decision. Other DELETE failures are reported as not checked.
 
 Route DELETE to `transport.handleRequest(req, res)` in the TypeScript SDK and remove terminated session ownership. With Python/FastMCP use the HTTP application's lifecycle management. In a custom Workers handler, delete durable session state and ensure later lookup returns 404. If termination is intentionally unsupported, return `new Response(null, { status: 405 })`.
 

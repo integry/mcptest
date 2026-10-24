@@ -30,14 +30,15 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
   let version = safeVersion(options.protocolVersion);
   let sequence = 0;
   const owned = new Set<string>();
-  const add = (id: SessionResilienceId, outcome: TransportDiagnostic['outcome'], evidence: TransportDiagnosticEvidence[], note: string, skipped = false) => {
+  const add = (id: SessionResilienceId, outcome: TransportDiagnostic['outcome'], evidence: TransportDiagnosticEvidence[], note: string, skipped = false, severity: TransportDiagnostic['severity'] = outcome === 'fail' ? 'error' : outcome === 'warning' ? 'warning' : 'info') => {
     findings.push({ id, ...SESSION_RESILIENCE_DEFINITIONS[id], outcome,
-      status: skipped ? 'not-checked' : 'detected', severity: outcome === 'fail' ? 'error' : outcome === 'warning' ? 'warning' : 'info',
+      status: skipped ? 'not-checked' : 'detected', severity,
       evidence, explanation: `${note} ${SESSION_RESILIENCE_DEFINITIONS[id].explanation}`,
       ...(skipped ? { notCheckedReason: note } : {}),
     });
   };
-  const request = async (method: string, session?: string, httpMethod = 'POST'): Promise<Reply> => {
+  const request = async (method: string, session?: string, httpMethod = 'POST', cleanup = false): Promise<Reply> => {
+    const signal = cleanup ? undefined : options.signal;
     const headers = new Headers(options.headers);
     headers.delete('Mcp-Session-Id');
     headers.set('Accept', 'application/json, text/event-stream');
@@ -53,8 +54,8 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
     };
     const controller = new AbortController();
     const abort = () => controller.abort();
-    options.signal?.addEventListener('abort', abort, { once: true });
-    if (options.signal?.aborted) abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
     const timer = setTimeout(abort, options.timeoutMs ?? 5000);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let responseBody: ReadableStream<Uint8Array> | null = null;
@@ -68,6 +69,9 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
       evidence.status = response.status;
       const source = route === 'direct' ? 'target' : response.headers.get('X-MCP-Proxy-Response-Source');
       evidence.responseSource = source === 'target' ? 'target' : 'proxy';
+      // Retain cleanup ownership before reading a body that may abort or time out.
+      const issuedSession = response.headers.get('Mcp-Session-Id');
+      if (method === 'initialize' && source === 'target' && issuedSession) owned.add(issuedSession);
       evidence.headersSeen = {};
       // Values from untrusted responses may contain secrets: retain presence only except fixed media types.
       for (const name of ['Mcp-Session-Id', 'MCP-Protocol-Version', 'Allow', 'Access-Control-Expose-Headers']) {
@@ -110,7 +114,7 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
       if (reader) void reader.cancel().catch(() => {});
       else if (responseBody) void responseBody.cancel().catch(() => {});
       clearTimeout(timer);
-      options.signal?.removeEventListener('abort', abort);
+      signal?.removeEventListener('abort', abort);
     }
   };
   const ok = (reply: Reply) => reply.target && reply.status === 200 && !!reply.message?.result && !reply.message.error;
@@ -122,7 +126,6 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
   }
   try {
     const initial = await request('initialize');
-    if (initial.session && initial.target) owned.add(initial.session);
     if (!ok(initial)) {
       for (const id of SESSION_RESILIENCE_IDS) add(id, undefined, [initial.evidence], 'A successful initialize could not be observed; session handling was not checked.', true);
       return findings;
@@ -144,7 +147,6 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
       return findings;
     }
     const fresh = await request('initialize');
-    if (fresh.session && fresh.target) owned.add(fresh.session);
     const recovered = ok(fresh) && !!fresh.session && fresh.session !== initial.session;
     const recoveryChecked = unknown.target && unknown.status === 404 && available(fresh) && !options.signal?.aborted;
     add('session.reinitialize', recoveryChecked ? recovered ? 'pass' : 'fail' : undefined, [unknown.evidence, fresh.evidence], unknown.status !== 404 || !unknown.target ? 'No target HTTP 404 was observed; recovery after 404 was not checked.' : !recoveryChecked ? 'Fresh initialize was unavailable due to cancellation, authorization, rate limiting or an unavailable target response; recovery after 404 was not checked.' : recovered ? 'A fresh initialize issued a different session id after 404.' : 'Fresh initialize did not issue a new usable session id after 404.', !recoveryChecked);
@@ -173,10 +175,11 @@ export async function checkSessionResilience(options: SessionResilienceOptions):
     if (after?.target && after.status === 404) owned.delete(session);
     const unsupported = deletion.target && deletion.status === 405;
     const checked = unsupported || (!!after && available(after) && !options.signal?.aborted);
-    add('session.delete', unsupported ? 'warning' : checked ? after?.status === 404 ? 'pass' : 'fail' : undefined, [deletion.evidence, ...(after ? [after.evidence] : [])], unsupported ? 'DELETE returned 405, which the specification permits.' : !checked ? 'DELETE was not accepted or its verification was unavailable due to cancellation, authorization, rate limiting or an unavailable target response.' : `After accepted DELETE, the old id returned HTTP ${after!.status}; expected 404.`, !checked);
+    add('session.delete', unsupported ? 'warning' : checked ? after?.status === 404 ? 'pass' : 'fail' : undefined, [deletion.evidence, ...(after ? [after.evidence] : [])], unsupported ? 'DELETE returned 405, which the specification permits.' : !checked ? 'DELETE was not accepted or its verification was unavailable due to cancellation, authorization, rate limiting or an unavailable target response.' : `After accepted DELETE, the old id returned HTTP ${after!.status}; expected 404.`, !checked, unsupported ? 'info' : undefined);
     return findings;
   } finally {
     // Only ids created by this run; never delete the inspector connection's id.
-    for (const session of owned) await request('cleanup session', session, 'DELETE');
+    // Caller cancellation must not skip cleanup; each DELETE still has its own timeout.
+    for (const session of owned) await request('cleanup session', session, 'DELETE', true);
   }
 }

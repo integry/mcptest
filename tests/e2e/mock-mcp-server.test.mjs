@@ -133,6 +133,45 @@ describe('misbehavior modes', () => {
 
 // Exercise the same pure module against a real HTTP server, including gate artifacts.
 describe('active session probes against the stateful mock', () => {
+  it('keeps replica ping sequences independent across interleaved sessions', async () => {
+    const first = (await post('session-replicas', initialize)).headers.get('mcp-session-id');
+    const ping = session => post('session-replicas', { jsonrpc: '2.0', id: 2, method: 'ping' }, { 'Mcp-Session-Id': session });
+    expect((await ping(first)).status).toBe(200);
+    const second = (await post('session-replicas', initialize)).headers.get('mcp-session-id');
+    expect((await ping(second)).status).toBe(200);
+    expect((await ping(first)).status).toBe(404);
+    expect((await ping(second)).status).toBe(404);
+    const { checkSessionResilience } = await import('../../src/utils/sessionResilience');
+    const results = await checkSessionResilience({ endpoint: `${base}/session-replicas/mcp`, fetch });
+    expect(results[2].explanation).toContain('6/12');
+  });
+  it.each(['passing', 'permitted DELETE 405'])('keeps the release decision unchanged for a %s resilience run', async mode => {
+    const { runReleaseGate } = await import('../../src/cli/releaseGate');
+    const { detectedTransportDiagnostics, transportDiagnosticReportDetail } = await import('../../src/utils/transportDiagnostics');
+    const { evaluateServer } = await import('../../src/utils/evaluation');
+    const { checkSessionResilience } = await import('../../src/utils/sessionResilience');
+    const endpoint = `${base}/2025/mcp`;
+    const evaluation = await evaluateServer(endpoint, '', () => {}, null, undefined, undefined, { runtime: 'headless' });
+    // Keep compatibility evidence constant: these probes must add no findings.
+    evaluation.sections.protocol.details.push({ text: 'Observed stateful sessions', metadata: { sessionBehavior: 'stateful' } });
+    const baseline = (await runReleaseGate({ endpoints: [endpoint] }, { evaluate: async () => evaluation })).targets[0];
+    const diagnostics = await checkSessionResilience({ endpoint, fetch: (input, init) => mode === 'permitted DELETE 405' && init?.method === 'DELETE' ? Promise.resolve(new Response(null, { status: 405 })) : fetch(input, init) });
+    evaluation.sections.sessionResilience = { name: 'Session resilience', description: 'Active checks', score: 0, maxScore: 0, details: diagnostics.map(transportDiagnosticReportDetail) };
+    const checked = (await runReleaseGate({ endpoints: [endpoint], sessionResilience: true }, { evaluate: async () => evaluation })).targets[0];
+    expect(checked.releaseDecision).toEqual(baseline.releaseDecision);
+    const findingCount = target => detectedTransportDiagnostics(target.report.sections.flatMap(section => section.evidence).map(item => item.metadata?.transportDiagnostic).filter(Boolean)).length;
+    expect(findingCount(checked)).toBe(findingCount(baseline) + (mode === 'passing' ? 0 : 1));
+    const before = JSON.parse(baseline.json);
+    const after = JSON.parse(checked.json);
+    expect(after.releaseDecision).toEqual(before.releaseDecision);
+    expect(after.releaseDecision.priorities).toHaveLength(before.releaseDecision.priorities.length);
+    expect(after.toolSurfaceAnalysis.findingCount).toBe(before.toolSurfaceAnalysis.findingCount);
+    const probes = after.sections.find(item => item.id === 'sessionResilience').evidence;
+    expect(probes).toHaveLength(4);
+    expect(probes.slice(0, 3).every(item => item.metadata.transportDiagnostic.outcome === 'pass' && item.message.startsWith('✓'))).toBe(true);
+    expect(probes[3].metadata.transportDiagnostic).toMatchObject({ outcome: mode === 'passing' ? 'pass' : 'warning', severity: 'info' });
+    expect(checked.markdown).toContain(`${mode === 'passing' ? '✓' : 'ℹ'} Deleted session id is rejected`);
+  });
   it('retains stable finding ids, deep links and release blockers in gate artifacts', async () => {
     const { runReleaseGate } = await import('../../src/cli/releaseGate');
     const result = await runReleaseGate({ endpoints: [`${base}/session-replicas/mcp`], sessionResilience: true });

@@ -5,6 +5,7 @@ import type { ConnectionErrorDetails } from '../utils/connectionDiagnostics';
 import type { ObservedTransportRequest } from '../utils/transportDetection';
 import { collectTransportDiagnostics } from '../utils/transportDiagnostics';
 import ConnectionErrorCard from './ConnectionErrorCard';
+import { checkSessionResilience } from '../utils/sessionResilience';
 
 beforeAll(() => {
   (
@@ -60,6 +61,15 @@ const render = (
 };
 
 describe('ConnectionErrorCard transport diagnostics', () => {
+  it('keeps passing session probes out of the error summary and displays pass badges', async () => {
+    const baseline = render({}).querySelector('.alert-heading')?.textContent;
+    act(() => root?.unmount());
+    const diagnostics = await checkSessionResilience({ endpoint: ENDPOINT, fetch: vi.fn(), stateless: true });
+    const container = render({ transportDiagnostics: diagnostics });
+    expect(container.querySelector('.alert-heading')?.textContent).toBe(baseline);
+    expect(Array.from(container.querySelectorAll('.transport-diagnostic .badge')).map(item => item.textContent)).toEqual(['Pass', 'Pass', 'Pass', 'Pass']);
+    expect(container.querySelectorAll('.transport-diagnostic .bg-success')).toHaveLength(4);
+  });
   it('explains a target 406 with evidence, remediation and code hints', () => {
     const container = render({
       attempts: [{

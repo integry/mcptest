@@ -158,7 +158,7 @@ export function createMockMcpServer({ log = () => {} } = {}) {
   /** session id → negotiated protocol version, per stateful mode. */
   const sessions = new Map();
   const requests = [];
-  let replicaPings = 0;
+  const replicaPings = new Map();
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
@@ -227,6 +227,7 @@ export function createMockMcpServer({ log = () => {} } = {}) {
     if (request.method === 'DELETE') {
       const sessionId = request.headers['mcp-session-id'];
       if (stateful && sessionId && sessions.delete(`${mode}:${sessionId}`)) {
+        replicaPings.delete(sessionId);
         response.writeHead(204, cors).end();
       } else {
         response.writeHead(stateful ? 404 : 405, cors).end();
@@ -273,9 +274,13 @@ export function createMockMcpServer({ log = () => {} } = {}) {
         rpcError(404, message.id, -32001, 'Session not found');
         return;
       }
-      if (mode === 'session-replicas' && message.method === 'ping' && ++replicaPings % 2 === 0) {
-        rpcError(404, message.id, -32001, 'Session not found on this replica');
-        return;
+      if (mode === 'session-replicas' && message.method === 'ping') {
+        const count = (replicaPings.get(sessionId) ?? 0) + 1;
+        replicaPings.set(sessionId, count);
+        if (count % 2 === 0) {
+          rpcError(404, message.id, -32001, 'Session not found on this replica');
+          return;
+        }
       }
       if (isNotification) {
         response.writeHead(202, cors).end();

@@ -44,6 +44,84 @@ describe('opt-in session resilience', () => {
     expect(server.fetch.mock.calls.length).toBeLessThanOrEqual(22);
     expect(JSON.stringify(results)).not.toMatch(/secret|private|session-1|session-2/);
   });
+  it.each(['first initialize', 'second initialize', 'burst', 'delete verification'])('cleans up owned sessions after cancellation during %s', async phase => {
+    const server = mockServer();
+    const controller = new AbortController();
+    let initializes = 0;
+    let deleted = false;
+    const cleanupIds: string[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      // Unlike a permissive stub, a real fetch refuses an already-aborted signal.
+      init?.signal?.throwIfAborted();
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const session = new Headers(init?.headers).get('Mcp-Session-Id');
+      if (body.method === 'initialize') initializes++;
+      if (init?.method === 'DELETE') {
+        deleted = true;
+        if (controller.signal.aborted) cleanupIds.push(session!);
+      }
+      const response = await server.fetch(input, init);
+      if ((phase === 'first initialize' && body.method === 'initialize' && initializes === 1)
+        || (phase === 'second initialize' && body.method === 'initialize' && initializes === 2)
+        || (phase === 'burst' && body.method === 'ping' && initializes === 2)
+        || (phase === 'delete verification' && body.method === 'ping' && deleted)) controller.abort();
+      return response;
+    };
+    await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch, signal: controller.signal });
+    expect(controller.signal.aborted).toBe(true);
+    expect(cleanupIds).toContain('session-1');
+    if (phase === 'second initialize' || phase === 'burst') expect(cleanupIds).toContain('session-2');
+    expect(server.sessions.size).toBe(0);
+  });
+  it('cleans up an issued id when cancellation interrupts the initialize body', async () => {
+    const server = mockServer();
+    const caller = new AbortController();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      init?.signal?.throwIfAborted();
+      const response = await server.fetch(input, init);
+      if (init?.method === 'DELETE') return response;
+      return new Response(new ReadableStream({
+        start(stream) {
+          init!.signal!.addEventListener('abort', () => stream.error(new Error('cancelled')), { once: true });
+        },
+        pull() { caller.abort(); },
+      }), { status: 200, headers: response.headers });
+    };
+    const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch, signal: caller.signal });
+    expect(results.every(item => item.status === 'not-checked')).toBe(true);
+    expect(server.sessions.size).toBe(0);
+    expect(server.fetch.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1);
+  });
+  it('bounds cleanup independently after caller cancellation and attempts every owned id', async () => {
+    const server = mockServer();
+    const controller = new AbortController();
+    const cleanupIds: string[] = [];
+    let initializes = 0;
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      init?.signal?.throwIfAborted();
+      if (init?.method === 'DELETE' && controller.signal.aborted) {
+        cleanupIds.push(new Headers(init.headers).get('Mcp-Session-Id')!);
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener('abort', () => reject(new Error('cleanup timeout')), { once: true });
+        });
+      }
+      const response = await server.fetch(input, init);
+      if (init?.body && JSON.parse(String(init.body)).method === 'initialize' && ++initializes === 2) controller.abort();
+      return response;
+    };
+    await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch, signal: controller.signal, timeoutMs: 10 });
+    expect(cleanupIds).toEqual(['session-1', 'session-2']);
+  });
+  it('treats permitted DELETE 405 as info without a release priority', async () => {
+    const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch: mockServer('no-delete').fetch });
+    expect(results[3]).toMatchObject({ outcome: 'warning', severity: 'info', status: 'detected' });
+    expect(results.map(transportDiagnosticPriority)).toEqual([undefined, undefined, undefined, undefined]);
+  });
+  it('never promotes a passing result to a release priority regardless of severity', async () => {
+    const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch: mockServer().fetch });
+    expect(detectedTransportDiagnostics(results)).toEqual([]);
+    for (const result of results) expect(transportDiagnosticPriority({ ...result, severity: 'error' })).toBeUndefined();
+  });
   it('fails HTTP 400 instead of 404 and does not claim recovery after 404', async () => {
     const results = await checkSessionResilience({ endpoint: 'https://example.com/mcp', fetch: mockServer('bad-status').fetch });
     expect(results[0].outcome).toBe('fail');
