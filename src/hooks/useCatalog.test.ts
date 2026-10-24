@@ -255,6 +255,22 @@ describe('catalog query params', () => {
     view.unmount();
   });
 
+  it('restores changed URL queries through back and forward navigation', () => {
+    const view = renderCatalogHook('/catalog?q=crypto');
+    act(() => {
+      view.catalog.setSearchQuery('github');
+      view.catalog.setSortOrder('name');
+    });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(view.location.search).toBe('?q=github&sort=name');
+
+    act(() => view.navigate(-1));
+    expect(view.catalog.searchQuery).toBe('crypto');
+    act(() => view.navigate(1));
+    expect(view.catalog.searchQuery).toBe('github');
+    view.unmount();
+  });
+
   it('logs search analytics only for user-entered non-empty searches', () => {
     const view = renderCatalogHook();
 

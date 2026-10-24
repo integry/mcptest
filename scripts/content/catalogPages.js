@@ -91,7 +91,40 @@ function hostname(url) {
   }
 }
 
-/** One dense catalog row, as CatalogServerCard renders it. */
+// Keep the source link and its icon: its width affects the title row on mount.
+function renderListingSource(server) {
+  const label = escapeHtml(LISTING_SOURCE_LABELS[server.listingSource?.kind] || 'Community');
+  if (!server.listingSource?.url) return `<span class="catalog-listing-source">${label}</span>`;
+  return `<a class="catalog-listing-source" href="${escapeHtml(server.listingSource.url)}" target="_blank" rel="noopener noreferrer">${label}<svg class="catalog-listing-source-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 3h6v6"/><path d="m10 14 11-11"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>`;
+}
+
+/** The unfiltered catalog's first frame. Controls become active when React mounts. */
+function renderCatalogFallback({ servers, summaries }) {
+  const select = (field, label, options) => `<div class="catalog-${field}-field"><label class="visually-hidden" for="catalog-${field}">${label}</label><select id="catalog-${field}" class="form-select" inert>${options.map(([value, text], index) => `<option value="${escapeHtml(value)}"${index === 0 ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></div>`;
+  return [
+    '<div class="catalog-view"><div class="catalog-command-bar"><div class="catalog-command-copy">',
+    '<h2 class="mb-1">Remote MCP server catalog</h2><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
+    `<div class="catalog-results-bar" aria-live="polite"><p class="catalog-results-count">Showing <strong>${servers.length}</strong> of ${servers.length} servers</p></div>`,
+    '</div><div class="catalog-filters"><div class="catalog-search-field"><i class="bi bi-search catalog-search-icon" aria-hidden="true"></i>',
+    '<input id="catalog-search" type="search" class="form-control" aria-label="Search servers" value="" placeholder="Search by name, URL, tag, or description"></div>',
+    '<button type="button" class="catalog-filters-toggle" aria-expanded="false" aria-controls="catalog-filter-fields"><i class="bi bi-sliders" aria-hidden="true"></i><span>Filters</span><i class="bi bi-chevron-down catalog-filters-chevron" aria-hidden="true"></i></button>',
+    '<div id="catalog-filter-fields" class="catalog-filter-fields" data-active-filters="0">',
+    select('auth', 'Authentication', [['all', 'All'], ['no-auth', 'No auth'], ['oauth', 'OAuth'], ['bearer-token', 'Bearer'], ['api-token', 'API token'], ['api-key', 'API key']].map(([value, label]) => [value, `Authentication: ${label}`])),
+    select('sort', 'Sort', [['catalog-order', 'Catalog order'], ['name', 'Name'], ['recently-tested', 'Recently tested'], ['browser-ready', 'Browser ready']].map(([value, label]) => [value, `Sort: ${label}`])),
+    select('category', 'Category', [['all', `Category: All (${servers.length})`], ...summaries.map(({category, count}) => [category, `Category: ${category} (${count})`])]),
+    '</div></div></div><div class="catalog-content-layout">',
+    renderCategoryRail(summaries),
+    `<div class="catalog-results-region"><ul class="catalog-server-list" aria-label="Catalog servers">${servers.map(renderCatalogRow).join('')}</ul></div>`,
+    '</div></div>',
+  ].join('');
+}
+
+/**
+ * One dense catalog row, as CatalogServerCard renders it. Keep layout classes
+ * and visible content, but omit repeated tooltips and redundant ARIA prose:
+ * repeating the interactive card's full attributes across 221 rows is costly.
+ * Report and Playground actions stay native anchors before the mount.
+ */
 function renderCatalogRow(server) {
   const statusClass = server.status === 'online'
     ? 'catalog-status-dot--online'
@@ -106,11 +139,11 @@ function renderCatalogRow(server) {
     renderRowLogo(server),
     '<div class="catalog-server-heading"><div class="catalog-server-title-row"><div class="catalog-server-name-source">',
     `<h3 class="mb-0"><a class="catalog-server-title" href="${escapeHtml(getCatalogServerPath(server.id))}">${escapeHtml(server.name)}</a></h3>`,
-    `<span class="catalog-listing-source">${escapeHtml(LISTING_SOURCE_LABELS[server.listingSource?.kind] || 'Community')}</span>`,
+    renderListingSource(server),
     '</div>',
     `<span class="catalog-runtime-status${server.status === 'online' ? ' catalog-runtime-status--online' : ''}"><span class="catalog-status-dot rounded-circle ${statusClass}" aria-hidden="true"></span>${escapeHtml(statusLabel(server))}</span>`,
     '</div>',
-    `<p class="catalog-server-url small text-truncate mb-0">${escapeHtml(hostname(server.url))}</p>`,
+    `<p class="catalog-server-url small text-truncate mb-0" title="${escapeHtml(server.url)}">${escapeHtml(hostname(server.url))}</p>`,
     `<p class="catalog-server-description mb-0">${escapeHtml(server.description)}</p>`,
     '</div>',
     '<div class="catalog-server-meta"><div class="catalog-server-badges d-flex flex-wrap align-items-center" role="group" aria-label="Server summary">',
@@ -125,7 +158,7 @@ function renderCatalogRow(server) {
     '</div>',
     '<div class="catalog-card-actions align-items-center">',
     `<a class="catalog-report-link" href="${escapeHtml(getCatalogServerPath(server.id))}">View report</a>`,
-    `<a class="btn btn-sm btn-outline-primary catalog-test-button" href="${escapeHtml(playgroundPath(server))}">Test in Playground</a>`,
+    `<a class="btn btn-sm btn-outline-primary catalog-test-button${server.status === 'offline' ? ' disabled' : ''}"${server.status === 'offline' ? ' aria-disabled="true" tabindex="-1"' : ''} href="${escapeHtml(playgroundPath(server))}">Test in Playground</a>`,
     '</div>',
     '</article></li>',
   ].join('');
@@ -156,7 +189,7 @@ function renderCategoryRail(summaries, current) {
   return [
     '<nav class="catalog-category-rail" aria-label="Catalog categories">',
     '<p class="catalog-category-heading">Categories</p>',
-    option('All', total, CATALOG_PATH, false),
+    option('All', total, CATALOG_PATH, current === undefined),
     ...summaries.map(summary => option(summary.category, summary.count, summary.path, summary.category === current)),
     '</nav>',
   ].join('\n');
@@ -384,6 +417,7 @@ function renderToolInventory(server) {
 }
 
 module.exports = {
+  renderCatalogFallback,
   renderCatalogRow,
   renderCategoryFallback,
   renderServerConnect,

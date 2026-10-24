@@ -61,7 +61,7 @@ const {
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
-const { renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
+const { renderCatalogFallback, renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
 const { getServerPageMetaDescription, getServerSetupStructuredData } = require('../src/utils/serverConnect.ts');
 const {
   getCatalogCategoryNames,
@@ -1418,8 +1418,21 @@ function readBuildEnv(name, mode = 'production') {
   return undefined;
 }
 
-function renderCatalogHtml(indexHtml, catalogMetadata) {
-  return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata);
+function renderCatalogHtml(indexHtml, catalogMetadata, { servers = [], shell = {} } = {}) {
+  return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata, {
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      numberOfItems: servers.length,
+      itemListElement: servers.map((server, index) => ({
+        '@type': 'ListItem', position: index + 1, name: server.name,
+        url: canonicalUrlFor(serverPath(server.id)),
+      })),
+    },
+    fallbackHtml: renderContentShell(renderCatalogFallback({
+      servers, summaries: summarizeCatalogCategories(servers),
+    }), { view: 'catalog', pathname: '/catalog', pageViewTitle: catalogMetadata.title, shell }),
+  });
 }
 
 /**
@@ -1647,11 +1660,11 @@ function writeToolPages(indexHtml, toolsMetadata, { shell, prerender }) {
   }), 'utf8');
 }
 
-function writeHomeAndCatalogPages(indexHtml, pageMetadata, catalogCount, shellOptions) {
+function writeHomeAndCatalogPages(indexHtml, pageMetadata, servers, shellOptions) {
   // catalog.html, not catalog/index.html: hosts serve /catalog from it without
   // a trailing-slash redirect, and the app matches /catalog exactly.
-  fs.writeFileSync(path.join(distRoot, 'catalog.html'), renderCatalogHtml(indexHtml, pageMetadata.catalog), 'utf8');
-  fs.writeFileSync(indexPath, renderHomeHtml(indexHtml, pageMetadata.home, catalogCount, shellOptions), 'utf8');
+  fs.writeFileSync(path.join(distRoot, 'catalog.html'), renderCatalogHtml(indexHtml, pageMetadata.catalog, { servers, shell: shellOptions }), 'utf8');
+  fs.writeFileSync(indexPath, renderHomeHtml(indexHtml, pageMetadata.home, servers.length, shellOptions), 'utf8');
 }
 
 function writeLearnFeed(articles, learnIndex) {
@@ -2009,7 +2022,7 @@ async function main() {
   });
   writeArticlePages(indexHtml, learnIndex, articles, { shell: contentShell, prerender });
   // Last: overwrites the shell the pages above were rendered from.
-  writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length, shellOptions);
+  writeHomeAndCatalogPages(indexHtml, pageMetadata, servers, shellOptions);
   writeLearnFeed(articles, learnIndex);
   writeSearchIndex(articles);
   writeLlmsTxt(articles);

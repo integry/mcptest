@@ -58,7 +58,8 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
   const location = useLocation();
   const idPrefix = useId();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const filterFieldsId = `${idPrefix}-catalog-filter-fields`;
+  // Stable control IDs let deferredMount restore focus after the static swap.
+  const filterFieldsId = 'catalog-filter-fields';
   // On /catalog/<slug> the category is the page itself, not a filter.
   const onCategoryPage = getCatalogCategorySlugFromPath(location.pathname) !== null;
   const categorySummary = useMemo(
@@ -133,7 +134,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           <div className="catalog-search-field">
             <i className="bi bi-search catalog-search-icon" aria-hidden="true" />
             <input
-              id={`${idPrefix}-catalog-search`}
+              id="catalog-search"
               type="search"
               className="form-control"
               aria-label="Search servers"
@@ -166,11 +167,11 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             data-active-filters={activeFilterCount}
           >
           <div className="catalog-auth-field">
-            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-auth`}>
+            <label className="visually-hidden" htmlFor="catalog-auth">
               Authentication
             </label>
             <select
-              id={`${idPrefix}-catalog-auth`}
+              id="catalog-auth"
               className="form-select"
               value={oauthFilter}
               onChange={(event) => setOauthFilter(event.target.value as OAuthFilter)}
@@ -186,11 +187,11 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           </div>
 
           <div className="catalog-sort-field">
-            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-sort`}>
+            <label className="visually-hidden" htmlFor="catalog-sort">
               Sort
             </label>
             <select
-              id={`${idPrefix}-catalog-sort`}
+              id="catalog-sort"
               className="form-select"
               value={sortOrder}
               onChange={(event) => setSortOrder(event.target.value as CatalogSortOrder)}
@@ -204,11 +205,11 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
           </div>
 
           <div className="catalog-category-field">
-            <label className="visually-hidden" htmlFor={`${idPrefix}-catalog-category`}>
+            <label className="visually-hidden" htmlFor="catalog-category">
               Category
             </label>
             <select
-              id={`${idPrefix}-catalog-category`}
+              id="catalog-category"
               className="form-select"
               value={category}
               onChange={(event) => setCategory(event.target.value)}

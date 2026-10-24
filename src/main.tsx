@@ -35,6 +35,17 @@ scheduleAnalyticsLoad()
 
 const root = document.getElementById('root')!
 const staticPage = getDeferredStaticPage(root)
+// The catalog fallback represents only the default list. Query URLs need
+// React to apply their filters without waiting for the visitor's first input.
+// Served aliases have already been canonicalized above.
+const catalogParams = new URLSearchParams(window.location.search)
+const hasCatalogFilters = window.location.pathname === '/catalog'
+  && (Boolean(catalogParams.get('q')?.trim())
+    || ['auth', 'category', 'sort'].some(key => {
+      const value = catalogParams.get(key)
+      const defaultValue = key === 'sort' ? 'catalog-order' : 'all'
+      return Boolean(value) && value !== defaultValue
+    }))
 if (staticPage) {
   enhanceStaticPage(staticPage)
   const mountNow = deferMountUntilInput({
@@ -44,7 +55,7 @@ if (staticPage) {
     snapshotState: snapshotStaticPageState,
   })
   // The header shows the signed-in user, which only the app knows.
-  if (restoringSession) mountNow()
+  if (restoringSession || hasCatalogFilters) mountNow()
 } else {
   prepareApp()
     .then(render => render())

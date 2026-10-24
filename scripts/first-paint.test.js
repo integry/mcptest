@@ -56,3 +56,52 @@ describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built home page', 
     expect(result.cls).toBeLessThan(0.05);
   }, 90000);
 });
+
+
+describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built catalog', () => {
+  it.each([
+    { pathname: '/catalog?auth=oauth', controls: { catalogAuth: 'oauth' }, filtered: true },
+    { pathname: '/catalog?q=github', controls: { catalogSearch: 'github' }, filtered: true },
+    { pathname: '/catalog?category=Developer%20Tools', controls: { catalogCategory: 'Developer Tools' }, filtered: true },
+    { pathname: '/catalog?sort=name', controls: { catalogSort: 'name' }, filtered: false },
+    { pathname: '/catalog.html?auth=oauth&sort=name', controls: { catalogAuth: 'oauth', catalogSort: 'name' }, filtered: true },
+  ])('mounts $pathname with its URL state without input', async ({ pathname, controls, filtered }) => {
+    const html = fs.readFileSync(path.join(distDir, 'catalog.html'), 'utf8');
+    const rowCount = (html.match(/class="catalog-server-row"/g) || []).length;
+    const result = await measureFirstPaint({
+      distDir, pathname, durationMs: 7000,
+      // No synthetic input: filtered URLs must start React on their own.
+    });
+    const last = result.samples.at(-1);
+    expect(last.phase, formatTimeline(result)).toBe('react');
+    expect(last).toMatchObject({ catalog: true, ...controls });
+    expect(last.catalogRows).toBeGreaterThan(0);
+    if (filtered) expect(last.catalogRows).toBeLessThan(rowCount);
+    else expect(last.catalogRows).toBe(rowCount);
+  }, 90000);
+
+  it.each([{ width: 1280, height: 800 }, { width: 390, height: 844 }])('paints every row and mounts without shifting at $width px', async (viewport) => {
+    const html = fs.readFileSync(path.join(distDir, 'catalog.html'), 'utf8');
+    const rowCount = (html.match(/class="catalog-server-row"/g) || []).length;
+    expect(rowCount).toBeGreaterThan(0);
+    expect(html).toContain('data-critical-css');
+    const result = await measureFirstPaint({
+      distDir, pathname: '/catalog', viewport, colorScheme: 'dark',
+      durationMs: 7000, triggerMountAtMs: 1800,
+    });
+    console.log(formatTimeline(result));
+    const painted = result.samples.filter(sample => sample.painted);
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.some(sample => sample.phase === 'static')).toBe(true);
+    for (const sample of painted) {
+      expect(sample, `frame at ${sample.t} ms`).toMatchObject({
+        blank: false, header: true, catalog: true, theme: 'dark',
+      });
+      expect(sample.catalogRows).toBeGreaterThan(0);
+      expect(['static', 'react']).toContain(sample.phase);
+    }
+    expect(result.samples.at(-1).catalogRows).toBe(rowCount);
+    expect(result.samples.at(-1).phase).toBe('react');
+    expect(result.cls).toBeLessThan(0.05);
+  }, 90000);
+});

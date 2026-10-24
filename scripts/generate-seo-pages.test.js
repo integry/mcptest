@@ -577,7 +577,8 @@ describe('generated page metadata', () => {
     expect(html).toContain('<title>Catalog | mcptest.io</title>');
     expect(html).toContain('rel="canonical" href="https://mcptest.io/catalog"');
     expect(html).toContain('property="og:image" content="https://mcptest.io/og/catalog.png"');
-    expect(html).toContain('<div id="root"></div>');
+    expect(html).toContain('class="catalog-view"');
+    expect(html).toContain('data-deferred-mount');
   });
 
   it('prerenders the discovery checker in the app shell, with the form React mounts over at load', () => {
