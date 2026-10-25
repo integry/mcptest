@@ -17,7 +17,7 @@ describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built home page', 
     expect(findBrowser(), 'Chromium is required; set CHROME_PATH').not.toBeNull();
     expect(fs.readFileSync(path.join(distDir, 'index.html'), 'utf8')).toContain('seo-shell-fallback');
 
-    const result = await measureFirstPaint({ distDir, colorScheme: 'dark' });
+    const result = await measureFirstPaint({ distDir, colorScheme: 'dark', triggerMountAtMs: 1000 });
     console.log(formatTimeline(result));
 
     expect(result.screenshots.length).toBeLessThanOrEqual(DEFAULTS.maxScreenshots);
@@ -45,6 +45,7 @@ describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built home page', 
       expect(['static', 'react']).toContain(sample.phase);
     }
     expect(result.samples.at(-1).phase, 'React mounted within the capture window').toBe('react');
+    expect(result.samples.filter(sample => sample.painted && sample.t < 1000).every(sample => sample.phase === 'static')).toBe(true);
 
     // A blank frame compresses to a fraction of a full one.
     const paintedShots = result.screenshots.filter(shot => painted.some(sample => sample.t === shot.t));

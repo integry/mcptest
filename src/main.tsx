@@ -34,12 +34,15 @@ if (restoringSession) loadFirebase().catch(() => {})
 scheduleAnalyticsLoad()
 
 const root = document.getElementById('root')!
-const staticPage = getDeferredStaticPage(root)
+const deferredPage = getDeferredStaticPage(root)
+// The home HTML also serves SPA routes. Their actual views must mount at once.
+const staticPage = deferredPage?.querySelector('.seo-landing-fallback') && window.location.pathname !== '/'
+  ? null : deferredPage
 // The catalog fallback represents only the default list. Query URLs need
 // React to apply their filters without waiting for the visitor's first input.
 // Served aliases have already been canonicalized above.
 const catalogParams = new URLSearchParams(window.location.search)
-const hasCatalogFilters = window.location.pathname === '/catalog'
+const hasCatalogFilters = window.location.pathname.startsWith('/catalog')
   && (Boolean(catalogParams.get('q')?.trim())
     || ['auth', 'category', 'sort'].some(key => {
       const value = catalogParams.get(key)
@@ -55,7 +58,10 @@ if (staticPage) {
     snapshotState: snapshotStaticPageState,
   })
   // The header shows the signed-in user, which only the app knows.
-  if (restoringSession || hasCatalogFilters) mountNow()
+  // Returning workspaces and connection deep links still restore immediately.
+  const restoringWorkspace = window.location.pathname === '/'
+    && document.documentElement.getAttribute('data-returning-visitor') === 'true'
+  if (restoringSession || restoringWorkspace || hasCatalogFilters) mountNow()
 } else {
   prepareApp()
     .then(render => render())

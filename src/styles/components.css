@@ -1955,6 +1955,10 @@ span.health-indicator.health-indicator-gray {
   height: 0.7rem;
   flex: 0 0 0.7rem;
   stroke-width: 1.5;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 a.catalog-listing-source:hover {
@@ -1970,6 +1974,7 @@ a.catalog-listing-source:hover {
 }
 
 .catalog-server-url {
+  margin: 0;
   display: block;
   overflow: hidden;
   max-width: 100%;
@@ -2017,6 +2022,9 @@ a.catalog-listing-source:hover {
 }
 
 .catalog-server-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1);
 }
 

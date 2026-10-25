@@ -952,7 +952,7 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     `    <p class="landing-lede">${escapeHtml(LANDING_LEDE)}</p>`,
     '    <div class="landing-connect">',
     '      <label for="serverUrl" class="visually-hidden">MCP endpoint URL</label>',
-    '      <input id="serverUrl" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" class="form-control landing-connect-input" placeholder="https://example.com/mcp" value="" readonly>',
+    '      <input id="serverUrl" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" class="form-control landing-connect-input" placeholder="https://example.com/mcp" value="">',
     '      <button id="connectBtn" type="button" class="btn btn-primary landing-connect-button" disabled>Connect</button>',
     '    </div>',
     ...renderQuickPicks(quickPicks),
@@ -1214,7 +1214,10 @@ function renderShellFallback({
   ...shellOptions
 }) {
   const [tab] = createDefaultTabs();
-  return renderAppShell({ ...shellOptions, content: [
+  return renderAppShell({ ...shellOptions, attributes: {
+    'data-deferred-mount': true,
+    'data-page-view-title': 'Playground',
+  }, content: [
     '<div class="h-100 d-flex flex-column">',
     '<div class="playground-tabs-wrapper">',
     '<div class="playground-tab-strip">',
@@ -1530,11 +1533,13 @@ function writeDiscoveryPage(indexHtml, discoveryMetadata, options) {
 }
 
 /** Prerendered `/catalog/<slug>`: metadata, CollectionPage JSON-LD and the static category body. */
-function renderCategoryHtml(indexHtml, summary, { summaries, servers, articles }) {
+function renderCategoryHtml(indexHtml, summary, { summaries, servers, articles, shell = {} }) {
   const seo = getCatalogCategorySeo(summary);
   return renderStaticPageHtml(indexHtml, summary.path, seo, {
     structuredData: seo.structuredData,
-    fallbackHtml: renderCategoryFallback({ summary, summaries, servers, articles }),
+    fallbackHtml: renderContentShell(renderCategoryFallback({ summary, summaries, servers, articles }), {
+      view: 'catalog', pathname: summary.path, pageViewTitle: 'Server Catalog', shell,
+    }),
   });
 }
 
@@ -1616,13 +1621,13 @@ function writeServerPages(indexHtml, servers, shell) {
 }
 
 /** `/catalog/<slug>` as catalog/<slug>.html, served without a trailing slash like catalog.html. */
-function writeCategoryPages(indexHtml, servers, articles) {
+function writeCategoryPages(indexHtml, servers, articles, shell) {
   const summaries = summarizeCatalogCategories(servers);
   fs.mkdirSync(path.join(distRoot, 'catalog'), { recursive: true });
   for (const summary of summaries) {
     fs.writeFileSync(
       `${distPathFor(summary.path)}.html`,
-      renderCategoryHtml(indexHtml, summary, { summaries, servers, articles }),
+      renderCategoryHtml(indexHtml, summary, { summaries, servers, articles, shell }),
       'utf8'
     );
   }
@@ -2082,7 +2087,7 @@ async function main() {
   const contentShell = { learnTracks: shellOptions.learnTracks, authEnabled: shellOptions.authEnabled };
 
   writeServerPages(indexHtml, servers, contentShell);
-  const categoryCount = writeCategoryPages(indexHtml, servers, articles);
+  const categoryCount = writeCategoryPages(indexHtml, servers, articles, contentShell);
   writeStaticPages(indexHtml, pageMetadata.docs);
   writeCiPage(indexHtml);
   writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });

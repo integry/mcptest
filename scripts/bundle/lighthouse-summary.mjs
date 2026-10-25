@@ -29,8 +29,8 @@ for (const preset of fs.readdirSync(root).filter(name => fs.statSync(path.join(r
     byUrl.get(url).push(report);
   }
   console.log(`\n### ${preset}\n`);
-  console.log('| Page | Perf | A11y | FCP | LCP | TBT | Script bytes | Unused JS |');
-  console.log('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  console.log('| Page | Perf | A11y | FCP | LCP | TBT | CLS | Total transfer | Script bytes | Unused JS |');
+  console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
   for (const [url, runs] of byUrl) {
     const pick = (fn) => median(runs.map(fn));
     const perf = pick(r => r.categories.performance.score);
@@ -38,8 +38,10 @@ for (const preset of fs.readdirSync(root).filter(name => fs.statSync(path.join(r
     const fcp = pick(r => r.audits['first-contentful-paint'].numericValue);
     const lcp = pick(r => r.audits['largest-contentful-paint'].numericValue);
     const tbt = pick(r => r.audits['total-blocking-time'].numericValue);
+    const cls = pick(r => r.audits['cumulative-layout-shift'].numericValue);
+    const transfer = pick(r => (r.audits['resource-summary']?.details?.items || []).find(i => i.resourceType === 'total')?.transferSize || 0);
     const script = pick(r => (r.audits['resource-summary']?.details?.items || []).find(i => i.resourceType === 'script')?.transferSize || 0);
     const unused = pick(r => r.audits['unused-javascript']?.details?.overallSavingsBytes || 0);
-    console.log(`| ${url} | ${perf.toFixed(2)} | ${a11y.toFixed(2)} | ${ms(fcp)} | ${ms(lcp)} | ${Math.round(tbt)} ms | ${kb(script)} | ${kb(unused)} |`);
+    console.log(`| ${url} | ${perf.toFixed(2)} | ${a11y.toFixed(2)} | ${ms(fcp)} | ${ms(lcp)} | ${Math.round(tbt)} ms | ${cls.toFixed(3)} | ${kb(transfer)} | ${kb(script)} | ${kb(unused)} |`);
   }
 }

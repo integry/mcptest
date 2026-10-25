@@ -57,7 +57,7 @@ function initials(name) {
 
 function renderRowLogo(server) {
   if (typeof server.logoUrl === 'string' && server.logoUrl.startsWith('/server-logos/')) {
-    return `<span class="catalog-server-logo catalog-server-card-logo flex-shrink-0" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt="" loading="lazy" /></span>`;
+    return `<span class="catalog-server-logo catalog-server-card-logo flex-shrink-0" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt="" width="40" height="40" loading="lazy" decoding="async" /></span>`;
   }
   return `<span class="catalog-server-logo catalog-server-card-logo flex-shrink-0 catalog-server-logo--fallback" role="img" aria-label="${escapeHtml(server.name)} logo" data-catalog-server-logo="true"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(initials(server.name))}</span></span>`;
 }
@@ -144,15 +144,15 @@ function renderCatalogRow(server) {
     '<li class="catalog-server-list-item"><article class="catalog-server-row">',
     renderRowLogo(server),
     '<div class="catalog-server-heading"><div class="catalog-server-title-row"><div class="catalog-server-name-source">',
-    `<h3 class="mb-0"><a class="catalog-server-title" href="${escapeHtml(getCatalogServerPath(server.id))}">${escapeHtml(server.name)}</a></h3>`,
+    `<h3><a class="catalog-server-title" href="${escapeHtml(getCatalogServerPath(server.id))}">${escapeHtml(server.name)}</a></h3>`,
     renderListingSource(server),
     '</div>',
     `<span class="catalog-runtime-status${server.status === 'online' ? ' catalog-runtime-status--online' : ''}"><span class="catalog-status-dot rounded-circle ${statusClass}" aria-hidden="true"></span>${escapeHtml(statusLabel(server))}</span>`,
     '</div>',
-    `<p class="catalog-server-url small text-truncate mb-0" title="${escapeHtml(server.url)}">${escapeHtml(hostname(server.url))}</p>`,
-    `<p class="catalog-server-description mb-0">${escapeHtml(server.description)}</p>`,
+    `<p class="catalog-server-url" title="${escapeHtml(server.url)}">${escapeHtml(hostname(server.url))}</p>`,
+    `<p class="catalog-server-description">${escapeHtml(server.description)}</p>`,
     '</div>',
-    '<div class="catalog-server-meta"><div class="catalog-server-badges d-flex flex-wrap align-items-center" role="group" aria-label="Server summary">',
+    '<div class="catalog-server-meta"><div class="catalog-server-badges" role="group" aria-label="Server summary">',
     `<a class="badge catalog-metadata-badge catalog-metadata-badge--category" href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a>`,
     `<span class="badge catalog-metadata-badge catalog-metadata-badge--auth">${escapeHtml(formatCatalogAuth(server.authType))}</span>`,
     ...transportBadges(server).map(label => `<span class="badge catalog-metadata-badge catalog-metadata-badge--transport">${escapeHtml(label)}</span>`),
@@ -162,7 +162,7 @@ function renderCatalogRow(server) {
     '</div>',
     browserEvidence,
     '</div>',
-    '<div class="catalog-card-actions align-items-center">',
+    '<div class="catalog-card-actions">',
     `<a class="catalog-report-link" href="${escapeHtml(getCatalogServerPath(server.id))}">View report</a>`,
     `<a class="btn btn-sm btn-outline-primary catalog-test-button${server.status === 'offline' ? ' disabled' : ''}"${server.status === 'offline' ? ' aria-disabled="true" tabindex="-1"' : ''} href="${escapeHtml(playgroundPath(server))}">Test in Playground</a>`,
     '</div>',

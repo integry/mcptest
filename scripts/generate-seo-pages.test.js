@@ -943,9 +943,10 @@ describe('content pages in the app shell (issue #405)', () => {
     expect(app.querySelector('.badge-embed-preview img').getAttribute('width')).toBe('130');
   });
 
-  it('keeps the home page mounting at load', () => {
+  it('defers the home page while keeping the endpoint editable', () => {
     const html = renderHomeHtml(indexHtml, { title: 'Home', description: 'Home.' }, 3, shell);
-    expect(html).not.toContain('data-deferred-mount');
+    expect(html).toContain('data-deferred-mount');
+    expect(rootOf(html).querySelector('#serverUrl').readOnly).toBe(false);
     expect(rootOf(html).querySelector('.sidenav-group:first-child a.nav-link.active').getAttribute('href')).toBe('/');
   });
 

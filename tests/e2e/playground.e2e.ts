@@ -1,6 +1,27 @@
 import type { Page } from '@playwright/test';
 import { connectAndWait, expect, mockUrl, test } from './fixtures';
 
+for (const submit of ['click', 'Enter'] as const) {
+  test(`landing preserves typed endpoint during deferred mount (${submit})`, async ({ page }) => {
+    // Hold the app so typing and submission happen against the static form.
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/assets/bootstrapApp-*.js', async route => {
+      await gate;
+      await route.continue();
+    });
+    await page.goto('/');
+    await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+    const field = page.getByLabel('MCP endpoint URL');
+    await field.fill(mockUrl('2026'));
+    if (submit === 'click') await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    else await field.press('Enter');
+    release();
+    await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
+    await expect(page.locator('.connection-endpoint')).toHaveText(mockUrl('2026'));
+  });
+}
+
 /** The structured / content / JSON-RPC view inside the Result tab. */
 const resultView = (page: Page) => page.getByRole('tabpanel', { name: 'Result' }).getByRole('tabpanel');
 
