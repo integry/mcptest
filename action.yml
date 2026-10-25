@@ -45,11 +45,17 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Resolve dependency cache path
+      id: cache-path
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      # Local uses: ./ can leave dot segments that the cache glob rejects.
+      run: printf 'lockfile=%s/package-lock.json\n' "$(pwd -P)" >> "$GITHUB_OUTPUT"
     - uses: actions/setup-node@v7
       with:
         node-version: '22'
         cache: npm
-        cache-dependency-path: ${{ github.action_path }}/package-lock.json
+        cache-dependency-path: ${{ steps.cache-path.outputs.lockfile }}
     - name: Install mcptest dependencies
       shell: bash
       working-directory: ${{ github.action_path }}
