@@ -59,9 +59,9 @@ describe('catalog authentication metadata', () => {
   it('merges every expanded seed into the UI-facing catalog', () => {
     const catalog = getCatalogServers();
 
-    expect(catalog).toHaveLength(221);
-    expect(catalogValidation).toHaveLength(221);
-    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(221);
+    expect(catalog).toHaveLength(284);
+    expect(catalogValidation).toHaveLength(284);
+    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(284);
     expect(new Set(catalogValidation.map(({ serverId }) => serverId)))
       .toEqual(new Set(catalog.map(({ id }) => id)));
     expect(catalog.find(({ id }) => id === 'asana')).toBeDefined();
@@ -109,6 +109,39 @@ describe('catalog authentication metadata', () => {
     });
     expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/mcp/')).toBeUndefined();
     expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/custom')).toBeUndefined();
+  });
+
+  it('keeps the round-three additions reachable and distinct from existing endpoints', () => {
+    const addedIds = [
+      'basedash', 'beehiiv', 'dart', 'dashthis', 'elfsight', 'gameanalytics',
+      'getabstract', 'happyscribe', 'hasdata', 'icons8', 'ifttt', 'jitsu',
+      'kajabi', 'keywordseverywhere', 'lessmeeting', 'mabl', 'maileroo', 'mailfloss',
+      'mailtester', 'octolens', 'octoparse', 'padlet', 'pandadoc', 'pandavideo',
+      'parsely', 'qrcodekit', 'salesql', 'scandit', 'tallyfy', 'tapcart',
+      'teamhood', 'telerivet', 'ulule', 'unlayer', 'unstoppabledomains', 'upcoach',
+      'uptimerobot', 'valossa', 'versium', 'vestd', 'wachete', 'warmerly',
+      'webeyez', 'whalesync', 'xposedornot', 'xranks', 'xverum', 'youth4work',
+      'zabihah', 'zarla', 'zeroheight', 'zip-codes', 'zippendo', 'zylalabs',
+      'ffmpeg-api', 'feedhive', 'geckoboard', 'g2x', 'datocapital', 'kindwise',
+      'legitfit', 'leadboxer', 'qencode',
+    ];
+    const catalog = getCatalogServers();
+    expect(addedIds.length).toBeGreaterThanOrEqual(60);
+    for (const id of addedIds) {
+      const entry = catalog.find(server => server.id === id);
+      expect(entry, id).toBeDefined();
+      expect(entry?.status, id).toBe('online');
+      expect(entry?.homepageUrl, id).toMatch(/^https:\/\//);
+      expect(entry?.listingSource.kind, id).toBe('mcp-registry');
+      expect(catalogValidation.find(result => result.serverId === id)?.validatedUrl, id)
+        .toMatch(/^https:\/\//);
+    }
+    // Query parameters and trailing slashes must not inflate the server count.
+    const endpoints = catalog.map(({ url }) => {
+      const endpoint = new URL(url);
+      return `${endpoint.host}${endpoint.pathname.replace(/\/+$/, '')}`;
+    });
+    expect(new Set(endpoints).size).toBe(catalog.length);
   });
 
   it.each([
