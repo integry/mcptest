@@ -218,3 +218,13 @@
 .published-interface-changes .breaking-findings {
   margin-top: 0.75rem;
 }
+
+.published-alerts {
+  margin-top: 0.75rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow-wrap: anywhere;
+}
+.published-alerts h4 { font-size: 1rem; }
+.published-alerts label { margin-top: 0.5rem; margin-bottom: 0.35rem; }
