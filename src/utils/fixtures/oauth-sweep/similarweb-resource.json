@@ -1,0 +1,15 @@
+{
+  "resource": "https://mcp.similarweb.com",
+  "authorization_servers": [
+    "https://mcp-auth.similarweb.com"
+  ],
+  "scopes_supported": [
+    "read"
+  ],
+  "bearer_methods_supported": [
+    "header"
+  ],
+  "resource_signing_alg_values_supported": [
+    "none"
+  ]
+}

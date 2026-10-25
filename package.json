@@ -22,6 +22,7 @@
     "mcptest": "vite-node scripts/mcptest.ts",
     "typecheck": "tsc --noEmit",
     "validate-catalog": "vite-node scripts/run-validate-catalog.ts",
+    "oauth-sweep": "vite-node scripts/oauth-sweep.ts",
     "import-catalog-capabilities": "vite-node scripts/import-catalog-capabilities.ts",
     "validate-catalog-assets": "node scripts/validate-catalog-assets.js",
     "summarize-catalog-diff": "vite-node scripts/run-summarize-catalog-diff.ts",
