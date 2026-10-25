@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { renderServerActions, renderServerNextSteps } = require('../src/utils/serverNextSteps.ts');
 
 const fs = require('fs');
 const path = require('path');
@@ -403,6 +404,7 @@ function renderServerFallback(server) {
     `      <h1>${escapeHtml(server.name)}</h1>`,
     `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
+    renderServerActions(server),
     '  </header>',
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Connection specification</h2>',
@@ -435,6 +437,7 @@ function renderServerFallback(server) {
     '  </div></section>',
     renderAuthorizationSetup(server),
     renderServerConnect(server),
+    renderServerNextSteps(server, mergeCatalogServers(JSON.parse(fs.readFileSync(catalogPath, 'utf8')), JSON.parse(fs.readFileSync(validationPath, 'utf8')))),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <section class="badge-embed" aria-labelledby="server-badge-embed-title">',
     '      <div class="badge-embed-heading">',

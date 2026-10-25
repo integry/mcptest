@@ -1,3 +1,4 @@
+import { completeNextStep } from './nextStepsProgress';
 import { getLoadedFirebase, isFirebaseLoading, onFirebaseLoaded, type FirebaseRuntime } from '../firebase';
 import type { ProtocolEra } from '@modelcontextprotocol/client';
 import type { TransportType } from '../types';
@@ -55,6 +56,11 @@ export interface AnalyticsEventCatalog {
   report_generated: { result_status: ReleaseReadinessStatus; score_band: ScoreBand; surface: ReportSurface };
   report_shared: { method: ReportShareMethod };
   badge_copied: { format: keyof BadgeSnippets; surface: BadgeSurface };
+  server_page_action: { action: 'test_live' | 'report' | 'similar_server' | 'guide' | 'watch' };
+  guide_inline_test: { outcome: 'submitted' | 'invalid' };
+  next_steps_click: { step: string };
+  next_steps_dismiss: NoParams;
+  scroll_depth: { depth: 25 | 50 | 75 | 100 };
   guide_view: { slug: string; track: string };
   guide_cta_click: { slug: string; destination: GuideCtaDestination };
   advanced_options_open: NoParams;
@@ -222,6 +228,10 @@ const send = (name: string, params: Record<string, AnalyticsValue>, fallback: ()
  * never throws, so analytics cannot break the flow that reports it.
  */
 export function trackEvent<K extends AnalyticsEventName>(name: K, ...args: AnalyticsEventArgs<K>): void {
+  if (typeof window !== 'undefined') {
+    const step = name === 'execute_tool' ? 'tool' : name === 'report_generated' ? 'report' : name === 'badge_copied' ? 'badge' : undefined;
+    if (step) completeNextStep(step);
+  }
   if (!isAnalyticsAllowed()) return;
   const params = redactAnalyticsParams(args[0] as Record<string, unknown> | undefined);
   // gtag otherwise attaches the full document URL, which on report, server and

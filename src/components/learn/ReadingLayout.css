@@ -645,3 +645,8 @@
     padding-top: 2.25rem;
   }
 }
+
+.reading-inline-test { margin: 1.5rem 0; padding: 1rem 0; border-block: 1px solid var(--border-color, #888); }
+.reading-inline-test label { display: block; font-weight: 600; margin-bottom: .5rem; }
+.reading-inline-test input { flex: 1 1 14rem; min-width: 0; width: auto; }
+.reading-pager-next { border-inline-start: 3px solid var(--bs-primary); padding-inline-start: 1rem; }
