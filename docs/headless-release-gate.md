@@ -1,204 +1,171 @@
-# Headless CLI and CI release gate
+# Gate a remote MCP deploy with GitHub Actions
 
-The headless command evaluates one or more remote MCP endpoints with the same
-evaluator, compatibility profiles, release-decision logic, and versioned report
-serializers used by the web app. It automatically negotiates stateless and
-stateful Streamable HTTP, then tries legacy HTTP+SSE when needed.
-
-Requirements: Node.js 22 or newer and dependencies installed with `npm ci`.
-
-## Commands
-
-Evaluate a public endpoint:
-
-```bash
-npm run mcptest -- https://mcp.example/mcp
-```
-
-Evaluate more than one endpoint. Reports are numbered so endpoints on the same
-host cannot overwrite each other:
-
-```bash
-npm run mcptest -- https://one.example/mcp https://two.example/sse
-```
-
-Supply a bearer token or API key through an environment variable. The secret is
-read only after argument parsing, removed from the CLI's environment, sent only
-to the MCP target, and never included in progress, errors, or artifacts.
-
-```bash
-export MCPTEST_BEARER_TOKEN='replace-me'
-npm run mcptest -- --bearer-token-env MCPTEST_BEARER_TOKEN https://protected.example/mcp
-
-export MCPTEST_API_KEY='replace-me'
-npm run mcptest -- --api-key-env MCPTEST_API_KEY https://keyed.example/mcp
-```
-
-API keys are sent as `X-API-Key`. Bearer and API-key options are mutually
-exclusive. Literal credential arguments are deliberately unsupported because
-command arguments can appear in process listings and CI diagnostics. Userinfo
-and credential-like URL query parameters are rejected for the same reason.
-
-For CI, endpoints can also be newline-delimited in an environment variable:
-
-```bash
-export MCPTEST_ENDPOINTS=$'https://one.example/mcp\nhttps://two.example/sse'
-npm run mcptest -- --endpoints-env MCPTEST_ENDPOINTS
-```
-
-Run `npm run mcptest -- --help` for the complete option list.
-
-## Artifacts and OAuth
-
-The default output directory is `mcptest-reports`. Each completed endpoint
-produces both JSON and Markdown; select one with `--format json` or
-`--format markdown`. JSON conforms to the published
-`https://mcptest.io/schemas/report/v2.schema.json` schema and both formats are
-generated from the same in-memory report object. Browser-only CORS evidence is
-explicitly left unknown in a headless run and is not added to the headless
-score; the CLI never claims that a Node connection proves browser access.
-
-Diagnostic ids documented in the
-[transport diagnostics reference](https://mcptest.io/learn/mcp-transport-diagnostics-reference)
-link to their section: Markdown renders each id as a link, and JSON adds an
-optional `referenceUrl` next to the id in `releaseDecision.priorities` and in
-`transportDiagnostic` evidence metadata. The field is a backward-compatible
-addition to the v2 schema.
-
-Browser OAuth is intentionally non-interactive. If a target challenges for
-authorization and no supplied bearer token or API key completes the request,
-the command still writes an `authorization-required` report and exits 2. It
-does not open a browser, print an authorization URL containing credentials, or
-wait for user interaction.
-
-## Gate policy and exit codes
-
-Defaults are deterministic:
-
-- Fail when the shared release decision is `blocked` or `unknown`.
-- Fail on release priorities at `high` or `critical` severity.
-- Permit `ready` and `review` when no high/critical priority exists. `review`
-  often represents browser-CORS or host behavior that a headless process cannot
-  establish.
-
-Override the overall result set with `--fail-on-result`, and the inclusive
-severity threshold with `--fail-on-severity`. `none` disables that dimension.
-For example, this strict gate also fails review decisions and medium findings:
-
-```bash
-npm run mcptest -- \
-  --fail-on-result blocked,unknown,review \
-  --fail-on-severity medium \
-  https://mcp.example/mcp
-```
-
-Exit codes are stable:
-
-| Code | Meaning |
-| ---: | --- |
-| 0 | Every endpoint passed the configured thresholds. |
-| 1 | At least one completed evaluation failed a configured threshold. |
-| 2 | At least one endpoint requires interactive/browser authorization. |
-| 3 | Arguments, endpoint URLs, environment references, or thresholds are invalid. |
-| 4 | The evaluator threw unexpectedly or artifacts could not be written. |
-
-For multiple endpoints, every target is attempted. Precedence is infrastructure
-failure (4), authorization required (2), threshold failure (1), then pass (0).
-Invalid configuration is rejected before evaluation with exit 3.
-
-## Minimal GitHub Actions job
-
-Pass inputs through environment variables so workflow data is not evaluated by
-the shell. Upload artifacts with `if: always()` so failed gates remain
-inspectable.
+Add mcptest to CI to answer two release questions: will this endpoint work with
+clients such as Claude, ChatGPT, Cursor, VS Code, Claude Code and Codex, and
+would this deploy break agents holding the previous tool list?
 
 ```yaml
+name: MCP release gate
+on: [pull_request, workflow_dispatch]
+permissions:
+  contents: read
+  pull-requests: write
 jobs:
-  mcp-release-gate:
+  gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: integry/mcptest@v1
+        id: mcp
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Evaluate remote MCP endpoints
-        env:
-          MCPTEST_ENDPOINTS: |
-            https://one.example/mcp
-            https://two.example/sse
-        run: npm run mcptest -- --endpoints-env MCPTEST_ENDPOINTS
-      - name: Upload mcptest reports
+          endpoints: https://mcp.example.com/mcp
+          fail-on: blocked
+          comment: 'true'
+      - uses: actions/upload-artifact@v7
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: mcptest-reports
           path: mcptest-reports/
 ```
 
-For a protected endpoint, map a repository or environment secret into the run
-step and reference its name:
+The maintainer creates `v1` when publishing; until then use a reviewed commit
+SHA. Pin a full commit SHA for reproducible production gates. No checkout or
+npm install is needed in your workflow: the composite action sets up Node 22,
+caches npm downloads, and installs and runs from its own action directory.
+Report artifacts are written into the caller's workspace, including on gate
+failure. Linux runners are recommended.
+
+## Inputs
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `endpoints` | required | Newline-delimited HTTP(S) remote MCP URLs. |
+| `bearer-token` | empty | **Environment variable name**, never a literal token. |
+| `api-key` | empty | **Environment variable name**, sent as `X-API-Key`. Mutually exclusive with bearer. |
+| `fail-on` | `blocked` | Fail blocked, unknown or authorization-required runs. `review` also fails review decisions. |
+| `clients` | empty | Comma or newline separated client ids to require in addition to the shared release decision. Incompatible blocks; unknown fails; caveats require review. |
+| `baseline` | `none` | `none`, a previous JSON report path relative to the caller workspace, or `published`. |
+| `session-resilience` | `false` | Opt in to bounded active session probes. |
+| `comment` | `true` | Post/update one sticky bot comment on a PR using the caller's GitHub token. Permission denial or missing token skips gracefully. |
+| `publish` | `false` | Publicly publish redacted JSON to mcptest.io and include its permalink. |
+
+Client ids include `claude-ai`, `claude-desktop`, `claude-code`, `chatgpt`,
+`codex-cli`, `cursor`, `vscode-copilot`, `windsurf`, and `gemini-cli`; the
+supported ids and their sourced assumptions live in
+[src/data/clientCompatibility.json](../src/data/clientCompatibility.json).
+Verdicts come from the compatibility engine, not automated runs of those apps.
+Headless Node access cannot establish browser CORS or complete interactive OAuth.
+Unknown evidence stays unknown; it is never advertised as passing.
 
 ```yaml
-env:
-  MCPTEST_BEARER_TOKEN: ${{ secrets.MCPTEST_BEARER_TOKEN }}
-run: npm run mcptest -- --bearer-token-env MCPTEST_BEARER_TOKEN https://protected.example/mcp
+- uses: integry/mcptest@v1
+  env:
+    REMOTE_MCP_TOKEN: ${{ secrets.REMOTE_MCP_TOKEN }}
+  with:
+    endpoints: |
+      https://mcp.example.com/mcp
+      https://mcp.example.com/secondary/mcp
+    bearer-token: REMOTE_MCP_TOKEN
+    clients: claude-ai,chatgpt,cursor,codex-cli
+    baseline: published
+    session-resilience: 'true'
+    publish: 'true'
 ```
 
-## Reusable workflow
+Credentials reuse the CLI's validation and redaction. Authenticated endpoints
+must use HTTPS and share an origin. Userinfo, URL fragments and credential query parameters
+are rejected. Credentials go only to the MCP target, never the publishing or
+GitHub APIs. Fork PRs usually lack write permission and secrets; public endpoint
+gates still work, while comments skip gracefully. Use `pull_request`, not
+`pull_request_target` with an untrusted checkout, to test fork contributions.
 
-This repository includes
-`.github/workflows/mcptest-release-gate.yml`, callable with `workflow_call`.
-Endpoints are newline-delimited and `credential_mode` is `public`, `bearer`, or
-`api-key`.
+## Baselines and release policy
 
-```yaml
-jobs:
-  gate:
-    # Replace this example SHA in both places with the mcptest commit to run.
-    permissions:
-      actions: read
-      contents: read
-    uses: integry/mcptest/.github/workflows/mcptest-release-gate.yml@0123456789abcdef0123456789abcdef01234567
-    with:
-      mcptest_ref: 0123456789abcdef0123456789abcdef01234567
-      endpoints: |
-        https://protected.example/mcp
-      credential_mode: bearer
-      fail_on_result: blocked,unknown
-      fail_on_severity: high
-    secrets:
-      MCPTEST_BEARER_TOKEN: ${{ secrets.REMOTE_MCP_TOKEN }}
-```
+`baseline: published` reads the endpoint's latest published report from
+`https://mcptest.io/r` **before** publishing this run. Missing published history
+fails the gate with an unknown decision; use `none` to bootstrap the first
+release. Publishing is optional and makes the redacted endpoint and report
+public. A published baseline is the latest published snapshot, so only publish
+from trusted release jobs if you want it to represent the last release.
 
-Public callers omit `secrets`. API-key callers set `credential_mode: api-key`
-and pass `MCPTEST_API_KEY`. Cross-repository callers must pin `uses` to a commit
-SHA and pass that same SHA as `mcptest_ref`, so the workflow checks out the exact
-mcptest commit that contains the invoked reusable workflow. The workflow rejects
-a non-SHA `mcptest_ref` or a value that differs from the SHA pinned in `uses`.
+For a controlled last-release baseline, download the previous release's JSON
+artifact into the caller workspace (checkout is needed only for files in your
+own repository) and set `baseline: baselines/production.json`. A single local
+report applies only to that endpoint; mismatched endpoint identities fail.
+For multiple distinct endpoints use `published` or separate action invocations.
 
-## Optional session resilience check
+Removed tools, new required inputs and narrowed schemas block the gate.
+Risky description or behavior changes require review; safe additions do not.
+Changes are grouped by tool in the job summary and PR comment, with links to the
+[breaking changes reference](https://mcptest.io/learn/which-mcp-tool-changes-break-clients).
+Report snapshots currently omit output schemas and annotations, so the summary
+explicitly lists those comparison limitations. Incomplete tool lists produce an
+unknown result rather than an assertion that nothing broke.
 
-Add `--session-resilience` to opt into active Streamable HTTP session checks:
+The job summary and sticky PR comment include the release decision, a client
+compatibility table, grouped tool changes, and top findings with reference
+anchors. Comment failures never override the gate decision. Re-running updates
+the existing `github-actions[bot]` comment. Multiple action invocations on one PR
+share that comment; use a single invocation with newline endpoints for an
+aggregate comment.
+
+## Outputs
+
+| Output | Meaning |
+| --- | --- |
+| `decision` | Worst `ready`, `review`, `blocked`, `unknown` or `authorization-required` decision. |
+| `breaking-count` | Total breaking findings across endpoints. |
+| `report-path` | Absolute directory for this invocation's JSON, Markdown and `summary.md`. |
+| `report-url` | First public permalink when publishing; otherwise empty. All links appear in the summary. |
+
+Each invocation uses a separate directory under `mcptest-reports/`. Outputs and
+summaries are emitted before failing a completed gate. Configuration, baseline,
+publishing or infrastructure errors fail closed. Keep artifact-upload steps on
+`if: always()`.
+
+## Run both release readiness and official conformance
+
+The [official MCP conformance suite](https://github.com/modelcontextprotocol/conformance)
+checks implementations against the specification. mcptest adds client-profile
+readiness, OAuth evidence, browser-readiness limitations, last-release tool
+comparison and optional session resilience. These answer different questions;
+run both. mcptest is not a spec conformance certification or a load test.
+See the official project's action inputs for its supported configuration.
+
+## Existing CLI and reusable workflow
+
+The existing `.github/workflows/mcptest-release-gate.yml` remains supported with
+its original `credential_mode`, `fail_on_result`, `fail_on_severity`, and
+`session_resilience` inputs. Cross-repository callers must pin `uses` to a full
+commit SHA and pass that identical SHA as `mcptest_ref`. It retains its broader
+CLI threshold controls; adopting the composite action is optional.
+
+The CLI remains available with Node 22 and `npm ci`:
 
 ```bash
-npm run mcptest -- --session-resilience https://mcp.example/mcp
+npm run mcptest -- https://mcp.example.com/mcp
+npm run mcptest -- --bearer-token-env REMOTE_MCP_TOKEN https://mcp.example.com/mcp
+npm run mcptest -- --session-resilience --client-compatibility https://mcp.example.com/mcp
+npm run mcptest -- --help
 ```
 
-The reusable workflow and workflow dispatch accept `session_resilience: true`
-(default false). Nothing runs automatically on connect or in ordinary gates.
-The probes use isolated temporary sessions and the evaluation's credentials and
-route, never execute tools, and never retain credentials or actual session ids.
-They check unknown-id 404, fresh initialization after 404, 8 sequential then
-4 parallel pings, and DELETE invalidation. A run sends at most 22 HTTP requests
-including notifications and cleanup, with five-second request deadlines.
-A clean sample does not simulate a restart or guarantee durability. Stateless
-2026 servers pass as "not applicable: stateless" without session traffic.
+CLI options include `--endpoints-env`, `--api-key-env`, `--output-dir`,
+`--format json|markdown|both`, `--fail-on-result`, and `--fail-on-severity`.
+The default CLI policy remains blocked/unknown results and high/critical
+priorities. CLI exit codes remain 0 pass, 1 threshold failure, 2 browser
+authorization required, 3 invalid configuration, 4 infrastructure/artifact failure.
+The composite action exposes success/failure as exit 0/1 and the decision output.
 
-Findings `session.unknown-id`, `session.reinitialize`, `session.stickiness`, and
-`session.delete` appear in JSON/Markdown evidence with reference links and flow
-into the shared release decision. Confirmed failures are high priorities;
-DELETE 405 is permitted and informational; it does not lower the release decision.
-Unavailable observations are explicitly not checked, and never reported as passing. Browser report exports
-and published permalinks carry the same evidence.
+Session probes never execute tools. They use isolated temporary sessions,
+check unknown-id 404 and reinitialization, eight sequential and four parallel
+pings, then DELETE invalidation. They send at most 22 requests with five-second
+deadlines. Stateless servers are not applicable; a clean sample does not prove
+restart durability. DELETE 405 is permitted. Credentials and session ids are
+not retained.
+
+## Maintainer publishing
+
+Before publishing, run typecheck, unit tests, build and e2e (including the local
+composite-action CI smoke job). Review `action.yml` branding, this documentation
+and `/ci`. The maintainer can then create the release and the `v1` major tag and
+choose Marketplace distribution in GitHub's release UI. This change creates no
+tags or Marketplace listing.

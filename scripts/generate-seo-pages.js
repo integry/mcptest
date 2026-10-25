@@ -74,6 +74,8 @@ const {
 const { getToolInventoryProperties } = require('../src/utils/catalogSeo.ts');
 const { getToolInventoryFeatureList } = require('../src/utils/toolInventory.ts');
 
+const { CI_PATH, CI_TITLE, CI_DESCRIPTION, CI_WORKFLOW, CI_EXAMPLE_COMMENT } = require('../src/content/ciCopy.ts');
+
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
 const distRoot = path.join(projectRoot, 'dist');
@@ -1561,6 +1563,7 @@ function buildOgCards({ servers, articles, pageMetadata }) {
       title: DISCOVERY_COPY.heading,
       summary: DISCOVERY_COPY.cardSummary,
     },
+    { pagePath: CI_PATH, eyebrow: 'GitHub Actions', title: CI_TITLE, summary: CI_DESCRIPTION },
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     ...Object.entries(pageMetadata.tools || {}).map(([slug, metadata]) => ({
       pagePath: `/tools/${slug}`,
@@ -1693,6 +1696,35 @@ function writeToolPages(indexHtml, toolsMetadata, { shell, prerender }) {
   }), 'utf8');
 }
 
+/** A standalone static action setup page; no App route or hydration is needed. */
+function writeCiPage(indexHtml) {
+  const markdown = [
+    'Check whether your endpoint is ready for Claude, ChatGPT, Cursor, VS Code, Claude Code and Codex, and whether this deploy breaks agents holding the previous tool list.',
+    '', '## Copy this workflow', '',
+    'Create `.github/workflows/mcp-gate.yml` in your server repository. Deploy a reachable preview endpoint first, then replace the example URL.',
+    '', '```yaml', CI_WORKFLOW, '```', '',
+    'The maintainer creates `v1` when publishing. Until then use a reviewed commit SHA; pin a full SHA for reproducible production gates. The action sets up Node 22 and installs itself.',
+    '', '## Compare with the last release', '',
+    'Start with `baseline: none`. Then use `baseline: published` to compare with the latest published report for the same endpoint, or supply a previous release JSON path. Missing baselines fail closed. Only publish from trusted release jobs if published history should represent the last release.',
+    '', 'Set `publish: true` to make the redacted report public and include a permalink. Publishing is off by default. Use secret environment variable names in `bearer-token` or `api-key`, never literal credentials.',
+    '', '## Example PR comment', '',
+    'This illustrative comment shows a removed contract blocking a deploy despite compatible client profiles. The action also links individual findings to reference sections.',
+    '', '```markdown', CI_EXAMPLE_COMMENT, '```', '',
+    'Grant `pull-requests: write` to update a single sticky PR comment. Fork PRs without permission skip commenting and retain their job summary and artifacts.',
+    '', '## Run both readiness and conformance', '',
+    'The [official MCP conformance suite](https://github.com/modelcontextprotocol/conformance) tests against the specification. Run it alongside mcptest for spec checks. mcptest adds client-profile verdicts, OAuth evidence, breaking-change classification and optional session resilience. It does not launch client applications, prove browser CORS from Node, or certify conformance.',
+    '', '[Read the CI guide](/learn/test-remote-mcp-server-in-ci) for secrets, required clients, baseline limitations and rollout advice. [Action reference](https://github.com/integry/mcptest/blob/master/docs/headless-release-gate.md) lists every input and output.',
+  ].join('\n');
+  const fallbackHtml = `<main class="container py-4"><div class="reading-shell reading-shell-single"><article class="reading-article"><nav aria-label="Breadcrumb"><a href="/">mcptest.io</a> / CI</nav><header class="reading-header"><h1>${CI_TITLE}</h1><p class="reading-summary">${CI_DESCRIPTION}</p></header><div class="reading-prose">${renderMarkdown(markdown)}</div></article></div></main>`;
+  // Keep theme initialization and stylesheet loading; this document is complete
+  // without the SPA, whose route table intentionally stays untouched.
+  const staticIndex = indexHtml.replace(/<script\b[^>]*type="module"[^>]*>[\s\S]*?<\/script>/g, '')
+    .replace(/<link\b[^>]*rel="modulepreload"[^>]*>/g, '');
+  fs.writeFileSync(path.join(distRoot, 'ci.html'), renderStaticPageHtml(staticIndex, CI_PATH, {
+    title: 'MCP GitHub Action Release Gate | mcptest.io', description: CI_DESCRIPTION,
+  }, { fallbackHtml }), 'utf8');
+}
+
 function writeHomeAndCatalogPages(indexHtml, pageMetadata, servers, shellOptions) {
   // catalog.html, not catalog/index.html: hosts serve /catalog from it without
   // a trailing-slash redirect, and the app matches /catalog exactly.
@@ -1746,6 +1778,7 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: '/catalog', lastModified: catalogValidated },
     ...categoryEntries,
     { pathname: DISCOVERY_CHECKER_PATH },
+    { pathname: CI_PATH },
     { pathname: '/learn', lastModified: guidesReviewed },
     { pathname: '/tools/breaking-changes' },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
@@ -2048,6 +2081,7 @@ async function main() {
   writeServerPages(indexHtml, servers, contentShell);
   const categoryCount = writeCategoryPages(indexHtml, servers, articles);
   writeStaticPages(indexHtml, pageMetadata.docs);
+  writeCiPage(indexHtml);
   writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });
   writeDiscoveryPage(indexHtml, pageMetadata.discovery, {
     shell: contentShell,

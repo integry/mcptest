@@ -185,3 +185,27 @@ The authoritative references are the [MCP 2026-07-28 release](https://blog.model
 ## License
 
 MIT
+
+## Gate a deploy with GitHub Actions
+
+Check client compatibility and breaking tool changes before releasing your remote MCP server:
+
+```yaml
+- uses: integry/mcptest@v1
+  with:
+    endpoints: https://mcp.example.com/mcp
+    baseline: published
+    publish: 'true'
+```
+
+Use `baseline: none` for the first run. The maintainer publishes the `v1` tag;
+use a reviewed commit SHA before that release, or to pin production gates.
+The action installs itself, writes a job summary, and can update a sticky PR
+comment with `pull-requests: write`. Credentials use secret environment variable
+names, never literal input values. Run the
+[official MCP conformance suite](https://github.com/modelcontextprotocol/conformance)
+alongside mcptest for spec checks.
+
+See the [action guide](docs/headless-release-gate.md) for inputs, outputs,
+permissions, baseline limits and the existing CLI/reusable workflow, or copy a
+complete workflow from [mcptest.io/ci](https://mcptest.io/ci).

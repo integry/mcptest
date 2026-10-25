@@ -19,6 +19,8 @@ export interface LearnTrackNavigation extends TrackNavigation {
 }
 
 export interface FooterLink {
+  /** Use a full document load for standalone static pages. */
+  reloadDocument?: boolean;
   label: string;
   href: string;
   /** Opens in a new tab; internal links use the router. */
@@ -64,7 +66,10 @@ export const buildLearnTrackNavigation = (
   tracks.map(track => ({ ...track, icon: TRACK_ICONS[track.id] ?? 'bi-journal-text' }));
 
 /** Project links shown above the legal links in the sidebar footer. */
+export const CI_NAVIGATION: FooterLink = { label: 'CI release gate', href: '/ci', reloadDocument: true };
+
 export const FOOTER_NAVIGATION: readonly FooterLink[] = [
+  CI_NAVIGATION,
   { label: 'Submit a server', href: '/submit' },
   {
     label: 'Badges',

@@ -216,6 +216,7 @@ describe('SideNav information architecture', () => {
       link.getAttribute('rel'),
     ]);
     expect(projectLinks).toEqual([
+      ['CI release gate', '/ci', null, null],
       ['Submit a server', '/submit', null, null],
       ['Badges', 'https://github.com/integry/mcptest#embedding-a-badge', '_blank', 'noopener noreferrer'],
       ['GitHub repository', 'https://github.com/integry/mcptest', '_blank', 'noopener noreferrer'],
