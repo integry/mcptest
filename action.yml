@@ -1,0 +1,72 @@
+name: mcptest remote MCP release gate
+author: Integry
+description: Check real-client readiness and breaking tool changes before deploying a remote MCP server
+branding:
+  icon: check-circle
+  color: purple
+inputs:
+  endpoints:
+    description: Newline-delimited HTTP(S) MCP endpoints
+    required: true
+  bearer-token:
+    description: Name of an environment variable containing a bearer token (never the token itself)
+  api-key:
+    description: Name of an environment variable containing an X-API-Key (never the key itself)
+  fail-on:
+    description: 'Release threshold: blocked or review (includes unknown and authorization-required)'
+    default: blocked
+  clients:
+    description: Comma or newline separated client ids to require; empty uses the shared release decision
+  baseline:
+    description: 'none, a previous JSON report path relative to the caller workspace, or published'
+    default: none
+  session-resilience:
+    description: Opt in to bounded session resilience probes
+    default: 'false'
+  comment:
+    description: Post or update one sticky PR comment; requires pull-requests write permission
+    default: 'true'
+  publish:
+    description: Publish the redacted report publicly to mcptest.io
+    default: 'false'
+outputs:
+  decision:
+    description: Worst release decision across endpoints
+    value: ${{ steps.gate.outputs.decision }}
+  breaking-count:
+    description: Number of breaking findings across endpoints
+    value: ${{ steps.gate.outputs.breaking-count }}
+  report-path:
+    description: Absolute artifact directory containing JSON, Markdown and summary.md
+    value: ${{ steps.gate.outputs.report-path }}
+  report-url:
+    description: First published report permalink, empty when publishing is disabled
+    value: ${{ steps.gate.outputs.report-url }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: ${{ github.action_path }}/package-lock.json
+    - name: Install mcptest dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --ignore-scripts --no-audit --no-fund
+    - name: Evaluate and report
+      id: gate
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        MCPTEST_ACTION_ENDPOINTS: ${{ inputs.endpoints }}
+        MCPTEST_ACTION_BEARER: ${{ inputs.bearer-token }}
+        MCPTEST_ACTION_API_KEY: ${{ inputs.api-key }}
+        MCPTEST_ACTION_FAIL_ON: ${{ inputs.fail-on }}
+        MCPTEST_ACTION_CLIENTS: ${{ inputs.clients }}
+        MCPTEST_ACTION_BASELINE: ${{ inputs.baseline }}
+        MCPTEST_ACTION_SESSION: ${{ inputs.session-resilience }}
+        MCPTEST_ACTION_COMMENT: ${{ inputs.comment }}
+        MCPTEST_ACTION_PUBLISH: ${{ inputs.publish }}
+        MCPTEST_ACTION_GITHUB_TOKEN: ${{ github.token }}
+      run: node_modules/.bin/vite-node scripts/github-action.ts

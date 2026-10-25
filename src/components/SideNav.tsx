@@ -477,7 +477,7 @@ const SideNav: React.FC<SideNavProps> = ({
                   <span className="visually-hidden"> (opens in a new tab)</span>
                 </a>
               ) : (
-                <Link to={link.href} className="sidenav-footer-link" onClick={closeMobileDrawer}>
+                <Link to={link.href} reloadDocument={link.reloadDocument} className="sidenav-footer-link" onClick={closeMobileDrawer}>
                   {link.label}
                 </Link>
               )}

@@ -15,6 +15,7 @@ import {
 type ArtifactFormat = 'json' | 'markdown' | 'both';
 
 interface ParsedReleaseGateArgs {
+  clientCompatibility?: boolean;
   sessionResilience?: boolean;
   endpoints: string[];
   outputDir: string;
@@ -51,6 +52,7 @@ Gate options:
   --fail-on-result <list>      Comma-separated ready, review, blocked, unknown; or none
                                (default: blocked,unknown)
   --fail-on-severity <value>   critical, high, medium, unknown, or none (default: high)
+  --client-compatibility       Include profiles for all documented clients
   --session-resilience         Opt in to bounded active session probes
   --quiet                      Hide evaluator progress
   -h, --help                   Show this help
@@ -151,6 +153,7 @@ export const parseReleaseGateArgs = (
   let failOnSeverity = DEFAULT_RELEASE_GATE_POLICY.failOnSeverity;
   let quiet = false;
   let sessionResilience = false;
+  let clientCompatibility = false;
   let help = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -158,6 +161,8 @@ export const parseReleaseGateArgs = (
     if (argument === '--') continue;
     if (argument === '-h' || argument === '--help') {
       help = true;
+    } else if (argument === '--client-compatibility') {
+      clientCompatibility = true;
     } else if (argument === '--session-resilience') {
       sessionResilience = true;
     } else if (argument === '--quiet') {
@@ -245,6 +250,7 @@ export const parseReleaseGateArgs = (
 
   return {
     endpoints,
+    clientCompatibility,
     ...(sessionResilience ? { sessionResilience } : {}),
     outputDir,
     format,
@@ -300,6 +306,7 @@ export const runCli = async (
 
   const result = await withSuppressedLibraryConsole(() => runReleaseGate({
     endpoints: configuration.endpoints,
+    clientCompatibility: configuration.clientCompatibility,
     ...(configuration.sessionResilience ? { sessionResilience: true } : {}),
     headers: configuration.headers,
     policy: configuration.policy,
