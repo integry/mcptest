@@ -15,6 +15,10 @@ test.describe('MCP discovery checker', () => {
 
   test('finds the endpoint a local domain advertises, validates each location and opens it in the inspector', async ({ page, externalRequests }) => {
     await page.goto('/tools/discovery');
+    // The prerendered form is replaced when React mounts. Start the mount and
+    // wait for that form to leave before entering a value.
+    await page.getByLabel('Domain', { exact: true }).focus();
+    await expect(page.locator('#discovery-domain')).toHaveCount(0);
     await page.getByLabel('Domain', { exact: true }).fill(DOMAIN);
     await page.getByRole('button', { name: 'Check domain' }).click();
 
