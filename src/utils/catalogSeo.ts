@@ -168,17 +168,13 @@ export const getCatalogServerMetaDescription = (server: CatalogServer, setupPhra
   // Keep only complete sentences; never publish a source's clipped ending.
   const sentences = Array.from(new Intl.Segmenter('en', { granularity: 'sentence' }).segment(rawSummary),
     ({ segment }) => segment.trim()).filter(sentence => /(?<!\.)[.!?]$/.test(sentence));
-  const summary = sentences.join(' ');
-  // Drop client names before removing any summary sentences.
-  for (const phrase of [...setupPhrases, '']) {
-    const description = [answer, phrase, summary].filter(Boolean).join(' ');
-    if (description.length <= 158) return description;
-  }
-  let description = answer;
-  for (const sentence of sentences) {
-    if (description.length + sentence.length + 1 > 158) break;
-    description += ` ${sentence}`;
-  }
+  // Reserve room for setup before considering the summary.
+  const phrase = [...setupPhrases].sort((a, b) => b.length - a.length)
+    .find(candidate => answer.length + candidate.length + 1 <= 158);
+  let description = [answer, phrase].filter(Boolean).join(' ');
+  // Prefer the first sentence, or a shorter complete sentence from the summary.
+  const sentence = sentences.find(candidate => description.length + candidate.length + 1 <= 158);
+  if (sentence) description += ` ${sentence}`;
   return description;
 };
 

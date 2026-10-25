@@ -63,8 +63,8 @@ describe('catalog SEO helpers', () => {
   it('uses a curated search summary when the catalog provides one', () => {
     const seoDescription = 'Inspect the Example MCP server. Explore example tools and resources.';
 
-    expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(`Connect to the Example MCP server at example.com with OAuth sign-in. ${seoDescription}`);
-    expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(`Connect to the Example MCP server at example.com with OAuth sign-in. ${seoDescription}`);
+    expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(`Connect to the Example MCP server at example.com with OAuth sign-in. Inspect the Example MCP server.`);
+    expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(`Connect to the Example MCP server at example.com with OAuth sign-in. Inspect the Example MCP server.`);
   });
 
   it('uses setup titles, dropping setup before shortening a long name', () => {
@@ -91,6 +91,22 @@ describe('catalog SEO helpers', () => {
       .toBe('Connect to the Example MCP server at example.com with OAuth sign-in.');
     expect(getCatalogServerMetaDescription({ ...server, seoDescription: 'Complete sentence. Now debug your…' }))
       .toBe('Connect to the Example MCP server at example.com with OAuth sign-in. Complete sentence.');
+  });
+
+  it('chooses the longest setup phrase that fits before adding a summary', () => {
+    const answer = 'Connect to the Example MCP server at example.com with OAuth sign-in.';
+    const phrases = [
+      'Setup for Claude and more.',
+      'Setup for Claude, ChatGPT, Cursor and VS Code.',
+    ];
+    expect(getCatalogServerMetaDescription(server, phrases))
+      .toBe(`${answer} ${phrases[1]} ${server.description}`);
+    const longName = { ...server, name: 'A much longer example server name' };
+    expect(getCatalogServerMetaDescription(longName, phrases))
+      .toBe('Connect to the A much longer example server name MCP server at example.com with OAuth sign-in. Setup for Claude, ChatGPT, Cursor and VS Code.');
+    const longerName = { ...server, name: 'An even longer example server name with extra words' };
+    expect(getCatalogServerMetaDescription(longerName, phrases))
+      .toBe('Connect to the An even longer example server name with extra words MCP server at example.com with OAuth sign-in. Setup for Claude and more.');
   });
 
   it('makes local server logos absolute and rejects remote logo URLs', () => {

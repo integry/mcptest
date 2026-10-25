@@ -476,22 +476,22 @@ describe('generated page metadata', () => {
     server.seoDescription = 'Explore example records.';
     const html = renderServerHtml(indexHtml, server);
     const description = 'Connect to the Example Server MCP server at example.com without authentication. '
-      + 'Setup for Claude, ChatGPT, Cursor and more. Explore example records.';
+      + 'Setup for Claude, ChatGPT, Cursor and VS Code. Explore example records.';
     expect(html).toContain('<title>Example Server MCP Server: URL, Auth &amp; Setup | mcptest.io</title>');
     expect(html).toContain(`name="description" content="${description}"`);
     expect(html).toContain(`property="og:description" content="${description}"`);
     expect(html).toContain(`name="twitter:description" content="${description}"`);
   });
 
-  it('drops client names before trimming the summary at a sentence boundary', () => {
+  it('reserves room for client setup before adding a complete summary sentence', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.seoDescription = 'Explore example records and queries. Inspect tools and resources.';
     const description = () => new DOMParser().parseFromString(renderServerHtml(indexHtml, server), 'text/html')
       .querySelector('meta[name="description"]').getAttribute('content');
     const answer = 'Connect to the Example Server MCP server at example.com without authentication.';
-    expect(description()).toBe(`${answer} ${server.seoDescription}`);
+    expect(description()).toBe(`${answer} Setup for Claude, ChatGPT, Cursor and VS Code. Inspect tools and resources.`);
     server.seoDescription += ' This additional sentence is too long to fit within the description budget.';
-    expect(description()).toBe(`${answer} Explore example records and queries. Inspect tools and resources.`);
+    expect(description()).toBe(`${answer} Setup for Claude, ChatGPT, Cursor and VS Code. Inspect tools and resources.`);
   });
 
   it('generates complete descriptions without ellipses or partial words across the whole catalog', () => {
@@ -501,7 +501,9 @@ describe('generated page metadata', () => {
       const description = html.match(/<meta name="description" content="([^"]*)"/)[1]
         .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
       expect(description, server.id).toMatch(/^Connect to the .+ MCP server at .+\./);
+      expect(description.length, server.id).toBeGreaterThanOrEqual(100);
       expect(description.length, server.id).toBeLessThanOrEqual(158);
+      expect(description, server.id).toMatch(/(?:Setup for .+|Client setup, auth and tools)\./);
       expect(description, server.id).not.toMatch(/(?:…|\.\.\.)$/);
       expect(description, server.id).toMatch(/[.!?]$/);
       const answerEnd = description.indexOf('. ', description.indexOf(' MCP server at '));
@@ -1047,7 +1049,7 @@ describe('server page "Connect it" section', () => {
     expect(chatgpt.textContent).toContain('ChatGPT does not support API key headers');
 
     const description = document.querySelector('meta[name="description"]').getAttribute('content');
-    expect(description).toBe('Connect to the Example Server MCP server at example.com with an API key header. Setup for Claude, Cursor, VS Code and more. An example MCP server.');
+    expect(description).toBe('Connect to the Example Server MCP server at example.com with an API key header. Setup for Claude, Cursor, VS Code and Claude Code. An example MCP server.');
     expect(description).not.toContain('ChatGPT');
     expect(description).toContain('Cursor');
   });

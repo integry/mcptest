@@ -495,15 +495,18 @@ const listNames = (names: string[]): string => (
   names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
 );
 
-/**
- * Short setup phrases for the meta description, longest first: up to three
- * client names, then fewer, then none.
- */
+/** Setup phrases in descending length, using clients that can connect. */
 const getServerSetupPhrases = (server: CatalogServer): string[] => {
-  const names = getServerSetupClientNames(server, 3);
+  const names = getServerSetupClientNames(server);
+  if (!names.length) return ['Client setup, auth and tools.'];
   return [
-    ...names.map((_, index) => `Setup for ${names.slice(0, names.length - index).join(', ')} and more.`),
-    'Client setup, auth and tools.',
+    ...names.map((_, index) => {
+      const clients = names.slice(0, names.length - index);
+      const list = clients.length === 1
+        ? `${clients[0]} and more`
+        : `${clients.slice(0, -1).join(', ')} and ${clients[clients.length - 1]}`;
+      return `Setup for ${list}.`;
+    }),
   ];
 };
 
@@ -515,7 +518,7 @@ export const splitInlineCode = (text: string): Array<{ code: boolean; text: stri
   text.replace(/\*\*/g, '').split('`').map((part, index) => ({ code: index % 2 === 1, text: part })).filter(({ text: part }) => part)
 );
 
-/** Endpoint and auth first; drop client names before shortening the summary. */
+/** Endpoint and auth, then the longest fitting setup phrase, then a summary sentence. */
 export const getServerPageMetaDescription = (server: CatalogServer): string => (
   getCatalogServerMetaDescription(server, getServerSetupPhrases(server))
 );
