@@ -471,37 +471,46 @@ describe('generated page metadata', () => {
     expect(html).toContain('catalog-server-logo-initials');
   });
 
-  it('leads search and social descriptions with endpoint and auth, then setup and the intact summary', () => {
+  it('uses natural sentences consistently in search and social descriptions', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
-    server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';
-
+    server.seoDescription = 'Explore example records.';
     const html = renderServerHtml(indexHtml, server);
-
-    const description = 'example.com. No auth. Setup for Claude, ChatGPT, Cursor and more. '
-      + 'Inspect the Example Server MCP server. Explore example records and queries.';
+    const description = 'Connect to the Example Server MCP server at example.com without authentication. '
+      + 'Setup for Claude, ChatGPT, Cursor and more. Explore example records.';
     expect(html).toContain('<title>Example Server MCP Server: URL, Auth &amp; Setup | mcptest.io</title>');
     expect(html).toContain(`name="description" content="${description}"`);
     expect(html).toContain(`property="og:description" content="${description}"`);
     expect(html).toContain(`name="twitter:description" content="${description}"`);
   });
 
-  it('drops client names rather than truncating a long curated summary', () => {
+  it('drops client names before trimming the summary at a sentence boundary', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
-    const summary = 'Inspect the Example Server MCP server. Explore example records, saved queries, audit logs, '
-      + 'dashboards and workspace settings.';
-    server.seoDescription = summary;
+    server.seoDescription = 'Explore example records and queries. Inspect tools and resources.';
+    const description = () => new DOMParser().parseFromString(renderServerHtml(indexHtml, server), 'text/html')
+      .querySelector('meta[name="description"]').getAttribute('content');
+    const answer = 'Connect to the Example Server MCP server at example.com without authentication.';
+    expect(description()).toBe(`${answer} ${server.seoDescription}`);
+    server.seoDescription += ' This additional sentence is too long to fit within the description budget.';
+    expect(description()).toBe(`${answer} Explore example records and queries. Inspect tools and resources.`);
+  });
 
-    const metaDescription = () => renderServerHtml(indexHtml, server).match(/<meta name="description" content="([^"]*)"/)?.[1];
-    const description = metaDescription();
-
-    expect(description.startsWith('example.com. No auth. ')).toBe(true);
-    expect(description.endsWith(summary)).toBe(true);
-    expect(description).not.toContain('…');
-    expect(description.length).toBeLessThanOrEqual(158);
-    expect(description).toBe(`example.com. No auth. ${summary}`);
-
-    server.seoDescription = 'A summary that leaves room for one setup client name but no more than that. Covers endpoint tool results.';
-    expect(metaDescription()).toBe(`example.com. No auth. Setup for Claude and more. ${server.seoDescription}`);
+  it('generates complete descriptions without ellipses or partial words across the whole catalog', () => {
+    const servers = mergeCatalogServers(catalogSeeds, catalogValidation, catalogCapabilities);
+    for (const server of servers) {
+      const html = renderServerHtml(indexHtml, server);
+      const description = html.match(/<meta name="description" content="([^"]*)"/)[1]
+        .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      expect(description, server.id).toMatch(/^Connect to the .+ MCP server at .+\./);
+      expect(description.length, server.id).toBeLessThanOrEqual(158);
+      expect(description, server.id).not.toMatch(/(?:…|\.\.\.)$/);
+      expect(description, server.id).toMatch(/[.!?]$/);
+      const answerEnd = description.indexOf('. ', description.indexOf(' MCP server at '));
+      const summary = answerEnd < 0 ? '' : description.slice(answerEnd + 2);
+      // Every retained summary ends at a boundary present in the source text.
+      if (summary && !summary.startsWith('Setup ') && !summary.startsWith('Client setup')) {
+        expect((server.seoDescription || server.description).trim(), server.id).toContain(summary);
+      }
+    }
   });
 
   it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
@@ -1038,7 +1047,7 @@ describe('server page "Connect it" section', () => {
     expect(chatgpt.textContent).toContain('ChatGPT does not support API key headers');
 
     const description = document.querySelector('meta[name="description"]').getAttribute('content');
-    expect(description).toBe('example.com. API key header. Setup for Claude, Cursor, VS Code and more. An example MCP server.');
+    expect(description).toBe('Connect to the Example Server MCP server at example.com with an API key header. Setup for Claude, Cursor, VS Code and more. An example MCP server.');
     expect(description).not.toContain('ChatGPT');
     expect(description).toContain('Cursor');
   });

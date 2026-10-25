@@ -3,7 +3,6 @@ import type { CatalogServer } from '../types/catalog';
 import {
   getCatalogServerTitle,
   getCatalogAuthAnswer,
-  truncateCatalogDescription,
   formatCatalogAuth,
   formatCatalogTimestamp,
   formatCatalogTransport,
@@ -50,7 +49,7 @@ describe('catalog SEO helpers', () => {
     expect(formatCatalogAuth(server.authType)).toBe('OAuth 2.1');
     expect(formatProtocolEra(server.protocolEra)).toBe('Not yet negotiated');
     expect(seo.description).toBe(
-      'example.com. Sign in with OAuth. An example remote MCP server.'
+      'Connect to the Example MCP server at example.com with OAuth sign-in. An example remote MCP server.'
     );
     expect(seo.canonicalUrl).toBe('https://mcptest.io/servers/example-server/');
     expect(seo.structuredData.endpointUrl).toBe(server.url);
@@ -64,11 +63,12 @@ describe('catalog SEO helpers', () => {
   it('uses a curated search summary when the catalog provides one', () => {
     const seoDescription = 'Inspect the Example MCP server. Explore example tools and resources.';
 
-    expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(`example.com. Sign in with OAuth. ${seoDescription}`);
-    expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(`example.com. Sign in with OAuth. ${seoDescription}`);
+    expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(`Connect to the Example MCP server at example.com with OAuth sign-in. ${seoDescription}`);
+    expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(`Connect to the Example MCP server at example.com with OAuth sign-in. ${seoDescription}`);
   });
 
   it('uses setup titles, dropping setup before shortening a long name', () => {
+    expect(getCatalogServerTitle('Docusign Developer')).toBe('Docusign Developer MCP Server: URL, Auth | mcptest.io');
     expect(getCatalogServerTitle('Canva')).toBe('Canva MCP Server: URL, Auth & Setup | mcptest.io');
     expect(getCatalogServerTitle('A moderately long name')).toBe('A moderately long name MCP Server: URL, Auth | mcptest.io');
     for (const name of ['DocuSign Developer', 'A'.repeat(100)]) {
@@ -79,16 +79,18 @@ describe('catalog SEO helpers', () => {
 
   it('keeps unknown authentication explicit rather than guessing from declarations', () => {
     expect(getCatalogAuthAnswer({ ...server, authType: 'unknown' }).label).toBe('Auth not yet verified');
-    expect(getCatalogServerMetaDescription({ ...server, authType: 'none' })).toContain('No auth');
-    expect(getCatalogServerMetaDescription({ ...server, authType: 'api-key' })).toContain('API key header');
+    expect(getCatalogServerMetaDescription({ ...server, authType: 'none' })).toContain('without authentication');
+    expect(getCatalogServerMetaDescription({ ...server, authType: 'api-key' })).toContain('an API key header');
   });
 
-  it('shortens descriptions only at word boundaries', () => {
-    const summary = 'Whole words remain readable when the summary is long. '.repeat(8);
-    const description = getCatalogServerMetaDescription({ ...server, seoDescription: summary });
-    expect(description.length).toBeLessThanOrEqual(158);
-    expect(description).toMatch(/(?:Whole|words|remain|readable|when|the|summary|is|long\.)…$/);
-    expect(truncateCatalogDescription('Extraordinarilylongword', 10)).toBe('…');
+  it('drops summary sentences rather than clipping words or adding ellipses', () => {
+    const firstSentence = 'Whole words remain readable when the summary is long.';
+    const description = getCatalogServerMetaDescription({ ...server, seoDescription: `${firstSentence} `.repeat(8) });
+    expect(description).toBe(`Connect to the Example MCP server at example.com with OAuth sign-in. ${firstSentence}`);
+    expect(getCatalogServerMetaDescription({ ...server, seoDescription: 'A'.repeat(200) }))
+      .toBe('Connect to the Example MCP server at example.com with OAuth sign-in.');
+    expect(getCatalogServerMetaDescription({ ...server, seoDescription: 'Complete sentence. Now debug your…' }))
+      .toBe('Connect to the Example MCP server at example.com with OAuth sign-in. Complete sentence.');
   });
 
   it('makes local server logos absolute and rejects remote logo URLs', () => {

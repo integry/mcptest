@@ -137,6 +137,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <div>
             <h1 className="text-break">{getCatalogServerHeading(server)}</h1>
             <p className="text-break">{getCatalogServerIntro(server)}</p>
+            <p>{server.description}</p>
           </div>
         </div>
 

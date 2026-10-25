@@ -1,3 +1,4 @@
+/// <reference lib="es2022.intl" />
 import type {
   CatalogAuthType,
   CatalogProtocolEra,
@@ -102,14 +103,6 @@ export const formatCatalogTimestamp = (value: string): string => {
   return `${date} at ${time}`;
 };
 
-/** Keep search snippets readable, including when a curated summary is too long. */
-export const truncateCatalogDescription = (value: string, maxLength = 158): string => {
-  if (value.length <= maxLength) return value;
-  const candidate = value.slice(0, maxLength - 1);
-  const boundary = candidate.lastIndexOf(' ');
-  return `${(boundary < 0 ? '' : candidate.slice(0, boundary)).trimEnd()}…`;
-};
-
 export const getCatalogServerTitle = (name: string): string => {
   const fullSuffix = ' MCP Server: URL, Auth & Setup | mcptest.io';
   const shortSuffix = ' MCP Server: URL, Auth | mcptest.io';
@@ -152,24 +145,41 @@ export const getCatalogAuthAnswer = (server: CatalogServer) => {
 };
 
 export const getCatalogServerHeading = (server: CatalogServer): string => (
-  `${server.name} MCP Server: ${server.url} — ${getCatalogAuthAnswer(server).label}`
+  `${server.name} MCP server`
 );
 
 export const getCatalogServerIntro = (server: CatalogServer): string => (
-  `Endpoint: ${server.url}. Authentication: ${getCatalogAuthAnswer(server).label}. ${server.description}`
+  `Endpoint: ${server.url} · Authentication: ${getCatalogAuthAnswer(server).label}`
 );
 
 export const getCatalogServerMetaDescription = (server: CatalogServer, setupPhrases: string[] = []): string => {
   let host: string;
   try { host = new URL(server.url).host; } catch { host = server.url; }
-  const answer = `${host}. ${getCatalogAuthAnswer(server).label}.`;
-  const summary = (server.seoDescription || server.description).trim();
-  // Preserve the full summary before spending characters on client names.
+  const auth = {
+    oauth: 'with OAuth sign-in',
+    none: 'without authentication',
+    'api-key': 'with an API key header',
+    'bearer-token': 'with a bearer token',
+    'api-token': 'with an API token header',
+    unknown: 'with authentication not yet verified',
+  }[server.authType];
+  const answer = `Connect to the ${server.name} MCP server at ${host} ${auth}.`;
+  const rawSummary = (server.seoDescription || server.description).trim();
+  // Keep only complete sentences; never publish a source's clipped ending.
+  const sentences = Array.from(new Intl.Segmenter('en', { granularity: 'sentence' }).segment(rawSummary),
+    ({ segment }) => segment.trim()).filter(sentence => /(?<!\.)[.!?]$/.test(sentence));
+  const summary = sentences.join(' ');
+  // Drop client names before removing any summary sentences.
   for (const phrase of [...setupPhrases, '']) {
     const description = [answer, phrase, summary].filter(Boolean).join(' ');
     if (description.length <= 158) return description;
   }
-  return truncateCatalogDescription(`${answer} ${summary}`);
+  let description = answer;
+  for (const sentence of sentences) {
+    if (description.length + sentence.length + 1 > 158) break;
+    description += ` ${sentence}`;
+  }
+  return description;
 };
 
 /** Inventory counts and snapshot date, or why no inventory was observed. */

@@ -402,6 +402,7 @@ function renderServerFallback(server) {
     `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
     `      <h1 class="text-break">${escapeHtml(getCatalogServerHeading(server))}</h1>`,
     `      <p class="text-break">${escapeHtml(getCatalogServerIntro(server))}</p>`,
+    `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
     '  </header>',
     `  <section class="card server-profile-section" aria-labelledby="server-auth-title"><div class="card-body"><h2 id="server-auth-title">How do I authenticate?</h2><p>${escapeHtml(getCatalogAuthAnswer(server).detail)}</p><a href="${escapeHtml(getCatalogAuthAnswer(server).guide)}">Authentication and connection guide</a></div></section>`,

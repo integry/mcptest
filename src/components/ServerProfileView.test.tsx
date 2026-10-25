@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import ServerProfileView from './ServerProfileView';
 import generator from '../../scripts/generate-seo-pages.js';
+import { getCatalogAuthAnswer } from '../utils/catalogSeo';
 import { getServerPageSeo } from '../utils/serverConnect';
 import { createCapabilityInventory } from '../utils/capabilityInventory';
 import type { CatalogServer } from '../types/catalog';
@@ -128,7 +129,12 @@ describe('server page SEO prerender parity', () => {
         const normalize = (doc: Document) => doc.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim();
         expect(normalize(prerendered)).toBe(normalize(react));
       }
-      expect(react.querySelector('h1')?.textContent).toContain(server.url);
+      expect(react.querySelector('h1')?.textContent).toBe(`${server.name} MCP server`);
+      expect(react.querySelector('h1')?.nextElementSibling?.textContent).toBe(
+        `Endpoint: ${server.url} · Authentication: ${getCatalogAuthAnswer(server).label}`
+      );
+      expect(prerendered.querySelector('h1')?.nextElementSibling?.textContent)
+        .toBe(react.querySelector('h1')?.nextElementSibling?.textContent);
       expect(prerendered.querySelector('[aria-labelledby="server-auth-title"] a')?.getAttribute('href'))
         .toBe(react.querySelector('[aria-labelledby="server-auth-title"] a')?.getAttribute('href'));
       const seo = getServerPageSeo(server);

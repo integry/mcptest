@@ -10433,5 +10433,2017 @@
       "Returns bounded source previews and links, not complete articles, reviews or transcripts. Editorial photos are linked through their containing pages.",
       "Missing country dates and ratings are omitted. Some AI clients require a tool-schema refresh after server updates."
     ]
+  },
+  {
+    "id": "basedash",
+    "name": "Basedash",
+    "url": "https://charts.basedash.com/api/public/mcp",
+    "description": "Query company data and list workspace sources through Basedash's governed analytics service.",
+    "category": "Analytics",
+    "tags": [
+      "business-intelligence",
+      "dashboards"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.basedash%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/basedash.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Basedash mark.",
+    "homepageUrl": "https://www.basedash.com/features/mcp-server",
+    "registryName": "com.basedash/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.basedash%2Fmcp/versions/1.0.0",
+    "sourceUrl": "https://github.com/Basedash/mcp"
+  },
+  {
+    "id": "beehiiv",
+    "name": "beehiiv",
+    "url": "https://mcp.beehiiv.com/mcp",
+    "description": "Manage beehiiv newsletters, posts, subscribers and publication analytics.",
+    "category": "Communication",
+    "tags": [
+      "newsletters",
+      "email",
+      "publishing"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.beehiiv%2Fbeehiiv/versions/0.1.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/beehiiv.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official beehiiv mark.",
+    "homepageUrl": "https://www.beehiiv.com/features/mcp",
+    "registryName": "com.beehiiv/beehiiv",
+    "registryVersion": "0.1.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.beehiiv%2Fbeehiiv/versions/0.1.0",
+    "sourceUrl": "https://github.com/beehiiv/agents"
+  },
+  {
+    "id": "dart",
+    "name": "Dart",
+    "url": "https://mcp.dartai.com/mcp",
+    "description": "Manage tasks, documents and project collaboration in Dart.",
+    "category": "Project Management",
+    "tags": [
+      "tasks",
+      "projects",
+      "documents"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.dartai%2Fdart/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/dart.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Dart mark.",
+    "homepageUrl": "https://help.dartai.com/en/articles/10733406-dart-mcp",
+    "registryName": "com.dartai/dart",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.dartai%2Fdart/versions/1.0.0"
+  },
+  {
+    "id": "dashthis",
+    "name": "DashThis",
+    "url": "https://mcp.dashthis.com",
+    "description": "Read marketing dashboards and reporting data from DashThis.",
+    "category": "Analytics",
+    "tags": [
+      "marketing",
+      "dashboards",
+      "reporting"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.dashthis%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/dashthis.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official DashThis mark.",
+    "homepageUrl": "https://dashthis.com/mcp/",
+    "registryName": "com.dashthis/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.dashthis%2Fmcp/versions/1.0.0"
+  },
+  {
+    "id": "elfsight",
+    "name": "Elfsight AI Chatbot",
+    "url": "https://mcp.elfchatbot.com/mcp",
+    "description": "Access conversations, leads, knowledge bases and analytics for Elfsight AI Chatbot widgets.",
+    "category": "Communication",
+    "tags": [
+      "chatbots",
+      "conversations",
+      "leads"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.elfsight%2Fai-chatbot/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/elfsight.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Elfsight AI Chatbot mark.",
+    "homepageUrl": "https://github.com/elfsight/ai-chatbot-mcp",
+    "registryName": "com.elfsight/ai-chatbot",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.elfsight%2Fai-chatbot/versions/1.0.1",
+    "sourceUrl": "https://github.com/elfsight/ai-chatbot-mcp"
+  },
+  {
+    "id": "gameanalytics",
+    "name": "GameAnalytics Documentation",
+    "url": "https://mcp.docs.gameanalytics.com",
+    "description": "Search GameAnalytics SDK documentation and API integration guides.",
+    "category": "Documentation",
+    "tags": [
+      "games",
+      "sdk",
+      "docs"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.gameanalytics%2Fanalytics-docs/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/gameanalytics.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official GameAnalytics Documentation mark.",
+    "homepageUrl": "https://docs.gameanalytics.com/ai-tools/documentation-mcp/",
+    "registryName": "com.gameanalytics/analytics-docs",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.gameanalytics%2Fanalytics-docs/versions/1.0.0",
+    "caveats": [
+      "This endpoint searches public product documentation; it does not provide access to private game analytics."
+    ]
+  },
+  {
+    "id": "getabstract",
+    "name": "getAbstract",
+    "url": "https://www.getabstract.com/mcp",
+    "description": "Search getAbstract summaries of business books, articles and reports.",
+    "category": "Search",
+    "tags": [
+      "books",
+      "summaries",
+      "learning"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.getabstract%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/getabstract.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official getAbstract mark.",
+    "homepageUrl": "https://www.getabstract.com/connector",
+    "registryName": "com.getabstract/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.getabstract%2Fmcp/versions/1.0.0"
+  },
+  {
+    "id": "happyscribe",
+    "name": "HappyScribe",
+    "url": "https://www.happyscribe.com/mcp",
+    "description": "Search, read and create HappyScribe transcripts and meeting notes.",
+    "category": "Productivity",
+    "tags": [
+      "transcription",
+      "meetings",
+      "notes"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.happyscribe%2Fhappyscribe/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/happyscribe.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official HappyScribe mark.",
+    "homepageUrl": "https://www.happyscribe.com/integrations/mcp",
+    "registryName": "com.happyscribe/happyscribe",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.happyscribe%2Fhappyscribe/versions/1.0.0"
+  },
+  {
+    "id": "hasdata",
+    "name": "HasData",
+    "url": "https://mcp.hasdata.com/mcp",
+    "description": "Access HasData web scraping and structured search tools.",
+    "category": "Search",
+    "tags": [
+      "scraping",
+      "web",
+      "data"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.hasdata%2Fhasdata/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/hasdata.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official HasData mark.",
+    "homepageUrl": "https://docs.hasdata.com/mcp-server",
+    "registryName": "com.hasdata/hasdata",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.hasdata%2Fhasdata/versions/1.0.1",
+    "sourceUrl": "https://github.com/HasData/hasdata-mcp",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "x-api-key",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "<HASDATA_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "icons8",
+    "name": "Icons8",
+    "url": "https://mcp.icons8.com/mcp/",
+    "description": "Search and retrieve Icons8 icons and illustrations in image and vector formats.",
+    "category": "Design",
+    "tags": [
+      "icons",
+      "illustrations",
+      "assets"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.icons8%2Ficons8/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/icons8.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Icons8 mark.",
+    "homepageUrl": "https://icons8.com/mcp",
+    "registryName": "com.icons8/icons8",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.icons8%2Ficons8/versions/1.0.0"
+  },
+  {
+    "id": "ifttt",
+    "name": "IFTTT",
+    "url": "https://ifttt.com/mcp",
+    "description": "Create IFTTT Applets and run actions and queries across connected services.",
+    "category": "Automation",
+    "tags": [
+      "applets",
+      "integrations",
+      "workflows"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.ifttt%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/ifttt.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official IFTTT mark.",
+    "homepageUrl": "https://ifttt.com/mcp",
+    "registryName": "com.ifttt/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.ifttt%2Fmcp/versions/1.0.0",
+    "sourceUrl": "https://github.com/IFTTT/ifttt-plugins"
+  },
+  {
+    "id": "jitsu",
+    "name": "Jitsu",
+    "url": "https://use.jitsu.com/mcp",
+    "description": "Manage Jitsu data streams, destinations, connections and event-processing functions.",
+    "category": "Analytics",
+    "tags": [
+      "pipelines",
+      "events",
+      "integrations"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.jitsu%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/jitsu.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Jitsu mark.",
+    "homepageUrl": "https://jitsu.com/docs/mcp",
+    "registryName": "com.jitsu/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.jitsu%2Fmcp/versions/1.0.0",
+    "sourceUrl": "https://github.com/jitsucom/jitsu",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <JITSU_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "kajabi",
+    "name": "Kajabi",
+    "url": "https://mcp.kajabi.com/mcp",
+    "description": "Manage Kajabi products, pages, contacts, offers and email campaigns.",
+    "category": "Productivity",
+    "tags": [
+      "courses",
+      "contacts",
+      "marketing"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.kajabi%2Fkajabi/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/kajabi.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Kajabi mark.",
+    "homepageUrl": "https://kajabi.com/product/mcp",
+    "registryName": "com.kajabi/kajabi",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.kajabi%2Fkajabi/versions/1.0.0"
+  },
+  {
+    "id": "keywordseverywhere",
+    "name": "Keywords Everywhere",
+    "url": "https://mcp.keywordseverywhere.com/mcp",
+    "description": "Retrieve keyword search volume, advertising metrics, ranking keywords and backlink data.",
+    "category": "Analytics",
+    "tags": [
+      "seo",
+      "keywords",
+      "backlinks"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.keywordseverywhere%2Fkeywords-everywhere/versions/2.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/keywordseverywhere.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Keywords Everywhere mark.",
+    "homepageUrl": "https://mcp.keywordseverywhere.com/",
+    "registryName": "com.keywordseverywhere/keywords-everywhere",
+    "registryVersion": "2.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.keywordseverywhere%2Fkeywords-everywhere/versions/2.0.0",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <KEYWORDSEVERYWHERE_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "lessmeeting",
+    "name": "Less Meeting",
+    "url": "https://app.lessmeeting.com/mcp",
+    "description": "Manage Less Meeting agendas, notes, action items, goals and meeting minutes.",
+    "category": "Productivity",
+    "tags": [
+      "meetings",
+      "notes",
+      "action-items"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.lessmeeting%2Fmcp/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/lessmeeting.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Less Meeting mark.",
+    "homepageUrl": "https://lessmeeting.com/features/mcp-server/",
+    "registryName": "com.lessmeeting/mcp",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.lessmeeting%2Fmcp/versions/1.0.1"
+  },
+  {
+    "id": "mabl",
+    "name": "mabl",
+    "url": "https://mcp.mabl.com/mcp",
+    "description": "Run mabl tests, inspect results and analyze test failures across workspaces.",
+    "category": "Developer Tools",
+    "tags": [
+      "testing",
+      "automation",
+      "results"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.mabl%2Fmcp/versions/1.0.3"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/mabl.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official mabl mark.",
+    "homepageUrl": "https://github.com/mablhq/mabl-mcp-server#readme",
+    "registryName": "com.mabl/mcp",
+    "registryVersion": "1.0.3",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.mabl%2Fmcp/versions/1.0.3",
+    "sourceUrl": "https://github.com/mablhq/mabl-mcp-server"
+  },
+  {
+    "id": "maileroo",
+    "name": "Maileroo",
+    "url": "https://api.maileroo.com/mcp",
+    "description": "Send email, inspect delivery logs and manage Maileroo sending domains.",
+    "category": "Communication",
+    "tags": [
+      "email",
+      "delivery",
+      "domains"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.maileroo%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/maileroo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Maileroo mark.",
+    "homepageUrl": "https://maileroo.com",
+    "registryName": "com.maileroo/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.maileroo%2Fmcp/versions/1.0.0"
+  },
+  {
+    "id": "mailfloss",
+    "name": "mailfloss",
+    "url": "https://api.mailfloss.com/mcp",
+    "description": "Verify email addresses and lists and manage mailfloss integrations.",
+    "category": "Communication",
+    "tags": [
+      "email",
+      "verification",
+      "integrations"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.mailfloss%2Fmailfloss/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/mailfloss.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official mailfloss mark.",
+    "homepageUrl": "https://developers.mailfloss.com/mcp",
+    "registryName": "com.mailfloss/mailfloss",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.mailfloss%2Fmailfloss/versions/1.0.0",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "caveats": [
+      "OAuth accepts supported client callbacks and loopback redirects. Other clients can send a dashboard API key as an Authorization bearer token."
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <MAILFLOSS_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "mailtester",
+    "name": "MailTester",
+    "url": "https://app.mailtester.com/mcp",
+    "description": "Verify email addresses and inspect deliverability signals through MailTester.",
+    "category": "Communication",
+    "tags": [
+      "email",
+      "verification",
+      "deliverability"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.mailtester%2Femail-verification/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/mailtester.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official MailTester mark.",
+    "homepageUrl": "https://app.mailtester.com/agent-gateway",
+    "registryName": "com.mailtester/email-verification",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.mailtester%2Femail-verification/versions/1.0.1",
+    "sourceUrl": "https://github.com/mailtester-com/mailtester-mcp",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "caveats": [
+      "Keyless verification has a small shared trial allowance. Register through the publisher for a private API key and account quota."
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to public access.",
+        "valueTemplate": "Bearer <MAILTESTER_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "octolens",
+    "name": "Octolens",
+    "url": "https://app.octolens.com/api/mcp/v2",
+    "description": "Search brand mentions, analyze social listening data and manage Octolens keywords.",
+    "category": "Analytics",
+    "tags": [
+      "social-listening",
+      "mentions",
+      "keywords"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.octolens%2Foctolens/versions/2.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/octolens.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Octolens mark.",
+    "homepageUrl": "https://octolens.com/mcp",
+    "registryName": "com.octolens/octolens",
+    "registryVersion": "2.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.octolens%2Foctolens/versions/2.0.0"
+  },
+  {
+    "id": "octoparse",
+    "name": "Octoparse",
+    "url": "https://mcp.octoparse.com",
+    "description": "Discover Octoparse templates, manage cloud scraping tasks and export structured data.",
+    "category": "Automation",
+    "tags": [
+      "scraping",
+      "templates",
+      "cloud-tasks"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.octoparse%2Foctoparse-mcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/octoparse.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Octoparse mark.",
+    "homepageUrl": "https://www.octoparse.com/mcp",
+    "registryName": "com.octoparse/octoparse-mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.octoparse%2Foctoparse-mcp/versions/1.0.0",
+    "sourceUrl": "https://github.com/octoparse/octoparse-mcp"
+  },
+  {
+    "id": "padlet",
+    "name": "Padlet",
+    "url": "https://mcp.padlet.com/",
+    "description": "Search, create and edit Padlet boards, posts, sections and comments.",
+    "category": "Productivity",
+    "tags": [
+      "boards",
+      "collaboration",
+      "posts"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.padlet%2Fpadlet/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/padlet.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Padlet mark.",
+    "homepageUrl": "https://padlet.help/l/en/article/pofbiabhv1-mcp",
+    "registryName": "com.padlet/padlet",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.padlet%2Fpadlet/versions/1.0.1",
+    "sourceUrl": "https://github.com/padlet/padlet-mcp"
+  },
+  {
+    "id": "pandadoc",
+    "name": "PandaDoc",
+    "url": "https://mcp.pandadoc.com/v1/mcp",
+    "description": "Create, send and track PandaDoc documents and signing workflows.",
+    "category": "Productivity",
+    "tags": [
+      "documents",
+      "signatures",
+      "contracts"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.pandadoc.mcp%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/pandadoc.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official PandaDoc mark.",
+    "homepageUrl": "https://developers.pandadoc.com/docs/getting-started-with-mcp",
+    "registryName": "com.pandadoc.mcp/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.pandadoc.mcp%2Fmcp/versions/1.0.0",
+    "sourceUrl": "https://github.com/PandaDoc/mcp-server-guide"
+  },
+  {
+    "id": "pandavideo",
+    "name": "Panda Video",
+    "url": "https://mcp.pandavideo.com/mcp",
+    "description": "Manage Panda Video uploads, video settings, subtitles and hosting analytics.",
+    "category": "Cloud",
+    "tags": [
+      "video",
+      "hosting",
+      "analytics"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.pandavideo%2Fmcp/versions/2.1.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/pandavideo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Panda Video mark.",
+    "homepageUrl": "https://www.pandavideo.com",
+    "registryName": "com.pandavideo/mcp",
+    "registryVersion": "2.1.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.pandavideo%2Fmcp/versions/2.1.0",
+    "sourceUrl": "https://github.com/pandavideo/panda-video-mcp",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <PANDAVIDEO_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "parsely",
+    "name": "Parse.ly",
+    "url": "https://dash.parsely.com/mcp",
+    "description": "Query Parse.ly content performance, referrers, campaigns and real-time analytics.",
+    "category": "Analytics",
+    "tags": [
+      "content",
+      "traffic",
+      "publishing"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.parsely.dash%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/parsely.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Parse.ly mark.",
+    "homepageUrl": "https://dash.parsely.com",
+    "registryName": "com.parsely.dash/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.parsely.dash%2Fmcp/versions/1.0.0"
+  },
+  {
+    "id": "qrcodekit",
+    "name": "QR Code KIT",
+    "url": "https://mcp.v2.qrcodekit.com/mcp",
+    "description": "Create dynamic QR codes and short links and retrieve their analytics.",
+    "category": "Developer Tools",
+    "tags": [
+      "qr-codes",
+      "links",
+      "analytics"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.qrcodekit%2Fqrcodekit/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/qrcodekit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official QR Code KIT mark.",
+    "homepageUrl": "https://qrcodekit.com/ai-qr-codes/mcp/",
+    "registryName": "com.qrcodekit/qrcodekit",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.qrcodekit%2Fqrcodekit/versions/1.0.0",
+    "caveats": [
+      "The validator completed an unauthenticated MCP handshake. Account data and actions require the publisher-documented sign-in; a public handshake does not establish access to those tools."
+    ]
+  },
+  {
+    "id": "salesql",
+    "name": "SalesQL",
+    "url": "https://mcp.salesql.com/mcp",
+    "description": "Search and enrich business contacts and companies through SalesQL.",
+    "category": "CRM",
+    "tags": [
+      "prospecting",
+      "enrichment",
+      "contacts"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.salesql%2Fsalesql/versions/0.11.5"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/salesql.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official SalesQL mark.",
+    "homepageUrl": "https://salesql.com/docs/mcp",
+    "registryName": "com.salesql/salesql",
+    "registryVersion": "0.11.5",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.salesql%2Fsalesql/versions/0.11.5"
+  },
+  {
+    "id": "scandit",
+    "name": "Scandit",
+    "url": "https://ssl.scandit.com/mcp",
+    "description": "Create Scandit trial accounts, obtain license keys and configure SDK integrations.",
+    "category": "Developer Tools",
+    "tags": [
+      "barcode",
+      "sdk",
+      "licenses"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.scandit%2Fmcp/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/scandit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Scandit mark.",
+    "homepageUrl": "https://github.com/Scandit/skills",
+    "registryName": "com.scandit/mcp",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.scandit%2Fmcp/versions/1.0.1",
+    "sourceUrl": "https://github.com/Scandit/skills"
+  },
+  {
+    "id": "tallyfy",
+    "name": "Tallyfy",
+    "url": "https://mcp.tallyfy.com/",
+    "description": "Manage Tallyfy processes, tasks and approval workflows.",
+    "category": "Automation",
+    "tags": [
+      "processes",
+      "tasks",
+      "approvals"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.tallyfy%2Fmcp-server/versions/1.3.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/tallyfy.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Tallyfy mark.",
+    "homepageUrl": "https://tallyfy.com/products/pro/integrations/mcp-server/",
+    "registryName": "com.tallyfy/mcp-server",
+    "registryVersion": "1.3.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.tallyfy%2Fmcp-server/versions/1.3.0",
+    "sourceUrl": "https://github.com/tallyfy/mcp-public",
+    "caveats": [
+      "The validator completed an unauthenticated MCP handshake. Account data and actions require the publisher-documented sign-in; a public handshake does not establish access to those tools."
+    ]
+  },
+  {
+    "id": "tapcart",
+    "name": "Tapcart",
+    "url": "https://mcp.tapcart.com/mcp",
+    "description": "Access Tapcart app analytics, App Studio components and push campaigns.",
+    "category": "Analytics",
+    "tags": [
+      "mobile-apps",
+      "campaigns",
+      "commerce"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.tapcart%2Fmcp/versions/1.5.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/tapcart.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Tapcart mark.",
+    "homepageUrl": "https://www.tapcart.com",
+    "registryName": "com.tapcart/mcp",
+    "registryVersion": "1.5.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.tapcart%2Fmcp/versions/1.5.0"
+  },
+  {
+    "id": "teamhood",
+    "name": "Teamhood",
+    "url": "https://api.teamhood.com/public/v1/mcp",
+    "description": "Manage Teamhood work items, dependencies, time tracking and team capacity.",
+    "category": "Project Management",
+    "tags": [
+      "tasks",
+      "dependencies",
+      "time-tracking"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.teamhood%2Fteamhood/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/teamhood.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Teamhood mark.",
+    "homepageUrl": "https://teamhood.com/mcp/",
+    "registryName": "com.teamhood/teamhood",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.teamhood%2Fteamhood/versions/1.0.1",
+    "sourceUrl": "https://github.com/teamhooddev/teamhood-mcp",
+    "alternativeAuthTypes": [
+      "api-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "X-Api-Key",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "<TEAMHOOD_PERSONAL_TOKEN>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "telerivet",
+    "name": "Telerivet",
+    "url": "https://api.telerivet.com/mcp",
+    "description": "Send messages and manage Telerivet messaging automation and communication workflows.",
+    "category": "Communication",
+    "tags": [
+      "sms",
+      "whatsapp",
+      "messaging"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.telerivet%2Ftelerivet/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/telerivet.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Telerivet mark.",
+    "homepageUrl": "https://telerivet.com/api/mcp",
+    "registryName": "com.telerivet/telerivet",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.telerivet%2Ftelerivet/versions/1.0.0"
+  },
+  {
+    "id": "ulule",
+    "name": "Ulule",
+    "url": "https://api.ulule.com/mcp/public",
+    "description": "Submit Ulule project proposals and prepare crowdfunding pages, goals and rewards.",
+    "category": "Productivity",
+    "tags": [
+      "crowdfunding",
+      "projects",
+      "rewards"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.ulule%2Fmcp-public/versions/1.1.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/ulule.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Ulule mark.",
+    "homepageUrl": "https://developers.ulule.com/docs/mcp/",
+    "registryName": "com.ulule/mcp-public",
+    "registryVersion": "1.1.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.ulule%2Fmcp-public/versions/1.1.0"
+  },
+  {
+    "id": "unlayer",
+    "name": "Unlayer",
+    "url": "https://api.unlayer.com/mcp",
+    "description": "Generate and edit email, page and document templates with Unlayer.",
+    "category": "Design",
+    "tags": [
+      "templates",
+      "email",
+      "documents"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.unlayer%2Fmcp/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/unlayer.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Unlayer mark.",
+    "homepageUrl": "https://docs.unlayer.com/ai/mcp",
+    "registryName": "com.unlayer/mcp",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.unlayer%2Fmcp/versions/1.0.1",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <UNLAYER_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "unstoppabledomains",
+    "name": "Unstoppable Domains",
+    "url": "https://api.unstoppabledomains.com/mcp/v1/",
+    "description": "Search and register domains and manage DNS and marketplace operations with Unstoppable Domains.",
+    "category": "Cloud",
+    "tags": [
+      "domains",
+      "dns",
+      "marketplace"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.unstoppabledomains%2Fmcp-server/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/unstoppabledomains.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Unstoppable Domains mark.",
+    "homepageUrl": "https://unstoppabledomains.com/products/chatgpt",
+    "registryName": "com.unstoppabledomains/mcp-server",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.unstoppabledomains%2Fmcp-server/versions/1.0.0",
+    "sourceUrl": "https://github.com/unstoppabledomains/unstoppable-mcp-server"
+  },
+  {
+    "id": "upcoach",
+    "name": "upcoach",
+    "url": "https://v3.upcoach.com/s/mcp/admin",
+    "description": "Manage upcoach coaching programs and retrieve participant progress reports.",
+    "category": "Productivity",
+    "tags": [
+      "coaching",
+      "programs",
+      "progress"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.upcoach%2Fupcoach/versions/1.0.2"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/upcoach.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official upcoach mark.",
+    "homepageUrl": "https://upcoach.com/features/work-with-claude-chatgpt",
+    "registryName": "com.upcoach/upcoach",
+    "registryVersion": "1.0.2",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.upcoach%2Fupcoach/versions/1.0.2"
+  },
+  {
+    "id": "uptimerobot",
+    "name": "UptimeRobot",
+    "url": "https://mcp.uptimerobot.com/mcp",
+    "description": "Manage UptimeRobot monitors and inspect incidents and uptime statistics.",
+    "category": "Observability",
+    "tags": [
+      "uptime",
+      "monitors",
+      "incidents"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.uptimerobot%2Fuptimerobot/versions/0.1.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/uptimerobot.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official UptimeRobot mark.",
+    "homepageUrl": "https://uptimerobot.com/mcp/",
+    "registryName": "com.uptimerobot/uptimerobot",
+    "registryVersion": "0.1.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.uptimerobot%2Fuptimerobot/versions/0.1.0",
+    "sourceUrl": "https://github.com/uptimerobot/ai"
+  },
+  {
+    "id": "valossa",
+    "name": "Valossa",
+    "url": "https://mcp-assistant.valossa.com/mcp",
+    "description": "Analyze video with Valossa transcripts, scene descriptions, summaries and clips.",
+    "category": "AI Infrastructure",
+    "tags": [
+      "video",
+      "analysis",
+      "transcription"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.valossa%2Fvideo-assistant-mcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/valossa.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Valossa mark.",
+    "homepageUrl": "https://mcp-assistant.valossa.com/documentation",
+    "registryName": "com.valossa/video-assistant-mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.valossa%2Fvideo-assistant-mcp/versions/1.0.0"
+  },
+  {
+    "id": "versium",
+    "name": "Versium REACH",
+    "url": "https://app.versium.com/mcp/reach",
+    "description": "Enrich leads, build prospect lists and validate email addresses with Versium REACH.",
+    "category": "CRM",
+    "tags": [
+      "enrichment",
+      "prospecting",
+      "email"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.versium%2FREACH/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/versium.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Versium REACH mark.",
+    "homepageUrl": "https://reach-help.versium.com/docs/mcp-overview",
+    "registryName": "com.versium/REACH",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.versium%2FREACH/versions/1.0.0"
+  },
+  {
+    "id": "vestd",
+    "name": "Vestd",
+    "url": "https://app.vestd.com/mcp",
+    "description": "Query Vestd cap tables, share schemes, rewards and governance records.",
+    "category": "Finance",
+    "tags": [
+      "equity",
+      "cap-table",
+      "governance"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.vestd%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/vestd.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Vestd mark.",
+    "homepageUrl": "https://www.vestd.com/help/connect-vestd-to-chatgpt-or-claude",
+    "registryName": "com.vestd/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.vestd%2Fmcp/versions/1.0.0",
+    "caveats": [
+      "Requires an existing Vestd customer account. The publisher currently documents a read-only connection."
+    ]
+  },
+  {
+    "id": "wachete",
+    "name": "Wachete",
+    "url": "https://api.wachete.com/mcp",
+    "description": "Create and inspect Wachete website change monitors.",
+    "category": "Observability",
+    "tags": [
+      "websites",
+      "changes",
+      "monitoring"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.wachete%2Fwachete/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/wachete.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Wachete mark.",
+    "homepageUrl": "https://www.wachete.com/faq",
+    "registryName": "com.wachete/wachete",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.wachete%2Fwachete/versions/1.0.0"
+  },
+  {
+    "id": "warmerly",
+    "name": "Warmerly",
+    "url": "https://app.warmerly.com/api/mcp",
+    "description": "Manage Warmerly outreach campaigns, lead discovery and email replies.",
+    "category": "Communication",
+    "tags": [
+      "email",
+      "campaigns",
+      "outreach"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.warmerly%2Fwarmerly/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/warmerly.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Warmerly mark.",
+    "homepageUrl": "https://warmerly.com/ai",
+    "registryName": "com.warmerly/warmerly",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.warmerly%2Fwarmerly/versions/1.0.0",
+    "sourceUrl": "https://github.com/WarmerlyApp/mcp"
+  },
+  {
+    "id": "webeyez",
+    "name": "Webeyez",
+    "url": "https://api.app.webeyez.com/mcp",
+    "description": "Inspect Webeyez session replays, JavaScript errors and conversion diagnostics.",
+    "category": "Observability",
+    "tags": [
+      "sessions",
+      "errors",
+      "commerce"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.webeyez%2Fwebeyez/versions/1.0.12"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/webeyez.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Webeyez mark.",
+    "homepageUrl": "https://webeyez.com",
+    "registryName": "com.webeyez/webeyez",
+    "registryVersion": "1.0.12",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.webeyez%2Fwebeyez/versions/1.0.12",
+    "alternativeAuthTypes": [
+      "api-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <WEBEYEZ_PERSONAL_ACCESS_TOKEN>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "whalesync",
+    "name": "Whalesync",
+    "url": "https://api.whalesync.com/mcp",
+    "description": "Manage Whalesync connections, table mappings, field mappings and synchronization status.",
+    "category": "Automation",
+    "tags": [
+      "sync",
+      "integrations",
+      "data"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.whalesync%2Fwhalesync/versions/1.2.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/whalesync.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Whalesync mark.",
+    "homepageUrl": "https://docs.whalesync.com/api/mcp/setup",
+    "registryName": "com.whalesync/whalesync",
+    "registryVersion": "1.2.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.whalesync%2Fwhalesync/versions/1.2.0",
+    "sourceUrl": "https://github.com/whalesync/whalesync-mcp"
+  },
+  {
+    "id": "xposedornot",
+    "name": "XposedOrNot",
+    "url": "https://api.xposedornot.com/mcp",
+    "description": "Look up data breach exposure and related analytics for email addresses and domains.",
+    "category": "Security",
+    "tags": [
+      "breaches",
+      "email",
+      "domains"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.xposedornot%2Fxposedornot/versions/2.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/xposedornot.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official XposedOrNot mark.",
+    "homepageUrl": "https://xposedornot.com/mcp",
+    "registryName": "com.xposedornot/xposedornot",
+    "registryVersion": "2.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.xposedornot%2Fxposedornot/versions/2.0.0",
+    "sourceUrl": "https://github.com/XposedOrNot/XposedOrNot-API"
+  },
+  {
+    "id": "xranks",
+    "name": "Xranks",
+    "url": "https://xranks.com/api/v1/mcp",
+    "description": "Retrieve website rankings, traffic estimates, competitors and domain metadata from Xranks.",
+    "category": "Analytics",
+    "tags": [
+      "domains",
+      "traffic",
+      "seo"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.xranks%2Fdomain-data/versions/1.1.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/xranks.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Xranks mark.",
+    "homepageUrl": "https://xranks.com/apis/documentation/",
+    "registryName": "com.xranks/domain-data",
+    "registryVersion": "1.1.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.xranks%2Fdomain-data/versions/1.1.0",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <XRANKS_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "xverum",
+    "name": "Xverum",
+    "url": "https://mcp.xverum.com/mcp",
+    "description": "Search and enrich professional profiles and inspect job-change signals with Xverum.",
+    "category": "CRM",
+    "tags": [
+      "contacts",
+      "enrichment",
+      "companies"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.xverum%2Fmcp/versions/2.3.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/xverum.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Xverum mark.",
+    "homepageUrl": "https://ask.xverum.com/docs/mcp-server",
+    "registryName": "com.xverum/mcp",
+    "registryVersion": "2.3.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.xverum%2Fmcp/versions/2.3.1",
+    "sourceUrl": "https://github.com/Xverum-LLC/xverum-mcp",
+    "caveats": [
+      "The validator completed an unauthenticated MCP handshake. Account data and actions require the publisher-documented sign-in; a public handshake does not establish access to those tools."
+    ]
+  },
+  {
+    "id": "youth4work",
+    "name": "Youth4work",
+    "url": "https://mcp.youth4work.com/mcp",
+    "description": "Search Youth4work jobs, manage profiles and access recruiting and skill-assessment tools.",
+    "category": "Marketplace",
+    "tags": [
+      "jobs",
+      "recruiting",
+      "skills"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.youth4work%2Fmcp/versions/2.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/youth4work.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Youth4work mark.",
+    "homepageUrl": "https://mcp.youth4work.com/",
+    "registryName": "com.youth4work/mcp",
+    "registryVersion": "2.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.youth4work%2Fmcp/versions/2.0.0"
+  },
+  {
+    "id": "zabihah",
+    "name": "Zabihah",
+    "url": "https://www.zabihah.com/api/mcp",
+    "description": "Find halal restaurants and mosques with Zabihah place information.",
+    "category": "Search",
+    "tags": [
+      "restaurants",
+      "halal",
+      "places"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zabihah%2Fhalal-places/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/zabihah.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Zabihah mark.",
+    "homepageUrl": "https://www.zabihah.com/developers/docs/mcp",
+    "registryName": "com.zabihah/halal-places",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zabihah%2Fhalal-places/versions/1.0.0"
+  },
+  {
+    "id": "zarla",
+    "name": "Zarla",
+    "url": "https://www.zarla.com/api/mcp",
+    "description": "Build, edit and publish websites through Zarla's hosted website builder.",
+    "category": "Design",
+    "tags": [
+      "websites",
+      "publishing",
+      "hosting"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zarla%2Fwebsite-builder/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/zarla.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Zarla mark.",
+    "homepageUrl": "https://www.zarla.com/features/mcp-website-builder",
+    "registryName": "com.zarla/website-builder",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zarla%2Fwebsite-builder/versions/1.0.0",
+    "sourceUrl": "https://github.com/zarlahq/website-builder-mcp"
+  },
+  {
+    "id": "zeroheight",
+    "name": "zeroheight",
+    "url": "https://mcp.zeroheight.com/mcp",
+    "description": "Access zeroheight design-system documentation and styleguides.",
+    "category": "Design",
+    "tags": [
+      "design-systems",
+      "styleguides",
+      "docs"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zeroheight%2Fzeroheight/versions/2.10.2"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/zeroheight.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official zeroheight mark.",
+    "homepageUrl": "https://help.zeroheight.com/hc/en-us/articles/48004395674011-zeroheight-MCP-overview",
+    "registryName": "com.zeroheight/zeroheight",
+    "registryVersion": "2.10.2",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zeroheight%2Fzeroheight/versions/2.10.2"
+  },
+  {
+    "id": "zip-codes",
+    "name": "Zip-Codes.com",
+    "url": "https://mcp.zip-codes.com/mcp",
+    "description": "Validate and geocode US addresses and retrieve geographic and demographic data.",
+    "category": "Search",
+    "tags": [
+      "addresses",
+      "geocoding",
+      "demographics"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zip-codes%2Fapi/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/zip-codes.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Zip-Codes.com mark.",
+    "homepageUrl": "https://www.zip-codes.com/api/mcp",
+    "registryName": "com.zip-codes/api",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zip-codes%2Fapi/versions/1.0.0",
+    "sourceUrl": "https://github.com/ZIP-Codes-API/zip-codes-mcp",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "caveats": [
+      "Public demo mode returns limited data. Supply a publisher API key in X-Api-Key for complete responses."
+    ],
+    "requiredHeaders": [
+      {
+        "name": "X-Api-Key",
+        "description": "Optional credential alternative to public access.",
+        "valueTemplate": "<ZIP_CODES_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "zippendo",
+    "name": "Zippendo",
+    "url": "https://api.zippendo.com/mcp",
+    "description": "Manage Zippendo orders, book shipments and retrieve shipping labels and tracking.",
+    "category": "Automation",
+    "tags": [
+      "shipping",
+      "orders",
+      "labels"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zippendo%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/zippendo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Zippendo mark.",
+    "homepageUrl": "https://www.zippendo.com/docs/mcp/overview",
+    "registryName": "com.zippendo/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zippendo%2Fmcp/versions/1.0.0"
+  },
+  {
+    "id": "zylalabs",
+    "name": "Zyla API Hub",
+    "url": "https://mcp.zylalabs.com/mcp",
+    "description": "Discover APIs in Zyla API Hub and call supported services with account credentials.",
+    "category": "Marketplace",
+    "tags": [
+      "apis",
+      "discovery",
+      "integrations"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zylalabs%2Fapi-hub/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/zylalabs.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Zyla API Hub mark.",
+    "homepageUrl": "https://mcp.zylalabs.com",
+    "registryName": "com.zylalabs/api-hub",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.zylalabs%2Fapi-hub/versions/1.0.0",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "caveats": [
+      "Catalog discovery is public. Calling paid APIs and account tools requires a Zyla API key supplied as an Authorization bearer token."
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to public access.",
+        "valueTemplate": "Bearer <ZYLALABS_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "ffmpeg-api",
+    "name": "FFmpeg API",
+    "url": "https://mcp.ffmpeg-api.com/mcp",
+    "description": "Run hosted FFmpeg and FFprobe operations to convert, trim and analyze media.",
+    "category": "Developer Tools",
+    "tags": [
+      "video",
+      "audio",
+      "conversion"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.ffmpeg-api%2Fffmpeg/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/ffmpeg-api.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official FFmpeg API mark.",
+    "homepageUrl": "https://ffmpeg-api.com/mcp",
+    "registryName": "com.ffmpeg-api/ffmpeg",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.ffmpeg-api%2Fffmpeg/versions/1.0.0",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <FFMPEG_API_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "feedhive",
+    "name": "FeedHive",
+    "url": "https://mcp.feedhive.com",
+    "description": "Create and schedule social posts and inspect FeedHive account analytics.",
+    "category": "Communication",
+    "tags": [
+      "social-media",
+      "scheduling",
+      "analytics"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.feedhive%2Fmcp/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/feedhive.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official FeedHive mark.",
+    "homepageUrl": "https://docs.feedhive.com/mcp",
+    "registryName": "com.feedhive/mcp",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.feedhive%2Fmcp/versions/1.0.0",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <FEEDHIVE_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "geckoboard",
+    "name": "Geckoboard",
+    "url": "https://gateway.geckoboard.com/mcp",
+    "description": "Query metrics and data lists from business tools connected to Geckoboard.",
+    "category": "Analytics",
+    "tags": [
+      "metrics",
+      "dashboards",
+      "integrations"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.geckoboard.gateway%2Fmetrics/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/geckoboard.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Geckoboard mark.",
+    "homepageUrl": "https://www.geckoboard.com/product/metrics-mcp/",
+    "registryName": "com.geckoboard.gateway/metrics",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.geckoboard.gateway%2Fmetrics/versions/1.0.0"
+  },
+  {
+    "id": "g2x",
+    "name": "G2X",
+    "url": "https://mcp.g2x.com/mcp",
+    "description": "Search federal contracting opportunities, awards, agencies and companies through G2X.",
+    "category": "Search",
+    "tags": [
+      "government",
+      "contracts",
+      "procurement"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.g2x%2Fgovcon/versions/0.4.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/g2x.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official G2X mark.",
+    "homepageUrl": "https://g2x.com/mcp",
+    "registryName": "com.g2x/govcon",
+    "registryVersion": "0.4.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.g2x%2Fgovcon/versions/0.4.0",
+    "caveats": [
+      "The validator completed an unauthenticated MCP handshake. Account data and actions require the publisher-documented sign-in; a public handshake does not establish access to those tools."
+    ]
+  },
+  {
+    "id": "datocapital",
+    "name": "DatoCapital",
+    "url": "https://mcp.datocapital.com/mcp",
+    "description": "Search company and director records and retrieve corporate profiles and filings.",
+    "category": "Search",
+    "tags": [
+      "companies",
+      "directors",
+      "filings"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.datocapital%2Fapi/versions/0.2.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/datocapital.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official DatoCapital mark.",
+    "homepageUrl": "https://api.datocapital.com/docs/mcp",
+    "registryName": "com.datocapital/api",
+    "registryVersion": "0.2.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.datocapital%2Fapi/versions/0.2.1",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "Bearer <DATOCAPITAL_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "kindwise",
+    "name": "Kindwise",
+    "url": "https://agents.kindwise.com/mcp",
+    "description": "Identify plants, crop diseases, insects and mushrooms from images with Kindwise.",
+    "category": "AI Infrastructure",
+    "tags": [
+      "images",
+      "plants",
+      "identification"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.kindwise%2Fagents/versions/1.0.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/kindwise.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Kindwise mark.",
+    "homepageUrl": "https://agents.kindwise.com",
+    "registryName": "com.kindwise/agents",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.kindwise%2Fagents/versions/1.0.0",
+    "caveats": [
+      "The public trial is limited to 10 queries per IP address per 24 hours; production use requires a publisher account."
+    ]
+  },
+  {
+    "id": "legitfit",
+    "name": "LegitFit",
+    "url": "https://legitfit.com/api/mcp",
+    "description": "Query LegitFit revenue, payments, bookings, attendance and membership data.",
+    "category": "Analytics",
+    "tags": [
+      "fitness",
+      "bookings",
+      "memberships"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.legitfit%2Flegitfit/versions/1.0.1"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/legitfit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official LegitFit mark.",
+    "homepageUrl": "https://legitfit.com",
+    "registryName": "com.legitfit/legitfit",
+    "registryVersion": "1.0.1",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.legitfit%2Flegitfit/versions/1.0.1"
+  },
+  {
+    "id": "leadboxer",
+    "name": "LeadBoxer",
+    "url": "https://mcp.leadboxer.com/mcp",
+    "description": "Enrich company and contact records using domains, IP addresses and work email addresses.",
+    "category": "CRM",
+    "tags": [
+      "enrichment",
+      "companies",
+      "contacts"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.leadboxer.mcp%2Fleadboxer/versions/0.2.3"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/leadboxer.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official LeadBoxer mark.",
+    "homepageUrl": "https://developers.leadboxer.com/docs/mcp",
+    "registryName": "com.leadboxer.mcp/leadboxer",
+    "registryVersion": "0.2.3",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.leadboxer.mcp%2Fleadboxer/versions/0.2.3",
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "x-api-key",
+        "description": "Optional credential alternative to OAuth sign-in.",
+        "valueTemplate": "<LEADBOXER_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ]
+  },
+  {
+    "id": "qencode",
+    "name": "Qencode",
+    "url": "https://mcp.qencode.com/mcp",
+    "description": "Analyze, transcode and deliver video through Qencode's hosted media service.",
+    "category": "Cloud",
+    "tags": [
+      "video",
+      "transcoding",
+      "streaming"
+    ],
+    "listingSource": {
+      "kind": "mcp-registry",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.qencode%2Fqencode/versions/1.2.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/qencode.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-25",
+    "logoLicenseNote": "Locally generated monogram; not an official Qencode mark.",
+    "homepageUrl": "https://docs.qencode.com/tutorials/mcp/guide-mcp/",
+    "registryName": "com.qencode/qencode",
+    "registryVersion": "1.2.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.qencode%2Fqencode/versions/1.2.0",
+    "sourceUrl": "https://github.com/Qencode-Corp/mcp"
   }
 ]
