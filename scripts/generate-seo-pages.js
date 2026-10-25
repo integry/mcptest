@@ -72,7 +72,7 @@ const {
   getCatalogCategorySlug,
   summarizeCatalogCategories,
 } = require('../src/utils/catalogCategories.ts');
-const { getToolInventoryProperties } = require('../src/utils/catalogSeo.ts');
+const { getToolInventoryProperties, getCatalogServerTitle, getCatalogServerHeading, getCatalogServerIntro, getCatalogAuthAnswer } = require('../src/utils/catalogSeo.ts');
 const { getToolInventoryFeatureList } = require('../src/utils/toolInventory.ts');
 
 const { CI_PATH, CI_TITLE, CI_DESCRIPTION, CI_WORKFLOW, CI_EXAMPLE_COMMENT } = require('../src/content/ciCopy.ts');
@@ -401,11 +401,13 @@ function renderServerFallback(server) {
     `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server Catalog</a></li><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
     '  <header class="server-profile-hero">',
     `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
-    `      <h1>${escapeHtml(server.name)}</h1>`,
+    `      <h1 class="text-break">${escapeHtml(getCatalogServerHeading(server))}</h1>`,
+    `      <p class="text-break">${escapeHtml(getCatalogServerIntro(server))}</p>`,
     `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
     renderServerActions(server),
     '  </header>',
+    `  <section class="card server-profile-section" aria-labelledby="server-auth-title"><div class="card-body"><h2 id="server-auth-title">How do I authenticate?</h2><p>${escapeHtml(getCatalogAuthAnswer(server).detail)}</p><a href="${escapeHtml(getCatalogAuthAnswer(server).guide)}">Authentication and connection guide</a></div></section>`,
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Connection specification</h2>',
     '    <dl class="server-spec-list server-connection-specs">',
@@ -482,7 +484,7 @@ function renderServerHtml(indexHtml, server, options = {}) {
     : mergeCatalogServers([server], [])[0];
 
   const canonicalUrl = canonicalUrlFor(serverPath(server.id));
-  const title = `${server.name} MCP Server Report | mcptest.io`;
+  const title = getCatalogServerTitle(server.name);
   const description = getServerPageMetaDescription(server);
   const imageUrl = ogImageUrl(serverPath(server.id));
   const setup = getServerSetupStructuredData(server, canonicalUrl);

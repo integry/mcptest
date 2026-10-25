@@ -6,6 +6,9 @@ import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
 import { trackEvent } from '../utils/analytics';
 import {
+  getCatalogAuthAnswer,
+  getCatalogServerHeading,
+  getCatalogServerIntro,
   formatCatalogAuth,
   formatCatalogTimestamp,
   formatCatalogTransport,
@@ -137,13 +140,22 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             className="server-profile-logo"
           />
           <div>
-            <h1>{server.name}</h1>
+            <h1 className="text-break">{getCatalogServerHeading(server)}</h1>
+            <p className="text-break">{getCatalogServerIntro(server)}</p>
             <p>{server.description}</p>
           </div>
         </div>
 
         <div dangerouslySetInnerHTML={{ __html: renderServerActions(server) }} />
       </header>
+
+      <section className="card server-profile-section" aria-labelledby="server-auth-title">
+        <div className="card-body">
+          <h2 id="server-auth-title">How do I authenticate?</h2>
+          <p>{getCatalogAuthAnswer(server).detail}</p>
+          <Link to={getCatalogAuthAnswer(server).guide}>Authentication and connection guide</Link>
+        </div>
+      </section>
 
       <section className="server-profile-signal-grid" aria-label="Connection summary">
         <div className="server-signal-card">

@@ -29,6 +29,9 @@ const routes = [
   '/', '/catalog', '/catalog/databases', '/servers/context7/',
   '/learn/mcp-http-headers-reference', '/learn', '/clients', '/submit',
   '/tools/discovery', '/tools/breaking-changes', '/no-such-page',
+  '/docs/testing-guide', '/docs/troubleshooting',
+  '/learn/mcp-session-not-found-after-deploy', '/learn/mcp-oauth-protected-resource-mismatch',
+  '/learn/vscode-mcp-oauth-redirect-uris', '/learn/how-to-vet-an-mcp-server', '/learn/mcp-glossary',
 ];
 
 for (const theme of ['light', 'dark'] as const) {
@@ -38,6 +41,9 @@ for (const theme of ['light', 'dark'] as const) {
     });
     for (const route of routes) {
       test(route, async ({ page }, info) => {
+        // The full catalog needs two axe scans across hundreds of server cards
+        // (prerendered and mounted). Allow both to finish on shared CI runners.
+        if (route === '/catalog') test.setTimeout(60_000);
         await page.goto(route);
         await expect(page.locator('main')).toBeVisible();
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);

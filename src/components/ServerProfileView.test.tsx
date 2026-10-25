@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import ServerProfileView from './ServerProfileView';
+import generator from '../../scripts/generate-seo-pages.js';
+import { getCatalogAuthAnswer } from '../utils/catalogSeo';
+import { getServerPageSeo } from '../utils/serverConnect';
 import { createCapabilityInventory } from '../utils/capabilityInventory';
 import type { CatalogServer } from '../types/catalog';
 import { getCatalogServerById } from '../utils/catalogUtils';
@@ -127,4 +130,38 @@ describe('ServerProfileView capability inventory', () => {
     expect(markup).toContain('src="/badge/authorization-required.svg"');
     expect(markup).toContain('https://mcptest.io/badge/server/github.svg');
   });
+});
+
+
+describe('server page SEO prerender parity', () => {
+  it.each(['canva', 'context7', 'airtable', 'docusign-developer', 'neon', 'upwork'])(
+    'matches visible endpoint/auth answers and metadata for %s', (id) => {
+      const server = getCatalogServerById(id)!;
+      expect(server).toBeDefined();
+      const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
+      const prerendered = parse(generator.renderServerHtml('<html><head><title></title></head><body><div id="root"></div></body></html>', server));
+      const react = parse(renderToStaticMarkup(
+        <MemoryRouter><ServerProfileView server={server} onTestServer={vi.fn()} /></MemoryRouter>
+      ));
+      for (const selector of ['h1', '.server-profile-hero p', '[aria-labelledby="server-auth-title"]']) {
+        const normalize = (doc: Document) => doc.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim();
+        expect(normalize(prerendered)).toBe(normalize(react));
+      }
+      expect(react.querySelector('h1')?.textContent).toBe(`${server.name} MCP server`);
+      expect(react.querySelector('h1')?.nextElementSibling?.textContent).toBe(
+        `Endpoint: ${server.url} · Authentication: ${getCatalogAuthAnswer(server).label}`
+      );
+      expect(prerendered.querySelector('h1')?.nextElementSibling?.textContent)
+        .toBe(react.querySelector('h1')?.nextElementSibling?.textContent);
+      expect(prerendered.querySelector('[aria-labelledby="server-auth-title"] a')?.getAttribute('href'))
+        .toBe(react.querySelector('[aria-labelledby="server-auth-title"] a')?.getAttribute('href'));
+      const seo = getServerPageSeo(server);
+      expect(prerendered.title).toBe(seo.title);
+      for (const selector of ['meta[name="description"]', 'meta[property="og:description"]', 'meta[name="twitter:description"]']) {
+        expect(prerendered.querySelector(selector)?.getAttribute('content')).toBe(seo.description);
+      }
+      expect(seo.title.length).toBeLessThanOrEqual(60);
+      expect(seo.description.length).toBeLessThanOrEqual(158);
+    }
+  );
 });

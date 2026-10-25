@@ -70,12 +70,12 @@ const renderStrict = (node: React.ReactNode) => {
   return { container, root };
 };
 
-/** Every URL that existed before the Markdown migration, with the title it must still render. */
+/** Existing URLs stay registered while SEO titles can be refreshed. */
 const PRE_EXISTING_PAGES = [
   { path: '/docs/what-is-mcp', title: 'What is the Model Context Protocol?', metaTitle: 'What Is the Model Context Protocol? | mcptest.io' },
   { path: '/docs/remote-vs-local', title: 'Remote vs. Local MCP Servers', metaTitle: 'Remote vs. Local MCP Servers | mcptest.io' },
-  { path: '/docs/testing-guide', title: 'Testing Remote MCP Servers', metaTitle: 'Testing Guide for Remote MCP Servers | mcptest.io' },
-  { path: '/docs/troubleshooting', title: 'Troubleshooting Remote MCP Servers', metaTitle: 'Troubleshooting MCP Server Errors | mcptest.io' },
+  { path: '/docs/testing-guide', title: 'How to Test a Remote MCP Server (Step by Step)', metaTitle: 'How to Test a Remote MCP Server (Step by Step) | mcptest.io' },
+  { path: '/docs/troubleshooting', title: 'MCP Server Errors: Causes and Fixes', metaTitle: 'MCP Server Errors: Causes and Fixes | mcptest.io' },
   { path: '/learn/mcp-clients-compared', title: 'MCP clients compared', metaTitle: 'MCP clients compared | mcptest.io' },
   { path: '/learn/connect-remote-mcp-server', title: 'How to connect to a remote MCP server', metaTitle: 'How to connect to a remote MCP server | mcptest.io' },
   { path: '/learn/oauth-for-mcp-explained', title: 'OAuth for MCP explained', metaTitle: 'OAuth for MCP explained | mcptest.io' },
@@ -155,7 +155,7 @@ describe('content registry', () => {
     expect(container.querySelector('.reading-prose button')?.textContent).toBe('Try again');
   });
 
-  it('keeps every pre-existing docs and learn URL resolving to the same title', () => {
+  it('keeps every pre-existing docs and learn URL resolving to its current title', () => {
     for (const expected of PRE_EXISTING_PAGES) {
       const page = getContentPage(expected.path);
       expect(page?.kind, expected.path).toBe('article');
@@ -180,7 +180,7 @@ describe('content registry', () => {
       expect(PAGE_COMPONENTS[page.component]).toBeTypeOf('function');
       expect(getDocsMetadata(page.path)).toEqual({ title: page.metaTitle, description: page.metaDescription });
     }
-    expect(getDocsMetadata('/docs/testing-guide')?.title).toBe('Testing Guide for Remote MCP Servers | mcptest.io');
+    expect(getDocsMetadata('/docs/testing-guide')?.title).toBe('How to Test a Remote MCP Server (Step by Step) | mcptest.io');
     expect(getDocsMetadata('/docs/missing')).toBeUndefined();
   });
 

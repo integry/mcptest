@@ -6,10 +6,11 @@ level: newcomer
 order: 22
 category: Security and trust
 readingTimeMinutes: 6
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-10-25"
 metaTitle: "Is MCP Safe? Risks, Approvals and Vetting a Server | mcptest.io"
 metaDescription: "A plain guide to MCP security: what servers can access, tool poisoning, prompt injection, OAuth consent, tool approvals, and what has improved since 2025."
 relatedSlugs:
+  - how-to-vet-an-mcp-server
   - mcp-server-trust-checklist
   - oauth-for-mcp-explained
   - mcp-explained-for-everyone
@@ -31,6 +32,8 @@ sourceLinks:
   - title: "MCP specification changelogs: 2025-06-18, 2025-11-25 and 2026-07-28"
     url: "https://modelcontextprotocol.io/specification/2026-07-28/changelog"
 ---
+
+For a repeatable approval process and organisation client controls, see [how to vet an MCP server: assessment, audit and allowlisting](/learn/how-to-vet-an-mcp-server).
 
 MCP is as safe as the servers you connect and the permissions you grant. The protocol itself is a way to pass requests and results; it does not judge whether a server is honest or whether an action is wise. Most of the protection comes from three places: the server's publisher, the sign-in permissions you approve, and the approval settings in your chat app.
 

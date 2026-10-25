@@ -1,5 +1,5 @@
 ---
-title: Testing Remote MCP Servers
+title: How to Test a Remote MCP Server (Step by Step)
 navTitle: Testing Guide
 summary: A step-by-step guide to validating stateless 2026 and stateful 2025 remote MCP servers, in the playground and from the command line.
 track: build
@@ -7,10 +7,10 @@ level: practitioner
 order: 1
 category: Testing
 readingTimeMinutes: 7
-lastReviewed: "2026-08-09"
+lastReviewed: "2026-10-25"
 path: /docs/testing-guide
-metaTitle: Testing Guide for Remote MCP Servers | mcptest.io
-metaDescription: Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers. A step-by-step developer guide for validating stateless and stateful flows.
+metaTitle: "How to Test a Remote MCP Server (Step by Step) | mcptest.io"
+metaDescription: "Test a remote MCP server step by step: verify its URL, connect in the inspector, check authentication, list tools and diagnose HTTP or session errors."
 relatedSlugs:
   - troubleshooting
   - remote-vs-local

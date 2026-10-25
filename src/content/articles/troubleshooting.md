@@ -1,5 +1,5 @@
 ---
-title: Troubleshooting Remote MCP Servers
+title: "MCP Server Errors: Causes and Fixes"
 navTitle: Troubleshooting
 summary: Map CORS, session, routing-header, streaming, and authorization failures to concrete fixes, with an HTTP status decoder.
 track: reference
@@ -7,11 +7,16 @@ level: practitioner
 order: 1
 category: Troubleshooting
 readingTimeMinutes: 8
-lastReviewed: "2026-08-10"
+lastReviewed: "2026-10-25"
 path: /docs/troubleshooting
-metaTitle: Troubleshooting MCP Server Errors | mcptest.io
-metaDescription: Fix common Model Context Protocol connection issues. A technical guide to resolving CORS, session state errors, 404s, and routing metadata failures.
+metaTitle: "MCP Server Errors: Causes and Fixes | mcptest.io"
+metaDescription: "Fix MCP connection errors: session not found, OAuth resource mismatch, VS Code redirects, 401, CORS and missing tools. Find the cause and next check."
 relatedSlugs:
+  - mcp-session-not-found-after-deploy
+  - mcp-oauth-protected-resource-mismatch
+  - vscode-mcp-oauth-redirect-uris
+  - remote-mcp-server-401-unauthorized
+  - mcp-server-connected-but-no-tools
   - testing-guide
   - connect-remote-mcp-server
 sourceLinks:
@@ -24,6 +29,14 @@ sourceLinks:
 ---
 
 Start with the actual HTTP exchange: endpoint, status, response headers, protocol era, and JSON-RPC body. Most failures then collapse into one of six buckets—wrong URL, 2026 routing metadata, 2025 session state, CORS, streaming infrastructure, or authorization.
+
+## Find the exact error
+
+- **[Session not found after deploys](/learn/mcp-session-not-found-after-deploy)** — includes `failed to get tools`, `client is closing` and `subscriptions/listen` in the same client output.
+- **[SDK auth failed: protected resource does not match expected](/learn/mcp-oauth-protected-resource-mismatch)** — compare `/mcp` with the origin and fix resource identity.
+- **[VS Code MCP OAuth redirect URIs](/learn/vscode-mcp-oauth-redirect-uris)** — `http://127.0.0.1:33418`, `https://vscode.dev/redirect`, or the OAuth page opens but connecting fails, including Figma authorize URLs.
+- **[401 Unauthorized](/learn/remote-mcp-server-401-unauthorized)** — separate missing credentials from invalid issuer, audience or scope.
+- **[Connected but no tools](/learn/mcp-server-connected-but-no-tools)** — verify capability advertisement, listing and client visibility.
 
 ## The endpoint cannot be reached
 

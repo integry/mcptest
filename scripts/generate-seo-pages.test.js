@@ -471,36 +471,48 @@ describe('generated page metadata', () => {
     expect(html).toContain('catalog-server-logo-initials');
   });
 
-  it('leads search and social descriptions with the curated summary intact, then a setup phrase that fits', () => {
+  it('uses natural sentences consistently in search and social descriptions', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
-    server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';
-
+    server.seoDescription = 'Explore example records.';
     const html = renderServerHtml(indexHtml, server);
-
-    const description = 'Inspect the Example Server MCP server. Explore example records and queries. '
-      + 'Setup for Claude, ChatGPT, Cursor and more.';
-    expect(html).toContain('<title>Example Server MCP Server Report | mcptest.io</title>');
+    const description = 'Connect to the Example Server MCP server at example.com without authentication. '
+      + 'Setup for Claude, ChatGPT, Cursor and VS Code. Explore example records.';
+    expect(html).toContain('<title>Example Server MCP Server: URL, Auth &amp; Setup | mcptest.io</title>');
     expect(html).toContain(`name="description" content="${description}"`);
     expect(html).toContain(`property="og:description" content="${description}"`);
     expect(html).toContain(`name="twitter:description" content="${description}"`);
   });
 
-  it('drops client names rather than truncating a long curated summary', () => {
+  it('reserves room for client setup before adding a complete summary sentence', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
-    const summary = 'Inspect the Example Server MCP server. Explore example records, saved queries, audit logs, '
-      + 'dashboards and workspace settings.';
-    server.seoDescription = summary;
+    server.seoDescription = 'Explore example records and queries. Inspect tools and resources.';
+    const description = () => new DOMParser().parseFromString(renderServerHtml(indexHtml, server), 'text/html')
+      .querySelector('meta[name="description"]').getAttribute('content');
+    const answer = 'Connect to the Example Server MCP server at example.com without authentication.';
+    expect(description()).toBe(`${answer} Setup for Claude, ChatGPT, Cursor and VS Code. Inspect tools and resources.`);
+    server.seoDescription += ' This additional sentence is too long to fit within the description budget.';
+    expect(description()).toBe(`${answer} Setup for Claude, ChatGPT, Cursor and VS Code. Inspect tools and resources.`);
+  });
 
-    const metaDescription = () => renderServerHtml(indexHtml, server).match(/<meta name="description" content="([^"]*)"/)?.[1];
-    const description = metaDescription();
-
-    expect(description.startsWith(`${summary} `)).toBe(true);
-    expect(description).not.toContain('…');
-    expect(description.length).toBeLessThanOrEqual(158);
-    expect(description).toBe(`${summary} Setup for Claude and more.`);
-
-    server.seoDescription = `${summary} Covers every endpoint too.`;
-    expect(metaDescription()).toBe(`${summary} Covers every endpoint too.`);
+  it('generates complete descriptions without ellipses or partial words across the whole catalog', () => {
+    const servers = mergeCatalogServers(catalogSeeds, catalogValidation, catalogCapabilities);
+    for (const server of servers) {
+      const html = renderServerHtml(indexHtml, server);
+      const description = html.match(/<meta name="description" content="([^"]*)"/)[1]
+        .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      expect(description, server.id).toMatch(/^Connect to the .+ MCP server at .+\./);
+      expect(description.length, server.id).toBeGreaterThanOrEqual(100);
+      expect(description.length, server.id).toBeLessThanOrEqual(158);
+      expect(description, server.id).toMatch(/(?:Setup for .+|Client setup, auth and tools)\./);
+      expect(description, server.id).not.toMatch(/(?:…|\.\.\.)$/);
+      expect(description, server.id).toMatch(/[.!?]$/);
+      const answerEnd = description.indexOf('. ', description.indexOf(' MCP server at '));
+      const summary = answerEnd < 0 ? '' : description.slice(answerEnd + 2);
+      // Every retained summary ends at a boundary present in the source text.
+      if (summary && !summary.startsWith('Setup ') && !summary.startsWith('Client setup')) {
+        expect((server.seoDescription || server.description).trim(), server.id).toContain(summary);
+      }
+    }
   });
 
   it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
@@ -683,9 +695,9 @@ describe('generated page metadata', () => {
     const article = articles.find(item => item.slug === 'testing-guide');
     const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
 
-    expect(html).toContain('<title>Testing Guide for Remote MCP Servers | mcptest.io</title>');
+    expect(html).toContain('<title>How to Test a Remote MCP Server (Step by Step) | mcptest.io</title>');
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
-    expect(html).toContain('name="description" content="Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers.');
+    expect(html).toContain('name="description" content="Test a remote MCP server step by step:');
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
     expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
@@ -1038,7 +1050,7 @@ describe('server page "Connect it" section', () => {
     expect(chatgpt.textContent).toContain('ChatGPT does not support API key headers');
 
     const description = document.querySelector('meta[name="description"]').getAttribute('content');
-    expect(description).toBe('An example MCP server. Setup for Claude, Cursor, VS Code and more.');
+    expect(description).toBe('Connect to the Example Server MCP server at example.com with an API key header. Setup for Claude, Cursor, VS Code and Claude Code. An example MCP server.');
     expect(description).not.toContain('ChatGPT');
     expect(description).toContain('Cursor');
   });
