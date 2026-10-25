@@ -92,10 +92,15 @@ function hostname(url) {
 }
 
 // Keep the source link and its icon: its width affects the title row on mount.
+// Share the drawing across rows so catalog growth doesn't repeat the SVG paths.
+function renderListingSourceIconDefinition() {
+  return '<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute"><defs><symbol id="catalog-source-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6m-11 5 11-11M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol></defs></svg>';
+}
+
 function renderListingSource(server) {
   const label = escapeHtml(LISTING_SOURCE_LABELS[server.listingSource?.kind] || 'Community');
   if (!server.listingSource?.url) return `<span class="catalog-listing-source">${label}</span>`;
-  return `<a class="catalog-listing-source" href="${escapeHtml(server.listingSource.url)}" target="_blank" rel="noopener noreferrer">${label}<svg class="catalog-listing-source-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 3h6v6"/><path d="m10 14 11-11"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>`;
+  return `<a class="catalog-listing-source" href="${escapeHtml(server.listingSource.url)}" target="_blank" rel="noopener noreferrer">${label}<svg class="catalog-listing-source-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#catalog-source-icon"/></svg></a>`;
 }
 
 /** The unfiltered catalog's first frame. Controls become active when React mounts. */
@@ -103,6 +108,7 @@ function renderCatalogFallback({ servers, summaries }) {
   const select = (field, label, options) => `<div class="catalog-${field}-field"><label class="visually-hidden" for="catalog-${field}">${label}</label><select id="catalog-${field}" class="form-select" inert>${options.map(([value, text], index) => `<option value="${escapeHtml(value)}"${index === 0 ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></div>`;
   return [
     '<div class="catalog-view"><div class="catalog-command-bar"><div class="catalog-command-copy">',
+    renderListingSourceIconDefinition(),
     '<h1 class="mb-1">Remote MCP server catalog</h1><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
     `<div class="catalog-results-bar" aria-live="polite"><p class="catalog-results-count">Showing <strong>${servers.length}</strong> of ${servers.length} servers</p></div>`,
     '</div><div class="catalog-filters"><div class="catalog-search-field"><i class="bi bi-search catalog-search-icon" aria-hidden="true"></i>',
@@ -122,7 +128,7 @@ function renderCatalogFallback({ servers, summaries }) {
 /**
  * One dense catalog row, as CatalogServerCard renders it. Keep layout classes
  * and visible content, but omit repeated tooltips and redundant ARIA prose:
- * repeating the interactive card's full attributes across 221 rows is costly.
+ * repeating the interactive card's full attributes across hundreds of rows is costly.
  * Report and Playground actions stay native anchors before the mount.
  */
 function renderCatalogRow(server) {
@@ -224,6 +230,7 @@ function renderCategoryFallback({ summary, summaries, servers, articles }) {
   const members = servers.filter(server => server.category === summary.category);
   return [
     `<div class="catalog-view seo-catalog-category" data-category="${escapeHtml(summary.slug)}">`,
+    renderListingSourceIconDefinition(),
     '<div class="catalog-command-bar"><div class="catalog-command-copy">',
     `<nav aria-label="Breadcrumb" class="catalog-category-breadcrumb"><a href="${CATALOG_PATH}">Server Catalog</a><span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(summary.category)}</span></nav>`,
     `<h1 class="mb-1">${escapeHtml(summary.category)} MCP servers</h1>`,
