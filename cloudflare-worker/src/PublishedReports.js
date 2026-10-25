@@ -18,6 +18,10 @@
 // the per-value storage limit. Removal tokens are stored only as SHA-256 hashes.
 import { PUBLISHED_REPORT_RETENTION } from '../../src/utils/publishedReportIdentity.ts';
 
+import { validateAlertDestination, newAlertSecret, renderAlert, deliverAlert } from './watchAlerts.js';
+
+const ALERT_KEY = 'watch:alert-destination';
+const ALERT_RATE_KEY = 'watch:alert-rate';
 const CHUNK_SIZE = 96 * 1024;
 const INDEX_KEY = 'index';
 const RATE_KEY = 'hits';
@@ -37,6 +41,8 @@ const watchChunkKey = (id, index) => `watch:snapshot:${id}:${index}`;
 export class PublishedReports {
   constructor(state) {
     this.storage = state.storage;
+    this.state = state;
+    this.alertQueue = Promise.resolve();
   }
 
   async readIndex() {
@@ -151,6 +157,65 @@ export class PublishedReports {
     return json({ created: true, entry: this.publicWatchEntry(stored), count: retained.length }, 201);
   }
 
+  // One destination today; plan and separate delivery/rate state leave room for paid plans.
+  alertSummary(destination) {
+    if (!destination) return null;
+    const { kind, host, enabled, failures, lastDelivery } = destination;
+    return { kind, host, enabled, failures, lastDelivery: lastDelivery || null };
+  }
+
+  async ownerAlerts(request, body) {
+    // Recheck within the serialized operation: removed snapshots cannot authorize changes.
+    const index = await this.readIndex();
+    if (!index.some((entry) => entry.id === body.id && body.removalTokenHash && entry.removalTokenHash === body.removalTokenHash)) return json({ error: 'invalid_removal_token' }, 403);
+    const current = await this.storage.get(ALERT_KEY);
+    if (request.method === 'GET') return json({ alert: this.alertSummary(current) });
+    if (request.method === 'DELETE') {
+      await this.storage.delete(ALERT_KEY);
+      return json({ alert: null });
+    }
+    if (body.test) {
+      if (!(await this.storage.get(WATCH_CONFIG_KEY))?.enabled) return json({ error: 'watch_required' }, 409);
+      if (!current?.enabled) return json({ error: 'no_enabled_destination' }, 409);
+      const now = Date.now();
+      const rate = (await this.storage.get(ALERT_RATE_KEY)) || {};
+      if (rate.testAt && now - rate.testAt < 60_000) return json({ error: 'test_rate_limited' }, 429);
+      await this.storage.put(ALERT_RATE_KEY, { ...rate, testAt: now });
+      await this.sendAlert({ test: true, now, entry: { observedAt: new Date(now).toISOString(), summary: 'Your weekly watch alerts are connected.' } });
+      return json({ alert: this.alertSummary(await this.storage.get(ALERT_KEY)) });
+    }
+    if (!(await this.storage.get(WATCH_CONFIG_KEY))?.enabled) return json({ error: 'watch_required' }, 409);
+    const validated = validateAlertDestination(body.url);
+    if (!validated) return json({ error: 'invalid_destination' }, 400);
+    const destination = { ...validated, plan: 'free', enabled: true, failures: 0, secret: newAlertSecret() };
+    await this.storage.put(ALERT_KEY, destination);
+    return json({ alert: this.alertSummary(destination), ...(destination.kind === 'webhook' ? { signingSecret: destination.secret } : {}) });
+  }
+
+  async sendAlert({ entry, now = Date.now(), test = false, feedUrl }) {
+    const destination = await this.storage.get(ALERT_KEY);
+    const config = await this.storage.get(WATCH_CONFIG_KEY);
+    if (!destination?.enabled || !config?.enabled) return;
+    if (!test) {
+      if (!['breaking', 'risky'].includes(entry.severity)) return;
+      const rate = (await this.storage.get(ALERT_RATE_KEY)) || {};
+      if (rate.runAt === now || (rate.sentAt != null && now - rate.sentAt < 86400000 && rate.classification === entry.severity)) return;
+      // Reserve before network I/O, including failed deliveries.
+      await this.storage.put(ALERT_RATE_KEY, { ...rate, runAt: now, sentAt: now, classification: entry.severity });
+    }
+    const payload = renderAlert(destination.kind, { endpoint: config.endpoint, entry, test,
+      feedUrl: feedUrl || `https://mcptest.io/r/${encodeURIComponent(config.endpoint)}/changes.xml` });
+    const lastDelivery = await deliverAlert(destination, payload, { now });
+    const failures = lastDelivery.status === 'ok' ? 0 : destination.failures + 1;
+    await this.storage.put(ALERT_KEY, { ...destination, lastDelivery, failures, enabled: failures < 5 });
+  }
+
+  queueAlert(operation) {
+    const result = this.alertQueue.then(operation);
+    this.alertQueue = result.catch(() => {});
+    return result;
+  }
+
   // --- Watch registry (the "watch:registry" instance) ---
 
   async readRegistry() {
@@ -254,6 +319,17 @@ export class PublishedReports {
     const url = new URL(request.url);
     const path = url.pathname;
     try {
+      if (path === '/alerts') {
+        const body = await request.json();
+        return await this.queueAlert(() => this.ownerAlerts({ method: body.method }, body));
+      }
+      if (request.method === 'POST' && path === '/watch/alert') {
+        const body = await request.json();
+        const delivery = this.queueAlert(() => this.sendAlert(body)).catch(() => {});
+        if (this.state.waitUntil) this.state.waitUntil(delivery);
+        else await delivery;
+        return json({ accepted: true });
+      }
       if (request.method === 'POST' && path === '/publish') return await this.publish(await request.json());
       if (request.method === 'POST' && path === '/rate-limit') return await this.rateLimit(await request.json());
       if (request.method === 'GET' && path === '/snapshots') {
@@ -299,13 +375,14 @@ export class PublishedReports {
           // watch off, so the watch stops with it.
           const config = await this.storage.get(WATCH_CONFIG_KEY);
           const watchDisabled = remaining.length === 0 && Boolean(config?.enabled);
+          if (remaining.length === 0) await this.queueAlert(() => this.storage.delete(ALERT_KEY));
           if (watchDisabled) await this.storage.put(WATCH_CONFIG_KEY, { ...config, enabled: false, updatedAt: body.now });
           return json({ deleted: true, remaining: remaining.length, watchDisabled });
         }
       }
       return json({ error: 'not_found' }, 404);
     } catch (error) {
-      return json({ error: `storage_failure: ${error.message}` }, 500);
+      return json({ error: 'storage_failure' }, 500);
     }
   }
 }

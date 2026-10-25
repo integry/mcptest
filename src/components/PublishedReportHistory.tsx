@@ -25,6 +25,7 @@ import {
   type PublishedReportIndex,
   type PublishedReportSummary,
 } from '../utils/publishedReports';
+import PublishedWatchAlerts from './PublishedWatchAlerts';
 import ReportDiffChanges from './ReportDiffChanges';
 import BreakingChangeFindings from './BreakingChangeFindings';
 import './PublishedReportHistory.css';
@@ -346,6 +347,7 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
 
   const latest = snapshots[0];
   const watch = index?.watch;
+  const alertOwner = snapshots.find((candidate) => removalTokens[candidate.id]);
   const canonicalUrl = getReportUrl(index?.endpoint ?? identity);
   const permalink = (entry: PublishedReportEntry) => `${apiBase}/r/${entry.id}`;
 
@@ -511,6 +513,9 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
             )}
           </div>
         </div>
+      )}
+      {watch && alertOwner && (
+        <PublishedWatchAlerts key={`${identity}:${alertOwner.id}`} id={alertOwner.id} token={removalTokens[alertOwner.id]} enabled={watch.enabled} />
       )}
       {watchError && <div className="alert alert-warning mt-2" role="alert">{watchError}</div>}
 

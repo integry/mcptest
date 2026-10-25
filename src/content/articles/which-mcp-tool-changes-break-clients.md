@@ -142,3 +142,17 @@ Whatever the strategy, keep `ttlMs` honest: a short TTL shortens the window in w
 1. Save the current `tools/list` result before you deploy, then compare it with the new one in the [breaking-change check](/tools/breaking-changes), or point the check at the live endpoint and compare against its latest published report.
 2. Publish a report and turn on **Watch weekly**. For public servers that list tools without authorization, mcptest lists the tools once a week, publishes each classified change in an Atom feed for the endpoint, and shows "breaking change" on the live report badge until you publish a newer report.
 3. Run the [release-readiness checks](/learn/test-mcp-server-before-deploying) for everything else a deploy can break.
+
+## Weekly push alerts
+
+After publishing and enabling **Watch weekly**, use **Alerts** in Published history to save one Slack incoming webhook, Discord webhook, or generic HTTPS webhook. Any retained snapshot’s removal-token holder can manage the endpoint’s destination. No account is needed. The URL stays secret inside the endpoint’s Durable Object; only its kind and host can be read back. Keep the removal token safe.
+
+Breaking and risky changes send an alert with findings and links to the report and this guide. Safe changes stay in the Atom feed. Alerts are limited to one per run and one per 24 hours unless the classification changes. Delivery times out after five seconds per attempt, follows no redirects, and retries once. Five consecutive failed deliveries disable the destination. Published history shows its last delivery result; save a destination again to re-enable it. **Send test alert** checks delivery (limited to once per minute). Removing the final published snapshot deletes its alert destination.
+
+### Verifying webhook alerts
+
+Generic webhooks receive JSON with `event` (`watch.breaking`, `watch.risky`, or `watch.test`), `endpoint`, `classifiedAt`, `summary`, `counts`, `topFindings`, `reportUrl`, `feedUrl`, and `guideUrl`. Setup shows a random signing secret once; save it securely. Slack and Discord use their native message formats.
+
+Verify `X-Mcptest-Signature`: it is `sha256=` followed by the lowercase hex HMAC-SHA256 of the **exact raw UTF-8 request body**, using the displayed secret as a UTF-8 key (do not hex-decode the secret). Compare signatures in constant time before parsing or processing the JSON. For example, Node.js computes it with `createHmac('sha256', secret).update(rawBody).digest('hex')`. Check `classifiedAt` and deduplicate events to reject replays; retries carry the same body. Replacing a destination rotates its secret.
+
+The free watch checks public, unauthenticated servers weekly and supports one destination. Email, more frequent checks, and multiple destinations are not included.
