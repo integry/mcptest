@@ -15,6 +15,7 @@ export interface ActionTarget {
   report: PublicReport;
   decision: ActionDecision;
   changes?: BreakingChangeReport;
+  comparison?: 'complete' | 'partial' | 'unavailable';
   url?: string;
 }
 const MARKER = '<!-- mcptest-release-gate -->';
@@ -56,21 +57,36 @@ export const classifyActionTarget = (report: PublicReport, baseline: PublicRepor
       : status === 'compatible-with-caveats' ? 'review' : 'ready');
   }
   let changes: BreakingChangeReport | undefined;
+  let comparison: ActionTarget['comparison'];
   if (baseline) {
     const identity = (endpoint: string) => normalizePublishedEndpoint(endpoint) || new URL(endpoint).toString();
     if (identity(baseline.target.testedEndpoint) !== identity(report.target.testedEndpoint)) {
       throw new Error('Baseline endpoint does not match the evaluated endpoint.');
     }
-    const before = toolSurfaceFromInterfaceSnapshot(interfaceSnapshotFromReport(baseline));
-    const after = toolSurfaceFromInterfaceSnapshot(interfaceSnapshotFromReport(report));
-    if (!before || !after) decision = worst(decision, 'unknown');
-    else {
+    // Redaction can hide schema values while preserving the entire tool-name
+    // inventory. That still proves removals, but cannot prove schema compatibility.
+    const schemasComplete = baseline.toolSurfaceAnalysis?.toolDefinitions.status === 'complete'
+      && report.toolSurfaceAnalysis?.toolDefinitions.status === 'complete';
+    const surface = (value: PublicReport) => {
+      if (schemasComplete) return toolSurfaceFromInterfaceSnapshot(interfaceSnapshotFromReport(value));
+      const definitions = value.toolSurfaceAnalysis?.toolDefinitions;
+      return definitions && (definitions.status === 'complete' || definitions.namesComplete === true)
+        ? { tools: definitions.tools.map(tool => ({ name: tool.name })), outputSchemasObserved: false,
+          annotationsObserved: false, titlesObserved: false, promptArgumentsObserved: false }
+        : undefined;
+    };
+    const before = surface(baseline);
+    const after = surface(report);
+    comparison = !before || !after ? 'unavailable'
+      : schemasComplete ? 'complete' : 'partial';
+    if (comparison !== 'complete') decision = worst(decision, 'unknown');
+    if (before && after) {
       changes = classifyBreakingChanges(before, after);
       if (changes.counts.breaking) decision = 'blocked';
       else if (changes.counts.risky) decision = worst(decision, 'review');
     }
   }
-  return { report, decision, changes };
+  return { report, decision, changes, comparison };
 };
 
 const escape = (value: string): string => redactReportString(value).replace(/[\\`*_{}[\]()<>|!#]/g, '\\$&').replace(/[\r\n]+/g, ' ');
@@ -84,6 +100,7 @@ const reference = (url?: string): string | undefined => {
 export const renderActionSummary = (targets: ActionTarget[], decision: ActionDecision, failed = false): string => {
   const lines = [MARKER, `## mcptest: ${decision}${failed ? ' — gate failed' : ''}`, '',
     '[Remote MCP release gate](https://mcptest.io/ci)', ''];
+  if (decision === 'unknown' && !targets.length) lines.push('Comparison could not run; breaking count is unknown.', '');
   for (const target of targets) {
     lines.push(`### ${escape(target.report.target.testedEndpoint)}`, '', `Decision: **${target.decision}**`, '');
     if (target.url) lines.push(`[Full report](${target.url})`, '');
@@ -92,6 +109,12 @@ export const renderActionSummary = (targets: ActionTarget[], decision: ActionDec
       lines.push(`| ${escape(id)} | ${escape(assessment.status)} |`);
     }
     lines.push('', 'Browser CORS and interactive OAuth remain unverified in headless CI; these are evidence-based verdicts, not client application launches.', '');
+    if (target.decision === 'unknown') {
+      lines.push('Comparison could not run reliably because evaluation or baseline evidence is incomplete; breaking count is unknown.', '');
+    }
+    if (target.comparison === 'partial') {
+      lines.push('Only tool names could be compared. Schema comparison could not run because stored schemas are incomplete or redacted.', '');
+    }
     if (target.changes) {
       lines.push(`Changes: ${target.changes.summary}`, '');
       for (const group of target.changes.groups.slice(0, 30)) {
@@ -184,10 +207,14 @@ export const runGitHubAction = async (env: Environment = process.env): Promise<n
     let decision = targets.reduce((result, target) => worst(result, target.decision), 'ready' as ActionDecision);
     if (exitCode >= 2 || !targets.length) decision = worst(decision, 'unknown');
     const failed = exitCode !== 0 || !['ready', 'review'].includes(decision) || (inputs.failOn === 'review' && decision === 'review');
+    const comparisonUnavailable = exitCode >= 2 || !targets.length
+      || targets.some(target => target.decision === 'unknown' || target.comparison === 'unavailable');
+    const breakingCount = comparisonUnavailable ? 'unknown'
+      : targets.reduce((sum, target) => sum + (target.changes?.counts.breaking || 0), 0);
     const summary = scrub(renderActionSummary(targets, decision, failed));
     await writeFile(resolve(outputDir, 'summary.md'), summary, { mode: 0o600 });
     if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, summary);
-    if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `decision=${decision}\nbreaking-count=${targets.reduce((sum, target) => sum + (target.changes?.counts.breaking || 0), 0)}\nreport-path=${outputDir}\nreport-url=${targets.find(target => target.url)?.url || ''}\n`);
+    if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `decision=${decision}\nbreaking-count=${breakingCount}\nreport-path=${outputDir}\nreport-url=${targets.find(target => target.url)?.url || ''}\n`);
     if (inputs.comment) {
       try {
         const outcome = await updatePullRequestComment(summary, env);
@@ -197,9 +224,9 @@ export const runGitHubAction = async (env: Environment = process.env): Promise<n
     return failed ? 1 : 0;
   } catch {
     // Never print remote response bodies, baseline content, tokens or untrusted error messages.
-    const summary = '## mcptest: unknown — gate failed\n\nConfiguration, baseline, publishing or evaluation failed. Check input names and service availability.\n';
+    const summary = '## mcptest: unknown — gate failed\n\nConfiguration, baseline, publishing or evaluation failed. Check input names and service availability. Baseline comparison could not run; breaking count is unknown.\n';
     if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, summary);
-    if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `decision=unknown\nbreaking-count=0\nreport-path=${outputDir || ''}\nreport-url=\n`);
+    if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `decision=unknown\nbreaking-count=unknown\nreport-path=${outputDir || ''}\nreport-url=\n`);
     if (env.MCPTEST_ACTION_COMMENT !== 'false') {
       try { await updatePullRequestComment(`${MARKER}\n${summary}`, env); } catch { /* Summary remains available. */ }
     }

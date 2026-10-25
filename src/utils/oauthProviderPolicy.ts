@@ -98,7 +98,9 @@ const PROVIDER_POLICIES: readonly OAuthProviderPolicy[] = [
   {
     id: 'github',
     name: 'GitHub',
-    targetUrls: ['https://api.githubcopilot.com/mcp/'],
+    // Catalog validation and the resource challenge also use the slashless URL.
+    // Keep explicit aliases rather than loosening issuer/target trust matching.
+    targetUrls: ['https://api.githubcopilot.com/mcp/', 'https://api.githubcopilot.com/mcp'],
     issuerUrls: ['https://github.com/login/oauth'],
     documentationUrl: 'https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md',
     registrationUrl: 'https://github.com/settings/applications/new',

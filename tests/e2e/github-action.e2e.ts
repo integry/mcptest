@@ -10,11 +10,8 @@ const exec = promisify(execFile);
 test('action entry script evaluates stateless MCP, blocks a removed tool and skips fork comments', async () => {
   test.setTimeout(120000);
   const workspace = await mkdtemp(join(tmpdir(), 'mcptest-action-'));
-  // Free-form schema descriptions are redacted in stored reports, making the
-  // tool snapshot partial. Use an isolated, fully comparable tool contract.
-  const { createMockMcpServer, TOOLS } = await import(pathToFileURL(resolve('tests/e2e/mock-mcp-server.mjs')).href);
-  const originalTools = structuredClone(TOOLS);
-  delete TOOLS[0].inputSchema.properties.city.description;
+  // Keep the original schema descriptions: redaction must not hide tool removals.
+  const { createMockMcpServer } = await import(pathToFileURL(resolve('tests/e2e/mock-mcp-server.mjs')).href);
   const { server } = createMockMcpServer();
   try {
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -38,10 +35,12 @@ test('action entry script evaluates stateless MCP, blocks a removed tool and ski
     expect(first.code, first.stderr).toBe(0);
     expect(first.stdout).toContain('PR comment skipped');
     const outputs = await readFile(env.GITHUB_OUTPUT, 'utf8');
+    expect(outputs).toContain('decision=review');
     const reportDir = outputs.match(/^report-path=(.+)$/m)![1];
     const files = await readdir(reportDir);
     const report = JSON.parse(await readFile(join(reportDir, files.find(name => name.endsWith('.json'))!), 'utf8'));
-    expect(report.toolSurfaceAnalysis.toolDefinitions.status).toBe('complete');
+    expect(report.toolSurfaceAnalysis.toolDefinitions.status).toBe('partial');
+    expect(report.toolSurfaceAnalysis.toolDefinitions.namesComplete).toBe(true);
     expect(report.protocol.version).toBe('2026-07-28');
     expect(report.compatibility.assessments['claude-code']).toBeTruthy();
     expect(report.compatibility.assessments['codex-cli']).toBeTruthy();
@@ -49,17 +48,28 @@ test('action entry script evaluates stateless MCP, blocks a removed tool and ski
     const baseline = join(workspace, 'baseline.json');
     await writeFile(baseline, JSON.stringify(report));
     const second = await run({ MCPTEST_ACTION_BASELINE: baseline, MCPTEST_ACTION_GITHUB_TOKEN: secret, MCPTEST_ACTION_COMMENT: 'false' });
-    expect(second.code).toBe(1);
+    expect(second.code, second.stderr).toBe(1);
+    expect(await readFile(env.GITHUB_OUTPUT, 'utf8')).toContain('decision=blocked');
     expect(await readFile(env.GITHUB_OUTPUT, 'utf8'), second.stderr).toContain('breaking-count=1');
     const summary = await readFile(env.GITHUB_STEP_SUMMARY, 'utf8');
     expect(summary).toContain('mcptest: blocked');
+    expect(summary).toContain('Schema comparison could not run');
     expect(summary).toContain('removed\\_tool');
+    // An incomplete baseline must fail explicitly, rather than reporting zero removals.
+    report.toolSurfaceAnalysis.toolDefinitions.namesComplete = false;
+    await writeFile(baseline, JSON.stringify(report));
+    const unknownOutputs = join(workspace, 'unknown-outputs');
+    const unknownSummary = join(workspace, 'unknown-summary.md');
+    const unknown = await run({ MCPTEST_ACTION_BASELINE: baseline, MCPTEST_ACTION_COMMENT: 'false',
+      GITHUB_OUTPUT: unknownOutputs, GITHUB_STEP_SUMMARY: unknownSummary });
+    expect(unknown.code, unknown.stderr).toBe(1);
+    expect(await readFile(unknownOutputs, 'utf8')).toContain('decision=unknown\nbreaking-count=unknown');
+    expect(await readFile(unknownSummary, 'utf8')).toContain('Comparison could not run');
     for (const content of [summary, first.stdout, first.stderr, second.stdout, second.stderr,
       ...await Promise.all(files.map(file => readFile(join(reportDir, file), 'utf8')))]) {
       expect(content).not.toContain(secret);
     }
   } finally {
-    TOOLS.splice(0, TOOLS.length, ...originalTools);
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await rm(workspace, { recursive: true, force: true });
   }

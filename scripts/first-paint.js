@@ -229,7 +229,7 @@ const OBSERVER_SOURCE = `(() => {
 const SAMPLE_EXPRESSION = `(() => {
   const state = window.__firstPaint;
   const root = document.getElementById('root');
-  const has = selector => Boolean(root && root.querySelector(selector));
+  const has = selector => [...(root?.querySelectorAll(selector) || [])].some(el => el.getClientRects().length > 0);
   const text = document.body ? document.body.innerText.trim().length : 0;
   const inter = document.fonts ? [...document.fonts].some(face => face.family.replace(/"/g, '') === 'Inter Variable' && face.status === 'loaded') : false;
   let phase = 'no-document';
@@ -244,8 +244,13 @@ const SAMPLE_EXPRESSION = `(() => {
     blank: text === 0,
     theme: document.documentElement.getAttribute('data-theme'),
     header: has('.app-header'),
-    sidebar: has('.desktop-sidebar .app-sidenav'),
+    // The static shell keeps the desktop nav in the DOM on mobile.
+    // Layout boxes respect hidden ancestors as well as the nav's own display.
+    sidebar: [...(root?.querySelectorAll('.desktop-sidebar .app-sidenav') || [])].some(el => el.getClientRects().length > 0),
     landing: has('.landing-title'),
+    recent: [...document.querySelectorAll('.landing-recent')].some(el => getComputedStyle(el).display !== 'none'),
+    newUserPicks: [...document.querySelectorAll('.landing-quick-picks')].some(el => el.textContent.includes('Try with') && getComputedStyle(el).display !== 'none'),
+    recentHosts: [...document.querySelectorAll('.landing-recent-host')].map(el => el.textContent),
     connect: has('.landing-connect'),
     catalog: has('.catalog-view'),
     catalogRows: root ? root.querySelectorAll('.catalog-server-row').length : 0,
@@ -254,6 +259,8 @@ const SAMPLE_EXPRESSION = `(() => {
     catalogSort: root?.querySelector('#catalog-sort')?.value,
     catalogCategory: root?.querySelector('#catalog-category')?.value,
     connectionPanel: has('.connection-console'),
+    workspaceRecent: has('.recent-server-link'),
+    tabs: [...(root?.querySelectorAll('.playground-tab-label') || [])].map(el => el.textContent),
     inter,
     painted: Boolean(state && state.paints['first-paint'] !== undefined),
     cls: state ? state.cls : 0,
@@ -292,6 +299,14 @@ async function measureFirstPaint(options = {}) {
       features: [{ name: 'prefers-color-scheme', value: settings.colorScheme }],
     });
     await page('Page.addScriptToEvaluateOnNewDocument', { source: OBSERVER_SOURCE });
+
+    if (settings.recentServers) await page('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem('mcpRecentServers', ${JSON.stringify(JSON.stringify(settings.recentServers))})`,
+    });
+
+    if (settings.savedTabs) await page('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem('mcpConnectionTabs', ${JSON.stringify(JSON.stringify(settings.savedTabs))})`,
+    });
 
     const samples = [];
     const screenshots = [];
@@ -361,6 +376,8 @@ function formatTimeline(result) {
     sample.sidebar ? 'sidebar' : null,
     sample.landing ? 'landing' : null,
     sample.connect ? 'connect-form' : null,
+    sample.recent ? 'recent-chips' : null,
+    sample.newUserPicks ? 'new-user-picks' : null,
     sample.connectionPanel ? 'connection-panel' : null,
     `theme=${sample.theme || 'unset'}`,
     sample.inter ? 'Inter' : 'fallback-font',

@@ -124,6 +124,25 @@ describe('App first render', () => {
     expect(authMocks.loads, 'the Firebase chunk is not fetched for a new visitor').toBe(0);
   });
 
+  it('keeps saved tabs and the workspace from the first commit through delayed signed-out auth', async () => {
+    localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
+    // Tabs must survive even when no dashboards have been saved.
+    localStorage.setItem('mcpConnectionTabs', JSON.stringify([
+      { id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' },
+      { id: 'server', title: 'mcp.context7.com', serverUrl: 'https://mcp.context7.com/mcp', connectionStatus: 'Connected' },
+    ]));
+    localStorage.setItem('mcpRecentServers', JSON.stringify([{ url: 'https://mcp.context7.com/mcp' }]));
+    mount();
+    const first = snapshot();
+    expect(first).toMatchObject({ landing: undefined, connectionPanel: true, tabs: ['New Connection', 'mcp.context7.com'] });
+    await act(async () => {});
+    expect(snapshot()).toEqual(first);
+    act(() => authMocks.listener!(null));
+    await act(async () => {});
+    expect(snapshot()).toEqual(first);
+    expect(JSON.parse(localStorage.getItem('mcpConnectionTabs')!)).toHaveLength(2);
+  });
+
   it('renders the shell and landing while a remembered session loads, and keeps them when auth resolves', async () => {
     localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
     mount();

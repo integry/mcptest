@@ -1,0 +1,4 @@
+{
+  "error": "invalid_client_metadata",
+  "error_description": "Vendor with name mcptest-io was not found in approved vendors"
+}

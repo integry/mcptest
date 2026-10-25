@@ -9,12 +9,13 @@
 // is stored through the endpoint's PublishedReports instance, which keeps the
 // newest PUBLISHED_REPORT_RETENTION snapshots.
 //
-// Nothing here sends or stores credentials: requests carry no Authorization
+// MCP checks never send credentials: requests carry no Authorization
 // header, an endpoint that answers 401/403 is recorded as "auth-required" and
 // skipped, and endpoints whose stored URL carries a redacted query credential
 // are never contacted. Results are public: an Atom feed per endpoint at
 // /r/<encoded endpoint>/changes.xml and a "breaking change" state on the live
-// report badge.
+// report badge. Breaking/risky changes also queue push alerts inside the endpoint
+// object; destination credentials never leave that object (see watchAlerts.js).
 //
 // Plans: only `free` exists. A paid tier adds a plan with its own interval and
 // capabilities here (WATCH_PLANS) without changing the stored shapes.
@@ -307,11 +308,15 @@ export async function checkWatchedEndpoint(env, registration, { now = Date.now()
       findingCount: report.findings.length,
     } : { baseline: true, summary: `Baseline recorded: ${stored.snapshot.tools.length} tools` }),
   };
-  await callStub(stub, '/watch/snapshot', {
+  const recorded = await callStub(stub, '/watch/snapshot', {
     entry,
     snapshotJson: stored.json,
     state: { state: report ? entry.severity : 'baseline', checkedAt, changedAt: checkedAt, summary: entry.summary },
   });
+  if (recorded.ok && (await recorded.json()).created && ['breaking', 'risky'].includes(entry.severity)) {
+    // Delivery runs in the endpoint object with waitUntil; failures never fail a check.
+    await callStub(stub, '/watch/alert', { entry, now }).catch(() => {});
+  }
   return { endpointKey: registration.endpointKey, outcome: report ? entry.severity : 'baseline' };
 }
 

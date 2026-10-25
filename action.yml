@@ -34,7 +34,7 @@ outputs:
     description: Worst release decision across endpoints
     value: ${{ steps.gate.outputs.decision }}
   breaking-count:
-    description: Number of breaking findings across endpoints
+    description: Number of confirmed breaking findings across endpoints, or unknown when comparison could not run
     value: ${{ steps.gate.outputs.breaking-count }}
   report-path:
     description: Absolute artifact directory containing JSON, Markdown and summary.md

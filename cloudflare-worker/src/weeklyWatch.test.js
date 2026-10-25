@@ -452,3 +452,67 @@ describe('weekly watch', () => {
     expect((await request(`/r/${encodeURIComponent('http://localhost/mcp')}/changes.xml`)).status).toBe(404);
   });
 });
+
+describe('weekly alert owner routes', () => {
+  it('requires a retained snapshot removal token for setup, status, test and removal', async () => {
+    const published = await (await publish(run('alerts'))).json();
+    for (const [method, suffix] of [['GET', ''], ['POST', ''], ['POST', '/test'], ['DELETE', '']]) {
+      const path = `/r/${published.id}/alerts${suffix}`;
+      const init = { method, ...(method === 'POST' && !suffix ? { body: JSON.stringify({ url: 'https://receiver.acme.com/hook' }) } : {}) };
+      expect((await request(path, init)).status).toBe(401);
+      expect((await request(path, { ...init, headers: { 'X-Removal-Token': 'wrong' } })).status).toBe(403);
+    }
+    const path = `/r/${published.id}/alerts`;
+    const headers = { 'X-Removal-Token': published.removalToken, 'Content-Type': 'application/json' };
+    const url = 'https://receiver.acme.com/hook?secret=destination-secret';
+    const created = await request(path, { method: 'POST', headers, body: JSON.stringify({ url }) });
+    expect(created.status).toBe(200);
+    const body = await created.json();
+    expect(body.signingSecret).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(body)).not.toContain(url);
+    const read = await request(path, { headers });
+    expect(read.headers.get('Cache-Control')).toBe('no-store');
+    expect(await read.json()).toEqual({ alert: body.alert });
+    for (const publicPath of [`/r/endpoint/${encodeURIComponent(ENDPOINT)}`, `/r/${published.id}`, `/r/${encodeURIComponent(ENDPOINT)}/changes.xml`, `/badge/report/${encodeURIComponent(ENDPOINT)}.svg`]) {
+      const text = await (await request(publicPath)).text();
+      expect(text).not.toContain(url);
+      expect(text).not.toContain(body.signingSecret);
+    }
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchImpl);
+    try {
+      const tested = await request(`${path}/test`, { method: 'POST', headers });
+      expect((await tested.json()).alert.lastDelivery).toMatchObject({ status: 'ok', httpStatus: 204 });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect((await request(`${path}/test`, { method: 'POST', headers })).status).toBe(429);
+    } finally { vi.unstubAllGlobals(); }
+    expect((await request(path, { method: 'DELETE', headers })).status).toBe(200);
+    expect(await (await request(path, { headers })).json()).toEqual({ alert: null });
+    await request(path, { method: 'POST', headers, body: JSON.stringify({ url }) });
+    await request(`/r/${published.id}`, { method: 'DELETE', headers });
+    expect((await request(path, { headers })).status).toBe(403);
+    const stub = env.PUBLISHED_REPORTS.get({ name: `endpoint:${await publishedEndpointKey(ENDPOINT)}` });
+    expect(await stub.storage.get('watch:alert-destination')).toBeUndefined();
+  });
+
+  it('queues only breaking and risky weekly changes and leaves successful checks intact on delivery failure', async () => {
+    const published = await (await publish(run('cron-alerts'))).json();
+    await request(`/r/${published.id}/alerts`, {
+      method: 'POST', headers: { 'X-Removal-Token': published.removalToken },
+      body: JSON.stringify({ url: 'https://receiver.acme.com/hook' }),
+    });
+    const server = fakeServer(TOOLS());
+    const start = Date.now();
+    const fetchImpl = vi.fn(async () => { throw new Error('secret URL must never escape'); });
+    vi.stubGlobal('fetch', fetchImpl);
+    try {
+      await runWeeklyWatch(env, { now: start, fetchImpl: server.fetch });
+      expect(fetchImpl).not.toHaveBeenCalled();
+      server.tools = [server.tools[0]];
+      expect(await runWeeklyWatch(env, { now: start + WEEK, fetchImpl: server.fetch })).toEqual([expect.objectContaining({ outcome: 'breaking' })]);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      await runWeeklyWatch(env, { now: start + 2 * WEEK, fetchImpl: server.fetch });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally { vi.unstubAllGlobals(); }
+  });
+});

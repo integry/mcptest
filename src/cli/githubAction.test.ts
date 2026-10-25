@@ -1,9 +1,9 @@
 // @vitest-environment node
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { classifyActionTarget, parseActionInputs, renderActionSummary, updatePullRequestComment } from './githubAction';
+import { classifyActionTarget, parseActionInputs, renderActionSummary, runGitHubAction, updatePullRequestComment } from './githubAction';
 import type { PublicReport } from '../utils/reportArtifact';
 
 const env = { MCPTEST_ACTION_ENDPOINTS: 'https://example.com/mcp\r\nhttps://example.com/sse' };
@@ -38,6 +38,40 @@ describe('GitHub Action inputs and release policy', () => {
     expect(result.changes?.counts.breaking).toBe(1);
     expect(classifyActionTarget(report(['new']), report(), []).changes?.counts.safe).toBe(1);
     expect(classifyActionTarget(report(), undefined, ['codex-cli']).decision).toBe('unknown');
+  });
+  it('detects removals from redacted schemas only when the name inventories are complete', () => {
+    const before = report(['old_tool', 'retained']);
+    const after = report(['retained']);
+    for (const value of [before, after]) {
+      Object.assign(value.toolSurfaceAnalysis!.toolDefinitions, { status: 'partial', namesComplete: true });
+    }
+    const target = classifyActionTarget(after, before, []);
+    expect(target).toMatchObject({ decision: 'blocked', comparison: 'partial' });
+    expect(target.changes?.counts.breaking).toBe(1);
+    expect(renderActionSummary([target], 'blocked')).toContain('Schema comparison could not run');
+    const unchanged = classifyActionTarget(after, after, []);
+    expect(unchanged.decision).toBe('unknown');
+    expect(renderActionSummary([unchanged], 'unknown')).toContain('breaking count is unknown');
+    const complete = report(['retained']);
+    complete.toolSurfaceAnalysis!.toolDefinitions.tools[0].description = 'Retained tool guidance';
+    expect(classifyActionTarget(complete, before, []).changes?.counts).toEqual({ breaking: 1, risky: 0, safe: 0 });
+    before.toolSurfaceAnalysis!.toolDefinitions.namesComplete = false;
+    expect(classifyActionTarget(after, before, [])).toMatchObject({ decision: 'unknown', comparison: 'unavailable', changes: undefined });
+  });
+  it('reports an unknown breaking count when action configuration or baseline loading fails', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mcptest-failed-action-'));
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const outputs = join(dir, 'outputs');
+      const summary = join(dir, 'summary');
+      expect(await runGitHubAction({ ...env, GITHUB_WORKSPACE: dir, GITHUB_OUTPUT: outputs,
+        GITHUB_STEP_SUMMARY: summary, MCPTEST_ACTION_BASELINE: 'missing.json', MCPTEST_ACTION_COMMENT: 'false' })).toBe(1);
+      expect(await readFile(outputs, 'utf8')).toContain('decision=unknown\nbreaking-count=unknown');
+      expect(await readFile(summary, 'utf8')).toContain('comparison could not run');
+    } finally {
+      stderr.mockRestore();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
   it('does not claim comparison success for incomplete tool lists or unrelated endpoints', () => {
     const incomplete = report();
