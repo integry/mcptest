@@ -1346,11 +1346,11 @@ function addAppPreloads(html, hrefs) {
 
 /**
  * State scripts set before the full stylesheet has surely applied: classes on
- * <body> or the sidebar (src/staticPage), and data-theme on <html>
- * (public/theme-init.js), which is outside the page body the CSS is matched against.
+ * <body> or the sidebar (src/staticPage), and theme/returning-visitor attributes
+ * on <html> (public/theme-init.js), outside the page body the CSS is matched against.
  */
 const RUNTIME_STATE_CLASSES = ['menu-open', 'sidenav-collapsed', 'app-sidenav--collapsed'];
-const RUNTIME_STATE_ATTRIBUTES = ['data-theme'];
+const RUNTIME_STATE_ATTRIBUTES = ['data-theme', 'data-returning-visitor'];
 
 function listHtmlFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {

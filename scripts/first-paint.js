@@ -244,7 +244,9 @@ const SAMPLE_EXPRESSION = `(() => {
     blank: text === 0,
     theme: document.documentElement.getAttribute('data-theme'),
     header: has('.app-header'),
-    sidebar: has('.desktop-sidebar .app-sidenav'),
+    // The static shell keeps the desktop nav in the DOM on mobile.
+    // Layout boxes respect hidden ancestors as well as the nav's own display.
+    sidebar: [...(root?.querySelectorAll('.desktop-sidebar .app-sidenav') || [])].some(el => el.getClientRects().length > 0),
     landing: has('.landing-title'),
     recent: [...document.querySelectorAll('.landing-recent')].some(el => getComputedStyle(el).display !== 'none'),
     newUserPicks: [...document.querySelectorAll('.landing-quick-picks')].some(el => el.textContent.includes('Try with') && getComputedStyle(el).display !== 'none'),
