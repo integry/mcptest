@@ -27,7 +27,7 @@ const LABEL_COLOR = '#555';
 
 export const BADGE_DEFINITIONS: Record<BadgeVariant, BadgeDefinition> = {
   neutral: { label: 'tested on', message: 'mcptest.io', color: '#047857', file: 'mcptest' },
-  ready: { label: 'mcptest.io', message: 'ready', color: '#047857', file: 'ready' },
+  ready: { label: 'mcptest.io', message: 'ready', color: '#03664a', file: 'ready' },
   review: { label: 'mcptest.io', message: 'review', color: '#d97706', file: 'review' },
   'authorization-required': {
     label: 'mcptest.io',

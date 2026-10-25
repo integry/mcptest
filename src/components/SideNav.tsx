@@ -66,7 +66,7 @@ const SideNav: React.FC<SideNavProps> = ({
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
   const [focusedDashboardIndex, setFocusedDashboardIndex] = useState<number | null>(null);
-  const dashboardListRef = useRef<(HTMLLIElement | null)[]>([]);
+  const dashboardListRef = useRef<(HTMLAnchorElement | null)[]>([]);
   const navRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const { currentUser, loginWithGoogle, logout } = useAuth();
@@ -346,21 +346,19 @@ const SideNav: React.FC<SideNavProps> = ({
               {spaces.length === 0 && !showCreateInput ? (
                 <p className="sidenav-empty-hint">Create a dashboard to pin saved connections.</p>
               ) : (
-                <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox" aria-label="Dashboards">
+                <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} aria-label="Dashboards">
                   {spaces.map((space, index) => (
                     <li
-                      ref={(el) => { dashboardListRef.current[index] = el; }}
                       className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
                       key={space.id}
                       onDragOver={(e) => handleSpaceDragOver(e, index)}
                       onDragLeave={handleSpaceDragLeave}
                       onDrop={(e) => handleSpaceDrop(e, index)}
-                      tabIndex={focusedDashboardIndex === index ? 0 : -1}
-                      role="option"
-                      aria-selected={selectedSpaceId === space.id && activeView === 'dashboards'}
-                      onFocus={() => setFocusedDashboardIndex(index)}
                     >
                       <Link
+                        ref={(el) => { dashboardListRef.current[index] = el; }}
+                        onFocus={() => setFocusedDashboardIndex(index)}
+                        aria-current={selectedSpaceId === space.id && activeView === 'dashboards' ? 'page' : undefined}
                         to={getSpaceUrl(space.name)}
                         className={`dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active' : ''}`}
                         draggable

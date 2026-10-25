@@ -111,8 +111,12 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Playwright smoke suite
+      - name: Playwright smoke and WCAG 2.2 accessibility gate
         run: npm run test:e2e
+
+      - name: Accessibility findings summary
+        if: always()
+        run: node tests/e2e/accessibility-summary.mjs
 
       - name: Upload the Playwright report
         if: failure()
