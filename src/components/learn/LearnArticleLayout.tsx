@@ -1,3 +1,7 @@
+import GuideServers from './GuideServers';
+import InlineTestForm from './InlineTestForm';
+import { showInlineTest } from '../../utils/guideNextSteps';
+import { enhanceEngagement } from '../../utils/pageEngagement';
 import React, { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { LearnArticleSummary } from '../../content/learnRegistry';
@@ -33,6 +37,7 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
   const track = getTrack(article.track);
   const articleRef = useRef<HTMLElement>(null);
   const location = useLocation();
+  useEffect(() => articleRef.current ? enhanceEngagement(articleRef.current) : undefined, [article.slug]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || window.location.hash) return;
@@ -114,6 +119,7 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
         {prose}
 
         <footer className="reading-footer">
+          {showInlineTest(article) && <InlineTestForm />}
           {(previous || next) && (
             <nav className="reading-pager" aria-label={track ? `${track.label} track` : 'Track'}>
               {previous ? (
@@ -124,12 +130,15 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
               ) : <span />}
               {next ? (
                 <Link className="reading-pager-link reading-pager-next" to={next.path} rel="next">
-                  <span className="reading-pager-label">Next</span>
+                  <span className="reading-pager-label">Next in this track</span>
                   <span className="reading-pager-title">{next.title}</span>
+                  <span className="reading-related-summary">{next.summary}</span>
                 </Link>
               ) : <span />}
             </nav>
           )}
+
+          <GuideServers article={article} />
 
           {related.length > 0 && (
             <section className="reading-related" aria-labelledby="related-guides-heading">
