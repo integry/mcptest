@@ -115,7 +115,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             </>
           ) : (
             <>
-              <h2 className="mb-1">Remote MCP server catalog</h2>
+              <h1 className="mb-1">Remote MCP server catalog</h1>
               <p className="text-muted mb-0">
                 Inspect transport, protocol era, and authentication before you connect.
               </p>
