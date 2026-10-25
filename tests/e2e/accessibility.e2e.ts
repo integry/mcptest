@@ -41,6 +41,9 @@ for (const theme of ['light', 'dark'] as const) {
     });
     for (const route of routes) {
       test(route, async ({ page }, info) => {
+        // The full catalog needs two axe scans across hundreds of server cards
+        // (prerendered and mounted). Allow both to finish on shared CI runners.
+        if (route === '/catalog') test.setTimeout(60_000);
         await page.goto(route);
         await expect(page.locator('main')).toBeVisible();
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
