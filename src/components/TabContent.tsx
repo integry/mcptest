@@ -1,3 +1,4 @@
+import NextStepsStrip from './NextStepsStrip';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // Bootstrap's dropdown behaviour; loaded with this chunk rather than on every page.
 import 'bootstrap';
@@ -1129,6 +1130,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       )}
 
+      {isConnected && <NextStepsStrip endpoint={tab.serverUrl} onCallTool={() => {
+        const pane = document.querySelector<HTMLElement>('.workbench-capabilities');
+        pane?.scrollIntoView({ block: 'nearest' });
+        pane?.querySelector<HTMLElement>('button')?.focus();
+      }} />}
       {!showLanding && isConnected && playgroundHistory.interfaceDiff && (
         <InterfaceChangeStrip
           diff={playgroundHistory.interfaceDiff}

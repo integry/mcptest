@@ -1,4 +1,7 @@
-import React, { Suspense } from 'react';
+import { renderServerActions, renderServerNextSteps } from '../utils/serverNextSteps';
+import { getCatalogServers } from '../utils/catalogUtils';
+import { enhanceEngagement } from '../utils/pageEngagement';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
 import { trackEvent } from '../utils/analytics';
@@ -77,6 +80,8 @@ const alternativeAuthLabel = (server: CatalogServer) => {
 };
 
 const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer: openInPlayground }) => {
+  const pageRef = useRef<HTMLElement>(null);
+  useEffect(() => pageRef.current ? enhanceEngagement(pageRef.current) : undefined, [server?.id]);
   const onTestServer = (selected: CatalogServer) => {
     trackEvent('catalog_open_server', { server_id: selected.id, surface: 'profile' });
     openInPlayground(selected);
@@ -109,7 +114,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
   const catalogBadgeVariant = getCatalogBadgeVariant(server.checkedAt ? server : undefined);
 
   return (
-    <article className="server-profile">
+    <article className="server-profile" ref={pageRef}>
       <nav aria-label="Breadcrumb" className="server-profile-breadcrumb">
         <ol className="breadcrumb mb-0">
           <li className="breadcrumb-item server-profile-breadcrumb-parent">
@@ -137,17 +142,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           </div>
         </div>
 
-        <div className="server-profile-actions">
-          <button className="btn btn-primary server-profile-action" type="button" onClick={() => onTestServer(server)}>
-            <i className="bi bi-play-fill me-1" aria-hidden="true"></i>
-            Test in Playground
-          </button>
-          {server.homepageUrl && (
-            <a className="btn btn-outline-secondary server-profile-action" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
-              Product site <i className="bi bi-box-arrow-up-right ms-1" aria-hidden="true"></i>
-            </a>
-          )}
-        </div>
+        <div dangerouslySetInnerHTML={{ __html: renderServerActions(server) }} />
       </header>
 
       <section className="server-profile-signal-grid" aria-label="Connection summary">
@@ -302,6 +297,8 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       <Suspense fallback={<ViewFallback label="Loading client setup" />}>
         <ServerConnect server={server} />
       </Suspense>
+
+      <div dangerouslySetInnerHTML={{ __html: renderServerNextSteps(server, getCatalogServers()) }} />
 
       <section className="card server-profile-section">
         <div className="card-body">
