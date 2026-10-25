@@ -935,7 +935,7 @@ export const checkMcpDiscovery = async (
         url: normalized,
         transport,
         sources: [result.row.title],
-        inspectorPath: getServerUrl(normalized, transport === 'sse' ? 'sse' : 'mcp'),
+        inspectorPath: getServerUrl(normalized, transport === 'sse' ? 'sse' : undefined),
       });
     }
   };
