@@ -123,6 +123,7 @@ const snapshotRadioChoices = (root: HTMLElement): (() => void) => {
  */
 export const snapshotStaticPageState = (root: HTMLElement): (() => void) => {
   const restoreChoices = snapshotRadioChoices(root);
+  const endpoint = root.querySelector<HTMLInputElement>('.seo-landing-fallback #serverUrl');
   // The editable static input buffers typing while React downloads. Keep the
   // node until the first commit so even edits after this snapshot survive,
   // including a search the visitor blurred before the swap.
@@ -130,6 +131,10 @@ export const snapshotStaticPageState = (root: HTMLElement): (() => void) => {
   const searchFocused = search !== null && document.activeElement === search;
   const restoreInputs = () => {
     restoreChoices();
+    const appEndpoint = root.querySelector<HTMLInputElement>('#serverUrl');
+    if (endpoint && appEndpoint && endpoint.value !== appEndpoint.value) {
+      setFieldValue(appEndpoint, endpoint.value);
+    }
     const appSearch = root.querySelector<HTMLInputElement>('#catalog-search');
     // An untouched fallback is empty even for a filtered URL; React's URL
     // state wins unless the visitor actually edited the static search.
@@ -190,6 +195,18 @@ const reportPageView = (shell: HTMLElement): void => {
 /** Wires the static page's controls. */
 export const enhanceStaticPage = (shell: HTMLElement): void => {
   if (readStoredSidebarCollapsed()) applySidebarCollapsed(shell, true);
+
+  const endpoint = shell.querySelector<HTMLInputElement>('.seo-landing-fallback #serverUrl');
+  const connect = shell.querySelector<HTMLButtonElement>('#connectBtn');
+  endpoint?.addEventListener('input', () => {
+    if (connect) connect.disabled = !endpoint.value.trim();
+  });
+  endpoint?.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && endpoint.value.trim()) {
+      event.preventDefault();
+      connect?.click();
+    }
+  });
 
   const search = shell.querySelector<HTMLInputElement>('#catalog-search');
   search?.addEventListener('input', () => search.setAttribute(SEARCH_EDITED_ATTRIBUTE, ''));

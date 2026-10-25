@@ -192,10 +192,10 @@ describe('static first frame (header, sidebar, playground landing)', () => {
       .toEqual(LEARN_TRACKS.flatMap(track => track.items.map(item => item.path)));
   });
 
-  it('renders the landing connect form and quick picks as inert markup', () => {
+  it('renders an editable connect form and quick picks for the deferred mount', () => {
     const shell = renderShell(false);
     const input = shell.querySelector('.landing-connect input#serverUrl');
-    expect(input.hasAttribute('readonly')).toBe(true);
+    expect(input.hasAttribute('readonly')).toBe(false);
     expect(shell.querySelector('.landing-connect button#connectBtn').disabled).toBe(true);
     expect(shell.querySelectorAll('[onclick], script')).toHaveLength(0);
     expect(Array.from(shell.querySelectorAll('.landing-quick-pick'), button => button.dataset.serverId))

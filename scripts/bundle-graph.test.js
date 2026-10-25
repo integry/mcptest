@@ -200,4 +200,15 @@ describe.skipIf(!process.env.BUNDLE_GRAPH)('chunk graph of the built site', () =
     // behind the first input (issue #405). Ratchet down, never up.
     expect(bytes).toBeLessThan(40_000);
   });
+
+  it('keeps the app off prerendered search entry pages until input', () => {
+    for (const file of [
+      'index.html', 'catalog.html', 'catalog/developer-tools.html',
+      'servers/context7/index.html', 'learn/mcp-http-headers-reference/index.html',
+    ]) {
+      const html = fs.readFileSync(path.join(distDir, file), 'utf8');
+      expect(html, file).toContain('data-deferred-mount');
+      expect(html, file).not.toContain('data-app-preload');
+    }
+  });
 });

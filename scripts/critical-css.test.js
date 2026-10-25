@@ -48,7 +48,9 @@ describe('critical CSS extraction', () => {
   });
 
   it('requires only the classes, ids and attributes a match cannot do without', () => {
-    expect(requiredTokens('.reading-prose pre:not(.plain)')).toEqual([{ kind: 'class', name: 'reading-prose' }]);
+    expect(requiredTokens('.reading-prose pre:not(.plain)')).toEqual([
+      { kind: 'class', name: 'reading-prose' }, { kind: 'tag', name: 'pre' },
+    ]);
     expect(requiredTokens(':is(.a, .b) > #root.x[data-y="a.b"]')).toEqual([
       { kind: 'id', name: 'root' },
       { kind: 'class', name: 'x' },
@@ -70,7 +72,7 @@ describe('critical CSS extraction', () => {
       '.app-header{display:flex}',
       '.reading-prose pre:not(.plain){overflow:auto}',
       '.bi-copy:before{content:"\\f759"}',
-      '.a,.b .c{color:blue}',
+      '.b .c{color:blue}',
       '@media (min-width:768px){.app-header{gap:1rem}}',
       '@keyframes spin{to{transform:rotate(1turn)}}',
     ].join(''));

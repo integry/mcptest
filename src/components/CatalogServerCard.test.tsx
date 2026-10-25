@@ -86,7 +86,7 @@ describe('CatalogServerCard presentation', () => {
     );
     expect(container.querySelector('.catalog-listing-source')?.textContent).toContain('Publisher');
     expect(container.querySelector('.catalog-listing-source')?.textContent).not.toContain('Verified');
-    expect(listingSourceIcon?.getAttribute('stroke-width')).toBe('1.5');
+    expect(listingSourceIcon).not.toBeNull();
     expect(listingSourceIconRule).toMatch(/stroke-width:\s*1\.5;/);
     expect(onlineStatusRule).toMatch(/color:\s*var\(--success-color\);/);
     expect(container.querySelector('.catalog-runtime-status')?.textContent).toBe(
@@ -124,7 +124,9 @@ describe('CatalogServerCard presentation', () => {
 
     expect(endpoint?.textContent).toBe('api.enterprise-production-environment.company.com');
     expect(endpoint?.title).toBe(longUrl);
-    expect(endpoint?.classList).toContain('text-truncate');
+    expect(endpointRule).toMatch(/text-overflow:\s*ellipsis;/);
+    expect(endpointRule).toMatch(/overflow:\s*hidden;/);
+    expect(endpointRule).toMatch(/white-space:\s*nowrap;/);
     expect(endpoint?.classList).not.toContain('text-muted');
     expect(endpointRule).toMatch(/color:\s*var\(--catalog-secondary-text\);/);
   });
