@@ -121,6 +121,16 @@ describe('inlining into a page', () => {
     expect(findStylesheetHrefs(once)).toEqual(['/assets/style.css']);
   });
 
+  it('keeps returning-visitor rules that depend on the html element', () => {
+    const page = `${head}<body><div class="seo-shell-fallback"><section class="seo-landing-fallback"></section><div class="seo-returning-workspace"></div></div></body></html>`;
+    const css = '.seo-returning-workspace{display:none}'
+      + 'html[data-returning-visitor] .seo-shell-fallback .seo-landing-fallback{display:none}'
+      + 'html[data-returning-visitor] .seo-returning-workspace{display:contents}';
+    const output = inlineCriticalCss(page, () => css, { extraAttributes: ['data-returning-visitor'] });
+    const document = new DOMParser().parseFromString(output, 'text/html');
+    expect(document.querySelector('style[data-critical-css]').textContent).toBe(css);
+  });
+
   it('cannot close its own style element', () => {
     const output = inlineCriticalCss(html, () => '.app-header:after{content:"</style><script>x</script>"}');
     expect(output).toContain('content:"<\\/style><script>x<\\/script>"');

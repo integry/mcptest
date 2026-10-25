@@ -318,9 +318,10 @@ function inlineCriticalCss(html, readStylesheet, options = {}) {
   const hrefs = Array.from(source.matchAll(STYLESHEET_LINK), match => match[2]);
   if (!hrefs.length) return source;
   const css = hrefs.map(readStylesheet).join('\n');
-  const body = source.slice(source.indexOf('<body'));
+  // Include the document element: pre-paint state rules such as
+  // html[data-returning-visitor] must survive type-selector filtering too.
   // `</` cannot appear in CSS outside a string, and inside one `<\/` is the same string.
-  const critical = extractCriticalCss(css, body, options).replace(/<\//g, '<\\/');
+  const critical = extractCriticalCss(css, source, options).replace(/<\//g, '<\\/');
   let inserted = false;
   return source.replace(STYLESHEET_LINK, (_match, crossorigin, href) => {
     const deferred = `<link rel="preload" as="style"${crossorigin} href="${href}" data-deferred-stylesheet>`
