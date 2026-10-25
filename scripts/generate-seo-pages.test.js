@@ -471,15 +471,15 @@ describe('generated page metadata', () => {
     expect(html).toContain('catalog-server-logo-initials');
   });
 
-  it('leads search and social descriptions with the curated summary intact, then a setup phrase that fits', () => {
+  it('leads search and social descriptions with endpoint and auth, then setup and the intact summary', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
     server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';
 
     const html = renderServerHtml(indexHtml, server);
 
-    const description = 'Inspect the Example Server MCP server. Explore example records and queries. '
-      + 'Setup for Claude, ChatGPT, Cursor and more.';
-    expect(html).toContain('<title>Example Server MCP Server Report | mcptest.io</title>');
+    const description = 'example.com. No auth. Setup for Claude, ChatGPT, Cursor and more. '
+      + 'Inspect the Example Server MCP server. Explore example records and queries.';
+    expect(html).toContain('<title>Example Server MCP Server: URL, Auth &amp; Setup | mcptest.io</title>');
     expect(html).toContain(`name="description" content="${description}"`);
     expect(html).toContain(`property="og:description" content="${description}"`);
     expect(html).toContain(`name="twitter:description" content="${description}"`);
@@ -494,13 +494,14 @@ describe('generated page metadata', () => {
     const metaDescription = () => renderServerHtml(indexHtml, server).match(/<meta name="description" content="([^"]*)"/)?.[1];
     const description = metaDescription();
 
-    expect(description.startsWith(`${summary} `)).toBe(true);
+    expect(description.startsWith('example.com. No auth. ')).toBe(true);
+    expect(description.endsWith(summary)).toBe(true);
     expect(description).not.toContain('…');
     expect(description.length).toBeLessThanOrEqual(158);
-    expect(description).toBe(`${summary} Setup for Claude and more.`);
+    expect(description).toBe(`example.com. No auth. ${summary}`);
 
-    server.seoDescription = `${summary} Covers every endpoint too.`;
-    expect(metaDescription()).toBe(`${summary} Covers every endpoint too.`);
+    server.seoDescription = 'A summary that leaves room for one setup client name but no more than that. Covers endpoint tool results.';
+    expect(metaDescription()).toBe(`example.com. No auth. Setup for Claude and more. ${server.seoDescription}`);
   });
 
   it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
@@ -683,9 +684,9 @@ describe('generated page metadata', () => {
     const article = articles.find(item => item.slug === 'testing-guide');
     const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
 
-    expect(html).toContain('<title>Testing Guide for Remote MCP Servers | mcptest.io</title>');
+    expect(html).toContain('<title>How to Test a Remote MCP Server (Step by Step) | mcptest.io</title>');
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
-    expect(html).toContain('name="description" content="Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers.');
+    expect(html).toContain('name="description" content="Test a remote MCP server step by step:');
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
     expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
@@ -1037,7 +1038,7 @@ describe('server page "Connect it" section', () => {
     expect(chatgpt.textContent).toContain('ChatGPT does not support API key headers');
 
     const description = document.querySelector('meta[name="description"]').getAttribute('content');
-    expect(description).toBe('An example MCP server. Setup for Claude, Cursor, VS Code and more.');
+    expect(description).toBe('example.com. API key header. Setup for Claude, Cursor, VS Code and more. An example MCP server.');
     expect(description).not.toContain('ChatGPT');
     expect(description).toContain('Cursor');
   });

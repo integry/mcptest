@@ -102,19 +102,74 @@ export const formatCatalogTimestamp = (value: string): string => {
   return `${date} at ${time}`;
 };
 
-const truncateDescription = (value: string, maxLength = 158): string => {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+/** Keep search snippets readable, including when a curated summary is too long. */
+export const truncateCatalogDescription = (value: string, maxLength = 158): string => {
+  if (value.length <= maxLength) return value;
+  const candidate = value.slice(0, maxLength - 1);
+  const boundary = candidate.lastIndexOf(' ');
+  return `${(boundary < 0 ? '' : candidate.slice(0, boundary)).trimEnd()}…`;
 };
 
-export const getCatalogServerMetaDescription = (server: CatalogServer): string => {
-  return truncateDescription(
-    server.seoDescription
-      || `Inspect the ${server.name} MCP server. ${server.description} Test and debug endpoints.`
-  );
+export const getCatalogServerTitle = (name: string): string => {
+  const fullSuffix = ' MCP Server: URL, Auth & Setup | mcptest.io';
+  const shortSuffix = ' MCP Server: URL, Auth | mcptest.io';
+  if (name.length + fullSuffix.length <= 60) return `${name}${fullSuffix}`;
+  const budget = 60 - shortSuffix.length;
+  const shortName = name.length <= budget ? name : `${name.slice(0, budget - 1).trimEnd()}…`;
+  return `${shortName}${shortSuffix}`;
+};
+
+/** Detected auth comes from catalogValidation; unknown stays unknown. */
+export const getCatalogAuthAnswer = (server: CatalogServer) => {
+  switch (server.authType) {
+    case 'oauth': return {
+      label: 'Sign in with OAuth',
+      detail: 'Add the endpoint in your client, start Connect or Sign in, approve the requested scopes, and return to the client. OAuth discovery finds the authorization server; client registration requirements vary by provider. Follow the provider guidance and client setup below.',
+      guide: '/learn/oauth-for-mcp-explained',
+    };
+    case 'api-key': return {
+      label: 'API key header',
+      detail: `Create a scoped API key with the provider and configure ${server.requiredHeaders?.filter(header => header.secret).map(header => header.name).join(', ') || 'the publisher-documented credential header'} in your client. Use the generated setup below; do not put the key in the endpoint URL.`,
+      guide: '/learn/mcp-server-authentication-patterns',
+    };
+    case 'bearer-token':
+    case 'api-token': return {
+      label: server.authType === 'bearer-token' ? 'Bearer token' : 'API token header',
+      detail: 'Create a scoped provider token and supply it using the credential header and value format documented in the client setup below. Keep credentials out of shared URLs and logs.',
+      guide: '/learn/mcp-server-authentication-patterns',
+    };
+    case 'none': return {
+      label: 'No auth',
+      detail: 'Add the endpoint directly in your client. The catalog records no authentication requirement; no OAuth sign-in or API key is configured in this setup. The live server may change.',
+      guide: '/learn/connect-remote-mcp-server',
+    };
+    default: return {
+      label: 'Auth not yet verified',
+      detail: 'Catalog validation has not established the authentication method. Check the publisher documentation and test the endpoint before supplying credentials.',
+      guide: '/learn/mcp-server-authentication-patterns',
+    };
+  }
+};
+
+export const getCatalogServerHeading = (server: CatalogServer): string => (
+  `${server.name} MCP Server: ${server.url} — ${getCatalogAuthAnswer(server).label}`
+);
+
+export const getCatalogServerIntro = (server: CatalogServer): string => (
+  `Endpoint: ${server.url}. Authentication: ${getCatalogAuthAnswer(server).label}. ${server.description}`
+);
+
+export const getCatalogServerMetaDescription = (server: CatalogServer, setupPhrases: string[] = []): string => {
+  let host: string;
+  try { host = new URL(server.url).host; } catch { host = server.url; }
+  const answer = `${host}. ${getCatalogAuthAnswer(server).label}.`;
+  const summary = (server.seoDescription || server.description).trim();
+  // Preserve the full summary before spending characters on client names.
+  for (const phrase of [...setupPhrases, '']) {
+    const description = [answer, phrase, summary].filter(Boolean).join(' ');
+    if (description.length <= 158) return description;
+  }
+  return truncateCatalogDescription(`${answer} ${summary}`);
 };
 
 /** Inventory counts and snapshot date, or why no inventory was observed. */
@@ -150,7 +205,7 @@ export const getCatalogServerSeo = (server: CatalogServer) => {
   const description = getCatalogServerMetaDescription(server);
 
   return {
-    title: `${server.name} MCP Server Report | mcptest.io`,
+    title: getCatalogServerTitle(server.name),
     description,
     canonicalUrl,
     imageUrl: getCatalogServerImageUrl(server.logoUrl),

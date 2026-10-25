@@ -7,7 +7,7 @@ level: practitioner
 order: 445
 category: Transports
 readingTimeMinutes: 7
-lastReviewed: "2026-10-24"
+lastReviewed: "2026-10-25"
 metaTitle: "MCP Session not found (404) after deploys: fixes | mcptest.io"
 metaDescription: Fix stale Mcp-Session-Id failures after deploys, cold starts and scale-out. Compare sticky sessions, Redis, Durable Objects and stateless MCP, and test recovery.
 relatedSlugs:
@@ -16,6 +16,8 @@ relatedSlugs:
   - mcp-cors-headers-for-browser-clients
   - test-mcp-server-before-deploying
 sourceLinks:
+  - title: "MCP 2026 lifecycle and subscriptions"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28"
   - title: "MCP session management specification"
     url: "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#session-management"
   - title: "Claude Code stale-session recovery report #50450"
@@ -35,6 +37,20 @@ sourceLinks:
 ---
 
 A healthy endpoint can reject an old MCP session even while fresh connections work. Start by comparing a new connection with the failing client. If a new initialize succeeds and the old id receives 404, investigate the session lifecycle before changing tools or credentials.
+
+## error: failed to get tools: connection closed: calling "tools/list": client is closing: sending "subscriptions/listen": failed to connect (session id: ): session not found
+
+```text
+error: failed to get tools: connection closed: calling "tools/list": client is closing: sending "subscriptions/listen": failed to connect (session id: ): session not found
+```
+
+This nested output says tool discovery stopped when the connection closed. The innermost `session not found` is the useful clue; the empty session-id field alone does not prove a stale `Mcp-Session-Id`. `subscriptions/listen` belongs to the newer lifecycle, so inspect the negotiated version and raw HTTP exchange before applying a 2025 session workaround.
+
+**Client users:** stop and reconnect the server to obtain a fresh connection, then retry listing tools. If it recurs, send the publisher the negotiated version, HTTP status and redacted request log, and whether it started after a deploy. Never share a bearer token or session secret.
+
+**Server authors:** for stateful 2025 connections, use the session ownership and recovery fixes below. For a 2026 subscription, investigate subscription ownership, replica routing and cleanup across deploys; do not add a legacy session header to a stateless request. Fix the innermost connection failure before treating `tools/list` as a tool-schema problem.
+
+[Open the inspector](/) and run **Check session resilience** for stateful session handling. That check exercises invalid IDs and recovery; it does not reproduce every client's subscription implementation. For newer subscription failures, compare the message log with the [transport diagnostics reference](/learn/mcp-transport-diagnostics-reference).
 
 ## Why a deploy loses the session
 

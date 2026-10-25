@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogServer } from '../types/catalog';
 import {
+  getCatalogServerTitle,
+  getCatalogAuthAnswer,
+  truncateCatalogDescription,
   formatCatalogAuth,
   formatCatalogTimestamp,
   formatCatalogTransport,
@@ -47,7 +50,7 @@ describe('catalog SEO helpers', () => {
     expect(formatCatalogAuth(server.authType)).toBe('OAuth 2.1');
     expect(formatProtocolEra(server.protocolEra)).toBe('Not yet negotiated');
     expect(seo.description).toBe(
-      'Inspect the Example MCP server. An example remote MCP server. Test and debug endpoints.'
+      'example.com. Sign in with OAuth. An example remote MCP server.'
     );
     expect(seo.canonicalUrl).toBe('https://mcptest.io/servers/example-server/');
     expect(seo.structuredData.endpointUrl).toBe(server.url);
@@ -61,8 +64,31 @@ describe('catalog SEO helpers', () => {
   it('uses a curated search summary when the catalog provides one', () => {
     const seoDescription = 'Inspect the Example MCP server. Explore example tools and resources.';
 
-    expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(seoDescription);
-    expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(seoDescription);
+    expect(getCatalogServerMetaDescription({ ...server, seoDescription })).toBe(`example.com. Sign in with OAuth. ${seoDescription}`);
+    expect(getCatalogServerSeo({ ...server, seoDescription }).description).toBe(`example.com. Sign in with OAuth. ${seoDescription}`);
+  });
+
+  it('uses setup titles, dropping setup before shortening a long name', () => {
+    expect(getCatalogServerTitle('Canva')).toBe('Canva MCP Server: URL, Auth & Setup | mcptest.io');
+    expect(getCatalogServerTitle('A moderately long name')).toBe('A moderately long name MCP Server: URL, Auth | mcptest.io');
+    for (const name of ['DocuSign Developer', 'A'.repeat(100)]) {
+      expect(getCatalogServerTitle(name).length).toBeLessThanOrEqual(60);
+      expect(getCatalogServerTitle(name)).not.toContain('& Setup');
+    }
+  });
+
+  it('keeps unknown authentication explicit rather than guessing from declarations', () => {
+    expect(getCatalogAuthAnswer({ ...server, authType: 'unknown' }).label).toBe('Auth not yet verified');
+    expect(getCatalogServerMetaDescription({ ...server, authType: 'none' })).toContain('No auth');
+    expect(getCatalogServerMetaDescription({ ...server, authType: 'api-key' })).toContain('API key header');
+  });
+
+  it('shortens descriptions only at word boundaries', () => {
+    const summary = 'Whole words remain readable when the summary is long. '.repeat(8);
+    const description = getCatalogServerMetaDescription({ ...server, seoDescription: summary });
+    expect(description.length).toBeLessThanOrEqual(158);
+    expect(description).toMatch(/(?:Whole|words|remain|readable|when|the|summary|is|long\.)…$/);
+    expect(truncateCatalogDescription('Extraordinarilylongword', 10)).toBe('…');
   });
 
   it('makes local server logos absolute and rejects remote logo URLs', () => {
