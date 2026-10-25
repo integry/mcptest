@@ -62,6 +62,7 @@ const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
 const { renderCatalogFallback, renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
+const { getServerUrl } = require('../src/utils/urlUtils.ts');
 const { getServerPageMetaDescription, getServerSetupStructuredData } = require('../src/utils/serverConnect.ts');
 const {
   getCatalogCategoryNames,
@@ -229,8 +230,7 @@ function detectedAuthenticationLabel(server) {
 
 function playgroundPath(server) {
   const endpoint = getPreferredCatalogEndpoint(server);
-  const transportMethod = endpoint.transport === 'legacy-sse' ? 'sse' : 'mcp';
-  return `/server/${endpoint.url}/${transportMethod}`;
+  return getServerUrl(endpoint.url);
 }
 
 function replaceOrInsertHead(html, pattern, replacement) {
@@ -951,6 +951,10 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     '      <button id="connectBtn" type="button" class="btn btn-primary landing-connect-button" disabled>Connect</button>',
     '    </div>',
     ...renderQuickPicks(quickPicks),
+    '    <div class="landing-quick-picks landing-recent" data-prerendered-recent>',
+    '      <span class="landing-quick-picks-label" id="landing-recent-label">Recent</span><ul aria-labelledby="landing-recent-label"></ul>',
+    '    </div>',
+    '    <template data-recent-chip><li class="landing-recent-item"><button type="button" class="landing-quick-pick landing-recent-connect"><i class="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i><span class="landing-recent-host"></span></button><button type="button" class="landing-recent-remove"><i class="bi bi-x-lg" aria-hidden="true"></i></button></li></template>', 
     // TabContent passes the connection panel as LandingHero's advancedOptions.
     ...(advancedToggle
       ? ['    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>Advanced options<span class="landing-advanced-hint">headers, auth, proxy</span></button>']

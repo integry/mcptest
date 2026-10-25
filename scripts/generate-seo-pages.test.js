@@ -51,10 +51,9 @@ describe('generated server report Playground links', () => {
       catalogServer('https://mcp.linear.app/mcp', 'streamable-http')
     );
 
-    expect(html).toContain('href="/server/https://mcp.linear.app/mcp/mcp"');
-    expect(parseServerUrl('/server/https://mcp.linear.app/mcp/mcp')).toEqual({
+    expect(html).toContain('href="/server/mcp.linear.app/mcp"');
+    expect(parseServerUrl('/server/mcp.linear.app/mcp')).toEqual({
       serverUrl: 'https://mcp.linear.app/mcp',
-      transportMethod: 'mcp',
     });
   });
 
@@ -64,10 +63,9 @@ describe('generated server report Playground links', () => {
       catalogServer('https://example.com/sse', 'legacy-sse')
     );
 
-    expect(html).toContain('href="/server/https://example.com/sse/sse"');
-    expect(parseServerUrl('/server/https://example.com/sse/sse')).toEqual({
+    expect(html).toContain('href="/server/example.com/sse"');
+    expect(parseServerUrl('/server/example.com/sse')).toEqual({
       serverUrl: 'https://example.com/sse',
-      transportMethod: 'sse',
     });
   });
 
@@ -77,10 +75,9 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/https://example.com/endpoint/sse"');
-    expect(parseServerUrl('/server/https://example.com/endpoint/sse')).toEqual({
+    expect(html).toContain('href="/server/example.com/endpoint"');
+    expect(parseServerUrl('/server/example.com/endpoint')).toEqual({
       serverUrl: 'https://example.com/endpoint',
-      transportMethod: 'sse',
     });
   });
 
@@ -91,7 +88,7 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/https://example.com/sse/mcp"');
+    expect(html).toContain('href="/server/example.com/sse"');
     expect(html).toContain('claude mcp add --transport http');
   });
 
@@ -102,7 +99,7 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/https://example.com/mcp/mcp"');
+    expect(html).toContain('href="/server/example.com/mcp"');
     expect(html).toContain('claude mcp add --transport http');
   });
 
@@ -116,7 +113,7 @@ describe('generated server report Playground links', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).toContain('Browser-verified endpoint');
-    expect(html).toContain('href="/server/https://example.com/sse/sse"');
+    expect(html).toContain('href="/server/example.com/sse"');
   });
 });
 

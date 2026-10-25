@@ -1,3 +1,4 @@
+import { getConnectionShareUrl, getLegacyServerFallback } from '../utils/urlUtils';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { LogEntry, Resource, TransportType } from '../types';
 import { Client, type ProtocolEra } from '@modelcontextprotocol/client';
@@ -110,6 +111,7 @@ export const useConnection = (
   requestHeaders?: Record<string, string>
 ) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
+  const [shareLinkNotice, setShareLinkNotice] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string>('');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [transportType, setTransportType] = useState<TransportType | null>(null);
@@ -309,6 +311,10 @@ export const useConnection = (
   }, [addLogEntry, serverUrl]); // Added addLogEntry and serverUrl dependencies
 
   const handleDisconnect = useCallback(async () => {
+    if (window.location.pathname.startsWith('/server/')) {
+      window.history.replaceState(window.history.state, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+    }
     if (connectionStatus !== 'Disconnected' && !isConnecting) {
         trackEvent('disconnect');
         addLogEntry({ type: 'info', data: 'Disconnecting...' });
@@ -317,6 +323,10 @@ export const useConnection = (
   }, [connectionStatus, isConnecting, addLogEntry, cleanupConnection, serverUrl]);
 
   const handleAbortConnection = useCallback(() => {
+    if (window.location.pathname.startsWith('/server/')) {
+      window.history.replaceState(window.history.state, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+    }
     if (isConnecting && abortControllerRef.current) {
       trackEvent('connect_abort');
       console.log('[DEBUG] Aborting connection attempt...');
@@ -353,13 +363,14 @@ export const useConnection = (
     urlToConnect?: string, // Optional URL parameter
     forceUseProxy?: boolean, // Optional proxy override
     protocolEraHint?: 'stateless' | 'stateful' | 'legacy',
-    preferredTransport?: TransportType
+    preferredTransport?: TransportType,
+    forcedTransport?: TransportType
   ) => {
     const rawUrl = urlToConnect || serverUrl; // Use override or state URL
     const originalTargetUrl = addProtocolIfMissing(rawUrl);
     let targetUrl = originalTargetUrl; // Add protocol if missing
     const catalogEndpointEvidence = getCatalogEndpointDiagnosticEvidence(targetUrl);
-    const effectivePreferredTransport = preferredTransport
+    let effectivePreferredTransport = preferredTransport
       || (catalogEndpointEvidence?.transport === 'streamable-http'
         || catalogEndpointEvidence?.transport === 'legacy-sse'
         ? catalogEndpointEvidence.transport
@@ -409,6 +420,17 @@ export const useConnection = (
         return;
     }
 
+    let queryOmitted = false;
+    const updateConnectionUrl = (endpoint: string, transport = forcedTransport) => {
+      try {
+        const share = getConnectionShareUrl(endpoint, transport);
+        queryOmitted = share.queryOmitted;
+        setShareLinkNotice(share.queryOmitted ? "The shareable link does not include the server's query parameters or fragment because they may contain credentials." : null);
+        if (!window.location.pathname.startsWith('/call/')) window.history.replaceState(window.history.state, '', share.url);
+      } catch { /* Invalid endpoints are reported by the connection attempt. */ }
+    };
+    updateConnectionUrl(targetUrl);
+
     // Always get the latest access token from sessionStorage
     let latestAccessToken = getLatestAccessToken(targetUrl);
 
@@ -419,6 +441,7 @@ export const useConnection = (
     setProtocolVersion(null);
     setConnectionStartTime(new Date());
     setResponses([]); // Clear logs for new connection attempt
+    if (queryOmitted) addLogEntry({ type: 'warning', data: "The shareable link does not include the server's query parameters or fragment because they may contain credentials." });
     
     // Create abort controller for this connection attempt
     abortControllerRef.current = new AbortController();
@@ -615,6 +638,7 @@ export const useConnection = (
 
     try {
       let attemptedAutomaticOAuth = false;
+      let attemptedLegacyFallback = false;
 
       while (!connectionSuccess) {
         try {
@@ -635,6 +659,16 @@ export const useConnection = (
             data: `${usedProxy ? 'Proxy connection' : 'Connection'} successful using ${result.transportType} (${result.protocolEra}${result.protocolVersion ? `, ${result.protocolVersion}` : ''}) at ${result.url}`
           });
         } catch (error) {
+          const legacy = !attemptedLegacyFallback && window.location.pathname.startsWith('/server/')
+            ? getLegacyServerFallback(targetUrl, error) : null;
+          if (legacy) {
+            attemptedLegacyFallback = true;
+            targetUrl = legacy.serverUrl;
+            effectivePreferredTransport = legacy.transport;
+            latestAccessToken = getLatestAccessToken(targetUrl);
+            updateConnectionUrl(targetUrl, legacy.transport);
+            continue;
+          }
           const challenge = getObservedAuthenticationChallenge(error);
           // A pending authenticated retry suppresses recursive discovery, but
           // terminalization belongs to the outer connection-attempt boundary.
@@ -901,6 +935,7 @@ export const useConnection = (
               `[DEBUG] Setting display URL: ${displayUrl} (from finalUrl: ${finalUrl}, proxy: ${finalUsedProxy})`
             );
             
+            updateConnectionUrl(displayUrl, attemptedLegacyFallback ? finalTransportType || undefined : forcedTransport);
             setServerUrl(displayUrl); // Set UI URL to the actual connected URL with endpoint
             setConnectionStatus('Connected');
             setIsConnecting(false);
@@ -990,6 +1025,7 @@ export const useConnection = (
     handleConnect, // Keep original signature for export, wrapper in App.tsx handles the override
     handleDisconnect,
     handleAbortConnection,
+    shareLinkNotice,
     isProxied, // Expose proxy status
     accessToken, // Expose access token
     isAuthFlowActive, // Expose auth flow status

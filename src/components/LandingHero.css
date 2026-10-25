@@ -409,3 +409,8 @@
     max-width: calc(100vw - 2rem - 2.75rem);
   }
 }
+
+/* Both variants must be present in critical CSS; theme-init selects before paint. */
+.seo-landing-fallback .landing-recent { display: none; }
+html[data-returning-visitor] .seo-landing-fallback .landing-quick-picks { display: none; }
+html[data-returning-visitor] .seo-landing-fallback .landing-recent { display: flex; }

@@ -21,6 +21,49 @@
   }
   document.documentElement.setAttribute('data-theme', theme);
 
+  try {
+    if (window.localStorage.getItem('mcpSidebarCollapsed') === 'true') {
+      document.documentElement.setAttribute('data-sidebar-collapsed', 'true');
+    }
+  } catch (error) { /* Storage may be blocked. */ }
+
+  // Read the same legacy string[] / {url}[] formats as useConnection.
+  // This runs before parsing the landing, so its new-user blocks never paint.
+  var recent = [];
+  try {
+    var stored = JSON.parse(window.localStorage.getItem('mcpRecentServers') || 'null');
+    if (Array.isArray(stored)) recent = stored.map(function (item) {
+      return typeof item === 'string' ? item : item && typeof item.url === 'string' ? item.url : null;
+    }).filter(Boolean).slice(0, 6);
+  } catch (error) { /* Storage may be blocked or corrupt. */ }
+  if (recent.length) {
+    document.documentElement.setAttribute('data-returning-visitor', 'true');
+    // Parser mutations are delivered before rendering. Clone only our static
+    // template; storage is assigned through textContent/attributes, never HTML.
+    var fillRecent = function () {
+      var frame = document.querySelector('[data-prerendered-recent]');
+      var template = document.querySelector('[data-recent-chip]');
+      if (!frame || !template || !template.content.querySelector('.landing-recent-remove i')) return;
+      var list = frame.querySelector('ul');
+      recent.forEach(function (url) {
+        var chip = template.content.cloneNode(true);
+        var connect = chip.querySelector('.landing-recent-connect');
+        var remove = chip.querySelector('.landing-recent-remove');
+        var label = url;
+        try { label = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url).host || url; } catch (error) {}
+        connect.setAttribute('data-recent-url', url);
+        connect.title = url;
+        chip.querySelector('.landing-recent-host').textContent = label;
+        remove.title = 'Remove ' + url + ' from recent connections';
+        remove.setAttribute('aria-label', remove.title);
+        list.appendChild(chip);
+      });
+      observer.disconnect();
+    };
+    var observer = new MutationObserver(fillRecent);
+    observer.observe(document, { childList: true, subtree: true });
+  }
+
   /*
    * Prerendered pages inline their critical CSS and preload the full
    * stylesheet (scripts/critical-css.js) instead of blocking the first paint

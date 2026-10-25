@@ -166,6 +166,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     connectionError,
     clearConnectionError,
     client,
+    shareLinkNotice,
     recentServers,
     handleConnect,
     handleDisconnect,
@@ -339,7 +340,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           tab.serverUrl,
           tab.useProxy, // Pass the current tab's useProxy value
           getCatalogProtocolEraHint(tab.serverUrl),
-          getPreferredTransportHint(tab.serverUrl)
+          getPreferredTransportHint(tab.serverUrl),
+          tab.forcedTransport
         );
       }, 100);
     }
@@ -716,7 +718,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           tab.serverUrl,
           tab.useProxy,
           getCatalogProtocolEraHint(tab.serverUrl),
-          getPreferredTransportHint(tab.serverUrl)
+          getPreferredTransportHint(tab.serverUrl),
+          tab.forcedTransport
         );
       }, 500); // 500ms delay to ensure token is available
     }
@@ -794,7 +797,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         || protocolEraHint === 'legacy'
         ? protocolEraHint
         : getCatalogProtocolEraHint(requestedUrl),
-      preferredTransportHint ?? getPreferredTransportHint(requestedUrl)
+      preferredTransportHint ?? getPreferredTransportHint(requestedUrl),
+      tab.forcedTransport
     );
   };
 
@@ -1064,6 +1068,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           advancedOptions={connectionPanel}
         />
       ) : connectionPanel}
+
+      {shareLinkNotice && <p role="status" className="small text-muted px-3">{shareLinkNotice}</p>}
 
       {tab.originalServerUrl && tab.originalServerUrl !== serverUrl && tab.serverUrl === serverUrl && (
         <p className="small text-muted px-3">

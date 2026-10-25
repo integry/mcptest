@@ -105,3 +105,21 @@ describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built catalog', ()
     expect(result.cls).toBeLessThan(0.05);
   }, 90000);
 });
+
+
+describe.skipIf(!process.env.FIRST_PAINT)('returning visitor first paint', () => {
+  it.each([{ width: 1280, height: 800 }, { width: 390, height: 844 }])('paints recent chips without new-user frames at $width px', async (viewport) => {
+    const result = await measureFirstPaint({ distDir, viewport, durationMs: 7000,
+      recentServers: [{ url: 'https://mcp.context7.com/mcp' }, 'http://localhost:3000/mcp'],
+    });
+    console.log(formatTimeline(result));
+    const painted = result.samples.filter(s => s.painted);
+    expect(painted.some(s => s.phase === 'static')).toBe(true);
+    expect(painted.some(s => s.phase === 'react')).toBe(true);
+    for (const sample of painted) expect(sample, `frame ${sample.t}ms`).toMatchObject({
+      blank: false, header: true, sidebar: viewport.width > 768, recent: true, newUserPicks: false,
+      recentHosts: ['mcp.context7.com', 'localhost:3000'],
+    });
+    expect(result.cls).toBeLessThan(0.05);
+  }, 90000);
+});

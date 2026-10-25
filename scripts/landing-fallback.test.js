@@ -90,7 +90,7 @@ describe('crawler-visible landing fallback', () => {
 
     const componentClasses = new Set(Array.from(component.querySelectorAll('[class]'), element => [...element.classList]).flat());
     const fallbackClasses = Array.from(fallback.querySelectorAll('[class]'), element => [...element.classList]).flat();
-    expect(fallbackClasses.filter(name => name !== 'seo-landing-fallback' && !componentClasses.has(name))).toEqual([]);
+    expect(fallbackClasses.filter(name => name !== 'seo-landing-fallback' && !['landing-quick-picks', 'landing-recent', 'landing-quick-picks-label'].includes(name) && !componentClasses.has(name))).toEqual([]);
   });
 });
 
@@ -106,6 +106,9 @@ const HIDDEN_IN_FIRST_FRAME = [
   '.view-panel.d-none',
   '.main-content > .d-none',
   'style',
+  // Static alternative selected before first paint for returning visitors.
+  '[data-prerendered-recent]',
+  'template',
   // The shell carries both theme icons and shows one with CSS.
   '.theme-toggle-icon',
 ];

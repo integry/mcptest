@@ -79,3 +79,33 @@ describe('theme-init.js versioning', () => {
     expect(() => versionThemeInitTag('<html></html>', source)).toThrow(/theme-init/);
   });
 });
+
+describe('returning-visitor bootstrap', () => {
+  it.each(['[]', '{}', 'null', 'broken', '[null, 7, {}]'])(
+    'does not select returning state for invalid or empty data %s', stored => {
+      const attributes = {};
+      new Function('window', 'document', source)({ localStorage: { getItem: key => key === 'mcpRecentServers' ? stored : null } }, {
+        documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
+      });
+      expect(attributes['data-returning-visitor']).toBeUndefined();
+    });
+
+  it('builds escaped recent chips before paint and restores the collapsed sidebar', async () => {
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: 'https://mcptest.io', runScripts: 'outside-only' });
+    const unsafe = '<img src=x onerror=alert(1)>';
+    dom.window.localStorage.setItem('mcpRecentServers', JSON.stringify(['https://example.com/mcp', { url: unsafe }]));
+    dom.window.localStorage.setItem('mcpSidebarCollapsed', 'true');
+    dom.window.eval(source);
+    expect(dom.window.document.documentElement.getAttribute('data-returning-visitor')).toBe('true');
+    expect(dom.window.document.documentElement.getAttribute('data-sidebar-collapsed')).toBe('true');
+    const { default: generator } = await import('./generate-seo-pages.js');
+    dom.window.document.body.innerHTML = generator.renderLandingFallback(1);
+    await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+    const frame = dom.window.document.querySelector('[data-prerendered-recent]');
+    expect([...frame.querySelectorAll('.landing-recent-host')].map(el => el.textContent)).toEqual(['example.com', unsafe]);
+    expect(frame.querySelector('img')).toBeNull();
+    expect(frame.querySelectorAll('li')).toHaveLength(2);
+    dom.window.close();
+  });
+});

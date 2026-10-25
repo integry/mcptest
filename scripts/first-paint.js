@@ -246,6 +246,9 @@ const SAMPLE_EXPRESSION = `(() => {
     header: has('.app-header'),
     sidebar: has('.desktop-sidebar .app-sidenav'),
     landing: has('.landing-title'),
+    recent: [...document.querySelectorAll('.landing-recent')].some(el => getComputedStyle(el).display !== 'none'),
+    newUserPicks: [...document.querySelectorAll('.landing-quick-picks')].some(el => el.textContent.includes('Try with') && getComputedStyle(el).display !== 'none'),
+    recentHosts: [...document.querySelectorAll('.landing-recent-host')].map(el => el.textContent),
     connect: has('.landing-connect'),
     catalog: has('.catalog-view'),
     catalogRows: root ? root.querySelectorAll('.catalog-server-row').length : 0,
@@ -292,6 +295,10 @@ async function measureFirstPaint(options = {}) {
       features: [{ name: 'prefers-color-scheme', value: settings.colorScheme }],
     });
     await page('Page.addScriptToEvaluateOnNewDocument', { source: OBSERVER_SOURCE });
+
+    if (settings.recentServers) await page('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem('mcpRecentServers', ${JSON.stringify(JSON.stringify(settings.recentServers))})`,
+    });
 
     const samples = [];
     const screenshots = [];
@@ -361,6 +368,8 @@ function formatTimeline(result) {
     sample.sidebar ? 'sidebar' : null,
     sample.landing ? 'landing' : null,
     sample.connect ? 'connect-form' : null,
+    sample.recent ? 'recent-chips' : null,
+    sample.newUserPicks ? 'new-user-picks' : null,
     sample.connectionPanel ? 'connection-panel' : null,
     `theme=${sample.theme || 'unset'}`,
     sample.inter ? 'Inter' : 'fallback-font',

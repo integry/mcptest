@@ -409,7 +409,7 @@ function App() {
     }
     
     // Check for server URL routes
-    const serverUrlData = parseServerUrl(path);
+    const serverUrlData = parseServerUrl(path, location.search, location.hash);
     if (serverUrlData) {
       console.log('[Server URL Route] Detected server URL:', serverUrlData);
       
@@ -466,7 +466,7 @@ function App() {
   // Server URL and result share handlers
   const handleServerUrlConnection = (serverUrl: string, transportMethod?: string) => {
     trackEvent('server_url_connection', { host: getAnalyticsHost(serverUrl), transport_method: transportMethod });
-    const preferredTransport = transportMethod === 'mcp'
+    const preferredTransport = (transportMethod === 'mcp' || transportMethod === 'http')
       ? 'streamable-http'
       : transportMethod === 'sse'
         ? 'legacy-sse'
@@ -483,6 +483,8 @@ function App() {
         serverUrl: serverUrl,
         connectionStatus: 'Disconnected',
         preferredTransportHint: preferredTransport,
+        forcedTransport: preferredTransport,
+        autoConnect: true,
         useProxy: true,
       };
       setTabs(prev => [...prev, targetTab!]);
@@ -495,7 +497,8 @@ function App() {
     handleUpdateTab(targetTab.id, {
       serverUrl: serverUrl,
       title: `Server: ${serverUrl}`,
-      ...(preferredTransport ? { preferredTransportHint: preferredTransport } : {}),
+      autoConnect: true,
+      ...(preferredTransport ? { preferredTransportHint: preferredTransport, forcedTransport: preferredTransport } : {}),
     });
   };
 
