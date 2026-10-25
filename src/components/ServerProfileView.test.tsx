@@ -74,7 +74,25 @@ describe('ServerProfileView capability inventory', () => {
     expect(markup).toContain('https://example.com/token-mcp');
     expect(markup).toContain('Provider guidance');
     expect(markup).toContain('Confirm consequential actions before submission.');
-    expect(markup.match(/server-profile-action"/g)).toHaveLength(2);
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+    const actions = container.querySelectorAll('.server-profile-actions a');
+    expect(Array.from(actions).map((action) => ({
+      text: action.textContent,
+      action: action.getAttribute('data-server-action'),
+      href: action.getAttribute('href'),
+    }))).toEqual([
+      {
+        text: 'Test it live',
+        action: 'test_live',
+        href: '/server/example.com/mcp?transport=http',
+      },
+      {
+        text: 'Run the release-readiness report',
+        action: 'report',
+        href: '/report/https%3A%2F%2Fexample.com%2Fmcp',
+      },
+    ]);
     expect(markup).toContain('server-profile-breadcrumb-parent');
     expect(markup).toContain('server-profile-breadcrumb-current');
     expect(markup).toContain('btn btn-sm btn-ghost server-endpoint-copy');
