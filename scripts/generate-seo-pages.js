@@ -1170,6 +1170,34 @@ function renderAppShell({
   ].join('\n');
 }
 
+// Match the disconnected workspace's layout using the same classes and
+// onboarding layout. theme-init fills saved tabs and endpoints before paint.
+function renderReturningWorkspace() {
+  return [
+    '<div class="seo-returning-workspace">',
+    '<div class="card connection-console">',
+    '<div class="card-header d-flex justify-content-between align-items-center"><div class="connection-heading"><div class="connection-title-row"><h5 class="mb-0 returning-heading-skeleton" aria-hidden="true">Connect a remote endpoint</h5><span class="badge bg-secondary returning-status-skeleton" aria-hidden="true">Disconnected</span></div></div></div>',
+    '<div class="card-body"><div class="mb-3"><label class="form-label">MCP endpoint URL</label><div class="input-group"><input id="returning-server-url" aria-label="Saved endpoint URL" class="form-control" placeholder="mcp.context7.com" readonly><button class="btn btn-primary" disabled>Connect</button></div><details class="connection-advanced mt-3"><summary><i class="bi bi-gear me-2" aria-hidden="true"></i>Advanced options</summary></details></div></div>',
+    '</div>',
+    '<div class="playground-layout flex-grow-1 playground-idle"><div class="w-100 idle-onboarding-layout">',
+    '<section class="awaiting-connection-panel"><div class="awaiting-connection-tabs" aria-hidden="true"><span>Server capabilities</span><span>Inspector</span><span>Connection logs</span></div><div class="awaiting-connection-empty"><span class="awaiting-connection-icon" aria-hidden="true"><i class="bi bi-terminal"></i></span><div><h2>Awaiting connection</h2><p>Connect a server and its capabilities, requests, and output will appear here.</p></div></div></section>',
+    '<div class="row g-3"><div class="col-md-6" data-workspace-recent><div class="card mb-3"><div class="card-header"><h6 class="mb-0">Recent Connections</h6></div><ul class="list-group list-group-flush"></ul></div></div><div class="col-md-6" data-workspace-suggested>',
+    '<div class="card mb-3 suggested-servers-panel"><div class="card-header"><div><h6 class="mb-0">Suggested servers</h6></div></div><div class="card-body p-3"><small class="text-muted d-block mb-3">Connect to a curated public endpoint and inspect the negotiated protocol.</small><ul class="suggested-server-grid">',
+    ...mergeCatalogServers(
+      JSON.parse(fs.readFileSync(catalogPath, 'utf8')),
+      JSON.parse(fs.readFileSync(validationPath, 'utf8'))
+    ).filter(server =>
+      server.tags.includes('suggested') && server.status !== 'offline' && server.authType === 'none'
+      && server.browserAccess === 'direct' && server.browserUrl
+    ).slice(0, 4).map(server => {
+      const endpoint = getPreferredCatalogEndpoint(server).url;
+      return `<li class="suggested-server-row"><button type="button" class="suggested-server-action"><span class="catalog-server-logo suggested-server-logo"><img src="${escapeHtml(server.logoUrl)}" alt="" width="40" height="40"></span><div class="suggested-server-copy"><div class="suggested-server-title-row"><strong>${escapeHtml(server.name)}</strong><span aria-hidden="true">↗</span></div><p>${escapeHtml(server.description)}</p><small title="${escapeHtml(endpoint)}">${escapeHtml(endpoint)}</small></div></button></li>`;
+    }),
+    '</ul></div><div class="card-footer text-center p-2"><a href="/catalog" class="btn btn-sm btn-link p-0" style="text-decoration:none">Browse the full server catalog &rarr;</a></div></div>',
+    '</div></div></div></div></div>',
+  ].join('\n');
+}
+
 /**
  * The full first frame of the home page: header, sidebar, playground tab
  * strip and landing, in the elements and classes App.tsx renders for a
@@ -1197,6 +1225,7 @@ function renderShellFallback({
     '<div class="flex-grow-1 position-relative">',
     '<div class="tab-content-panel" style="height: 100%; position: static; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;">',
     renderLandingFallback(catalogCount, quickPicks, { advancedToggle: true }),
+    renderReturningWorkspace(),
     '</div>',
     '</div>',
     '</div>',

@@ -95,6 +95,23 @@ describe('connection URL finalization', () => {
     vi.restoreAllMocks();
   });
 
+  it('connects the context7 literal path first and preserves it in recent storage', async () => {
+    const endpoint = 'https://mcp.context7.com/mcp';
+    window.history.replaceState(null, '', '/server/mcp.context7.com/mcp');
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client: { close: vi.fn().mockResolvedValue(undefined) }, url: endpoint,
+      transportType: 'streamable-http', protocolEra: 'stateless',
+    });
+    const view = renderConnectionHook();
+    await act(async () => { await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint); });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(view.connection.serverUrl).toBe(endpoint);
+    expect(view.connection.recentServers).toEqual([endpoint]);
+    expect(JSON.parse(localStorage.getItem('mcpRecentServers')!)).toEqual([{ url: endpoint }]);
+    view.unmount();
+  });
+
   it('updates the address at attempt start, retries a legacy link only after a literal 404, and clears on disconnect', async () => {
     const endpoint = 'https://legacy.example/custom/mcp';
     window.history.replaceState(null, '', '/server/legacy.example/custom/mcp');

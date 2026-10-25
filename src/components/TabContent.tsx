@@ -190,7 +190,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       onUpdateTab(tab.id, { isAuthFlowActive: true });
       sessionStorage.setItem('oauth_tab_id', tab.id);
     },
-    requestHeaders
+    requestHeaders,
+    tab.serverUrl
   );
 
   const catalogProtocolEndpointRef = useRef(
@@ -961,10 +962,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     && isDisconnected
     && !connectionError
     && !isAuthFlowActive;
-  // The landing is the empty state for new and returning users alike. It stays
-  // up while someone types into its input, so unlike isFirstConnection it does
-  // not depend on the entered URL; a connection attempt or an error leaves it.
+  // Recent servers are loaded synchronously by useConnection. Returning
+  // visitors start in the workspace on the first commit.
   const showLanding = landingEligible
+    && recentServers.length === 0
     && !hasStartedFirstConnection
     && isDisconnected
     && !connectionError

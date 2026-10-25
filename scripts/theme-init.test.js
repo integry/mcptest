@@ -90,22 +90,24 @@ describe('returning-visitor bootstrap', () => {
       expect(attributes['data-returning-visitor']).toBeUndefined();
     });
 
-  it('builds escaped recent chips before paint and restores the collapsed sidebar', async () => {
+  it('builds escaped workspace entries and saved tabs before paint', async () => {
     const { JSDOM } = await import('jsdom');
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: 'https://mcptest.io', runScripts: 'outside-only' });
     const unsafe = '<img src=x onerror=alert(1)>';
     dom.window.localStorage.setItem('mcpRecentServers', JSON.stringify(['https://example.com/mcp', { url: unsafe }]));
     dom.window.localStorage.setItem('mcpSidebarCollapsed', 'true');
+    dom.window.localStorage.setItem('mcpConnectionTabs', JSON.stringify([{ id: 'default-tab', title: 'New Connection', serverUrl: '' }, { id: 'server', title: unsafe, serverUrl: 'https://example.com/mcp' }]));
     dom.window.eval(source);
     expect(dom.window.document.documentElement.getAttribute('data-returning-visitor')).toBe('true');
     expect(dom.window.document.documentElement.getAttribute('data-sidebar-collapsed')).toBe('true');
     const { default: generator } = await import('./generate-seo-pages.js');
-    dom.window.document.body.innerHTML = generator.renderLandingFallback(1);
+    dom.window.document.body.innerHTML = generator.renderShellFallback({ catalogCount: 1 });
     await new Promise(resolve => dom.window.setTimeout(resolve, 0));
-    const frame = dom.window.document.querySelector('[data-prerendered-recent]');
-    expect([...frame.querySelectorAll('.landing-recent-host')].map(el => el.textContent)).toEqual(['example.com', unsafe]);
+    const frame = dom.window.document.querySelector('[data-workspace-recent]');
+    expect([...frame.querySelectorAll('.recent-server-link')].map(el => el.textContent)).toEqual(['https://example.com/mcp', unsafe]);
     expect(frame.querySelector('img')).toBeNull();
     expect(frame.querySelectorAll('li')).toHaveLength(2);
+    expect([...dom.window.document.querySelectorAll('.playground-tab-label')].map(el => el.textContent)).toEqual(['New Connection', unsafe]);
     dom.window.close();
   });
 });

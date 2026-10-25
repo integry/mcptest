@@ -199,13 +199,14 @@ function App() {
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
-    const savedTabs = localStorage.getItem(TABS_KEY);
-    if (savedTabs) {
-      const parsedTabs = JSON.parse(savedTabs);
-      if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+    try {
+      const savedTabs = localStorage.getItem(TABS_KEY);
+      const parsedTabs = savedTabs && JSON.parse(savedTabs);
+      if (Array.isArray(parsedTabs) && parsedTabs.length > 0
+        && parsedTabs.every(tab => tab && typeof tab.id === 'string' && typeof tab.title === 'string')) {
         return parsedTabs;
       }
-    }
+    } catch { /* Unavailable or corrupt storage uses the empty workspace. */ }
     return createDefaultTabs();
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {

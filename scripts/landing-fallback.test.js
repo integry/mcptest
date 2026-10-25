@@ -165,6 +165,8 @@ describe('static first frame (header, sidebar, playground landing)', () => {
     const shell = renderShell(authEnabled);
 
     expect(app).not.toBeNull();
+    // This variant is hidden by CSS for new visitors.
+    shell.querySelector('.seo-returning-workspace')?.remove();
     expect(outline(shell)).toEqual(outline(app));
     expect(Boolean(shell.querySelector('.app-auth-placeholder'))).toBe(authEnabled);
   });

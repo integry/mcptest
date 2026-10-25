@@ -229,7 +229,7 @@ const OBSERVER_SOURCE = `(() => {
 const SAMPLE_EXPRESSION = `(() => {
   const state = window.__firstPaint;
   const root = document.getElementById('root');
-  const has = selector => Boolean(root && root.querySelector(selector));
+  const has = selector => [...(root?.querySelectorAll(selector) || [])].some(el => el.getClientRects().length > 0);
   const text = document.body ? document.body.innerText.trim().length : 0;
   const inter = document.fonts ? [...document.fonts].some(face => face.family.replace(/"/g, '') === 'Inter Variable' && face.status === 'loaded') : false;
   let phase = 'no-document';
@@ -259,6 +259,8 @@ const SAMPLE_EXPRESSION = `(() => {
     catalogSort: root?.querySelector('#catalog-sort')?.value,
     catalogCategory: root?.querySelector('#catalog-category')?.value,
     connectionPanel: has('.connection-console'),
+    workspaceRecent: has('.recent-server-link'),
+    tabs: [...(root?.querySelectorAll('.playground-tab-label') || [])].map(el => el.textContent),
     inter,
     painted: Boolean(state && state.paints['first-paint'] !== undefined),
     cls: state ? state.cls : 0,
@@ -300,6 +302,10 @@ async function measureFirstPaint(options = {}) {
 
     if (settings.recentServers) await page('Page.addScriptToEvaluateOnNewDocument', {
       source: `localStorage.setItem('mcpRecentServers', ${JSON.stringify(JSON.stringify(settings.recentServers))})`,
+    });
+
+    if (settings.savedTabs) await page('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem('mcpConnectionTabs', ${JSON.stringify(JSON.stringify(settings.savedTabs))})`,
     });
 
     const samples = [];

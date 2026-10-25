@@ -108,11 +108,12 @@ export const useConnection = (
   addLogEntry: (entryData: Omit<LogEntry, 'timestamp'>) => void,
   useProxy?: boolean,
   onAuthFlowStart?: () => void,
-  requestHeaders?: Record<string, string>
+  requestHeaders?: Record<string, string>,
+  initialServerUrl = ''
 ) => {
   const [recentServers, setRecentServers] = useState<string[]>(loadRecentServers);
   const [shareLinkNotice, setShareLinkNotice] = useState<string | null>(null);
-  const [serverUrl, setServerUrl] = useState<string>('');
+  const [serverUrl, setServerUrl] = useState<string>(initialServerUrl);
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [transportType, setTransportType] = useState<TransportType | null>(null);
   const [protocolEra, setProtocolEra] = useState<ProtocolEra | null>(null);
@@ -944,20 +945,9 @@ export const useConnection = (
             setTools([]);
             setResources([]);
             
-            // Update recent servers list with the original URL (without transport-specific endpoints)
-            // We want to save the base URL without /mcp or /sse endpoints for flexibility
-            let urlToSave = targetUrl; // Default to original target URL
-            
-            try {
-                // Remove transport-specific endpoints from the URL before saving
-                const url = new URL(targetUrl);
-                url.pathname = url.pathname.replace(/\/(mcp|sse)\/?$/, '');
-                urlToSave = url.toString();
-            } catch (error) {
-                console.error('[DEBUG] Error normalizing URL for recent servers:', error);
-                // Fall back to original target URL
-            }
-            
+            // Persist the endpoint that actually connected, including its literal path.
+            const urlToSave = displayUrl;
+
             const updatedServers = [urlToSave, ...recentServers.filter(url => url !== urlToSave)];
             const limitedServers = updatedServers.slice(0, MAX_RECENT_SERVERS);
             setRecentServers(limitedServers); // Update state
