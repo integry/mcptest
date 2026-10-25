@@ -105,3 +105,25 @@ describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built catalog', ()
     expect(result.cls).toBeLessThan(0.05);
   }, 90000);
 });
+
+
+describe.skipIf(!process.env.FIRST_PAINT)('returning visitor first paint', () => {
+  it.each([{ width: 1280, height: 800 }, { width: 390, height: 844 }])('paints the restored workspace without landing frames at $width px', async (viewport) => {
+    const result = await measureFirstPaint({ distDir, viewport, durationMs: 7000,
+      recentServers: [{ url: 'https://mcp.context7.com/mcp' }],
+      savedTabs: [
+        { id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' },
+        { id: 'saved-server', title: 'mcp.context7.com', serverUrl: 'https://mcp.context7.com/mcp', connectionStatus: 'Connected', autoConnect: false },
+      ],
+    });
+    console.log(formatTimeline(result));
+    const painted = result.samples.filter(s => s.painted);
+    expect(painted.some(s => s.phase === 'static')).toBe(true);
+    expect(painted.some(s => s.phase === 'react')).toBe(true);
+    for (const sample of painted) expect(sample, `frame ${sample.t}ms`).toMatchObject({
+      blank: false, header: true, sidebar: viewport.width > 768, landing: false, connectionPanel: true, workspaceRecent: true,
+      tabs: ['New Connection', 'mcp.context7.com'],
+    });
+    expect(result.cls).toBeLessThan(0.05);
+  }, 90000);
+});

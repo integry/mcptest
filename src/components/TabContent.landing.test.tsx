@@ -107,29 +107,17 @@ describe('playground landing', () => {
     expect(container.querySelector<HTMLInputElement>('#serverUrl')?.value).toBe('https://example.com/mcp');
   });
 
-  it('renders the landing for returning users with their recent servers as chips', () => {
-    localStorage.setItem('mcpRecentServers', JSON.stringify([
-      'https://returning.example/mcp',
-      'https://second.example:8443/sse',
-    ]));
+  it('renders the workspace synchronously for returning users', () => {
+    localStorage.setItem('mcpRecentServers', JSON.stringify([{ url: 'https://returning.example/mcp' }]));
     const { container } = renderTab(newTab);
-
-    expect(container.querySelector('.landing.landing--returning')).not.toBeNull();
-    expect(container.querySelector('.connection-console')).toBeNull();
-    expect(container.querySelector('.playground-layout')).toBeNull();
-    expect(container.querySelector('.awaiting-connection-panel')).toBeNull();
-    expect(container.querySelector('.suggested-servers-panel')).toBeNull();
-    // Recent servers replace the catalog quick picks; the audience rows and coverage stay.
-    expect(container.querySelector('[data-server-id]')).toBeNull();
-    const chips = Array.from(container.querySelectorAll<HTMLButtonElement>('.landing-recent-connect'));
-    expect(chips.map(chip => chip.textContent?.trim())).toEqual(['returning.example', 'second.example:8443']);
-    expect(chips.map(chip => chip.title)).toEqual(['https://returning.example/mcp', 'https://second.example:8443/sse']);
-    expect(container.querySelectorAll('.landing-path')).toHaveLength(3);
-    expect(container.querySelector('.landing-coverage')).not.toBeNull();
-    expect(container.querySelector<HTMLButtonElement>('.landing-advanced-toggle')?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('.landing')).toBeNull();
+    expect(container.querySelector('.connection-console')).not.toBeNull();
+    expect(container.querySelector('.awaiting-connection-panel')).not.toBeNull();
+    expect(container.querySelector('.suggested-servers-panel')).not.toBeNull();
+    expect(container.querySelector('.recent-server-link')?.textContent).toBe('https://returning.example/mcp');
   });
 
-  it('reconnects a recent server chip through the connection path and removes chips in place', async () => {
+  it('reconnects a recent server from the workspace and removes entries in place', async () => {
     localStorage.setItem('mcpRecentServers', JSON.stringify([
       'https://returning.example/mcp',
       'https://second.example/mcp',
@@ -140,14 +128,14 @@ describe('playground landing', () => {
       container.querySelector('[aria-label="Remove https://second.example/mcp from recent connections"]')
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    expect(Array.from(container.querySelectorAll('.landing-recent-connect'), chip => chip.getAttribute('data-recent-url')))
+    expect(Array.from(container.querySelectorAll('.recent-server-link'), link => link.textContent))
       .toEqual(['https://returning.example/mcp']);
     const stored: Array<string | { url: string }> = JSON.parse(localStorage.getItem('mcpRecentServers') ?? '[]');
     expect(stored.map(entry => (typeof entry === 'string' ? entry : entry.url))).toEqual(['https://returning.example/mcp']);
-    expect(container.querySelector('.landing')).not.toBeNull();
+    expect(container.querySelector('.landing')).toBeNull();
 
     await act(async () => {
-      container.querySelector('[data-recent-url="https://returning.example/mcp"]')
+      container.querySelector('.recent-server-link')
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(connectionMocks.attempt).toHaveBeenCalledOnce();
@@ -158,7 +146,6 @@ describe('playground landing', () => {
   });
 
   it('opens the full connection panel in place from Advanced options without leaving the landing', () => {
-    localStorage.setItem('mcpRecentServers', JSON.stringify(['https://returning.example/mcp']));
     const { container } = renderTab(newTab);
     const toggle = container.querySelector<HTMLButtonElement>('.landing-advanced-toggle')!;
 

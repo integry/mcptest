@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDebouncedCallback } from 'use-debounce';
 import { Space, ConnectionTab } from '../types';
-import { createDefaultSpaces, createDefaultTabs } from '../utils/defaultWorkspace';
 
 const SPACES_KEY = 'mcpSpaces';
 const TABS_KEY = 'mcpConnectionTabs';
@@ -112,24 +111,13 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
         fetchDataFromDO();
       }
     } else if (!currentUser && !loading) {
-      // Only set defaults on the very first load when not logged in
+      // Keep the local workspace when initial auth resolves signed out
       if (!hasInitialized.current) {
         hasInitialized.current = true;
         
-        // Check localStorage to see if we have existing data
-        let hasExistingData = false;
-        try {
-          const storedSpaces = localStorage.getItem(SPACES_KEY);
-          hasExistingData = storedSpaces && JSON.parse(storedSpaces).length > 0;
-        } catch (e) {
-          console.error('Failed to parse localStorage data:', e);
-        }
-        
-        if (!hasExistingData) {
-          // Only set defaults if there's no existing data in localStorage
-          setSpaces(createDefaultSpaces());
-          setTabs(createDefaultTabs());
-        }
+        // App initializes spaces and tabs synchronously from local storage.
+        // Reapplying defaults after auth resolves discards restored tabs and
+        // briefly brings the landing back for signed-out returning visitors.
       }
     }
     
