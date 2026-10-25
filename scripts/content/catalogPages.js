@@ -103,7 +103,7 @@ function renderCatalogFallback({ servers, summaries }) {
   const select = (field, label, options) => `<div class="catalog-${field}-field"><label class="visually-hidden" for="catalog-${field}">${label}</label><select id="catalog-${field}" class="form-select" inert>${options.map(([value, text], index) => `<option value="${escapeHtml(value)}"${index === 0 ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></div>`;
   return [
     '<div class="catalog-view"><div class="catalog-command-bar"><div class="catalog-command-copy">',
-    '<h2 class="mb-1">Remote MCP server catalog</h2><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
+    '<h1 class="mb-1">Remote MCP server catalog</h1><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
     `<div class="catalog-results-bar" aria-live="polite"><p class="catalog-results-count">Showing <strong>${servers.length}</strong> of ${servers.length} servers</p></div>`,
     '</div><div class="catalog-filters"><div class="catalog-search-field"><i class="bi bi-search catalog-search-icon" aria-hidden="true"></i>',
     '<input id="catalog-search" type="search" class="form-control" aria-label="Search servers" value="" placeholder="Search by name, URL, tag, or description"></div>',

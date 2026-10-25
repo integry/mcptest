@@ -1050,7 +1050,7 @@ select {
   color: #03130f;
 }
 
-:root[data-theme='dark'] .bg-success {
+:root[data-theme='dark'] .bg-success:not(.badge) {
   color: #052e16 !important;
 }
 
@@ -1061,4 +1061,10 @@ select {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Keep keyboard focus visible across native controls and code scrollers. */
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }

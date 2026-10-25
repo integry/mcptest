@@ -218,3 +218,7 @@
     flex-basis: auto;
   }
 }
+
+.breaking-changes-header a {
+  text-decoration: underline;
+}

@@ -687,7 +687,7 @@ describe('generated page metadata', () => {
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
     expect(html).toContain('name="description" content="Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers.');
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
-    expect(html).toContain('<pre><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
   });
 
@@ -765,7 +765,7 @@ describe('generated page metadata', () => {
   it('renders tilde-fenced code without allocating a heading id inside the fence', () => {
     const markdown = ['## Example', '', '~~~', '## Example', '~~~', '', '## Example'].join('\n');
     const html = renderMarkdown(markdown);
-    expect(html).toContain('<pre><code>## Example</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code>## Example</code></pre>');
     expect(html).toContain('<h2 id="example">Example</h2>');
     expect(html).toContain('<h2 id="example-2">Example</h2>');
     expect(html).not.toContain('example-3');
@@ -778,16 +778,16 @@ describe('generated page metadata', () => {
     // The static HTML carries highlight.js markup so a guide paints colored code
     // before any script runs; unknown languages stay plain, as in the browser.
     const html = renderMarkdown('```typescript\nconst x: number = 1;\n```\n\n```nginx\nserver {}\n```\n\n```\nplain\n```');
-    expect(html).toContain('<pre><code class="hljs language-typescript"><span class="hljs-keyword">const</span> <span class="hljs-attr">x</span>: <span class="hljs-built_in">number</span> = <span class="hljs-number">1</span>;</code></pre>');
-    expect(html).toContain('<pre><code class="language-nginx">server {}</code></pre>');
-    expect(html).toContain('<pre><code>plain</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-typescript"><span class="hljs-keyword">const</span> <span class="hljs-attr">x</span>: <span class="hljs-built_in">number</span> = <span class="hljs-number">1</span>;</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="language-nginx">server {}</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code>plain</code></pre>');
   });
 
   it('closes a fence only with a matching delimiter of at least the opening length', () => {
     const markdown = ['~~~~ text', '```', '## not a heading', '~~~', '~~~~', '', '```js', 'const a = `~~~`;', '```'].join('\n');
     const html = renderMarkdown(markdown);
-    expect(html).toContain('<pre><code class="language-text">```\n## not a heading\n~~~</code></pre>');
-    expect(html).toContain('<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> a = <span class="hljs-string">`~~~`</span>;</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="language-text">```\n## not a heading\n~~~</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-js"><span class="hljs-keyword">const</span> a = <span class="hljs-string">`~~~`</span>;</code></pre>');
     expect(html).not.toContain('<h2');
   });
 

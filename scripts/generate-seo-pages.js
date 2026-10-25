@@ -679,8 +679,8 @@ function renderMarkdown(markdown, context = undefined) {
       // script runs; unknown languages stay plain, exactly as in the browser.
       const highlighted = highlightCode(code.join('\n'), language || undefined);
       html.push(highlighted !== null
-        ? `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>`
-        : `<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
+        ? `<pre tabindex="0"><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>`
+        : `<pre tabindex="0"><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
       continue;
     }
 
@@ -997,7 +997,7 @@ function renderHeaderFallback({ authEnabled }) {
     '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu"><span class="hamburger"></span></button>',
     '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo-96.png" alt="MCP Logo" width="40" height="40"></a>',
     '    <a href="/" class="app-brand-copy">',
-    '      <h1 class="app-brand-title">mcptest.io</h1>',
+    '      <span class="app-brand-title">mcptest.io</span>',
     '      <p class="app-brand-subtitle d-none d-md-block">Remote MCP Inspector</p>',
     '    </a>',
     '  </div>',
@@ -1071,9 +1071,9 @@ function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playgro
     '          </div>',
     '        </div>',
     `        <div id="sidenav-dashboards-${idSuffix}" class="sidenav-dashboards-body">`,
-    '          <ul class="nav flex-column dashboard-list" role="listbox" aria-label="Dashboards">',
+    '          <ul class="nav flex-column dashboard-list" aria-label="Dashboards">',
     ...createDefaultSpaces().map(space => [
-      '            <li class="nav-item" tabindex="-1" role="option" aria-selected="false">',
+      '            <li class="nav-item">',
       `<a href="${escapeHtml(getSpaceUrl(space.name))}" class="dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center" style="cursor: move; opacity: 1; user-select: none;">`,
       `<span class="me-2 health-indicator health-indicator-gray" title="No cards to check" style="${HEALTH_INDICATOR_STYLE}"></span>`,
       `<span class="dashboard-name flex-grow-1 text-truncate" title="${escapeHtml(space.name)}">${escapeHtml(space.name)}</span>`,
@@ -1190,8 +1190,8 @@ function renderShellFallback({
       + `<button type="button" class="nav-link active active-tab-override" role="tab" aria-selected="true" title="${escapeHtml(tab.title)}">`
       + '<span class="me-2 playground-tab-status" style="width: 8px; height: 8px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>'
       + `<span class="playground-tab-label">${escapeHtml(tab.title)}</span></button></div>`,
-    '<div class="nav-item" role="presentation"><button type="button" class="nav-link playground-tab-new">+ New</button></div>',
     '</div>',
+    '<button type="button" class="nav-link playground-tab-new">+ New</button>',
     '</div>',
     '</div>',
     '<div class="flex-grow-1 position-relative">',

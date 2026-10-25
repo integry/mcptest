@@ -442,6 +442,7 @@ describe('Learn article page', () => {
 
     const code = container.querySelector('.reading-code code.hljs.language-javascript');
     expect(code).not.toBeNull();
+    expect(code?.parentElement?.getAttribute('tabindex')).toBe('0');
     expect(code?.querySelector('.hljs-keyword')).not.toBeNull();
     expect(container.querySelector('.reading-code-copy')?.textContent).toContain('Copy');
     expect(container.querySelector('.reading-prose a[href="/docs/testing-guide"]')?.getAttribute('target')).toBeNull();

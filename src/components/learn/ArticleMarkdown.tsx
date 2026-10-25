@@ -65,7 +65,7 @@ const CodeBlock: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
         <i className={`bi ${copied ? 'bi-check-lg' : 'bi-copy'}`} aria-hidden="true"></i>
         <span>{copied ? 'Copied' : 'Copy'}</span>
       </button>
-      <pre>
+      <pre tabIndex={0}>
         {highlighted !== null ? (
           <code className={`hljs language-${language}`} dangerouslySetInnerHTML={{ __html: highlighted }} />
         ) : (
