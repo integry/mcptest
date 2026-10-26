@@ -1,7 +1,7 @@
 {
   "astro-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:35.970Z",
+    "observedAt": "2026-10-26T13:08:04.247Z",
     "provenance": {
       "testedEndpoint": "https://mcp.docs.astro.build/mcp",
       "route": "direct"
@@ -56,7 +56,7 @@
   },
   "aws": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:53.228Z",
+    "observedAt": "2026-10-26T13:08:15.585Z",
     "provenance": {
       "testedEndpoint": "https://aws-mcp.us-east-1.api.aws/mcp",
       "route": "direct"
@@ -240,7 +240,7 @@
   },
   "aws-knowledge": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:35.383Z",
+    "observedAt": "2026-10-26T13:08:03.648Z",
     "provenance": {
       "testedEndpoint": "https://knowledge-mcp.global.api.aws/",
       "route": "direct"
@@ -381,7 +381,7 @@
   },
   "browser-use": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:18.849Z",
+    "observedAt": "2026-10-26T13:08:31.073Z",
     "provenance": {
       "testedEndpoint": "https://api.browser-use.com/v3/mcp",
       "route": "direct"
@@ -583,7 +583,7 @@
   },
   "cloudflare-agents-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:01.882Z",
+    "observedAt": "2026-10-26T13:08:21.363Z",
     "provenance": {
       "testedEndpoint": "https://agents.cloudflare.com/mcp",
       "route": "direct"
@@ -644,7 +644,7 @@
   },
   "cloudflare-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:34.647Z",
+    "observedAt": "2026-10-26T13:08:03.426Z",
     "provenance": {
       "testedEndpoint": "https://docs.mcp.cloudflare.com/mcp",
       "route": "direct"
@@ -708,7 +708,7 @@
   },
   "coingecko": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:29.989Z",
+    "observedAt": "2026-10-26T13:08:00.017Z",
     "provenance": {
       "testedEndpoint": "https://mcp.api.coingecko.com/mcp",
       "route": "direct"
@@ -794,7 +794,7 @@
   },
   "context7": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:29.458Z",
+    "observedAt": "2026-10-26T13:07:59.593Z",
     "provenance": {
       "testedEndpoint": "https://mcp.context7.com/mcp",
       "route": "direct"
@@ -880,7 +880,7 @@
   },
   "courier": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:14.556Z",
+    "observedAt": "2026-10-26T13:08:28.368Z",
     "provenance": {
       "testedEndpoint": "https://mcp.courier.com/",
       "route": "direct"
@@ -2268,7 +2268,7 @@
   },
   "deepwiki": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:29.588Z",
+    "observedAt": "2026-10-26T13:08:00.563Z",
     "provenance": {
       "testedEndpoint": "https://mcp.deepwiki.com/mcp",
       "route": "direct"
@@ -2354,7 +2354,7 @@
   },
   "exa": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:37.972Z",
+    "observedAt": "2026-10-26T13:08:05.964Z",
     "provenance": {
       "testedEndpoint": "https://mcp.exa.ai/mcp",
       "route": "direct"
@@ -2451,7 +2451,7 @@
   },
   "excalidraw": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:17.864Z",
+    "observedAt": "2026-10-26T13:08:30.444Z",
     "provenance": {
       "testedEndpoint": "https://mcp.excalidraw.com/",
       "route": "direct"
@@ -2553,7 +2553,7 @@
   },
   "gameanalytics": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:21.782Z",
+    "observedAt": "2026-10-26T13:08:33.072Z",
     "provenance": {
       "testedEndpoint": "https://mcp.docs.gameanalytics.com/",
       "route": "direct"
@@ -2627,7 +2627,7 @@
   },
   "gitbook-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:38.219Z",
+    "observedAt": "2026-10-26T13:08:05.465Z",
     "provenance": {
       "testedEndpoint": "https://gitbook.com/docs/~gitbook/mcp",
       "route": "direct"
@@ -2738,7 +2738,7 @@
   },
   "gitmcp": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:38.650Z",
+    "observedAt": "2026-10-26T13:08:05.629Z",
     "provenance": {
       "testedEndpoint": "https://gitmcp.io/docs",
       "route": "direct"
@@ -2881,7 +2881,7 @@
   },
   "google-alloydb": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:55.709Z",
+    "observedAt": "2026-10-26T13:08:18.994Z",
     "provenance": {
       "testedEndpoint": "https://alloydb.googleapis.com/mcp",
       "route": "direct"
@@ -3509,7 +3509,7 @@
   },
   "google-bigquery": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:41.971Z",
+    "observedAt": "2026-10-26T13:08:08.513Z",
     "provenance": {
       "testedEndpoint": "https://bigquery.googleapis.com/mcp",
       "route": "direct"
@@ -3836,7 +3836,7 @@
   },
   "google-cloud-logging": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:56.330Z",
+    "observedAt": "2026-10-26T13:08:18.755Z",
     "provenance": {
       "testedEndpoint": "https://logging.googleapis.com/mcp",
       "route": "direct"
@@ -4028,7 +4028,7 @@
   },
   "google-cloud-monitoring": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:56.359Z",
+    "observedAt": "2026-10-26T13:08:18.762Z",
     "provenance": {
       "testedEndpoint": "https://monitoring.googleapis.com/mcp",
       "route": "direct"
@@ -4352,7 +4352,7 @@
   },
   "google-cloud-resource-manager": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:53.873Z",
+    "observedAt": "2026-10-26T13:08:16.344Z",
     "provenance": {
       "testedEndpoint": "https://cloudresourcemanager.googleapis.com/mcp",
       "route": "direct"
@@ -4419,7 +4419,7 @@
   },
   "google-cloud-run": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:52.912Z",
+    "observedAt": "2026-10-26T13:08:15.812Z",
     "provenance": {
       "testedEndpoint": "https://run.googleapis.com/mcp",
       "route": "direct"
@@ -4563,7 +4563,7 @@
   },
   "google-compute-engine": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:52.690Z",
+    "observedAt": "2026-10-26T13:08:16.784Z",
     "provenance": {
       "testedEndpoint": "https://compute.googleapis.com/mcp",
       "route": "direct"
@@ -5384,7 +5384,7 @@
   },
   "google-developer-knowledge": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:35.251Z",
+    "observedAt": "2026-10-26T13:08:03.838Z",
     "provenance": {
       "testedEndpoint": "https://developerknowledge.googleapis.com/mcp",
       "route": "direct"
@@ -5465,7 +5465,7 @@
   },
   "google-firestore": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:56.017Z",
+    "observedAt": "2026-10-26T13:08:18.274Z",
     "provenance": {
       "testedEndpoint": "https://firestore.googleapis.com/mcp",
       "route": "direct"
@@ -6032,7 +6032,7 @@
   },
   "google-kubernetes-engine": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:52.686Z",
+    "observedAt": "2026-10-26T13:08:15.724Z",
     "provenance": {
       "testedEndpoint": "https://container.googleapis.com/mcp",
       "route": "direct"
@@ -6697,7 +6697,7 @@
   },
   "google-spanner": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:55.504Z",
+    "observedAt": "2026-10-26T13:08:18.397Z",
     "provenance": {
       "testedEndpoint": "https://spanner.googleapis.com/mcp",
       "route": "direct"
@@ -7171,7 +7171,7 @@
   },
   "grep": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:40.657Z",
+    "observedAt": "2026-10-26T13:08:07.258Z",
     "provenance": {
       "testedEndpoint": "https://mcp.grep.app/",
       "route": "direct"
@@ -7262,7 +7262,7 @@
   },
   "greptile": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:03.899Z",
+    "observedAt": "2026-10-26T13:08:22.375Z",
     "provenance": {
       "testedEndpoint": "https://api.greptile.com/mcp",
       "route": "direct"
@@ -8012,7 +8012,7 @@
   },
   "jina": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:38.062Z",
+    "observedAt": "2026-10-26T13:08:05.566Z",
     "provenance": {
       "testedEndpoint": "https://mcp.jina.ai/v1",
       "route": "direct"
@@ -8373,7 +8373,7 @@
   },
   "kindwise": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:37.511Z",
+    "observedAt": "2026-10-26T13:08:47.777Z",
     "provenance": {
       "testedEndpoint": "https://agents.kindwise.com/mcp",
       "route": "direct"
@@ -8658,7 +8658,7 @@
   },
   "langchain-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:01.046Z",
+    "observedAt": "2026-10-26T13:08:21.465Z",
     "provenance": {
       "testedEndpoint": "https://docs.langchain.com/mcp",
       "route": "direct"
@@ -8751,7 +8751,7 @@
   },
   "livekit-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:01.998Z",
+    "observedAt": "2026-10-26T13:08:21.271Z",
     "provenance": {
       "testedEndpoint": "https://docs.livekit.io/mcp",
       "route": "direct"
@@ -9187,7 +9187,7 @@
   },
   "mailtester": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:26.049Z",
+    "observedAt": "2026-10-26T13:08:36.416Z",
     "provenance": {
       "testedEndpoint": "https://app.mailtester.com/mcp",
       "route": "direct"
@@ -9367,7 +9367,7 @@
   },
   "mdn": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:33.454Z",
+    "observedAt": "2026-10-26T13:08:02.048Z",
     "provenance": {
       "testedEndpoint": "https://mcp.mdn.mozilla.net/",
       "route": "direct"
@@ -9448,7 +9448,7 @@
   },
   "microsoft-learn": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:35.354Z",
+    "observedAt": "2026-10-26T13:08:04.041Z",
     "provenance": {
       "testedEndpoint": "https://learn.microsoft.com/api/mcp",
       "route": "direct"
@@ -9535,7 +9535,7 @@
   },
   "mubboo-flights": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:19.399Z",
+    "observedAt": "2026-10-26T13:08:31.949Z",
     "provenance": {
       "testedEndpoint": "https://mubboo.flights/api/mcp",
       "route": "direct"
@@ -9656,7 +9656,7 @@
   },
   "nuxt": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:36.660Z",
+    "observedAt": "2026-10-26T13:08:04.656Z",
     "provenance": {
       "testedEndpoint": "https://nuxt.com/mcp",
       "route": "direct"
@@ -9982,7 +9982,7 @@
   },
   "openai-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:00.875Z",
+    "observedAt": "2026-10-26T13:08:20.793Z",
     "provenance": {
       "testedEndpoint": "https://developers.openai.com/mcp",
       "route": "direct"
@@ -10107,7 +10107,7 @@
   },
   "openzeppelin-solidity": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:04.668Z",
+    "observedAt": "2026-10-26T13:08:22.949Z",
     "provenance": {
       "testedEndpoint": "https://mcp.openzeppelin.com/contracts/solidity/mcp",
       "route": "direct"
@@ -10930,7 +10930,7 @@
   },
   "parallel-search": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:59.232Z",
+    "observedAt": "2026-10-26T13:08:20.343Z",
     "provenance": {
       "testedEndpoint": "https://search.parallel.ai/mcp",
       "route": "direct"
@@ -11050,7 +11050,7 @@
   },
   "prowler": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:08.874Z",
+    "observedAt": "2026-10-26T13:08:25.810Z",
     "provenance": {
       "testedEndpoint": "https://mcp.prowler.com/mcp",
       "route": "direct"
@@ -11656,7 +11656,7 @@
   },
   "qrcodekit": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:27.369Z",
+    "observedAt": "2026-10-26T13:08:38.197Z",
     "provenance": {
       "testedEndpoint": "https://mcp.v2.qrcodekit.com/mcp",
       "route": "direct"
@@ -12084,7 +12084,7 @@
   },
   "svelte": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:36.171Z",
+    "observedAt": "2026-10-26T13:08:04.271Z",
     "provenance": {
       "testedEndpoint": "https://mcp.svelte.dev/mcp",
       "route": "direct"
@@ -12716,7 +12716,7 @@
   },
   "xposedornot": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:32.263Z",
+    "observedAt": "2026-10-26T13:08:43.291Z",
     "provenance": {
       "testedEndpoint": "https://api.xposedornot.com/mcp",
       "route": "direct"
@@ -12840,7 +12840,7 @@
   },
   "yahoo-finance": {
     "version": 1,
-    "observedAt": "2026-10-26T10:06:32.061Z",
+    "observedAt": "2026-10-26T13:08:01.412Z",
     "provenance": {
       "testedEndpoint": "https://gateway.mcpservers.org/yahoo-finance/mcp",
       "route": "direct"
@@ -12994,7 +12994,7 @@
   },
   "zuplo-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:02.102Z",
+    "observedAt": "2026-10-26T13:08:21.461Z",
     "provenance": {
       "testedEndpoint": "https://dev.zuplo.com/mcp/docs",
       "route": "direct"
@@ -13078,7 +13078,7 @@
   },
   "zylalabs": {
     "version": 1,
-    "observedAt": "2026-10-26T10:07:33.907Z",
+    "observedAt": "2026-10-26T13:08:44.800Z",
     "provenance": {
       "testedEndpoint": "https://mcp.zylalabs.com/mcp",
       "route": "direct"
