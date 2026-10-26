@@ -75,7 +75,7 @@
     "vite": "^6.4.3",
     "vite-node": "^3.2.4",
     "vitest": "^5.0.5",
-    "wrangler": "^4.151.2"
+    "wrangler": "^4.152.0"
   },
   "//": [
     "overrides.@grpc/grpc-js: firebase -> @firebase/firestore pins ~1.9.0; 1.13.7 fixes GHSA-m9gg-hp2v-232j and GHSA-f596-whhp-79r4 (minor bump, client API unchanged). Remove once @firebase/firestore depends on a fixed grpc-js.",
