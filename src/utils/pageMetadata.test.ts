@@ -3,19 +3,19 @@ import { getDocsMetadata, HOME_METADATA } from './pageMetadata';
 
 describe('page metadata', () => {
   it('matches the landing hero and targets remote MCP testing searches', () => {
-    expect(HOME_METADATA.title).toBe('Test Remote MCP Servers | MCP Inspector Online | mcptest.io');
+    expect(HOME_METADATA.title).toBe('MCP Inspector Online & Playground: Test Remote MCP Servers | mcptest.io');
     expect(HOME_METADATA.title.toLowerCase()).toContain('test remote mcp server');
     expect(HOME_METADATA.title.toLowerCase()).toContain('mcp inspector online');
-    expect(HOME_METADATA.description).toContain('Inspect, debug and evaluate remote MCP servers in your browser');
+    expect(HOME_METADATA.description).toContain('Test remote MCP servers in an online inspector and playground');
   });
 
   it('returns custom metadata for documentation routes', () => {
     expect(getDocsMetadata('/docs/testing-guide')).toEqual({
-      title: 'Testing Guide for Remote MCP Servers | mcptest.io',
-      description: 'Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers. A step-by-step developer guide for validating stateless and stateful flows.',
+      title: 'How to Test a Remote MCP Server (Step by Step) | mcptest.io',
+      description: 'Test a remote MCP server step by step: verify its URL, connect in the inspector, check authentication, list tools and diagnose HTTP or session errors.',
     });
     expect(getDocsMetadata('/docs/troubleshooting/')?.title).toBe(
-      'Troubleshooting MCP Server Errors | mcptest.io'
+      'MCP Server Errors: Causes and Fixes | mcptest.io'
     );
   });
 

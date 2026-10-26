@@ -48,7 +48,9 @@ describe('critical CSS extraction', () => {
   });
 
   it('requires only the classes, ids and attributes a match cannot do without', () => {
-    expect(requiredTokens('.reading-prose pre:not(.plain)')).toEqual([{ kind: 'class', name: 'reading-prose' }]);
+    expect(requiredTokens('.reading-prose pre:not(.plain)')).toEqual([
+      { kind: 'class', name: 'reading-prose' }, { kind: 'tag', name: 'pre' },
+    ]);
     expect(requiredTokens(':is(.a, .b) > #root.x[data-y="a.b"]')).toEqual([
       { kind: 'id', name: 'root' },
       { kind: 'class', name: 'x' },
@@ -70,7 +72,7 @@ describe('critical CSS extraction', () => {
       '.app-header{display:flex}',
       '.reading-prose pre:not(.plain){overflow:auto}',
       '.bi-copy:before{content:"\\f759"}',
-      '.a,.b .c{color:blue}',
+      '.b .c{color:blue}',
       '@media (min-width:768px){.app-header{gap:1rem}}',
       '@keyframes spin{to{transform:rotate(1turn)}}',
     ].join(''));
@@ -117,6 +119,16 @@ describe('inlining into a page', () => {
     expect(inlineCriticalCss(once, read)).toBe(once);
     expect(restoreStylesheetLinks(once)).toBe(html);
     expect(findStylesheetHrefs(once)).toEqual(['/assets/style.css']);
+  });
+
+  it('keeps returning-visitor rules that depend on the html element', () => {
+    const page = `${head}<body><div class="seo-shell-fallback"><section class="seo-landing-fallback"></section><div class="seo-returning-workspace"></div></div></body></html>`;
+    const css = '.seo-returning-workspace{display:none}'
+      + 'html[data-returning-visitor] .seo-shell-fallback .seo-landing-fallback{display:none}'
+      + 'html[data-returning-visitor] .seo-returning-workspace{display:contents}';
+    const output = inlineCriticalCss(page, () => css, { extraAttributes: ['data-returning-visitor'] });
+    const document = new DOMParser().parseFromString(output, 'text/html');
+    expect(document.querySelector('style[data-critical-css]').textContent).toBe(css);
   });
 
   it('cannot close its own style element', () => {

@@ -1,0 +1,30 @@
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { afterEach, expect, it, vi } from 'vitest';
+import NextStepsStrip from './NextStepsStrip';
+import { completeNextStep } from '../utils/nextStepsProgress';
+vi.mock('../utils/analytics', () => ({ trackEvent: vi.fn() }));
+afterEach(() => { localStorage.clear(); sessionStorage.clear(); window.history.replaceState({}, '', '/'); document.body.innerHTML = ''; });
+it('updates completed steps in this session and remembers dismissal before the next mount', async () => {
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<NextStepsStrip endpoint="https://example.com/mcp" onCallTool={() => {}} />));
+  expect(host.textContent).toContain('Next steps');
+  await act(async () => completeNextStep('tool'));
+  expect(host.querySelector('[aria-label="Completed"]')).not.toBeNull();
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Dismiss next steps"]')!.click());
+  expect(host.textContent).toBe('');
+  await act(async () => root.unmount());
+  const second = createRoot(host);
+  await act(async () => second.render(<NextStepsStrip endpoint="https://example.com/mcp" onCallTool={() => {}} />));
+  expect(host.textContent).toBe('');
+  await act(async () => second.unmount());
+});
+it('never appears on shared call results', async () => {
+  window.history.replaceState({}, '', '/call/example.com/tool/test');
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<NextStepsStrip endpoint="https://example.com" onCallTool={() => {}} />));
+  expect(host.textContent).toBe('');
+  await act(async () => root.unmount());
+});

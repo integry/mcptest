@@ -32,7 +32,7 @@ test('catalog: lists servers and opens a server profile', async ({ page }) => {
 
   await page.getByRole('main').locator('a[href="/servers/context7/"]').first().click();
   await expect(page).toHaveURL('/servers/context7/');
-  await expect(page.getByRole('heading', { level: 1, name: 'Context7' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Context7 MCP server', exact: true })).toBeVisible();
   await expect(page).toHaveTitle(/Context7/);
 });
 
@@ -82,7 +82,7 @@ test.describe('mobile viewport sanity', () => {
     { path: '/', heading: 'Inspect, debug and evaluate remote MCP servers in your browser' },
     { path: '/catalog', heading: 'Remote MCP server catalog' },
     { path: '/catalog/developer-tools', heading: 'Developer Tools MCP servers' },
-    { path: '/servers/astro-docs/', heading: 'Astro Docs' },
+    { path: '/servers/astro-docs/', heading: 'Astro Docs MCP server' },
     { path: '/learn/mcp-http-headers-reference', heading: 'MCP HTTP headers reference' },
   ]) {
     test(`no horizontal scroll on ${path}`, async ({ page }) => {

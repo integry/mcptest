@@ -409,3 +409,28 @@
     max-width: calc(100vw - 2rem - 2.75rem);
   }
 }
+
+/* Both variants must be present in critical CSS; theme-init selects before paint. */
+.seo-landing-fallback .landing-recent { display: none; }
+html[data-returning-visitor] .seo-landing-fallback .landing-quick-picks { display: none; }
+html[data-returning-visitor] .seo-landing-fallback .landing-recent { display: flex; }
+
+.seo-returning-workspace { display: none; }
+html[data-returning-visitor] .seo-shell-fallback .seo-landing-fallback { display: none; }
+html[data-returning-visitor] .seo-returning-workspace { display: contents; }
+
+/* Fixed skeleton widths prevent fallback fonts wrapping the mobile header
+   before Inter arrives. Match the disconnected console's single-line height. */
+.seo-returning-workspace .connection-console .connection-title-row .returning-heading-skeleton {
+  width: 13rem;
+  height: 1.25em;
+  overflow: hidden;
+  white-space: nowrap;
+  color: transparent;
+  border-radius: 0.25rem;
+  background: var(--border-color);
+}
+.seo-returning-workspace .returning-status-skeleton {
+  width: 5.65rem;
+  color: transparent;
+}

@@ -199,16 +199,24 @@ function requiredAttributes(selector) {
 /** The classes, ids and attributes a single selector requires. */
 function requiredTokens(selector) {
   const tokens = [];
-  for (const match of stripOptionalParts(selector).matchAll(SIMPLE_TOKEN)) {
+  const required = stripOptionalParts(selector);
+  for (const match of required.matchAll(SIMPLE_TOKEN)) {
     tokens.push({ kind: match[1] === '.' ? 'class' : 'id', name: unescapeIdentifier(match[2]) });
   }
   for (const name of requiredAttributes(selector)) tokens.push({ kind: 'attribute', name });
+  // A type selector outside :is/:not/etc. must also exist in the page. This
+  // excludes Bootstrap's unused tables, file inputs and headings, while
+  // retaining universal selectors and optional functional alternatives.
+  for (const match of required.matchAll(/(?:^|[\s>+~])([a-zA-Z][\w-]*)(?=[.#:\s>+~\[]|$)/g)) {
+    tokens.push({ kind: 'tag', name: match[1].toLowerCase() });
+  }
   return tokens;
 }
 
 const hasToken = (page, token) => {
   if (token.kind === 'class') return page.classes.has(token.name);
   if (token.kind === 'id') return page.ids.has(token.name);
+  if (token.kind === 'tag') return page.tags.has(token.name);
   return page.attributes.has(token.name);
 };
 
@@ -232,8 +240,10 @@ const decodeAttribute = value => value
 function collectPageTokens(html, extraClasses = [], extraAttributes = []) {
   const classes = new Set(extraClasses);
   const ids = new Set();
+  const tags = new Set();
   const attributes = new Set(extraAttributes.map(name => name.toLowerCase()));
   for (const tag of html.matchAll(/<[a-zA-Z][^>]*>/g)) {
+    tags.add(tag[0].match(/^<([a-zA-Z][\w-]*)/)[1].toLowerCase());
     for (const match of tag[0].matchAll(/\s([a-zA-Z_:][\w:.-]*)/g)) attributes.add(match[1].toLowerCase());
   }
   for (const match of html.matchAll(/\s(class|id)\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
@@ -244,7 +254,7 @@ function collectPageTokens(html, extraClasses = [], extraAttributes = []) {
       for (const name of value.split(/\s+/)) if (name) classes.add(name);
     }
   }
-  return { classes, ids, attributes };
+  return { classes, ids, attributes, tags };
 }
 
 function serialize(nodes, page) {
@@ -259,8 +269,10 @@ function serialize(nodes, page) {
     } else if (node.type === 'group') {
       const inner = serialize(node.children, page);
       if (inner) output += `${node.prelude}{${inner}}`;
-    } else if (selectorListMayMatch(node.selector, page)) {
-      output += `${node.selector}{${node.body}}`;
+    } else {
+      const selectors = splitSelectorList(node.selector)
+        .filter(selector => selectorListMayMatch(selector, page));
+      if (selectors.length) output += `${selectors.join(',')}{${node.body}}`;
     }
   }
   return output;
@@ -306,9 +318,10 @@ function inlineCriticalCss(html, readStylesheet, options = {}) {
   const hrefs = Array.from(source.matchAll(STYLESHEET_LINK), match => match[2]);
   if (!hrefs.length) return source;
   const css = hrefs.map(readStylesheet).join('\n');
-  const body = source.slice(source.indexOf('<body'));
+  // Include the document element: pre-paint state rules such as
+  // html[data-returning-visitor] must survive type-selector filtering too.
   // `</` cannot appear in CSS outside a string, and inside one `<\/` is the same string.
-  const critical = extractCriticalCss(css, body, options).replace(/<\//g, '<\\/');
+  const critical = extractCriticalCss(css, source, options).replace(/<\//g, '<\\/');
   let inserted = false;
   return source.replace(STYLESHEET_LINK, (_match, crossorigin, href) => {
     const deferred = `<link rel="preload" as="style"${crossorigin} href="${href}" data-deferred-stylesheet>`

@@ -25,7 +25,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   // The whole suite must stay well under five minutes.
   globalTimeout: 5 * 60_000,
-  reporter: isCI ? [['list'], ['html', { open: 'never' }], ['github']] : [['list']],
+  reporter: isCI ? [['list'], ['html', { open: 'never' }], ['github'], ['json', { outputFile: 'test-results/accessibility.json' }]] : [['list']],
   use: {
     baseURL: `http://127.0.0.1:${APP_PORT}`,
     screenshot: 'off',

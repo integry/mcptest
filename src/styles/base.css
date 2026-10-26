@@ -159,6 +159,13 @@ a:hover {
 }
 
 /* Buttons */
+/* Link buttons must follow the app theme rather than Bootstrap's blue. */
+.btn-link {
+  --bs-btn-color: var(--link-color);
+  --bs-btn-hover-color: var(--link-hover);
+  --bs-btn-active-color: var(--link-hover);
+}
+
 .btn {
   border-radius: var(--button-radius);
   padding: 0.4375rem 0.875rem;
@@ -1106,7 +1113,7 @@ select {
   color: #03130f;
 }
 
-:root[data-theme='dark'] .bg-success {
+:root[data-theme='dark'] .bg-success:not(.badge) {
   color: #052e16 !important;
 }
 
@@ -1117,4 +1124,10 @@ select {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Keep keyboard focus visible across native controls and code scrollers. */
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }

@@ -10,6 +10,7 @@ import { TRACK_NAVIGATION } from './learnRegistry';
 import { buildLearnTrackNavigation } from './navigationLinks';
 import type { LearnTrackNavigation } from './navigationLinks';
 
+// Includes CI_NAVIGATION for the standalone, prerendered /ci action guide.
 export * from './navigationLinks';
 
 /** The four tracks (Understand, Use, Build, Reference) with their articles in reading order. */

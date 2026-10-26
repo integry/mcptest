@@ -26,6 +26,15 @@ const CATALOG_VALIDATION = Array.isArray(catalogValidation)
   ? (catalogValidation as CatalogValidationResult[])
   : [];
 const CATALOG_CAPABILITIES = catalogCapabilities as Record<string, unknown>;
+// These build-time snapshots never change during a page visit. Normalizing
+// every inventory again for each catalog lookup creates long tasks on mount.
+const inventoryCache = new Map<string, ReturnType<typeof validateCapabilityInventory>>();
+const getInventory = (serverId: string) => {
+  if (!inventoryCache.has(serverId)) {
+    inventoryCache.set(serverId, validateCapabilityInventory(CATALOG_CAPABILITIES[serverId]));
+  }
+  return inventoryCache.get(serverId)!;
+};
 
 export interface CatalogEndpointDiagnosticEvidence {
   transport: CatalogValidationTransport | CatalogTransport;
@@ -142,7 +151,7 @@ export const getCatalogServers = (): CatalogServer[] => {
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
       ...(CATALOG_CAPABILITIES[seed.id]
-        ? { capabilityInventory: validateCapabilityInventory(CATALOG_CAPABILITIES[seed.id]) }
+        ? { capabilityInventory: getInventory(seed.id) }
         : {}),
     };
   });

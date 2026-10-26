@@ -294,6 +294,8 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
         )}
       </section>
 
+      <p className="published-reports-note">Publish a report and enable Watch weekly to get free Slack, Discord, or HTTPS webhook alerts for breaking and risky changes. Configure one destination in Published history with your removal token. <a href="/learn/which-mcp-tool-changes-break-clients#weekly-push-alerts">Learn about weekly alerts</a>.</p>
+
       {result && (
         <section
           ref={resultsRef}

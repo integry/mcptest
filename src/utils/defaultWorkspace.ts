@@ -1,9 +1,9 @@
 import type { ConnectionTab, Space } from '../types';
 
 /**
- * Starting dashboards and tabs for a visitor with nothing saved. App starts
- * from these on its first render and useDataSync applies the same values once
- * auth resolves, so the sidebar and playground do not change after mount.
+ * Starting dashboards and tabs for a visitor with nothing saved. App uses
+ * these only during synchronous initialization; auth resolution must preserve
+ * the workspace already shown.
  */
 export const createDefaultSpaces = (): Space[] => [
   { id: 'default', name: 'My first dashboard', cards: [] },

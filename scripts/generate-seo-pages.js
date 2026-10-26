@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { renderServerActions, renderServerNextSteps } = require('../src/utils/serverNextSteps.ts');
 
 const fs = require('fs');
 const path = require('path');
@@ -61,7 +62,8 @@ const {
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
-const { renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
+const { renderCatalogFallback, renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
+const { getServerUrl } = require('../src/utils/urlUtils.ts');
 const { getServerPageMetaDescription, getServerSetupStructuredData } = require('../src/utils/serverConnect.ts');
 const {
   getCatalogCategoryNames,
@@ -70,8 +72,10 @@ const {
   getCatalogCategorySlug,
   summarizeCatalogCategories,
 } = require('../src/utils/catalogCategories.ts');
-const { getToolInventoryProperties } = require('../src/utils/catalogSeo.ts');
+const { getToolInventoryProperties, getCatalogServerTitle, getCatalogServerHeading, getCatalogServerIntro, getCatalogAuthAnswer } = require('../src/utils/catalogSeo.ts');
 const { getToolInventoryFeatureList } = require('../src/utils/toolInventory.ts');
+
+const { CI_PATH, CI_TITLE, CI_DESCRIPTION, CI_WORKFLOW, CI_EXAMPLE_COMMENT } = require('../src/content/ciCopy.ts');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -229,8 +233,7 @@ function detectedAuthenticationLabel(server) {
 
 function playgroundPath(server) {
   const endpoint = getPreferredCatalogEndpoint(server);
-  const transportMethod = endpoint.transport === 'legacy-sse' ? 'sse' : 'mcp';
-  return `/server/${endpoint.url}/${transportMethod}`;
+  return getServerUrl(endpoint.url);
 }
 
 function replaceOrInsertHead(html, pattern, replacement) {
@@ -398,10 +401,13 @@ function renderServerFallback(server) {
     `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server Catalog</a></li><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
     '  <header class="server-profile-hero">',
     `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
-    `      <h1>${escapeHtml(server.name)}</h1>`,
+    `      <h1 class="text-break">${escapeHtml(getCatalogServerHeading(server))}</h1>`,
+    `      <p class="text-break">${escapeHtml(getCatalogServerIntro(server))}</p>`,
     `      <p>${escapeHtml(server.description)}</p>`,
     '    </div></div>',
+    renderServerActions(server),
     '  </header>',
+    `  <section class="card server-profile-section" aria-labelledby="server-auth-title"><div class="card-body"><h2 id="server-auth-title">How do I authenticate?</h2><p>${escapeHtml(getCatalogAuthAnswer(server).detail)}</p><a href="${escapeHtml(getCatalogAuthAnswer(server).guide)}">Authentication and connection guide</a></div></section>`,
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <h2>Connection specification</h2>',
     '    <dl class="server-spec-list server-connection-specs">',
@@ -433,6 +439,7 @@ function renderServerFallback(server) {
     '  </div></section>',
     renderAuthorizationSetup(server),
     renderServerConnect(server),
+    renderServerNextSteps(server, mergeCatalogServers(JSON.parse(fs.readFileSync(catalogPath, 'utf8')), JSON.parse(fs.readFileSync(validationPath, 'utf8')))),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <section class="badge-embed" aria-labelledby="server-badge-embed-title">',
     '      <div class="badge-embed-heading">',
@@ -477,7 +484,7 @@ function renderServerHtml(indexHtml, server, options = {}) {
     : mergeCatalogServers([server], [])[0];
 
   const canonicalUrl = canonicalUrlFor(serverPath(server.id));
-  const title = `${server.name} MCP Server Report | mcptest.io`;
+  const title = getCatalogServerTitle(server.name);
   const description = getServerPageMetaDescription(server);
   const imageUrl = ogImageUrl(serverPath(server.id));
   const setup = getServerSetupStructuredData(server, canonicalUrl);
@@ -679,8 +686,8 @@ function renderMarkdown(markdown, context = undefined) {
       // script runs; unknown languages stay plain, exactly as in the browser.
       const highlighted = highlightCode(code.join('\n'), language || undefined);
       html.push(highlighted !== null
-        ? `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>`
-        : `<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
+        ? `<pre tabindex="0"><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>`
+        : `<pre tabindex="0"><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
       continue;
     }
 
@@ -947,10 +954,14 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     `    <p class="landing-lede">${escapeHtml(LANDING_LEDE)}</p>`,
     '    <div class="landing-connect">',
     '      <label for="serverUrl" class="visually-hidden">MCP endpoint URL</label>',
-    '      <input id="serverUrl" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" class="form-control landing-connect-input" placeholder="https://example.com/mcp" value="" readonly>',
+    '      <input id="serverUrl" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" class="form-control landing-connect-input" placeholder="https://example.com/mcp" value="">',
     '      <button id="connectBtn" type="button" class="btn btn-primary landing-connect-button" disabled>Connect</button>',
     '    </div>',
     ...renderQuickPicks(quickPicks),
+    '    <div class="landing-quick-picks landing-recent" data-prerendered-recent>',
+    '      <span class="landing-quick-picks-label" id="landing-recent-label">Recent</span><ul aria-labelledby="landing-recent-label"></ul>',
+    '    </div>',
+    '    <template data-recent-chip><li class="landing-recent-item"><button type="button" class="landing-quick-pick landing-recent-connect"><i class="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i><span class="landing-recent-host"></span></button><button type="button" class="landing-recent-remove"><i class="bi bi-x-lg" aria-hidden="true"></i></button></li></template>', 
     // TabContent passes the connection panel as LandingHero's advancedOptions.
     ...(advancedToggle
       ? ['    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>Advanced options<span class="landing-advanced-hint">headers, auth, proxy</span></button>']
@@ -993,7 +1004,7 @@ function renderHeaderFallback({ authEnabled }) {
     '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu"><span class="hamburger"></span></button>',
     '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo-96.png" alt="MCP Logo" width="40" height="40"></a>',
     '    <a href="/" class="app-brand-copy">',
-    '      <h1 class="app-brand-title">mcptest.io</h1>',
+    '      <span class="app-brand-title">mcptest.io</span>',
     '      <p class="app-brand-subtitle d-none d-md-block">Remote MCP Inspector</p>',
     '    </a>',
     '  </div>',
@@ -1021,6 +1032,7 @@ const PRIMARY_ACTIVE_VIEWS = {
   '/catalog': ['catalog', 'server-profile'],
   '/report': ['report'],
   '/tools/breaking-changes': ['breaking-changes'],
+  '/tools/oauth-check': ['oauth-check'],
   [DISCOVERY_CHECKER_PATH]: ['discovery'],
 };
 
@@ -1067,9 +1079,9 @@ function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playgro
     '          </div>',
     '        </div>',
     `        <div id="sidenav-dashboards-${idSuffix}" class="sidenav-dashboards-body">`,
-    '          <ul class="nav flex-column dashboard-list" role="listbox" aria-label="Dashboards">',
+    '          <ul class="nav flex-column dashboard-list" aria-label="Dashboards">',
     ...createDefaultSpaces().map(space => [
-      '            <li class="nav-item" tabindex="-1" role="option" aria-selected="false">',
+      '            <li class="nav-item">',
       `<a href="${escapeHtml(getSpaceUrl(space.name))}" class="dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center" style="cursor: move; opacity: 1; user-select: none;">`,
       `<span class="me-2 health-indicator health-indicator-gray" title="No cards to check" style="${HEALTH_INDICATOR_STYLE}"></span>`,
       `<span class="dashboard-name flex-grow-1 text-truncate" title="${escapeHtml(space.name)}">${escapeHtml(space.name)}</span>`,
@@ -1166,6 +1178,34 @@ function renderAppShell({
   ].join('\n');
 }
 
+// Match the disconnected workspace's layout using the same classes and
+// onboarding layout. theme-init fills saved tabs and endpoints before paint.
+function renderReturningWorkspace() {
+  return [
+    '<div class="seo-returning-workspace">',
+    '<div class="card connection-console">',
+    '<div class="card-header d-flex justify-content-between align-items-center"><div class="connection-heading"><div class="connection-title-row"><h5 class="mb-0 returning-heading-skeleton" aria-hidden="true">Connect a remote endpoint</h5><span class="badge bg-secondary returning-status-skeleton" aria-hidden="true">Disconnected</span></div></div></div>',
+    '<div class="card-body"><div class="mb-3"><label class="form-label">MCP endpoint URL</label><div class="input-group"><input id="returning-server-url" aria-label="Saved endpoint URL" class="form-control" placeholder="mcp.context7.com" readonly><button class="btn btn-primary" disabled>Connect</button></div><details class="connection-advanced mt-3"><summary><i class="bi bi-gear me-2" aria-hidden="true"></i>Advanced options</summary></details></div></div>',
+    '</div>',
+    '<div class="playground-layout flex-grow-1 playground-idle"><div class="w-100 idle-onboarding-layout">',
+    '<section class="awaiting-connection-panel"><div class="awaiting-connection-tabs" aria-hidden="true"><span>Server capabilities</span><span>Inspector</span><span>Connection logs</span></div><div class="awaiting-connection-empty"><span class="awaiting-connection-icon" aria-hidden="true"><i class="bi bi-terminal"></i></span><div><h2>Awaiting connection</h2><p>Connect a server and its capabilities, requests, and output will appear here.</p></div></div></section>',
+    '<div class="row g-3"><div class="col-md-6" data-workspace-recent><div class="card mb-3"><div class="card-header"><h6 class="mb-0">Recent Connections</h6></div><ul class="list-group list-group-flush"></ul></div></div><div class="col-md-6" data-workspace-suggested>',
+    '<div class="card mb-3 suggested-servers-panel"><div class="card-header"><div><h6 class="mb-0">Suggested servers</h6></div></div><div class="card-body p-3"><small class="text-muted d-block mb-3">Connect to a curated public endpoint and inspect the negotiated protocol.</small><ul class="suggested-server-grid">',
+    ...mergeCatalogServers(
+      JSON.parse(fs.readFileSync(catalogPath, 'utf8')),
+      JSON.parse(fs.readFileSync(validationPath, 'utf8'))
+    ).filter(server =>
+      server.tags.includes('suggested') && server.status !== 'offline' && server.authType === 'none'
+      && server.browserAccess === 'direct' && server.browserUrl
+    ).slice(0, 4).map(server => {
+      const endpoint = getPreferredCatalogEndpoint(server).url;
+      return `<li class="suggested-server-row"><button type="button" class="suggested-server-action"><span class="catalog-server-logo suggested-server-logo"><img src="${escapeHtml(server.logoUrl)}" alt="" width="40" height="40"></span><div class="suggested-server-copy"><div class="suggested-server-title-row"><strong>${escapeHtml(server.name)}</strong><span aria-hidden="true">↗</span></div><p>${escapeHtml(server.description)}</p><small title="${escapeHtml(endpoint)}">${escapeHtml(endpoint)}</small></div></button></li>`;
+    }),
+    '</ul></div><div class="card-footer text-center p-2"><a href="/catalog" class="btn btn-sm btn-link p-0" style="text-decoration:none">Browse the full server catalog &rarr;</a></div></div>',
+    '</div></div></div></div></div>',
+  ].join('\n');
+}
+
 /**
  * The full first frame of the home page: header, sidebar, playground tab
  * strip and landing, in the elements and classes App.tsx renders for a
@@ -1177,7 +1217,10 @@ function renderShellFallback({
   ...shellOptions
 }) {
   const [tab] = createDefaultTabs();
-  return renderAppShell({ ...shellOptions, content: [
+  return renderAppShell({ ...shellOptions, attributes: {
+    'data-deferred-mount': true,
+    'data-page-view-title': 'Playground',
+  }, content: [
     '<div class="h-100 d-flex flex-column">',
     '<div class="playground-tabs-wrapper">',
     '<div class="playground-tab-strip">',
@@ -1186,13 +1229,14 @@ function renderShellFallback({
       + `<button type="button" class="nav-link active active-tab-override" role="tab" aria-selected="true" title="${escapeHtml(tab.title)}">`
       + '<span class="me-2 playground-tab-status" style="width: 8px; height: 8px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>'
       + `<span class="playground-tab-label">${escapeHtml(tab.title)}</span></button></div>`,
-    '<div class="nav-item" role="presentation"><button type="button" class="nav-link playground-tab-new">+ New</button></div>',
     '</div>',
+    '<button type="button" class="nav-link playground-tab-new">+ New</button>',
     '</div>',
     '</div>',
     '<div class="flex-grow-1 position-relative">',
     '<div class="tab-content-panel" style="height: 100%; position: static; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;">',
     renderLandingFallback(catalogCount, quickPicks, { advancedToggle: true }),
+    renderReturningWorkspace(),
     '</div>',
     '</div>',
     '</div>',
@@ -1342,11 +1386,11 @@ function addAppPreloads(html, hrefs) {
 
 /**
  * State scripts set before the full stylesheet has surely applied: classes on
- * <body> or the sidebar (src/staticPage), and data-theme on <html>
- * (public/theme-init.js), which is outside the page body the CSS is matched against.
+ * <body> or the sidebar (src/staticPage), and theme/returning-visitor attributes
+ * on <html> (public/theme-init.js), outside the page body the CSS is matched against.
  */
 const RUNTIME_STATE_CLASSES = ['menu-open', 'sidenav-collapsed', 'app-sidenav--collapsed'];
-const RUNTIME_STATE_ATTRIBUTES = ['data-theme'];
+const RUNTIME_STATE_ATTRIBUTES = ['data-theme', 'data-returning-visitor'];
 
 function listHtmlFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -1418,8 +1462,21 @@ function readBuildEnv(name, mode = 'production') {
   return undefined;
 }
 
-function renderCatalogHtml(indexHtml, catalogMetadata) {
-  return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata);
+function renderCatalogHtml(indexHtml, catalogMetadata, { servers = [], shell = {} } = {}) {
+  return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata, {
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      numberOfItems: servers.length,
+      itemListElement: servers.map((server, index) => ({
+        '@type': 'ListItem', position: index + 1, name: server.name,
+        url: canonicalUrlFor(serverPath(server.id)),
+      })),
+    },
+    fallbackHtml: renderContentShell(renderCatalogFallback({
+      servers, summaries: summarizeCatalogCategories(servers),
+    }), { view: 'catalog', pathname: '/catalog', pageViewTitle: catalogMetadata.title, shell }),
+  });
 }
 
 /**
@@ -1479,11 +1536,13 @@ function writeDiscoveryPage(indexHtml, discoveryMetadata, options) {
 }
 
 /** Prerendered `/catalog/<slug>`: metadata, CollectionPage JSON-LD and the static category body. */
-function renderCategoryHtml(indexHtml, summary, { summaries, servers, articles }) {
+function renderCategoryHtml(indexHtml, summary, { summaries, servers, articles, shell = {} }) {
   const seo = getCatalogCategorySeo(summary);
   return renderStaticPageHtml(indexHtml, summary.path, seo, {
     structuredData: seo.structuredData,
-    fallbackHtml: renderCategoryFallback({ summary, summaries, servers, articles }),
+    fallbackHtml: renderContentShell(renderCategoryFallback({ summary, summaries, servers, articles }), {
+      view: 'catalog', pathname: summary.path, pageViewTitle: 'Server Catalog', shell,
+    }),
   });
 }
 
@@ -1515,6 +1574,7 @@ function buildOgCards({ servers, articles, pageMetadata }) {
       title: DISCOVERY_COPY.heading,
       summary: DISCOVERY_COPY.cardSummary,
     },
+    { pagePath: CI_PATH, eyebrow: 'GitHub Actions', title: CI_TITLE, summary: CI_DESCRIPTION },
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     ...Object.entries(pageMetadata.tools || {}).map(([slug, metadata]) => ({
       pagePath: `/tools/${slug}`,
@@ -1564,13 +1624,13 @@ function writeServerPages(indexHtml, servers, shell) {
 }
 
 /** `/catalog/<slug>` as catalog/<slug>.html, served without a trailing slash like catalog.html. */
-function writeCategoryPages(indexHtml, servers, articles) {
+function writeCategoryPages(indexHtml, servers, articles, shell) {
   const summaries = summarizeCatalogCategories(servers);
   fs.mkdirSync(path.join(distRoot, 'catalog'), { recursive: true });
   for (const summary of summaries) {
     fs.writeFileSync(
       `${distPathFor(summary.path)}.html`,
-      renderCategoryHtml(indexHtml, summary, { summaries, servers, articles }),
+      renderCategoryHtml(indexHtml, summary, { summaries, servers, articles, shell }),
       'utf8'
     );
   }
@@ -1647,11 +1707,40 @@ function writeToolPages(indexHtml, toolsMetadata, { shell, prerender }) {
   }), 'utf8');
 }
 
-function writeHomeAndCatalogPages(indexHtml, pageMetadata, catalogCount, shellOptions) {
+/** A standalone static action setup page; no App route or hydration is needed. */
+function writeCiPage(indexHtml) {
+  const markdown = [
+    'Check whether your endpoint is ready for Claude, ChatGPT, Cursor, VS Code, Claude Code and Codex, and whether this deploy breaks agents holding the previous tool list.',
+    '', '## Copy this workflow', '',
+    'Create `.github/workflows/mcp-gate.yml` in your server repository. Deploy a reachable preview endpoint first, then replace the example URL.',
+    '', '```yaml', CI_WORKFLOW, '```', '',
+    'The maintainer creates `v1` when publishing. Until then use a reviewed commit SHA; pin a full SHA for reproducible production gates. The action sets up Node 22 and installs itself.',
+    '', '## Compare with the last release', '',
+    'Start with `baseline: none`. Then use `baseline: published` to compare with the latest published report for the same endpoint, or supply a previous release JSON path. Missing baselines fail closed. Only publish from trusted release jobs if published history should represent the last release.',
+    '', 'Set `publish: true` to make the redacted report public and include a permalink. Publishing is off by default. Use secret environment variable names in `bearer-token` or `api-key`, never literal credentials.',
+    '', '## Example PR comment', '',
+    'This illustrative comment shows a removed contract blocking a deploy despite compatible client profiles. The action also links individual findings to reference sections.',
+    '', '```markdown', CI_EXAMPLE_COMMENT, '```', '',
+    'Grant `pull-requests: write` to update a single sticky PR comment. Fork PRs without permission skip commenting and retain their job summary and artifacts.',
+    '', '## Run both readiness and conformance', '',
+    'The [official MCP conformance suite](https://github.com/modelcontextprotocol/conformance) tests against the specification. Run it alongside mcptest for spec checks. mcptest adds client-profile verdicts, OAuth evidence, breaking-change classification and optional session resilience. It does not launch client applications, prove browser CORS from Node, or certify conformance.',
+    '', '[Read the CI guide](/learn/test-remote-mcp-server-in-ci) for secrets, required clients, baseline limitations and rollout advice. [Action reference](https://github.com/integry/mcptest/blob/master/docs/headless-release-gate.md) lists every input and output.',
+  ].join('\n');
+  const fallbackHtml = `<main class="container py-4"><div class="reading-shell reading-shell-single"><article class="reading-article"><nav aria-label="Breadcrumb"><a href="/">mcptest.io</a> / CI</nav><header class="reading-header"><h1>${CI_TITLE}</h1><p class="reading-summary">${CI_DESCRIPTION}</p></header><div class="reading-prose">${renderMarkdown(markdown)}</div></article></div></main>`;
+  // Keep theme initialization and stylesheet loading; this document is complete
+  // without the SPA, whose route table intentionally stays untouched.
+  const staticIndex = indexHtml.replace(/<script\b[^>]*type="module"[^>]*>[\s\S]*?<\/script>/g, '')
+    .replace(/<link\b[^>]*rel="modulepreload"[^>]*>/g, '');
+  fs.writeFileSync(path.join(distRoot, 'ci.html'), renderStaticPageHtml(staticIndex, CI_PATH, {
+    title: 'MCP GitHub Action Release Gate | mcptest.io', description: CI_DESCRIPTION,
+  }, { fallbackHtml }), 'utf8');
+}
+
+function writeHomeAndCatalogPages(indexHtml, pageMetadata, servers, shellOptions) {
   // catalog.html, not catalog/index.html: hosts serve /catalog from it without
   // a trailing-slash redirect, and the app matches /catalog exactly.
-  fs.writeFileSync(path.join(distRoot, 'catalog.html'), renderCatalogHtml(indexHtml, pageMetadata.catalog), 'utf8');
-  fs.writeFileSync(indexPath, renderHomeHtml(indexHtml, pageMetadata.home, catalogCount, shellOptions), 'utf8');
+  fs.writeFileSync(path.join(distRoot, 'catalog.html'), renderCatalogHtml(indexHtml, pageMetadata.catalog, { servers, shell: shellOptions }), 'utf8');
+  fs.writeFileSync(indexPath, renderHomeHtml(indexHtml, pageMetadata.home, servers.length, shellOptions), 'utf8');
 }
 
 function writeLearnFeed(articles, learnIndex) {
@@ -1700,8 +1789,10 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: '/catalog', lastModified: catalogValidated },
     ...categoryEntries,
     { pathname: DISCOVERY_CHECKER_PATH },
+    { pathname: CI_PATH },
     { pathname: '/learn', lastModified: guidesReviewed },
     { pathname: '/tools/breaking-changes' },
+    { pathname: '/tools/oauth-check' },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
     ...servers.map(server => ({ pathname: serverPath(server.id), lastModified: isoDay(server.checkedAt) })),
@@ -2000,16 +2091,20 @@ async function main() {
   const contentShell = { learnTracks: shellOptions.learnTracks, authEnabled: shellOptions.authEnabled };
 
   writeServerPages(indexHtml, servers, contentShell);
-  const categoryCount = writeCategoryPages(indexHtml, servers, articles);
+  const categoryCount = writeCategoryPages(indexHtml, servers, articles, contentShell);
   writeStaticPages(indexHtml, pageMetadata.docs);
+  writeCiPage(indexHtml);
   writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });
+  fs.writeFileSync(`${distPathFor('/tools/oauth-check')}.html`, renderStaticPageHtml(indexHtml, '/tools/oauth-check', pageMetadata.tools['oauth-check'], {
+    fallbackHtml: renderAppShell({ ...contentShell, content: prerender.renderOAuthCheckerPage(), attributes: { 'data-deferred-mount': true, 'data-page-view-title': 'MCP OAuth checker' }, view: 'oauth-check', pathname: '/tools/oauth-check', panelStyle: '' }),
+  }), 'utf8');
   writeDiscoveryPage(indexHtml, pageMetadata.discovery, {
     shell: contentShell,
     proxyConfigured: Boolean(readBuildEnv('VITE_PROXY_URL')),
   });
   writeArticlePages(indexHtml, learnIndex, articles, { shell: contentShell, prerender });
   // Last: overwrites the shell the pages above were rendered from.
-  writeHomeAndCatalogPages(indexHtml, pageMetadata, servers.length, shellOptions);
+  writeHomeAndCatalogPages(indexHtml, pageMetadata, servers, shellOptions);
   writeLearnFeed(articles, learnIndex);
   writeSearchIndex(articles);
   writeLlmsTxt(articles);

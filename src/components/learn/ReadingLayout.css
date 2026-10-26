@@ -279,7 +279,7 @@
   border: 1px solid var(--reading-rule);
   border-radius: 0.35rem;
   background: var(--card-bg);
-  color: var(--text-muted);
+  color: var(--text-color);
   font-family: var(--font-family-sans-serif);
   font-size: 0.75rem;
   line-height: 1.4;
@@ -645,3 +645,8 @@
     padding-top: 2.25rem;
   }
 }
+
+.reading-inline-test { margin: 1.5rem 0; padding: 1rem 0; border-block: 1px solid var(--border-color, #888); }
+.reading-inline-test label { display: block; font-weight: 600; margin-bottom: .5rem; }
+.reading-inline-test input { flex: 1 1 14rem; min-width: 0; width: auto; }
+.reading-pager-next { border-inline-start: 3px solid var(--bs-primary); padding-inline-start: 1rem; }

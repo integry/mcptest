@@ -125,3 +125,71 @@ A client secret is especially easy to misuse. A secret distributed inside a desk
 | `403` from a tool | Authenticated but operation forbidden | Inspect application permission and tool result; do not restart OAuth blindly |
 
 Log the sequence as redacted events: challenge source, metadata URLs, selected issuer, registration path, requested scopes, callback validation, token status, and authenticated retry. This is enough to debug interoperability without recording codes, verifiers, tokens, secrets, or personal authorization-page data.
+
+## Read-only OAuth checks and fixes
+
+The free [MCP OAuth checker](/tools/oauth-check) follows steps 1–5 above without registering a client, sending credentials or opening authorization. Each request has a URL and evidence. A failed path probe can be followed by a successful root or OIDC fallback; judge the validation rows, not an individual fallback's 404. “Clients can start OAuth” means the metadata is ready, not that login or token exchange was verified. Continue with **Open in inspector** to test a real connection.
+
+For “failed to discover OAuth metadata,” serve public JSON and check the issuer-path rules in the [OAuth reference](/learn/mcp-oauth-2-1-reference#sequence-at-a-glance). For “protected resource does not match expected,” fix the published `resource` to match the MCP audience, using the [resource mismatch guide](/learn/mcp-oauth-protected-resource-mismatch). Do not replace an access-blocked metadata URL with guessed endpoints.
+
+For example, these are the discovery response shapes for `https://mcp.example.com/mcp` and issuer `https://auth.example.com`:
+
+```json
+{
+  "resource": "https://mcp.example.com/mcp",
+  "authorization_servers": ["https://auth.example.com"]
+}
+```
+
+Serve that at `/.well-known/oauth-protected-resource/mcp` (or advertise its location in the 401 challenge). The issuer's `/.well-known/oauth-authorization-server` should advertise real endpoints and capabilities your server implements:
+
+```json
+{
+  "issuer": "https://auth.example.com",
+  "authorization_endpoint": "https://auth.example.com/authorize",
+  "token_endpoint": "https://auth.example.com/token",
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code", "refresh_token"],
+  "token_endpoint_auth_methods_supported": ["none"],
+  "code_challenge_methods_supported": ["S256"],
+  "client_id_metadata_document_supported": true
+}
+```
+
+Only advertise CIMD or a `registration_endpoint` when implemented. DCR advertising does not prove arbitrary clients will be accepted: Dropbox, Harness and ZoomInfo rejected registration in the recorded sweep under partner/vendor policies. GitHub requires a configured confidential client. These are client-mode restrictions, not automatically missing discovery metadata.
+
+TypeScript SDK applications can serve the challenge from their HTTP auth middleware (replace the example origin with the deployment origin):
+
+```typescript
+res.setHeader('Access-Control-Allow-Origin', '*');
+res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate');
+res.setHeader('WWW-Authenticate',
+  'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"');
+res.status(401).end();
+```
+
+Python SDK applications can return the same challenge in their ASGI authentication layer:
+
+```python
+from starlette.responses import Response
+
+return Response(status_code=401, headers={
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "WWW-Authenticate",
+    "WWW-Authenticate": 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
+})
+```
+
+For Cloudflare `workers-oauth-provider`, check the resource metadata exposed by the wrapper and use an equivalent response for rejected unauthenticated MCP requests:
+
+```typescript
+return new Response(null, { status: 401, headers: {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Expose-Headers': 'WWW-Authenticate',
+  'WWW-Authenticate': 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
+} });
+```
+
+These snippets describe HTTP responses, not complete authorization implementations. Keep PKCE validation, audience enforcement and token validation in the auth provider. See the [Cloudflare deployment guide](/learn/remote-mcp-server-with-cloudflare-workers-agents) or the integration guides for [Auth0](/learn/secure-remote-mcp-server-with-auth0), [Clerk](/learn/secure-remote-mcp-server-with-clerk), [WorkOS](/learn/secure-remote-mcp-server-with-workos-authkit) and [Stytch](/learn/secure-remote-mcp-server-with-stytch).
+
+Redirect allow-lists are not discoverable metadata. Compare the callbacks in the checker with the provider's configuration, including Claude, ChatGPT's callback-specific variant, Cursor's hosted callback and both VS Code loopback and `vscode.dev` callbacks. Follow the [VS Code redirect guide](/learn/vscode-mcp-oauth-redirect-uris); exact callback acceptance remains unverified until connection.

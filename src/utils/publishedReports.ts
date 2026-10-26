@@ -247,6 +247,31 @@ export const setPublishedReportWatch = async (
   return (await response.json() as { watch: PublishedWatchToggle }).watch;
 };
 
+export interface PublishedAlertStatus {
+  kind: 'slack' | 'discord' | 'webhook';
+  host: string;
+  enabled: boolean;
+  failures: number;
+  lastDelivery: { status: 'ok' | 'failed'; httpStatus: number | null; timestamp: string } | null;
+}
+
+export async function publishedReportAlerts(
+  id: string, removalToken: string,
+  action: 'status' | 'save' | 'test' | 'remove', url?: string,
+  options: RequestOptions = {}
+): Promise<{ alert: PublishedAlertStatus | null; signingSecret?: string }> {
+  const base = resolveBase(options);
+  if (!base) throw new PublishedReportError('Published reports are not configured.', 0, 'not_configured');
+  const response = await (options.fetchImpl ?? fetch)(`${base}/r/${encodeURIComponent(id)}/alerts${action === 'test' ? '/test' : ''}`, {
+    method: action === 'status' ? 'GET' : action === 'remove' ? 'DELETE' : 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Removal-Token': removalToken },
+    cache: 'no-store',
+    ...(action === 'save' ? { body: JSON.stringify({ url }) } : {}),
+  });
+  if (!response.ok) throw await readError(response);
+  return response.json();
+}
+
 type TokenStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /** Removal tokens by snapshot id; only ever stored in this browser. */

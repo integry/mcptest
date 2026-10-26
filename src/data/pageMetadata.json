@@ -1,7 +1,7 @@
 {
   "home": {
-    "title": "Test Remote MCP Servers | MCP Inspector Online | mcptest.io",
-    "description": "Inspect, debug and evaluate remote MCP servers in your browser. An MCP inspector online: test remote MCP server protocol negotiation, OAuth 2.1, CORS and tool contracts, then share a report."
+    "title": "MCP Inspector Online & Playground: Test Remote MCP Servers | mcptest.io",
+    "description": "Test remote MCP servers in an online inspector and playground. Check connections, OAuth, CORS and tools in your browser, then share a report."
   },
   "catalog": {
     "title": "Remote MCP Server Catalog | mcptest.io",
@@ -20,6 +20,10 @@
     "breaking-changes": {
       "title": "MCP Breaking Change Checker for tools/list | mcptest.io",
       "description": "Free MCP breaking-change check. Compare two tools/list results and see which changes break clients that cached the old schema: removed tools, new required inputs, narrowed types and output contracts."
+    },
+    "oauth-check": {
+      "title": "MCP OAuth Checker: Test Your Server\u2019s Authorization | mcptest.io",
+      "description": "Free MCP OAuth checker with step-by-step discovery evidence, provider-specific diagnosis, PKCE, resource URL matching and client callback guidance."
     }
   },
   "docs": {

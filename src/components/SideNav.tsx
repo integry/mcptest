@@ -17,7 +17,7 @@ import ContentTrackNav from './learn/ContentTrackNav';
 import GuideSearch from './learn/GuideSearch';
 import { isGuideSearchShortcutView } from './learn/guideSearchShortcut';
 
-type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'evals' | 'breaking-changes' | 'discovery';
+type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'evals' | 'breaking-changes' | 'discovery' | 'oauth-check';
 
 interface SideNavProps {
   activeView: ActiveView;
@@ -42,6 +42,7 @@ const PRIMARY_ACTIVE_VIEWS: Record<string, ActiveView[]> = {
   '/report': ['report'],
   '/evals': ['evals'],
   '/tools/breaking-changes': ['breaking-changes'],
+  '/tools/oauth-check': ['oauth-check'],
   '/tools/discovery': ['discovery'],
 };
 
@@ -67,7 +68,7 @@ const SideNav: React.FC<SideNavProps> = ({
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const [cardDropTargetSpaceId, setCardDropTargetSpaceId] = React.useState<string | null>(null);
   const [focusedDashboardIndex, setFocusedDashboardIndex] = useState<number | null>(null);
-  const dashboardListRef = useRef<(HTMLLIElement | null)[]>([]);
+  const dashboardListRef = useRef<(HTMLAnchorElement | null)[]>([]);
   const navRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const { currentUser, loginWithGoogle, logout } = useAuth();
@@ -347,21 +348,19 @@ const SideNav: React.FC<SideNavProps> = ({
               {spaces.length === 0 && !showCreateInput ? (
                 <p className="sidenav-empty-hint">Create a dashboard to pin saved connections.</p>
               ) : (
-                <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} role="listbox" aria-label="Dashboards">
+                <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} aria-label="Dashboards">
                   {spaces.map((space, index) => (
                     <li
-                      ref={(el) => { dashboardListRef.current[index] = el; }}
                       className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
                       key={space.id}
                       onDragOver={(e) => handleSpaceDragOver(e, index)}
                       onDragLeave={handleSpaceDragLeave}
                       onDrop={(e) => handleSpaceDrop(e, index)}
-                      tabIndex={focusedDashboardIndex === index ? 0 : -1}
-                      role="option"
-                      aria-selected={selectedSpaceId === space.id && activeView === 'dashboards'}
-                      onFocus={() => setFocusedDashboardIndex(index)}
                     >
                       <Link
+                        ref={(el) => { dashboardListRef.current[index] = el; }}
+                        onFocus={() => setFocusedDashboardIndex(index)}
+                        aria-current={selectedSpaceId === space.id && activeView === 'dashboards' ? 'page' : undefined}
                         to={getSpaceUrl(space.name)}
                         className={`dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active' : ''}`}
                         draggable
@@ -480,7 +479,7 @@ const SideNav: React.FC<SideNavProps> = ({
                   <span className="visually-hidden"> (opens in a new tab)</span>
                 </a>
               ) : (
-                <Link to={link.href} className="sidenav-footer-link" onClick={closeMobileDrawer}>
+                <Link to={link.href} reloadDocument={link.reloadDocument} className="sidenav-footer-link" onClick={closeMobileDrawer}>
                   {link.label}
                 </Link>
               )}

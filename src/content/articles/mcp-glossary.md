@@ -1,14 +1,14 @@
 ---
 title: MCP glossary
-summary: "Forty Model Context Protocol terms in alphabetical order, from API key to transport, each defined in one or two sentences and linked by anchor."
+summary: "Forty-one Model Context Protocol terms in alphabetical order, from API key to transport, each defined in one or two sentences and linked by anchor."
 track: understand
 level: newcomer
 order: 24
 category: Reference
 readingTimeMinutes: 7
-lastReviewed: "2026-10-20"
-metaTitle: "MCP Glossary: 40 Model Context Protocol Terms | mcptest.io"
-metaDescription: "Short definitions of 40 MCP terms: host, client, server, tools, transports, Streamable HTTP, sessions, OAuth 2.1, PKCE, CORS, elicitation, sampling and more."
+lastReviewed: "2026-10-25"
+metaTitle: "MCP Glossary: 41 Model Context Protocol Terms | mcptest.io"
+metaDescription: "Short definitions of 41 MCP terms: host, client, server, tools, transports, Streamable HTTP, sessions, OAuth 2.1, PKCE, CORS, elicitation, sampling and more."
 relatedSlugs:
   - what-is-mcp
   - mcp-explained-for-everyone
@@ -211,6 +211,10 @@ A named action a server offers, with a description and a JSON Schema for its inp
 ### Transport
 
 The channel that carries MCP messages between client and server. The current specification defines stdio for local servers and Streamable HTTP for remote ones; see [remote vs local MCP servers](/docs/remote-vs-local).
+
+### Transport agnostic
+
+A protocol is **transport agnostic** when its message format and meaning are defined independently of the channel carrying them. MCP's JSON-RPC operations can travel over stdio or Streamable HTTP; changing the transport does not change what a tool call means. Each transport still has its own framing, lifecycle and security rules, so transport agnostic does not mean every client can connect over every transport.
 
 ## Look up a term in a live server
 

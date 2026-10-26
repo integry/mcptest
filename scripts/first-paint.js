@@ -229,7 +229,7 @@ const OBSERVER_SOURCE = `(() => {
 const SAMPLE_EXPRESSION = `(() => {
   const state = window.__firstPaint;
   const root = document.getElementById('root');
-  const has = selector => Boolean(root && root.querySelector(selector));
+  const has = selector => [...(root?.querySelectorAll(selector) || [])].some(el => el.getClientRects().length > 0);
   const text = document.body ? document.body.innerText.trim().length : 0;
   const inter = document.fonts ? [...document.fonts].some(face => face.family.replace(/"/g, '') === 'Inter Variable' && face.status === 'loaded') : false;
   let phase = 'no-document';
@@ -244,10 +244,23 @@ const SAMPLE_EXPRESSION = `(() => {
     blank: text === 0,
     theme: document.documentElement.getAttribute('data-theme'),
     header: has('.app-header'),
-    sidebar: has('.desktop-sidebar .app-sidenav'),
+    // The static shell keeps the desktop nav in the DOM on mobile.
+    // Layout boxes respect hidden ancestors as well as the nav's own display.
+    sidebar: [...(root?.querySelectorAll('.desktop-sidebar .app-sidenav') || [])].some(el => el.getClientRects().length > 0),
     landing: has('.landing-title'),
+    recent: [...document.querySelectorAll('.landing-recent')].some(el => getComputedStyle(el).display !== 'none'),
+    newUserPicks: [...document.querySelectorAll('.landing-quick-picks')].some(el => el.textContent.includes('Try with') && getComputedStyle(el).display !== 'none'),
+    recentHosts: [...document.querySelectorAll('.landing-recent-host')].map(el => el.textContent),
     connect: has('.landing-connect'),
+    catalog: has('.catalog-view'),
+    catalogRows: root ? root.querySelectorAll('.catalog-server-row').length : 0,
+    catalogSearch: root?.querySelector('.catalog-search-field input')?.value,
+    catalogAuth: root?.querySelector('#catalog-auth')?.value,
+    catalogSort: root?.querySelector('#catalog-sort')?.value,
+    catalogCategory: root?.querySelector('#catalog-category')?.value,
     connectionPanel: has('.connection-console'),
+    workspaceRecent: has('.recent-server-link'),
+    tabs: [...(root?.querySelectorAll('.playground-tab-label') || [])].map(el => el.textContent),
     inter,
     painted: Boolean(state && state.paints['first-paint'] !== undefined),
     cls: state ? state.cls : 0,
@@ -287,18 +300,33 @@ async function measureFirstPaint(options = {}) {
     });
     await page('Page.addScriptToEvaluateOnNewDocument', { source: OBSERVER_SOURCE });
 
+    if (settings.recentServers) await page('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem('mcpRecentServers', ${JSON.stringify(JSON.stringify(settings.recentServers))})`,
+    });
+
+    if (settings.savedTabs) await page('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem('mcpConnectionTabs', ${JSON.stringify(JSON.stringify(settings.savedTabs))})`,
+    });
+
     const samples = [];
     const screenshots = [];
     const ticks = Math.floor(settings.durationMs / settings.intervalMs);
     const screenshotEvery = Math.max(1, Math.ceil(ticks / settings.maxScreenshots));
     const startedAt = Date.now();
-    await page('Page.navigate', { url: `${server.origin}/` });
+    await page('Page.navigate', { url: `${server.origin}${settings.pathname || '/'}` });
 
+    let inputTriggered = false;
     for (let tick = 0; tick < ticks; tick++) {
       const due = startedAt + tick * settings.intervalMs;
       const wait = due - Date.now();
       if (wait > 0) await new Promise(done => setTimeout(done, wait));
       const t = Date.now() - startedAt;
+      if (settings.triggerMountAtMs !== undefined && t >= settings.triggerMountAtMs && !inputTriggered) {
+        inputTriggered = true;
+        // Synthetic input starts the deferred mount without excluding layout
+        // shifts as recent user input, so the swap is part of the CLS budget.
+        await page('Runtime.evaluate', { expression: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }))" });
+      }
       const { result } = await page('Runtime.evaluate', { expression: SAMPLE_EXPRESSION, returnByValue: true });
       const sample = { t, ...(result.value || { phase: 'no-document', blank: true }) };
       if (!String(sample.url || '').startsWith(server.origin)) sample.phase = 'navigating';
@@ -348,6 +376,8 @@ function formatTimeline(result) {
     sample.sidebar ? 'sidebar' : null,
     sample.landing ? 'landing' : null,
     sample.connect ? 'connect-form' : null,
+    sample.recent ? 'recent-chips' : null,
+    sample.newUserPicks ? 'new-user-picks' : null,
     sample.connectionPanel ? 'connection-panel' : null,
     `theme=${sample.theme || 'unset'}`,
     sample.inter ? 'Inter' : 'fallback-font',

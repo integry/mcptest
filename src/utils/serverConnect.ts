@@ -52,6 +52,7 @@ import {
   formatCatalogTransport,
   getCatalogServerPath,
   getCatalogServerSeo,
+  getCatalogServerMetaDescription,
 } from './catalogSeo.ts';
 
 export type ClientSupportLevel = 'supported' | 'partial' | 'unsupported';
@@ -494,15 +495,18 @@ const listNames = (names: string[]): string => (
   names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
 );
 
-/**
- * Short setup phrases for the meta description, longest first: up to three
- * client names, then fewer, then none.
- */
+/** Setup phrases in descending length, using clients that can connect. */
 const getServerSetupPhrases = (server: CatalogServer): string[] => {
-  const names = getServerSetupClientNames(server, 3);
+  const names = getServerSetupClientNames(server);
+  if (!names.length) return ['Client setup, auth and tools.'];
   return [
-    ...names.map((_, index) => `Setup for ${names.slice(0, names.length - index).join(', ')} and more.`),
-    'Client setup, auth and tools.',
+    ...names.map((_, index) => {
+      const clients = names.slice(0, names.length - index);
+      const list = clients.length === 1
+        ? `${clients[0]} and more`
+        : `${clients.slice(0, -1).join(', ')} and ${clients[clients.length - 1]}`;
+      return `Setup for ${list}.`;
+    }),
   ];
 };
 
@@ -514,26 +518,10 @@ export const splitInlineCode = (text: string): Array<{ code: boolean; text: stri
   text.replace(/\*\*/g, '').split('`').map((part, index) => ({ code: index % 2 === 1, text: part })).filter(({ text: part }) => part)
 );
 
-const truncateDescription = (value: string, maxLength = 158): string => (
-  value.length <= maxLength ? value : `${value.slice(0, maxLength - 1).trimEnd()}…`
+/** Endpoint and auth, then the longest fitting setup phrase, then a summary sentence. */
+export const getServerPageMetaDescription = (server: CatalogServer): string => (
+  getCatalogServerMetaDescription(server, getServerSetupPhrases(server))
 );
-
-const SERVER_META_DESCRIPTION_MAX_LENGTH = 158;
-
-/**
- * Meta description of a server page: what the server does, then a short
- * setup phrase when it fits. The server summary is never shortened to make
- * room for client names.
- */
-export const getServerPageMetaDescription = (server: CatalogServer): string => {
-  const summary = (server.seoDescription || server.description).trim();
-  if (summary.length >= SERVER_META_DESCRIPTION_MAX_LENGTH) {
-    return truncateDescription(summary, SERVER_META_DESCRIPTION_MAX_LENGTH);
-  }
-  const phrase = getServerSetupPhrases(server)
-    .find((candidate) => summary.length + 1 + candidate.length <= SERVER_META_DESCRIPTION_MAX_LENGTH);
-  return phrase ? `${summary} ${phrase}` : summary;
-};
 
 /** Anchor of the "Connect it" heading; JSON-LD points installUrl at it. */
 export const SERVER_CONNECT_TITLE_ID = 'server-connect-title';

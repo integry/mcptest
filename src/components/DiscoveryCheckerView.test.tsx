@@ -79,7 +79,7 @@ describe('DiscoveryCheckerView', () => {
 
     expect(container.querySelector('h2')?.textContent).toBe('1 MCP endpoint on example.com');
     const inspector = [...container.querySelectorAll('a')].find(link => link.textContent?.includes('Test in inspector'));
-    expect(inspector?.getAttribute('href')).toBe('/server/https://example.com/mcp/mcp');
+    expect(inspector?.getAttribute('href')).toBe('/server/example.com/mcp');
 
     const row = container.querySelector('[data-testid="discovery-row-well-known-server-card"]')!;
     expect(row.getAttribute('data-status')).toBe('found');

@@ -30,9 +30,11 @@ describe('sitemap entries', () => {
 
   it('lists each page once', () => {
     expect(byPath.size).toBe(entries.length);
-    // Home, catalog, learn, both tools, articles, docs, servers.
-    expect(entries).toHaveLength(5 + articles.length + 2 + servers.length);
+    // Home, catalog, learn, CI, both tools, articles, docs, servers.
+    expect(entries).toHaveLength(7 + articles.length + 2 + servers.length);
+    expect(byPath.get('/ci')).toEqual({ pathname: '/ci' });
     expect(byPath.has('/tools/breaking-changes')).toBe(true);
+    expect(byPath.get('/tools/oauth-check')).toEqual({ pathname: '/tools/oauth-check' });
   });
 
   it('lists the discovery checker without a content date', () => {

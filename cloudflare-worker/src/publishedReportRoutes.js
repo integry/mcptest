@@ -373,6 +373,37 @@ const updateWatch = async (request, env, id) => {
   return jsonResponse(request, { endpoint: snapshot.entry.endpoint, watch }, 200, methods);
 };
 
+// Owner-only destination operations. Neither URL nor downstream errors are reflected.
+const ownerAlerts = async (request, env, id, test) => {
+  const methods = 'GET, POST, DELETE, OPTIONS';
+  const parsed = parsePublishedReportId(id);
+  const token = request.headers.get(REMOVAL_TOKEN_HEADER)?.trim();
+  if (!token) return errorResponse(request, 401, 'removal_token_required', 'Send the snapshot removal token.', methods);
+  if (!parsed) return errorResponse(request, 404, 'not_found', 'No published report has this id.', methods);
+  let body = {};
+  if (request.method === 'POST' && !test) {
+    const received = await readBody(request);
+    if (received.error || received.text.length > 4096) return errorResponse(request, 413, 'too_large', 'Alert setup is limited to 4096 characters.', methods);
+    try { body = JSON.parse(received.text); } catch { return errorResponse(request, 400, 'invalid_json', 'Send a destination URL.', methods); }
+  }
+  const response = await callStub(endpointStub(env, parsed.endpointKey), '/alerts', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, removalTokenHash: await sha256Hex(token), method: request.method, test, url: body?.url }),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    const messages = {
+      invalid_removal_token: 'The removal token does not match this snapshot.',
+      invalid_destination: 'Use a public HTTPS webhook URL, without credentials, a fragment or a custom port.',
+      watch_required: 'Turn on the weekly watch before adding alerts.',
+      no_enabled_destination: 'Save an enabled destination before sending a test.',
+      test_rate_limited: 'Wait one minute before sending another test.',
+    };
+    return errorResponse(request, response.status, result.error, messages[result.error] || 'Alerts could not be updated.', methods);
+  }
+  return jsonResponse(request, result, 200, methods);
+};
+
 const changesFeed = async (request, env, segment) => {
   const endpoint = decodeEndpoint(segment);
   if (!endpoint) return errorResponse(request, 404, 'not_found', 'This endpoint cannot have published reports.');
@@ -507,6 +538,13 @@ export async function handlePublishedReportRequest(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, 'GET, HEAD, OPTIONS') });
     if (request.method !== 'GET' && request.method !== 'HEAD') return errorResponse(request, 405, 'method_not_allowed', 'Use GET.', 'GET, HEAD, OPTIONS', { Allow: 'GET, HEAD, OPTIONS' });
     return changesFeed(request, env, feed[1]);
+  }
+  const alerts = /^\/r\/([^/]+)\/alerts(\/test)?$/.exec(pathname);
+  if (alerts) {
+    const methods = alerts[2] ? 'POST, OPTIONS' : 'GET, POST, DELETE, OPTIONS';
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, methods) });
+    if (!(alerts[2] ? ['POST'] : ['GET', 'POST', 'DELETE']).includes(request.method)) return errorResponse(request, 405, 'method_not_allowed', 'Use an allowed alert method.', methods);
+    return ownerAlerts(request, env, alerts[1], Boolean(alerts[2]));
   }
   const watchToggle = /^\/r\/([^/]+)\/watch$/.exec(pathname);
   if (watchToggle) {

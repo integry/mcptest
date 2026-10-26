@@ -84,3 +84,16 @@ test('breaking changes: the explanation link opens the guide section', async ({ 
   await expect(page).toHaveURL('/learn/which-mcp-tool-changes-break-clients#removing-or-renaming-a-tool');
   await expect(page.getByRole('heading', { level: 2, name: 'Removing or renaming a tool' })).toBeVisible();
 });
+
+test('weekly alerts are discoverable from the breaking changes checker', async ({ page }) => {
+  await page.goto('/tools/breaking-changes');
+  // Content routes defer hydration until input.
+  await page.keyboard.press('Shift');
+  const link = page.getByRole('link', { name: 'Learn about weekly alerts' });
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(page).toHaveURL(/\/learn\/which-mcp-tool-changes-break-clients#weekly-push-alerts$/);
+  await expect(page.getByRole('heading', { name: 'Weekly push alerts', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Verifying webhook alerts', exact: true })).toBeVisible();
+  await expect(page.getByRole('main')).toContainText('X-Mcptest-Signature');
+});

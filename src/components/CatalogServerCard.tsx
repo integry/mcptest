@@ -140,17 +140,10 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
         <svg
           className="catalog-listing-source-icon"
           viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
           aria-hidden="true"
           focusable="false"
         >
-          <path d="M15 3h6v6" />
-          <path d="m10 14 11-11" />
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <path d="M15 3h6v6M10 14l11-11M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
         </svg>
       )}
     </>
@@ -167,7 +160,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
       <div className="catalog-server-heading">
         <div className="catalog-server-title-row">
           <div className="catalog-server-name-source">
-            <h3 className="mb-0">
+            <h3>
               <Link
                 className="catalog-server-title"
                 to={getCatalogServerPath(server.id)}
@@ -211,20 +204,20 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
           </span>
         </div>
         <p
-          className="catalog-server-url small text-truncate mb-0"
+          className="catalog-server-url"
           title={server.url}
           aria-label={`Endpoint hostname ${hostname}. Full endpoint ${server.url}`}
         >
           {hostname}
         </p>
-        <p className="catalog-server-description mb-0" title={server.description}>
+        <p className="catalog-server-description" title={server.description}>
           {server.description}
         </p>
       </div>
 
       <div className="catalog-server-meta">
         <div
-          className="catalog-server-badges d-flex flex-wrap align-items-center"
+          className="catalog-server-badges"
           role="group"
           aria-label="Server summary"
         >
@@ -276,7 +269,7 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
         )}
       </div>
 
-      <div className="catalog-card-actions align-items-center">
+      <div className="catalog-card-actions">
         <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
           View report
         </Link>

@@ -139,6 +139,7 @@ describe('SideNav information architecture', () => {
       ['Reports', '/report'],
       ['Tool-selection evals', '/evals'],
       ['Breaking changes', '/tools/breaking-changes'],
+      ['OAuth check', '/tools/oauth-check'],
       ['Discovery check', '/tools/discovery'],
     ]);
     expect(container.querySelector('a[href="/catalog"]')?.classList).toContain('active');
@@ -217,6 +218,7 @@ describe('SideNav information architecture', () => {
       link.getAttribute('rel'),
     ]);
     expect(projectLinks).toEqual([
+      ['CI release gate', '/ci', null, null],
       ['Submit a server', '/submit', null, null],
       ['Badges', 'https://github.com/integry/mcptest#embedding-a-badge', '_blank', 'noopener noreferrer'],
       ['GitHub repository', 'https://github.com/integry/mcptest', '_blank', 'noopener noreferrer'],
