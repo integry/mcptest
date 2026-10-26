@@ -220,7 +220,17 @@ export const providerRequiresDynamicRegistration = (
  */
 export function getOAuthProviderDiagnosis(serverUrl: string, issuer?: string): { note: string; requiresApproval: boolean } | undefined {
   const policy = getOAuthProviderPolicy(serverUrl, issuer);
-  if (policy) return { note: `${policy.name}: ${policy.registrationMode}; ${policy.clientEstablishmentStrategy}. Provider setup: ${policy.documentationUrl}`, requiresApproval: policy.registrationMode === 'provider-approved' };
+  if (policy) {
+    const registration: Record<OAuthProviderPolicy['registrationMode'], string> = {
+      'browser-public': 'Browser clients can register themselves.',
+      'provider-approved': 'Only apps approved by the provider can connect.',
+      'operator-confidential': 'Clients need an OAuth app registered with the provider; its secret stays on a server, so a browser cannot register one on the fly.',
+    };
+    return {
+      note: `${policy.name}: ${registration[policy.registrationMode]} Setup: ${policy.documentationUrl}`,
+      requiresApproval: policy.registrationMode === 'provider-approved',
+    };
+  }
   const observations = [
     { target: 'https://mcp.dropbox.com/mcp', issuer: 'https://www.dropbox.com', note: 'Dropbox advertised DCR, but the recorded sweep received a trusted-partner registration rejection. Provider approval may be required; advertised registration is not proof of acceptance.' },
     { target: 'https://mcp.harness.io/mcp', issuer: 'https://id.harness.io/idp/realms/HarnessIDP', note: 'Harness uses issuer-path OIDC discovery. The recorded sweep received a trusted-host registration rejection; provider approval may be required. Its metadata advertises confidential token authentication.' },
