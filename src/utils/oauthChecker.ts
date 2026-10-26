@@ -130,7 +130,7 @@ export async function checkOAuthReadiness(
 
   const policy = metadata ? getOAuthProviderPolicy(endpoint, metadata.issuer) : undefined;
   const diagnosis = getOAuthProviderDiagnosis(endpoint, metadata?.issuer);
-  report.providerNote = diagnosis?.note ?? (policy ? `${policy.name}: ${policy.registrationMode}; ${policy.clientEstablishmentStrategy}. See ${policy.documentationUrl}` : undefined);
+  report.providerNote = diagnosis?.note;
   const methods = metadata?.token_endpoint_auth_methods_supported;
   const confidential = policy?.registrationMode === 'operator-confidential' || (methods && !methods.includes('none'));
   const restricted = confidential || diagnosis?.requiresApproval;
