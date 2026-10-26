@@ -38,6 +38,7 @@ export type DiscoveryFailureKind = 'cors' | 'network' | 'timeout' | 'too-large' 
 
 /** A response as the checker sees it: the body is already read, within a size cap. */
 export interface DiscoveryResponse {
+  wwwAuthenticate?: string;
   /** The URL that answered, after redirects. */
   url: string;
   status: number;

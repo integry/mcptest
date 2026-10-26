@@ -49,12 +49,34 @@ export function createDiscoveryFixtureServer({ mockOrigin }) {
     const url = new URL(request.url, 'http://localhost');
     const cors = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, If-None-Match',
       'Access-Control-Expose-Headers': 'ETag',
     };
     if (request.method === 'OPTIONS') {
       response.writeHead(204, cors).end();
+      return;
+    }
+    // Read-only OAuth checker fixtures; registration is deliberately a failing route.
+    const oauthOrigin = `http://${request.headers.host}`;
+    if (url.pathname === '/oauth-mcp') {
+      response.writeHead(401, { ...cors, 'Access-Control-Expose-Headers': 'WWW-Authenticate',
+        'WWW-Authenticate': `Bearer resource_metadata="${oauthOrigin}/.well-known/oauth-protected-resource/oauth-mcp"`,
+      }).end();
+      return;
+    }
+    const oauthDocs = {
+      '/.well-known/oauth-protected-resource/oauth-mcp': { resource: `${oauthOrigin}/oauth-mcp`, authorization_servers: [`${oauthOrigin}/tenant`] },
+      '/tenant/.well-known/openid-configuration': {
+        jwks_uri: `${oauthOrigin}/jwks`, subject_types_supported: ['public'], id_token_signing_alg_values_supported: ['RS256'],
+        issuer: `${oauthOrigin}/tenant`, authorization_endpoint: `${oauthOrigin}/authorize`,
+        token_endpoint: `${oauthOrigin}/token`, registration_endpoint: `${oauthOrigin}/register`,
+        response_types_supported: ['code'], grant_types_supported: ['authorization_code'],
+        token_endpoint_auth_methods_supported: ['none'], code_challenge_methods_supported: ['S256'],
+      },
+    };
+    if (oauthDocs[url.pathname]) {
+      response.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(oauthDocs[url.pathname]));
       return;
     }
     if (url.pathname === '/health') {

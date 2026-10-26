@@ -27,3 +27,5 @@ export const getContentPageMetadata = (pathname: string): PageMetadata | undefin
 
 export const getDocsMetadata = (pathname: string): PageMetadata | undefined =>
   /^\/docs\/[^/]+\/?$/.test(pathname) ? getContentPageMetadata(pathname) : undefined;
+
+export const OAUTH_CHECKER_METADATA: PageMetadata = pageMetadata.tools['oauth-check'];
