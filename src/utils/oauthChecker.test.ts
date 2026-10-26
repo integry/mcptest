@@ -52,6 +52,108 @@ it.each([429, 503])('classifies HTTP %s metadata failures as transient', async s
   expect((await checkOAuthReadiness('https://example.com/mcp', { fetchDocument })).classification).toBe('transient');
 });
 
+const readyResource = { resource: 'https://example.com/mcp', authorization_servers: ['https://auth.example/tenant'] };
+const readyIssuer = {
+  issuer: readyResource.authorization_servers[0],
+  authorization_endpoint: 'https://auth.example/authorize',
+  token_endpoint: 'https://auth.example/token',
+  response_types_supported: ['code'],
+  code_challenge_methods_supported: ['S256'],
+  jwks_uri: 'https://auth.example/jwks',
+  subject_types_supported: ['public'],
+  id_token_signing_alg_values_supported: ['RS256'],
+  token_endpoint_auth_methods_supported: ['none'],
+  client_id_metadata_document_supported: true,
+};
+const healthyProbe: DiscoveryFetch = async url => ({ url, route: 'direct', status: 401, body: '' });
+
+it.each([401, 403, 429])('supersedes HTTP %s resource candidates with successful root discovery', async status => {
+  const { fetchDocument } = fixture(readyResource, readyIssuer);
+  const blockedUrl = 'https://example.com/.well-known/oauth-protected-resource/mcp';
+  const result = await checkOAuthReadiness(readyResource.resource, {
+    probeEndpoint: healthyProbe,
+    fetchDocument: async url => url === blockedUrl
+      ? { url, route: 'direct', status, body: '{}' }
+      : fetchDocument(url),
+  });
+  expect(result.classification).toBe('pre-login success');
+  expect(result.verdict).toBe('Clients can start OAuth (metadata checks passed)');
+  expect(result.rows.find(row => row.url === blockedUrl)?.status).toBe('unknown');
+  expect(result.rows.find(row => row.id === 'resource')?.status).toBe('pass');
+});
+
+it.each([401, 403, 429, 502])('supersedes HTTP %s issuer candidates with successful OIDC discovery', async status => {
+  const { fetchDocument } = fixture(readyResource, readyIssuer, true);
+  const blockedUrl = 'https://auth.example/.well-known/oauth-authorization-server/tenant';
+  const result = await checkOAuthReadiness(readyResource.resource, {
+    probeEndpoint: healthyProbe,
+    fetchDocument: async url => url === blockedUrl
+      ? { url, route: 'direct', status, body: '{}' }
+      : fetchDocument(url),
+  });
+  expect(result.classification).toBe('pre-login success');
+  expect(result.rows.find(row => row.url === blockedUrl)?.status).toBe('unknown');
+  expect(result.rows.find(row => row.id === 'issuer')).toMatchObject({
+    status: 'pass', url: `${readyIssuer.issuer}/.well-known/openid-configuration`,
+  });
+});
+
+it.each(['blocked', 'network failure'])('supersedes an earlier %s advertised issuer with a successful issuer', async failure => {
+  const resource = { ...readyResource, authorization_servers: ['https://unavailable.example', readyIssuer.issuer] };
+  const { fetchDocument } = fixture(resource, readyIssuer);
+  const result = await checkOAuthReadiness(resource.resource, {
+    probeEndpoint: healthyProbe,
+    fetchDocument: async url => {
+      if (new URL(url).hostname === 'unavailable.example') {
+        if (failure === 'network failure') throw new Error('Network unavailable');
+        return { url, route: 'direct', status: 403, body: '{}' };
+      }
+      return fetchDocument(url);
+    },
+  });
+  expect(result.classification).toBe('pre-login success');
+  expect(result.rows.find(row => row.id === 'issuer')?.status).toBe('pass');
+});
+
+it('does not carry superseded resource blocking into a missing issuer diagnosis', async () => {
+  const { fetchDocument } = fixture(readyResource, readyIssuer);
+  const result = await checkOAuthReadiness(readyResource.resource, {
+    probeEndpoint: healthyProbe,
+    fetchDocument: async url => {
+      if (url.endsWith('oauth-protected-resource/mcp')) return { url, route: 'direct', status: 403, body: '{}' };
+      if (new URL(url).hostname === 'auth.example') return { url, route: 'direct', status: 404, body: '{}' };
+      return fetchDocument(url);
+    },
+  });
+  expect(result.classification).toBe('server non-compliance');
+  expect(result.rows.find(row => row.id === 'resource')?.status).toBe('pass');
+  expect(result.rows.find(row => row.id === 'issuer')?.status).toBe('fail');
+});
+
+it.each(['resource', 'issuer'])('keeps failed %s discovery transient when blocked candidates are not superseded', async phase => {
+  const { fetchDocument } = fixture(readyResource, readyIssuer);
+  const result = await checkOAuthReadiness(readyResource.resource, {
+    probeEndpoint: healthyProbe,
+    fetchDocument: async url => (url.includes('oauth-protected-resource') ? phase === 'resource' : phase === 'issuer')
+      ? { url, route: 'direct', status: 403, body: '{}' }
+      : fetchDocument(url),
+  });
+  expect(result.classification).toBe('transient');
+  expect(result.verdict).toBe('Discovery blocked: retry or check access policy');
+  expect(result.rows.find(row => row.id === phase)?.status).toBe('unknown');
+});
+
+it.each([429, 503])('preserves MCP endpoint HTTP %s unavailability after successful metadata discovery', async status => {
+  const result = await checkOAuthReadiness(readyResource.resource, {
+    ...fixture(readyResource, readyIssuer),
+    probeEndpoint: async url => ({ url, route: 'direct', status, body: '' }),
+  });
+  expect(result.classification).toBe('transient');
+  expect(result.verdict).toBe('Metadata checks passed; MCP endpoint unavailable, retry');
+  expect(result.rows.find(row => row.id === 'resource')?.status).toBe('pass');
+  expect(result.rows.find(row => row.id === 'issuer')?.status).toBe('pass');
+});
+
 it('does not mistake access-blocked Similarweb metadata for absent client registration', async () => {
   const fetchDocument: DiscoveryFetch = async url => ({ url, route: 'direct', status: url.includes('oauth-protected-resource') ? 200 : 403, body: JSON.stringify(similarwebResource) });
   const result = await checkOAuthReadiness('https://mcp.similarweb.com/mcp', { fetchDocument });

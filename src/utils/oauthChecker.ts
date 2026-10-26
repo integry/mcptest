@@ -49,20 +49,21 @@ export async function checkOAuthReadiness(
   const endpoint = normalizeOAuthCheckEndpoint(input);
   const rows: OAuthCheckRow[] = [];
   const report: OAuthCheckReport = { endpoint, rows, classification: 'server non-compliance', verdict: '' };
-  let transient = false;
+  let probeTransient = false;
+  let discoveryTransient = false;
   const row = (id: string, title: string, status: OAuthCheckStatus, url: string, evidence: string, fix?: string) => {
     rows.push({ id, title, status, url: safeUrl(url), evidence, fix });
   };
   let resourceMetadataUrl: URL | undefined;
   try {
     const response = await probeEndpoint(endpoint, { accept: 'application/json' });
-    transient = response.status === 429 || response.status >= 500;
+    probeTransient = response.status === 429 || response.status >= 500;
     const header = response.wwwAuthenticate;
     resourceMetadataUrl = extractWWWAuthenticateParams(new Response(null, {
       headers: header ? { 'WWW-Authenticate': header } : {},
     })).resourceMetadataUrl;
     row('challenge', 'Unauthenticated MCP request / WWW-Authenticate',
-      transient ? 'unknown' : response.status === 401 && header ? 'pass' : 'unknown', endpoint,
+      probeTransient ? 'unknown' : response.status === 401 && header ? 'pass' : 'unknown', endpoint,
       `POST initialize HTTP ${response.status}. WWW-Authenticate: ${header ? safeUrlHeader(header) : 'absent or not exposed to this browser'}.`,
       'Return 401 with a Bearer resource_metadata URL. Expose WWW-Authenticate through CORS. A successful initialize response may mean OAuth is optional for this endpoint.');
   } catch {
@@ -74,6 +75,7 @@ export async function checkOAuthReadiness(
   // Record every SDK fallback, including unsuccessful candidates. No arbitrary bodies are retained.
   let phase = 'resource';
   let sourceUrl = endpoint;
+  let blockedSeen = false;
   const fetchFn: FetchLike = async (input, init) => {
     if (init?.method && init.method !== 'GET') throw new Error('Read-only checker only permits GET');
     const url = String(input);
@@ -82,7 +84,7 @@ export async function checkOAuthReadiness(
     try {
       const response = await fetchDocument(url);
       const blocked = response.status === 401 || response.status === 403 || response.status === 429 || response.status >= 500;
-      if (blocked) transient = true;
+      if (blocked) blockedSeen = true;
       sourceUrl = url;
       row(`${phase}-${rows.length}`, phase === 'resource' ? 'Protected resource metadata request (RFC 9728)' : 'Authorization server metadata request (RFC 8414 / OIDC)',
         response.status === 200 ? 'pass' : blocked ? 'unknown' : 'fail', url,
@@ -90,7 +92,7 @@ export async function checkOAuthReadiness(
         response.status !== 200 ? 'Serve public JSON at this well-known path. A failed candidate can be superseded by a successful fallback below.' : undefined);
       return new Response(response.body, { status: response.status, headers: { 'Content-Type': response.contentType ?? 'application/json' } });
     } catch (error) {
-      transient = true;
+      blockedSeen = true;
       row(`${phase}-${rows.length}`, 'Metadata request', 'unknown', url, 'Could not read this metadata URL.', 'Check network reachability, CORS and proxy limits. Retry before concluding metadata is missing.');
       throw error;
     }
@@ -101,10 +103,14 @@ export async function checkOAuthReadiness(
     row('resource', 'Protected resource metadata validation', 'pass', sourceUrl,
       `resource: ${safeUrl(resource.resource)}; authorization_servers: ${(resource.authorization_servers ?? []).map(safeUrl).join(', ') || '(none)'}.`);
   } catch (error) {
-    row('resource', 'Protected resource metadata validation', transient ? 'unknown' : 'fail', sourceUrl,
+    discoveryTransient = blockedSeen;
+    row('resource', 'Protected resource metadata validation', blockedSeen ? 'unknown' : 'fail', sourceUrl,
       message(error).slice(0, 500), 'Publish RFC 9728 JSON with resource and authorization_servers. Path-suffixed metadata precedes the root fallback; a challenge URL is authoritative.');
   }
   phase = 'issuer';
+  // Failed candidates matter only if the whole discovery step fails. A valid
+  // fallback (including another advertised issuer) supersedes their blocking.
+  blockedSeen = false;
   let metadata: Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>;
   let metadataUrl = '';
   if (resource) {
@@ -118,7 +124,8 @@ export async function checkOAuthReadiness(
       }
     }
   }
-  row('issuer', 'Authorization server discovery', metadata ? 'pass' : transient ? 'unknown' : 'fail', metadataUrl || sourceUrl,
+  if (!metadata && blockedSeen) discoveryTransient = true;
+  row('issuer', 'Authorization server discovery', metadata ? 'pass' : blockedSeen ? 'unknown' : 'fail', metadataUrl || sourceUrl,
     metadata ? `Validated issuer: ${safeUrl(metadata.issuer)}; authorization_endpoint: ${safeUrl(metadata.authorization_endpoint)}; token_endpoint: ${safeUrl(metadata.token_endpoint)}.` : 'Failed to discover OAuth metadata from the advertised authorization servers.',
     !metadata ? 'Publish RFC 8414 metadata at /.well-known/oauth-authorization-server<issuer-path>, or OIDC metadata at <issuer>/.well-known/openid-configuration.' : undefined);
 
@@ -151,14 +158,14 @@ export async function checkOAuthReadiness(
     'Register each client’s exact callback. Respect loopback variable-port rules; do not substitute localhost for 127.0.0.1 or omit the vscode.dev bridge callback.');
 
   if (!resource || !metadata) {
-    report.classification = transient ? 'transient' : 'server non-compliance';
-    report.verdict = transient ? 'Discovery blocked: retry or check access policy' : `Discovery broken: fix ${!resource ? 'protected resource metadata' : 'authorization server metadata'}`;
+    report.classification = probeTransient || discoveryTransient ? 'transient' : 'server non-compliance';
+    report.verdict = probeTransient || discoveryTransient ? 'Discovery blocked: retry or check access policy' : `Discovery broken: fix ${!resource ? 'protected resource metadata' : 'authorization server metadata'}`;
   } else if (!resourceMatches || !pkce || !code) {
     report.verdict = `Discovery broken: fix ${!resourceMatches ? 'resource URL match' : !pkce ? 'PKCE S256' : 'authorization code flow'}`;
   } else if (restricted || !advertised) {
     report.classification = 'unsupported client mode';
     report.verdict = confidential ? 'Confidential client required' : 'Only pre-registered clients or provider-approved clients';
-  } else if (transient) {
+  } else if (probeTransient) {
     report.classification = 'transient';
     report.verdict = 'Metadata checks passed; MCP endpoint unavailable, retry';
   } else {
